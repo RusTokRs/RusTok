@@ -55,8 +55,18 @@ Current implementation includes:
   expired-result cleanup before claims. The production server selects the
   optional distribution bridge, which publishes a Translation-owned lazy
   runtime factory without server capability imports. Composed missing-keyring
-  evidence is optional and fail-closed; live external-provider failure/restart
-  evidence remains an activation prerequisite for machine translation
+  evidence is optional and fail-closed. Deterministic composed runtime evidence
+  covers ordered provider fallback, fail-closed JSON Schema enforcement,
+  sanitized failure recording, exact attempt usage/cost settlement,
+  request-conflict rejection, in-flight cancellation with reservation release,
+  quota rejection before provider execution, and encrypted restart replay
+  without another provider call or bill. Configuration-level provider
+  unavailability also produces typed degraded health. Live external-provider
+  failure/restart evidence remains an activation prerequisite for machine
+  translation; an ignored operator-only structured-runtime probe is available
+  for collecting that deployment evidence. A separate-process file-backed
+  recovery test also proves abandoned-attempt reconciliation, reservation
+  preservation, and reclaim with a new lease
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP

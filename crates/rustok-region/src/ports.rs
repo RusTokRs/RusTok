@@ -119,13 +119,13 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 }
 
 fn validate_region_read_request(request: &RegionReadRequest) -> Result<(), PortError> {
-    if let RegionReadSelector::CountryCode(country_code) = &request.selector {
-        if country_code.trim().is_empty() {
-            return Err(PortError::validation(
-                "region.country_code_empty",
-                "region read port requires a non-empty country code selector",
-            ));
-        }
+    if let RegionReadSelector::CountryCode(country_code) = &request.selector
+        && country_code.trim().is_empty()
+    {
+        return Err(PortError::validation(
+            "region.country_code_empty",
+            "region read port requires a non-empty country code selector",
+        ));
     }
     Ok(())
 }

@@ -446,10 +446,10 @@ pub async fn load_tenant_locale_policy(
         .try_get::<serde_json::Value>("", "settings")
         .unwrap_or_else(|_| json!({}));
     let mut enabled_locales = locale_list_from_settings(&settings);
-    if let Some(default_locale) = default_locale.as_ref() {
-        if !enabled_locales.contains(default_locale) {
-            enabled_locales.push(default_locale.clone());
-        }
+    if let Some(default_locale) = default_locale.as_ref()
+        && !enabled_locales.contains(default_locale)
+    {
+        enabled_locales.push(default_locale.clone());
     }
     if enabled_locales.is_empty() {
         enabled_locales.push(default_locale.clone().unwrap_or_else(|| "en".to_string()));
@@ -463,12 +463,11 @@ pub fn locale_list_from_settings(settings: &serde_json::Value) -> Vec<String> {
     for key in ["enabled_locales", "supported_locales", "locales"] {
         if let Some(values) = settings.get(key).and_then(|value| value.as_array()) {
             for value in values {
-                if let Some(locale) = value.as_str() {
-                    if let Ok(locale) = validate_locale_tag(locale) {
-                        if !locales.contains(&locale) {
-                            locales.push(locale);
-                        }
-                    }
+                if let Some(locale) = value.as_str()
+                    && let Ok(locale) = validate_locale_tag(locale)
+                    && !locales.contains(&locale)
+                {
+                    locales.push(locale);
                 }
             }
         }

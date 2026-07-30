@@ -1,7 +1,7 @@
 #![cfg(feature = "stripe")]
 
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use rustok_payment::{
     PaymentError, PaymentProvider, PaymentProviderWebhookRequest, StaticStripeCredentialProvider,
     StripeCredentials, StripePaymentProvider, StripePaymentProviderConfig,

@@ -4157,134 +4157,132 @@ impl AiManagementService {
             .collect::<AiResult<Vec<_>>>()?;
 
         let direct_registry = DirectExecutionRegistry::with_defaults();
-        if matches!(execution_mode, ExecutionMode::Direct) {
-            if let (Some(task_profile), Some(handler)) = (
+        if matches!(execution_mode, ExecutionMode::Direct)
+            && let (Some(task_profile), Some(handler)) = (
                 task_profile.as_ref(),
                 task_profile
                     .as_ref()
                     .and_then(|profile| direct_registry.handler(&profile.slug)),
-            ) {
-                let stream_buffer = Arc::new(Mutex::new(String::new()));
-                let stream_emitter = ProviderStreamEmitter::new({
-                    let stream_buffer = Arc::clone(&stream_buffer);
-                    move |event| {
-                        publish_provider_stream_event(session_id, run_id, &stream_buffer, event)
-                    }
-                });
-                let task_input_json = match task_input_json {
-                    Some(task_input_json) => task_input_json,
-                    None => session_task_input(db, operator.tenant_id, session_id)
-                        .await?
-                        .ok_or_else(|| {
-                            AiError::Validation(
-                                "direct task execution requires task_input_json".to_string(),
-                            )
-                        })?,
-                };
-                let provider_config = provider_config(
-                    &provider_profile,
-                    runtime.provider_targets(),
-                    runtime.egress_policy(),
-                )?;
-                let provider =
-                    runtime_inference_engine(runtime, &provider_slug, &provider_config).await?;
-                let direct_result = match handler
-                    .execute(
-                        runtime,
-                        operator,
-                        DirectExecutionRequest {
-                            task_slug: task_profile.slug.clone(),
-                            task_input_json,
-                            requested_locale: requested_locale.clone(),
-                            resolved_locale: resolved_locale.clone(),
-                            system_prompt: task_profile.system_prompt.clone(),
-                            provider_config: provider_config.clone(),
-                            provider,
-                            stream_emitter: Some(stream_emitter),
-                        },
-                    )
-                    .await
-                {
-                    Ok(result) => result,
-                    Err(error) => {
-                        mark_run_failed(db, operator.tenant_id, run_id, error.to_string()).await?;
-                        publish_ai_run_stream_event(
-                            session_id,
-                            run_id,
-                            crate::streaming::AiRunStreamEventKind::Failed,
-                            None,
-                            Some(read_stream_buffer(&stream_buffer)),
-                            Some(error.to_string()),
-                        );
-                        ai_metrics::observe_run_outcome(
-                            ExecutionMode::Direct,
-                            Some("direct"),
-                            &provider_slug,
-                            Some(task_profile.slug.as_str()),
-                            Some(resolved_locale.as_str()),
-                            "failed",
-                            run_started.elapsed().as_millis() as u64,
-                        );
-                        return Err(error);
-                    }
-                };
-                let mut run = require_run(db, operator.tenant_id, run_id).await?;
-                persist_runtime_outputs(
-                    db,
-                    operator,
-                    session_id,
-                    run_id,
-                    direct_result.appended_messages,
-                    direct_result.traces,
-                )
-                .await?;
-                let mut decision_trace: crate::model::AiRunDecisionTrace =
-                    serde_json::from_value(run.decision_trace.clone()).unwrap_or_default();
-                decision_trace = enrich_decision_trace(
-                    decision_trace,
-                    ExecutionMode::Direct,
-                    requested_locale.clone(),
-                    resolved_locale.clone(),
-                );
-                let execution_target = format!("direct:{}", direct_result.execution_target.slug());
-                decision_trace.execution_target = Some(execution_target.clone());
-                let run_metadata = run.metadata.clone();
-                let mut active: ai_chat_runs::ActiveModel = run.into();
-                active.execution_path = Set(ExecutionMode::Direct.slug().to_string());
-                active.completed_at = Set(Some(Utc::now().into()));
-                active.updated_at = Set(Utc::now().into());
-                active.decision_trace =
-                    Set(serde_json::to_value(decision_trace).unwrap_or_else(|_| json!({})));
-                active.metadata = Set(merge_metadata(run_metadata, direct_result.metadata));
-                active.status = Set("completed".to_string());
-                run = active.update(db).await.map_err(db_err)?;
-                let detail = Self::chat_session_detail(db, operator.tenant_id, session_id)
+            )
+        {
+            let stream_buffer = Arc::new(Mutex::new(String::new()));
+            let stream_emitter = ProviderStreamEmitter::new({
+                let stream_buffer = Arc::clone(&stream_buffer);
+                move |event| {
+                    publish_provider_stream_event(session_id, run_id, &stream_buffer, event)
+                }
+            });
+            let task_input_json = match task_input_json {
+                Some(task_input_json) => task_input_json,
+                None => session_task_input(db, operator.tenant_id, session_id)
                     .await?
                     .ok_or_else(|| {
-                        AiError::Runtime("failed to reload AI chat session".to_string())
-                    })?;
-                ai_metrics::observe_run_outcome(
-                    ExecutionMode::Direct,
-                    Some(execution_target.as_str()),
-                    &provider_slug,
-                    Some(task_profile.slug.as_str()),
-                    Some(resolved_locale.as_str()),
-                    "completed",
-                    run_started.elapsed().as_millis() as u64,
-                );
-                publish_ai_run_stream_event(
-                    session_id,
-                    run_id,
-                    crate::streaming::AiRunStreamEventKind::Completed,
-                    None,
-                    Some(read_stream_buffer(&stream_buffer)),
-                    None,
-                );
-                return Ok(AiSendMessageResult {
-                    session: detail,
-                    run: map_run_record(run)?,
-                });
-            }
+                        AiError::Validation(
+                            "direct task execution requires task_input_json".to_string(),
+                        )
+                    })?,
+            };
+            let provider_config = provider_config(
+                &provider_profile,
+                runtime.provider_targets(),
+                runtime.egress_policy(),
+            )?;
+            let provider =
+                runtime_inference_engine(runtime, &provider_slug, &provider_config).await?;
+            let direct_result = match handler
+                .execute(
+                    runtime,
+                    operator,
+                    DirectExecutionRequest {
+                        task_slug: task_profile.slug.clone(),
+                        task_input_json,
+                        requested_locale: requested_locale.clone(),
+                        resolved_locale: resolved_locale.clone(),
+                        system_prompt: task_profile.system_prompt.clone(),
+                        provider_config: provider_config.clone(),
+                        provider,
+                        stream_emitter: Some(stream_emitter),
+                    },
+                )
+                .await
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    mark_run_failed(db, operator.tenant_id, run_id, error.to_string()).await?;
+                    publish_ai_run_stream_event(
+                        session_id,
+                        run_id,
+                        crate::streaming::AiRunStreamEventKind::Failed,
+                        None,
+                        Some(read_stream_buffer(&stream_buffer)),
+                        Some(error.to_string()),
+                    );
+                    ai_metrics::observe_run_outcome(
+                        ExecutionMode::Direct,
+                        Some("direct"),
+                        &provider_slug,
+                        Some(task_profile.slug.as_str()),
+                        Some(resolved_locale.as_str()),
+                        "failed",
+                        run_started.elapsed().as_millis() as u64,
+                    );
+                    return Err(error);
+                }
+            };
+            let mut run = require_run(db, operator.tenant_id, run_id).await?;
+            persist_runtime_outputs(
+                db,
+                operator,
+                session_id,
+                run_id,
+                direct_result.appended_messages,
+                direct_result.traces,
+            )
+            .await?;
+            let mut decision_trace: crate::model::AiRunDecisionTrace =
+                serde_json::from_value(run.decision_trace.clone()).unwrap_or_default();
+            decision_trace = enrich_decision_trace(
+                decision_trace,
+                ExecutionMode::Direct,
+                requested_locale.clone(),
+                resolved_locale.clone(),
+            );
+            let execution_target = format!("direct:{}", direct_result.execution_target.slug());
+            decision_trace.execution_target = Some(execution_target.clone());
+            let run_metadata = run.metadata.clone();
+            let mut active: ai_chat_runs::ActiveModel = run.into();
+            active.execution_path = Set(ExecutionMode::Direct.slug().to_string());
+            active.completed_at = Set(Some(Utc::now().into()));
+            active.updated_at = Set(Utc::now().into());
+            active.decision_trace =
+                Set(serde_json::to_value(decision_trace).unwrap_or_else(|_| json!({})));
+            active.metadata = Set(merge_metadata(run_metadata, direct_result.metadata));
+            active.status = Set("completed".to_string());
+            run = active.update(db).await.map_err(db_err)?;
+            let detail = Self::chat_session_detail(db, operator.tenant_id, session_id)
+                .await?
+                .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
+            ai_metrics::observe_run_outcome(
+                ExecutionMode::Direct,
+                Some(execution_target.as_str()),
+                &provider_slug,
+                Some(task_profile.slug.as_str()),
+                Some(resolved_locale.as_str()),
+                "completed",
+                run_started.elapsed().as_millis() as u64,
+            );
+            publish_ai_run_stream_event(
+                session_id,
+                run_id,
+                crate::streaming::AiRunStreamEventKind::Completed,
+                None,
+                Some(read_stream_buffer(&stream_buffer)),
+                None,
+            );
+            return Ok(AiSendMessageResult {
+                session: detail,
+                run: map_run_record(run)?,
+            });
         }
 
         let messages =

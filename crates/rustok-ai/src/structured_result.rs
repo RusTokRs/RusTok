@@ -347,7 +347,7 @@ pub(crate) async fn delete_expired_results(
     let expired_ids = ai_structured_results::Entity::find()
         .select_only()
         .column(ai_structured_results::Column::Id)
-        .filter(ai_structured_results::Column::ExpiresAt.lte(now.clone()))
+        .filter(ai_structured_results::Column::ExpiresAt.lte(now))
         .order_by_asc(ai_structured_results::Column::ExpiresAt)
         .order_by_asc(ai_structured_results::Column::Id)
         .limit(RESULT_CLEANUP_BATCH_SIZE)

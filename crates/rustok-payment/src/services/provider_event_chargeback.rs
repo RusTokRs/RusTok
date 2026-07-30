@@ -48,16 +48,16 @@ impl PaymentProviderEventApplier for ChargebackLifecycleEventApplier {
             .get_collection(context.tenant_id, payload.collection_id)
             .await
             .map_err(map_payment_error)?;
-        if let Some(provider_id) = collection.provider_id.as_deref() {
-            if provider_id != context.provider_id {
-                return Err(non_retryable(
-                    "payment.webhook_provider_mismatch",
-                    format!(
-                        "payment collection {} belongs to another provider",
-                        collection.id
-                    ),
-                ));
-            }
+        if let Some(provider_id) = collection.provider_id.as_deref()
+            && provider_id != context.provider_id
+        {
+            return Err(non_retryable(
+                "payment.webhook_provider_mismatch",
+                format!(
+                    "payment collection {} belongs to another provider",
+                    collection.id
+                ),
+            ));
         }
         if collection.status != "captured" {
             return Err(retryable(

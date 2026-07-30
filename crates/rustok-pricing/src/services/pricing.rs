@@ -853,12 +853,12 @@ impl PricingService {
             ));
         }
         validate_price_tier_quantities(min_quantity, max_quantity)?;
-        if let Some(compare_at) = compare_at_amount {
-            if compare_at < amount {
-                return Err(CommerceError::InvalidPrice(
-                    "Compare at price must be greater than amount".into(),
-                ));
-            }
+        if let Some(compare_at) = compare_at_amount
+            && compare_at < amount
+        {
+            return Err(CommerceError::InvalidPrice(
+                "Compare at price must be greater than amount".into(),
+            ));
         }
 
         let existing = entities::price::Entity::find()
@@ -971,12 +971,12 @@ impl PricingService {
                     "Amount cannot be negative".into(),
                 ));
             }
-            if let Some(compare_at) = price_input.compare_at_amount {
-                if compare_at < price_input.amount {
-                    return Err(CommerceError::InvalidPrice(
-                        "Compare at price must be greater than amount".into(),
-                    ));
-                }
+            if let Some(compare_at) = price_input.compare_at_amount
+                && compare_at < price_input.amount
+            {
+                return Err(CommerceError::InvalidPrice(
+                    "Compare at price must be greater than amount".into(),
+                ));
             }
 
             let existing = entities::price::Entity::find()
@@ -1133,17 +1133,16 @@ impl PricingService {
             quantity,
         )
         .map(|price| {
-            if price.price_list_id.is_none() {
-                if let (Some(price_list_id), Some(rule)) =
+            if price.price_list_id.is_none()
+                && let (Some(price_list_id), Some(rule)) =
                     (active_price_list_id, active_price_list_rule.as_ref())
-                {
-                    return apply_price_list_rule_to_resolved_price(
-                        currency_code,
-                        price,
-                        price_list_id,
-                        rule,
-                    );
-                }
+            {
+                return apply_price_list_rule_to_resolved_price(
+                    currency_code,
+                    price,
+                    price_list_id,
+                    rule,
+                );
             }
 
             ResolvedPrice {
@@ -1276,15 +1275,15 @@ impl PricingService {
             }
         }
 
-        if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
-            if let Some(found) = lookup.get(&locale) {
-                return found.name.clone();
-            }
+        if let Some(locale) = requested_locale.and_then(normalize_locale_tag)
+            && let Some(found) = lookup.get(&locale)
+        {
+            return found.name.clone();
         }
-        if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
-            if let Some(found) = lookup.get(&locale) {
-                return found.name.clone();
-            }
+        if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag)
+            && let Some(found) = lookup.get(&locale)
+        {
+            return found.name.clone();
         }
         translations
             .first()
@@ -1665,16 +1664,16 @@ fn channel_scope_matches(
         return true;
     }
 
-    if let Some(scoped_channel_id) = scoped_channel_id {
-        if Some(scoped_channel_id) != requested_channel_id {
-            return false;
-        }
+    if let Some(scoped_channel_id) = scoped_channel_id
+        && Some(scoped_channel_id) != requested_channel_id
+    {
+        return false;
     }
 
-    if let Some(scoped_channel_slug) = scoped_channel_slug {
-        if Some(scoped_channel_slug.as_str()) != requested_channel_slug.as_deref() {
-            return false;
-        }
+    if let Some(scoped_channel_slug) = scoped_channel_slug
+        && Some(scoped_channel_slug.as_str()) != requested_channel_slug.as_deref()
+    {
+        return false;
     }
 
     true
@@ -1855,16 +1854,16 @@ fn price_matches_context(
         return false;
     }
 
-    if let Some(min_quantity) = price.min_quantity {
-        if quantity < min_quantity {
-            return false;
-        }
+    if let Some(min_quantity) = price.min_quantity
+        && quantity < min_quantity
+    {
+        return false;
     }
 
-    if let Some(max_quantity) = price.max_quantity {
-        if quantity > max_quantity {
-            return false;
-        }
+    if let Some(max_quantity) = price.max_quantity
+        && quantity > max_quantity
+    {
+        return false;
     }
 
     true
@@ -2160,28 +2159,28 @@ fn validate_price_tier_quantities(
     min_quantity: Option<i32>,
     max_quantity: Option<i32>,
 ) -> CommerceResult<()> {
-    if let Some(min_quantity) = min_quantity {
-        if min_quantity <= 0 {
-            return Err(CommerceError::InvalidPrice(
-                "Minimum quantity must be positive".into(),
-            ));
-        }
+    if let Some(min_quantity) = min_quantity
+        && min_quantity <= 0
+    {
+        return Err(CommerceError::InvalidPrice(
+            "Minimum quantity must be positive".into(),
+        ));
     }
 
-    if let Some(max_quantity) = max_quantity {
-        if max_quantity <= 0 {
-            return Err(CommerceError::InvalidPrice(
-                "Maximum quantity must be positive".into(),
-            ));
-        }
+    if let Some(max_quantity) = max_quantity
+        && max_quantity <= 0
+    {
+        return Err(CommerceError::InvalidPrice(
+            "Maximum quantity must be positive".into(),
+        ));
     }
 
-    if let (Some(min_quantity), Some(max_quantity)) = (min_quantity, max_quantity) {
-        if max_quantity < min_quantity {
-            return Err(CommerceError::InvalidPrice(
-                "Maximum quantity must be greater than or equal to minimum quantity".into(),
-            ));
-        }
+    if let (Some(min_quantity), Some(max_quantity)) = (min_quantity, max_quantity)
+        && max_quantity < min_quantity
+    {
+        return Err(CommerceError::InvalidPrice(
+            "Maximum quantity must be greater than or equal to minimum quantity".into(),
+        ));
     }
 
     Ok(())

@@ -183,10 +183,9 @@ fn map_checkout_order_payment_settlement_local_port_error(
             "order.checkout_payment_request_invalid",
             "checkout payment settlement request is invalid",
         ) => "validate_request",
-        (
-            "order.checkout_payment_identity_missing",
-            "checkout requires manual reconciliation",
-        ) => "require_durable_checkout_identity",
+        ("order.checkout_payment_identity_missing", "checkout requires manual reconciliation") => {
+            "require_durable_checkout_identity"
+        }
         (
             "order.checkout_payment_identity_conflict",
             "checkout order identity conflicts with the payment settlement request",
@@ -261,28 +260,28 @@ fn require_order_checkout_write_admission(
     boundary: &'static str,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).map_err(|error| {
-        log_order_checkout_admission_rejection(
-            context,
-            owner,
-            boundary,
-            operation,
-            "policy",
-            &error,
-        );
-        error
-    })?;
-    context.require_write_semantics().map_err(|error| {
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_order_checkout_admission_rejection(
+                context, owner, boundary, operation, "policy", error,
+            );
+        })?;
+    context.require_write_semantics().inspect_err(|error| {
         log_order_checkout_admission_rejection(
             context,
             owner,
             boundary,
             operation,
             "write_semantics",
-            &error,
+            error,
         );
-        error
     })
+}
+
+struct CheckoutContextRejectionEvidence<'a> {
+    parse_cause: Option<&'a dyn std::fmt::Debug>,
+    expected_checkout_operation_id: Option<Uuid>,
 }
 
 fn log_order_checkout_admission_rejection(
@@ -361,8 +360,10 @@ fn parse_order_tenant_id(
             operation,
             "tenant_id",
             &error,
-            Some(&cause),
-            None,
+            CheckoutContextRejectionEvidence {
+                parse_cause: Some(&cause),
+                expected_checkout_operation_id: None,
+            },
         );
         error
     })
@@ -375,7 +376,8 @@ fn parse_order_actor_id(
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.actor.id).map_err(|cause| {
-        let error = PortError::validation("order.actor_id_invalid", "order request context is invalid");
+        let error =
+            PortError::validation("order.actor_id_invalid", "order request context is invalid");
         log_order_checkout_context_rejection(
             context,
             owner,
@@ -383,8 +385,10 @@ fn parse_order_actor_id(
             operation,
             "actor_id",
             &error,
-            Some(&cause),
-            None,
+            CheckoutContextRejectionEvidence {
+                parse_cause: Some(&cause),
+                expected_checkout_operation_id: None,
+            },
         );
         error
     })
@@ -411,8 +415,10 @@ fn require_order_checkout_causation(
             operation,
             "causation_id",
             &error,
-            None,
-            Some(checkout_operation_id),
+            CheckoutContextRejectionEvidence {
+                parse_cause: None,
+                expected_checkout_operation_id: Some(checkout_operation_id),
+            },
         );
         return Err(error);
     }
@@ -426,11 +432,10 @@ fn log_order_checkout_context_rejection(
     operation: &'static str,
     validation_phase: &'static str,
     error: &PortError,
-    parse_cause: Option<&dyn std::fmt::Debug>,
-    expected_checkout_operation_id: Option<Uuid>,
+    evidence: CheckoutContextRejectionEvidence<'_>,
 ) {
     tracing::warn!(
-        parse_cause = ?parse_cause,
+        parse_cause = ?evidence.parse_cause,
         error = ?error,
         owner,
         operation,
@@ -444,7 +449,7 @@ fn log_order_checkout_context_rejection(
         traceparent = ?context.traceparent,
         idempotency_key = ?context.idempotency_key,
         deadline_ms = ?context.deadline_ms,
-        expected_checkout_operation_id = ?expected_checkout_operation_id,
+        expected_checkout_operation_id = ?evidence.expected_checkout_operation_id,
         internal_code = %error.code,
         internal_message = %error.message,
         error_kind = ?error.kind,

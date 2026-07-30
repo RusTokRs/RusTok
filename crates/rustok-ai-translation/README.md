@@ -43,7 +43,17 @@ accounting-policy provisioning, deployment keyring publication, and scheduler
 recovery/result cleanup exist. Composition evidence verifies that the
 Translation-owned lazy factory is published without host capability imports
 and resolves to no machine provider when the deployment keyring is absent.
-Live external-provider failure/restart evidence remains open.
+Deterministic composed runtime evidence covers ordered provider fallback,
+fail-closed JSON Schema enforcement, sanitized failure recording, exact attempt
+usage/cost settlement, request-hash conflict rejection, in-flight cancellation
+with reservation release, quota rejection before provider execution, and
+encrypted restart replay without another provider call or bill.
+Configuration-level provider unavailability also produces typed degraded
+health. Live external-provider runtime failure/restart evidence remains open;
+`rustok-ai` now provides an
+ignored operator-only durable structured-runtime probe for collecting it.
+Separate-process file-backed evidence already covers expired-attempt recovery,
+reservation preservation, and reclaim with a new lease.
 
 ## Entry points
 

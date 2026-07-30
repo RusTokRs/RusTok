@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use jsonschema::{Draft, PatternOptions, Validator};
 use rustok_api::{PortContext, PortError, PortErrorKind, manifest_hash::hash_manifest};
 use tokio::time::{Instant, MissedTickBehavior};
 use uuid::Uuid;
@@ -24,6 +25,7 @@ use crate::{
 
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const LEASE_RECOVERY_GRACE: Duration = Duration::from_secs(5);
+const MAX_OUTPUT_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
 
 pub fn structured_task_port_from_context(
     context: &rustok_api::HostRuntimeContext,
@@ -53,6 +55,19 @@ pub(crate) struct DurableAiStructuredTaskPort {
 struct ProviderCandidate {
     profile: RouterProviderProfile,
     config: crate::AiProviderConfig,
+}
+
+struct StructuredExecutionContext<'a> {
+    execution_id: Uuid,
+    request_digest: &'a str,
+    lease_token: Uuid,
+    deadline: Instant,
+}
+
+#[derive(Debug)]
+struct ValidatedStructuredTask {
+    descriptor: AiStructuredTaskDescriptor,
+    output_validator: Validator,
 }
 
 #[derive(Debug, Clone)]
@@ -134,7 +149,7 @@ impl DurableAiStructuredTaskPort {
     fn validate_descriptor(
         catalog: &AiStructuredTaskCatalog,
         request: &AiStructuredTaskRequest,
-    ) -> Result<AiStructuredTaskDescriptor, PortError> {
+    ) -> Result<ValidatedStructuredTask, PortError> {
         let descriptor = catalog
             .get(&request.owner, &request.task_slug)
             .ok_or_else(|| {
@@ -175,7 +190,26 @@ impl DurableAiStructuredTaskPort {
                 "structured task request exceeds its registered limits",
             ));
         }
-        Ok(descriptor)
+        let output_validator = jsonschema::options()
+            .with_draft(Draft::Draft202012)
+            .should_validate_formats(true)
+            .should_ignore_unknown_formats(false)
+            .with_pattern_options(
+                PatternOptions::regex()
+                    .size_limit(MAX_OUTPUT_SCHEMA_REGEX_BYTES)
+                    .dfa_size_limit(MAX_OUTPUT_SCHEMA_REGEX_BYTES),
+            )
+            .build(&request.output_schema)
+            .map_err(|_| {
+                PortError::validation(
+                    "ai.structured.output_schema_invalid",
+                    "structured task output_schema must be a valid bounded JSON Schema",
+                )
+            })?;
+        Ok(ValidatedStructuredTask {
+            descriptor,
+            output_validator,
+        })
     }
 
     async fn candidates(
@@ -238,23 +272,26 @@ impl DurableAiStructuredTaskPort {
         &self,
         context: &PortContext,
         request: &AiStructuredTaskRequest,
-        descriptor: &AiStructuredTaskDescriptor,
-        execution_id: Uuid,
-        request_digest: &str,
-        lease_token: Uuid,
+        task: &ValidatedStructuredTask,
+        execution: StructuredExecutionContext<'_>,
         candidates: Vec<ProviderCandidate>,
-        deadline: Instant,
     ) -> Result<AiStructuredTaskExecution, PortError> {
+        let StructuredExecutionContext {
+            execution_id,
+            request_digest,
+            lease_token,
+            deadline,
+        } = execution;
         let provider_request = ProviderChatRequest {
             model: String::new(),
             messages: vec![
                 ChatMessage {
                     role: ChatMessageRole::System,
-                    content: Some(descriptor.system_prompt.clone()),
+                    content: Some(task.descriptor.system_prompt.clone()),
                     name: None,
                     tool_call_id: None,
                     tool_calls: Vec::new(),
-                    metadata: serde_json::json!({"policy_digest": descriptor.prompt_policy_digest}),
+                    metadata: serde_json::json!({"policy_digest": task.descriptor.prompt_policy_digest}),
                 },
                 ChatMessage {
                     role: ChatMessageRole::User,
@@ -372,6 +409,10 @@ impl DurableAiStructuredTaskPort {
                     let failure = if output_bytes > request.limits.max_output_bytes as usize {
                         Some(AttemptFailure::provider_contract(
                             "ai.structured.provider_output_too_large",
+                        ))
+                    } else if !task.output_validator.is_valid(&response.output) {
+                        Some(AttemptFailure::provider_contract(
+                            "ai.structured.provider_output_schema_invalid",
                         ))
                     } else if response.usage.as_ref().is_none_or(|usage| {
                         usage.total_tokens != usage.input_tokens.saturating_add(usage.output_tokens)
@@ -575,7 +616,7 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         request.validate(&context)?;
         let deadline =
             Instant::now() + Duration::from_millis(context.deadline_ms.unwrap_or_default());
-        let descriptor = Self::validate_descriptor(&self.catalog, &request)?;
+        let task = Self::validate_descriptor(&self.catalog, &request)?;
         let tenant_id = parse_tenant_id(&context)?;
         let mut candidates = self
             .candidates(tenant_id, &request.task_slug, &context.roles)
@@ -634,12 +675,14 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         self.run(
             &context,
             &request,
-            &descriptor,
-            registered.execution.id,
-            &registered.execution.request_digest,
-            lease.token,
+            &task,
+            StructuredExecutionContext {
+                execution_id: registered.execution.id,
+                request_digest: &registered.execution.request_digest,
+                lease_token: lease.token,
+                deadline,
+            },
             candidates,
-            deadline,
         )
         .await
     }
@@ -826,7 +869,509 @@ fn runtime_invariant() -> PortError {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::{BTreeMap, VecDeque},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
+
+    use async_trait::async_trait;
+    use rustok_api::{PortActor, manifest_hash::hash_manifest};
+    use rustok_core::ModuleRegistry;
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use rustok_secrets::SecretResolverRegistry;
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use serde_json::json;
+    use tokio::sync::Notify;
+
     use super::*;
+    use crate::{
+        AiProviderConfig, ProviderImageRequest, ProviderImageResponse, ProviderTestResult,
+        ProviderUsage,
+        accounting::{BudgetPolicy, ProviderPolicy},
+        engine::{AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy},
+        entities::{ai_provider_profiles, ai_structured_budgets},
+        structured_result::StructuredResultKeyring,
+        structured_test_support,
+    };
+
+    enum StructuredStep {
+        ProviderFailure,
+        Pending(Arc<Notify>),
+        Success(serde_json::Value),
+    }
+
+    struct ScriptedStructuredEngine {
+        steps: Mutex<VecDeque<StructuredStep>>,
+        calls: AtomicUsize,
+    }
+
+    impl ScriptedStructuredEngine {
+        fn new(steps: impl IntoIterator<Item = StructuredStep>) -> Self {
+            Self {
+                steps: Mutex::new(steps.into_iter().collect()),
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl InferenceEngine for ScriptedStructuredEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            Err(AiError::Runtime(
+                "unexpected structured test connection probe".to_string(),
+            ))
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<crate::ProviderChatResponse> {
+            Err(AiError::Runtime(
+                "unexpected unstructured provider call".to_string(),
+            ))
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<crate::ProviderChatResponse> {
+            Err(AiError::Runtime(
+                "unexpected streaming provider call".to_string(),
+            ))
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<ProviderStructuredResponse> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let step = self
+                .steps
+                .lock()
+                .expect("structured provider script lock")
+                .pop_front()
+                .expect("structured provider script step");
+            match step {
+                StructuredStep::ProviderFailure => Err(AiError::Provider(
+                    "private upstream failure body".to_string(),
+                )),
+                StructuredStep::Pending(started) => {
+                    started.notify_one();
+                    std::future::pending().await
+                }
+                StructuredStep::Success(output) => Ok(ProviderStructuredResponse {
+                    output,
+                    usage: Some(ProviderUsage::normalized(20, 5, None)),
+                }),
+            }
+        }
+
+        async fn generate_image(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderImageRequest,
+        ) -> crate::AiResult<ProviderImageResponse> {
+            Err(AiError::Runtime(
+                "unexpected image provider call".to_string(),
+            ))
+        }
+    }
+
+    fn descriptor_and_request() -> (AiStructuredTaskDescriptor, AiStructuredTaskRequest) {
+        let output_schema = json!({
+            "type": "object",
+            "required": ["translated_text"],
+            "properties": {"translated_text": {"type": "string"}}
+        });
+        let descriptor = AiStructuredTaskDescriptor {
+            owner: "translation".to_string(),
+            task_slug: "machine_translation".to_string(),
+            prompt_policy_digest: "a".repeat(64),
+            input_schema_digest: "b".repeat(64),
+            output_schema_digest: hash_manifest(&output_schema).expect("output schema digest"),
+            system_prompt: "Return only the translated structured payload.".to_string(),
+            allowed_classifications: vec![crate::AiTaskDataClassification::TenantPrivate],
+            max_input_bytes: 4096,
+            max_output_bytes: 4096,
+            max_attempts: 3,
+        };
+        let request = AiStructuredTaskRequest {
+            owner: descriptor.owner.clone(),
+            task_slug: descriptor.task_slug.clone(),
+            prompt_policy_digest: descriptor.prompt_policy_digest.clone(),
+            input_schema_digest: descriptor.input_schema_digest.clone(),
+            input: json!({"source_locale": "de", "target_locale": "en", "text": "Hallo"}),
+            output_schema,
+            classification: crate::AiTaskDataClassification::TenantPrivate,
+            evidence: BTreeMap::from([("translation_job_id".to_string(), "job-a".to_string())]),
+            limits: crate::AiStructuredTaskLimits {
+                max_output_bytes: 4096,
+                max_attempts: 3,
+            },
+        };
+        (descriptor, request)
+    }
+
+    fn provider_runtime(
+        database: sea_orm::DatabaseConnection,
+        engine: Arc<ScriptedStructuredEngine>,
+        provider_targets: AiProviderTargetCatalog,
+        egress_policy: ProviderEgressPolicy,
+    ) -> AiHostRuntime {
+        AiHostRuntime::new(
+            database.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database))),
+            ModuleRegistry::new(),
+            SecretResolverRegistry::builder().build(),
+            egress_policy,
+            provider_targets,
+        )
+        .with_test_inference_engine(engine)
+    }
+
+    fn request_context(tenant_id: Uuid) -> PortContext {
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("translation-worker"),
+            "en",
+            "translation-runtime-evidence",
+        )
+        .with_idempotency_key("translation-job-a")
+        .with_deadline(Duration::from_secs(5))
+    }
+
+    #[tokio::test]
+    async fn structured_runtime_preserves_contract_and_accounting_across_failure_paths() {
+        let database = structured_test_support::database().await;
+        let tenant_id = Uuid::new_v4();
+        let primary_provider_id = Uuid::new_v4();
+        let invalid_output_provider_id = Uuid::new_v4();
+        let successful_fallback_provider_id = Uuid::new_v4();
+        structured_test_support::insert_tenant(&database, tenant_id).await;
+        structured_test_support::insert_provider_profile(
+            &database,
+            tenant_id,
+            primary_provider_id,
+            "primary",
+        )
+        .await;
+        structured_test_support::insert_provider_profile(
+            &database,
+            tenant_id,
+            invalid_output_provider_id,
+            "invalid-output",
+        )
+        .await;
+        structured_test_support::insert_provider_profile(
+            &database,
+            tenant_id,
+            successful_fallback_provider_id,
+            "successful-fallback",
+        )
+        .await;
+        structured_test_support::insert_task_profile(
+            &database,
+            tenant_id,
+            &[
+                primary_provider_id,
+                invalid_output_provider_id,
+                successful_fallback_provider_id,
+            ],
+        )
+        .await;
+
+        let accounting = StructuredAccounting::new(database.clone());
+        accounting
+            .put_budget(BudgetPolicy {
+                tenant_id,
+                currency_code: "USD".to_string(),
+                limit_minor_units: 100_000,
+                max_concurrent: 1,
+            })
+            .await
+            .expect("structured budget policy");
+        for provider_profile_id in [
+            primary_provider_id,
+            invalid_output_provider_id,
+            successful_fallback_provider_id,
+        ] {
+            accounting
+                .put_provider_policy(ProviderPolicy {
+                    tenant_id,
+                    provider_profile_id,
+                    currency_code: "USD".to_string(),
+                    input_cost_per_million_minor: 1_000_000,
+                    output_cost_per_million_minor: 2_000_000,
+                    max_concurrent: 1,
+                    is_active: true,
+                })
+                .await
+                .expect("structured provider policy");
+        }
+
+        let egress_policy = ProviderEgressPolicy {
+            allowed_origins: vec!["provider.example.test".to_string()],
+            allow_local_origins: false,
+        };
+        let provider_targets = AiProviderTargetCatalog::new_with_egress_policy(
+            vec![AiProviderTarget {
+                id: crate::ProviderTargetId::new("openai_compatible").expect("provider target id"),
+                provider_slug: crate::ProviderSlug::openai_compatible(),
+                display_name: "Structured runtime provider".to_string(),
+                auth: crate::ProviderTargetAuth::None,
+                settings: BTreeMap::from([(
+                    "base_url".to_string(),
+                    json!("https://provider.example.test/v1"),
+                )]),
+            }],
+            &egress_policy,
+        )
+        .expect("structured provider targets");
+        let (descriptor, request) = descriptor_and_request();
+        let catalog = AiStructuredTaskCatalog::default();
+        catalog
+            .register(descriptor)
+            .expect("structured task descriptor");
+        let keyring = StructuredResultKeyring::for_test(
+            "test-v1",
+            Duration::from_secs(300),
+            BTreeMap::from([("test-v1".to_string(), [7_u8; 32])]),
+        );
+        let first_engine = Arc::new(ScriptedStructuredEngine::new([
+            StructuredStep::ProviderFailure,
+            StructuredStep::Success(json!({"translated_text": 42})),
+            StructuredStep::Success(json!({"translated_text": "Hello"})),
+        ]));
+        let first_port = DurableAiStructuredTaskPort::new(
+            provider_runtime(
+                database.clone(),
+                Arc::clone(&first_engine),
+                provider_targets.clone(),
+                egress_policy.clone(),
+            ),
+            catalog.clone(),
+            keyring.clone(),
+        );
+        let context = request_context(tenant_id);
+        let completed = first_port
+            .execute(context.clone(), request.clone())
+            .await
+            .expect("fallback execution");
+
+        assert_eq!(completed.status, AiStructuredTaskStatus::Completed);
+        assert_eq!(completed.output, Some(json!({"translated_text": "Hello"})));
+        assert_eq!(first_engine.calls(), 3);
+        assert_eq!(completed.attempts.len(), 3);
+        assert_eq!(
+            completed.attempts[0].provider_profile_id,
+            primary_provider_id.to_string()
+        );
+        assert!(!completed.attempts[0].fallback);
+        assert_eq!(
+            completed.attempts[0].error_code.as_deref(),
+            Some("ai.structured.provider_error")
+        );
+        assert_eq!(
+            completed.attempts[1].provider_profile_id,
+            invalid_output_provider_id.to_string()
+        );
+        assert!(completed.attempts[1].fallback);
+        assert_eq!(
+            completed.attempts[1].error_code.as_deref(),
+            Some("ai.structured.provider_output_schema_invalid")
+        );
+        assert_eq!(
+            completed.attempts[2].provider_profile_id,
+            successful_fallback_provider_id.to_string()
+        );
+        assert!(completed.attempts[2].fallback);
+        assert_eq!(
+            completed.usage.as_ref().map(|usage| usage.cost_minor_units),
+            Some(30)
+        );
+        let committed_before_restart = ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(tenant_id))
+            .one(&database)
+            .await
+            .expect("structured budget query")
+            .expect("structured budget")
+            .committed_minor_units;
+
+        let restarted_engine = Arc::new(ScriptedStructuredEngine::new([]));
+        let restarted_port = DurableAiStructuredTaskPort::new(
+            provider_runtime(
+                database.clone(),
+                Arc::clone(&restarted_engine),
+                provider_targets.clone(),
+                egress_policy.clone(),
+            ),
+            catalog.clone(),
+            keyring.clone(),
+        );
+        let mut conflicting_request = request.clone();
+        conflicting_request.input["text"] = json!("Guten Tag");
+        let conflict = restarted_port
+            .execute(context.clone(), conflicting_request)
+            .await
+            .expect_err("request digest drift must fail closed");
+        assert_eq!(conflict.code, "ai.structured.idempotency_conflict");
+
+        let replayed = restarted_port
+            .execute(context, request.clone())
+            .await
+            .expect("restart replay");
+        assert_eq!(replayed.execution_id, completed.execution_id);
+        assert_eq!(replayed.output, completed.output);
+        assert_eq!(restarted_engine.calls(), 0);
+        let committed_after_restart = ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(tenant_id))
+            .one(&database)
+            .await
+            .expect("structured budget query")
+            .expect("structured budget")
+            .committed_minor_units;
+        assert_eq!(committed_after_restart, committed_before_restart);
+
+        let cancellation_started = Arc::new(Notify::new());
+        let cancellation_engine =
+            Arc::new(ScriptedStructuredEngine::new([StructuredStep::Pending(
+                Arc::clone(&cancellation_started),
+            )]));
+        let cancellation_port = DurableAiStructuredTaskPort::new(
+            provider_runtime(
+                database.clone(),
+                Arc::clone(&cancellation_engine),
+                provider_targets.clone(),
+                egress_policy.clone(),
+            ),
+            catalog.clone(),
+            keyring.clone(),
+        );
+        let cancellation_context =
+            request_context(tenant_id).with_idempotency_key("translation-job-cancel");
+        let executing_port = cancellation_port.clone();
+        let executing_context = cancellation_context.clone();
+        let executing_request = request.clone();
+        let execution = tokio::spawn(async move {
+            executing_port
+                .execute(executing_context, executing_request)
+                .await
+        });
+        cancellation_started.notified().await;
+        cancellation_port
+            .cancel_by_key(
+                cancellation_context,
+                AiStructuredTaskExecutionKey {
+                    owner: request.owner.clone(),
+                    idempotency_key: "translation-job-cancel".to_string(),
+                },
+            )
+            .await
+            .expect("durable running cancellation")
+            .expect("registered cancellation target");
+        let cancelled = tokio::time::timeout(Duration::from_secs(2), execution)
+            .await
+            .expect("running cancellation timeout")
+            .expect("running cancellation join")
+            .expect("running cancellation result");
+        assert_eq!(cancelled.status, AiStructuredTaskStatus::Cancelled);
+        assert_eq!(cancellation_engine.calls(), 1);
+        assert_eq!(cancelled.attempts.len(), 1);
+        assert_eq!(
+            cancelled.attempts[0].status,
+            AiStructuredTaskStatus::Cancelled
+        );
+        let budget_after_cancellation = ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(tenant_id))
+            .one(&database)
+            .await
+            .expect("structured budget query")
+            .expect("structured budget");
+        assert_eq!(budget_after_cancellation.committed_minor_units, 30);
+        assert_eq!(budget_after_cancellation.reserved_minor_units, 0);
+        assert_eq!(budget_after_cancellation.in_flight, 0);
+
+        accounting
+            .put_budget(BudgetPolicy {
+                tenant_id,
+                currency_code: "USD".to_string(),
+                limit_minor_units: 30,
+                max_concurrent: 1,
+            })
+            .await
+            .expect("exhausted structured budget policy");
+        let quota_engine = Arc::new(ScriptedStructuredEngine::new([StructuredStep::Success(
+            json!({"translated_text": "Must not run"}),
+        )]));
+        let quota_port = DurableAiStructuredTaskPort::new(
+            provider_runtime(
+                database.clone(),
+                Arc::clone(&quota_engine),
+                provider_targets,
+                egress_policy,
+            ),
+            catalog,
+            keyring,
+        );
+        let quota_error = quota_port
+            .execute(
+                request_context(tenant_id).with_idempotency_key("translation-job-quota"),
+                request,
+            )
+            .await
+            .expect_err("exhausted budget must fail before provider execution");
+        assert_eq!(quota_error.code, "ai.structured.quota_exhausted");
+        assert_eq!(quota_engine.calls(), 0);
+        let exhausted_budget = ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(tenant_id))
+            .one(&database)
+            .await
+            .expect("structured budget query")
+            .expect("structured budget");
+        assert_eq!(exhausted_budget.committed_minor_units, 30);
+        assert_eq!(exhausted_budget.reserved_minor_units, 0);
+        assert_eq!(exhausted_budget.in_flight, 0);
+
+        let provider_profiles = ai_provider_profiles::Entity::find()
+            .filter(ai_provider_profiles::Column::TenantId.eq(tenant_id))
+            .all(&database)
+            .await
+            .expect("structured provider profiles");
+        for provider_profile in provider_profiles {
+            let mut provider_profile: ai_provider_profiles::ActiveModel = provider_profile.into();
+            provider_profile.is_active = Set(false);
+            provider_profile
+                .update(&database)
+                .await
+                .expect("disable structured provider profile");
+        }
+        let health = quota_port
+            .health(
+                request_context(tenant_id),
+                "machine_translation".to_string(),
+            )
+            .await
+            .expect("degraded structured provider health");
+        assert_eq!(health.availability, AiStructuredTaskAvailability::Degraded);
+        assert_eq!(
+            health.reason_code.as_deref(),
+            Some("ai.structured.provider_unavailable")
+        );
+    }
 
     #[test]
     fn provider_errors_are_mapped_without_persisting_provider_messages() {
@@ -880,6 +1425,47 @@ mod tests {
                 .unwrap_err()
                 .code,
             "ai.structured.task_contract_drift"
+        );
+    }
+
+    #[test]
+    fn registered_descriptor_rejects_an_invalid_output_schema() {
+        let output_schema = serde_json::json!({"type": "string", "pattern": "["});
+        let catalog = AiStructuredTaskCatalog::default();
+        catalog
+            .register(AiStructuredTaskDescriptor {
+                owner: "translation".to_string(),
+                task_slug: "machine_translation".to_string(),
+                prompt_policy_digest: "a".repeat(64),
+                input_schema_digest: "b".repeat(64),
+                output_schema_digest: hash_manifest(&output_schema).unwrap(),
+                system_prompt: "Return structured output.".to_string(),
+                allowed_classifications: vec![crate::AiTaskDataClassification::TenantPrivate],
+                max_input_bytes: 1024,
+                max_output_bytes: 1024,
+                max_attempts: 2,
+            })
+            .unwrap();
+        let request = AiStructuredTaskRequest {
+            owner: "translation".to_string(),
+            task_slug: "machine_translation".to_string(),
+            prompt_policy_digest: "a".repeat(64),
+            input_schema_digest: "b".repeat(64),
+            input: serde_json::json!({"value": "test"}),
+            output_schema,
+            classification: crate::AiTaskDataClassification::TenantPrivate,
+            evidence: Default::default(),
+            limits: crate::AiStructuredTaskLimits {
+                max_output_bytes: 1024,
+                max_attempts: 2,
+            },
+        };
+
+        assert_eq!(
+            DurableAiStructuredTaskPort::validate_descriptor(&catalog, &request)
+                .unwrap_err()
+                .code,
+            "ai.structured.output_schema_invalid"
         );
     }
 }

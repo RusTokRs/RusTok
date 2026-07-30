@@ -24,11 +24,23 @@
 - Production-profile composition and fail-closed missing-keyring evidence are complete:
   the default server feature set selects `ai-translation`, and the composed
   factory resolves to no provider when deployment result keys are absent.
-- Durable accounting recovery has deterministic shared-database multi-instance
-  evidence: another runtime releases the abandoned provider slot without
-  releasing the execution budget reservation, and a restarted worker reclaims
-  the queued execution with a new lease.
-- Live external-provider execution, failure, and restart evidence remains open.
+- Real separate-process recovery evidence uses a file-backed database: a second
+  process releases the abandoned provider slot without releasing the execution
+  budget reservation, preserves immutable failure evidence, and reclaims the
+  queued execution with a new lease. Production-database multi-replica
+  concurrency remains open.
+- Deterministic composed runtime evidence covers ordered provider fallback,
+  fail-closed JSON Schema enforcement, sanitized failure recording, exact
+  per-attempt token/price/cost settlement, request-hash conflict rejection,
+  in-flight cancellation with reservation release, quota rejection before
+  provider execution, and authenticated encrypted restart replay without
+  another provider call or bill.
+- Configuration-level provider unavailability produces typed degraded health.
+- An ignored operator-only `rustok-ai` probe executes a deployment-owned
+  provider config through the durable structured runtime and restart-replay
+  path; retained output from an approved billable run is not yet collected.
+- Live external-provider execution, runtime failure, and restart evidence
+  remains open.
 
 ## Activation gate
 
@@ -50,12 +62,15 @@ Before production activation:
    production profile without a server-owned match or either owner importing
    the bridge. The composed missing-keyring path is verified as optional and
    fail-closed.
-5. Live failure evidence must cover replay/conflict, invalid output, quota,
-   cancellation, restart, fallback, and unavailable/degraded states.
+5. Live external-provider evidence must corroborate the deterministic
+   replay/conflict, fallback, invalid-output, cancellation, and quota paths and
+   cover runtime outage/degradation and restart in deployment.
 
 ## Verification
 
 - `cargo test -p rustok-ai-translation`
+- `cargo test -p rustok-ai --features server -- --ignored executes_declared_live_provider_through_durable_structured_runtime`
+- `cargo test -p rustok-ai --features server separate_process_recovers_and_reclaims_an_expired_execution -- --nocapture`
 - `cargo test -p rustok-distribution --no-default-features --features ai-translation selected_ai_translation_bridge_publishes_factory_and_stays_optional_without_keyring`
 - `node scripts/verify/verify-ai-translation-boundary.mjs`
 - `git diff --check`

@@ -27,6 +27,15 @@ pub struct CommentsService {
     event_bus: Option<TransactionalEventBus>,
 }
 
+struct CommentEventContext {
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    comment_id: Uuid,
+    target_type: String,
+    target_id: Uuid,
+    author_id: Uuid,
+}
+
 const MODULE: &str = "comments";
 const LIBRARY_PATH: &str = "library";
 
@@ -152,12 +161,14 @@ impl CommentsService {
                 .await?;
             self.publish_comment_created_in_tx(
                 &txn,
-                tenant_id,
-                security.user_id,
-                comment_id,
-                target_type,
-                target_id,
-                author_id,
+                CommentEventContext {
+                    tenant_id,
+                    actor_id: security.user_id,
+                    comment_id,
+                    target_type,
+                    target_id,
+                    author_id,
+                },
             )
             .await?;
             txn.commit().await?;
@@ -338,12 +349,14 @@ impl CommentsService {
                 .await?;
             self.publish_comment_deleted_in_tx(
                 &txn,
-                tenant_id,
-                security.user_id,
-                comment_id,
-                target_type,
-                target_id,
-                author_id,
+                CommentEventContext {
+                    tenant_id,
+                    actor_id: security.user_id,
+                    comment_id,
+                    target_type,
+                    target_id,
+                    author_id,
+                },
             )
             .await?;
             txn.commit().await?;
@@ -387,12 +400,7 @@ impl CommentsService {
     async fn publish_comment_created_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        comment_id: Uuid,
-        target_type: String,
-        target_id: Uuid,
-        author_id: Uuid,
+        event: CommentEventContext,
     ) -> CommentsResult<()> {
         let Some(event_bus) = &self.event_bus else {
             return Ok(());
@@ -401,13 +409,13 @@ impl CommentsService {
         event_bus
             .publish_in_tx(
                 txn,
-                tenant_id,
-                actor_id,
+                event.tenant_id,
+                event.actor_id,
                 DomainEvent::CommentCreated {
-                    comment_id,
-                    target_type,
-                    target_id,
-                    author_id,
+                    comment_id: event.comment_id,
+                    target_type: event.target_type,
+                    target_id: event.target_id,
+                    author_id: event.author_id,
                 },
             )
             .await
@@ -417,12 +425,7 @@ impl CommentsService {
     async fn publish_comment_deleted_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        comment_id: Uuid,
-        target_type: String,
-        target_id: Uuid,
-        author_id: Uuid,
+        event: CommentEventContext,
     ) -> CommentsResult<()> {
         let Some(event_bus) = &self.event_bus else {
             return Ok(());
@@ -431,13 +434,13 @@ impl CommentsService {
         event_bus
             .publish_in_tx(
                 txn,
-                tenant_id,
-                actor_id,
+                event.tenant_id,
+                event.actor_id,
                 DomainEvent::CommentDeleted {
-                    comment_id,
-                    target_type,
-                    target_id,
-                    author_id,
+                    comment_id: event.comment_id,
+                    target_type: event.target_type,
+                    target_id: event.target_id,
+                    author_id: event.author_id,
                 },
             )
             .await

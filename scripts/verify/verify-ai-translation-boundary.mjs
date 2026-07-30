@@ -21,6 +21,7 @@ const files = {
   aiAccounting: "crates/rustok-ai/src/accounting.rs",
   aiRouter: "crates/rustok-ai/src/router.rs",
   aiStructuredRuntime: "crates/rustok-ai/src/structured_runtime.rs",
+  aiStructuredLive: "crates/rustok-ai/src/structured_live_tests.rs",
   aiStructuredResult: "crates/rustok-ai/src/structured_result.rs",
   aiService: "crates/rustok-ai/src/service.rs",
   aiScheduler: "crates/rustok-ai/src/scheduler.rs",
@@ -66,6 +67,7 @@ const aiLedger = read(files.aiLedger);
 const aiAccounting = read(files.aiAccounting);
 const aiRouter = read(files.aiRouter);
 const aiStructuredRuntime = read(files.aiStructuredRuntime);
+const aiStructuredLive = read(files.aiStructuredLive);
 const aiStructuredResult = read(files.aiStructuredResult);
 const aiService = read(files.aiService);
 const aiScheduler = read(files.aiScheduler);
@@ -166,6 +168,11 @@ for (const marker of [
   "finish_attempt",
   "complete_attempt",
   "price_snapshot_digest",
+  "separate_process_recovers_and_reclaims_an_expired_execution",
+  "structured_recovery_child_process",
+  "RUSTOK_AI_TEST_STRUCTURED_DB_PATH",
+  "std::env::current_exe()",
+  "attempt.error_code.as_deref(), Some(RECOVERY_ERROR_CODE)",
 ])
   requireText(aiAccounting, marker, "AI structured-task accounting");
 requireText(
@@ -186,8 +193,29 @@ for (const marker of [
   "DeadlineExceeded",
   "TerminalOutcome::Failed",
   "TerminalOutcome::Cancelled",
+  "jsonschema::options()",
+  "ai.structured.provider_output_schema_invalid",
+  "structured_runtime_preserves_contract_and_accounting_across_failure_paths",
+  'assert_eq!(conflict.code, "ai.structured.idempotency_conflict")',
+  "assert_eq!(restarted_engine.calls(), 0)",
+  "assert_eq!(committed_after_restart, committed_before_restart)",
+  "assert_eq!(budget_after_cancellation.reserved_minor_units, 0)",
+  'assert_eq!(quota_error.code, "ai.structured.quota_exhausted")',
+  "assert_eq!(quota_engine.calls(), 0)",
+  "AiStructuredTaskAvailability::Degraded",
+  'Some("ai.structured.provider_unavailable")',
 ])
   requireText(aiStructuredRuntime, marker, "AI structured-task runtime");
+for (const marker of [
+  "RUSTOK_AI_LIVE_STRUCTURED_PROVIDER_CONFIG_JSON",
+  "executes_declared_live_provider_through_durable_structured_runtime",
+  '#[ignore = "requires deployment-owned',
+  "DurableAiStructuredTaskPort::new",
+  "RUSTOK_AI_LIVE_",
+  "live structured restart replay",
+  "committed_before_restart",
+])
+  requireText(aiStructuredLive, marker, "AI live structured-runtime probe");
 for (const marker of [
   "Aes256Gcm",
   "AiStructuredResultKeyringConfig",
@@ -468,6 +496,16 @@ requireText(
   adapterPlan,
   "Production-profile composition and fail-closed missing-keyring evidence are complete",
   "adapter gate docs",
+);
+requireText(
+  adapterPlan,
+  "Deterministic composed runtime evidence covers ordered provider fallback",
+  "adapter runtime evidence docs",
+);
+requireText(
+  adapterPlan,
+  "Real separate-process recovery evidence uses a file-backed database",
+  "adapter process-recovery evidence docs",
 );
 
 if (failures.length > 0) {

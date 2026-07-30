@@ -206,10 +206,10 @@ impl PostService {
             Action::Update,
             post.author_id,
         )?;
-        if let Some(expected_version) = input.version {
-            if post.version != expected_version {
-                return Err(BlogError::validation("Version mismatch"));
-            }
+        if let Some(expected_version) = input.version
+            && post.version != expected_version
+        {
+            return Err(BlogError::validation("Version mismatch"));
         }
 
         let locale = input

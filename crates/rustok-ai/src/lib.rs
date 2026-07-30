@@ -31,10 +31,14 @@ pub mod service;
 pub mod streaming;
 #[cfg(feature = "server")]
 mod structured;
+#[cfg(all(test, feature = "server"))]
+mod structured_live_tests;
 #[cfg(feature = "server")]
 mod structured_result;
 #[cfg(feature = "server")]
 mod structured_runtime;
+#[cfg(all(test, feature = "server"))]
+mod structured_test_support;
 
 #[cfg(feature = "server")]
 pub use agent::agent_catalog;

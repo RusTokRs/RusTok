@@ -79,16 +79,16 @@ impl PaymentProviderEventApplier for RefundLifecycleEventApplier {
             .get_collection(context.tenant_id, refund.payment_collection_id)
             .await
             .map_err(map_payment_error)?;
-        if let Some(provider_id) = collection.provider_id.as_deref() {
-            if provider_id != context.provider_id {
-                return Err(non_retryable(
-                    "payment.webhook_provider_mismatch",
-                    format!(
-                        "refund {} belongs to a payment owned by another provider",
-                        refund.id
-                    ),
-                ));
-            }
+        if let Some(provider_id) = collection.provider_id.as_deref()
+            && provider_id != context.provider_id
+        {
+            return Err(non_retryable(
+                "payment.webhook_provider_mismatch",
+                format!(
+                    "refund {} belongs to a payment owned by another provider",
+                    refund.id
+                ),
+            ));
         }
 
         match refund.status.as_str() {

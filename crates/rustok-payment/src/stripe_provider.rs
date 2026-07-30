@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{Client, StatusCode, Url};
 use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, SecretString};
@@ -574,7 +574,7 @@ fn parse_stripe_signature(value: &str) -> PaymentResult<ParsedStripeSignature> {
 }
 
 fn decode_hex(value: &str) -> PaymentResult<Vec<u8>> {
-    if value.is_empty() || !value.is_ascii() || value.len() % 2 != 0 {
+    if value.is_empty() || !value.is_ascii() || !value.len().is_multiple_of(2) {
         return Err(webhook_rejected());
     }
     (0..value.len())

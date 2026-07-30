@@ -23,12 +23,31 @@ no AI-specific imports in `apps/server`. AI GraphQL surfaces and runtime data
 are composed through generated generic contributions; final boundary status
 still requires targeted platform verification evidence.
 
-Durable accounting recovery has deterministic multi-instance database evidence:
-one runtime can leave an expired execution and provider attempt, a separate
-runtime releases only the abandoned provider slot while retaining the budget
-reservation, and a restarted worker can reclaim the queued execution with a
-new lease. Live multi-process and external-provider restart evidence remains
-open.
+Durable accounting recovery has deterministic multi-instance and real
+separate-process database evidence: one runtime can leave an expired execution
+and provider attempt, a second process releases only the abandoned provider
+slot while retaining the budget reservation, and that process reclaims the
+queued execution with a new lease. The process test uses a file-backed SQLite
+database under the workspace target directory and cleans its exact artifacts.
+Production-database multi-replica concurrency and external-provider restart
+evidence remain open.
+
+Deterministic composed runtime evidence covers ordered provider fallback,
+fail-closed JSON Schema enforcement, sanitized failure recording, exact
+per-attempt token/price/cost settlement, request-hash conflict rejection,
+in-flight cancellation with reservation release, quota rejection before
+provider execution, and authenticated encrypted restart replay without another
+provider call or bill. This evidence exercises a newly
+constructed runtime over the same durable database and keyring; it does not
+replace the remaining live external-provider and production-database
+multi-replica gate.
+Configuration-level provider unavailability also produces typed degraded
+health; external runtime outage/degradation remains part of the live gate.
+An ignored operator-only probe now runs a deployment-owned provider config
+through the same durable structured runtime, including schema validation,
+usage/cost settlement, encrypted result persistence, runtime reconstruction,
+and replay. The harness is complete; retained output from an approved billable
+deployment run is still required as live evidence.
 
 ## FFA/FBA readiness
 
@@ -65,7 +84,7 @@ open.
 | Agent workflow platform contracts | `completed` | `TenantRbacCatalog` and `ModuleWorkScheduler` are available. The scheduler registers source/handler pairs by worker slug, and the generic host invokes module-owned registrations and runs the shared loop without AI persistence or task knowledge. |
 | Agent model-assignment transport parity | `completed` | GraphQL and native transport expose the same typed create/update operations. The module-owned Leptos editor selects active tenant principals and active provider profiles, optionally accepts a model override, and limits execution mode to the closed `auto`/`direct`/`mcp_tooling` enum; provider capability validation remains in the service. |
 | Agent workflow-run transport parity | `completed` | GraphQL and native transport both accept a workflow owner/slug plus an exact stage binding set. Owner surfaces assemble typed bindings and stage payloads; the generic AI panel deliberately does not expose a raw JSON workflow launcher. The service rejects duplicate, incomplete, cross-owner, inactive, or capability-incompatible bindings. |
-| Structured task backend port | `in_progress` | `AiStructuredTaskPort` defines bounded write-like execution, health, status, cancellation, typed structured output, attempts, token usage, immutable price/cost evidence, and retry hints without importing Translation. The owner migration creates content-free execution/attempt, stable-key cancellation-intent, tenant-budget, provider-price/concurrency-policy, reservation, and dedicated encrypted transient-result tables. The ledger provides unique `(tenant, owner, idempotency_key)` registration, request-hash conflict detection, execution leases, cancellation by generated id or stable owner/idempotency identity, pre-registration cancellation race closure, bounded status evidence, conservative budget reservation, tenant concurrency, and an exact owner/policy/schema task catalog. Provider attempts acquire/release durable concurrency slots and record immutable price snapshots, reconciled actual tokens, costs, retryability and retry hints. Successful attempt evidence, AES-256-GCM result handoff, reservation settlement, committed cost, provider/tenant slot release, and terminal execution state commit atomically. Tenant-scoped replay verifies authenticated identity/digests/size, supports retained-key rotation, counts replays, fails closed after TTL without re-billing, and has bounded expiry cleanup. Queued cancellation and expired-lease recovery reconcile reservations and provider slots; recovery terminalizes non-retryable and incomplete result-handoff states instead of re-billing them. Tenant operators can provision and inspect budget/provider policies through permission-checked GraphQL and native contracts, while the result keyring remains deployment-owned. The existing AI scheduler adapter runs queued-cancellation recovery, expired-lease reconciliation, and expired-result cleanup before every claim using idempotent multi-replica-safe operations. The private runtime validates the exact registered descriptor, uses deterministic preferred-then-eligible routing, performs real structured inference/fallback, maps content-free typed failures, enforces the call deadline, and observes durable cancellation. The production-selected distribution bridge publishes a Translation-owned lazy runtime factory without server capability imports, and composed missing-keyring behavior is verified as optional and fail-closed. Live external-provider and multi-replica failure/restart evidence remain open. |
+| Structured task backend port | `in_progress` | `AiStructuredTaskPort` defines bounded write-like execution, health, status, cancellation, typed structured output, attempts, token usage, immutable price/cost evidence, and retry hints without importing Translation. The owner migration creates content-free execution/attempt, stable-key cancellation-intent, tenant-budget, provider-price/concurrency-policy, reservation, and dedicated encrypted transient-result tables. The ledger provides unique `(tenant, owner, idempotency_key)` registration, request-hash conflict detection, execution leases, cancellation by generated id or stable owner/idempotency identity, pre-registration cancellation race closure, bounded status evidence, conservative budget reservation, tenant concurrency, and an exact owner/policy/schema task catalog. Provider attempts acquire/release durable concurrency slots and record immutable price snapshots, reconciled actual tokens, costs, retryability and retry hints. Successful attempt evidence, AES-256-GCM result handoff, reservation settlement, committed cost, provider/tenant slot release, and terminal execution state commit atomically. Tenant-scoped replay verifies authenticated identity/digests/size, supports retained-key rotation, counts replays, fails closed after TTL without re-billing, and has bounded expiry cleanup. Queued cancellation and expired-lease recovery reconcile reservations and provider slots; recovery terminalizes non-retryable and incomplete result-handoff states instead of re-billing them. Tenant operators can provision and inspect budget/provider policies through permission-checked GraphQL and native contracts, while the result keyring remains deployment-owned. The existing AI scheduler adapter runs queued-cancellation recovery, expired-lease reconciliation, and expired-result cleanup before every claim using idempotent multi-replica-safe operations. The private runtime validates the exact registered descriptor and provider output schema, uses deterministic preferred-then-eligible routing, performs real structured inference/fallback, maps content-free typed failures, enforces the call deadline, and observes durable cancellation. The production-selected distribution bridge publishes a Translation-owned lazy runtime factory without server capability imports, and composed missing-keyring behavior is verified as optional and fail-closed. Deterministic composed evidence covers fallback, invalid output, sanitized failure, exact settlement, request conflict, in-flight cancellation with reservation release, quota rejection before provider execution, encrypted restart replay without a second call or bill, and typed degraded health for configuration-level provider unavailability. A separate process now recovers and reclaims an expired execution over a file-backed database while preserving reservation and immutable attempt evidence. Live external-provider runtime failure/degradation/restart and production-database multi-replica concurrency evidence remain open. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
 The current wave has replaced tenant-facing provider settings with a deployment
@@ -222,6 +241,8 @@ providers must be added behind the same retrieval contract.
 - `cargo test -p rustok-ai --features server engine::agent_driver::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::inference::usage_tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::inference::live_connectivity_tests -- --ignored probes_each_declared_live_provider_target`
+- `cargo test -p rustok-ai --features server -- --ignored executes_declared_live_provider_through_durable_structured_runtime`
+- `cargo test -p rustok-ai --features server separate_process_recovers_and_reclaims_an_expired_execution -- --nocapture`
 - `cargo test -p rustok-ai --features server streaming::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server,graphql graphql::types::stream_usage_tests -- --nocapture`
 - `cargo test -p rustok-ai-admin --features ssr model::provider_profile_payload_tests -- --nocapture`

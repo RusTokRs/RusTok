@@ -2522,7 +2522,6 @@ mod tests {
                 base_url: "https://assets.example.test/media".to_string(),
                 fsync: false,
             },
-            ..Default::default()
         })
         .await
         .expect("media fixture storage");

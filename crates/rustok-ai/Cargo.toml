@@ -13,6 +13,7 @@ server = [
   "dep:aes-gcm",
   "dep:alloy",
   "dep:bytes",
+  "dep:jsonschema",
   "dep:once_cell",
   "dep:rhai",
   "dep:rustok-ai-content",
@@ -53,6 +54,7 @@ alloy = { workspace = true, optional = true }
 base64.workspace = true
 once_cell = { workspace = true, optional = true }
 futures-util = { version = "0.3" }
+jsonschema = { version = "=0.46.10", default-features = false, optional = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 rhai = { workspace = true, optional = true }
 rig = { workspace = true, optional = true }

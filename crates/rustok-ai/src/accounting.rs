@@ -422,7 +422,12 @@ impl StructuredAccounting {
         lease_token: Uuid,
         outcome: TerminalOutcome,
     ) -> Result<ai_structured_executions::Model, PortError> {
-        let (status, error_code, retryable, retry_after_ms) = terminal_fields(&outcome)?;
+        let TerminalFields {
+            status,
+            error_code,
+            retryable,
+            retry_after_ms,
+        } = terminal_fields(&outcome)?;
         let transaction = self
             .database
             .begin()
@@ -996,7 +1001,7 @@ impl StructuredAccounting {
             || execution.lease_token != Some(lease_token)
             || execution
                 .lease_expires_at
-                .map_or(true, |expires_at| expires_at <= Utc::now())
+                .is_none_or(|expires_at| expires_at <= Utc::now())
             || execution.cancel_requested_at.is_some()
         {
             return Err(PortError::conflict(
@@ -1282,11 +1287,21 @@ impl StructuredAccounting {
     }
 }
 
-fn terminal_fields(
-    outcome: &TerminalOutcome,
-) -> Result<(&'static str, Option<String>, bool, Option<i64>), PortError> {
+struct TerminalFields {
+    status: &'static str,
+    error_code: Option<String>,
+    retryable: bool,
+    retry_after_ms: Option<i64>,
+}
+
+fn terminal_fields(outcome: &TerminalOutcome) -> Result<TerminalFields, PortError> {
     match outcome {
-        TerminalOutcome::Cancelled => Ok(("cancelled", None, false, None)),
+        TerminalOutcome::Cancelled => Ok(TerminalFields {
+            status: "cancelled",
+            error_code: None,
+            retryable: false,
+            retry_after_ms: None,
+        }),
         TerminalOutcome::Failed {
             error_code,
             retryable,
@@ -1298,12 +1313,12 @@ fn terminal_fields(
                     "structured execution terminal error code must be bounded",
                 ));
             }
-            Ok((
-                "failed",
-                Some(error_code.clone()),
-                *retryable,
-                retry_after_ms.map(to_i64).transpose()?,
-            ))
+            Ok(TerminalFields {
+                status: "failed",
+                error_code: Some(error_code.clone()),
+                retryable: *retryable,
+                retry_after_ms: retry_after_ms.map(to_i64).transpose()?,
+            })
         }
     }
 }
@@ -1653,50 +1668,44 @@ fn accounting_invariant() -> PortError {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{path::PathBuf, time::Duration};
 
     use rustok_api::{PortActor, PortContext, PortErrorKind};
-    use sea_orm::{ConnectionTrait, Database, DbBackend, EntityTrait, Statement};
-    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use sea_orm::EntityTrait;
     use serde_json::json;
+    use tokio::process::Command;
 
     use super::*;
     use crate::{
         AiStructuredTaskLimits, AiStructuredTaskRequest, AiTaskDataClassification,
-        migrations::m20260729_000001_structured_execution::Migration,
         structured::StructuredExecutionLedger,
         structured_result::{StructuredResultKeyring, StructuredResultStore},
+        structured_test_support,
     };
 
     async fn runtime(
         budget_limit: u64,
         max_concurrent: u32,
     ) -> (StructuredExecutionLedger, StructuredAccounting, Uuid, Uuid) {
-        let database = Database::connect("sqlite::memory:").await.unwrap();
-        database
-            .execute_unprepared(
-                "PRAGMA foreign_keys = ON; \
-                 CREATE TABLE tenants (id UUID PRIMARY KEY); \
-                 CREATE TABLE ai_provider_profiles (id UUID PRIMARY KEY)",
-            )
-            .await
-            .unwrap();
-        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+        let database = structured_test_support::database().await;
+        runtime_on(database, budget_limit, max_concurrent).await
+    }
+
+    async fn runtime_on(
+        database: DatabaseConnection,
+        budget_limit: u64,
+        max_concurrent: u32,
+    ) -> (StructuredExecutionLedger, StructuredAccounting, Uuid, Uuid) {
         let tenant_id = Uuid::new_v4();
         let provider_id = Uuid::new_v4();
-        for (table, id) in [
-            ("tenants", tenant_id),
-            ("ai_provider_profiles", provider_id),
-        ] {
-            database
-                .execute(Statement::from_sql_and_values(
-                    DbBackend::Sqlite,
-                    format!("INSERT INTO {table} (id) VALUES (?)"),
-                    vec![id.into()],
-                ))
-                .await
-                .unwrap();
-        }
+        structured_test_support::insert_tenant(&database, tenant_id).await;
+        structured_test_support::insert_provider_profile(
+            &database,
+            tenant_id,
+            provider_id,
+            "accounting-primary",
+        )
+        .await;
         let ledger = StructuredExecutionLedger::new(database.clone());
         let accounting = StructuredAccounting::new(database);
         accounting
@@ -2305,6 +2314,195 @@ mod tests {
             .unwrap()
             .expect("a restarted runtime must reclaim the recovered execution");
         assert_ne!(resumed.token, lease.token);
+    }
+
+    #[tokio::test]
+    async fn separate_process_recovers_and_reclaims_an_expired_execution() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("workspace path");
+        let evidence_dir = workspace.join("target/structured-process-tests");
+        std::fs::create_dir_all(&evidence_dir).expect("structured process evidence directory");
+        let evidence_dir = evidence_dir
+            .canonicalize()
+            .expect("structured process evidence path");
+        assert!(evidence_dir.starts_with(workspace.join("target")));
+        remove_stale_sqlite_test_files(&evidence_dir);
+        let database_path =
+            evidence_dir.join(format!("rustok-ai-structured-{}.sqlite", Uuid::new_v4()));
+        let database = structured_test_support::database_at(&database_path).await;
+        let (ledger, accounting, tenant_id, provider_id) = runtime_on(database, 10_000, 1).await;
+        let execution = ledger
+            .register(&context(tenant_id, "process-execute-a"), &request())
+            .await
+            .unwrap()
+            .execution;
+        accounting
+            .reserve(execution.id, &[provider_id])
+            .await
+            .unwrap();
+        let original_lease = ledger
+            .claim(execution.id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .unwrap();
+        accounting
+            .begin_attempt(
+                execution.id,
+                original_lease.token,
+                provider_id,
+                "openai_compatible",
+                "test-model",
+            )
+            .await
+            .unwrap();
+        drop(ledger);
+        accounting.database.clone().close().await.unwrap();
+        drop(accounting);
+
+        let output = Command::new(std::env::current_exe().expect("structured test executable"))
+            .args([
+                "--exact",
+                "accounting::tests::structured_recovery_child_process",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("RUSTOK_AI_TEST_STRUCTURED_DB_PATH", &database_path)
+            .env(
+                "RUSTOK_AI_TEST_STRUCTURED_EXECUTION_ID",
+                execution.id.to_string(),
+            )
+            .env(
+                "RUSTOK_AI_TEST_STRUCTURED_ORIGINAL_LEASE",
+                original_lease.token.to_string(),
+            )
+            .output()
+            .await
+            .expect("structured recovery child process");
+        assert!(
+            output.status.success(),
+            "structured recovery child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let database = structured_test_support::connect_file(&database_path, false).await;
+        let recovered = ai_structured_executions::Entity::find_by_id(execution.id)
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(recovered.status, "running");
+        assert!(recovered.error_code.is_none());
+        assert_ne!(recovered.lease_token, Some(original_lease.token));
+        let attempt = ai_structured_attempts::Entity::find()
+            .filter(ai_structured_attempts::Column::ExecutionId.eq(execution.id))
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(attempt.status, "failed");
+        assert_eq!(attempt.error_code.as_deref(), Some(RECOVERY_ERROR_CODE));
+        let provider = ai_structured_provider_policies::Entity::find()
+            .filter(ai_structured_provider_policies::Column::TenantId.eq(tenant_id))
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(provider.in_flight, 0);
+        let budget = ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(tenant_id))
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(budget.in_flight, 1);
+        assert!(budget.reserved_minor_units > 0);
+        let reservation = ai_structured_reservations::Entity::find()
+            .filter(ai_structured_reservations::Column::ExecutionId.eq(execution.id))
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(reservation.state, "reserved");
+        database.close().await.unwrap();
+        remove_sqlite_test_files(&database_path);
+    }
+
+    #[tokio::test]
+    #[ignore = "internal child process for structured recovery evidence"]
+    async fn structured_recovery_child_process() {
+        let Some(database_path) = std::env::var_os("RUSTOK_AI_TEST_STRUCTURED_DB_PATH") else {
+            return;
+        };
+        let execution_id = Uuid::parse_str(
+            &std::env::var("RUSTOK_AI_TEST_STRUCTURED_EXECUTION_ID")
+                .expect("structured child execution id"),
+        )
+        .expect("structured child execution UUID");
+        let original_lease = Uuid::parse_str(
+            &std::env::var("RUSTOK_AI_TEST_STRUCTURED_ORIGINAL_LEASE")
+                .expect("structured child original lease"),
+        )
+        .expect("structured child lease UUID");
+        let database =
+            structured_test_support::connect_file(std::path::Path::new(&database_path), false)
+                .await;
+        let accounting = StructuredAccounting::new(database.clone());
+        assert_eq!(
+            accounting
+                .recover_expired(Utc::now() + chrono::Duration::seconds(31))
+                .await
+                .unwrap(),
+            1
+        );
+        let lease = StructuredExecutionLedger::new(database.clone())
+            .claim(execution_id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .expect("child process must reclaim recovered execution");
+        assert_ne!(lease.token, original_lease);
+        database.close().await.unwrap();
+    }
+
+    fn remove_sqlite_test_files(database_path: &std::path::Path) {
+        for path in [
+            database_path.to_path_buf(),
+            PathBuf::from(format!("{}-journal", database_path.display())),
+            PathBuf::from(format!("{}-shm", database_path.display())),
+            PathBuf::from(format!("{}-wal", database_path.display())),
+        ] {
+            if path.exists() {
+                std::fs::remove_file(path).expect("remove structured process database artifact");
+            }
+        }
+    }
+
+    fn remove_stale_sqlite_test_files(evidence_dir: &std::path::Path) {
+        for entry in
+            std::fs::read_dir(evidence_dir).expect("read structured process evidence directory")
+        {
+            let path = entry.expect("structured process evidence entry").path();
+            assert_eq!(path.parent(), Some(evidence_dir));
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let base = name
+                .strip_suffix("-journal")
+                .or_else(|| name.strip_suffix("-shm"))
+                .or_else(|| name.strip_suffix("-wal"))
+                .unwrap_or(name);
+            let Some(stem) = base.strip_suffix(".sqlite") else {
+                continue;
+            };
+            let uuid = stem.strip_prefix("rustok-ai-structured-").unwrap_or(stem);
+            if Uuid::parse_str(uuid).is_ok() {
+                std::fs::remove_file(path)
+                    .expect("remove stale structured process database artifact");
+            }
+        }
     }
 
     #[tokio::test]

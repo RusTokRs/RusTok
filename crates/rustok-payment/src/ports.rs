@@ -83,8 +83,8 @@ impl PaymentCollectionPort for crate::PaymentService {
         require_payment_collection_write_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
 
-        if let Some(cart_id) = request.cart_id {
-            if let Some(collection) = self
+        if let Some(cart_id) = request.cart_id
+            && let Some(collection) = self
                 .find_reusable_collection_by_cart(tenant_id, cart_id)
                 .await
                 .map_err(|error| {
@@ -94,9 +94,8 @@ impl PaymentCollectionPort for crate::PaymentService {
                         error,
                     )
                 })?
-            {
-                return Ok(collection);
-            }
+        {
+            return Ok(collection);
         }
 
         let cart_id = request.cart_id;
@@ -117,8 +116,8 @@ impl PaymentCollectionPort for crate::PaymentService {
         match create_result {
             Ok(collection) => Ok(collection),
             Err(create_error) => {
-                if let Some(cart_id) = cart_id {
-                    if let Some(collection) = self
+                if let Some(cart_id) = cart_id
+                    && let Some(collection) = self
                         .find_reusable_collection_by_cart(tenant_id, cart_id)
                         .await
                         .map_err(|error| {
@@ -128,9 +127,8 @@ impl PaymentCollectionPort for crate::PaymentService {
                                 error,
                             )
                         })?
-                    {
-                        return Ok(collection);
-                    }
+                {
+                    return Ok(collection);
                 }
                 Err(payment_error_to_port_error(
                     &context,
@@ -161,28 +159,29 @@ fn require_payment_collection_read_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::read()).map_err(|error| {
-        log_payment_collection_admission_rejection(context, owner_operation, "policy", &error);
-        error
-    })
+    context
+        .require_policy(PortCallPolicy::read())
+        .inspect_err(|error| {
+            log_payment_collection_admission_rejection(context, owner_operation, "policy", error);
+        })
 }
 
 fn require_payment_collection_write_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).map_err(|error| {
-        log_payment_collection_admission_rejection(context, owner_operation, "policy", &error);
-        error
-    })?;
-    context.require_write_semantics().map_err(|error| {
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_payment_collection_admission_rejection(context, owner_operation, "policy", error);
+        })?;
+    context.require_write_semantics().inspect_err(|error| {
         log_payment_collection_admission_rejection(
             context,
             owner_operation,
             "write_semantics",
-            &error,
+            error,
         );
-        error
     })
 }
 

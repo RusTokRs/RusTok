@@ -127,6 +127,24 @@ and the list of targets remain operator/deployment configuration, never tenant
 input. The test makes real provider requests and must not be enabled in shared
 or default CI.
 
+Connectivity alone does not exercise the durable structured-task contract. A
+second ignored probe accepts one `AiProviderConfig` object, makes one billable
+structured call through the production runtime path, validates the output
+schema, records usage/cost, and then reconstructs the runtime over the same
+database to verify encrypted replay without another accounting settlement:
+
+```powershell
+$env:RUSTOK_AI_LIVE_STRUCTURED_PROVIDER_CONFIG_JSON = '{...}'
+cargo test -p rustok-ai --features server -- --ignored executes_declared_live_provider_through_durable_structured_runtime
+```
+
+Every credential reference in this object must use resolver `env` and a key
+starting with `RUSTOK_AI_LIVE_`. The probe is operator-only, intentionally
+ignored by default, and must be run only against a provider/model where a
+billable structured request is approved. The presence of the harness is not
+live evidence; retain the deployment run output separately before clearing the
+activation gate.
+
 ## Responsibility Zone
 
 ## Scope

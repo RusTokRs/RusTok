@@ -824,36 +824,15 @@ fn ledger_invariant() -> PortError {
 #[cfg(test)]
 mod tests {
     use rustok_api::{PortActor, PortErrorKind};
-    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
-    use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde_json::json;
 
     use super::*;
-    use crate::{
-        AiStructuredTaskLimits, AiTaskDataClassification,
-        migrations::m20260729_000001_structured_execution::Migration,
-    };
+    use crate::{AiStructuredTaskLimits, AiTaskDataClassification, structured_test_support};
 
     async fn ledger() -> (StructuredExecutionLedger, Uuid) {
-        let database = Database::connect("sqlite::memory:").await.unwrap();
-        database
-            .execute_unprepared(
-                "PRAGMA foreign_keys = ON; \
-                 CREATE TABLE tenants (id UUID PRIMARY KEY); \
-                 CREATE TABLE ai_provider_profiles (id UUID PRIMARY KEY)",
-            )
-            .await
-            .unwrap();
-        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+        let database = structured_test_support::database().await;
         let tenant_id = Uuid::new_v4();
-        database
-            .execute(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "INSERT INTO tenants (id) VALUES (?)".to_string(),
-                vec![tenant_id.into()],
-            ))
-            .await
-            .unwrap();
+        structured_test_support::insert_tenant(&database, tenant_id).await;
         (StructuredExecutionLedger::new(database), tenant_id)
     }
 

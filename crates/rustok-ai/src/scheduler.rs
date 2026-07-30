@@ -88,7 +88,7 @@ impl AiAgentWorkflowWorkAdapter {
             .map_err(|error| ModuleWorkError::Source(error.code))?;
         let tenant_ids = ai_agent_workflow_stages::Entity::find()
             .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
-            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.lt(now.clone()))
+            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.lt(now))
             .select_only()
             .column(ai_agent_workflow_stages::Column::TenantId)
             .into_tuple::<Uuid>()
@@ -101,7 +101,7 @@ impl AiAgentWorkflowWorkAdapter {
             AiManagementService::requeue_expired_agent_stage_leases(
                 self.runtime.db(),
                 tenant_id,
-                now.clone(),
+                now,
             )
             .await
             .map_err(|error| ModuleWorkError::Source(error.to_string()))?;

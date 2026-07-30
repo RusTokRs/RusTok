@@ -266,12 +266,12 @@ impl PaymentService {
         metadata: serde_json::Value,
     ) -> PaymentResult<PaymentCollectionResponse> {
         let collection = self.load_collection(tenant_id, collection_id).await?;
-        if let Some(existing_order_id) = collection.order_id {
-            if existing_order_id != order_id {
-                return Err(PaymentError::Validation(format!(
-                    "payment collection {collection_id} is already attached to order {existing_order_id}"
-                )));
-            }
+        if let Some(existing_order_id) = collection.order_id
+            && existing_order_id != order_id
+        {
+            return Err(PaymentError::Validation(format!(
+                "payment collection {collection_id} is already attached to order {existing_order_id}"
+            )));
         }
 
         let mut active: entities::payment_collection::ActiveModel = collection.into();

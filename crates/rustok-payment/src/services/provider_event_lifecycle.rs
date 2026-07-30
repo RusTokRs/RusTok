@@ -275,16 +275,16 @@ fn validate_collection_identity(
             ),
         ));
     }
-    if let Some(provider_id) = collection.provider_id.as_deref() {
-        if provider_id != context.provider_id {
-            return Err(non_retryable(
-                "payment.webhook_provider_mismatch",
-                format!(
-                    "payment collection {} is owned by another provider",
-                    collection.id
-                ),
-            ));
-        }
+    if let Some(provider_id) = collection.provider_id.as_deref()
+        && provider_id != context.provider_id
+    {
+        return Err(non_retryable(
+            "payment.webhook_provider_mismatch",
+            format!(
+                "payment collection {} is owned by another provider",
+                collection.id
+            ),
+        ));
     }
     if matches!(
         event.event_type.as_str(),

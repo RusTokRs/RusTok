@@ -109,13 +109,12 @@ impl ExternalPaymentProviderRegistration {
                 "non-ready payment provider registration must declare degraded mode".to_string(),
             ));
         }
-        if let Some(mode) = &self.degraded_mode {
-            if mode.reason.trim().is_empty() || mode.fallback_profile.trim().is_empty() {
-                return Err(PaymentError::Validation(
-                    "payment provider degraded mode requires reason and fallback_profile"
-                        .to_string(),
-                ));
-            }
+        if let Some(mode) = &self.degraded_mode
+            && (mode.reason.trim().is_empty() || mode.fallback_profile.trim().is_empty())
+        {
+            return Err(PaymentError::Validation(
+                "payment provider degraded mode requires reason and fallback_profile".to_string(),
+            ));
         }
         Ok(())
     }

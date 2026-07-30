@@ -571,10 +571,10 @@ async fn stream_with<M: CompletionModel>(
         .as_ref()
         .and_then(|value| serde_json::to_value(value).ok())
         .unwrap_or_else(|| serde_json::json!({"provider": provider, "streaming": true}));
-    if let Some(usage) = extract_usage(&raw_payload) {
-        if let Some(emitter) = &emitter {
-            emitter.emit_usage(usage);
-        }
+    if let Some(usage) = extract_usage(&raw_payload)
+        && let Some(emitter) = &emitter
+    {
+        emitter.emit_usage(usage);
     }
     Ok(map_response(
         stream.choice.into_iter().collect(),

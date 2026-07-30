@@ -427,6 +427,15 @@ pub struct InProcessCheckoutCompletionPort {
     identity_port: InProcessCheckoutOrderIdentityPort,
 }
 
+struct ExistingCompletionContext<'a> {
+    owner_operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    identity: &'a CheckoutOrderIdentitySnapshot,
+    locale: Option<&'a str>,
+    fallback_locale: Option<&'a str>,
+}
+
 impl InProcessCheckoutCompletionPort {
     pub fn new(
         db: DatabaseConnection,
@@ -473,42 +482,39 @@ impl InProcessCheckoutCompletionPort {
     async fn resolve_existing_completion(
         &self,
         context: &PortContext,
-        owner_operation: &'static str,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        identity: &CheckoutOrderIdentitySnapshot,
-        locale: Option<&str>,
-        fallback_locale: Option<&str>,
+        completion: ExistingCompletionContext<'_>,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
         let mut order = self
             .load_order(
                 context,
-                owner_operation,
-                tenant_id,
-                identity.order_id,
-                locale,
-                fallback_locale,
+                completion.owner_operation,
+                completion.tenant_id,
+                completion.identity.order_id,
+                completion.locale,
+                completion.fallback_locale,
             )
             .await?;
         match order.status_kind() {
             OrderStatusKind::Pending => {
                 order = self
                     .order_service
-                    .confirm_order(tenant_id, actor_id, order.id)
+                    .confirm_order(completion.tenant_id, completion.actor_id, order.id)
                     .await
-                    .map_err(|error| order_error_to_port_error(context, owner_operation, error))?;
-                if let Some(locale) = locale {
+                    .map_err(|error| {
+                        order_error_to_port_error(context, completion.owner_operation, error)
+                    })?;
+                if let Some(locale) = completion.locale {
                     order = self
                         .order_service
                         .get_order_with_locale_fallback(
-                            tenant_id,
+                            completion.tenant_id,
                             order.id,
                             locale,
-                            fallback_locale,
+                            completion.fallback_locale,
                         )
                         .await
                         .map_err(|error| {
-                            order_error_to_port_error(context, owner_operation, error)
+                            order_error_to_port_error(context, completion.owner_operation, error)
                         })?;
                 }
             }
@@ -531,7 +537,7 @@ impl InProcessCheckoutCompletionPort {
         }
         Ok(CheckoutCompletionSnapshot::from_response(
             &order,
-            identity.payment_collection_id,
+            completion.identity.payment_collection_id,
         ))
     }
 
@@ -594,12 +600,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
             return self
                 .resolve_existing_completion(
                     &context,
-                    owner_operation,
-                    tenant_id,
-                    actor_id,
-                    &identity,
-                    request.locale.as_deref(),
-                    request.fallback_locale.as_deref(),
+                    ExistingCompletionContext {
+                        owner_operation,
+                        tenant_id,
+                        actor_id,
+                        identity: &identity,
+                        locale: request.locale.as_deref(),
+                        fallback_locale: request.fallback_locale.as_deref(),
+                    },
                 )
                 .await;
         }
@@ -619,12 +627,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
             return self
                 .resolve_existing_completion(
                     &context,
-                    owner_operation,
-                    tenant_id,
-                    actor_id,
-                    &identity,
-                    request.locale.as_deref(),
-                    request.fallback_locale.as_deref(),
+                    ExistingCompletionContext {
+                        owner_operation,
+                        tenant_id,
+                        actor_id,
+                        identity: &identity,
+                        locale: request.locale.as_deref(),
+                        fallback_locale: request.fallback_locale.as_deref(),
+                    },
                 )
                 .await;
         }
@@ -751,12 +761,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
         }
         self.resolve_existing_completion(
             &context,
-            owner_operation,
-            tenant_id,
-            actor_id,
-            &identity,
-            request.locale.as_deref(),
-            request.fallback_locale.as_deref(),
+            ExistingCompletionContext {
+                owner_operation,
+                tenant_id,
+                actor_id,
+                identity: &identity,
+                locale: request.locale.as_deref(),
+                fallback_locale: request.fallback_locale.as_deref(),
+            },
         )
         .await
     }

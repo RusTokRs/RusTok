@@ -43,24 +43,22 @@ fn validate_optional_collection_identity(
     if let Some(operation_id) = checkout
         .and_then(|value| value.get("operation_id"))
         .and_then(Value::as_str)
+        && operation_id != identity.checkout_operation_id.to_string()
     {
-        if operation_id != identity.checkout_operation_id.to_string() {
-            return Err(PortError::conflict(
-                "payment.checkout_collection_operation_conflict",
-                "payment collection belongs to another checkout operation",
-            ));
-        }
+        return Err(PortError::conflict(
+            "payment.checkout_collection_operation_conflict",
+            "payment collection belongs to another checkout operation",
+        ));
     }
     if let Some(plan_hash) = checkout
         .and_then(|value| value.get("order_plan_hash"))
         .and_then(Value::as_str)
+        && plan_hash != identity.order_plan_hash
     {
-        if plan_hash != identity.order_plan_hash {
-            return Err(PortError::conflict(
-                "payment.checkout_collection_plan_conflict",
-                "payment collection belongs to another checkout order plan",
-            ));
-        }
+        return Err(PortError::conflict(
+            "payment.checkout_collection_plan_conflict",
+            "payment collection belongs to another checkout order plan",
+        ));
     }
     Ok(())
 }

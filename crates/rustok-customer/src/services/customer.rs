@@ -299,10 +299,10 @@ impl CustomerService {
             .filter(entities::customer::Column::Email.eq(email))
             .one(&self.db)
             .await?;
-        if let Some(existing) = existing {
-            if Some(existing.id) != except_customer_id {
-                return Err(CustomerError::DuplicateEmail(email.to_string()));
-            }
+        if let Some(existing) = existing
+            && Some(existing.id) != except_customer_id
+        {
+            return Err(CustomerError::DuplicateEmail(email.to_string()));
         }
         Ok(())
     }
@@ -318,10 +318,10 @@ impl CustomerService {
             .filter(entities::customer::Column::UserId.eq(user_id))
             .one(&self.db)
             .await?;
-        if let Some(existing) = existing {
-            if Some(existing.id) != except_customer_id {
-                return Err(CustomerError::DuplicateUserLink(user_id));
-            }
+        if let Some(existing) = existing
+            && Some(existing.id) != except_customer_id
+        {
+            return Err(CustomerError::DuplicateUserLink(user_id));
         }
         Ok(())
     }

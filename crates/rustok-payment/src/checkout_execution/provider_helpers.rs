@@ -83,19 +83,13 @@ impl InProcessCheckoutPaymentExecutionPort {
             .find_by_key(tenant_id, provider_id, idempotency_key)
             .await
             .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?
-        {
-            if matches!(
+            && matches!(
                 existing.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-            ) {
-                self.mark_journal_committed(
-                    context,
-                    owner_operation,
-                    existing.id,
-                    provider_operation,
-                )
+            )
+        {
+            self.mark_journal_committed(context, owner_operation, existing.id, provider_operation)
                 .await?;
-            }
         }
         Ok(())
     }

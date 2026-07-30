@@ -27,8 +27,19 @@ terminal-result replay, permission-checked accounting-policy provisioning,
 deployment keyring publication, and scheduler recovery/result cleanup now
 exist. Composition evidence also verifies the fail-closed missing-keyring state:
 the factory resolves to no machine provider while manual Translation workflows
-remain available. Live external-provider failure/restart evidence remains
-pending.
+remain available. Deterministic composed runtime evidence covers ordered
+provider fallback, fail-closed JSON Schema enforcement, sanitized failure
+recording, exact attempt usage/cost settlement, request-hash conflict rejection,
+in-flight cancellation with reservation release, quota rejection before
+provider execution, and encrypted restart replay without another provider call
+or bill. Configuration-level provider unavailability also produces typed
+degraded health. Live external-provider runtime failure/restart evidence remains
+pending. An ignored operator-only `rustok-ai` structured-runtime probe is ready
+to collect the approved billable deployment evidence without creating another
+adapter path.
+Real separate-process file-backed evidence also covers expired-attempt
+recovery, reservation preservation, immutable failure recording, and reclaim
+with a new lease; production-database multi-replica concurrency remains open.
 The adapter resolves and cancels executions through the stable
 `(owner, idempotency_key)` AI contract. Cancellation therefore remains durable
 when it arrives before AI execution registration, and completed encrypted

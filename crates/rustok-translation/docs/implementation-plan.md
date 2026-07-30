@@ -178,8 +178,17 @@ selection.
   and localized form-label associations; axe reported zero violations on every
   tab. Transport execution remains covered by the registered native HTTP and
   authenticated GraphQL suites rather than by the isolated UI fixture.
-  Production AI bridge composition and missing-keyring behavior are verified;
-  live external-provider AI/runtime evidence remains open.
+  Production AI bridge composition and missing-keyring behavior are verified.
+  Deterministic composed AI runtime evidence covers ordered fallback,
+  fail-closed output-schema validation, sanitized failure, exact settlement,
+  request conflict, in-flight cancellation with reservation release, and
+  quota rejection before provider execution plus encrypted restart replay
+  without a second call or bill. Configuration-level provider unavailability
+  produces typed degraded health; live external-provider runtime evidence
+  remains open. The ignored operator-only durable structured-runtime probe is
+  ready for an approved billable deployment run.
+  Separate-process file-backed evidence already covers expired AI attempt
+  recovery, reservation preservation, and reclaim with a new lease.
 - Translation now owns a bounded `MachineTranslationPort` SPI with explicit
   source/target locales, stable unit/source identities, field
   profile/strategy/classification, protected tokens, glossary and Translation
@@ -308,8 +317,14 @@ selection.
    interchange-control, and module-disablement evidence is also complete.
 7. The implemented optional `ai-translation` distribution bridge is enabled in
    the production profile, and composed missing-keyring behavior is verified as
-   optional and fail-closed. Collect live ledger, replay, budget, fallback,
-   cancellation, restart, and recovery evidence.
+   optional and fail-closed. Deterministic composed evidence covers ledger
+   fallback, invalid output, replay/conflict, exact budget settlement, in-flight
+   cancellation, quota rejection, and restart without duplicate provider calls
+   or billing.
+   Collect live external-provider runtime outage/degradation, restart, and
+   recovery evidence with the ignored durable structured-runtime probe and
+   retain the run output. File-backed separate-process AI recovery is complete;
+   retain production-database multi-replica concurrency evidence separately.
 8. Collect live restart evidence for the audited `saving` recovery command,
    including crash after provider completion and crash after proposal save.
 
