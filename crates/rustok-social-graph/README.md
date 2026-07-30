@@ -19,7 +19,7 @@ UI remain deferred until matching owner contracts are implemented.
   feature;
 - exposes owner-local operational CLI composition through
   `rustok-social-graph-cli`; the adapter delegates to owner maintenance ports and
-  never reads receipt storage directly;
+  never reads receipt or relation storage directly;
 - does not depend on Profiles, Notifications, or read foreign-domain persistence;
 - the server and other modules may adapt owner ports into consumer-specific runtime ports;
 - block is strict and symmetric for privacy evaluation when either direction is active;
@@ -72,6 +72,13 @@ UI remain deferred until matching owner contracts are implemented.
 - replay telemetry is aggregate only: tenant, dry-run mode, limit, cursor presence,
   selected/published counts, duration, outcome, stable code, and retryability. Raw
   cursor values and per-relation identifiers are not logged;
+- `rustok-cli social_graph relation-event-replay` requires explicit `--tenant-id`,
+  accepts only an optional UUID `--after-relation-id` and bounded `--limit` from 1 to
+  1000, defaults the limit to 100, and supports `--dry-run`;
+- the replay CLI uses the owner-composed transactional outbox, processes exactly one
+  page per invocation, and returns `next_after_relation_id` for explicit continuation;
+- [relation-event replay CLI contract](./docs/relation-event-replay-cli.md) documents
+  the operator boundary and non-claims;
 - `SocialGraphReceiptMaintenancePort` is implemented by a separate owner service,
   accepts only service/system actors with write-port policy, and supports explicit
   tenant-scoped dry-run or deletion of at most 1000 completed receipts before a
@@ -127,4 +134,5 @@ node scripts/verify/verify-social-graph-relation-outbox.mjs
 node scripts/verify/verify-social-graph-relation-event-replay.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run
+rustok-cli social_graph relation-event-replay --tenant-id <uuid> --limit 100 --dry-run
 ```
