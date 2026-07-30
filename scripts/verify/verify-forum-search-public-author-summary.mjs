@@ -153,7 +153,7 @@ if (contract) {
     "preferred_locale_is_not_serialized",
     "profile_visibility_is_not_serialized",
     "public_handle_populates_search_handle",
-    "author_filter_facet_is_present_only_for_public_author",
+    "author_filter_value_is_populated_only_for_public_author",
   ]) {
     if (contract.projection_boundary?.[key] !== true) {
       failures.push(`${contractPath}: projection boundary ${key} drift`);
