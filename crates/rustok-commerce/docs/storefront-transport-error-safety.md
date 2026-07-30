@@ -13,7 +13,7 @@ The aggregate still delegates cart reads to `rustok-cart-storefront` and payment
 
 ## Delivered source contract
 
-The SSR-native server function now maps invalid cart selection, cart transport failure, and payment transport failure through static public messages. Internal causes are retained only in structured logs with:
+The SSR-native server function now maps invalid cart selection, cart transport failure, and payment transport failure through static public messages. Internal causes are retained only in structured server logs with:
 
 - owner and owner operation;
 - Commerce consumer operation and boundary;
@@ -21,7 +21,7 @@ The SSR-native server function now maps invalid cart selection, cart transport f
 - channel id, channel slug, and locale;
 - stable internal code.
 
-The shared transport mapper no longer exposes `UiTransportError::to_string()` through `ApiError::ServerFn` or `ApiError::Graphql`. It records the failed transport path and fallback state internally, then returns a static cart or payment-collection message.
+The shared transport mapper no longer exposes `UiTransportError::to_string()` through `ApiError::ServerFn` or `ApiError::Graphql`. It records only safe failed-path, fallback, owner, operation, and stable-code fields, never the raw transport cause, then returns a static cart or payment-collection message.
 
 The existing cart UUID validation compatibility remains explicit and static.
 
@@ -46,6 +46,7 @@ This slice does not change:
 - cart and payment owner identities and operations;
 - stable codes and static public messages;
 - removal of foreign adapter `to_string()` public mapping;
+- absence of raw causes from shared/client-side tracing;
 - unchanged source-only validation flags.
 
 ## Remaining gaps
