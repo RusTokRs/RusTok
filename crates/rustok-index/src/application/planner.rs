@@ -131,7 +131,7 @@ pub enum QueryPlanError {
     #[error(transparent)]
     Validation(#[from] QueryValidationError),
     #[error(transparent)]
-    AggregateValidation(#[from] AggregateOrderValidationError),
+    AggregateValidation(AggregateOrderValidationError),
     #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
     #[error("validated query path has no relation alias: {0:?}")]
@@ -142,7 +142,16 @@ pub enum QueryPlanError {
 
 impl SchemaRegistry {
     pub fn plan_query(&self, query: &IndexQuery) -> Result<ExecutableQueryPlan, QueryPlanError> {
-        self.validate_query_with_aggregate_ordering(query)?;
+        match self.validate_query_with_aggregate_ordering(query) {
+            Ok(()) => {}
+            Err(AggregateOrderValidationError::Query(error)) => {
+                return Err(QueryPlanError::Validation(error));
+            }
+            Err(AggregateOrderValidationError::Registry(error)) => {
+                return Err(QueryPlanError::Registry(error));
+            }
+            Err(error) => return Err(QueryPlanError::AggregateValidation(error)),
+        }
 
         let paths = collect_link_prefixes(query);
         let mut aliases = BTreeMap::from([(Vec::new(), ROOT_ALIAS.to_owned())]);
