@@ -10,6 +10,7 @@ const failures = [];
 
 const facadePath = "crates/rustok-profiles/src/mutations.rs";
 const profilesLibPath = "crates/rustok-profiles/src/lib.rs";
+const profilesReadmePath = "crates/rustok-profiles/README.md";
 const graphqlPath = "crates/rustok-profiles/src/graphql/mutation.rs";
 const cliPath = "crates/rustok-profiles/cli/src/lib.rs";
 const legacyGateContractPath =
@@ -58,6 +59,7 @@ function countOccurrences(source, marker) {
 
 const facade = read(facadePath);
 const profilesLib = read(profilesLibPath);
+const profilesReadme = read(profilesReadmePath);
 const graphql = read(graphqlPath);
 const cli = read(cliPath);
 const note = read(notePath);
@@ -107,6 +109,16 @@ for (const marker of [
 requireMarker(profilesLib, "pub mod mutations;", profilesLibPath);
 requireMarker(profilesLib, "pub use mutations::ProfileMutationService;", profilesLibPath);
 requireMarker(profilesLib, "pub use upsert_write::backfill_profile_with_event;", profilesLibPath);
+
+for (const marker of [
+  "ProfileMutationService",
+  "preferred production mutation boundary",
+  "transactional event bus",
+  "owner-write/outbox transaction",
+  "Publish `ProfileUpdated` through the transactional outbox as part of active production profile-write transactions.",
+]) {
+  requireMarker(profilesReadme, marker, profilesReadmePath);
+}
 
 for (const marker of [
   "ProfileMutationService",
@@ -173,6 +185,9 @@ if (contract) {
   if (contract.profiles_public_api !== profilesLibPath) {
     failures.push(`${contractPath}: unexpected Profiles public API path`);
   }
+  if (contract.profiles_readme !== profilesReadmePath) {
+    failures.push(`${contractPath}: unexpected Profiles README path`);
+  }
   if (contract.graphql_runtime !== graphqlPath) {
     failures.push(`${contractPath}: unexpected GraphQL runtime path`);
   }
@@ -197,6 +212,7 @@ if (contract) {
     "graphql_media_validation_precedes_facade_write",
     "cli_backfill_uses_facade",
     "cli_backfill_system_actor_semantics_are_preserved",
+    "profiles_readme_documents_preferred_facade",
     "legacy_repository_production_calls_remain_source_gated",
     "compatible_free_backfill_helper_remains_event_aware",
   ]) {
