@@ -28,6 +28,12 @@ The singleflight pattern (also known as request coalescing) ensures that when mu
 
 ## Implementation
 
+Tenant cache schema version 2 serializes the structured tenant `settings`
+value to compact JSON text before placing it in the Postcard envelope and
+deserializes it after a cache hit. This keeps the generic cache wire format
+unchanged while supporting nested JSON values; schema-version-1 entries are
+invalidated and refilled automatically.
+
 ### Architecture
 
 ```

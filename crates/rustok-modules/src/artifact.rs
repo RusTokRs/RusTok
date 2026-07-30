@@ -469,14 +469,14 @@ impl ModuleArtifactDescriptor {
                 }
                 (_, None) => {}
             }
-            if let Some(http) = &binding.http {
-                if self.bindings[..index].iter().any(|previous| {
+            if let Some(http) = &binding.http
+                && self.bindings[..index].iter().any(|previous| {
                     previous.http.as_ref().is_some_and(|previous_http| {
                         previous_http.method == http.method && previous_http.path == http.path
                     })
-                }) {
-                    return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
-                }
+                })
+            {
+                return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
             }
         }
         for (index, dependency) in self.dependencies.iter().enumerate() {
@@ -963,12 +963,12 @@ fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifact
     match schema {
         Value::Object(object) => {
             for key in ["$ref", "$dynamicRef", "$recursiveRef"] {
-                if let Some(Value::String(reference)) = object.get(key) {
-                    if !reference.starts_with('#') {
-                        return Err(ModuleArtifactError::NonLocalSchemaReference(
-                            reference.clone(),
-                        ));
-                    }
+                if let Some(Value::String(reference)) = object.get(key)
+                    && !reference.starts_with('#')
+                {
+                    return Err(ModuleArtifactError::NonLocalSchemaReference(
+                        reference.clone(),
+                    ));
                 }
             }
             for value in object.values() {

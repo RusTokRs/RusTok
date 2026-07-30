@@ -280,23 +280,21 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             correlation_id: plan.operation_id.to_string(),
             idempotency_key: Some(idempotency_key),
         };
-        match ModuleOperationJournal::replay_idempotent_command(&self.db, &replay_request)
+        if ModuleOperationJournal::replay_idempotent_command(&self.db, &replay_request)
             .await
             .map_err(map_idempotency_command_error)?
+            .is_some()
         {
-            Some(_) => {
-                return self
-                    .toggle_with_operation_context(
-                        plan.tenant_id,
-                        &plan.module_slug,
-                        plan.previous_effective_enabled,
-                        requested_by,
-                        Some(plan.operation_id.to_string()),
-                        Some(idempotency_key),
-                    )
-                    .await;
-            }
-            None => {}
+            return self
+                .toggle_with_operation_context(
+                    plan.tenant_id,
+                    &plan.module_slug,
+                    plan.previous_effective_enabled,
+                    requested_by,
+                    Some(plan.operation_id.to_string()),
+                    Some(idempotency_key),
+                )
+                .await;
         }
         if current_enabled != plan.requested_enabled {
             return Err(ModuleLifecycleDbWriterError::Recovery(

@@ -1,14 +1,17 @@
-import { getTranslations } from 'next-intl/server';
 import { getEventDeliveryConfiguration, getEventsStatus } from '../api/events';
 import { EventsForm } from '../components/events-form';
 
 interface EventsPageProps {
   token: string | null;
   tenantSlug: string | null;
+  errorMessage: string;
 }
 
-export async function EventsPage({ token, tenantSlug }: EventsPageProps) {
-  const t = await getTranslations('events');
+export async function EventsPage({
+  token,
+  tenantSlug,
+  errorMessage
+}: EventsPageProps) {
   const opts = { token, tenantSlug };
 
   let status;
@@ -19,7 +22,7 @@ export async function EventsPage({ token, tenantSlug }: EventsPageProps) {
       getEventDeliveryConfiguration(opts)
     ]);
   } catch {
-    return <p className='text-destructive text-sm'>{t('error')}</p>;
+    return <p className='text-destructive text-sm'>{errorMessage}</p>;
   }
 
   return (

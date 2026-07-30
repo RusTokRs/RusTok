@@ -97,28 +97,24 @@ fn require_cart_checkout_read_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::read()).map_err(|error| {
-        log_cart_checkout_admission_rejection(context, owner_operation, "policy", &error);
-        error
-    })
+    context
+        .require_policy(PortCallPolicy::read())
+        .inspect_err(|error| {
+            log_cart_checkout_admission_rejection(context, owner_operation, "policy", error);
+        })
 }
 
 fn require_cart_checkout_write_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).map_err(|error| {
-        log_cart_checkout_admission_rejection(context, owner_operation, "policy", &error);
-        error
-    })?;
-    context.require_write_semantics().map_err(|error| {
-        log_cart_checkout_admission_rejection(
-            context,
-            owner_operation,
-            "write_semantics",
-            &error,
-        );
-        error
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_cart_checkout_admission_rejection(context, owner_operation, "policy", error);
+        })?;
+    context.require_write_semantics().inspect_err(|error| {
+        log_cart_checkout_admission_rejection(context, owner_operation, "write_semantics", error);
     })
 }
 

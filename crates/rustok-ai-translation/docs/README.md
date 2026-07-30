@@ -18,15 +18,17 @@ limits, so a caller cannot reuse the task slug with a different contract.
 Every accepted result is `review_required`. The adapter cannot approve a
 proposal, publish content, call an owner service, or construct an owner patch.
 
-The `server` feature exposes a neutral host-context composition function, but
-the adapter intentionally has no automatic runtime registration in the current
-slice.
+The `server` feature exposes a neutral host-context composition function. The
+production server selects the explicit distribution bridge, which publishes
+the Translation-owned lazy factory without importing capability types into the
+host.
 The canonical ledger/accounting foundation and encrypted TTL-bound
 terminal-result replay, permission-checked accounting-policy provisioning,
 deployment keyring publication, and scheduler recovery/result cleanup now
-exist. The optional distribution feature publishes the owner-neutral lazy
-runtime factory; production-profile enablement and live failure/restart
-evidence remain pending.
+exist. Composition evidence also verifies the fail-closed missing-keyring state:
+the factory resolves to no machine provider while manual Translation workflows
+remain available. Live external-provider failure/restart evidence remains
+pending.
 The adapter resolves and cancels executions through the stable
 `(owner, idempotency_key)` AI contract. Cancellation therefore remains durable
 when it arrives before AI execution registration, and completed encrypted

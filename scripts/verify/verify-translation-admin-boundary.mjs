@@ -26,7 +26,13 @@ const files = {
   nextTypes: "apps/next-admin/packages/translation/src/types.ts",
   nextRegistry: "apps/next-admin/src/modules/index.ts",
   nextWrapper: "apps/next-admin/src/modules/translation-admin-client.tsx",
+  nextLayout: "apps/next-admin/src/app/dashboard/translation/layout.tsx",
   nextRoute: "apps/next-admin/src/app/dashboard/translation/page.tsx",
+  appRouter: "apps/server/src/services/app_router.rs",
+  uiInput: "UI/leptos/src/input.rs",
+  uiSelect: "UI/leptos/src/select.rs",
+  uiTextarea: "UI/leptos/src/textarea.rs",
+  uiLabel: "crates/leptos-ui/src/label.rs",
   leptosEn: "crates/rustok-translation/admin/locales/en.json",
   leptosRu: "crates/rustok-translation/admin/locales/ru.json",
   nextEn: "apps/next-admin/messages/en.json",
@@ -123,6 +129,58 @@ contains(
   "core::TAB_QUERY_KEY",
   `${files.leptos}: Leptos UI must use the core-owned tab query key`,
 );
+for (const marker of [
+  'role="tablist"',
+  'role="tab"',
+  'aria-selected=if is_selected { "true" } else { "false" }',
+  "aria-controls=panel_id",
+  'role="tabpanel"',
+  "aria-labelledby=tab_id",
+  '"ArrowLeft" | "ArrowUp"',
+  '"ArrowRight" | "ArrowDown"',
+  '"Home" =>',
+  '"End" =>',
+]) {
+  contains(
+    source.leptos,
+    marker,
+    `${files.leptos}: missing accessible tab marker ${marker}`,
+  );
+}
+if (/<Label(?![^>]*r#for=)/.test(source.leptos)) {
+  fail(`${files.leptos}: every visible form label must identify its control`);
+}
+const translationFormControls =
+  source.leptos.match(/<(?:Input|Textarea|Select)\b[\s\S]*?\/>/g) ?? [];
+for (const control of translationFormControls) {
+  const name = control.match(/\bname="([^"]+)"/)?.[1];
+  if (name && !control.includes(`id="${name}"`)) {
+    fail(
+      `${files.leptos}: named form control ${name} must publish the matching explicit id`,
+    );
+  }
+}
+for (const [name, element] of [
+  ["uiInput", "<input"],
+  ["uiSelect", "<select"],
+  ["uiTextarea", "<textarea"],
+]) {
+  contains(
+    source[name],
+    element,
+    `${files[name]}: expected shared form control`,
+  );
+  contains(
+    source[name],
+    "id=id",
+    `${files[name]}: named shared form controls must publish stable ids`,
+  );
+}
+contains(
+  source.uiLabel,
+  "for=r#for",
+  `${files.uiLabel}: shared labels must preserve explicit control association`,
+);
 
 contains(
   source.transport,
@@ -143,6 +201,31 @@ contains(
   source.native,
   "HostRuntimeContext",
   `${files.native}: native adapter must use host runtime context`,
+);
+for (const runtimeEvidence of [
+  "native_interchange_executes_authenticated_http_parity",
+  "native_policy_and_glossary_execute_authenticated_http_parity",
+  "native_human_workflow_memory_and_progress_execute_http_parity",
+  "native_qa_rejection_and_job_cancellation_execute_http_parity",
+  "native_retry_and_apply_recovery_execute_http_parity",
+  "native_inventory_and_provider_progress_execute_http_parity",
+  "native_machine_operations_execute_authenticated_http_parity",
+]) {
+  contains(
+    source.native,
+    runtimeEvidence,
+    `${files.native}: missing authenticated HTTP server-function evidence ${runtimeEvidence}`,
+  );
+}
+contains(
+  source.appRouter,
+  "application_router_executes_authenticated_server_function",
+  `${files.appRouter}: missing full application-router Translation runtime evidence`,
+);
+contains(
+  source.appRouter,
+  "compose_application_router(",
+  `${files.appRouter}: Translation runtime evidence must execute the production router composition`,
 );
 contains(
   source.graphql,
@@ -308,6 +391,16 @@ contains(
   source.nextRoute,
   "<TranslationAdminClient",
   `${files.nextRoute}: Next route must compose the package-owned workbench`,
+);
+contains(
+  source.nextLayout,
+  "<ModuleGuard",
+  `${files.nextLayout}: Next route must enforce tenant module enablement`,
+);
+contains(
+  source.nextLayout,
+  "slug='translation'",
+  `${files.nextLayout}: Next route must guard the Translation module slug`,
 );
 for (const marker of [
   "executeTranslationOperation",

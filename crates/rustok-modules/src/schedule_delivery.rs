@@ -431,11 +431,13 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         let affected = if retryable && attempt < self.config.max_attempts {
             complete_retryable(
                 &transaction,
-                backend,
-                tenant_id,
-                worker_id,
-                delivery_id,
-                attempt,
+                ScheduleDeliveryClaim {
+                    backend,
+                    tenant_id,
+                    worker_id,
+                    delivery_id,
+                    attempt,
+                },
                 error_code
                     .as_deref()
                     .expect("retryable outcome has an error code"),
@@ -451,11 +453,13 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             };
             complete_terminal(
                 &transaction,
-                backend,
-                tenant_id,
-                worker_id,
-                delivery_id,
-                attempt,
+                ScheduleDeliveryClaim {
+                    backend,
+                    tenant_id,
+                    worker_id,
+                    delivery_id,
+                    attempt,
+                },
                 status,
                 error_code.as_deref(),
                 terminal_column,
@@ -827,17 +831,28 @@ async fn cancel_unavailable<C: ConnectionTrait>(
     Ok(())
 }
 
-async fn complete_terminal<C: ConnectionTrait>(
-    connection: &C,
+struct ScheduleDeliveryClaim<'a> {
     backend: DbBackend,
     tenant_id: Uuid,
-    worker_id: &str,
+    worker_id: &'a str,
     delivery_id: Uuid,
     attempt: u32,
+}
+
+async fn complete_terminal<C: ConnectionTrait>(
+    connection: &C,
+    claim: ScheduleDeliveryClaim<'_>,
     status: &str,
     error_code: Option<&str>,
     timestamp_column: &str,
 ) -> Result<u64, ArtifactScheduleDeliveryError> {
+    let ScheduleDeliveryClaim {
+        backend,
+        tenant_id,
+        worker_id,
+        delivery_id,
+        attempt,
+    } = claim;
     let (error_assignment, values) = match error_code {
         Some(error_code) => (
             format!("last_error_code = {}, ", placeholder(backend, 1)),
@@ -860,14 +875,17 @@ async fn complete_terminal<C: ConnectionTrait>(
 
 async fn complete_retryable<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
-    tenant_id: Uuid,
-    worker_id: &str,
-    delivery_id: Uuid,
-    attempt: u32,
+    claim: ScheduleDeliveryClaim<'_>,
     error_code: &str,
     delay_seconds: u32,
 ) -> Result<u64, ArtifactScheduleDeliveryError> {
+    let ScheduleDeliveryClaim {
+        backend,
+        tenant_id,
+        worker_id,
+        delivery_id,
+        attempt,
+    } = claim;
     let result = connection.execute(Statement::from_sql_and_values(backend, format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = 'pending', claimed_by = NULL, claimed_until = NULL, last_error_code = {}, available_at = {} \

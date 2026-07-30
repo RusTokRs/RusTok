@@ -136,14 +136,12 @@ fn map_inventory_reservation_local_port_error(
             "inventory.insufficient_inventory",
             "inventory reservation conflicts with available stock",
         ) if operation == RESERVE_OPERATION => "reserve_available_stock",
-        (
-            "inventory.database_unavailable",
-            "inventory storage is temporarily unavailable",
-        ) => "owner_storage",
-        (
-            "inventory.invariant_violation",
-            "inventory operation violated an owner invariant",
-        ) => "owner_invariant",
+        ("inventory.database_unavailable", "inventory storage is temporarily unavailable") => {
+            "owner_storage"
+        }
+        ("inventory.invariant_violation", "inventory operation violated an owner invariant") => {
+            "owner_invariant"
+        }
         _ => return error,
     };
     let technical_failure = matches!(
@@ -206,28 +204,24 @@ fn require_inventory_reservation_read_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::read()).map_err(|error| {
-        log_inventory_reservation_admission_rejection(context, operation, "policy", &error);
-        error
-    })
+    context
+        .require_policy(PortCallPolicy::read())
+        .inspect_err(|error| {
+            log_inventory_reservation_admission_rejection(context, operation, "policy", error);
+        })
 }
 
 fn require_inventory_reservation_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).map_err(|error| {
-        log_inventory_reservation_admission_rejection(context, operation, "policy", &error);
-        error
-    })?;
-    context.require_write_semantics().map_err(|error| {
-        log_inventory_reservation_admission_rejection(
-            context,
-            operation,
-            "write_semantics",
-            &error,
-        );
-        error
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_inventory_reservation_admission_rejection(context, operation, "policy", error);
+        })?;
+    context.require_write_semantics().inspect_err(|error| {
+        log_inventory_reservation_admission_rejection(context, operation, "write_semantics", error);
     })
 }
 

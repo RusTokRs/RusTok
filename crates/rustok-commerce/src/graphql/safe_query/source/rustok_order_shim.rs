@@ -75,12 +75,8 @@ impl OrderService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> OrderResult<(Vec<OrderResponse>, u64)> {
-        let context = graphql_order_read_context(
-            tenant_id,
-            locale,
-            "list_order_projections",
-            tenant_id,
-        );
+        let context =
+            graphql_order_read_context(tenant_id, locale, "list_order_projections", tenant_id);
         let page = self
             .order_reads
             .list_order_projections(

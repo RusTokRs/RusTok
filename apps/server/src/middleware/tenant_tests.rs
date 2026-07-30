@@ -1,5 +1,5 @@
 use super::{
-    CachedTenantMiss, TenantCacheKeyBuilder, TenantContextLoadError,
+    CachedTenantContext, CachedTenantMiss, TenantCacheKeyBuilder, TenantContextLoadError,
     tenant_context_from_projection, unix_ms_at,
 };
 use crate::middleware::tenant_resolution::TenantIdentifierKind;
@@ -40,6 +40,34 @@ fn tenant_context_from_projection_maps_active_tenant() {
     assert_eq!(context.slug, tenant.slug);
     assert_eq!(context.default_locale, tenant.default_locale);
     assert!(context.is_active);
+}
+
+#[test]
+fn cached_tenant_context_round_trips_structured_settings() {
+    let projection = sample_tenant_projection(true);
+    let mut context = tenant_context_from_projection(projection).expect("active tenant");
+    context.settings = serde_json::json!({
+        "checkout": {
+            "guest_enabled": true,
+            "limits": [1, 2, 3]
+        }
+    });
+
+    let cached = CachedTenantContext::try_from(context.clone()).expect("serialize settings");
+    let envelope = rustok_cache::CacheEnvelope::new(2, 1_000, cached).expect("build envelope");
+    let encoded = envelope.encode().expect("encode Postcard envelope");
+    let decoded = rustok_cache::CacheEnvelope::<CachedTenantContext>::decode(&encoded, 2)
+        .expect("decode Postcard envelope");
+    let restored = crate::context::TenantContext::try_from(decoded.into_payload())
+        .expect("deserialize settings");
+
+    assert_eq!(restored.id, context.id);
+    assert_eq!(restored.name, context.name);
+    assert_eq!(restored.slug, context.slug);
+    assert_eq!(restored.domain, context.domain);
+    assert_eq!(restored.settings, context.settings);
+    assert_eq!(restored.default_locale, context.default_locale);
+    assert_eq!(restored.is_active, context.is_active);
 }
 
 #[test]

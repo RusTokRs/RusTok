@@ -9,6 +9,7 @@ use crate::entities::relation;
 use crate::error::SocialGraphError;
 use crate::model::SocialRelationKind;
 use crate::observability::{SocialGraphCommandOperation, SocialGraphCommandTimer};
+use crate::receipts::SocialGraphCommandReceiptRequest;
 use crate::service::SocialGraphService;
 
 pub const MAX_SOCIAL_GRAPH_FOLLOW_TARGETS: usize = 100;
@@ -168,11 +169,13 @@ impl SocialGraphCommandPort for SocialGraphService {
             .set_relation_state_with_receipt(
                 tenant_id,
                 actor_id,
-                command.source_user_id,
-                command.target_user_id,
-                command.relation_kind,
-                command.active,
-                command.expected_revision,
+                SocialGraphCommandReceiptRequest {
+                    source_user_id: command.source_user_id,
+                    target_user_id: command.target_user_id,
+                    relation_kind: command.relation_kind,
+                    active: command.active,
+                    expected_revision: command.expected_revision,
+                },
                 idempotency_key,
             )
             .await

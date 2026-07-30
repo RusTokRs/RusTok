@@ -18,6 +18,29 @@ pub struct TranslationGraphqlRuntimeData {
 }
 
 impl TranslationGraphqlRuntimeData {
+    /// Builds the Translation GraphQL runtime from its canonical dependencies.
+    ///
+    /// Host composition normally uses [`attach_schema_data`]. This constructor
+    /// keeps embedded hosts and transport-level tests on the same runtime path
+    /// while allowing them to supply their own locale-policy and machine ports.
+    pub fn new(
+        database: DatabaseConnection,
+        providers: Arc<TranslationTargetRegistry>,
+        tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
+        event_bus: TransactionalEventBus,
+        machine_port: Option<Arc<dyn crate::MachineTranslationPort>>,
+        machine_port_error_code: Option<String>,
+    ) -> Self {
+        Self {
+            database,
+            providers,
+            tenant_locale_policies,
+            event_bus,
+            machine_port,
+            machine_port_error_code,
+        }
+    }
+
     pub(crate) fn policy_service(&self) -> crate::TranslationPolicyService {
         crate::TranslationPolicyService::new(
             self.database.clone(),
@@ -110,12 +133,12 @@ pub fn attach_schema_data(
             Err(error) => (None, Some(error.code)),
         };
 
-    Ok(TranslationGraphqlRuntimeData {
+    Ok(TranslationGraphqlRuntimeData::new(
         database,
         providers,
         tenant_locale_policies,
         event_bus,
         machine_port,
         machine_port_error_code,
-    })
+    ))
 }

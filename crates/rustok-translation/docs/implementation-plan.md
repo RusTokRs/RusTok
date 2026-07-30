@@ -147,13 +147,39 @@ selection.
 - Translation exposes one redacted public-error classifier shared by GraphQL
   and native adapters, so database/internal details never become client
   messages and stable Translation error codes stay aligned across transports.
+- Registered HTTP server-function tests now execute the Translation control
+  plane through the URL-encoded Leptos protocol and the same dispatch and
+  owner-service paths used by the host. Runtime evidence covers policy,
+  glossary lifecycle, bounded interchange, assignment, manual proposal
+  save/submit/review/apply, deterministic QA rejection, cancellation, retry,
+  unknown-outcome apply recovery, job progress and rebuild, Translation Memory
+  lookup/lifecycle, inventory sync/full rebuild, provider/required-target
+  progress, and machine generation/status/cancellation/audited recovery through
+  a deterministic neutral `MachineTranslationPort` factory. It also covers
+  degraded machine-provider health, cross-tenant isolation, mismatched
+  extracted host contexts, empty idempotency keys, and fail-closed missing
+  runtime dependencies. A server-level runtime test now also executes the
+  registered read-policy function through the production application router
+  with tenant resolution/cache, locale negotiation, JWT/session resolution,
+  RBAC, channel resolution, rate limiting, and security headers; it verifies
+  the effective `de-DE` response locale and rejects a valid token replayed
+  against another tenant. Production AI execution remains open.
 - The manifest now publishes and mounts the Leptos workbench, and the matching
   `@rustok/translation-admin` package owns the Next workbench over the same
   GraphQL contract. Both workbenches expose six tabs and keep glossary and
-  memory selection in `glossary_id` and `memory_entry_id`. Live browser,
-  accessibility, module-disablement, and authenticated native/GraphQL runtime
-  evidence remain open, as do production AI enablement and live AI/runtime
-  evidence.
+  memory selection in `glossary_id` and `memory_entry_id`. The Next route now
+  enforces tenant module enablement through the host `ModuleGuard`.
+  Authenticated browser execution verified the real Next route, URL-owned tab
+  selection, accessible tab semantics, bounded interchange controls, and the
+  disabled-module fallback. A compiled Leptos CSR browser fixture now renders
+  the production `TranslationAdmin` component with authenticated host context
+  and the real browser router. Playwright verified all six URL-owned tabs,
+  roving focus with arrow/Home/End navigation, exact tab/panel relationships,
+  and localized form-label associations; axe reported zero violations on every
+  tab. Transport execution remains covered by the registered native HTTP and
+  authenticated GraphQL suites rather than by the isolated UI fixture.
+  Production AI bridge composition and missing-keyring behavior are verified;
+  live external-provider AI/runtime evidence remains open.
 - Translation now owns a bounded `MachineTranslationPort` SPI with explicit
   source/target locales, stable unit/source identities, field
   profile/strategy/classification, protected tokens, glossary and Translation
@@ -164,7 +190,9 @@ selection.
   typed schemas, and rejects stale policy, missing/extra units, placeholder
   drift, length violations, and missing usage/attempt evidence. The explicit
   optional distribution bridge now publishes the Translation-owned lazy
-  factory; production-profile enablement and live evidence remain open.
+  factory, and the production server selects it. Missing deployment keyring
+  composition is verified as optional and fail-closed; live provider evidence
+  remains open.
 - `TranslationMachineService` now owns the proposal-generation command. It
   selects explicit AI-eligible fields from the immutable job snapshot,
   projects only applicable terms from the job-bound glossary revision, adds at
@@ -213,6 +241,8 @@ selection.
 - Evidence:
   - module-owned core and neutral provider dependency are separated;
   - module-owned GraphQL roots and manifest runtime composition are compiled;
+  - the isolated server composition profile builds with
+    `--no-default-features --features mod-translation`;
   - the native/GraphQL admin transport compiles and has schema and idempotency
     parity tests;
   - the manifest publishes the module-owned Leptos `core/transport/ui`
@@ -221,9 +251,31 @@ selection.
   - the matching Next package uses the host GraphQL executor, host locale, and
     the same URL-owned `tab`, `glossary_id`, and `memory_entry_id` selection
     contracts;
-  - live browser, accessibility, module-disablement, and authenticated
-    native/GraphQL runtime parity evidence remains required.
-- Last verified at (UTC): 2026-07-29
+  - an authenticated GraphQL schema test executes bounded export/import through
+    the real `AuthContext` and `RequestContext`, and verifies invalid bounds,
+    stale source rejection, cross-tenant isolation, and mismatched tenant
+    denial;
+  - registered native HTTP server-function tests execute policy, glossaries,
+    bounded interchange, assignment, manual workflow/apply, QA rejection,
+    cancellation, retry, apply recovery, job progress, Translation Memory,
+    inventory rebuild, provider/required-target progress, and machine
+    generation/status/cancellation/recovery with URL-encoded requests and
+    extracted authenticated host contexts; negative evidence includes invalid
+    bounds, stale source rejection, cross-tenant isolation, context mismatch,
+    idempotency validation, owner failure, unknown outcome, degraded machine
+    health, and missing-runtime failure;
+  - authenticated Next browser execution verifies the Jobs/interchange and
+    Glossaries surfaces, URL-owned tab state, accessible tab semantics, and the
+    host module-disabled fallback;
+  - the production application-router runtime test verifies tenant cache and
+    resolution, locale negotiation, JWT/session/RBAC, channel, rate-limit, and
+    security middleware around the registered native read-policy function,
+    including cross-tenant token rejection;
+  - compiled Leptos CSR browser execution verifies all six URL-owned tabs,
+    literal `aria-selected` state, one roving tab stop, arrow/Home/End focus and
+    URL synchronization, tab/panel relationships, and localized form-label
+    associations; axe reports zero violations on every tab.
+- Last verified at (UTC): 2026-07-30
 - Owner: Translation module maintainers
 
 ## Milestones
@@ -231,22 +283,32 @@ selection.
 1. Complete Media multi-replica evidence for the implemented inventory replay,
    tenant isolation, stale-checkpoint conflict, provider outage, and
    full-rescan recovery contracts.
-2. Mount and runtime-verify the implemented native server-function parity for
-   recovery, assignment, cancellation, retry, policy, QA, progress, inventory,
-   and workflow operations.
+2. Registered native HTTP server-function parity is runtime-verified for
+   recovery, assignment, cancellation, retry, policy, glossaries, Translation
+   Memory, QA, progress, inventory, interchange, and manual workflow
+   operations.
 3. Collect multi-replica and restart evidence for the implemented
    owner-deletion propagation and automated Translation Memory retention
    worker. The bounded memory and immutable glossary projections into machine
    requests are implemented.
-4. Complete live native/GraphQL parity evidence for the implemented bounded
-   interchange operations, including tenant isolation and malformed/stale
-   document rejection.
-5. Complete live native/GraphQL parity evidence, including tenant isolation and
-   host disablement.
-6. Complete Leptos/Next browser, accessibility, URL-state, and module
-   disablement evidence.
-7. Enable the implemented optional `ai-translation` distribution bridge in
-   the production profile and collect live ledger, replay, budget, fallback,
+4. Full application-router middleware execution is runtime-verified for the
+   registered native read-policy function, including tenant cache/resolution,
+   locale, JWT/session/RBAC, channel, rate-limit, security headers, and
+   cross-tenant rejection. Authenticated GraphQL and registered native HTTP
+   tests separately cover bounded interchange, malformed bounds, stale source
+   rejection, tenant isolation, and successful import through canonical QA.
+5. Registered HTTP parity for machine generation/status/cancellation/recovery
+   is runtime-verified through a deterministic neutral provider, including
+   degraded health and audited stuck-save recovery. Production-provider
+   execution evidence remains in milestone 7.
+6. Leptos browser/accessibility evidence is complete for the compiled
+   production component: all six URL-owned tabs, semantic tab/panel state,
+   roving keyboard focus, localized form-label associations, and zero axe
+   violations are verified. Authenticated Next URL-state, semantic tab,
+   interchange-control, and module-disablement evidence is also complete.
+7. The implemented optional `ai-translation` distribution bridge is enabled in
+   the production profile, and composed missing-keyring behavior is verified as
+   optional and fail-closed. Collect live ledger, replay, budget, fallback,
    cancellation, restart, and recovery evidence.
 8. Collect live restart evidence for the audited `saving` recovery command,
    including crash after provider completion and crash after proposal save.
@@ -256,14 +318,17 @@ selection.
 - `cargo check -p rustok-translation`
 - `cargo test -p rustok-translation`
 - `cargo test -p rustok-translation --features graphql`
+- `cargo clippy -p rustok-translation --all-targets --all-features -- -D warnings`
 - `cargo test -p rustok-translation-admin`
 - `cargo check -p rustok-translation-admin --features ssr`
+- `cargo test -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function`
 - `cargo xtask module validate translation`
 - `cargo xtask validate-manifest`
 - `cargo check -p rustok-server --lib --no-default-features --features mod-translation`
 - `node scripts/verify/verify-translation-surface-registry.mjs`
 - `npm run verify:translation:admin-boundary`
 - `cargo test -p rustok-ai-translation`
+- `cargo test -p rustok-distribution --no-default-features --features ai-translation selected_ai_translation_bridge_publishes_factory_and_stays_optional_without_keyring`
 - `npm run verify:ai-translation:boundary`
 
 ## Update Rules

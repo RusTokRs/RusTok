@@ -808,12 +808,12 @@ impl ContentOrchestrationService {
             .one(txn)
             .await?;
 
-        if let Some(existing) = existing_canonical {
-            if existing.target_kind != target_kind || existing.target_id != target_id {
-                return Err(ContentError::validation(format!(
-                    "canonical_url `{canonical_route}` already belongs to another content target"
-                )));
-            }
+        if let Some(existing) = existing_canonical
+            && (existing.target_kind != target_kind || existing.target_id != target_id)
+        {
+            return Err(ContentError::validation(format!(
+                "canonical_url `{canonical_route}` already belongs to another content target"
+            )));
         }
 
         let existing_alias = url_alias::Entity::find()
@@ -823,12 +823,12 @@ impl ContentOrchestrationService {
             .one(txn)
             .await?;
 
-        if let Some(existing) = existing_alias {
-            if existing.target_kind != target_kind || existing.target_id != target_id {
-                return Err(ContentError::validation(format!(
-                    "canonical_url `{canonical_route}` collides with an alias owned by another content target"
-                )));
-            }
+        if let Some(existing) = existing_alias
+            && (existing.target_kind != target_kind || existing.target_id != target_id)
+        {
+            return Err(ContentError::validation(format!(
+                "canonical_url `{canonical_route}` collides with an alias owned by another content target"
+            )));
         }
 
         Ok(())
@@ -850,12 +850,12 @@ impl ContentOrchestrationService {
             .one(txn)
             .await?;
 
-        if let Some(existing) = existing_canonical {
-            if existing.target_kind != target_kind || existing.target_id != target_id {
-                return Err(ContentError::validation(format!(
-                    "alias_url `{alias_route}` would shadow another target canonical URL"
-                )));
-            }
+        if let Some(existing) = existing_canonical
+            && (existing.target_kind != target_kind || existing.target_id != target_id)
+        {
+            return Err(ContentError::validation(format!(
+                "alias_url `{alias_route}` would shadow another target canonical URL"
+            )));
         }
 
         Ok(())

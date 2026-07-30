@@ -314,11 +314,25 @@ mod tests {
     }
 
     #[cfg(feature = "ai-translation")]
-    #[test]
-    fn selected_ai_translation_bridge_publishes_the_owner_neutral_factory() {
+    #[tokio::test]
+    async fn selected_ai_translation_bridge_publishes_factory_and_stays_optional_without_keyring() {
         let registry = super::build_registry();
         let extensions =
             super::build_runtime_extensions(&registry).expect("distribution runtime extensions");
-        assert!(extensions.contains::<rustok_translation::SharedMachineTranslationPortFactory>());
+        let factory = extensions
+            .get::<rustok_translation::SharedMachineTranslationPortFactory>()
+            .cloned()
+            .expect("selected AI Translation bridge must publish its owner-neutral factory");
+        let database = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("isolated runtime database");
+        let context = rustok_api::HostRuntimeContext::new(database).with_shared_value(factory);
+
+        assert!(
+            rustok_translation::machine_translation_port_from_context(&context)
+                .expect("missing deployment keyring is an optional provider state")
+                .is_none(),
+            "manual Translation workflows must remain available when AI keyring provisioning is absent"
+        );
     }
 }

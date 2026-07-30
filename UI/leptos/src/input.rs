@@ -12,8 +12,10 @@ pub fn Input(
     #[prop(optional)] value: Option<ReadSignal<String>>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
     #[prop(optional, into)] class: String,
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
 ) -> impl IntoView {
+    let id = (!id.is_empty()).then_some(id);
     let size_cls = match size {
         Size::Sm => "h-8 text-xs px-2",
         Size::Md => "h-9 text-sm px-3 py-1",
@@ -28,6 +30,7 @@ pub fn Input(
 
     view! {
         <input
+            id=id
             type=r#type
             class=format!(
                 "flex w-full rounded-md border bg-background text-foreground shadow-sm \

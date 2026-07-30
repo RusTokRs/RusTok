@@ -22,13 +22,12 @@ pub mod ports {
         InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
         InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
         InventoryIdentityReservationRequest, InventoryIdentityReservationSnapshot,
-        InventoryReservationIdentityPort, InventoryReservationPort, InventoryReservationReleaseRequest,
-        InventoryReservationReleaseSnapshot, InventoryReservationRequest,
-        InventoryReservationSnapshot,
+        InventoryReservationIdentityPort, InventoryReservationPort,
+        InventoryReservationReleaseRequest, InventoryReservationReleaseSnapshot,
+        InventoryReservationRequest, InventoryReservationSnapshot,
     };
     pub use crate::reservation_owner_context::{
-        PersistentInventoryReservationIdentityPort,
-        in_process_inventory_reservation_identity_port,
+        PersistentInventoryReservationIdentityPort, in_process_inventory_reservation_identity_port,
     };
     pub use crate::reservation_port_context::{
         InProcessInventoryReservationPort, in_process_inventory_reservation_port,

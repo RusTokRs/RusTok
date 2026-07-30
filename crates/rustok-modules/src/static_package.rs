@@ -250,13 +250,12 @@ pub fn validate_static_module_package_contract(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        && (!is_valid_static_module_slug(found_slug) || found_slug != module_slug)
     {
-        if !is_valid_static_module_slug(found_slug) || found_slug != module_slug {
-            return Err(StaticModulePackageValidationError::SlugMismatch {
-                expected: module_slug.to_string(),
-                found: found_slug.to_string(),
-            });
-        }
+        return Err(StaticModulePackageValidationError::SlugMismatch {
+            expected: module_slug.to_string(),
+            found: found_slug.to_string(),
+        });
     }
 
     if let Some(version) = contract
@@ -467,7 +466,7 @@ pub fn validate_static_module_topology_contract(
             .dependency_version_requirements
             .iter()
             .collect::<Vec<_>>();
-        version_requirements.sort_by(|(left, _), (right, _)| left.cmp(right));
+        version_requirements.sort_by_key(|(left, _)| *left);
         for (dependency, raw_requirement) in version_requirements {
             let Some(dependency_module) = contract.modules.get(dependency) else {
                 continue;
@@ -774,15 +773,14 @@ fn validate_catalog_marketplace_metadata(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        && description.chars().count() < 20
     {
-        if description.chars().count() < 20 {
-            return Err(
-                StaticModuleCatalogValidationError::InvalidMarketplaceMetadata {
-                    field: "description".to_string(),
-                    reason: "must be at least 20 characters".to_string(),
-                },
-            );
-        }
+        return Err(
+            StaticModuleCatalogValidationError::InvalidMarketplaceMetadata {
+                field: "description".to_string(),
+                reason: "must be at least 20 characters".to_string(),
+            },
+        );
     }
     if let Some(icon_url) = contract
         .icon_url

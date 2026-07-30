@@ -7,9 +7,7 @@ pub mod error;
 pub mod ports;
 pub mod services;
 
-pub use calculation_context::{
-    InProcessTaxCalculationPort, in_process_tax_calculation_port,
-};
+pub use calculation_context::{InProcessTaxCalculationPort, in_process_tax_calculation_port};
 pub use error::{TaxError, TaxResult};
 pub use ports::TaxCalculationPort;
 pub use services::{

@@ -5,8 +5,7 @@ use std::time::Duration;
 use rustok_iggy::{DlqDuplicateAlertLevel, DlqDuplicateAlertRuntimeSnapshot};
 use rustok_telemetry::dlq_duplicate_alert_metrics::{
     self, DlqDuplicateAlertDeployment as MetricDeployment,
-    DlqDuplicateAlertHealthState as MetricHealthState,
-    DlqDuplicateAlertMetricLevel as MetricLevel,
+    DlqDuplicateAlertHealthState as MetricHealthState, DlqDuplicateAlertMetricLevel as MetricLevel,
     DlqDuplicateAlertScanMode as MetricScanMode,
 };
 use tokio::task::JoinHandle;
@@ -295,13 +294,16 @@ fn project_runtime(
         ),
         EventDlqDuplicateAlertObserverMode::IggyBundled
         | EventDlqDuplicateAlertObserverMode::IggyExternal
-            if task_finished => (
+            if task_finished =>
+        {
+            (
                 EventDlqDuplicateAlertHealthState::Stopped,
                 runtime.map(|snapshot| snapshot.generation()),
                 None,
                 false,
                 false,
-            ),
+            )
+        }
         EventDlqDuplicateAlertObserverMode::IggyBundled
         | EventDlqDuplicateAlertObserverMode::IggyExternal => match runtime {
             Some(snapshot) if snapshot.is_available() => {
@@ -359,10 +361,10 @@ fn record_projection(current: Projection, previous: Option<Projection>) {
     if previous.map(|value| value.health.state) != Some(current.health.state) {
         dlq_duplicate_alert_metrics::record_state(
             metric_deployment(current.health.mode),
-            current
-                .health
-                .scan_mode
-                .map_or(MetricScanMode::None, EventDlqDuplicateAlertObservabilityScanMode::metric),
+            current.health.scan_mode.map_or(
+                MetricScanMode::None,
+                EventDlqDuplicateAlertObservabilityScanMode::metric,
+            ),
             current.health.state.metric(),
         );
     }
@@ -376,10 +378,10 @@ fn record_projection(current: Projection, previous: Option<Projection>) {
     let evaluation = current.runtime.and_then(|snapshot| snapshot.evaluation());
     dlq_duplicate_alert_metrics::record_snapshot(
         metric_deployment(current.health.mode),
-        current
-            .health
-            .scan_mode
-            .map_or(MetricScanMode::None, EventDlqDuplicateAlertObservabilityScanMode::metric),
+        current.health.scan_mode.map_or(
+            MetricScanMode::None,
+            EventDlqDuplicateAlertObservabilityScanMode::metric,
+        ),
         current.health.state == EventDlqDuplicateAlertHealthState::Available,
         current.health.level.map_or(MetricLevel::None, metric_level),
         evaluation.is_some_and(|value| value.has_physical_duplicates()),
@@ -427,9 +429,7 @@ fn parse_scan_mode(value: &str) -> Option<EventDlqDuplicateAlertObservabilitySca
         "global" | "global_budget" => {
             Some(EventDlqDuplicateAlertObservabilityScanMode::GlobalBudget)
         }
-        "fair" | "fair_window" => {
-            Some(EventDlqDuplicateAlertObservabilityScanMode::FairWindow)
-        }
+        "fair" | "fair_window" => Some(EventDlqDuplicateAlertObservabilityScanMode::FairWindow),
         "moving" | "moving_window" => {
             Some(EventDlqDuplicateAlertObservabilityScanMode::MovingWindow)
         }
@@ -437,10 +437,7 @@ fn parse_scan_mode(value: &str) -> Option<EventDlqDuplicateAlertObservabilitySca
     }
 }
 
-async fn wait_or_stop(
-    delay: Duration,
-    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
-) -> bool {
+async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
     tokio::select! {
         _ = tokio::time::sleep(delay) => false,
         changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),

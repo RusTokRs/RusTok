@@ -17,7 +17,11 @@ pub enum StorefrontProductSortBy {
 
 impl StorefrontProductSortBy {
     pub(crate) fn parse(value: Option<String>) -> CommerceResult<Self> {
-        match value.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        match value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             None | Some("published_at") => Ok(Self::PublishedAt),
             Some("created_at") => Ok(Self::CreatedAt),
             Some(_) => Err(CommerceError::Validation(
@@ -36,7 +40,11 @@ pub enum StorefrontProductSortDirection {
 
 impl StorefrontProductSortDirection {
     pub(crate) fn parse(value: Option<String>) -> CommerceResult<Self> {
-        match value.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        match value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             None | Some("desc") => Ok(Self::Desc),
             Some("asc") => Ok(Self::Asc),
             Some(_) => Err(CommerceError::Validation(
@@ -55,17 +63,15 @@ pub struct ProductAttributeFilter {
 impl ProductAttributeFilter {
     fn parse(value: String) -> CommerceResult<Self> {
         let (code, raw_value) = value.split_once('=').ok_or_else(|| {
-            CommerceError::Validation(
-                "attribute_filters entries must use `code=value`".to_string(),
-            )
+            CommerceError::Validation("attribute_filters entries must use `code=value`".to_string())
         })?;
         let code = code.trim();
         let raw_value = raw_value.trim();
         if code.is_empty()
             || code.len() > MAX_ATTRIBUTE_FILTER_CODE_LENGTH
-            || !code
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+            || !code.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
+            })
         {
             return Err(CommerceError::Validation(
                 "attribute filter code must contain 1..128 ASCII letters, digits, `_`, or `-`"
@@ -105,16 +111,38 @@ fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAtt
     Ok(filters)
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorefrontProductListQuery {
     pub search: Option<String>,
     pub category_id: Option<Uuid>,
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
     pub attribute_filters: Vec<ProductAttributeFilter>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+impl Default for StorefrontProductListQuery {
+    fn default() -> Self {
+        Self {
+            search: None,
+            category_id: None,
+            sort_by: StorefrontProductSortBy::default(),
+            sort_direction: StorefrontProductSortDirection::default(),
+            attribute_filters: Vec::new(),
+            page: 1,
+            per_page: 12,
+        }
+    }
 }
 
 impl StorefrontProductListQuery {
+    pub fn with_pagination(mut self, page: u64, per_page: u64) -> Self {
+        self.page = page;
+        self.per_page = per_page;
+        self
+    }
+
     pub fn try_new(
         search: Option<String>,
         category_id: Option<Uuid>,
@@ -143,6 +171,7 @@ impl StorefrontProductListQuery {
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
             attribute_filters: parse_attribute_filters(attribute_filters)?,
+            ..Self::default()
         })
     }
 
@@ -319,13 +348,8 @@ mod tests {
             .is_err()
         );
         assert!(
-            StorefrontProductListQuery::try_new(
-                None,
-                None,
-                Some("title".to_string()),
-                None,
-            )
-            .is_err()
+            StorefrontProductListQuery::try_new(None, None, Some("title".to_string()), None,)
+                .is_err()
         );
         assert!(
             StorefrontProductListQuery::try_new_with_attribute_filters(

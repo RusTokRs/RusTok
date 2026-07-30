@@ -263,30 +263,34 @@ async fn execute_operation(
     match operation {
         ArtifactOperation::Http { method, path, body } => dispatch_artifact_http_binding(
             executor,
-            &installation.release,
-            &installation.descriptor.bindings,
-            ArtifactInstallationTarget::ExactInstallation {
-                installation_id: installation.installation_id,
+            rustok_modules::ArtifactHttpBindingRequest {
+                release: &installation.release,
+                bindings: &installation.descriptor.bindings,
+                target: ArtifactInstallationTarget::ExactInstallation {
+                    installation_id: installation.installation_id,
+                },
+                tenant_id,
+                method,
+                path: &path,
+                body,
+                context,
             },
-            tenant_id,
-            method,
-            &path,
-            body,
-            context,
         )
         .await
         .map_err(map_dispatch_error),
         ArtifactOperation::Command { binding_id, input } => dispatch_artifact_command_binding(
             executor,
-            &installation.release,
-            &installation.descriptor.bindings,
-            ArtifactInstallationTarget::ExactInstallation {
-                installation_id: installation.installation_id,
+            rustok_modules::ArtifactCommandBindingRequest {
+                release: &installation.release,
+                bindings: &installation.descriptor.bindings,
+                target: ArtifactInstallationTarget::ExactInstallation {
+                    installation_id: installation.installation_id,
+                },
+                tenant_id,
+                binding_id: &binding_id,
+                input,
+                context,
             },
-            tenant_id,
-            &binding_id,
-            input,
-            context,
         )
         .await
         .map_err(map_dispatch_error),

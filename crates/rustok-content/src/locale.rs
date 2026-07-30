@@ -36,19 +36,17 @@ where
         };
     }
 
-    if let Some(fallback_locale) = fallback_locale {
-        if fallback_locale != requested {
-            if let Some(item) = items
-                .iter()
-                .find(|item| locale_tags_match(locale_of(item), fallback_locale))
-            {
-                return ResolvedLocale {
-                    item: Some(item),
-                    effective_locale: normalize_locale_tag(fallback_locale)
-                        .unwrap_or_else(|| fallback_locale.to_string()),
-                };
-            }
-        }
+    if let Some(fallback_locale) = fallback_locale
+        && fallback_locale != requested
+        && let Some(item) = items
+            .iter()
+            .find(|item| locale_tags_match(locale_of(item), fallback_locale))
+    {
+        return ResolvedLocale {
+            item: Some(item),
+            effective_locale: normalize_locale_tag(fallback_locale)
+                .unwrap_or_else(|| fallback_locale.to_string()),
+        };
     }
 
     if let Some(item) = items

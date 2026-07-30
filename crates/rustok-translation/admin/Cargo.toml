@@ -49,6 +49,10 @@ serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
 async-graphql.workspace = true
+axum.workspace = true
 rustok-translation = { workspace = true, features = ["graphql"] }
+sea-orm-migration.workspace = true
+serde_qs.workspace = true
 tokio.workspace = true

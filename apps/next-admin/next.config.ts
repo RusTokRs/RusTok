@@ -41,7 +41,10 @@ const baseConfig: NextConfig = {
   // (e.g. @rustok/blog-admin at file:../../crates/...) can resolve node_modules
   // from the workspace junction at the repo root.
   turbopack: {
-    root: path.resolve(__dirname, '../..')
+    root: path.resolve(__dirname, '../..'),
+    resolveAlias: {
+      'next-intl': './node_modules/next-intl'
+    }
   },
   webpack(config) {
     // Allow @rustok/blog-admin (and other local crate UI packages) to resolve

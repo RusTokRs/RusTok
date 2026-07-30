@@ -155,12 +155,14 @@ pub fn strict_oci_distribution_client_with_policy(
     policy: OciRegistryTransportPolicy,
 ) -> Result<Client, String> {
     policy.validate()?;
-    let mut config = ClientConfig::default();
-    config.protocol = ClientProtocol::Https;
-    config.accept_invalid_certificates = !policy.verify_tls;
-    config.platform_resolver = None;
-    config.max_concurrent_upload = policy.max_concurrent_requests;
-    config.max_concurrent_download = policy.max_concurrent_requests;
+    let config = ClientConfig {
+        protocol: ClientProtocol::Https,
+        accept_invalid_certificates: !policy.verify_tls,
+        platform_resolver: None,
+        max_concurrent_upload: policy.max_concurrent_requests,
+        max_concurrent_download: policy.max_concurrent_requests,
+        ..Default::default()
+    };
     Client::try_from(config).map_err(|error| error.to_string())
 }
 
@@ -403,7 +405,7 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
                 MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE.to_string(),
                 None,
             );
-            let mut manifest = OciImageManifest::build(&[layer.clone()], &config, None);
+            let mut manifest = OciImageManifest::build(std::slice::from_ref(&layer), &config, None);
             manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
             manifest.artifact_type = Some(layer.media_type.clone());
             self.client
@@ -502,7 +504,7 @@ impl OciDistributionArtifactPublisher {
             None,
         );
         let config = Config::new(artifact.config.bytes, artifact.config.media_type, None);
-        let mut manifest = OciImageManifest::build(&[layer.clone()], &config, None);
+        let mut manifest = OciImageManifest::build(std::slice::from_ref(&layer), &config, None);
         manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
         manifest.artifact_type = Some(artifact.layer.media_type);
         self.client

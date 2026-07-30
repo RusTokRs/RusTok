@@ -33,16 +33,17 @@ observe the generated execution UUID before a timeout or restart.
 - Does not depend on owner modules, provider SDKs, GraphQL, server hosts, or
   persistence crates.
 
-The bridge is not enabled in the production profile yet. `rustok-ai` now has the content-free
-execution/attempt/accounting schema, idempotent ledger, leases, cancellation
-receipts, budget reservations, exact task catalog, and a private executor with
-ordered inference/fallback, cancellation/deadline observation, and authenticated
-encrypted TTL-bound terminal-result replay without duplicate billing. Runtime
-tenant accounting-policy provisioning, deployment keyring publication, and
-scheduler recovery/result cleanup now exist. The optional distribution feature
-`ai-translation` publishes the Translation-owned lazy runtime factory without
-host capability imports; production-profile enablement and live
-failure/restart evidence remain open.
+The production server profile selects the distribution-owned `ai-translation`
+feature. `rustok-ai` provides the content-free execution/attempt/accounting
+schema, idempotent ledger, leases, cancellation receipts, budget reservations,
+exact task catalog, and a private executor with ordered inference/fallback,
+cancellation/deadline observation, and authenticated encrypted TTL-bound
+terminal-result replay without duplicate billing. Runtime tenant
+accounting-policy provisioning, deployment keyring publication, and scheduler
+recovery/result cleanup exist. Composition evidence verifies that the
+Translation-owned lazy factory is published without host capability imports
+and resolves to no machine provider when the deployment keyring is absent.
+Live external-provider failure/restart evidence remains open.
 
 ## Entry points
 

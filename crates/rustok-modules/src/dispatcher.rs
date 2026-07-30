@@ -59,6 +59,27 @@ impl ArtifactBindingExecutionContext {
     }
 }
 
+pub struct ArtifactCommandBindingRequest<'a> {
+    pub release: &'a ArtifactReleaseRef,
+    pub bindings: &'a [ModuleRuntimeBinding],
+    pub target: ArtifactInstallationTarget,
+    pub tenant_id: uuid::Uuid,
+    pub binding_id: &'a str,
+    pub input: serde_json::Value,
+    pub context: ArtifactBindingExecutionContext,
+}
+
+pub struct ArtifactHttpBindingRequest<'a> {
+    pub release: &'a ArtifactReleaseRef,
+    pub bindings: &'a [ModuleRuntimeBinding],
+    pub target: ArtifactInstallationTarget,
+    pub tenant_id: uuid::Uuid,
+    pub method: ModuleHttpMethod,
+    pub path: &'a str,
+    pub body: serde_json::Value,
+    pub context: ArtifactBindingExecutionContext,
+}
+
 /// The only artifact runtime dispatch envelope supported by the v1 module
 /// control plane. The host owns every field except `payload`; artifacts cannot
 /// select a binding, execution phase, or installation through their input.
@@ -337,14 +358,16 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             self.artifact_executor.ok_or_else(|| {
                 ModuleDispatchError::ArtifactExecutorUnavailable(module_slug.to_string())
             })?,
-            release,
-            &definition.bindings,
-            ArtifactInstallationTarget::CurrentRelease,
-            tenant_id,
-            method,
-            path,
-            body,
-            context,
+            ArtifactHttpBindingRequest {
+                release,
+                bindings: &definition.bindings,
+                target: ArtifactInstallationTarget::CurrentRelease,
+                tenant_id,
+                method,
+                path,
+                body,
+                context,
+            },
         )
         .await
     }
@@ -380,17 +403,20 @@ pub fn find_artifact_command_binding<'a>(
 /// artifact cannot create a command route or select another installation.
 pub async fn dispatch_artifact_command_binding<E>(
     executor: &E,
-    release: &ArtifactReleaseRef,
-    bindings: &[ModuleRuntimeBinding],
-    target: ArtifactInstallationTarget,
-    tenant_id: uuid::Uuid,
-    binding_id: &str,
-    input: serde_json::Value,
-    context: ArtifactBindingExecutionContext,
+    request: ArtifactCommandBindingRequest<'_>,
 ) -> Result<serde_json::Value, ModuleDispatchError>
 where
     E: ArtifactBindingExecutor + ?Sized,
 {
+    let ArtifactCommandBindingRequest {
+        release,
+        bindings,
+        target,
+        tenant_id,
+        binding_id,
+        input,
+        context,
+    } = request;
     if !context.is_valid() {
         return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
     }
@@ -419,18 +445,21 @@ where
 /// use this owner helper so JSON limits and envelope shape stay identical.
 pub async fn dispatch_artifact_http_binding<E>(
     executor: &E,
-    release: &ArtifactReleaseRef,
-    bindings: &[ModuleRuntimeBinding],
-    target: ArtifactInstallationTarget,
-    tenant_id: uuid::Uuid,
-    method: ModuleHttpMethod,
-    path: &str,
-    body: serde_json::Value,
-    context: ArtifactBindingExecutionContext,
+    request: ArtifactHttpBindingRequest<'_>,
 ) -> Result<serde_json::Value, ModuleDispatchError>
 where
     E: ArtifactBindingExecutor + ?Sized,
 {
+    let ArtifactHttpBindingRequest {
+        release,
+        bindings,
+        target,
+        tenant_id,
+        method,
+        path,
+        body,
+        context,
+    } = request;
     if !context.is_valid() {
         return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
     }

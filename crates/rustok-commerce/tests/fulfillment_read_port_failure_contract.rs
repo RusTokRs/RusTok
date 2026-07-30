@@ -13,17 +13,20 @@ use rustok_api::{
     PortError, PortErrorKind, RequestContext, TenantContext, TenantContextExtension,
     graphql::GraphqlRuntimeInputs,
 };
+use rustok_commerce::MarketplaceFinancialRuntime;
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::graphql_runtime::{
     CommerceFulfillmentLifecycleReadRuntime, CommerceOrderReadRuntime,
     CommerceShippingOptionReadRuntime, CommerceShippingOptionReadScope,
 };
-use rustok_commerce::{MarketplaceFinancialRuntime};
 use rustok_fulfillment::{
     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentProjectionPage, FulfillmentReadPort,
     FulfillmentResponse, ListFulfillmentProjectionsRequest, ReadFulfillmentProjectionRequest,
 };
-use rustok_order::{OrderService, dto::{CreateOrderInput, CreateOrderLineItemInput}};
+use rustok_order::{
+    OrderService,
+    dto::{CreateOrderInput, CreateOrderLineItemInput},
+};
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{Value, json};
@@ -206,10 +209,7 @@ fn host_runtime(
         .with_shared_value(CommerceFulfillmentLifecycleReadRuntime::new(
             fulfillment_port,
         ))
-        .with_shared_value(CommerceOrderReadRuntime::in_process(
-            db.clone(),
-            event_bus,
-        ))
+        .with_shared_value(CommerceOrderReadRuntime::in_process(db.clone(), event_bus))
 }
 
 fn graphql_schema(

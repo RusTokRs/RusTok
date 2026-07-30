@@ -14,6 +14,9 @@
 
 - `rustok-product` owns module-owned admin/storefront UI packages, native `#[server]` internal paths and product-owned GraphQL contract types; the umbrella `rustok-commerce` remains the ecommerce composition layer, but does not mask the product owner boundary.
 - The storefront read-side for published catalog now lives in `rustok-product/storefront` and uses host-neutral native Leptos server functions over `CatalogService` with `HostRuntimeContext` DB/event-bus handles, keeping the GraphQL storefront contract as a fallback.
+- Storefront catalog filters, sorting, and pagination are carried together in
+  `StorefrontProductListQuery`; transports construct this owner query instead
+  of passing page controls as an independent positional service contract.
 - Product CRUD in the admin UI has been moved out of `rustok-commerce-admin`
   into the module-owned route `product`; native server functions are the monolith/hydrate selected path,
   and GraphQL is maintained in parallel without returning ownership to the umbrella `rustok-commerce`;

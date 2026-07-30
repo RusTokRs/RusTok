@@ -3,10 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustok_iggy::{
-    DlqDuplicateAlertPolicy, DlqDuplicateAlertRuntimePublisher,
-    DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeSubscriber,
-    IggyDlqDuplicateAlertMovingWindowConfig, IggyDlqDuplicateAlertObserver, IggyMode,
-    IggyTransport,
+    DlqDuplicateAlertPolicy, DlqDuplicateAlertRuntimePublisher, DlqDuplicateAlertRuntimeSnapshot,
+    DlqDuplicateAlertRuntimeSubscriber, IggyDlqDuplicateAlertMovingWindowConfig,
+    IggyDlqDuplicateAlertObserver, IggyMode, IggyTransport,
 };
 use tokio::task::JoinHandle;
 
@@ -23,8 +22,7 @@ const START_OFFSET_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET";
 const MAX_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES";
 const PER_PARTITION_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES";
 const BATCH_SIZE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE";
-const ROLLING_MAX_CYCLES_ENV: &str =
-    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_CYCLES";
+const ROLLING_MAX_CYCLES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_CYCLES";
 const ROLLING_MAX_OBSERVATIONS_PER_CYCLE_ENV: &str =
     "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_OBSERVATIONS_PER_CYCLE";
 const WARNING_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_WARNING_MESSAGES";

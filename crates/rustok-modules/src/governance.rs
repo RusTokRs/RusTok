@@ -955,12 +955,12 @@ impl ModuleValidationStageReportCommand {
         if self.requeue != (self.status == "queued") {
             return Err(ModuleGovernanceError::InvalidValidationStageRequeue);
         }
-        if let Some(reason_code) = &self.reason_code {
-            if !REGISTRY_VALIDATION_STAGE_REASON_CODES.contains(&reason_code.as_str()) {
-                return Err(ModuleGovernanceError::InvalidValidationStageReasonCode(
-                    reason_code.clone(),
-                ));
-            }
+        if let Some(reason_code) = &self.reason_code
+            && !REGISTRY_VALIDATION_STAGE_REASON_CODES.contains(&reason_code.as_str())
+        {
+            return Err(ModuleGovernanceError::InvalidValidationStageReasonCode(
+                reason_code.clone(),
+            ));
         }
         Ok(())
     }
@@ -980,12 +980,12 @@ impl ModuleRemoteValidationTerminalCommand {
         if self.claim_id.trim().is_empty() || self.runner_id.trim().is_empty() {
             return Err(ModuleGovernanceError::InvalidRemoteValidationLeaseCommand);
         }
-        if let Some(reason_code) = &self.reason_code {
-            if !REGISTRY_VALIDATION_STAGE_REASON_CODES.contains(&reason_code.as_str()) {
-                return Err(ModuleGovernanceError::InvalidValidationStageReasonCode(
-                    reason_code.clone(),
-                ));
-            }
+        if let Some(reason_code) = &self.reason_code
+            && !REGISTRY_VALIDATION_STAGE_REASON_CODES.contains(&reason_code.as_str())
+        {
+            return Err(ModuleGovernanceError::InvalidValidationStageReasonCode(
+                reason_code.clone(),
+            ));
         }
         Ok(())
     }
@@ -1915,16 +1915,18 @@ impl SeaOrmModuleGovernanceService {
                     &self.infrastructure,
                     &tx,
                     backend,
-                    &command.request_id,
-                    &slug,
-                    &version,
-                    stage.key,
-                    &command.actor_principal,
-                    &format!(
-                        "Platform build evidence satisfied validation stage '{}'.",
-                        stage.key
-                    ),
-                    "platform_build_evidence_passed",
+                    OwnerEvidenceStage {
+                        request_id: &command.request_id,
+                        slug: &slug,
+                        version: &version,
+                        stage_key: stage.key,
+                        actor_principal: &command.actor_principal,
+                        detail: &format!(
+                            "Platform build evidence satisfied validation stage '{}'.",
+                            stage.key
+                        ),
+                        reason_code: "platform_build_evidence_passed",
+                    },
                 )
                 .await?;
             }
@@ -1939,16 +1941,18 @@ impl SeaOrmModuleGovernanceService {
                 &self.infrastructure,
                 &tx,
                 backend,
-                &command.request_id,
-                &slug,
-                &version,
-                stage.key,
-                &command.actor_principal,
-                &format!(
-                    "Platform build evidence satisfied validation stage '{}'.",
-                    stage.key
-                ),
-                "platform_build_evidence_passed",
+                OwnerEvidenceStage {
+                    request_id: &command.request_id,
+                    slug: &slug,
+                    version: &version,
+                    stage_key: stage.key,
+                    actor_principal: &command.actor_principal,
+                    detail: &format!(
+                        "Platform build evidence satisfied validation stage '{}'.",
+                        stage.key
+                    ),
+                    reason_code: "platform_build_evidence_passed",
+                },
             )
             .await?;
         }
@@ -4163,12 +4167,14 @@ impl SeaOrmModuleGovernanceService {
                     &self.infrastructure,
                     &tx,
                     backend,
-                    &command,
-                    &request_id,
-                    &slug,
-                    &version,
-                    attempt_number,
-                    &queue_reason,
+                    InvalidValidationWorkItem {
+                        command: &command,
+                        request_id: &request_id,
+                        slug: &slug,
+                        version: &version,
+                        attempt_number,
+                        queue_reason: &queue_reason,
+                    },
                 )
                 .await?;
                 tx.commit()
@@ -4332,12 +4338,12 @@ impl SeaOrmModuleGovernanceService {
             ModuleValidationJobResultOutcome::Passed => tx.execute(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_publish_requests SET status = 'approved', validation_warnings = {}, validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = {now}, approved_by_principal = {}, approved_at = {now}, updated_at = {now} WHERE id = {} AND status = 'validating'", mark(1), mark(2), mark(3), mark(4)),
-                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))).into(), Value::Json(Some(Box::new(serde_json::json!([])))).into(), Value::Json(Some(Box::new(command.actor_principal.clone()))).into(), request_id.clone().into()],
+                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), Value::Json(Some(Box::new(command.actor_principal.clone()))), request_id.clone().into()],
             )),
             ModuleValidationJobResultOutcome::Failed => tx.execute(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_publish_requests SET status = 'rejected', validation_warnings = {}, validation_errors = {}, rejected_by_principal = {}, rejection_reason = {}, validated_at = {now}, approved_by_principal = NULL, approved_at = NULL, published_at = NULL, updated_at = {now} WHERE id = {} AND status = 'validating'", mark(1), mark(2), mark(3), mark(4), mark(5)),
-                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))).into(), Value::Json(Some(Box::new(serde_json::json!(errors.clone())))).into(), Value::Json(Some(Box::new(command.actor_principal.clone()))).into(), last_error.clone().into(), request_id.clone().into()],
+                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!(errors.clone())))), Value::Json(Some(Box::new(command.actor_principal.clone()))), last_error.clone().into(), request_id.clone().into()],
             )),
         }.await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if request_updated.rows_affected() != 1 {
@@ -6301,18 +6307,31 @@ fn validation_stage_actor_label(
         .ok_or(ModuleGovernanceError::InvalidValidationStageReportCommand)
 }
 
+struct OwnerEvidenceStage<'a> {
+    request_id: &'a str,
+    slug: &'a str,
+    version: &'a str,
+    stage_key: &'a str,
+    actor_principal: &'a serde_json::Value,
+    detail: &'a str,
+    reason_code: &'a str,
+}
+
 async fn pass_owner_evidence_validation_stage(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
     backend: DbBackend,
-    request_id: &str,
-    slug: &str,
-    version: &str,
-    stage_key: &str,
-    actor_principal: &serde_json::Value,
-    detail: &str,
-    reason_code: &str,
+    stage: OwnerEvidenceStage<'_>,
 ) -> Result<(), ModuleGovernanceError> {
+    let OwnerEvidenceStage {
+        request_id,
+        slug,
+        version,
+        stage_key,
+        actor_principal,
+        detail,
+        reason_code,
+    } = stage;
     let mark = |n| placeholder(backend, n);
     let now = database_now(backend);
     let Some(stage) = tx
@@ -6537,13 +6556,15 @@ async fn reconcile_external_prebuilt_security_stage(
         infrastructure,
         tx,
         backend,
-        request_id,
-        &slug,
-        &version,
-        "security_policy_review",
-        actor_principal,
-        "External provenance, quarantine, author-signature, and admitted signature/SBOM/SLSA/vulnerability evidence satisfied the security policy stage.",
-        "external_supply_chain_evidence_passed",
+        OwnerEvidenceStage {
+            request_id,
+            slug: &slug,
+            version: &version,
+            stage_key: "security_policy_review",
+            actor_principal,
+            detail: "External provenance, quarantine, author-signature, and admitted signature/SBOM/SLSA/vulnerability evidence satisfied the security policy stage.",
+            reason_code: "external_supply_chain_evidence_passed",
+        },
     )
     .await
 }
@@ -6637,28 +6658,42 @@ async fn reconcile_alloy_authored_security_stage(
         infrastructure,
         tx,
         backend,
-        request_id,
-        &slug,
-        &version,
-        "security_policy_review",
-        actor_principal,
-        "Reviewed Alloy source, capability-free production sandbox smoke, author-signature, and exact platform-admission evidence satisfied the security policy stage.",
-        "alloy_sandbox_evidence_passed",
+        OwnerEvidenceStage {
+            request_id,
+            slug: &slug,
+            version: &version,
+            stage_key: "security_policy_review",
+            actor_principal,
+            detail: "Reviewed Alloy source, capability-free production sandbox smoke, author-signature, and exact platform-admission evidence satisfied the security policy stage.",
+            reason_code: "alloy_sandbox_evidence_passed",
+        },
     )
     .await
+}
+
+struct InvalidValidationWorkItem<'a> {
+    command: &'a ModuleValidationJobClaimCommand,
+    request_id: &'a str,
+    slug: &'a str,
+    version: &'a str,
+    attempt_number: i32,
+    queue_reason: &'a str,
 }
 
 async fn terminalize_invalid_validation_work_item(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
     backend: DbBackend,
-    command: &ModuleValidationJobClaimCommand,
-    request_id: &str,
-    slug: &str,
-    version: &str,
-    attempt_number: i32,
-    queue_reason: &str,
+    item: InvalidValidationWorkItem<'_>,
 ) -> Result<(), ModuleGovernanceError> {
+    let InvalidValidationWorkItem {
+        command,
+        request_id,
+        slug,
+        version,
+        attempt_number,
+        queue_reason,
+    } = item;
     let mark = |n| {
         if backend == DbBackend::Postgres {
             format!("${n}")
@@ -6688,8 +6723,8 @@ async fn terminalize_invalid_validation_work_item(
                 mark(4),
             ),
             vec![
-                Value::Json(Some(Box::new(errors.clone()))).into(),
-                Value::Json(Some(Box::new(command.actor_principal.clone()))).into(),
+                Value::Json(Some(Box::new(errors.clone()))),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 VALIDATION_WORK_ITEM_INVALID_ERROR.to_string().into(),
                 request_id.to_string().into(),
             ],
@@ -6768,8 +6803,8 @@ async fn terminalize_invalid_validation_work_item(
                 slug.to_string().into(),
                 request_id.to_string().into(),
                 event_type.into(),
-                Value::Json(Some(Box::new(command.actor_principal.clone()))).into(),
-                Value::Json(Some(Box::new(details))).into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                Value::Json(Some(Box::new(details))),
             ],
         ))
         .await
@@ -7007,7 +7042,7 @@ fn derive_governance_validation_stages(
                 .details
                 .get("status")
                 .and_then(serde_json::Value::as_str)
-                .unwrap_or_else(|| match event.snapshot.event_type.as_str() {
+                .unwrap_or(match event.snapshot.event_type.as_str() {
                     "follow_up_gate_passed" => "passed",
                     "follow_up_gate_failed" => "failed",
                     _ => "queued",
@@ -7148,7 +7183,7 @@ fn derive_governance_follow_up_gates(
                 .details
                 .get("status")
                 .and_then(serde_json::Value::as_str)
-                .unwrap_or_else(|| match event.snapshot.event_type.as_str() {
+                .unwrap_or(match event.snapshot.event_type.as_str() {
                     "follow_up_gate_passed" => "passed",
                     "follow_up_gate_failed" => "failed",
                     _ => "pending",

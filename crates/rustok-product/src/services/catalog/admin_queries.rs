@@ -47,40 +47,24 @@ impl CatalogService {
 
         let total = query.clone().count(&self.db).await?;
         let query = match (list_query.sort_by, list_query.sort_direction) {
-            (
-                StorefrontProductSortBy::PublishedAt,
-                StorefrontProductSortDirection::Asc,
-            ) => query
+            (StorefrontProductSortBy::PublishedAt, StorefrontProductSortDirection::Asc) => query
                 .order_by_asc(entities::product::Column::PublishedAt)
                 .order_by_asc(entities::product::Column::CreatedAt)
                 .order_by_asc(entities::product::Column::Id),
-            (
-                StorefrontProductSortBy::PublishedAt,
-                StorefrontProductSortDirection::Desc,
-            ) => query
+            (StorefrontProductSortBy::PublishedAt, StorefrontProductSortDirection::Desc) => query
                 .order_by_desc(entities::product::Column::PublishedAt)
                 .order_by_desc(entities::product::Column::CreatedAt)
                 .order_by_desc(entities::product::Column::Id),
-            (
-                StorefrontProductSortBy::CreatedAt,
-                StorefrontProductSortDirection::Asc,
-            ) => query
+            (StorefrontProductSortBy::CreatedAt, StorefrontProductSortDirection::Asc) => query
                 .order_by_asc(entities::product::Column::CreatedAt)
                 .order_by_asc(entities::product::Column::PublishedAt)
                 .order_by_asc(entities::product::Column::Id),
-            (
-                StorefrontProductSortBy::CreatedAt,
-                StorefrontProductSortDirection::Desc,
-            ) => query
+            (StorefrontProductSortBy::CreatedAt, StorefrontProductSortDirection::Desc) => query
                 .order_by_desc(entities::product::Column::CreatedAt)
                 .order_by_desc(entities::product::Column::PublishedAt)
                 .order_by_desc(entities::product::Column::Id),
         };
-        let products = query
-            .offset(offset)
-            .limit(per_page)
-            .all(&self.db)
-            .await?;
+        let products = query.offset(offset).limit(per_page).all(&self.db).await?;
         let product_ids = products
             .iter()
             .map(|product| product.id)

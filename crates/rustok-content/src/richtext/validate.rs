@@ -200,7 +200,7 @@ fn validate_text_node(
 }
 
 fn validate_marks(
-    marks: &mut Vec<RichTextMark>,
+    marks: &mut [RichTextMark],
     profile: RichTextProfile,
     path: &str,
     stats: &mut Stats,
@@ -392,12 +392,12 @@ fn normalize_link_attrs(
     ensure_only_keys(attrs, &["href", "target", "rel", "class"], path)?;
 
     for default_key in ["target", "rel", "class"] {
-        if let Some(value) = attrs.get(default_key) {
-            if !value.is_null() {
-                return Err(RichTextError::InvalidAttribute {
-                    path: field_path(path, &format!("attrs.{default_key}")),
-                });
-            }
+        if let Some(value) = attrs.get(default_key)
+            && !value.is_null()
+        {
+            return Err(RichTextError::InvalidAttribute {
+                path: field_path(path, &format!("attrs.{default_key}")),
+            });
         }
         attrs.remove(default_key);
     }

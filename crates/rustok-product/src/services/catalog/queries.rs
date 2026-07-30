@@ -16,9 +16,7 @@ impl CatalogService {
             locale,
             fallback_locale,
             public_channel_slug,
-            StorefrontProductListQuery::default(),
-            page,
-            per_page,
+            StorefrontProductListQuery::default().with_pagination(page, per_page),
         )
         .await
     }
@@ -31,10 +29,10 @@ impl CatalogService {
         fallback_locale: Option<&str>,
         public_channel_slug: Option<&str>,
         list_query: StorefrontProductListQuery,
-        page: u64,
-        per_page: u64,
     ) -> CommerceResult<StorefrontProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        let page = list_query.page;
+        let per_page = list_query.per_page;
         if page == 0 || per_page == 0 || per_page > 48 {
             return Err(CommerceError::Validation(
                 "page must be at least 1 and per_page must be between 1 and 48".to_owned(),
@@ -77,40 +75,24 @@ impl CatalogService {
         }
         let total = query.clone().count(&self.db).await?;
         let query = match (list_query.sort_by, list_query.sort_direction) {
-            (
-                StorefrontProductSortBy::PublishedAt,
-                StorefrontProductSortDirection::Asc,
-            ) => query
+            (StorefrontProductSortBy::PublishedAt, StorefrontProductSortDirection::Asc) => query
                 .order_by_asc(entities::product::Column::PublishedAt)
                 .order_by_asc(entities::product::Column::CreatedAt)
                 .order_by_asc(entities::product::Column::Id),
-            (
-                StorefrontProductSortBy::PublishedAt,
-                StorefrontProductSortDirection::Desc,
-            ) => query
+            (StorefrontProductSortBy::PublishedAt, StorefrontProductSortDirection::Desc) => query
                 .order_by_desc(entities::product::Column::PublishedAt)
                 .order_by_desc(entities::product::Column::CreatedAt)
                 .order_by_desc(entities::product::Column::Id),
-            (
-                StorefrontProductSortBy::CreatedAt,
-                StorefrontProductSortDirection::Asc,
-            ) => query
+            (StorefrontProductSortBy::CreatedAt, StorefrontProductSortDirection::Asc) => query
                 .order_by_asc(entities::product::Column::CreatedAt)
                 .order_by_asc(entities::product::Column::PublishedAt)
                 .order_by_asc(entities::product::Column::Id),
-            (
-                StorefrontProductSortBy::CreatedAt,
-                StorefrontProductSortDirection::Desc,
-            ) => query
+            (StorefrontProductSortBy::CreatedAt, StorefrontProductSortDirection::Desc) => query
                 .order_by_desc(entities::product::Column::CreatedAt)
                 .order_by_desc(entities::product::Column::PublishedAt)
                 .order_by_desc(entities::product::Column::Id),
         };
-        let products = query
-            .offset(offset)
-            .limit(per_page)
-            .all(&self.db)
-            .await?;
+        let products = query.offset(offset).limit(per_page).all(&self.db).await?;
         let product_ids = products
             .iter()
             .map(|product| product.id)

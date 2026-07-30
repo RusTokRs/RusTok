@@ -356,12 +356,12 @@ impl CartService {
             .all(&txn)
             .await?;
 
-        if let Some(line_item_id) = line_item_id {
-            if !line_items.iter().any(|item| item.id == line_item_id) {
-                return Err(CartError::Validation(format!(
-                    "cart line item {line_item_id} does not belong to cart {cart_id}"
-                )));
-            }
+        if let Some(line_item_id) = line_item_id
+            && !line_items.iter().any(|item| item.id == line_item_id)
+        {
+            return Err(CartError::Validation(format!(
+                "cart line item {line_item_id} does not belong to cart {cart_id}"
+            )));
         }
 
         let base_amount = match scope {

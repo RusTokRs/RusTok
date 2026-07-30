@@ -164,6 +164,7 @@ leptos-next-metadata = "1.5.0"
 leptos_query = "0.5.3"
 leptos-chartistry = "0.2"
 gloo-storage = "0.4.0"
+serde_qs = "0.15"
 serde_urlencoded = "0.7.1"
 chrono-humanize = "0.2.3"
 

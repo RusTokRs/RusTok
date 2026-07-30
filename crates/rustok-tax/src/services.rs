@@ -190,12 +190,11 @@ impl TaxService {
 }
 
 fn resolve_provider_id(channel_id: Option<Uuid>, policy: &TaxPolicySnapshot) -> TaxResult<String> {
-    if channel_id.is_some() {
-        if let Some(channel_provider_id) =
+    if channel_id.is_some()
+        && let Some(channel_provider_id) =
             normalize_provider_id(policy.channel_provider_id.as_deref())?
-        {
-            return Ok(channel_provider_id);
-        }
+    {
+        return Ok(channel_provider_id);
     }
     if let Some(provider_id) = normalize_provider_id(policy.provider_id.as_deref())? {
         return Ok(provider_id);

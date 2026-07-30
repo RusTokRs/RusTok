@@ -89,10 +89,10 @@ impl ProfileService {
     ) -> ProfileResult<Vec<String>> {
         let mut locales = Vec::new();
         for candidate in [requested_locale, preferred_locale, tenant_default_locale] {
-            if let Some(locale) = Self::normalize_locale(candidate)? {
-                if !locales.contains(&locale) {
-                    locales.push(locale);
-                }
+            if let Some(locale) = Self::normalize_locale(candidate)?
+                && !locales.contains(&locale)
+            {
+                locales.push(locale);
             }
         }
         Ok(locales)
@@ -511,10 +511,10 @@ impl ProfileService {
             .one(&self.db)
             .await?;
 
-        if let Some(existing) = existing {
-            if Some(existing.user_id) != except_user_id {
-                return Err(ProfileError::DuplicateHandle(handle.to_string()));
-            }
+        if let Some(existing) = existing
+            && Some(existing.user_id) != except_user_id
+        {
+            return Err(ProfileError::DuplicateHandle(handle.to_string()));
         }
 
         Ok(())
@@ -1024,10 +1024,9 @@ fn collect_batch_locales(
 
     for profile in profiles {
         if let Some(locale) = ProfileService::normalize_locale(profile.preferred_locale.as_deref())?
+            && !locales.contains(&locale)
         {
-            if !locales.contains(&locale) {
-                locales.push(locale);
-            }
+            locales.push(locale);
         }
     }
 

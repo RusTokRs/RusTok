@@ -259,7 +259,8 @@ pub fn attach_schema_data(
         product_catalog_read_runtime: inputs
             .shared_get::<ProductCatalogReadRuntime>()
             .ok_or_else(|| {
-                "commerce GraphQL requires ProductCatalogReadRuntime in host composition".to_string()
+                "commerce GraphQL requires ProductCatalogReadRuntime in host composition"
+                    .to_string()
             })?,
     })
 }

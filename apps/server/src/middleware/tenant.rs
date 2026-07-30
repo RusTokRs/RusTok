@@ -29,7 +29,7 @@ use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_CACHE_VERSION: &str = "v2";
-const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 1;
+const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 2;
 const TENANT_NEGATIVE_SCHEMA_VERSION: u32 = 1;
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -45,6 +45,49 @@ const TENANT_CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 enum CachedTenantMiss {
     NotFound,
     Disabled,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct CachedTenantContext {
+    id: uuid::Uuid,
+    name: String,
+    slug: String,
+    domain: Option<String>,
+    settings_json: String,
+    default_locale: String,
+    is_active: bool,
+}
+
+impl TryFrom<TenantContext> for CachedTenantContext {
+    type Error = serde_json::Error;
+
+    fn try_from(context: TenantContext) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: context.id,
+            name: context.name,
+            slug: context.slug,
+            domain: context.domain,
+            settings_json: serde_json::to_string(&context.settings)?,
+            default_locale: context.default_locale,
+            is_active: context.is_active,
+        })
+    }
+}
+
+impl TryFrom<CachedTenantContext> for TenantContext {
+    type Error = serde_json::Error;
+
+    fn try_from(context: CachedTenantContext) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: context.id,
+            name: context.name,
+            slug: context.slug,
+            domain: context.domain,
+            settings: serde_json::from_str(&context.settings_json)?,
+            default_locale: context.default_locale,
+            is_active: context.is_active,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -517,10 +560,15 @@ impl TenantCacheInfrastructure {
                 self.load_policy.clone(),
                 || async move {
                     let context = loader().await?;
+                    let cached = CachedTenantContext::try_from(context).map_err(|error| {
+                        CoreError::Cache(format!(
+                            "tenant cache settings serialization failed: {error}"
+                        ))
+                    })?;
                     let generated_at = current_unix_ms().map_err(|error| {
                         CoreError::Cache(format!("tenant cache timestamp creation failed: {error}"))
                     })?;
-                    CacheEnvelope::new(TENANT_CONTEXT_SCHEMA_VERSION, generated_at, context)
+                    CacheEnvelope::new(TENANT_CONTEXT_SCHEMA_VERSION, generated_at, cached)
                         .and_then(|envelope| {
                             envelope.with_expirations(
                                 None,
@@ -549,7 +597,11 @@ impl TenantCacheInfrastructure {
                 .await;
         }
 
-        Ok(result.value)
+        TenantContext::try_from(result.value).map_err(|error| {
+            TenantContextLoadError::CacheUnavailable(format!(
+                "tenant cache settings deserialization failed: {error}"
+            ))
+        })
     }
 }
 

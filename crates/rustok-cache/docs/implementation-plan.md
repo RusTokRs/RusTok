@@ -17,6 +17,21 @@ Completed execution history does not belong here.
 
 Last reconciled with `main`: 2026-07-17.
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - the module-owned Next admin package exposes cache health through its own
+    GraphQL API and UI boundary;
+  - the client-safe shell registration entrypoint is separated from server
+    page exports, and the client status component consumes the host
+    `next-intl` provider;
+  - live browser and backend transport parity evidence remains required.
+- Last verified at (UTC): 2026-07-29
+- Owner: Cache module maintainers
+
 ## Ownership boundary
 
 - `rustok-cache` owns backend selection, Redis lifecycle/timeouts, bounded memory policy, degraded

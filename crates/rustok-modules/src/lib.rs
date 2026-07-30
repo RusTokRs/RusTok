@@ -150,9 +150,10 @@ pub use dependency::{
 pub use dispatcher::{
     ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION, ArtifactBindingDispatch,
     ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
-    ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactInstallationTarget,
-    ArtifactLifecycleExecutor, ModuleDispatchError, ModuleExecutionDispatcher,
-    ModuleLifecycleHookPhase, dispatch_artifact_command_binding, dispatch_artifact_http_binding,
+    ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactCommandBindingRequest,
+    ArtifactHttpBindingRequest, ArtifactInstallationTarget, ArtifactLifecycleExecutor,
+    ModuleDispatchError, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    dispatch_artifact_command_binding, dispatch_artifact_http_binding,
     find_artifact_command_binding, find_artifact_http_binding,
 };
 pub use distribution::{

@@ -897,11 +897,13 @@ impl SeaOrmArtifactEventDeliveryQueue {
                 } else {
                     complete_retryable(
                         &transaction,
-                        backend,
-                        tenant_id,
-                        worker_id,
-                        completion.delivery_id,
-                        completion.attempt,
+                        EventDeliveryClaim {
+                            backend,
+                            tenant_id,
+                            worker_id,
+                            delivery_id: completion.delivery_id,
+                            attempt: completion.attempt,
+                        },
                         error_code,
                         self.config.retry_delay_seconds(completion.attempt),
                     )
@@ -1016,11 +1018,13 @@ async fn complete_succeeded<C: ConnectionTrait>(
 ) -> Result<u64, ArtifactEventDeliveryError> {
     update_completion(
         connection,
-        backend,
-        tenant_id,
-        worker_id,
-        delivery_id,
-        attempt,
+        EventDeliveryClaim {
+            backend,
+            tenant_id,
+            worker_id,
+            delivery_id,
+            attempt,
+        },
         "status = 'succeeded', claimed_by = NULL, claimed_until = NULL, last_error_code = NULL, completed_at = ",
         None,
         now_expression(backend),
@@ -1039,11 +1043,13 @@ async fn complete_dead_letter<C: ConnectionTrait>(
 ) -> Result<u64, ArtifactEventDeliveryError> {
     update_completion(
         connection,
-        backend,
-        tenant_id,
-        worker_id,
-        delivery_id,
-        attempt,
+        EventDeliveryClaim {
+            backend,
+            tenant_id,
+            worker_id,
+            delivery_id,
+            attempt,
+        },
         "status = 'dead_letter', claimed_by = NULL, claimed_until = NULL, last_error_code = ",
         Some(error_code),
         now_expression(backend),
@@ -1051,16 +1057,27 @@ async fn complete_dead_letter<C: ConnectionTrait>(
     .await
 }
 
-async fn complete_retryable<C: ConnectionTrait>(
-    connection: &C,
+struct EventDeliveryClaim<'a> {
     backend: DbBackend,
     tenant_id: Uuid,
-    worker_id: &str,
+    worker_id: &'a str,
     delivery_id: Uuid,
     attempt: u32,
+}
+
+async fn complete_retryable<C: ConnectionTrait>(
+    connection: &C,
+    claim: EventDeliveryClaim<'_>,
     error_code: String,
     delay_seconds: u32,
 ) -> Result<u64, ArtifactEventDeliveryError> {
+    let EventDeliveryClaim {
+        backend,
+        tenant_id,
+        worker_id,
+        delivery_id,
+        attempt,
+    } = claim;
     let delay = retry_expression(backend, 2);
     let result = connection
         .execute(Statement::from_sql_and_values(
@@ -1093,15 +1110,18 @@ async fn complete_retryable<C: ConnectionTrait>(
 
 async fn update_completion<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
-    tenant_id: Uuid,
-    worker_id: &str,
-    delivery_id: Uuid,
-    attempt: u32,
+    claim: EventDeliveryClaim<'_>,
     assignment: &str,
     error_code: Option<String>,
     terminal_timestamp: &str,
 ) -> Result<u64, ArtifactEventDeliveryError> {
+    let EventDeliveryClaim {
+        backend,
+        tenant_id,
+        worker_id,
+        delivery_id,
+        attempt,
+    } = claim;
     let has_error_code = error_code.is_some();
     let (assignment, values) = match error_code {
         Some(error_code) => (

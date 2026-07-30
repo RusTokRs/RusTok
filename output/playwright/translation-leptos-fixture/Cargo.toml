@@ -1,0 +1,14 @@
+[workspace]
+
+[package]
+name = "translation-leptos-browser-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+leptos = { version = "0.8.19", features = ["csr"] }
+leptos-auth = { path = "../../../crates/leptos-auth", default-features = false, features = ["csr"] }
+leptos_router = "0.8.13"
+rustok-translation-admin = { path = "../../../crates/rustok-translation/admin", default-features = false, features = ["csr"] }
+rustok-ui-core = { path = "../../../crates/rustok-ui-core" }

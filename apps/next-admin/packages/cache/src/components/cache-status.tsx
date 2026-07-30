@@ -1,3 +1,5 @@
+'use client';
+
 import { useTranslations } from 'next-intl';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import {

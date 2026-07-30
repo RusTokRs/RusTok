@@ -107,10 +107,10 @@ impl RhaiEngine {
         scope: &mut Scope,
     ) -> RhaiResult<Arc<CompiledRhai>> {
         let source_hash = source_hash(source);
-        if let Some(compiled) = self.cache.read().get(name) {
-            if compiled.source_hash == source_hash {
-                return Ok(Arc::clone(compiled));
-            }
+        if let Some(compiled) = self.cache.read().get(name)
+            && compiled.source_hash == source_hash
+        {
+            return Ok(Arc::clone(compiled));
         }
 
         let ast = self

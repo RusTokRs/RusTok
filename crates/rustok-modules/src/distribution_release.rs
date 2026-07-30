@@ -556,16 +556,18 @@ where
         let rollback_id = self.infrastructure.new_id();
         insert_build(
             &transaction,
-            distribution_build_id,
-            distribution_state.current_build_id,
-            composition_revision,
-            &target_build.composition_digest,
-            &target_build.platform_source_reference,
-            &target_build.platform_source_digest,
-            &target_build.toolchain_digest,
-            &target_build.build_target,
-            command.actor_id,
-            &target_build.items,
+            crate::distribution::BuildInsert {
+                distribution_build_id,
+                predecessor_build_id: distribution_state.current_build_id,
+                composition_revision,
+                composition_digest: &target_build.composition_digest,
+                platform_source_reference: &target_build.platform_source_reference,
+                platform_source_digest: &target_build.platform_source_digest,
+                toolchain_digest: &target_build.toolchain_digest,
+                build_target: &target_build.build_target,
+                actor_id: command.actor_id,
+                items: &target_build.items,
+            },
         )
         .await
         .map_err(distribution_error)?;
@@ -579,15 +581,17 @@ where
         .map_err(distribution_error)?;
         insert_rollback_request(
             &transaction,
-            rollback_id,
-            from_release_id,
-            command.target_release_id,
-            distribution_build_id,
-            release_state.revision,
-            composition_revision,
-            &command.reason,
-            &command.policy_revision,
-            command.actor_id,
+            RollbackInsert {
+                rollback_id,
+                from_release_id,
+                target_release_id: command.target_release_id,
+                distribution_build_id,
+                release_state_revision: release_state.revision,
+                composition_revision,
+                reason: &command.reason,
+                policy_revision: &command.policy_revision,
+                actor_id: command.actor_id,
+            },
         )
         .await?;
         complete_rollback_operation(
@@ -950,14 +954,14 @@ fn ensure_build_ready(
         || build.failure.is_some()
         || build.requested_by.is_nil()
         || build.attempt_count == 0
-        || build.active_claim_id.map_or(true, |value| value.is_nil())
-        || build.claimed_by.as_deref().map_or(true, |value| {
+        || build.active_claim_id.is_none_or(|value| value.is_nil())
+        || build.claimed_by.as_deref().is_none_or(|value| {
             value.trim().is_empty() || value.trim() != value || value.chars().any(char::is_control)
         })
         || build
             .completion_digest
             .as_deref()
-            .map_or(true, |value| !valid_digest(value))
+            .is_none_or(|value| !valid_digest(value))
     {
         return Err(ModuleStaticDistributionReleaseError::BuildNotSucceeded);
     }
@@ -1582,18 +1586,33 @@ fn replay_activation_receipt(
     })
 }
 
-async fn insert_rollback_request(
-    transaction: &DatabaseTransaction,
+struct RollbackInsert<'a> {
     rollback_id: Uuid,
     from_release_id: Uuid,
     target_release_id: Uuid,
     distribution_build_id: Uuid,
     release_state_revision: u64,
     composition_revision: u64,
-    reason: &str,
-    policy_revision: &str,
+    reason: &'a str,
+    policy_revision: &'a str,
     actor_id: Uuid,
+}
+
+async fn insert_rollback_request(
+    transaction: &DatabaseTransaction,
+    rollback: RollbackInsert<'_>,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
+    let RollbackInsert {
+        rollback_id,
+        from_release_id,
+        target_release_id,
+        distribution_build_id,
+        release_state_revision,
+        composition_revision,
+        reason,
+        policy_revision,
+        actor_id,
+    } = rollback;
     let backend = transaction.get_database_backend();
     transaction
         .execute(Statement::from_sql_and_values(

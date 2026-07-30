@@ -61,41 +61,22 @@ impl SocialGraphService {
         &self,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
-        source_user_id: Uuid,
-        target_user_id: Uuid,
-        relation_kind: SocialRelationKind,
-        active: bool,
-        expected_revision: Option<i64>,
+        request: SocialGraphCommandReceiptRequest,
         idempotency_key: String,
     ) -> SocialGraphResult<relation::Model> {
-        validate_pair(source_user_id, target_user_id)?;
+        validate_pair(request.source_user_id, request.target_user_id)?;
         let event_bus = self
             .event_bus
             .as_ref()
             .ok_or(SocialGraphError::EventPublicationUnavailable)?;
-        let request = SocialGraphCommandReceiptRequest {
-            source_user_id,
-            target_user_id,
-            relation_kind,
-            active,
-            expected_revision,
-        };
 
         match receipts::admit(&self.db, tenant_id, idempotency_key, &request).await? {
             SocialGraphCommandReceiptAdmission::Replay(receipt) => {
-                receipts::replay(receipt, &request)
+                receipts::replay(*receipt, &request)
             }
             SocialGraphCommandReceiptAdmission::New(receipt) => {
                 let result = self
-                    .set_relation_state_in(
-                        &receipt.transaction,
-                        tenant_id,
-                        source_user_id,
-                        target_user_id,
-                        relation_kind,
-                        active,
-                        expected_revision,
-                    )
+                    .set_relation_state_in(&receipt.transaction, tenant_id, &request)
                     .await;
                 match result {
                     Ok(result) => {
@@ -118,26 +99,25 @@ impl SocialGraphService {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        source_user_id: Uuid,
-        target_user_id: Uuid,
-        relation_kind: SocialRelationKind,
-        active: bool,
-        expected_revision: Option<i64>,
+        request: &SocialGraphCommandReceiptRequest,
     ) -> SocialGraphResult<RelationMutationResult> {
         let existing = relation::Entity::find()
             .filter(relation::Column::TenantId.eq(tenant_id))
-            .filter(relation::Column::SourceUserId.eq(source_user_id))
-            .filter(relation::Column::TargetUserId.eq(target_user_id))
-            .filter(relation::Column::RelationKind.eq(relation_kind))
+            .filter(relation::Column::SourceUserId.eq(request.source_user_id))
+            .filter(relation::Column::TargetUserId.eq(request.target_user_id))
+            .filter(relation::Column::RelationKind.eq(request.relation_kind))
             .one(txn)
             .await?;
 
         let result = match existing {
             Some(existing) => {
-                if expected_revision.is_some_and(|expected| expected != existing.revision) {
+                if request
+                    .expected_revision
+                    .is_some_and(|expected| expected != existing.revision)
+                {
                     return Err(SocialGraphError::RevisionConflict);
                 }
-                if existing.active == active {
+                if existing.active == request.active {
                     RelationMutationResult {
                         relation: existing,
                         state_changed: false,
@@ -149,7 +129,7 @@ impl SocialGraphService {
                         .ok_or(SocialGraphError::RevisionConflict)?;
                     let now: DateTimeWithTimeZone = Utc::now().into();
                     let updated = relation::Entity::update_many()
-                        .col_expr(relation::Column::Active, Expr::value(active))
+                        .col_expr(relation::Column::Active, Expr::value(request.active))
                         .col_expr(relation::Column::Revision, Expr::value(next_revision))
                         .col_expr(relation::Column::UpdatedAt, Expr::value(now))
                         .filter(relation::Column::Id.eq(existing.id))
@@ -170,7 +150,7 @@ impl SocialGraphService {
                 }
             }
             None => {
-                if expected_revision.is_some() {
+                if request.expected_revision.is_some() {
                     return Err(SocialGraphError::RevisionConflict);
                 }
                 let now: DateTimeWithTimeZone = Utc::now().into();
@@ -178,12 +158,12 @@ impl SocialGraphService {
                     relation: relation::ActiveModel {
                         id: Set(Uuid::new_v4()),
                         tenant_id: Set(tenant_id),
-                        source_user_id: Set(source_user_id),
-                        target_user_id: Set(target_user_id),
-                        relation_kind: Set(relation_kind),
-                        active: Set(active),
+                        source_user_id: Set(request.source_user_id),
+                        target_user_id: Set(request.target_user_id),
+                        relation_kind: Set(request.relation_kind),
+                        active: Set(request.active),
                         revision: Set(1),
-                        created_at: Set(now.clone()),
+                        created_at: Set(now),
                         updated_at: Set(now),
                     }
                     .insert(txn)

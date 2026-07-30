@@ -114,10 +114,10 @@ impl NodeService {
 
     /// Check optimistic locking version
     fn check_version(&self, expected: Option<i32>, actual: i32) -> ContentResult<()> {
-        if let Some(expected) = expected {
-            if expected != actual {
-                return Err(ContentError::concurrent_modification(expected, actual));
-            }
+        if let Some(expected) = expected
+            && expected != actual
+        {
+            return Err(ContentError::concurrent_modification(expected, actual));
         }
         Ok(())
     }

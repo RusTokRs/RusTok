@@ -656,13 +656,13 @@ impl DataCapabilityConstraints {
                 "data idempotency_key must be a UUID",
             ));
         }
-        if let Some(revision) = input.get("expected_revision") {
-            if revision.as_u64().filter(|revision| *revision > 0).is_none() {
-                return Err(data_constraint_error(
-                    call,
-                    "data expected_revision must be a positive integer",
-                ));
-            }
+        if let Some(revision) = input.get("expected_revision")
+            && revision.as_u64().filter(|revision| *revision > 0).is_none()
+        {
+            return Err(data_constraint_error(
+                call,
+                "data expected_revision must be a positive integer",
+            ));
         }
         Ok((key, idempotency_key))
     }
@@ -782,13 +782,13 @@ impl ObjectCapabilityConstraints {
                         "object-data idempotency_key must be a UUID",
                     ));
                 }
-                if let Some(revision) = input.get("expected_revision") {
-                    if revision.as_u64().filter(|revision| *revision > 0).is_none() {
-                        return Err(data_constraint_error(
-                            call,
-                            "object-data expected_revision must be a positive integer",
-                        ));
-                    }
+                if let Some(revision) = input.get("expected_revision")
+                    && revision.as_u64().filter(|revision| *revision > 0).is_none()
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data expected_revision must be a positive integer",
+                    ));
                 }
                 Ok(())
             }

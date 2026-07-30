@@ -34,7 +34,7 @@ pub(crate) struct NewSocialGraphCommandReceipt {
 }
 
 pub(crate) enum SocialGraphCommandReceiptAdmission {
-    Replay(command_receipt::Model),
+    Replay(Box<command_receipt::Model>),
     New(NewSocialGraphCommandReceipt),
 }
 
@@ -54,7 +54,9 @@ pub(crate) async fn admit(
 ) -> SocialGraphResult<SocialGraphCommandReceiptAdmission> {
     let idempotency_key = normalize_idempotency_key(idempotency_key)?;
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
-        return Ok(SocialGraphCommandReceiptAdmission::Replay(existing));
+        return Ok(SocialGraphCommandReceiptAdmission::Replay(Box::new(
+            existing,
+        )));
     }
 
     let request_json =
@@ -70,7 +72,7 @@ pub(crate) async fn admit(
         request_json: Set(request_json),
         status: Set(STATUS_PROCESSING.to_string()),
         response_json: Set(None),
-        created_at: Set(now.clone()),
+        created_at: Set(now),
         updated_at: Set(now),
         completed_at: Set(None),
     })
@@ -90,7 +92,7 @@ pub(crate) async fn admit(
         .ok_or(SocialGraphError::CommandReceiptCorrupt)?;
     if stored.id != receipt_id {
         transaction.rollback().await?;
-        return Ok(SocialGraphCommandReceiptAdmission::Replay(stored));
+        return Ok(SocialGraphCommandReceiptAdmission::Replay(Box::new(stored)));
     }
 
     Ok(SocialGraphCommandReceiptAdmission::New(
@@ -171,7 +173,7 @@ pub(crate) async fn complete(
         )
         .col_expr(
             command_receipt::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now.clone()),
+            sea_orm::sea_query::Expr::value(now),
         )
         .col_expr(
             command_receipt::Column::CompletedAt,
@@ -211,7 +213,7 @@ pub(crate) async fn cleanup_completed(
         .filter(command_receipt::Column::SchemaVersion.eq(COMMAND_RECEIPT_SCHEMA_VERSION))
         .filter(command_receipt::Column::Status.eq(STATUS_COMPLETED))
         .filter(command_receipt::Column::CompletedAt.is_not_null())
-        .filter(command_receipt::Column::CompletedAt.lt(completed_before.clone()))
+        .filter(command_receipt::Column::CompletedAt.lt(completed_before))
         .order_by_asc(command_receipt::Column::CompletedAt)
         .order_by_asc(command_receipt::Column::Id)
         .limit(limit)

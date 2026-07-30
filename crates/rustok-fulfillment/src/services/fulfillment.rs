@@ -160,12 +160,12 @@ impl FulfillmentService {
             metadata,
         } = input;
 
-        if let Some(amount) = amount {
-            if amount < Decimal::ZERO {
-                return Err(FulfillmentError::Validation(
-                    "amount cannot be negative".to_string(),
-                ));
-            }
+        if let Some(amount) = amount
+            && amount < Decimal::ZERO
+        {
+            return Err(FulfillmentError::Validation(
+                "amount cannot be negative".to_string(),
+            ));
         }
 
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
@@ -1382,15 +1382,15 @@ fn resolve_translation<'a>(
         }
     }
 
-    if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
-        if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some(found.locale.clone()));
-        }
+    if let Some(locale) = requested_locale.and_then(normalize_locale_tag)
+        && let Some(found) = lookup.get(&locale)
+    {
+        return (Some(*found), Some(found.locale.clone()));
     }
-    if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
-        if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some(found.locale.clone()));
-        }
+    if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag)
+        && let Some(found) = lookup.get(&locale)
+    {
+        return (Some(*found), Some(found.locale.clone()));
     }
     translations
         .first()

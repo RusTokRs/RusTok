@@ -853,15 +853,15 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                         });
                     }
                 }
-                if let Some(channel) = channel.as_ref() {
-                    if let Some(enabled) = channel_bindings.get(definition.slug.as_str()) {
-                        facts.push(ModuleEffectivePolicyFact::ChannelBinding {
-                            channel_id: channel.channel_id,
-                            surface: channel.surface.clone(),
-                            channel_revision: channel.channel_revision.clone(),
-                            enabled: *enabled,
-                        });
-                    }
+                if let Some(channel) = channel.as_ref()
+                    && let Some(enabled) = channel_bindings.get(definition.slug.as_str())
+                {
+                    facts.push(ModuleEffectivePolicyFact::ChannelBinding {
+                        channel_id: channel.channel_id,
+                        surface: channel.surface.clone(),
+                        channel_revision: channel.channel_revision.clone(),
+                        enabled: *enabled,
+                    });
                 }
                 if let Some(maintenance) = maintenance.as_ref() {
                     facts.push(ModuleEffectivePolicyFact::Maintenance {
@@ -1089,12 +1089,12 @@ fn validate_node_readiness_input(
             "observed_policy_revision must be a sha256 digest".to_string(),
         ));
     }
-    if let Some(expected) = expected_base_policy_revision {
-        if readiness.observed_policy_revision != expected {
-            return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-                "observed_policy_revision does not match the base policy revision".to_string(),
-            ));
-        }
+    if let Some(expected) = expected_base_policy_revision
+        && readiness.observed_policy_revision != expected
+    {
+        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
+            "observed_policy_revision does not match the base policy revision".to_string(),
+        ));
     }
     if readiness
         .artifact_graph_revision
@@ -1104,12 +1104,12 @@ fn validate_node_readiness_input(
             "artifact_graph_revision must be positive when present".to_string(),
         ));
     }
-    if let Some(executor_abi) = &readiness.executor_abi {
-        if !valid_text(executor_abi, 128) {
-            return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-                "executor_abi must be non-empty and at most 128 characters".to_string(),
-            ));
-        }
+    if let Some(executor_abi) = &readiness.executor_abi
+        && !valid_text(executor_abi, 128)
+    {
+        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
+            "executor_abi must be non-empty and at most 128 characters".to_string(),
+        ));
     }
     if readiness.ready
         && (!readiness.required_core_ready

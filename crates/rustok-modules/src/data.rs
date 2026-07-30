@@ -120,7 +120,7 @@ pub trait ArtifactDataQuotaPolicy: Send + Sync {
 /// Standalone policy used by the default control-plane composition and tests.
 /// A deployment can inject a stricter durable policy resolver without changing
 /// the broker or giving an artifact access to policy storage.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct FixedArtifactDataQuotaPolicy {
     quota: ArtifactDataQuota,
 }
@@ -130,14 +130,6 @@ impl FixedArtifactDataQuotaPolicy {
         Ok(Self {
             quota: quota.validate()?,
         })
-    }
-}
-
-impl Default for FixedArtifactDataQuotaPolicy {
-    fn default() -> Self {
-        Self {
-            quota: ArtifactDataQuota::default(),
-        }
     }
 }
 
@@ -956,6 +948,8 @@ impl SeaOrmArtifactDataSchemaValidator {
             .await
             .map_err(storage_error)?
             .ok_or(ArtifactDataError::DataContractUnavailable)?;
+        // A commit error can represent an unknown outcome, so retain the
+        // owner-generated chunk for session reaping instead of deleting it.
         transaction.commit().await.map_err(storage_error)?;
 
         let descriptor_value: Value = row.try_get("", "descriptor").map_err(storage_error)?;
@@ -1352,6 +1346,8 @@ where
             ))
             .await
             .map_err(storage_error)?;
+        // A commit error can represent an unknown outcome, so retain the
+        // owner-generated object for retention/GC reconciliation.
         transaction.commit().await.map_err(storage_error)?;
         row.map(record_from_row).transpose()
     }
@@ -2114,11 +2110,7 @@ where
             let _ = self.storage.objects.delete(&Path::from(stored_path)).await;
             return Err(storage_error(error));
         }
-        if let Err(error) = transaction.commit().await.map_err(storage_error) {
-            // The database outcome is unknown, so retain this owner-generated
-            // chunk for the session reaper instead of deleting a committed row.
-            return Err(error);
-        }
+        transaction.commit().await.map_err(storage_error)?;
         Ok(())
     }
 
@@ -2894,12 +2886,7 @@ where
                 return Err(error);
             }
         };
-        if let Err(error) = transaction.commit().await.map_err(storage_error) {
-            // A commit error can represent an unknown outcome. Retain this
-            // owner-generated object for retention/GC reconciliation instead
-            // of risking a delete of a now-committed object.
-            return Err(error);
-        }
+        transaction.commit().await.map_err(storage_error)?;
         if stored.storage_key != uploaded_path {
             let _ = self
                 .storage

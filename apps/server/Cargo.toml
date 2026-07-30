@@ -43,6 +43,7 @@ default = [
     "mod-seo",
     "mod-workflow",
     "mod-ai",
+    "ai-translation",
 ]
 redis-cache = []
 embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
@@ -218,6 +219,7 @@ sea-orm-migration.workspace = true
 [dev-dependencies]
 serial_test = "3.5"
 rustok-test-utils.workspace = true
+rustok-translation-admin = { path = "../../crates/rustok-translation/admin", default-features = false, features = ["ssr"] }
 tempfile = "3.27"
 tower.workspace = true
 url = "2.5"

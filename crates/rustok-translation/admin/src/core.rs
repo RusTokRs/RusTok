@@ -43,6 +43,25 @@ impl TranslationAdminTab {
             Self::Workflow => "workflow",
         }
     }
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Overview => 0,
+            Self::Jobs => 1,
+            Self::Glossaries => 2,
+            Self::Memory => 3,
+            Self::Inventory => 4,
+            Self::Workflow => 5,
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        Self::ALL[(self.index() + 1) % Self::ALL.len()]
+    }
+
+    pub const fn previous(self) -> Self {
+        Self::ALL[(self.index() + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
 }
 
 pub fn tab_from_query(value: Option<&str>) -> TranslationAdminTab {
@@ -1171,6 +1190,14 @@ mod tests {
         assert_eq!(
             tab_query_intent(TranslationAdminTab::Jobs),
             UiRouteQueryIntent::replace("tab", "jobs")
+        );
+        assert_eq!(
+            TranslationAdminTab::Overview.previous(),
+            TranslationAdminTab::Workflow
+        );
+        assert_eq!(
+            TranslationAdminTab::Workflow.next(),
+            TranslationAdminTab::Overview
         );
         assert_eq!(
             glossary_selection_intent(Some(" glossary-1 ")),

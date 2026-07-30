@@ -65,11 +65,7 @@ impl TaxCalculationPort for InProcessTaxCalculationPort {
         let diagnostic_facts = tax_calculation_diagnostic_facts(&request);
         let result = self.inner.calculate_tax(context, request).await;
         result.map_err(|error| {
-            map_tax_calculation_local_port_error(
-                &diagnostic_context,
-                &diagnostic_facts,
-                error,
-            )
+            map_tax_calculation_local_port_error(&diagnostic_context, &diagnostic_facts, error)
         })
     }
 }
@@ -128,35 +124,23 @@ fn map_tax_calculation_local_port_error(
     let local_operation = match (error.code.as_str(), error.message.as_str()) {
         ("tax.currency_code_invalid", "tax request is invalid") => "validate_currency_code",
         ("tax.negative_policy_rate", "tax request is invalid") => "validate_policy_rate",
-        ("tax.country_code_invalid", "tax request is invalid") => {
-            "validate_country_rule_code"
-        }
-        ("tax.negative_country_rate", "tax request is invalid") => {
-            "validate_country_rule_rate"
-        }
+        ("tax.country_code_invalid", "tax request is invalid") => "validate_country_rule_code",
+        ("tax.negative_country_rate", "tax request is invalid") => "validate_country_rule_rate",
         ("tax.duplicate_country_rule", "tax request is invalid") => {
             "validate_country_rule_uniqueness"
         }
-        ("tax.negative_taxable_amount", "tax request is invalid") => {
-            "validate_taxable_amount"
-        }
+        ("tax.negative_taxable_amount", "tax request is invalid") => "validate_taxable_amount",
         ("tax.validation", "tax request is invalid") => "calculate_provider",
-        ("tax.negative_total", "tax calculation result is invalid") => {
-            "validate_result_total"
-        }
+        ("tax.negative_total", "tax calculation result is invalid") => "validate_result_total",
         ("tax.exempt_customer_charged", "tax calculation result is invalid") => {
             "validate_tax_exempt_result"
         }
         ("tax.total_overflow", "tax calculation result is invalid") => "sum_result_lines",
-        ("tax.total_mismatch", "tax calculation result is invalid") => {
-            "validate_result_total"
-        }
+        ("tax.total_mismatch", "tax calculation result is invalid") => "validate_result_total",
         ("tax.provider_id_invalid", "tax calculation result is invalid") => {
             "validate_provider_identity"
         }
-        ("tax.negative_line", "tax calculation result is invalid") => {
-            "validate_result_line"
-        }
+        ("tax.negative_line", "tax calculation result is invalid") => "validate_result_line",
         ("tax.currency_code_invalid", "tax calculation result is invalid") => {
             "validate_result_currency"
         }

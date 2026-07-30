@@ -24,6 +24,10 @@ evolves in its owning crates.
   persistence remains in `rustok-outbox`.
 - Leptos and Next admin packages are present, while live transport parity and
   production Iggy evidence remain in progress under the canonical Events plan.
+- The Next package exposes a client-safe registration entrypoint separately
+  from its server page and API exports. The package declares its host i18n
+  dependency, while server translations are resolved by the host route and
+  passed into the package boundary.
 
 ## FFA/FBA status
 
@@ -33,8 +37,11 @@ evolves in its owning crates.
 - Evidence:
   - module registration and manifest boundary are cycle-free;
   - module-owned Leptos and Next packages are colocated with the adapter;
+  - the Next host imports only the client-safe registration entrypoint during
+    shell composition, so server-only page exports cannot enter the client
+    module graph;
   - canonical event/runtime verification remains tracked by `rustok-events`.
-- Last verified at (UTC): 2026-07-28
+- Last verified at (UTC): 2026-07-29
 - Owner: Events module maintainers
 
 ## Milestones

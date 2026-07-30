@@ -11,7 +11,9 @@ distribution build.
 - Own explicit compile-time cross-module adapter selection. The
   `ai-translation` feature requires both owner modules and publishes only the
   Translation-owned lazy machine-translation factory through neutral runtime
-  extensions.
+  extensions. The production server profile selects this bridge; when the
+  deployment result keyring is absent, the factory resolves to no machine
+  provider and leaves manual Translation workflows available.
 - Generate the deterministic Cargo dependency fragment, promoted-module
   registry source, and machine-readable composition manifest consumed only in
   immutable static-distribution CI workspaces.

@@ -349,12 +349,12 @@ impl CartService {
         }
 
         for adjustment in &adjustments {
-            if let Some(line_item_id) = adjustment.line_item_id {
-                if !line_item_ids.contains(&line_item_id) {
-                    return Err(CartError::Validation(format!(
-                        "cart line item {line_item_id} does not belong to cart {cart_id}"
-                    )));
-                }
+            if let Some(line_item_id) = adjustment.line_item_id
+                && !line_item_ids.contains(&line_item_id)
+            {
+                return Err(CartError::Validation(format!(
+                    "cart line item {line_item_id} does not belong to cart {cart_id}"
+                )));
             }
         }
 

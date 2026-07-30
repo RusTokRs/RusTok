@@ -50,6 +50,7 @@ const files = {
     "crates/rustok-translation/admin/src/transport/native_server_adapter.rs",
   distributionCargo: "crates/rustok-distribution/Cargo.toml",
   distributionSource: "crates/rustok-distribution/src/lib.rs",
+  serverCargo: "apps/server/Cargo.toml",
   serverComposition: "apps/server/src/services/module_event_dispatcher.rs",
   adapterCargo: "crates/rustok-ai-translation/Cargo.toml",
   adapterSource: "crates/rustok-ai-translation/src/lib.rs",
@@ -87,6 +88,7 @@ const translationGraphqlMutation = read(files.translationGraphqlMutation);
 const translationNativeAdmin = read(files.translationNativeAdmin);
 const distributionCargo = read(files.distributionCargo);
 const distributionSource = read(files.distributionSource);
+const serverCargo = read(files.serverCargo);
 const serverComposition = read(files.serverComposition);
 const adapterCargo = read(files.adapterCargo);
 const adapterSource = read(files.adapterSource);
@@ -406,12 +408,26 @@ for (const marker of [
   "build_runtime_extensions",
   "SharedMachineTranslationPortFactory",
   "AiMachineTranslationPortFactory",
+  "selected_ai_translation_bridge_publishes_factory_and_stays_optional_without_keyring",
+  "machine_translation_port_from_context",
+  ".is_none()",
 ])
   requireText(
     distributionSource,
     marker,
     "AI Translation distribution composition",
   );
+const serverDefaultFeatures = serverCargo.match(
+  /default\s*=\s*\[([\s\S]*?)\]/,
+);
+if (
+  !serverDefaultFeatures ||
+  !serverDefaultFeatures[1].includes('"ai-translation"')
+) {
+  fail(
+    "production server default features must select the ai-translation bridge",
+  );
+}
 requireText(
   serverComposition,
   "rustok_distribution::build_runtime_extensions(registry)",
@@ -450,7 +466,7 @@ forbidText(
 requireText(adapterReadme, "never mutates", "adapter ownership docs");
 requireText(
   adapterPlan,
-  "Production-profile enablement and live execution evidence remain",
+  "Production-profile composition and fail-closed missing-keyring evidence are complete",
   "adapter gate docs",
 );
 

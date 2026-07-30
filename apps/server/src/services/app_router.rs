@@ -497,4 +497,360 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[cfg(feature = "mod-translation")]
+    mod translation {
+        use std::sync::Arc;
+
+        use axum::{
+            Router,
+            body::{Body, to_bytes},
+            http::{Request, StatusCode, header},
+        };
+        use chrono::{Duration, Utc};
+        use rustok_api::{Action, Resource};
+        use rustok_build::DeploymentProfile;
+        use rustok_cache::CacheService;
+        use rustok_channel::ChannelService;
+        use rustok_core::{ModuleRuntimeExtensions, UserRole, events::EventTransport};
+        use rustok_outbox::{OutboxTransport, SysEventsMigration};
+        use rustok_tenant::{
+            PortActor, PortContext, TenantLocalePolicyPort, TenantService, entities::tenant_locale,
+        };
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+        use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
+        use tower::ServiceExt;
+        use uuid::Uuid;
+
+        // Link the owner-owned server-function inventory into this isolated host profile.
+        use rustok_translation_admin as _;
+
+        use super::super::compose_application_router;
+        use crate::{
+            auth::{AuthConfig, encode_access_token},
+            common::settings::{RuntimeHostMode, RustokSettings},
+            graphql::schema::{Mutation, Query, Subscription},
+            middleware::{
+                rate_limit::{
+                    PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
+                },
+                tenant,
+            },
+            models::{
+                _entities::{permissions, role_permissions, roles, user_roles},
+                sessions, tenants, users,
+            },
+            modules::{DeploymentSurfaceContract, build_registry},
+            services::{
+                app_runtime::AppRuntimeBootstrap,
+                server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext},
+            },
+        };
+
+        const EXECUTE_PATH: &str = "/api/fn/translation-admin/execute";
+        const READ_POLICY_BODY: &str = "operation%5Boperation%5D=read_policy";
+
+        async fn setup_database() -> sea_orm::DatabaseConnection {
+            const PLATFORM_MIGRATIONS: &[&str] = &[
+                "m20250101_000001_create_tenants",
+                "m20250101_000002_create_users",
+                "m20250101_000004_create_sessions",
+                "m20250101_000005_create_roles_and_permissions",
+                "m20250130_000004_create_tenant_locales",
+            ];
+            const CHANNEL_MIGRATIONS: &[&str] = &[
+                "m20260325_000001_create_channels",
+                "m20260327_000006_add_channels_is_default",
+                "m20260327_000007_create_channel_resolution_policy_sets",
+                "m20260327_000008_create_channel_resolution_policy_rules",
+            ];
+
+            let database = rustok_test_utils::db::setup_test_db().await;
+            let manager = SchemaManager::new(&database);
+
+            for migration in rustok_migrations::Migrator::migrations() {
+                if PLATFORM_MIGRATIONS.contains(&migration.name().to_string().as_str()) {
+                    migration
+                        .up(&manager)
+                        .await
+                        .expect("migrate platform request boundary");
+                }
+            }
+            for migration in rustok_tenant::migrations::migrations() {
+                migration
+                    .up(&manager)
+                    .await
+                    .expect("migrate tenant locale policy");
+            }
+            for migration in rustok_channel::migrations::migrations() {
+                if CHANNEL_MIGRATIONS.contains(&migration.name().to_string().as_str()) {
+                    migration
+                        .up(&manager)
+                        .await
+                        .expect("migrate channel request boundary");
+                }
+            }
+            SysEventsMigration
+                .up(&manager)
+                .await
+                .expect("migrate transactional outbox");
+            for migration in rustok_translation::migrations::migrations() {
+                migration.up(&manager).await.expect("migrate Translation");
+            }
+
+            database
+        }
+
+        async fn insert_tenant(
+            database: &sea_orm::DatabaseConnection,
+            slug: &str,
+        ) -> tenants::Model {
+            tenants::ActiveModel::new("Translation router tenant", slug)
+                .insert(database)
+                .await
+                .expect("insert tenant")
+        }
+
+        async fn insert_reader(
+            database: &sea_orm::DatabaseConnection,
+            tenant_id: Uuid,
+        ) -> (users::Model, Uuid) {
+            let user = users::ActiveModel::new(
+                tenant_id,
+                "translation-router@example.com",
+                "not-used-by-token-validation",
+            )
+            .insert(database)
+            .await
+            .expect("insert user");
+            let session_id = Uuid::new_v4();
+            let mut session = sessions::ActiveModel::new(
+                tenant_id,
+                user.id,
+                "translation-router-refresh-token".to_string(),
+                Utc::now() + Duration::hours(1),
+                None,
+                None,
+            );
+            session.id = Set(session_id);
+            session.insert(database).await.expect("insert session");
+
+            let now = Utc::now().fixed_offset();
+            let role_id = Uuid::new_v4();
+            roles::Entity::insert(roles::ActiveModel {
+                id: Set(role_id),
+                tenant_id: Set(tenant_id),
+                name: Set("Translation reader".to_string()),
+                slug: Set("translation_reader".to_string()),
+                description: Set(Some(
+                    "Application-router Translation evidence role".to_string(),
+                )),
+                is_system: Set(false),
+                created_at: Set(now),
+                updated_at: Set(now),
+            })
+            .exec(database)
+            .await
+            .expect("insert role");
+
+            let permission_id = Uuid::new_v4();
+            permissions::Entity::insert(permissions::ActiveModel {
+                id: Set(permission_id),
+                tenant_id: Set(tenant_id),
+                resource: Set(Resource::Translations.to_string()),
+                action: Set(Action::Read.to_string()),
+                description: Set(Some("Read Translation policy".to_string())),
+                created_at: Set(now),
+            })
+            .exec(database)
+            .await
+            .expect("insert permission");
+            role_permissions::Entity::insert(role_permissions::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                role_id: Set(role_id),
+                permission_id: Set(permission_id),
+            })
+            .exec(database)
+            .await
+            .expect("bind role permission");
+            user_roles::Entity::insert(user_roles::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                user_id: Set(user.id),
+                role_id: Set(role_id),
+            })
+            .exec(database)
+            .await
+            .expect("bind user role");
+
+            (user, session_id)
+        }
+
+        async fn insert_locales(database: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
+            let now = Utc::now().fixed_offset();
+            for (locale, name, is_default, fallback_locale) in [
+                ("en", "English", true, None),
+                ("de-DE", "Deutsch", false, Some("en")),
+            ] {
+                tenant_locale::Entity::insert(tenant_locale::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(locale.to_string()),
+                    name: Set(name.to_string()),
+                    native_name: Set(name.to_string()),
+                    is_default: Set(is_default),
+                    is_enabled: Set(true),
+                    fallback_locale: Set(fallback_locale.map(str::to_string)),
+                    policy_revision: Set(0),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                })
+                .exec(database)
+                .await
+                .expect("insert tenant locale");
+            }
+        }
+
+        fn request(tenant_id: Uuid, access_token: &str) -> Request<Body> {
+            Request::builder()
+                .method("POST")
+                .uri(EXECUTE_PATH)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header(header::AUTHORIZATION, format!("Bearer {access_token}"))
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .header(header::ACCEPT_LANGUAGE, "de-DE,de;q=0.9")
+                .body(Body::from(READ_POLICY_BODY))
+                .expect("build Translation server-function request")
+        }
+
+        #[tokio::test]
+        async fn application_router_executes_authenticated_server_function() {
+            let database = setup_database().await;
+            let tenant = insert_tenant(&database, "translation-router").await;
+            let other_tenant = insert_tenant(&database, "translation-router-other").await;
+            insert_locales(&database, tenant.id).await;
+            let (user, session_id) = insert_reader(&database, tenant.id).await;
+            TenantService::new(database.clone())
+                .read_locale_policy(
+                    PortContext::new(
+                        tenant.id.to_string(),
+                        PortActor::service("rustok-server.translation-router-test"),
+                        "de-DE",
+                        "translation-router-locale-preflight",
+                    )
+                    .with_deadline(std::time::Duration::from_secs(2)),
+                )
+                .await
+                .expect("read tenant locale policy through production port");
+            let channels = ChannelService::new(database.clone());
+            channels
+                .list_active_resolution_rules(tenant.id)
+                .await
+                .expect("read channel resolution policies");
+            channels
+                .get_default_channel(tenant.id)
+                .await
+                .expect("read default channel");
+
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = RuntimeHostMode::Api;
+            let runtime_context = ServerRuntimeContext::new(database.clone(), settings.clone());
+            let cache = CacheService::from_url(None);
+            tenant::init_tenant_cache_infrastructure(&runtime_context, &cache).await;
+            runtime_context.shared_insert(cache);
+            let event_transport: Arc<dyn EventTransport> =
+                Arc::new(OutboxTransport::new(database.clone()));
+            runtime_context.shared_insert(event_transport);
+            runtime_context.shared_insert(Arc::new(ModuleRuntimeExtensions::default()));
+
+            let auth_config =
+                AuthConfig::new("translation-router-test-secret-with-32-bytes".to_string());
+            let access_token = encode_access_token(
+                &auth_config,
+                user.id,
+                tenant.id,
+                UserRole::Customer,
+                session_id,
+            )
+            .expect("encode access token");
+            let rate_limit_state = PathRateLimitMiddlewareState {
+                policies: Arc::new(vec![PathRateLimitPolicy {
+                    limiter: Arc::new(RateLimiter::new(RateLimitConfig::disabled())),
+                    prefixes: Arc::new(vec!["/api/"]),
+                }]),
+                auth_config: Some(auth_config.clone()),
+                trusted_auth_dimensions: false,
+                request_trust: settings.runtime.request_trust.clone(),
+            };
+            let runtime = AppRuntimeBootstrap {
+                deployment_surfaces: DeploymentSurfaceContract {
+                    profile: DeploymentProfile::HeadlessApi,
+                    embed_admin: false,
+                    embed_storefront: false,
+                },
+                registry: build_registry(),
+                graphql_schema: Arc::new(
+                    async_graphql::Schema::build(
+                        Query::default(),
+                        Mutation::default(),
+                        Subscription::default(),
+                    )
+                    .finish(),
+                ),
+                rate_limit_state,
+            };
+            let app = compose_application_router(
+                Router::new(),
+                runtime_context.clone(),
+                ServerAuthRuntime::new(runtime_context, auth_config),
+                serde_json::json!({}),
+                runtime,
+                &settings,
+            )
+            .expect("compose application router");
+
+            let response = app
+                .clone()
+                .oneshot(request(tenant.id, &access_token))
+                .await
+                .expect("execute Translation request");
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = to_bytes(response.into_body(), 1024 * 1024)
+                .await
+                .expect("read Translation response");
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "unexpected Translation response with headers {headers:?}: {}",
+                String::from_utf8_lossy(&body)
+            );
+            assert_eq!(
+                headers
+                    .get(header::CONTENT_LANGUAGE)
+                    .and_then(|value| value.to_str().ok()),
+                Some("de-DE")
+            );
+            assert_eq!(
+                headers
+                    .get("x-content-type-options")
+                    .and_then(|value| value.to_str().ok()),
+                Some("nosniff")
+            );
+            let payload: serde_json::Value =
+                serde_json::from_slice(&body).expect("decode Translation response");
+            assert_eq!(payload["result"], "policy");
+            assert_eq!(payload["value"]["tenantId"], tenant.id.to_string());
+            assert_eq!(payload["value"]["tenantLocalePolicyRevision"], 0);
+
+            let rejected = app
+                .oneshot(request(other_tenant.id, &access_token))
+                .await
+                .expect("execute cross-tenant Translation request");
+            assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+            let body = to_bytes(rejected.into_body(), 1024 * 1024)
+                .await
+                .expect("read cross-tenant rejection");
+            assert_eq!(body, "Token belongs to another tenant");
+        }
+    }
 }

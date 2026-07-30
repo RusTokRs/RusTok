@@ -145,9 +145,9 @@ async fn post_in_transaction(
         status: Set(MarketplaceLedgerTransactionStatus::Posted
             .as_str()
             .to_string()),
-        posted_at: Set(input.reversed_at.clone()),
+        posted_at: Set(input.reversed_at),
         metadata: Set(transaction_metadata),
-        created_at: Set(created_at.clone()),
+        created_at: Set(created_at),
     }
     .insert(&receipt.transaction)
     .await
@@ -162,9 +162,9 @@ async fn post_in_transaction(
         order_id: Set(input.order_id),
         currency_code: Set(currency_code.clone()),
         total_amount: Set(total_amount),
-        reversed_at: Set(input.reversed_at.clone()),
+        reversed_at: Set(input.reversed_at),
         metadata: Set(input.metadata.clone()),
-        created_at: Set(created_at.clone()),
+        created_at: Set(created_at),
     }
     .insert(&receipt.transaction)
     .await
@@ -215,7 +215,7 @@ async fn post_in_transaction(
                     line.commission_amount,
                     None,
                     currency_code.as_str(),
-                    created_at.clone(),
+                    created_at,
                 )
                 .await?,
             );
@@ -239,7 +239,7 @@ async fn post_in_transaction(
                     line.seller_amount,
                     Some(line.seller_balance_bucket),
                     currency_code.as_str(),
-                    created_at.clone(),
+                    created_at,
                 )
                 .await?,
             );
@@ -262,7 +262,7 @@ async fn post_in_transaction(
                 clearing_amount,
                 None,
                 currency_code.as_str(),
-                created_at.clone(),
+                created_at,
             )
             .await?,
         );
@@ -339,7 +339,7 @@ async fn insert_entry(
             "reversal_kind": kind.as_str(),
             "reversal_source_id": source_id,
         })),
-        created_at: Set(created_at.clone()),
+        created_at: Set(created_at),
     }
     .insert(&receipt.transaction)
     .await?;

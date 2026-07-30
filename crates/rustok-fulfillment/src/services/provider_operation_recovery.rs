@@ -185,13 +185,12 @@ impl FulfillmentProviderOperationRecovery {
         )?;
         let result_reference = normalize_optional(typed_result.external_reference.clone());
         let supplied_reference = normalize_optional(provider_reference);
-        if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference) {
-            if supplied != result {
-                return Err(FulfillmentError::Validation(
-                    "provider_reference does not match provider_result.external_reference"
-                        .to_string(),
-                ));
-            }
+        if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference)
+            && supplied != result
+        {
+            return Err(FulfillmentError::Validation(
+                "provider_reference does not match provider_result.external_reference".to_string(),
+            ));
         }
         let provider_reference = supplied_reference.or(result_reference);
         let canonical_result = serde_json::to_value(typed_result).map_err(|error| {
@@ -263,12 +262,12 @@ fn validate_optional_boundary_text(
     value: Option<&str>,
     max: usize,
 ) -> FulfillmentResult<()> {
-    if let Some(value) = value {
-        if value.trim().is_empty() || value.len() > max {
-            return Err(FulfillmentError::Validation(format!(
-                "{field} must be non-empty and at most {max} characters when provided"
-            )));
-        }
+    if let Some(value) = value
+        && (value.trim().is_empty() || value.len() > max)
+    {
+        return Err(FulfillmentError::Validation(format!(
+            "{field} must be non-empty and at most {max} characters when provided"
+        )));
     }
     Ok(())
 }

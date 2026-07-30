@@ -12996,9 +12996,11 @@ dependencies = [
  "rustok-tenant",
  "rustok-translation",
  "rustok-workflow",
+ "sea-orm",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "uuid",
 ]
 
@@ -13091,6 +13093,7 @@ dependencies = [
  "axum",
  "chrono",
  "flex",
+ "hex",
  "rustok-api",
  "rustok-channel",
  "rustok-content",
@@ -15101,6 +15104,7 @@ dependencies = [
  "rustok-tenant",
  "rustok-test-utils",
  "rustok-translation",
+ "rustok-translation-admin",
  "rustok-translation-targets",
  "rustok-web",
  "rustok-workflow",
@@ -15407,6 +15411,8 @@ name = "rustok-translation-admin"
 version = "0.1.0"
 dependencies = [
  "async-graphql",
+ "async-trait",
+ "axum",
  "chrono",
  "leptos 0.8.20",
  "leptos-auth",
@@ -15424,8 +15430,10 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",
  "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
+ "serde_qs 0.15.0",
  "tokio",
  "uuid",
 ]

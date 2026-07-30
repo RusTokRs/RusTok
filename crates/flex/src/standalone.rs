@@ -620,13 +620,13 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
 
         validate_numeric_rule_shape(definition, validation)?;
 
-        if let (Some(min), Some(max)) = (validation.min, validation.max) {
-            if min > max {
-                return Err(FlexError::InvalidFieldKey(format!(
-                    "field '{}' validation min must not exceed max",
-                    definition.field_key
-                )));
-            }
+        if let (Some(min), Some(max)) = (validation.min, validation.max)
+            && min > max
+        {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' validation min must not exceed max",
+                definition.field_key
+            )));
         }
 
         if let Some(pattern) = &validation.pattern {

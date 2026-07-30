@@ -94,10 +94,7 @@ fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .map(|value| value.to_ascii_lowercase())
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "product/storefront/catalog-list"
-)]
+#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list")]
 async fn storefront_catalog_list_native(
     locale: Option<String>,
     search: Option<String>,
@@ -129,7 +126,9 @@ async fn storefront_catalog_list_native(
             .map_err(ServerFnError::new)?;
         let requested_locale = crate::core::resolve_requested_locale(
             locale,
-            request_context.as_ref().map(|context| context.locale.as_str()),
+            request_context
+                .as_ref()
+                .map(|context| context.locale.as_str()),
             tenant.default_locale.as_str(),
         );
         let public_channel_slug = request_context
@@ -142,7 +141,8 @@ async fn storefront_catalog_list_native(
             sort_direction,
             attribute_filters,
         )
-        .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?;
+        .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?
+        .with_pagination(1, 12);
         let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
             .list_published_products_with_query(
                 tenant.id,
@@ -150,8 +150,6 @@ async fn storefront_catalog_list_native(
                 Some(tenant.default_locale.as_str()),
                 public_channel_slug.as_deref(),
                 list_query,
-                1,
-                12,
             )
             .await
             .map_err(|error| map_product_service_error(error, "storefront_catalog_list"))?;

@@ -131,13 +131,13 @@ impl SeaOrmModuleCompositionService {
         update: ModuleCompositionUpdate,
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
         let current = Self::active_snapshot_on(connection).await?;
-        if let Some(expected) = update.expected_revision {
-            if expected != current.revision {
-                return Err(ModuleCompositionError::RevisionConflict {
-                    expected,
-                    current: current.revision,
-                });
-            }
+        if let Some(expected) = update.expected_revision
+            && expected != current.revision
+        {
+            return Err(ModuleCompositionError::RevisionConflict {
+                expected,
+                current: current.revision,
+            });
         }
         let next_revision = current
             .revision

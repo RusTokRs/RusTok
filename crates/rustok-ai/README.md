@@ -52,10 +52,11 @@ Current implementation includes:
   contracts now provision tenant budget and provider policies, while the
   result keyring remains deployment-owned. The existing AI scheduler adapter
   performs queued-cancellation recovery, expired-lease reconciliation, and
-  expired-result cleanup before claims. The optional distribution bridge
-  publishes a Translation-owned lazy runtime factory without server capability
-  imports; production-profile enablement and live failure/restart evidence
-  remain activation prerequisites for machine translation
+  expired-result cleanup before claims. The production server selects the
+  optional distribution bridge, which publishes a Translation-owned lazy
+  runtime factory without server capability imports. Composed missing-keyring
+  evidence is optional and fail-closed; live external-provider failure/restart
+  evidence remains an activation prerequisite for machine translation
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP

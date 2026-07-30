@@ -14,18 +14,13 @@ use uuid::Uuid;
 
 use crate::model::{ChatMessage, ChatMessageRole};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RagRetrievalStrategy {
     Structure,
+    #[default]
     Hybrid,
     Vector,
-}
-
-impl Default for RagRetrievalStrategy {
-    fn default() -> Self {
-        Self::Hybrid
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

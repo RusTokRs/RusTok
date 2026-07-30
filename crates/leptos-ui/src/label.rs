@@ -10,7 +10,7 @@ pub fn Label(
 ) -> impl IntoView {
     view! {
         <label
-            for=r#for.unwrap_or("")
+            for=r#for
             class=format!(
                 "text-sm font-medium leading-none \
                  peer-disabled:cursor-not-allowed peer-disabled:opacity-70 {}",

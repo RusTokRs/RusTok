@@ -80,17 +80,9 @@ pub fn build_catalog_search_labels(locale: Option<&str>) -> CatalogSearchLabels 
             "Use filterable attribute codes as code=value, separated by semicolons.",
         ),
         sort_by_label: t(locale, "product.list.sortByLabel", "Sort by"),
-        sort_by_published_at: t(
-            locale,
-            "product.list.sortPublishedAt",
-            "Publication date",
-        ),
+        sort_by_published_at: t(locale, "product.list.sortPublishedAt", "Publication date"),
         sort_by_created_at: t(locale, "product.list.sortCreatedAt", "Creation date"),
-        sort_direction_label: t(
-            locale,
-            "product.list.sortDirectionLabel",
-            "Direction",
-        ),
+        sort_direction_label: t(locale, "product.list.sortDirectionLabel", "Direction"),
         sort_direction_desc: t(locale, "product.list.sortDescending", "Newest first"),
         sort_direction_asc: t(locale, "product.list.sortAscending", "Oldest first"),
         submit: t(locale, "product.list.searchSubmit", "Apply"),
@@ -98,8 +90,7 @@ pub fn build_catalog_search_labels(locale: Option<&str>) -> CatalogSearchLabels 
 }
 
 fn normalize_category_id(value: Option<String>) -> Option<String> {
-    normalize_optional_ui_text(value)
-        .filter(|value| uuid::Uuid::parse_str(value.as_str()).is_ok())
+    normalize_optional_ui_text(value).filter(|value| uuid::Uuid::parse_str(value.as_str()).is_ok())
 }
 
 fn normalize_sort_by(value: Option<String>) -> Option<String> {

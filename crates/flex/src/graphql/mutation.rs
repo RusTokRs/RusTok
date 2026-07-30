@@ -372,9 +372,9 @@ fn parse_fields_config(
 }
 
 fn publish_event(ctx: &Context<'_>, event: EventEnvelope) {
-    if let Ok(bus) = ctx.data::<EventBus>() {
-        if let Err(error) = bus.publish_envelope(event) {
-            tracing::warn!(error = %error, "Failed to publish flex event");
-        }
+    if let Ok(bus) = ctx.data::<EventBus>()
+        && let Err(error) = bus.publish_envelope(event)
+    {
+        tracing::warn!(error = %error, "Failed to publish flex event");
     }
 }

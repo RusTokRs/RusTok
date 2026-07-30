@@ -36,13 +36,8 @@ pub async fn execute_translation_native(
 async fn execute_ssr(
     operation: TranslationAdminOperation,
 ) -> Result<TranslationAdminResponse, ServerFnError> {
-    use std::sync::Arc;
-
     use leptos::prelude::expect_context;
     use rustok_api::{AuthContext, HostRuntimeContext, RequestContext, TenantContext};
-    use rustok_outbox::TransactionalEventBus;
-    use rustok_tenant::{TenantLocalePolicyPort, TenantService};
-    use rustok_translation_targets::TranslationTargetRegistry;
 
     let auth = leptos_axum::extract::<AuthContext>()
         .await
@@ -53,13 +48,30 @@ async fn execute_ssr(
     let request = leptos_axum::extract::<RequestContext>()
         .await
         .map_err(ServerFnError::new)?;
+    let runtime = expect_context::<HostRuntimeContext>();
+    execute_with_runtime(operation, &auth, &tenant, &request, &runtime).await
+}
+
+#[cfg(feature = "ssr")]
+async fn execute_with_runtime(
+    operation: TranslationAdminOperation,
+    auth: &rustok_api::AuthContext,
+    tenant: &rustok_api::TenantContext,
+    request: &rustok_api::RequestContext,
+    runtime: &rustok_api::HostRuntimeContext,
+) -> Result<TranslationAdminResponse, ServerFnError> {
+    use std::sync::Arc;
+
+    use rustok_outbox::TransactionalEventBus;
+    use rustok_tenant::{TenantLocalePolicyPort, TenantService};
+    use rustok_translation_targets::TranslationTargetRegistry;
+
     if auth.tenant_id != tenant.id || request.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Authenticated tenant does not match request tenant",
         ));
     }
 
-    let runtime = expect_context::<HostRuntimeContext>();
     let database = runtime.db_clone();
     let providers = runtime
         .shared_get::<Arc<TranslationTargetRegistry>>()
@@ -67,9 +79,10 @@ async fn execute_ssr(
     let event_bus = runtime
         .shared_get::<TransactionalEventBus>()
         .ok_or_else(|| ServerFnError::new("Translation runtime is unavailable"))?;
-    let tenant_locale_policies: Arc<dyn TenantLocalePolicyPort> =
-        Arc::new(TenantService::new(database.clone()));
-    let mut context = port_context(&auth, &request, operation.idempotency_key())?;
+    let tenant_locale_policies = runtime
+        .shared_get::<Arc<dyn TenantLocalePolicyPort>>()
+        .unwrap_or_else(|| Arc::new(TenantService::new(database.clone())));
+    let mut context = port_context(auth, request, operation.idempotency_key())?;
     if matches!(
         &operation,
         TranslationAdminOperation::GenerateMachineProposal { .. }
@@ -84,7 +97,7 @@ async fn execute_ssr(
             | TranslationAdminOperation::RecoverMachineOperation { .. }
             | TranslationAdminOperation::ReadMachineOperationStatus { .. }
     ) {
-        rustok_translation::machine_translation_port_from_context(&runtime)
+        rustok_translation::machine_translation_port_from_context(runtime)
             .map_err(|error| ServerFnError::new(error.message))?
     } else {
         None
@@ -1581,4 +1594,1995 @@ fn locale_strings(locales: Vec<rustok_api::TenantLocale>) -> Vec<String> {
         .into_iter()
         .map(|locale| locale.as_str().to_string())
         .collect()
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    use async_trait::async_trait;
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode, header::CONTENT_TYPE},
+        response::IntoResponse,
+    };
+    use leptos::{prelude::provide_context, server_fn::ServerFn};
+    use rustok_api::{
+        Action, AuthContext, AuthContextExtension, HostRuntimeContext, Permission, PortContext,
+        PortError, RequestContext, Resource, TenantContext, TenantContextExtension, TenantLocale,
+    };
+    use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+    use rustok_tenant::{
+        ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyPort,
+        TenantLocalePolicyProjection,
+    };
+    use rustok_translation::{
+        MachineTranslationAttemptEvidence, MachineTranslationBatchRequest,
+        MachineTranslationBatchResult, MachineTranslationDiagnostic,
+        MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
+        MachineTranslationExecutionStatusEvidence, MachineTranslationPort,
+        MachineTranslationPortFactory, MachineTranslationProviderDescriptor,
+        MachineTranslationProviderHealth, MachineTranslationProviderState,
+        MachineTranslationUnitResult, MachineTranslationUsage, SharedMachineTranslationPortFactory,
+        entities::{apply_operation, job_item, machine_operation},
+    };
+    use rustok_translation_targets::{
+        FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
+        ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
+        TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldSnapshot,
+        TranslationPatchRequest, TranslationPatchValidation, TranslationResourceLifecycle,
+        TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
+        TranslationStrategy, TranslationTargetCapability, TranslationTargetChange,
+        TranslationTargetChangePage, TranslationTargetChangesRequest,
+        TranslationTargetProgressFacts, TranslationTargetProgressRequest,
+        TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationTargetRegistry,
+        TranslationValueProfile,
+    };
+    use sea_orm::{
+        ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
+        QueryFilter, Statement,
+    };
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use tokio::sync::Mutex;
+    use uuid::Uuid;
+
+    use super::execute_with_runtime;
+    use crate::model::{
+        Actor, ActorKind, GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossaryTermPolicy,
+        GlossaryVariant, Job, JobItem, MemoryRetentionPolicy, Proposal, ProposalOrigin,
+        ProposalValueInput, TranslationAdminOperation, TranslationAdminResponse,
+        TranslationResourceIdentity,
+    };
+
+    #[derive(Default)]
+    struct NativeProviderState {
+        fail_after_commit: AtomicBool,
+        next_error: Mutex<Option<PortError>>,
+        receipts: Mutex<BTreeMap<String, TranslationApplicationReceipt>>,
+    }
+
+    struct NativeSnapshotProvider {
+        state: Arc<NativeProviderState>,
+    }
+
+    struct NativeMachinePort {
+        descriptor: MachineTranslationProviderDescriptor,
+        health: Mutex<MachineTranslationProviderState>,
+    }
+
+    struct NativeMachinePortFactory {
+        port: Arc<NativeMachinePort>,
+    }
+
+    struct NativeTenantLocalePolicies;
+
+    impl NativeMachinePort {
+        fn new() -> Self {
+            Self {
+                descriptor: MachineTranslationProviderDescriptor {
+                    slug: "native-machine".to_string(),
+                    display_name: "Native machine fixture".to_string(),
+                    policy_digest: "b".repeat(64),
+                    supported_profiles: vec![TranslationValueProfile::PlainText],
+                    supported_classifications: vec![TranslationDataClassification::Public],
+                    max_batch_units: 100,
+                    max_batch_characters: 10_000,
+                    review_required: true,
+                },
+                health: Mutex::new(MachineTranslationProviderState::Available),
+            }
+        }
+
+        async fn set_health(&self, state: MachineTranslationProviderState) {
+            *self.health.lock().await = state;
+        }
+
+        fn result(request: &MachineTranslationBatchRequest) -> MachineTranslationBatchResult {
+            MachineTranslationBatchResult {
+                provider_slug: "native-provider".to_string(),
+                units: request
+                    .units
+                    .iter()
+                    .map(|unit| MachineTranslationUnitResult {
+                        unit_id: unit.unit_id.clone(),
+                        translated_value: "Held".to_string(),
+                        protected_tokens: unit.protected_tokens.clone(),
+                        diagnostics: vec![MachineTranslationDiagnostic {
+                            code: "translation.machine.review_required".to_string(),
+                            blocking: false,
+                            unit_id: Some(unit.unit_id.clone()),
+                        }],
+                    })
+                    .collect(),
+                execution: MachineTranslationExecutionEvidence {
+                    execution_id: "native-execution".to_string(),
+                    request_digest: "c".repeat(64),
+                    prompt_policy_digest: "d".repeat(64),
+                    attempts: vec![MachineTranslationAttemptEvidence {
+                        attempt: 1,
+                        provider_profile_id: "native-profile".to_string(),
+                        provider_slug: "native-provider".to_string(),
+                        model: "native-model".to_string(),
+                        fallback: false,
+                    }],
+                    usage: MachineTranslationUsage {
+                        input_tokens: 4,
+                        output_tokens: 2,
+                        total_tokens: 6,
+                        cost_minor_units: 1,
+                        currency_code: "USD".to_string(),
+                        price_snapshot_digest: "e".repeat(64),
+                    },
+                },
+                review_required: true,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl MachineTranslationPort for NativeMachinePort {
+        fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
+            &self.descriptor
+        }
+
+        async fn health(
+            &self,
+            _context: PortContext,
+        ) -> Result<MachineTranslationProviderHealth, PortError> {
+            let state = *self.health.lock().await;
+            Ok(MachineTranslationProviderHealth {
+                state,
+                reason_code: (state == MachineTranslationProviderState::Unavailable)
+                    .then(|| "translation.machine.test_unavailable".to_string()),
+                retry_after_ms: (state != MachineTranslationProviderState::Available)
+                    .then_some(1_000),
+            })
+        }
+
+        async fn translate_batch(
+            &self,
+            context: PortContext,
+            request: MachineTranslationBatchRequest,
+        ) -> Result<MachineTranslationBatchResult, PortError> {
+            request.validate(&context)?;
+            Ok(Self::result(&request))
+        }
+
+        async fn execution_status(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            Ok(MachineTranslationExecutionStatusEvidence {
+                execution_id: Some("native-execution".to_string()),
+                status: MachineTranslationExecutionStatus::Completed,
+            })
+        }
+
+        async fn recover_batch(
+            &self,
+            context: PortContext,
+            _execution_idempotency_key: String,
+            request: MachineTranslationBatchRequest,
+        ) -> Result<Option<MachineTranslationBatchResult>, PortError> {
+            request.validate(&context)?;
+            Ok(Some(Self::result(&request)))
+        }
+
+        async fn cancel_execution(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            Ok(MachineTranslationExecutionStatusEvidence {
+                execution_id: Some("native-execution".to_string()),
+                status: MachineTranslationExecutionStatus::CancellationRequested,
+            })
+        }
+    }
+
+    impl MachineTranslationPortFactory for NativeMachinePortFactory {
+        fn create(
+            &self,
+            _context: &HostRuntimeContext,
+        ) -> Result<Option<Arc<dyn MachineTranslationPort>>, PortError> {
+            let port: Arc<dyn MachineTranslationPort> = self.port.clone();
+            Ok(Some(port))
+        }
+    }
+
+    #[async_trait]
+    impl TenantLocalePolicyPort for NativeTenantLocalePolicies {
+        async fn read_locale_policy(
+            &self,
+            context: PortContext,
+        ) -> Result<TenantLocalePolicyProjection, PortError> {
+            let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|error| {
+                PortError::validation("translation.test_tenant", error.to_string())
+            })?;
+            Ok(TenantLocalePolicyProjection {
+                tenant_id,
+                revision: 7,
+                default_locale: TenantLocale::new("en").expect("valid locale"),
+                locales: ["en", "de", "fr"]
+                    .into_iter()
+                    .map(|locale| TenantLocalePolicyEntry {
+                        locale: TenantLocale::new(locale).expect("valid locale"),
+                        name: locale.to_string(),
+                        native_name: locale.to_string(),
+                        is_default: locale == "en",
+                        is_enabled: true,
+                        fallback_locale: (locale != "en")
+                            .then(|| TenantLocale::new("en").expect("valid locale")),
+                    })
+                    .collect(),
+            })
+        }
+
+        async fn replace_locale_policy(
+            &self,
+            _context: PortContext,
+            _request: ReplaceTenantLocalePolicyRequest,
+        ) -> Result<TenantLocalePolicyProjection, PortError> {
+            Err(unavailable())
+        }
+    }
+
+    #[async_trait]
+    impl TranslationTargetProvider for NativeSnapshotProvider {
+        fn descriptor(&self) -> TranslationTargetProviderDescriptor {
+            TranslationTargetProviderDescriptor {
+                owner_slug: OwnerSlug::new("media").expect("valid owner slug"),
+                resource_kind: ResourceKind::new("asset").expect("valid resource kind"),
+                display_name: "Media asset metadata".to_string(),
+                capabilities: BTreeSet::from([
+                    TranslationTargetCapability::ListResources,
+                    TranslationTargetCapability::ReadExactResource,
+                    TranslationTargetCapability::AggregateProgress,
+                    TranslationTargetCapability::ValidatePatch,
+                    TranslationTargetCapability::ApplyPatch,
+                    TranslationTargetCapability::ChangeCursor,
+                ]),
+                read_permission_floor: BTreeSet::from(["media:read".to_string()]),
+                apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
+            }
+        }
+
+        async fn list_resources(
+            &self,
+            _context: PortContext,
+            request: ListTranslationResourcesRequest,
+        ) -> Result<TranslationResourcePage, PortError> {
+            request.validate().map_err(|error| {
+                PortError::validation("translation.test_list", error.to_string())
+            })?;
+            Ok(TranslationResourcePage {
+                resources: vec![resource_summary("hero", request.source_locale)],
+                next_cursor: None,
+            })
+        }
+
+        async fn read_resource(
+            &self,
+            _context: PortContext,
+            request: ReadTranslationResourceRequest,
+        ) -> Result<TranslationResourceSnapshot, PortError> {
+            Ok(TranslationResourceSnapshot {
+                summary: TranslationResourceSummary {
+                    identity: request.identity,
+                    display_label: "Hero".to_string(),
+                    lifecycle: TranslationResourceLifecycle::Active,
+                    resource_revision: OpaqueRevision::new("resource-7").expect("valid revision"),
+                    exact_locales: vec![request.source_locale.clone()],
+                },
+                source_locale: request.source_locale,
+                target_locale: request.target_locale,
+                rendered_fallback_locale: None,
+                source_revision: OpaqueRevision::new("source-3").expect("valid revision"),
+                target_revision: None,
+                fields: vec![TranslationFieldSnapshot {
+                    descriptor: TranslationFieldDescriptor {
+                        key: FieldKey::new("title").expect("valid field key"),
+                        profile: TranslationValueProfile::PlainText,
+                        strategy: TranslationStrategy::Translate,
+                        classification: TranslationDataClassification::Public,
+                        required: true,
+                        ai_export_allowed: true,
+                        max_characters: Some(200),
+                        preserves_whitespace: false,
+                    },
+                    source_value: "Hero".to_string(),
+                    exact_target_value: None,
+                    source_hash: "a".repeat(64),
+                    protected_tokens: Vec::new(),
+                }],
+            })
+        }
+
+        async fn validate_patch(
+            &self,
+            _context: PortContext,
+            request: TranslationPatchRequest,
+        ) -> Result<TranslationPatchValidation, PortError> {
+            request.validate().map_err(|error| {
+                PortError::validation("translation.test_patch", error.to_string())
+            })?;
+            Ok(TranslationPatchValidation {
+                accepted: true,
+                issues: Vec::new(),
+            })
+        }
+
+        async fn apply_patch(
+            &self,
+            context: PortContext,
+            request: TranslationPatchRequest,
+        ) -> Result<TranslationApplicationReceipt, PortError> {
+            context.require_write_semantics()?;
+            request.validate().map_err(|error| {
+                PortError::validation("translation.test_patch", error.to_string())
+            })?;
+            if let Some(error) = self.state.next_error.lock().await.take() {
+                return Err(error);
+            }
+            let idempotency_key = context.idempotency_key.as_deref().unwrap_or("missing");
+            let mut receipts = self.state.receipts.lock().await;
+            if let Some(existing) = receipts.get(idempotency_key) {
+                return Ok(existing.clone());
+            }
+            let receipt = TranslationApplicationReceipt {
+                provider_receipt_id: format!("native-provider:{}", idempotency_key),
+                resource_revision: OpaqueRevision::new("resource-8").expect("valid revision"),
+                target_revision: OpaqueRevision::new("target-1").expect("valid revision"),
+                applied_field_keys: request.fields.into_iter().map(|field| field.key).collect(),
+            };
+            receipts.insert(idempotency_key.to_string(), receipt.clone());
+            drop(receipts);
+            if self.state.fail_after_commit.swap(false, Ordering::SeqCst) {
+                return Err(PortError::timeout(
+                    "translation.test_unknown_outcome",
+                    "owner committed but the response was lost",
+                ));
+            }
+            Ok(receipt)
+        }
+
+        async fn read_progress(
+            &self,
+            _context: PortContext,
+            request: TranslationTargetProgressRequest,
+        ) -> Result<TranslationTargetProgressFacts, PortError> {
+            request.validate().map_err(|error| {
+                PortError::validation("translation.test_progress", error.to_string())
+            })?;
+            Ok(TranslationTargetProgressFacts {
+                required_units: 1,
+                exact_required_units: 1,
+                optional_units: 0,
+                exact_optional_units: 0,
+                resources: 1,
+                complete_resources: 1,
+                owner_change_cursor: Some(OpaqueCursor::new("cursor-1").expect("valid cursor")),
+            })
+        }
+
+        async fn read_changes(
+            &self,
+            _context: PortContext,
+            request: TranslationTargetChangesRequest,
+        ) -> Result<TranslationTargetChangePage, PortError> {
+            request.validate().map_err(|error| {
+                PortError::validation("translation.test_changes", error.to_string())
+            })?;
+            if request.after.is_some() {
+                return Ok(TranslationTargetChangePage {
+                    changes: Vec::new(),
+                    next_cursor: None,
+                });
+            }
+            Ok(TranslationTargetChangePage {
+                changes: vec![TranslationTargetChange {
+                    identity: target_identity("hero"),
+                    resource_revision: OpaqueRevision::new("resource-7").expect("valid revision"),
+                    lifecycle: TranslationResourceLifecycle::Active,
+                }],
+                next_cursor: Some(OpaqueCursor::new("cursor-1").expect("valid cursor")),
+            })
+        }
+    }
+
+    fn target_identity(
+        resource_id: &str,
+    ) -> rustok_translation_targets::TranslationResourceIdentity {
+        rustok_translation_targets::TranslationResourceIdentity {
+            owner_slug: OwnerSlug::new("media").expect("valid owner slug"),
+            resource_kind: ResourceKind::new("asset").expect("valid resource kind"),
+            resource_id: ResourceId::new(resource_id).expect("valid resource id"),
+            subresource_id: None,
+        }
+    }
+
+    fn resource_summary(
+        resource_id: &str,
+        source_locale: TenantLocale,
+    ) -> TranslationResourceSummary {
+        TranslationResourceSummary {
+            identity: target_identity(resource_id),
+            display_label: "Hero".to_string(),
+            lifecycle: TranslationResourceLifecycle::Active,
+            resource_revision: OpaqueRevision::new("resource-7").expect("valid revision"),
+            exact_locales: vec![source_locale],
+        }
+    }
+
+    fn unavailable() -> PortError {
+        PortError::unavailable("translation.test_unavailable", "not used by this fixture")
+    }
+
+    async fn native_fixture() -> (
+        HostRuntimeContext,
+        Uuid,
+        Uuid,
+        AuthContext,
+        TenantContext,
+        RequestContext,
+    ) {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect test database");
+        database
+            .execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .expect("enable foreign keys");
+        database
+            .execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL)")
+            .await
+            .expect("create tenant table");
+        let manager = SchemaManager::new(&database);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("migrate outbox");
+        for migration in rustok_translation::migrations::migrations() {
+            migration.up(&manager).await.expect("migrate Translation");
+        }
+
+        let first_tenant_id = Uuid::new_v4();
+        let second_tenant_id = Uuid::new_v4();
+        seed_tenant(&database, first_tenant_id).await;
+        seed_tenant(&database, second_tenant_id).await;
+
+        let provider_state = Arc::new(NativeProviderState::default());
+        let mut registry = TranslationTargetRegistry::default();
+        registry
+            .register(NativeSnapshotProvider {
+                state: Arc::clone(&provider_state),
+            })
+            .expect("register provider");
+        let registry = Arc::new(registry);
+        let event_bus =
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone())));
+        let locale_policies: Arc<dyn TenantLocalePolicyPort> = Arc::new(NativeTenantLocalePolicies);
+        let machine_port = Arc::new(NativeMachinePort::new());
+        let machine_factory =
+            SharedMachineTranslationPortFactory(Arc::new(NativeMachinePortFactory {
+                port: Arc::clone(&machine_port),
+            }));
+        let runtime = HostRuntimeContext::new(database)
+            .with_shared_value(registry)
+            .with_shared_value(event_bus)
+            .with_shared_value(locale_policies)
+            .with_shared_value(provider_state)
+            .with_shared_value(machine_factory)
+            .with_shared_value(machine_port);
+        let user_id = Uuid::new_v4();
+        let auth = auth_context(first_tenant_id, user_id);
+        let tenant = tenant_context(first_tenant_id);
+        let request = request_context(first_tenant_id, user_id);
+
+        (
+            runtime,
+            first_tenant_id,
+            second_tenant_id,
+            auth,
+            tenant,
+            request,
+        )
+    }
+
+    async fn seed_tenant(database: &DatabaseConnection, tenant_id: Uuid) {
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?)",
+                [tenant_id.into()],
+            ))
+            .await
+            .expect("seed tenant");
+    }
+
+    fn auth_context(tenant_id: Uuid, user_id: Uuid) -> AuthContext {
+        AuthContext {
+            user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: [
+                Resource::Translations,
+                Resource::TranslationMemory,
+                Resource::TranslationGlossaries,
+            ]
+            .into_iter()
+            .flat_map(|resource| {
+                [
+                    Action::Create,
+                    Action::Delete,
+                    Action::List,
+                    Action::Manage,
+                    Action::Publish,
+                    Action::Read,
+                    Action::Resolve,
+                    Action::Run,
+                    Action::Update,
+                    Action::Import,
+                    Action::Export,
+                ]
+                .into_iter()
+                .map(move |action| Permission::new(resource, action))
+            })
+            .collect(),
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    fn tenant_context(tenant_id: Uuid) -> TenantContext {
+        TenantContext {
+            id: tenant_id,
+            name: "Translation test tenant".to_string(),
+            slug: format!("tenant-{tenant_id}"),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn request_context(tenant_id: Uuid, user_id: Uuid) -> RequestContext {
+        RequestContext {
+            tenant_id,
+            user_id: Some(user_id),
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: "en".to_string(),
+        }
+    }
+
+    fn identity() -> TranslationResourceIdentity {
+        TranslationResourceIdentity {
+            owner_slug: "media".to_string(),
+            resource_kind: "asset".to_string(),
+            resource_id: "hero".to_string(),
+            subresource_id: None,
+        }
+    }
+
+    async fn execute_over_http(
+        runtime: &HostRuntimeContext,
+        auth: &AuthContext,
+        tenant: &TenantContext,
+        operation: TranslationAdminOperation,
+    ) -> (StatusCode, Vec<u8>) {
+        let body = serde_qs::to_string(&super::ExecuteTranslationNative { operation })
+            .expect("encode server-function payload");
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(<super::ExecuteTranslationNative as ServerFn>::PATH)
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(body))
+            .expect("build server-function request");
+        request
+            .extensions_mut()
+            .insert(AuthContextExtension(auth.clone()));
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant.clone()));
+        let runtime = runtime.clone();
+        let response = leptos_axum::handle_server_fns_with_context(
+            move || provide_context(runtime.clone()),
+            request,
+        )
+        .await
+        .into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read server-function response")
+            .to_vec();
+        (status, body)
+    }
+
+    async fn execute_http_ok(
+        runtime: &HostRuntimeContext,
+        auth: &AuthContext,
+        tenant: &TenantContext,
+        operation: TranslationAdminOperation,
+    ) -> TranslationAdminResponse {
+        let operation_name = format!("{operation:?}");
+        let (status, body) = execute_over_http(runtime, auth, tenant, operation).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{operation_name}: {}",
+            String::from_utf8_lossy(&body)
+        );
+        serde_json::from_slice(&body).expect("decode server-function response")
+    }
+
+    async fn execute_http_error(
+        runtime: &HostRuntimeContext,
+        auth: &AuthContext,
+        tenant: &TenantContext,
+        operation: TranslationAdminOperation,
+    ) -> String {
+        let (status, body) = execute_over_http(runtime, auth, tenant, operation).await;
+        assert_eq!(
+            status,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{}",
+            String::from_utf8_lossy(&body)
+        );
+        String::from_utf8(body).expect("server-function error is UTF-8")
+    }
+
+    async fn create_approved_http_item(
+        runtime: &HostRuntimeContext,
+        translator: &AuthContext,
+        reviewer: &AuthContext,
+        tenant: &TenantContext,
+        key: &str,
+    ) -> (Job, JobItem, Proposal) {
+        let (job, item) = create_http_job_item(runtime, translator, tenant, key).await;
+        let response = execute_http_ok(
+            runtime,
+            translator,
+            tenant,
+            TranslationAdminOperation::SaveProposal {
+                item_id: item.id.clone(),
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValueInput {
+                    key: "title".to_string(),
+                    value: "Held".to_string(),
+                }],
+                idempotency_key: format!("{key}-save-proposal"),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(proposal) = response else {
+            panic!("expected proposal response");
+        };
+        execute_http_ok(
+            runtime,
+            translator,
+            tenant,
+            TranslationAdminOperation::SubmitProposal {
+                item_id: item.id.clone(),
+                proposal_id: proposal.id.clone(),
+                idempotency_key: format!("{key}-submit-proposal"),
+            },
+        )
+        .await;
+        let response = execute_http_ok(
+            runtime,
+            reviewer,
+            tenant,
+            TranslationAdminOperation::ApproveProposal {
+                item_id: item.id.clone(),
+                proposal_id: proposal.id.clone(),
+                idempotency_key: format!("{key}-approve-proposal"),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(approved) = response else {
+            panic!("expected proposal response");
+        };
+        (job, item, approved)
+    }
+
+    async fn create_http_job_item(
+        runtime: &HostRuntimeContext,
+        actor: &AuthContext,
+        tenant: &TenantContext,
+        key: &str,
+    ) -> (Job, JobItem) {
+        let response = execute_http_ok(
+            runtime,
+            actor,
+            tenant,
+            TranslationAdminOperation::CreateJob {
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                glossary: None,
+                idempotency_key: format!("{key}-create-job"),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Job(job) = response else {
+            panic!("expected job response");
+        };
+        let response = execute_http_ok(
+            runtime,
+            actor,
+            tenant,
+            TranslationAdminOperation::AddItem {
+                job_id: job.id.clone(),
+                identity: identity(),
+                idempotency_key: format!("{key}-add-item"),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Item(item) = response else {
+            panic!("expected item response");
+        };
+        (job, item)
+    }
+
+    #[tokio::test]
+    async fn native_server_fn_endpoint_extracts_authenticated_host_context() {
+        let (runtime, _, second_tenant_id, auth, tenant, _) = native_fixture().await;
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadPolicy,
+        )
+        .await;
+        let TranslationAdminResponse::Policy(policy) = response else {
+            panic!("expected policy response");
+        };
+        assert_eq!(policy.tenant_id, tenant.id.to_string());
+        assert_eq!(policy.tenant_locale_policy_revision, 7);
+
+        let error = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant_context(second_tenant_id),
+            TranslationAdminOperation::ReadPolicy,
+        )
+        .await;
+        assert!(error.contains("Authenticated tenant does not match request tenant"));
+    }
+
+    #[tokio::test]
+    async fn native_machine_operations_execute_authenticated_http_parity() {
+        let (runtime, tenant_id, _, auth, tenant, _) = native_fixture().await;
+        let machine_port = runtime
+            .shared_get::<Arc<NativeMachinePort>>()
+            .expect("native machine port");
+
+        let (_, completed_item) =
+            create_http_job_item(&runtime, &auth, &tenant, "native-machine-completed").await;
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::GenerateMachineProposal {
+                item_id: completed_item.id.clone(),
+                field_keys: vec!["title".to_string()],
+                minimum_memory_similarity_basis_points: 0,
+                tone: Some("neutral".to_string()),
+                domain: Some("media".to_string()),
+                style: None,
+                idempotency_key: "native-machine-generate".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineProposal(completed) = response else {
+            panic!("expected machine proposal response");
+        };
+        assert_eq!(completed.item_id, completed_item.id);
+        assert_eq!(completed.adapter_slug, "native-machine");
+        assert_eq!(completed.provider_slug, "native-provider");
+        assert_eq!(completed.execution_id, "native-execution");
+        assert!(completed.review_required);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadMachineOperationStatus {
+                operation_id: completed.operation_id.clone(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineOperationStatus(status) = response else {
+            panic!("expected machine operation status response");
+        };
+        assert_eq!(status.item_id, completed_item.id);
+        assert_eq!(status.status, "completed");
+        assert_eq!(status.provider_status, "completed");
+        assert_eq!(
+            status.provider_execution_id.as_deref(),
+            Some("native-execution")
+        );
+
+        machine_port
+            .set_health(MachineTranslationProviderState::Unavailable)
+            .await;
+        let (_, cancelled_item) =
+            create_http_job_item(&runtime, &auth, &tenant, "native-machine-cancelled").await;
+        let error = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::GenerateMachineProposal {
+                item_id: cancelled_item.id.clone(),
+                field_keys: vec!["title".to_string()],
+                minimum_memory_similarity_basis_points: 0,
+                tone: None,
+                domain: None,
+                style: None,
+                idempotency_key: "native-machine-cancel-generate".to_string(),
+            },
+        )
+        .await;
+        assert!(
+            error.contains("TRANSLATION_TEMPORARILY_UNAVAILABLE"),
+            "{error}"
+        );
+        let cancelled_item_id =
+            Uuid::parse_str(&cancelled_item.id).expect("valid cancelled item id");
+        let registered = machine_operation::Entity::find()
+            .filter(machine_operation::Column::TenantId.eq(tenant_id))
+            .filter(machine_operation::Column::ItemId.eq(cancelled_item_id))
+            .one(runtime.db())
+            .await
+            .expect("read registered machine operation")
+            .expect("registered machine operation");
+        assert_eq!(registered.status, "registered");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadMachineOperationStatus {
+                operation_id: registered.id.to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineOperationStatus(status) = response else {
+            panic!("expected registered machine operation status response");
+        };
+        assert_eq!(status.status, "registered");
+        assert_eq!(status.provider_status, "completed");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CancelMachineOperation {
+                operation_id: registered.id.to_string(),
+                reason: "Cancel the unavailable machine request".to_string(),
+                idempotency_key: "native-machine-cancel".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineCancellation(cancellation) = response else {
+            panic!("expected machine cancellation response");
+        };
+        assert_eq!(cancellation.operation_id, registered.id.to_string());
+        assert_eq!(cancellation.status, "cancelled");
+        assert_eq!(cancellation.provider_status, "cancellation_requested");
+        assert_eq!(
+            cancellation.provider_execution_id.as_deref(),
+            Some("native-execution")
+        );
+
+        let (_, recovery_item) =
+            create_http_job_item(&runtime, &auth, &tenant, "native-machine-recovery").await;
+        let error = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::GenerateMachineProposal {
+                item_id: recovery_item.id.clone(),
+                field_keys: vec!["title".to_string()],
+                minimum_memory_similarity_basis_points: 0,
+                tone: None,
+                domain: None,
+                style: None,
+                idempotency_key: "native-machine-recovery-generate".to_string(),
+            },
+        )
+        .await;
+        assert!(
+            error.contains("TRANSLATION_TEMPORARILY_UNAVAILABLE"),
+            "{error}"
+        );
+        let recovery_item_id = Uuid::parse_str(&recovery_item.id).expect("valid recovery item id");
+        let recovery_operation = machine_operation::Entity::find()
+            .filter(machine_operation::Column::TenantId.eq(tenant_id))
+            .filter(machine_operation::Column::ItemId.eq(recovery_item_id))
+            .one(runtime.db())
+            .await
+            .expect("read recovery machine operation")
+            .expect("recovery machine operation");
+        assert_eq!(recovery_operation.status, "registered");
+        let saving_at = chrono::Utc::now().fixed_offset();
+        let update = machine_operation::Entity::update_many()
+            .col_expr(
+                machine_operation::Column::Status,
+                sea_orm::sea_query::Expr::value("saving"),
+            )
+            .col_expr(
+                machine_operation::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(saving_at),
+            )
+            .filter(machine_operation::Column::TenantId.eq(tenant_id))
+            .filter(machine_operation::Column::Id.eq(recovery_operation.id))
+            .filter(machine_operation::Column::Status.eq("registered"))
+            .exec(runtime.db())
+            .await
+            .expect("move machine operation to recovery state");
+        assert_eq!(update.rows_affected, 1);
+        let saving = machine_operation::Entity::find_by_id(recovery_operation.id)
+            .one(runtime.db())
+            .await
+            .expect("read saving machine operation")
+            .expect("saving machine operation");
+        assert_eq!(saving.status, "saving");
+
+        machine_port
+            .set_health(MachineTranslationProviderState::Available)
+            .await;
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::RecoverMachineOperation {
+                operation_id: saving.id.to_string(),
+                expected_updated_at: saving.updated_at.to_rfc3339(),
+                item_id: recovery_item.id.clone(),
+                field_keys: vec!["title".to_string()],
+                minimum_memory_similarity_basis_points: 0,
+                tone: None,
+                domain: None,
+                style: None,
+                reason: "Recover the interrupted machine proposal save".to_string(),
+                idempotency_key: "native-machine-recover".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineProposal(recovered) = response else {
+            panic!("expected recovered machine proposal response");
+        };
+        assert_eq!(recovered.operation_id, saving.id.to_string());
+        assert_eq!(recovered.item_id, recovery_item.id);
+        assert_eq!(recovered.provider_slug, "native-provider");
+        assert_eq!(recovered.execution_id, "native-execution");
+        let persisted = machine_operation::Entity::find_by_id(saving.id)
+            .one(runtime.db())
+            .await
+            .expect("read recovered machine operation")
+            .expect("recovered machine operation");
+        assert_eq!(persisted.status, "completed");
+        assert_eq!(
+            persisted.proposal_id.map(|id| id.to_string()).as_deref(),
+            Some(recovered.proposal_id.as_str())
+        );
+    }
+
+    fn glossary_concept() -> GlossaryConcept {
+        GlossaryConcept {
+            concept_key: "hero".to_string(),
+            source_term: "Hero".to_string(),
+            variants: vec![GlossaryVariant {
+                value: "Held".to_string(),
+                policy: GlossaryTermPolicy::Preferred,
+            }],
+            match_kind: GlossaryMatchKind::WholeWord,
+            case_sensitive: false,
+            notes: "Preferred media terminology".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn native_policy_and_glossary_execute_authenticated_http_parity() {
+        let (runtime, _, _, auth, tenant, _) = native_fixture().await;
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadPolicy,
+        )
+        .await;
+        let TranslationAdminResponse::Policy(initial_policy) = response else {
+            panic!("expected policy response");
+        };
+        assert_eq!(initial_policy.revision, 0);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReplacePolicy {
+                expected_revision: initial_policy.revision,
+                required_target_locales: vec!["de".to_string()],
+                idempotency_key: "native-replace-policy".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Policy(policy) = response else {
+            panic!("expected policy response");
+        };
+        assert_eq!(policy.revision, 1);
+        assert_eq!(policy.required_target_locales, ["de"]);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CreateGlossary {
+                name: "Media terminology".to_string(),
+                description: "Approved media terms".to_string(),
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                scope: GlossaryScope {
+                    owner_slug: Some("media".to_string()),
+                    resource_kind: Some("asset".to_string()),
+                    field_key: Some("title".to_string()),
+                },
+                idempotency_key: "native-create-glossary".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Glossary(created) = response else {
+            panic!("expected glossary response");
+        };
+        assert_eq!(created.revision, 1);
+        assert!(created.is_active);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::UpdateGlossary {
+                glossary_id: created.id.clone(),
+                expected_revision: created.revision,
+                name: "Media terminology v2".to_string(),
+                description: "Reviewed media terms".to_string(),
+                idempotency_key: "native-update-glossary".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Glossary(updated) = response else {
+            panic!("expected glossary response");
+        };
+        assert_eq!(updated.revision, 2);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReplaceGlossaryTerms {
+                glossary_id: updated.id.clone(),
+                expected_revision: updated.revision,
+                concepts: vec![glossary_concept()],
+                idempotency_key: "native-replace-glossary-terms".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Glossary(with_terms) = response else {
+            panic!("expected glossary response");
+        };
+        assert_eq!(with_terms.revision, 3);
+        assert_eq!(with_terms.concepts.len(), 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SetGlossaryActive {
+                glossary_id: with_terms.id.clone(),
+                expected_revision: with_terms.revision,
+                is_active: false,
+                idempotency_key: "native-disable-glossary".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Glossary(disabled) = response else {
+            panic!("expected glossary response");
+        };
+        assert_eq!(disabled.revision, 4);
+        assert!(!disabled.is_active);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadGlossary {
+                glossary_id: disabled.id.clone(),
+                revision: Some(disabled.revision),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Glossary(read) = response else {
+            panic!("expected glossary response");
+        };
+        assert_eq!(read, disabled);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ListGlossaries { limit: 10 },
+        )
+        .await;
+        let TranslationAdminResponse::Glossaries(glossaries) = response else {
+            panic!("expected glossaries response");
+        };
+        assert_eq!(glossaries.len(), 1);
+        assert_eq!(glossaries[0].id, disabled.id);
+    }
+
+    #[tokio::test]
+    async fn native_human_workflow_memory_and_progress_execute_http_parity() {
+        let (runtime, _, _, auth, tenant, _) = native_fixture().await;
+        let reviewer = auth_context(tenant.id, Uuid::new_v4());
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CreateJob {
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                glossary: None,
+                idempotency_key: "native-workflow-create-job".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Job(job) = response else {
+            panic!("expected job response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::AddItem {
+                job_id: job.id.clone(),
+                identity: identity(),
+                idempotency_key: "native-workflow-add-item".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Item(item) = response else {
+            panic!("expected item response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadJobProgress {
+                job_id: job.id.clone(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::JobProgress(initial_progress) = response else {
+            panic!("expected job progress response");
+        };
+        assert_eq!(initial_progress.total_items, 1);
+        assert_eq!(initial_progress.missing_items, 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::AssignItem {
+                item_id: item.id.clone(),
+                expected_revision: item.revision,
+                assignee: Actor {
+                    kind: ActorKind::User,
+                    id: auth.user_id.to_string(),
+                },
+                idempotency_key: "native-workflow-assign".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Assignment(assigned) = response else {
+            panic!("expected assignment response");
+        };
+        assert_eq!(
+            assigned.assignee.as_ref().map(|actor| actor.id.as_str()),
+            Some(auth.user_id.to_string().as_str())
+        );
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::UnassignItem {
+                item_id: item.id.clone(),
+                expected_revision: assigned.item_revision,
+                idempotency_key: "native-workflow-unassign".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Assignment(unassigned) = response else {
+            panic!("expected assignment response");
+        };
+        assert!(unassigned.assignee.is_none());
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SaveProposal {
+                item_id: item.id.clone(),
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValueInput {
+                    key: "title".to_string(),
+                    value: "Held".to_string(),
+                }],
+                idempotency_key: "native-workflow-save".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(draft) = response else {
+            panic!("expected proposal response");
+        };
+        assert!(draft.qa_accepted);
+        assert_eq!(draft.status, "draft");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SubmitProposal {
+                item_id: item.id.clone(),
+                proposal_id: draft.id.clone(),
+                idempotency_key: "native-workflow-submit".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(submitted) = response else {
+            panic!("expected proposal response");
+        };
+        assert_eq!(submitted.status, "in_review");
+
+        let response = execute_http_ok(
+            &runtime,
+            &reviewer,
+            &tenant,
+            TranslationAdminOperation::ApproveProposal {
+                item_id: item.id.clone(),
+                proposal_id: draft.id.clone(),
+                idempotency_key: "native-workflow-approve".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(approved) = response else {
+            panic!("expected proposal response");
+        };
+        assert_eq!(approved.status, "approved");
+        assert!(approved.approval_receipt_id.is_some());
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ApplyProposal {
+                item_id: item.id.clone(),
+                proposal_id: draft.id,
+                idempotency_key: "native-workflow-apply".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Apply(applied) = response else {
+            panic!("expected apply response");
+        };
+        assert_eq!(applied.item_id, item.id);
+        assert_eq!(applied.applied_field_keys, ["title"]);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadJobProgress {
+                job_id: job.id.clone(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::JobProgress(completed_progress) = response else {
+            panic!("expected job progress response");
+        };
+        assert_eq!(completed_progress.applied_items, 1);
+        assert_eq!(completed_progress.complete_resources, 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::RebuildJobProgress {
+                job_id: job.id,
+                idempotency_key: "native-workflow-rebuild-progress".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::JobProgress(rebuilt_progress) = response else {
+            panic!("expected job progress response");
+        };
+        assert_eq!(rebuilt_progress.applied_items, 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ListMemoryEntries {
+                source_locale: Some("en".to_string()),
+                target_locale: Some("de".to_string()),
+                include_tombstoned: false,
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemoryEntries(mut entries) = response else {
+            panic!("expected memory entries response");
+        };
+        assert_eq!(entries.len(), 1);
+        let entry = entries.pop().expect("memory entry");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadMemoryEntry {
+                entry_id: entry.id.clone(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemoryEntry(read_entry) = response else {
+            panic!("expected memory entry response");
+        };
+        assert_eq!(read_entry.target_text, "Held");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::LookupMemory {
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                identity: identity(),
+                field_key: "title".to_string(),
+                source_text: "Hero".to_string(),
+                minimum_similarity_basis_points: 10_000,
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemorySuggestions(suggestions) = response else {
+            panic!("expected memory suggestions response");
+        };
+        assert_eq!(suggestions.len(), 1);
+        assert_eq!(suggestions[0].target_text, "Held");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SetMemoryRetention {
+                entry_id: entry.id.clone(),
+                expected_revision: entry.revision,
+                policy: MemoryRetentionPolicy::LegalHold,
+                retain_until: None,
+                idempotency_key: "native-memory-legal-hold".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemoryMutation(legal_hold) = response else {
+            panic!("expected memory mutation response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SetMemoryRetention {
+                entry_id: entry.id.clone(),
+                expected_revision: legal_hold.revision,
+                policy: MemoryRetentionPolicy::OwnerLifecycle,
+                retain_until: None,
+                idempotency_key: "native-memory-owner-lifecycle".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemoryMutation(owner_lifecycle) = response else {
+            panic!("expected memory mutation response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::TombstoneMemoryEntry {
+                entry_id: entry.id.clone(),
+                expected_revision: owner_lifecycle.revision,
+                idempotency_key: "native-memory-tombstone".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemoryMutation(tombstoned) = response else {
+            panic!("expected memory mutation response");
+        };
+        assert_eq!(tombstoned.state, "tombstoned");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::PurgeMemoryEntry {
+                entry_id: entry.id,
+                expected_revision: tombstoned.revision,
+                idempotency_key: "native-memory-purge".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MemoryMutation(purged) = response else {
+            panic!("expected memory mutation response");
+        };
+        assert_eq!(purged.state, "purged");
+    }
+
+    #[tokio::test]
+    async fn native_qa_rejection_and_job_cancellation_execute_http_parity() {
+        let (runtime, _, _, auth, tenant, _) = native_fixture().await;
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CreateJob {
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                glossary: None,
+                idempotency_key: "native-qa-create-job".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Job(job) = response else {
+            panic!("expected job response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::AddItem {
+                job_id: job.id.clone(),
+                identity: identity(),
+                idempotency_key: "native-qa-add-item".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Item(item) = response else {
+            panic!("expected item response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SaveProposal {
+                item_id: item.id.clone(),
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValueInput {
+                    key: "title".to_string(),
+                    value: "x".repeat(201),
+                }],
+                idempotency_key: "native-qa-save-invalid".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(invalid) = response else {
+            panic!("expected proposal response");
+        };
+        assert!(!invalid.qa_accepted);
+        assert!(
+            invalid
+                .qa_issues
+                .iter()
+                .any(|issue| issue.code == "translation.qa.max_characters_exceeded")
+        );
+
+        let error = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SubmitProposal {
+                item_id: item.id,
+                proposal_id: invalid.id,
+                idempotency_key: "native-qa-submit-invalid".to_string(),
+            },
+        )
+        .await;
+        assert!(error.contains("TRANSLATION_REQUEST_INVALID"), "{error}");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CancelJob {
+                job_id: job.id,
+                expected_revision: 1,
+                reason: "The target locale is no longer required".to_string(),
+                idempotency_key: "native-cancel-job".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Cancellation(cancellation) = response else {
+            panic!("expected cancellation response");
+        };
+        assert_eq!(cancellation.cancelled_item_count, 1);
+        assert_eq!(cancellation.job_revision, 2);
+    }
+
+    #[tokio::test]
+    async fn native_retry_and_apply_recovery_execute_http_parity() {
+        let (runtime, _, _, auth, tenant, _) = native_fixture().await;
+        let reviewer = auth_context(tenant.id, Uuid::new_v4());
+        let provider_state = runtime
+            .shared_get::<Arc<NativeProviderState>>()
+            .expect("provider state");
+
+        let (_, retry_item, retry_proposal) =
+            create_approved_http_item(&runtime, &auth, &reviewer, &tenant, "native-retry").await;
+        provider_state
+            .next_error
+            .lock()
+            .await
+            .replace(PortError::forbidden(
+                "translation.test_blocked",
+                "operator intervention is required",
+            ));
+        let error = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ApplyProposal {
+                item_id: retry_item.id.clone(),
+                proposal_id: retry_proposal.id.clone(),
+                idempotency_key: "native-retry-apply-fail".to_string(),
+            },
+        )
+        .await;
+        assert!(error.contains("TRANSLATION_OPERATION_FAILED"), "{error}");
+
+        let retry_item_id = Uuid::parse_str(&retry_item.id).expect("valid item id");
+        let blocked = job_item::Entity::find_by_id(retry_item_id)
+            .one(runtime.db())
+            .await
+            .expect("read blocked item")
+            .expect("blocked item");
+        assert_eq!(blocked.status, "blocked");
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::RetryItem {
+                item_id: retry_item.id.clone(),
+                expected_revision: blocked.revision,
+                reason: "The owner policy issue has been resolved".to_string(),
+                idempotency_key: "native-retry-item".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Retry(retried) = response else {
+            panic!("expected retry response");
+        };
+        assert_eq!(retried.status, "approved");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ApplyProposal {
+                item_id: retry_item.id,
+                proposal_id: retry_proposal.id,
+                idempotency_key: "native-retry-apply-success".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Apply(applied) = response else {
+            panic!("expected apply response");
+        };
+        assert_eq!(applied.applied_field_keys, ["title"]);
+
+        let (_, recovery_item, recovery_proposal) =
+            create_approved_http_item(&runtime, &auth, &reviewer, &tenant, "native-recovery").await;
+        provider_state
+            .fail_after_commit
+            .store(true, Ordering::SeqCst);
+        let error = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ApplyProposal {
+                item_id: recovery_item.id.clone(),
+                proposal_id: recovery_proposal.id,
+                idempotency_key: "native-recovery-apply".to_string(),
+            },
+        )
+        .await;
+        assert!(
+            error.contains("TRANSLATION_TEMPORARILY_UNAVAILABLE"),
+            "{error}"
+        );
+
+        let recovery_item_id = Uuid::parse_str(&recovery_item.id).expect("valid item id");
+        let pending = apply_operation::Entity::find()
+            .filter(apply_operation::Column::ItemId.eq(recovery_item_id))
+            .one(runtime.db())
+            .await
+            .expect("read pending apply")
+            .expect("pending apply");
+        assert_eq!(pending.status, "pending");
+        assert_eq!(pending.attempt_count, 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::RecoverApply {
+                operation_id: pending.id.to_string(),
+                expected_attempt_count: pending.attempt_count,
+                reason: "Recover an owner response lost after commit".to_string(),
+                idempotency_key: "native-recover-apply".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Apply(recovered) = response else {
+            panic!("expected apply response");
+        };
+        assert_eq!(recovered.item_id, recovery_item.id);
+        assert_eq!(
+            recovered.provider_receipt_id,
+            "native-provider:native-recovery-apply"
+        );
+        let completed = apply_operation::Entity::find_by_id(pending.id)
+            .one(runtime.db())
+            .await
+            .expect("read completed apply")
+            .expect("completed apply");
+        assert_eq!(completed.status, "completed");
+        assert_eq!(completed.attempt_count, 2);
+    }
+
+    #[tokio::test]
+    async fn native_inventory_and_provider_progress_execute_http_parity() {
+        let (runtime, _, _, auth, tenant, _) = native_fixture().await;
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ListTargets,
+        )
+        .await;
+        let TranslationAdminResponse::Targets(targets) = response else {
+            panic!("expected targets response");
+        };
+        assert_eq!(targets.len(), 1);
+        assert!(
+            targets[0]
+                .capabilities
+                .iter()
+                .any(|value| value == "change_cursor")
+        );
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::SyncProviderInventory {
+                owner_slug: "media".to_string(),
+                resource_kind: "asset".to_string(),
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Inventory(synced) = response else {
+            panic!("expected inventory response");
+        };
+        assert_eq!(synced.observed_resources, 1);
+        assert_eq!(synced.checkpoint.as_deref(), Some("cursor-1"));
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::RebuildProviderInventory {
+                owner_slug: "media".to_string(),
+                resource_kind: "asset".to_string(),
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                page_size: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Inventory(rebuilt) = response else {
+            panic!("expected inventory response");
+        };
+        assert_eq!(rebuilt.observed_resources, 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadProviderProgress {
+                owner_slug: "media".to_string(),
+                resource_kind: "asset".to_string(),
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::ProviderProgress(progress) = response else {
+            panic!("expected provider progress response");
+        };
+        assert_eq!(progress.required_units, 1);
+        assert_eq!(progress.exact_required_units, 1);
+        assert_eq!(progress.freshness, "current");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReplacePolicy {
+                expected_revision: 0,
+                required_target_locales: vec!["de".to_string()],
+                idempotency_key: "native-inventory-replace-policy".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Policy(policy) = response else {
+            panic!("expected policy response");
+        };
+        assert_eq!(policy.required_target_locales, ["de"]);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadRequiredProviderProgress {
+                owner_slug: "media".to_string(),
+                resource_kind: "asset".to_string(),
+                source_locale: "en".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::RequiredProviderProgress(required) = response else {
+            panic!("expected required provider progress response");
+        };
+        assert_eq!(required.required_target_locales, ["de"]);
+        assert_eq!(required.targets.len(), 1);
+        assert_eq!(required.complete_resource_locale_pairs, 1);
+    }
+
+    #[tokio::test]
+    async fn native_interchange_executes_authenticated_http_parity() {
+        let (runtime, _, second_tenant_id, auth, tenant, _) = native_fixture().await;
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CreateJob {
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                glossary: None,
+                idempotency_key: "native-create-job".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Job(job) = response else {
+            panic!("expected job response");
+        };
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::AddItem {
+                job_id: job.id.clone(),
+                identity: identity(),
+                idempotency_key: "native-add-item".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Item(item) = response else {
+            panic!("expected item response");
+        };
+
+        let malformed = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ExportJob {
+                job_id: job.id.clone(),
+                max_items: 0,
+            },
+        )
+        .await;
+        assert!(
+            malformed.contains("TRANSLATION_REQUEST_INVALID"),
+            "{malformed}"
+        );
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ExportJob {
+                job_id: job.id.clone(),
+                max_items: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::InterchangeDocument(document) = response else {
+            panic!("expected interchange document");
+        };
+        assert_eq!(document.schema_version, 1);
+        assert_eq!(document.items.len(), 1);
+        assert_eq!(document.items[0].fields[0].source_value, "Hero");
+
+        let stale = execute_http_error(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ImportItem {
+                schema_version: document.schema_version,
+                job_id: job.id.clone(),
+                item_id: item.id.clone(),
+                identity: document.items[0].identity.clone(),
+                source_digest: "0".repeat(64),
+                values: vec![ProposalValueInput {
+                    key: "title".to_string(),
+                    value: "Held".to_string(),
+                }],
+                idempotency_key: "native-import-stale".to_string(),
+            },
+        )
+        .await;
+        assert!(stale.contains("TRANSLATION_REQUEST_INVALID"), "{stale}");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ImportItem {
+                schema_version: document.schema_version,
+                job_id: job.id.clone(),
+                item_id: item.id,
+                identity: document.items[0].identity.clone(),
+                source_digest: document.items[0].source_digest.clone(),
+                values: vec![ProposalValueInput {
+                    key: "title".to_string(),
+                    value: "Held".to_string(),
+                }],
+                idempotency_key: "native-import-valid".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::Proposal(proposal) = response else {
+            panic!("expected proposal response");
+        };
+        assert_eq!(proposal.origin, "import");
+        assert_eq!(proposal.status, "draft");
+        assert!(proposal.qa_accepted);
+
+        let second_user_id = Uuid::new_v4();
+        let second_auth = auth_context(second_tenant_id, second_user_id);
+        let second_tenant = tenant_context(second_tenant_id);
+        let isolated = execute_http_error(
+            &runtime,
+            &second_auth,
+            &second_tenant,
+            TranslationAdminOperation::ExportJob {
+                job_id: job.id,
+                max_items: 10,
+            },
+        )
+        .await;
+        assert!(
+            isolated.contains("TRANSLATION_RESOURCE_NOT_FOUND"),
+            "{isolated}"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_runtime_rejects_invalid_context_and_missing_dependencies() {
+        let (runtime, _, second_tenant_id, auth, tenant, request) = native_fixture().await;
+        let mismatched_tenant = tenant_context(second_tenant_id);
+        let mismatch = execute_with_runtime(
+            TranslationAdminOperation::ReadPolicy,
+            &auth,
+            &mismatched_tenant,
+            &request,
+            &runtime,
+        )
+        .await
+        .expect_err("mismatched tenant context must fail");
+        assert!(
+            mismatch
+                .to_string()
+                .contains("Authenticated tenant does not match request tenant")
+        );
+
+        let empty_key = execute_with_runtime(
+            TranslationAdminOperation::CreateJob {
+                source_locale: "en".to_string(),
+                target_locale: "de".to_string(),
+                glossary: None,
+                idempotency_key: String::new(),
+            },
+            &auth,
+            &tenant,
+            &request,
+            &runtime,
+        )
+        .await
+        .expect_err("empty idempotency key must fail");
+        assert!(
+            empty_key
+                .to_string()
+                .contains("Idempotency key must not be empty")
+        );
+
+        let incomplete_runtime = HostRuntimeContext::new(runtime.db_clone());
+        let unavailable = execute_with_runtime(
+            TranslationAdminOperation::ReadPolicy,
+            &auth,
+            &tenant,
+            &request,
+            &incomplete_runtime,
+        )
+        .await
+        .expect_err("missing runtime dependencies must fail");
+        assert!(
+            unavailable
+                .to_string()
+                .contains("Translation runtime is unavailable")
+        );
+    }
 }

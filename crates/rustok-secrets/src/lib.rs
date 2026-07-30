@@ -116,10 +116,10 @@ impl SecretResolverRegistry {
             .expect("validated secret resolver registration must exist");
         {
             let cache = self.cache.read().await;
-            if let Some(cached) = cache.get(reference) {
-                if cached.expires_at > tokio::time::Instant::now() {
-                    return Ok(cached.value.clone());
-                }
+            if let Some(cached) = cache.get(reference)
+                && cached.expires_at > tokio::time::Instant::now()
+            {
+                return Ok(cached.value.clone());
             }
         }
         let value = registration.resolver.resolve(&reference.key).await?;

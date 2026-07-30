@@ -20,6 +20,12 @@ verified payload-layer digest. Alloy drafts carry source lineage and create
 immutable module releases/packages. The server supplies infrastructure adapters
 and mounts owner transports.
 
+Host command and HTTP adapters dispatch admitted artifact bindings through
+`ArtifactCommandBindingRequest` and `ArtifactHttpBindingRequest`. These
+envelopes keep the immutable release, admitted binding set, installation target,
+tenant, payload, and authenticated execution context together at the owner
+boundary instead of spreading one operation across positional arguments.
+
 `ControlPlaneInfrastructure` is the owner context for clock and UUID ports.
 `ModuleControlPlane` creates one production context and can accept an injected
 context for deterministic owner fixtures. Admission, installation lifecycle,

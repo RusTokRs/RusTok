@@ -12,6 +12,7 @@ use crate::dto::{
 };
 use crate::entities::{seller, seller_command_receipt};
 use crate::error::MarketplaceSellerError;
+use crate::receipted_commands::MemberIdentity;
 
 #[tokio::test]
 async fn member_commands_commit_one_event_per_receipt_and_bind_locale() {
@@ -62,8 +63,10 @@ async fn member_commands_commit_one_event_per_receipt_and_bind_locale() {
             actor_id,
             "update-member-event",
             "en-US",
-            seller_id,
-            added.id,
+            MemberIdentity {
+                seller_id,
+                member_id: added.id,
+            },
             update.clone(),
         )
         .await
@@ -77,8 +80,10 @@ async fn member_commands_commit_one_event_per_receipt_and_bind_locale() {
             actor_id,
             "update-member-event",
             "en-US",
-            seller_id,
-            added.id,
+            MemberIdentity {
+                seller_id,
+                member_id: added.id,
+            },
             update.clone(),
         )
         .await
@@ -91,8 +96,10 @@ async fn member_commands_commit_one_event_per_receipt_and_bind_locale() {
             actor_id,
             "update-member-event",
             "ru",
-            seller_id,
-            added.id,
+            MemberIdentity {
+                seller_id,
+                member_id: added.id,
+            },
             update,
         )
         .await;

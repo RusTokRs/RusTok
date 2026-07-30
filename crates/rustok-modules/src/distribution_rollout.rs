@@ -547,13 +547,12 @@ where
                 status_failure.as_ref(),
             )
             .await?;
-            if next_status == ModuleStaticDistributionRolloutStatus::Converged {
-                if let Some(previous_observed) = state
+            if next_status == ModuleStaticDistributionRolloutStatus::Converged
+                && let Some(previous_observed) = state
                     .observed_rollout_id
                     .filter(|rollout_id| *rollout_id != rollout.rollout_id)
-                {
-                    supersede_rollout(&transaction, previous_observed).await?;
-                }
+            {
+                supersede_rollout(&transaction, previous_observed).await?;
             }
             advance_rollout_state(
                 &transaction,

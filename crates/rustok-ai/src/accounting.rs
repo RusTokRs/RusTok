@@ -2227,8 +2227,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovery_requeues_and_releases_only_the_abandoned_provider_slot() {
+    async fn another_runtime_instance_recovers_and_reclaims_an_expired_execution() {
         let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+        let recovery_accounting = StructuredAccounting::new(accounting.database.clone());
+        let restarted_ledger = StructuredExecutionLedger::new(accounting.database.clone());
         let execution = ledger
             .register(&context(tenant_id, "execute-a"), &request())
             .await
@@ -2255,7 +2257,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            accounting
+            recovery_accounting
                 .recover_expired(Utc::now() + chrono::Duration::seconds(31))
                 .await
                 .unwrap(),
@@ -2296,6 +2298,13 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(reservation.state, "reserved");
+
+        let resumed = restarted_ledger
+            .claim(execution.id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .expect("a restarted runtime must reclaim the recovered execution");
+        assert_ne!(resumed.token, lease.token);
     }
 
     #[tokio::test]

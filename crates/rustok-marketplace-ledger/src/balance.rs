@@ -144,9 +144,8 @@ impl MarketplaceLedgerService {
                 active.negative_amount = Set(negative_amount);
                 active.source_entry_count = Set(source_entry_count);
                 active.last_entry_id = Set(last_entry.map(|entry| entry.id));
-                active.last_entry_created_at =
-                    Set(last_entry.map(|entry| entry.created_at.clone()));
-                active.rebuilt_at = Set(now.clone());
+                active.last_entry_created_at = Set(last_entry.map(|entry| entry.created_at));
+                active.rebuilt_at = Set(now);
                 active.updated_at = Set(now);
                 active.update(self.database()).await?
             }
@@ -163,8 +162,8 @@ impl MarketplaceLedgerService {
                     negative_amount: Set(negative_amount),
                     source_entry_count: Set(source_entry_count),
                     last_entry_id: Set(last_entry.map(|entry| entry.id)),
-                    last_entry_created_at: Set(last_entry.map(|entry| entry.created_at.clone())),
-                    rebuilt_at: Set(now.clone()),
+                    last_entry_created_at: Set(last_entry.map(|entry| entry.created_at)),
+                    rebuilt_at: Set(now),
                     updated_at: Set(now),
                 };
                 match active.insert(self.database()).await {
@@ -186,8 +185,8 @@ impl MarketplaceLedgerService {
                         active.source_entry_count = Set(source_entry_count);
                         active.last_entry_id = Set(last_entry.map(|entry| entry.id));
                         active.last_entry_created_at =
-                            Set(last_entry.map(|entry| entry.created_at.clone()));
-                        active.rebuilt_at = Set(now.clone());
+                            Set(last_entry.map(|entry| entry.created_at));
+                        active.rebuilt_at = Set(now);
                         active.updated_at = Set(now);
                         active.update(self.database()).await?
                     }
@@ -205,10 +204,10 @@ impl MarketplaceLedgerService {
     ) -> MarketplaceLedgerResult<Vec<MarketplaceSellerBalanceResponse>> {
         let mut scopes = HashSet::new();
         for entry in &transaction.entries {
-            if entry.account_code == MarketplaceLedgerAccountCode::SellerPayable {
-                if let Some(seller_id) = entry.seller_id {
-                    scopes.insert((seller_id, entry.currency_code.clone()));
-                }
+            if entry.account_code == MarketplaceLedgerAccountCode::SellerPayable
+                && let Some(seller_id) = entry.seller_id
+            {
+                scopes.insert((seller_id, entry.currency_code.clone()));
             }
         }
         let mut balances = Vec::with_capacity(scopes.len());

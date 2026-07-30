@@ -6,6 +6,12 @@ This server now includes **cache stampede protection** for tenant resolution, pr
 
 ## What Was Changed?
 
+Tenant cache schema version 2 stores the structured tenant `settings` value as
+compact JSON text inside the Postcard envelope. This preserves nested JSON
+objects and arrays without relying on Postcard's unsupported
+`deserialize_any` path. Existing schema-version-1 entries are invalidated and
+refilled through the normal typed-cache path.
+
 ### File: `src/middleware/tenant.rs`
 
 #### 1. Added Singleflight Pattern

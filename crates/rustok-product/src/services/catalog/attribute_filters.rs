@@ -43,8 +43,8 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
         .collect::<Vec<_>>()
         .join(", ");
     let tenant_placeholder = sql_placeholder(backend, 1);
-    let definitions = CatalogAttributeFilterDefinitionRow::find_by_statement(
-        Statement::from_sql_and_values(
+    let definitions =
+        CatalogAttributeFilterDefinitionRow::find_by_statement(Statement::from_sql_and_values(
             backend,
             format!(
                 r#"
@@ -58,13 +58,12 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
                 "#
             ),
             values,
-        ),
-    )
-    .all(db)
-    .await?
-    .into_iter()
-    .map(|definition| (definition.code.to_ascii_lowercase(), definition))
-    .collect::<HashMap<_, _>>();
+        ))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|definition| (definition.code.to_ascii_lowercase(), definition))
+        .collect::<HashMap<_, _>>();
 
     let mut conditions = Vec::with_capacity(filters.len());
     for filter in filters {
@@ -76,8 +75,8 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
                     filter.code
                 ))
             })?;
-        let value_type = AttributeValueType::from_storage(definition.value_type.as_str())
-            .map_err(|_| {
+        let value_type =
+            AttributeValueType::from_storage(definition.value_type.as_str()).map_err(|_| {
                 CommerceError::Validation(format!(
                     "attribute {} has an unsupported stored value type",
                     definition.code
@@ -106,9 +105,7 @@ fn build_attribute_filter_condition(
     fallback_locale: &str,
 ) -> CommerceResult<Condition> {
     let condition = match value_type {
-        AttributeValueType::Text
-        | AttributeValueType::Textarea
-        | AttributeValueType::Richtext
+        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext
             if definition.is_localized =>
         {
             localized_text_condition(
@@ -120,11 +117,10 @@ fn build_attribute_filter_condition(
                 raw_value,
             )
         }
-        AttributeValueType::Text
-        | AttributeValueType::Textarea
-        | AttributeValueType::Richtext => custom_condition(
-            backend,
-            r#"
+        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext => {
+            custom_condition(
+                backend,
+                r#"
             EXISTS (
                 SELECT 1
                 FROM product_attribute_values pav
@@ -135,19 +131,32 @@ fn build_attribute_filter_condition(
                   AND pav.value_text = {p3}
             )
             "#,
-            vec![tenant_id.into(), definition.id.into(), raw_value.into()],
-        ),
+                vec![tenant_id.into(), definition.id.into(), raw_value.into()],
+            )
+        }
         AttributeValueType::Integer => {
-            let value = raw_value.parse::<i64>().map_err(|_| {
-                invalid_typed_value(definition.code.as_str(), "integer", raw_value)
-            })?;
-            scalar_condition(backend, tenant_id, definition.id, "value_integer", value.into())
+            let value = raw_value
+                .parse::<i64>()
+                .map_err(|_| invalid_typed_value(definition.code.as_str(), "integer", raw_value))?;
+            scalar_condition(
+                backend,
+                tenant_id,
+                definition.id,
+                "value_integer",
+                value.into(),
+            )
         }
         AttributeValueType::Decimal => {
-            let value = raw_value.parse::<Decimal>().map_err(|_| {
-                invalid_typed_value(definition.code.as_str(), "decimal", raw_value)
-            })?;
-            scalar_condition(backend, tenant_id, definition.id, "value_decimal", value.into())
+            let value = raw_value
+                .parse::<Decimal>()
+                .map_err(|_| invalid_typed_value(definition.code.as_str(), "decimal", raw_value))?;
+            scalar_condition(
+                backend,
+                tenant_id,
+                definition.id,
+                "value_decimal",
+                value.into(),
+            )
         }
         AttributeValueType::Boolean => {
             let value = match raw_value.to_ascii_lowercase().as_str() {
@@ -161,13 +170,25 @@ fn build_attribute_filter_condition(
                     ));
                 }
             };
-            scalar_condition(backend, tenant_id, definition.id, "value_boolean", value.into())
+            scalar_condition(
+                backend,
+                tenant_id,
+                definition.id,
+                "value_boolean",
+                value.into(),
+            )
         }
         AttributeValueType::Date => {
             let value = NaiveDate::parse_from_str(raw_value, "%Y-%m-%d").map_err(|_| {
                 invalid_typed_value(definition.code.as_str(), "date (YYYY-MM-DD)", raw_value)
             })?;
-            scalar_condition(backend, tenant_id, definition.id, "value_date", value.into())
+            scalar_condition(
+                backend,
+                tenant_id,
+                definition.id,
+                "value_date",
+                value.into(),
+            )
         }
         AttributeValueType::Datetime => {
             let value = DateTime::parse_from_rfc3339(raw_value)

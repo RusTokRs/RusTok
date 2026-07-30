@@ -7,9 +7,13 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "graphql")]
+use async_graphql::{EmptySubscription, Request, Schema, Variables};
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use rustok_api::{Action, Permission, PortActor, PortContext, PortError, Resource, TenantLocale};
+#[cfg(feature = "graphql")]
+use rustok_api::{AuthContext, RequestContext};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_tenant::{
     ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyPort,
@@ -48,6 +52,12 @@ use sea_orm::{
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+#[cfg(feature = "graphql")]
+use rustok_translation::{
+    graphql::{TranslationMutation, TranslationQuery},
+    graphql_runtime::TranslationGraphqlRuntimeData,
+};
 
 #[derive(Default)]
 struct ApplyProviderState {
@@ -227,6 +237,24 @@ async fn fixture_with_apply_state() -> (
     Uuid,
     Arc<ApplyProviderState>,
 ) {
+    let (database, tenant_id) = test_database().await;
+    let apply_state = Arc::new(ApplyProviderState::default());
+    let registry = snapshot_registry(Arc::clone(&apply_state));
+    let event_bus = test_event_bus(&database);
+    (
+        database.clone(),
+        TranslationWorkflowService::new(
+            database,
+            registry,
+            Arc::new(TestTenantLocalePolicies),
+            event_bus,
+        ),
+        tenant_id,
+        apply_state,
+    )
+}
+
+async fn test_database() -> (DatabaseConnection, Uuid) {
     let database = Database::connect("sqlite::memory:").await.unwrap();
     database
         .execute_unprepared("PRAGMA foreign_keys = ON")
@@ -243,25 +271,17 @@ async fn fixture_with_apply_state() -> (
     }
     let tenant_id = Uuid::new_v4();
     seed_tenant(&database, tenant_id).await;
-    let apply_state = Arc::new(ApplyProviderState::default());
+    (database, tenant_id)
+}
+
+fn snapshot_registry(apply_state: Arc<ApplyProviderState>) -> Arc<TranslationTargetRegistry> {
     let mut registry = TranslationTargetRegistry::default();
-    registry
-        .register(SnapshotProvider {
-            apply_state: Arc::clone(&apply_state),
-        })
-        .unwrap();
-    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone())));
-    (
-        database.clone(),
-        TranslationWorkflowService::new(
-            database,
-            Arc::new(registry),
-            Arc::new(TestTenantLocalePolicies),
-            event_bus,
-        ),
-        tenant_id,
-        apply_state,
-    )
+    registry.register(SnapshotProvider { apply_state }).unwrap();
+    Arc::new(registry)
+}
+
+fn test_event_bus(database: &DatabaseConnection) -> TransactionalEventBus {
+    TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone())))
 }
 
 async fn fixture() -> (DatabaseConnection, TranslationWorkflowService, Uuid) {
@@ -331,6 +351,79 @@ fn recovery_context(tenant_id: Uuid, actor_id: Uuid, idempotency_key: &str) -> P
     .with_role("manager")
     .with_idempotency_key(idempotency_key)
     .with_deadline(Duration::from_secs(5))
+}
+
+#[cfg(feature = "graphql")]
+type TranslationSchema = Schema<TranslationQuery, TranslationMutation, EmptySubscription>;
+
+#[cfg(feature = "graphql")]
+async fn graphql_fixture() -> (DatabaseConnection, TranslationSchema, Uuid) {
+    let (database, tenant_id) = test_database().await;
+    let registry = snapshot_registry(Arc::new(ApplyProviderState::default()));
+    let event_bus = test_event_bus(&database);
+    let runtime = TranslationGraphqlRuntimeData::new(
+        database.clone(),
+        registry,
+        Arc::new(TestTenantLocalePolicies),
+        event_bus,
+        None,
+        None,
+    );
+    let schema = Schema::build(TranslationQuery, TranslationMutation, EmptySubscription)
+        .data(runtime)
+        .finish();
+    (database, schema, tenant_id)
+}
+
+#[cfg(feature = "graphql")]
+fn graphql_request(
+    query: &str,
+    variables: serde_json::Value,
+    auth_tenant_id: Uuid,
+    request_tenant_id: Uuid,
+) -> Request {
+    let user_id = Uuid::new_v4();
+    let permissions = [
+        Action::Create,
+        Action::Read,
+        Action::Update,
+        Action::Import,
+        Action::Export,
+    ]
+    .into_iter()
+    .map(|action| Permission::new(Resource::Translations, action))
+    .collect();
+    Request::new(query)
+        .variables(Variables::from_json(variables))
+        .data(AuthContext {
+            user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id: auth_tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        })
+        .data(RequestContext {
+            tenant_id: request_tenant_id,
+            user_id: Some(user_id),
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: "en".to_string(),
+        })
+}
+
+#[cfg(feature = "graphql")]
+fn assert_graphql_error_code(response: &async_graphql::Response, expected: &str) {
+    assert_eq!(response.errors.len(), 1, "{:?}", response.errors);
+    assert_eq!(
+        response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code")),
+        Some(&async_graphql::Value::from(expected))
+    );
 }
 
 fn job_input(target_locale: &str) -> CreateJobInput {
@@ -522,6 +615,188 @@ async fn bounded_interchange_exports_owner_snapshot_and_imports_through_canonica
         .unwrap();
     assert_eq!(proposal.origin, ProposalOrigin::Import);
     assert_eq!(proposal.status, "draft");
+}
+
+#[cfg(feature = "graphql")]
+#[tokio::test]
+async fn authenticated_graphql_interchange_enforces_validation_and_tenant_isolation() {
+    const CREATE_JOB: &str = r#"
+        mutation CreateJob($input: CreateTranslationJobInput!) {
+            createTranslationJob(input: $input) { id }
+        }
+    "#;
+    const ADD_ITEM: &str = r#"
+        mutation AddItem($input: AddTranslationJobItemInput!) {
+            addTranslationJobItem(input: $input) { id }
+        }
+    "#;
+    const EXPORT_JOB: &str = r#"
+        query ExportJob($input: ExportTranslationJobInput!) {
+            exportTranslationJob(input: $input) {
+                schemaVersion
+                jobId
+                items {
+                    itemId
+                    identity { ownerSlug resourceKind resourceId subresourceId }
+                    sourceDigest
+                    fields { key sourceValue }
+                }
+            }
+        }
+    "#;
+    const IMPORT_ITEM: &str = r#"
+        mutation ImportItem($input: ImportTranslationItemInput!) {
+            importTranslationItem(input: $input) {
+                itemId
+                origin
+                status
+                qaAccepted
+                values { key value expectedSourceHash }
+            }
+        }
+    "#;
+
+    let (database, schema, tenant_id) = graphql_fixture().await;
+    let create = schema
+        .execute(graphql_request(
+            CREATE_JOB,
+            serde_json::json!({
+                "input": {
+                    "sourceLocale": "en",
+                    "targetLocale": "de",
+                    "idempotencyKey": "graphql-interchange-create"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(create.errors.is_empty(), "{:?}", create.errors);
+    let create_data = create.data.into_json().unwrap();
+    let job_id =
+        Uuid::parse_str(create_data["createTranslationJob"]["id"].as_str().unwrap()).unwrap();
+
+    let add = schema
+        .execute(graphql_request(
+            ADD_ITEM,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "identity": {
+                        "ownerSlug": "media",
+                        "resourceKind": "asset",
+                        "resourceId": "asset-graphql-interchange"
+                    },
+                    "idempotencyKey": "graphql-interchange-add"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(add.errors.is_empty(), "{:?}", add.errors);
+    let add_data = add.data.into_json().unwrap();
+    let item_id =
+        Uuid::parse_str(add_data["addTranslationJobItem"]["id"].as_str().unwrap()).unwrap();
+
+    let invalid_export = schema
+        .execute(graphql_request(
+            EXPORT_JOB,
+            serde_json::json!({"input": {"jobId": job_id, "maxItems": 0}}),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert_graphql_error_code(&invalid_export, "BAD_USER_INPUT");
+
+    let export = schema
+        .execute(graphql_request(
+            EXPORT_JOB,
+            serde_json::json!({"input": {"jobId": job_id, "maxItems": 10}}),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(export.errors.is_empty(), "{:?}", export.errors);
+    let export_data = export.data.into_json().unwrap();
+    let document = &export_data["exportTranslationJob"];
+    assert_eq!(document["schemaVersion"], 1);
+    assert_eq!(document["jobId"], job_id.to_string());
+    assert_eq!(document["items"].as_array().unwrap().len(), 1);
+    let exported_item = &document["items"][0];
+    assert_eq!(exported_item["itemId"], item_id.to_string());
+    assert_eq!(exported_item["fields"][0]["key"], "title");
+    assert_eq!(exported_item["fields"][0]["sourceValue"], "Hero");
+
+    let stale_import = schema
+        .execute(graphql_request(
+            IMPORT_ITEM,
+            serde_json::json!({
+                "input": {
+                    "schemaVersion": document["schemaVersion"],
+                    "jobId": job_id,
+                    "itemId": item_id,
+                    "identity": exported_item["identity"],
+                    "sourceDigest": "stale-source-digest",
+                    "values": [{"key": "title", "value": "Titel"}],
+                    "idempotencyKey": "graphql-interchange-stale"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert_graphql_error_code(&stale_import, "BAD_USER_INPUT");
+
+    let import = schema
+        .execute(graphql_request(
+            IMPORT_ITEM,
+            serde_json::json!({
+                "input": {
+                    "schemaVersion": document["schemaVersion"],
+                    "jobId": job_id,
+                    "itemId": item_id,
+                    "identity": exported_item["identity"],
+                    "sourceDigest": exported_item["sourceDigest"],
+                    "values": [{"key": "title", "value": "Titel"}],
+                    "idempotencyKey": "graphql-interchange-import"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(import.errors.is_empty(), "{:?}", import.errors);
+    let import_data = import.data.into_json().unwrap();
+    let proposal = &import_data["importTranslationItem"];
+    assert_eq!(proposal["itemId"], item_id.to_string());
+    assert_eq!(proposal["origin"], "import");
+    assert_eq!(proposal["status"], "draft");
+    assert_eq!(proposal["qaAccepted"], true);
+    assert_eq!(proposal["values"][0]["key"], "title");
+    assert_eq!(proposal["values"][0]["value"], "Titel");
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated_export = schema
+        .execute(graphql_request(
+            EXPORT_JOB,
+            serde_json::json!({"input": {"jobId": job_id, "maxItems": 10}}),
+            other_tenant_id,
+            other_tenant_id,
+        ))
+        .await;
+    assert_graphql_error_code(&isolated_export, "NOT_FOUND");
+
+    let mismatched_context = schema
+        .execute(graphql_request(
+            EXPORT_JOB,
+            serde_json::json!({"input": {"jobId": job_id, "maxItems": 10}}),
+            tenant_id,
+            other_tenant_id,
+        ))
+        .await;
+    assert_graphql_error_code(&mismatched_context, "PERMISSION_DENIED");
 }
 
 #[tokio::test]

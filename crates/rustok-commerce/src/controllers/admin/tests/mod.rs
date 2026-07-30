@@ -130,10 +130,8 @@ pub(crate) fn test_app_context(
         crate::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(db.clone());
     let fulfillment_lifecycle_read_runtime =
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(db.clone());
-    let order_read_runtime = crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
-        db.clone(),
-        event_bus.clone(),
-    );
+    let order_read_runtime =
+        crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
     let product_catalog_read_runtime =
         rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
     crate::controllers::CommerceHttpRuntime {

@@ -160,7 +160,6 @@ impl PersistentInventoryReservationIdentityPort {
     }
 }
 
-
 #[async_trait]
 impl InventoryReservationPort for crate::InventoryService {
     async fn check_availability(

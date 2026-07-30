@@ -28,6 +28,11 @@ use crate::service::{
 const RESPONSE_KIND_SELLER: &str = "seller";
 const RESPONSE_KIND_MEMBER: &str = "member";
 
+pub(crate) struct MemberIdentity {
+    pub seller_id: Uuid,
+    pub member_id: Uuid,
+}
+
 impl MarketplaceSellerService {
     pub(crate) async fn create_seller_with_receipt(
         &self,
@@ -690,10 +695,13 @@ impl MarketplaceSellerService {
         actor_id: Uuid,
         idempotency_key: impl Into<String>,
         locale: &str,
-        seller_id: Uuid,
-        member_id: Uuid,
+        identity: MemberIdentity,
         input: UpdateMarketplaceSellerMemberInput,
     ) -> MarketplaceSellerResult<MarketplaceSellerMemberResponse> {
+        let MemberIdentity {
+            seller_id,
+            member_id,
+        } = identity;
         let locale = normalize_seller_locale(locale)?;
         let policy_input = input.clone();
         let metadata = input

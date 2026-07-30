@@ -1,7 +1,5 @@
 use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
-use rustok_api::{
-    Permission, RequestContext, TenantContext, graphql::require_module_enabled,
-};
+use rustok_api::{Permission, RequestContext, TenantContext, graphql::require_module_enabled};
 use rustok_outbox::TransactionalEventBus;
 use rustok_product::{AdminProductListQuery, CatalogService, StorefrontProductListQuery};
 use sea_orm::DatabaseConnection;
@@ -99,7 +97,8 @@ impl ProductCatalogQuery {
             filter.sort_direction,
             filter.attribute_filters.unwrap_or_default(),
         )
-        .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?;
+        .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?
+        .with_pagination(page, per_page);
         let products = CatalogService::new(db.clone(), event_bus.clone())
             .list_published_products_with_query(
                 tenant.id,
@@ -107,8 +106,6 @@ impl ProductCatalogQuery {
                 Some(tenant.default_locale.as_str()),
                 public_channel_slug.as_deref(),
                 list_query,
-                page,
-                per_page,
             )
             .await
             .map_err(|error| map_product_service_error(error, "storefront_product_catalog"))?;

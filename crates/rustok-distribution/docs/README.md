@@ -9,7 +9,10 @@ no UI surface and no FFA/FBA boundary of its own.
 explicitly selected cross-module bridges. The `ai-translation` feature is a
 composition feature, not a module slug: it requires `mod-ai` and
 `mod-translation` and publishes a Translation-owned lazy factory without
-placing AI/Translation imports in the server host.
+placing AI/Translation imports in the server host. The production server
+profile selects this bridge. Composition evidence verifies the fail-closed
+deployment state: without the result keyring, the factory resolves to no
+machine provider and manual Translation workflows remain available.
 
 `composition_identity()` publishes a canonical hash of the selected module
 registry. Trusted CLI and HTTP hosts bind this identity into the installer
@@ -36,7 +39,9 @@ tests, signing, evidence publication, and the bound terminal receipt.
 
 - `cargo check -p rustok-distribution --no-default-features`
 - `cargo check -p rustok-server --no-default-features`
+- `cargo test -p rustok-distribution --no-default-features --features ai-translation selected_ai_translation_bridge_publishes_factory_and_stays_optional_without_keyring`
 - `node scripts/verify/verify-api-surface-contract.mjs`
+- `node scripts/verify/verify-ai-translation-boundary.mjs`
 
 The current control-plane work permits only lightweight formatting, diff, and
 metadata checks; the compile commands above remain the target verification gate.

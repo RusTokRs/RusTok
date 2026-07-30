@@ -114,13 +114,13 @@ impl ExternalFulfillmentProviderRegistration {
                     .to_string(),
             ));
         }
-        if let Some(mode) = &self.degraded_mode {
-            if mode.reason.trim().is_empty() || mode.fallback_profile.trim().is_empty() {
-                return Err(FulfillmentError::Validation(
-                    "fulfillment provider degraded mode requires reason and fallback_profile"
-                        .to_string(),
-                ));
-            }
+        if let Some(mode) = &self.degraded_mode
+            && (mode.reason.trim().is_empty() || mode.fallback_profile.trim().is_empty())
+        {
+            return Err(FulfillmentError::Validation(
+                "fulfillment provider degraded mode requires reason and fallback_profile"
+                    .to_string(),
+            ));
         }
         Ok(())
     }

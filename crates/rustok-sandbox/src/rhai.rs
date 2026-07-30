@@ -281,12 +281,12 @@ impl SandboxExecutor for RhaiExecutor {
         }
         let mut resolved_source = None;
         for extension in &self.extensions {
-            if let Some(source) = extension.source_bytes(request)? {
-                if resolved_source.replace(source).is_some() {
-                    return Err(SandboxError::InvalidRequest(
-                        "multiple Rhai extensions supplied request source".to_string(),
-                    ));
-                }
+            if let Some(source) = extension.source_bytes(request)?
+                && resolved_source.replace(source).is_some()
+            {
+                return Err(SandboxError::InvalidRequest(
+                    "multiple Rhai extensions supplied request source".to_string(),
+                ));
             }
         }
         let source = resolved_source.unwrap_or_else(|| request.payload.bytes.clone());

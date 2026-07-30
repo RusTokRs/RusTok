@@ -1,5 +1,5 @@
-use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos::{html, prelude::*};
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
@@ -49,6 +49,7 @@ pub fn TranslationAdmin() -> impl IntoView {
     );
     let locale_for_tabs = locale.clone();
     let locale_for_content = locale.clone();
+    let tab_refs = TranslationAdminTab::ALL.map(|_| NodeRef::<html::Button>::new());
 
     view! {
         <div class="space-y-6" data-testid="translation-admin">
@@ -62,6 +63,7 @@ pub fn TranslationAdmin() -> impl IntoView {
 
             <nav
                 aria-label=tabs_aria_label
+                role="tablist"
                 class="flex flex-wrap gap-2"
             >
                 {move || {
@@ -71,58 +73,106 @@ pub fn TranslationAdmin() -> impl IntoView {
                         .into_iter()
                         .map(|tab| {
                             let writer = query_writer.clone();
+                            let keyboard_writer = query_writer.clone();
                             let label = tab_label(locale.as_deref(), tab);
                             let is_selected = selected == tab;
+                            let tab_id = format!("translation-tab-{}", tab.query_value());
+                            let panel_id = format!("translation-panel-{}", tab.query_value());
+                            let tab_ref = tab_refs[tab.index()];
+                            let focus_refs = tab_refs;
                             view! {
-                                <Button
-                                    variant=if is_selected {
-                                        ButtonVariant::Default
-                                    } else {
-                                        ButtonVariant::Outline
-                                    }
-                                    on_click=Box::new(move || {
+                                <button
+                                    type="button"
+                                    id=tab_id
+                                    node_ref=tab_ref
+                                    role="tab"
+                                    aria-selected=if is_selected { "true" } else { "false" }
+                                    aria-controls=panel_id
+                                    tabindex=if is_selected { 0 } else { -1 }
+                                    class=translation_tab_class(is_selected)
+                                    on:click=move |_| {
                                         writer.apply_query_intent(core::tab_query_intent(tab));
-                                    })
+                                    }
+                                    on:keydown=move |event| {
+                                        let target = match event.key().as_str() {
+                                            "ArrowLeft" | "ArrowUp" => Some(selected.previous()),
+                                            "ArrowRight" | "ArrowDown" => Some(selected.next()),
+                                            "Home" => Some(TranslationAdminTab::Overview),
+                                            "End" => Some(TranslationAdminTab::Workflow),
+                                            _ => None,
+                                        };
+                                        if let Some(target) = target {
+                                            event.prevent_default();
+                                            keyboard_writer.apply_query_intent(
+                                                core::tab_query_intent(target),
+                                            );
+                                            if let Some(button) = focus_refs[target.index()].get() {
+                                                let _ = button.focus();
+                                            }
+                                        }
+                                    }
                                 >
                                     {label}
-                                </Button>
+                                </button>
                             }
                         })
                         .collect_view()
                 }}
             </nav>
 
-            {move || match active_tab.get() {
-                TranslationAdminTab::Overview => view! {
-                    <OverviewTab token tenant locale=locale_for_content.clone() />
-                }.into_any(),
-                TranslationAdminTab::Jobs => view! {
-                    <JobsTab token tenant locale=locale_for_content.clone() />
-                }.into_any(),
-                TranslationAdminTab::Glossaries => view! {
-                    <GlossariesTab
-                        token
-                        tenant
-                        locale=locale_for_content.clone()
-                        selected_glossary_id=glossary_query
-                    />
-                }.into_any(),
-                TranslationAdminTab::Memory => view! {
-                    <MemoryTab
-                        token
-                        tenant
-                        locale=locale_for_content.clone()
-                        selected_memory_entry_id=memory_entry_query
-                    />
-                }.into_any(),
-                TranslationAdminTab::Inventory => view! {
-                    <InventoryTab token tenant locale=locale_for_content.clone() />
-                }.into_any(),
-                TranslationAdminTab::Workflow => view! {
-                    <WorkflowTab token tenant locale=locale_for_content.clone() />
-                }.into_any(),
+            {move || {
+                let selected = active_tab.get();
+                let panel_id = format!("translation-panel-{}", selected.query_value());
+                let tab_id = format!("translation-tab-{}", selected.query_value());
+                view! {
+                    <section
+                        id=panel_id
+                        role="tabpanel"
+                        aria-labelledby=tab_id
+                        tabindex=0
+                    >
+                        {match selected {
+                            TranslationAdminTab::Overview => view! {
+                                <OverviewTab token tenant locale=locale_for_content.clone() />
+                            }.into_any(),
+                            TranslationAdminTab::Jobs => view! {
+                                <JobsTab token tenant locale=locale_for_content.clone() />
+                            }.into_any(),
+                            TranslationAdminTab::Glossaries => view! {
+                                <GlossariesTab
+                                    token
+                                    tenant
+                                    locale=locale_for_content.clone()
+                                    selected_glossary_id=glossary_query
+                                />
+                            }.into_any(),
+                            TranslationAdminTab::Memory => view! {
+                                <MemoryTab
+                                    token
+                                    tenant
+                                    locale=locale_for_content.clone()
+                                    selected_memory_entry_id=memory_entry_query
+                                />
+                            }.into_any(),
+                            TranslationAdminTab::Inventory => view! {
+                                <InventoryTab token tenant locale=locale_for_content.clone() />
+                            }.into_any(),
+                            TranslationAdminTab::Workflow => view! {
+                                <WorkflowTab token tenant locale=locale_for_content.clone() />
+                            }.into_any(),
+                        }}
+                    </section>
+                }
             }}
         </div>
+    }
+}
+
+fn translation_tab_class(is_selected: bool) -> &'static str {
+    if is_selected {
+        "inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    } else {
+        "inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     }
 }
 
@@ -304,12 +354,12 @@ fn PolicyCard(
                 })}
                 <div class="grid gap-3">
                     <div class="space-y-2">
-                        <Label required=true>{revision_label}</Label>
-                        <Input value=expected_revision set_value=set_expected_revision name="expected_revision" />
+                        <Label required=true r#for="expected_revision">{revision_label}</Label>
+                        <Input value=expected_revision set_value=set_expected_revision id="expected_revision" name="expected_revision" />
                     </div>
                     <div class="space-y-2">
-                        <Label required=true>{locales_label}</Label>
-                        <Input value=required_locales set_value=set_required_locales name="required_target_locales" />
+                        <Label required=true r#for="required_target_locales">{locales_label}</Label>
+                        <Input value=required_locales set_value=set_required_locales id="required_target_locales" name="required_target_locales" />
                     </div>
                     <Button on_click=Box::new(policy_action)>{replace_label}</Button>
                     <Show when=move || busy.get()>
@@ -617,20 +667,20 @@ fn JobsTab(
                 <CardContent class="space-y-4">
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="space-y-2">
-                            <Label required=true>{source_label}</Label>
-                            <Input value=source_locale set_value=set_source_locale name="source_locale" />
+                            <Label required=true r#for="source_locale">{source_label}</Label>
+                            <Input value=source_locale set_value=set_source_locale id="source_locale" name="source_locale" />
                         </div>
                         <div class="space-y-2">
-                            <Label required=true>{target_label}</Label>
-                            <Input value=target_locale set_value=set_target_locale name="target_locale" />
+                            <Label required=true r#for="target_locale">{target_label}</Label>
+                            <Input value=target_locale set_value=set_target_locale id="target_locale" name="target_locale" />
                         </div>
                         <div class="space-y-2">
-                            <Label>{glossary_id_label}</Label>
-                            <Input value=glossary_id set_value=set_glossary_id name="glossary_id" />
+                            <Label r#for="glossary_id">{glossary_id_label}</Label>
+                            <Input value=glossary_id set_value=set_glossary_id id="glossary_id" name="glossary_id" />
                         </div>
                         <div class="space-y-2">
-                            <Label>{glossary_revision_label}</Label>
-                            <Input value=glossary_revision set_value=set_glossary_revision name="glossary_revision" />
+                            <Label r#for="glossary_revision">{glossary_revision_label}</Label>
+                            <Input value=glossary_revision set_value=set_glossary_revision id="glossary_revision" name="glossary_revision" />
                         </div>
                     </div>
                     <Button on_click=Box::new(create_action)>{create_label}</Button>
@@ -644,8 +694,8 @@ fn JobsTab(
                 </CardHeader>
                 <CardContent class="space-y-4">
                     <div class="space-y-2">
-                        <Label required=true>{job_id_label}</Label>
-                        <Input value=job_id set_value=set_job_id name="job_id" />
+                        <Label required=true r#for="job_id">{job_id_label}</Label>
+                        <Input value=job_id set_value=set_job_id id="job_id" name="job_id" />
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <Button variant=ButtonVariant::Outline on_click=Box::new(read_action)>{read_label}</Button>
@@ -666,19 +716,19 @@ fn JobsTab(
                     <div class="grid gap-4 lg:grid-cols-2">
                         <div class="space-y-3">
                             <div class="space-y-2">
-                                <Label>{max_items_label}</Label>
-                                <Input value=max_export_items set_value=set_max_export_items name="max_export_items" />
+                                <Label r#for="max_export_items">{max_items_label}</Label>
+                                <Input value=max_export_items set_value=set_max_export_items id="max_export_items" name="max_export_items" />
                             </div>
                             <Button variant=ButtonVariant::Outline on_click=Box::new(export_action)>{export_label}</Button>
                             <div class="space-y-2">
-                                <Label>{export_document_label}</Label>
-                                <Textarea value=export_document set_value=set_export_document name="export_document" rows=14 />
+                                <Label r#for="export_document">{export_document_label}</Label>
+                                <Textarea value=export_document set_value=set_export_document id="export_document" name="export_document" rows=14 />
                             </div>
                         </div>
                         <div class="space-y-3">
                             <div class="space-y-2">
-                                <Label required=true>{import_document_label}</Label>
-                                <Textarea value=import_document set_value=set_import_document name="import_document" rows=18 />
+                                <Label required=true r#for="import_document">{import_document_label}</Label>
+                                <Textarea value=import_document set_value=set_import_document id="import_document" name="import_document" rows=18 />
                             </div>
                             <Button on_click=Box::new(import_action)>{import_label}</Button>
                         </div>
@@ -1042,14 +1092,14 @@ fn GlossariesTab(
                                             <CardDescription>{create_description}</CardDescription>
                                         </CardHeader>
                                         <CardContent class="space-y-4">
-                                            <div class="space-y-2"><Label required=true>{create_name_label}</Label><Input value=name set_value=set_name name="glossary_name" /></div>
-                                            <div class="space-y-2"><Label>{create_description_label}</Label><Textarea value=description set_value=set_description name="glossary_description" /></div>
+                                            <div class="space-y-2"><Label required=true r#for="glossary_name">{create_name_label}</Label><Input value=name set_value=set_name id="glossary_name" name="glossary_name" /></div>
+                                            <div class="space-y-2"><Label r#for="glossary_description">{create_description_label}</Label><Textarea value=description set_value=set_description id="glossary_description" name="glossary_description" /></div>
                                             <div class="grid gap-4 sm:grid-cols-2">
-                                                <div class="space-y-2"><Label required=true>{source_label}</Label><Input value=source_locale set_value=set_source_locale name="glossary_source_locale" /></div>
-                                                <div class="space-y-2"><Label required=true>{target_label}</Label><Input value=target_locale set_value=set_target_locale name="glossary_target_locale" /></div>
-                                                <div class="space-y-2"><Label>{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug name="glossary_owner_slug" /></div>
-                                                <div class="space-y-2"><Label>{resource_label}</Label><Input value=resource_kind set_value=set_resource_kind name="glossary_resource_kind" /></div>
-                                                <div class="space-y-2"><Label>{field_label}</Label><Input value=field_key set_value=set_field_key name="glossary_field_key" /></div>
+                                                <div class="space-y-2"><Label required=true r#for="glossary_source_locale">{source_label}</Label><Input value=source_locale set_value=set_source_locale id="glossary_source_locale" name="glossary_source_locale" /></div>
+                                                <div class="space-y-2"><Label required=true r#for="glossary_target_locale">{target_label}</Label><Input value=target_locale set_value=set_target_locale id="glossary_target_locale" name="glossary_target_locale" /></div>
+                                                <div class="space-y-2"><Label r#for="glossary_owner_slug">{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug id="glossary_owner_slug" name="glossary_owner_slug" /></div>
+                                                <div class="space-y-2"><Label r#for="glossary_resource_kind">{resource_label}</Label><Input value=resource_kind set_value=set_resource_kind id="glossary_resource_kind" name="glossary_resource_kind" /></div>
+                                                <div class="space-y-2"><Label r#for="glossary_field_key">{field_label}</Label><Input value=field_key set_value=set_field_key id="glossary_field_key" name="glossary_field_key" /></div>
                                             </div>
                                             <Button on_click=Box::new(move || create_action.run(()))>{create_button_label}</Button>
                                         </CardContent>
@@ -1113,8 +1163,8 @@ fn GlossariesTab(
                                                     <Badge variant=if selected.is_active { BadgeVariant::Success } else { BadgeVariant::Secondary }>{if selected.is_active { "active" } else { "inactive" }}</Badge>
                                                     <Badge variant=BadgeVariant::Outline>{format!("{} concepts", selected.concepts.len())}</Badge>
                                                 </div>
-                                                <div class="space-y-2"><Label required=true>{edit_name_label}</Label><Input value=edit_name set_value=set_edit_name name="edit_glossary_name" /></div>
-                                                <div class="space-y-2"><Label>{edit_description_label}</Label><Textarea value=edit_description set_value=set_edit_description name="edit_glossary_description" /></div>
+                                                <div class="space-y-2"><Label required=true r#for="edit_glossary_name">{edit_name_label}</Label><Input value=edit_name set_value=set_edit_name id="edit_glossary_name" name="edit_glossary_name" /></div>
+                                                <div class="space-y-2"><Label r#for="edit_glossary_description">{edit_description_label}</Label><Textarea value=edit_description set_value=set_edit_description id="edit_glossary_description" name="edit_glossary_description" /></div>
                                                 <div class="flex flex-wrap gap-2">
                                                     <Button on_click=Box::new(move || update_action.run(()))>{update_label}</Button>
                                                     <Button variant=ButtonVariant::Secondary on_click=Box::new(move || active_action.run(()))>
@@ -1143,8 +1193,8 @@ fn GlossariesTab(
                                             </CardHeader>
                                             <CardContent class="space-y-4">
                                                 <div class="space-y-2">
-                                                    <Label required=true>{concepts_label}</Label>
-                                                    <Textarea value=concepts_json set_value=set_concepts_json name="glossary_concepts_json" />
+                                                    <Label required=true r#for="glossary_concepts_json">{concepts_label}</Label>
+                                                    <Textarea value=concepts_json set_value=set_concepts_json id="glossary_concepts_json" name="glossary_concepts_json" />
                                                 </div>
                                                 <Button on_click=Box::new(move || terms_action.run(()))>{replace_terms_label}</Button>
                                             </CardContent>
@@ -1591,18 +1641,18 @@ fn MemoryTab(
                 </CardHeader>
                 <CardContent class="space-y-4">
                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <div class="space-y-2"><Label required=true>{source_locale_label}</Label><Input value=lookup_source_locale set_value=set_lookup_source_locale name="memory_lookup_source_locale" /></div>
-                        <div class="space-y-2"><Label required=true>{target_locale_label}</Label><Input value=lookup_target_locale set_value=set_lookup_target_locale name="memory_lookup_target_locale" /></div>
-                        <div class="space-y-2"><Label required=true>{owner_slug_label}</Label><Input value=lookup_owner_slug set_value=set_lookup_owner_slug name="memory_lookup_owner_slug" /></div>
-                        <div class="space-y-2"><Label required=true>{resource_kind_label}</Label><Input value=lookup_resource_kind set_value=set_lookup_resource_kind name="memory_lookup_resource_kind" /></div>
-                        <div class="space-y-2"><Label required=true>{resource_id_label}</Label><Input value=lookup_resource_id set_value=set_lookup_resource_id name="memory_lookup_resource_id" /></div>
-                        <div class="space-y-2"><Label>{subresource_id_label}</Label><Input value=lookup_subresource_id set_value=set_lookup_subresource_id name="memory_lookup_subresource_id" /></div>
-                        <div class="space-y-2"><Label required=true>{field_key_label}</Label><Input value=lookup_field_key set_value=set_lookup_field_key name="memory_lookup_field_key" /></div>
-                        <div class="space-y-2"><Label required=true>{minimum_score_label}</Label><Input value=lookup_minimum_score set_value=set_lookup_minimum_score name="memory_lookup_minimum_score" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_source_locale">{source_locale_label}</Label><Input value=lookup_source_locale set_value=set_lookup_source_locale id="memory_lookup_source_locale" name="memory_lookup_source_locale" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_target_locale">{target_locale_label}</Label><Input value=lookup_target_locale set_value=set_lookup_target_locale id="memory_lookup_target_locale" name="memory_lookup_target_locale" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_owner_slug">{owner_slug_label}</Label><Input value=lookup_owner_slug set_value=set_lookup_owner_slug id="memory_lookup_owner_slug" name="memory_lookup_owner_slug" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_resource_kind">{resource_kind_label}</Label><Input value=lookup_resource_kind set_value=set_lookup_resource_kind id="memory_lookup_resource_kind" name="memory_lookup_resource_kind" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_resource_id">{resource_id_label}</Label><Input value=lookup_resource_id set_value=set_lookup_resource_id id="memory_lookup_resource_id" name="memory_lookup_resource_id" /></div>
+                        <div class="space-y-2"><Label r#for="memory_lookup_subresource_id">{subresource_id_label}</Label><Input value=lookup_subresource_id set_value=set_lookup_subresource_id id="memory_lookup_subresource_id" name="memory_lookup_subresource_id" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_field_key">{field_key_label}</Label><Input value=lookup_field_key set_value=set_lookup_field_key id="memory_lookup_field_key" name="memory_lookup_field_key" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_lookup_minimum_score">{minimum_score_label}</Label><Input value=lookup_minimum_score set_value=set_lookup_minimum_score id="memory_lookup_minimum_score" name="memory_lookup_minimum_score" /></div>
                     </div>
-                    <div class="space-y-2"><Label required=true>{lookup_source_text_label}</Label><Textarea value=lookup_source_text set_value=set_lookup_source_text name="memory_lookup_source_text" /></div>
+                    <div class="space-y-2"><Label required=true r#for="memory_lookup_source_text">{lookup_source_text_label}</Label><Textarea value=lookup_source_text set_value=set_lookup_source_text id="memory_lookup_source_text" name="memory_lookup_source_text" /></div>
                     <div class="flex flex-wrap items-end gap-3">
-                        <div class="w-32 space-y-2"><Label required=true>{lookup_limit_label}</Label><Input value=lookup_limit set_value=set_lookup_limit name="memory_lookup_limit" /></div>
+                        <div class="w-32 space-y-2"><Label required=true r#for="memory_lookup_limit">{lookup_limit_label}</Label><Input value=lookup_limit set_value=set_lookup_limit id="memory_lookup_limit" name="memory_lookup_limit" /></div>
                         <Button on_click=Box::new(move || lookup_action.run(()))>{lookup_label}</Button>
                     </div>
                     {move || {
@@ -1636,9 +1686,9 @@ fn MemoryTab(
                 </CardHeader>
                 <CardContent class="space-y-4">
                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <div class="space-y-2"><Label>{source_filter_label}</Label><Input value=list_source_locale set_value=set_list_source_locale name="memory_source_locale_filter" /></div>
-                        <div class="space-y-2"><Label>{target_filter_label}</Label><Input value=list_target_locale set_value=set_list_target_locale name="memory_target_locale_filter" /></div>
-                        <div class="space-y-2"><Label required=true>{list_limit_label}</Label><Input value=list_limit set_value=set_list_limit name="memory_list_limit" /></div>
+                        <div class="space-y-2"><Label r#for="memory_source_locale_filter">{source_filter_label}</Label><Input value=list_source_locale set_value=set_list_source_locale id="memory_source_locale_filter" name="memory_source_locale_filter" /></div>
+                        <div class="space-y-2"><Label r#for="memory_target_locale_filter">{target_filter_label}</Label><Input value=list_target_locale set_value=set_list_target_locale id="memory_target_locale_filter" name="memory_target_locale_filter" /></div>
+                        <div class="space-y-2"><Label required=true r#for="memory_list_limit">{list_limit_label}</Label><Input value=list_limit set_value=set_list_limit id="memory_list_limit" name="memory_list_limit" /></div>
                         <label class="flex items-center gap-2 pt-8 text-sm text-foreground">
                             <Checkbox checked=include_tombstoned set_checked=set_include_tombstoned name="memory_include_tombstoned" />
                             {include_tombstoned_label}
@@ -1771,7 +1821,7 @@ fn MemoryTab(
                                                 <CardContent class="space-y-4">
                                                     <div class="grid gap-4 md:grid-cols-2">
                                                         <div class="space-y-2">
-                                                            <Label required=true>{retention_policy_label}</Label>
+                                                            <Label required=true r#for="memory_retention_policy">{retention_policy_label}</Label>
                                                             <Select
                                                                 options=vec![
                                                                     SelectOption::new("owner_lifecycle", owner_lifecycle_label),
@@ -1780,10 +1830,10 @@ fn MemoryTab(
                                                                 ]
                                                                 value=retention_policy
                                                                 set_value=set_retention_policy
-                                                                name="memory_retention_policy"
+                                                                id="memory_retention_policy" name="memory_retention_policy"
                                                             />
                                                         </div>
-                                                        <div class="space-y-2"><Label>{retain_until_label}</Label><Input value=retain_until set_value=set_retain_until name="memory_retain_until" /></div>
+                                                        <div class="space-y-2"><Label r#for="memory_retain_until">{retain_until_label}</Label><Input value=retain_until set_value=set_retain_until id="memory_retain_until" name="memory_retain_until" /></div>
                                                     </div>
                                                     <div class="flex flex-wrap gap-2">
                                                         <Button on_click=Box::new(move || retention_action.run(()))>{update_retention_label}</Button>
@@ -1974,14 +2024,14 @@ fn InventoryTab(
                 </CardHeader>
                 <CardContent class="space-y-4">
                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <div class="space-y-2"><Label required=true>{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug name="owner_slug" /></div>
-                        <div class="space-y-2"><Label required=true>{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind name="resource_kind" /></div>
-                        <div class="space-y-2"><Label required=true>{source_label}</Label><Input value=source_locale set_value=set_source_locale name="source_locale" /></div>
-                        <div class="space-y-2"><Label required=true>{target_label}</Label><Input value=target_locale set_value=set_target_locale name="target_locale" /></div>
+                        <div class="space-y-2"><Label required=true r#for="owner_slug">{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug id="owner_slug" name="owner_slug" /></div>
+                        <div class="space-y-2"><Label required=true r#for="resource_kind">{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind id="resource_kind" name="resource_kind" /></div>
+                        <div class="space-y-2"><Label required=true r#for="source_locale">{source_label}</Label><Input value=source_locale set_value=set_source_locale id="source_locale" name="source_locale" /></div>
+                        <div class="space-y-2"><Label required=true r#for="target_locale">{target_label}</Label><Input value=target_locale set_value=set_target_locale id="target_locale" name="target_locale" /></div>
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
-                        <div class="space-y-2"><Label>{limit_label}</Label><Input value=limit set_value=set_limit name="limit" /></div>
-                        <div class="space-y-2"><Label>{page_size_label}</Label><Input value=page_size set_value=set_page_size name="page_size" /></div>
+                        <div class="space-y-2"><Label r#for="limit">{limit_label}</Label><Input value=limit set_value=set_limit id="limit" name="limit" /></div>
+                        <div class="space-y-2"><Label r#for="page_size">{page_size_label}</Label><Input value=page_size set_value=set_page_size id="page_size" name="page_size" /></div>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <Button on_click=Box::new(sync_action)>{sync_label}</Button>
@@ -2216,11 +2266,11 @@ fn WorkflowTab(
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <div class="grid gap-4 sm:grid-cols-2">
-                            <div class="space-y-2"><Label required=true>{job_id_label}</Label><Input value=job_id set_value=set_job_id name="job_id" /></div>
-                            <div class="space-y-2"><Label required=true>{resource_id_label}</Label><Input value=resource_id set_value=set_resource_id name="resource_id" /></div>
-                            <div class="space-y-2"><Label required=true>{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug name="owner_slug" /></div>
-                            <div class="space-y-2"><Label required=true>{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind name="resource_kind" /></div>
-                            <div class="space-y-2 sm:col-span-2"><Label>{subresource_label}</Label><Input value=subresource_id set_value=set_subresource_id name="subresource_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="job_id">{job_id_label}</Label><Input value=job_id set_value=set_job_id id="job_id" name="job_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="resource_id">{resource_id_label}</Label><Input value=resource_id set_value=set_resource_id id="resource_id" name="resource_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="owner_slug">{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug id="owner_slug" name="owner_slug" /></div>
+                            <div class="space-y-2"><Label required=true r#for="resource_kind">{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind id="resource_kind" name="resource_kind" /></div>
+                            <div class="space-y-2 sm:col-span-2"><Label r#for="subresource_id">{subresource_label}</Label><Input value=subresource_id set_value=set_subresource_id id="subresource_id" name="subresource_id" /></div>
                         </div>
                         <Button on_click=Box::new(add_action)>{add_label}</Button>
                     </CardContent>
@@ -2233,9 +2283,9 @@ fn WorkflowTab(
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <div class="grid gap-4 sm:grid-cols-2">
-                            <div class="space-y-2"><Label required=true>{item_id_label}</Label><Input value=item_id set_value=set_item_id name="item_id" /></div>
-                            <div class="space-y-2"><Label required=true>{field_key_label}</Label><Input value=field_key set_value=set_field_key name="field_key" /></div>
-                            <div class="space-y-2 sm:col-span-2"><Label required=true>{value_label}</Label><Textarea value=field_value set_value=set_field_value name="field_value" rows=5 /></div>
+                            <div class="space-y-2"><Label required=true r#for="item_id">{item_id_label}</Label><Input value=item_id set_value=set_item_id id="item_id" name="item_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="field_key">{field_key_label}</Label><Input value=field_key set_value=set_field_key id="field_key" name="field_key" /></div>
+                            <div class="space-y-2 sm:col-span-2"><Label required=true r#for="field_value">{value_label}</Label><Textarea value=field_value set_value=set_field_value id="field_value" name="field_value" rows=5 /></div>
                         </div>
                         <Button on_click=Box::new(save_action)>{save_label}</Button>
                     </CardContent>
@@ -2249,8 +2299,8 @@ fn WorkflowTab(
                 </CardHeader>
                 <CardContent class="space-y-4">
                     <div class="grid gap-4 sm:grid-cols-2">
-                        <div class="space-y-2"><Label required=true>{review_item_id_label}</Label><Input value=item_id set_value=set_item_id name="review_item_id" /></div>
-                        <div class="space-y-2"><Label required=true>{proposal_id_label}</Label><Input value=proposal_id set_value=set_proposal_id name="proposal_id" /></div>
+                        <div class="space-y-2"><Label required=true r#for="review_item_id">{review_item_id_label}</Label><Input value=item_id set_value=set_item_id id="review_item_id" name="review_item_id" /></div>
+                        <div class="space-y-2"><Label required=true r#for="proposal_id">{proposal_id_label}</Label><Input value=proposal_id set_value=set_proposal_id id="proposal_id" name="proposal_id" /></div>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <Button variant=ButtonVariant::Outline on_click=Box::new(submit_action)>{submit_label}</Button>

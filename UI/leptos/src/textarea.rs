@@ -12,8 +12,10 @@ pub fn Textarea(
     #[prop(optional)] value: Option<ReadSignal<String>>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
     #[prop(optional, into)] class: String,
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
 ) -> impl IntoView {
+    let id = (!id.is_empty()).then_some(id);
     let size_cls = match size {
         Size::Sm => "text-xs px-2 py-1.5",
         Size::Md => "text-sm px-3 py-2",
@@ -28,6 +30,7 @@ pub fn Textarea(
 
     view! {
         <textarea
+            id=id
             rows=rows
             class=format!(
                 "flex w-full rounded-md border bg-background text-foreground shadow-sm \

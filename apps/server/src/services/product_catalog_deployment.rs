@@ -8,8 +8,7 @@ const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";
 const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
 const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
 const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
-const ALLOW_INSECURE_LOOPBACK_ENV: &str =
-    "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
+const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
 const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -228,15 +227,8 @@ mod tests {
 
     #[test]
     fn grpc_requires_an_endpoint() {
-        let error = parse_deployment(
-            Some("grpc"),
-            None,
-            Some("catalog-secret"),
-            None,
-            None,
-            None,
-        )
-        .expect_err("remote Product deployment without endpoint must fail closed");
+        let error = parse_deployment(Some("grpc"), None, Some("catalog-secret"), None, None, None)
+            .expect_err("remote Product deployment without endpoint must fail closed");
         assert!(error.contains("RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"));
     }
 
@@ -322,15 +314,8 @@ mod tests {
 
     #[test]
     fn explicit_loopback_flag_is_not_silently_ignored_in_embedded_mode() {
-        let error = parse_deployment(
-            Some("embedded"),
-            None,
-            None,
-            None,
-            None,
-            Some("false"),
-        )
-        .expect_err("explicit remote loopback configuration must require grpc mode");
+        let error = parse_deployment(Some("embedded"), None, None, None, None, Some("false"))
+            .expect_err("explicit remote loopback configuration must require grpc mode");
         assert!(error.contains("require RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc"));
     }
 

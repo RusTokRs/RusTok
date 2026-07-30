@@ -73,14 +73,13 @@ pub async fn execute_module_toggle(
             .unwrap_or_else(|| infrastructure.new_id().to_string()),
         idempotency_key: request.idempotency_key,
     };
-    if operation_request.idempotency_key.is_some() {
-        if let Some(existing) =
+    if operation_request.idempotency_key.is_some()
+        && let Some(existing) =
             ModuleOperationJournal::replay_idempotent_command(db, &operation_request)
                 .await
                 .map_err(map_idempotency_store_error)?
-        {
-            return replay_lifecycle_operation(db, &operation_request, existing).await;
-        }
+    {
+        return replay_lifecycle_operation(db, &operation_request, existing).await;
     }
     validate_module_toggle(
         dispatcher.catalog(),

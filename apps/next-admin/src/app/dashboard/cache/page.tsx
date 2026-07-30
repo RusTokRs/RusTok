@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { CachePage } from '../../../../packages/cache/src';
+import { CachePage } from '@rustok/cache-admin';
 import { Suspense } from 'react';
 
 export const metadata = {

@@ -143,23 +143,23 @@ fn validate_setting_spec(
             format!("unsupported type '{value_type}'"),
         ));
     }
-    if let Some(default) = &spec.default {
-        if !setting_value_matches_type(value_type, default) {
-            return Err(invalid_schema(
-                module_slug,
-                key,
-                "default does not match declared type",
-            ));
-        }
+    if let Some(default) = &spec.default
+        && !setting_value_matches_type(value_type, default)
+    {
+        return Err(invalid_schema(
+            module_slug,
+            key,
+            "default does not match declared type",
+        ));
     }
-    if let (Some(min), Some(max)) = (spec.min, spec.max) {
-        if min > max {
-            return Err(invalid_schema(
-                module_slug,
-                key,
-                format!("min ({min}) must not exceed max ({max})"),
-            ));
-        }
+    if let (Some(min), Some(max)) = (spec.min, spec.max)
+        && min > max
+    {
+        return Err(invalid_schema(
+            module_slug,
+            key,
+            format!("min ({min}) must not exceed max ({max})"),
+        ));
     }
     if (spec.min.is_some() || spec.max.is_some())
         && !matches!(value_type, "integer" | "number" | "string" | "array")
@@ -189,14 +189,14 @@ fn validate_setting_spec(
                 "all options must match the declared type",
             ));
         }
-        if let Some(default) = &spec.default {
-            if !spec.options.iter().any(|option| option == default) {
-                return Err(invalid_schema(
-                    module_slug,
-                    key,
-                    "default must be one of the declared options",
-                ));
-            }
+        if let Some(default) = &spec.default
+            && !spec.options.iter().any(|option| option == default)
+        {
+            return Err(invalid_schema(
+                module_slug,
+                key,
+                "default must be one of the declared options",
+            ));
         }
     }
     if !spec.object_keys.is_empty() {
@@ -318,14 +318,14 @@ fn validate_setting_spec(
             ));
         }
         validate_setting_spec(module_slug, &format!("{key}[]"), items)?;
-        if let Some(item_type) = spec.item_type.as_deref() {
-            if items.value_type.trim() != item_type.trim() {
-                return Err(invalid_schema(
-                    module_slug,
-                    key,
-                    "item_type must match items.type when both are provided",
-                ));
-            }
+        if let Some(item_type) = spec.item_type.as_deref()
+            && items.value_type.trim() != item_type.trim()
+        {
+            return Err(invalid_schema(
+                module_slug,
+                key,
+                "item_type must match items.type when both are provided",
+            ));
         }
         if let Some(default) = spec.default.as_ref().and_then(serde_json::Value::as_array) {
             for (index, item) in default.iter().enumerate() {
@@ -427,15 +427,15 @@ fn validate_setting_value(
             let numeric_value = value
                 .as_f64()
                 .ok_or_else(|| invalid_value(module_slug, key, format!("expected {value_type}")))?;
-            if let Some(min) = spec.min {
-                if numeric_value < min {
-                    return Err(invalid_value(module_slug, key, format!("must be >= {min}")));
-                }
+            if let Some(min) = spec.min
+                && numeric_value < min
+            {
+                return Err(invalid_value(module_slug, key, format!("must be >= {min}")));
             }
-            if let Some(max) = spec.max {
-                if numeric_value > max {
-                    return Err(invalid_value(module_slug, key, format!("must be <= {max}")));
-                }
+            if let Some(max) = spec.max
+                && numeric_value > max
+            {
+                return Err(invalid_value(module_slug, key, format!("must be <= {max}")));
             }
         }
         "string" => validate_length(
@@ -464,23 +464,23 @@ fn validate_length(
     length: f64,
     spec: &ModuleSettingSpec,
 ) -> Result<(), ModuleSettingsValidationError> {
-    if let Some(min) = spec.min {
-        if length < min {
-            return Err(invalid_value(
-                module_slug,
-                key,
-                format!("length must be >= {min}"),
-            ));
-        }
+    if let Some(min) = spec.min
+        && length < min
+    {
+        return Err(invalid_value(
+            module_slug,
+            key,
+            format!("length must be >= {min}"),
+        ));
     }
-    if let Some(max) = spec.max {
-        if length > max {
-            return Err(invalid_value(
-                module_slug,
-                key,
-                format!("length must be <= {max}"),
-            ));
-        }
+    if let Some(max) = spec.max
+        && length > max
+    {
+        return Err(invalid_value(
+            module_slug,
+            key,
+            format!("length must be <= {max}"),
+        ));
     }
     Ok(())
 }

@@ -61,10 +61,11 @@ fn require_tax_calculation_policy(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::read()).map_err(|error| {
-        log_tax_calculation_policy_rejection(context, owner_operation, &error);
-        error
-    })
+    context
+        .require_policy(PortCallPolicy::read())
+        .inspect_err(|error| {
+            log_tax_calculation_policy_rejection(context, owner_operation, error);
+        })
 }
 
 fn log_tax_calculation_policy_rejection(

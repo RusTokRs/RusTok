@@ -529,16 +529,18 @@ where
         }
         insert_build(
             &transaction,
-            distribution_build_id,
-            predecessor_build_id,
-            composition_revision,
-            &composition_digest,
-            &command.platform_source_reference,
-            &command.platform_source_digest,
-            &command.toolchain_digest,
-            &command.build_target,
-            command.actor_id,
-            &items,
+            BuildInsert {
+                distribution_build_id,
+                predecessor_build_id,
+                composition_revision,
+                composition_digest: &composition_digest,
+                platform_source_reference: &command.platform_source_reference,
+                platform_source_digest: &command.platform_source_digest,
+                toolchain_digest: &command.toolchain_digest,
+                build_target: &command.build_target,
+                actor_id: command.actor_id,
+                items: &items,
+            },
         )
         .await?;
         advance_distribution_state(
@@ -1398,19 +1400,35 @@ async fn complete_claim(
     Ok(())
 }
 
+pub(crate) struct BuildInsert<'a> {
+    pub distribution_build_id: Uuid,
+    pub predecessor_build_id: Option<Uuid>,
+    pub composition_revision: u64,
+    pub composition_digest: &'a str,
+    pub platform_source_reference: &'a str,
+    pub platform_source_digest: &'a str,
+    pub toolchain_digest: &'a str,
+    pub build_target: &'a str,
+    pub actor_id: Uuid,
+    pub items: &'a [ModuleStaticDistributionItem],
+}
+
 pub(crate) async fn insert_build(
     transaction: &DatabaseTransaction,
-    distribution_build_id: Uuid,
-    predecessor_build_id: Option<Uuid>,
-    composition_revision: u64,
-    composition_digest: &str,
-    platform_source_reference: &str,
-    platform_source_digest: &str,
-    toolchain_digest: &str,
-    build_target: &str,
-    actor_id: Uuid,
-    items: &[ModuleStaticDistributionItem],
+    build: BuildInsert<'_>,
 ) -> Result<(), ModuleStaticDistributionError> {
+    let BuildInsert {
+        distribution_build_id,
+        predecessor_build_id,
+        composition_revision,
+        composition_digest,
+        platform_source_reference,
+        platform_source_digest,
+        toolchain_digest,
+        build_target,
+        actor_id,
+        items,
+    } = build;
     let backend = transaction.get_database_backend();
     transaction
         .execute(Statement::from_sql_and_values(

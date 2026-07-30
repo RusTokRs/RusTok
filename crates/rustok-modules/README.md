@@ -61,6 +61,10 @@ around the owner contracts.
 - Supply owner clock and identity ports through one
   `ControlPlaneInfrastructure` context rather than process-global calls.
 - Map installed artifacts to neutral sandbox requests and capability grants.
+- Accept command and HTTP artifact dispatch through typed
+  `ArtifactCommandBindingRequest` and `ArtifactHttpBindingRequest` envelopes so
+  release, binding, installation, tenant, payload, and execution context cannot
+  drift across host call sites.
 - Validate artifact settings, structured data, and every runtime binding payload
   against exact descriptor-bundled schemas through one bounded validator
   implementation.
@@ -95,6 +99,8 @@ around the owner contracts.
 - `ModuleInstaller`
 - `ControlPlaneInfrastructure`
 - `ArtifactRuntime`
+- `ArtifactCommandBindingRequest`
+- `ArtifactHttpBindingRequest`
 - `ModuleLifecycleDbWriter`
 - `ModuleEffectivePolicy`
 - `ModuleMarketplaceCatalog`

@@ -14,6 +14,7 @@ use crate::dto::{
     UpdateMarketplaceSellerMemberInput, UpdateMarketplaceSellerProfileInput,
 };
 use crate::error::MarketplaceSellerError;
+use crate::receipted_commands::MemberIdentity;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketplaceSellerListResponse {
@@ -387,8 +388,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
             context.locale.as_str(),
-            request.seller_id,
-            request.member_id,
+            MemberIdentity {
+                seller_id: request.seller_id,
+                member_id: request.member_id,
+            },
             request.input,
         )
         .await

@@ -5,9 +5,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    FulfillmentError, FulfillmentResponse, FulfillmentService, ListFulfillmentsInput,
-};
+use crate::{FulfillmentError, FulfillmentResponse, FulfillmentService, ListFulfillmentsInput};
 
 /// Transport-neutral owner boundary for fulfillment lifecycle projection reads.
 #[async_trait]
@@ -148,10 +146,7 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
         request: FindLatestFulfillmentByOrderProjectionRequest,
     ) -> Result<Option<FulfillmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_tenant_id(
-            &context,
-            "find_latest_fulfillment_by_order_projection",
-        )?;
+        let tenant_id = parse_tenant_id(&context, "find_latest_fulfillment_by_order_projection")?;
 
         self.inner
             .find_by_order(tenant_id, request.order_id)

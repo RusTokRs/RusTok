@@ -86,9 +86,7 @@ pub fn ProductView() -> impl IntoView {
 
     let resource = Resource::new_blocking(
         move || (fetch_request.clone(), catalog_input.clone()),
-        move |(request, controls)| async move {
-            transport::fetch_products(request, controls).await
-        },
+        move |(request, controls)| async move { transport::fetch_products(request, controls).await },
     );
 
     view! {

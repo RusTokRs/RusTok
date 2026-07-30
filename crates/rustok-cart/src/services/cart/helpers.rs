@@ -298,11 +298,8 @@ pub fn build_delivery_groups(
     groups
         .into_iter()
         .map(|(group_key, line_item_ids)| {
-            let selected_shipping_option_id = selection_map
-                .get(&group_key)
-                .copied()
-                .flatten()
-                .or_else(|| {
+            let selected_shipping_option_id =
+                selection_map.get(&group_key).copied().flatten().or({
                     if is_single_group {
                         cart_selected_shipping_option_id
                     } else {
@@ -1117,10 +1114,9 @@ where
         && desired.values().all(|val| val.is_none())
         && cart.selected_shipping_option_id.is_some()
         && !line_items.is_empty()
+        && let Some(group) = delivery_group_snapshots.iter().next()
     {
-        if let Some(group) = delivery_group_snapshots.iter().next() {
-            desired.insert(group.key.clone(), cart.selected_shipping_option_id);
-        }
+        desired.insert(group.key.clone(), cart.selected_shipping_option_id);
     }
 
     store_shipping_selections(conn, cart_id, desired.clone()).await?;

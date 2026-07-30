@@ -754,8 +754,8 @@ pub async fn find_published_product_id_by_handle(
         return Ok(Some(product_id));
     }
 
-    if !locale_tags_match(fallback_locale, locale) {
-        if let Some(product_id) = find_published_product_id_for_locale(
+    if !locale_tags_match(fallback_locale, locale)
+        && let Some(product_id) = find_published_product_id_for_locale(
             db,
             tenant_id,
             handle,
@@ -763,9 +763,8 @@ pub async fn find_published_product_id_by_handle(
             public_channel_slug,
         )
         .await?
-        {
-            return Ok(Some(product_id));
-        }
+    {
+        return Ok(Some(product_id));
     }
 
     find_published_product_id_any_locale(db, tenant_id, handle, public_channel_slug).await
@@ -835,10 +834,10 @@ pub async fn resolve_tag_locale_for_update<C>(
 where
     C: ConnectionTrait,
 {
-    if let Some(translations) = translations {
-        if !translations.is_empty() {
-            return Ok(preferred_product_locale_from_translations(translations));
-        }
+    if let Some(translations) = translations
+        && !translations.is_empty()
+    {
+        return Ok(preferred_product_locale_from_translations(translations));
     }
 
     let existing = entities::product_translation::Entity::find()

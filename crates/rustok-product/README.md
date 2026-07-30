@@ -95,6 +95,9 @@
 - Product translation title search predicates are not owned by `apps/server`;
   shared ecommerce readers use the owner/foundation search helper instead of a
   host-local `product_search` service.
+- `StorefrontProductListQuery` owns storefront filters, sorting, and validated
+  page/per-page input as one Product query contract across native and GraphQL
+  transports.
 
 ## Interactions
 

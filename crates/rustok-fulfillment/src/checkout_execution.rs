@@ -144,13 +144,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             };
             validate_fulfillment(
                 &fulfillment,
-                tenant_id,
-                request.checkout_operation_id,
-                request.order_id,
-                request.customer_id,
-                request.order_plan_hash.as_str(),
-                plan,
-                key.as_str(),
+                FulfillmentExpectation {
+                    tenant_id,
+                    checkout_operation_id: request.checkout_operation_id,
+                    order_id: request.order_id,
+                    customer_id: request.customer_id,
+                    plan_hash: request.order_plan_hash.as_str(),
+                    plan,
+                    key: key.as_str(),
+                },
             )
             .map_err(|error| {
                 map_checkout_fulfillment_local_port_error(
@@ -246,13 +248,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             })?;
             validate_fulfillment(
                 &fulfillment,
-                tenant_id,
-                request.checkout_operation_id,
-                request.order_id,
-                request.customer_id,
-                request.order_plan_hash.as_str(),
-                plan,
-                key.as_str(),
+                FulfillmentExpectation {
+                    tenant_id,
+                    checkout_operation_id: request.checkout_operation_id,
+                    order_id: request.order_id,
+                    customer_id: request.customer_id,
+                    plan_hash: request.order_plan_hash.as_str(),
+                    plan,
+                    key: key.as_str(),
+                },
             )
             .map_err(|error| {
                 map_checkout_fulfillment_local_port_error(
@@ -373,38 +377,29 @@ fn require_checkout_fulfillment_read_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::read()).map_err(|error| {
-        log_checkout_fulfillment_admission_rejection(
-            context,
-            owner_operation,
-            "policy",
-            &error,
-        );
-        error
-    })
+    context
+        .require_policy(PortCallPolicy::read())
+        .inspect_err(|error| {
+            log_checkout_fulfillment_admission_rejection(context, owner_operation, "policy", error);
+        })
 }
 
 fn require_checkout_fulfillment_write_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).map_err(|error| {
-        log_checkout_fulfillment_admission_rejection(
-            context,
-            owner_operation,
-            "policy",
-            &error,
-        );
-        error
-    })?;
-    context.require_write_semantics().map_err(|error| {
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_checkout_fulfillment_admission_rejection(context, owner_operation, "policy", error);
+        })?;
+    context.require_write_semantics().inspect_err(|error| {
         log_checkout_fulfillment_admission_rejection(
             context,
             owner_operation,
             "write_semantics",
-            &error,
+            error,
         );
-        error
     })
 }
 
@@ -571,16 +566,29 @@ fn build_input(
     }
 }
 
-fn validate_fulfillment(
-    fulfillment: &FulfillmentResponse,
+struct FulfillmentExpectation<'a> {
     tenant_id: Uuid,
     checkout_operation_id: Uuid,
     order_id: Uuid,
     customer_id: Option<Uuid>,
-    plan_hash: &str,
-    plan: &CheckoutFulfillmentCommand,
-    key: &str,
+    plan_hash: &'a str,
+    plan: &'a CheckoutFulfillmentCommand,
+    key: &'a str,
+}
+
+fn validate_fulfillment(
+    fulfillment: &FulfillmentResponse,
+    expected: FulfillmentExpectation<'_>,
 ) -> Result<(), PortError> {
+    let FulfillmentExpectation {
+        tenant_id,
+        checkout_operation_id,
+        order_id,
+        customer_id,
+        plan_hash,
+        plan,
+        key,
+    } = expected;
     if fulfillment.tenant_id != tenant_id
         || fulfillment.order_id != order_id
         || fulfillment.shipping_option_id != plan.shipping_option_id

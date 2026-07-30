@@ -323,7 +323,7 @@ async fn post_in_transaction(
         status: Set(MarketplaceLedgerTransactionStatus::Posted
             .as_str()
             .to_string()),
-        posted_at: Set(input.transferred_at.clone()),
+        posted_at: Set(input.transferred_at),
         metadata: Set(serde_json::json!({
             "transfer_id": transfer_id,
             "transfer_kind": input.kind.as_str(),
@@ -333,7 +333,7 @@ async fn post_in_transaction(
             "to_bucket": to_bucket.as_str(),
             "line_count": input.lines.len(),
         })),
-        created_at: Set(created_at.clone()),
+        created_at: Set(created_at),
     }
     .insert(&receipt.transaction)
     .await
@@ -349,9 +349,9 @@ async fn post_in_transaction(
         from_bucket: Set(from_bucket.as_str().to_string()),
         to_bucket: Set(to_bucket.as_str().to_string()),
         total_amount: Set(total_amount),
-        transferred_at: Set(input.transferred_at.clone()),
+        transferred_at: Set(input.transferred_at),
         metadata: Set(input.metadata.clone()),
-        created_at: Set(created_at.clone()),
+        created_at: Set(created_at),
     }
     .insert(&receipt.transaction)
     .await
@@ -372,7 +372,7 @@ async fn post_in_transaction(
             MarketplaceLedgerEntryDirection::Debit,
             line.amount,
             currency_code.as_str(),
-            created_at.clone(),
+            created_at,
         )
         .await?;
         let credit = insert_transfer_entry(
@@ -387,7 +387,7 @@ async fn post_in_transaction(
             MarketplaceLedgerEntryDirection::Credit,
             line.amount,
             currency_code.as_str(),
-            created_at.clone(),
+            created_at,
         )
         .await?;
         balance_transfer_line::ActiveModel {
@@ -398,7 +398,7 @@ async fn post_in_transaction(
             debit_entry_id: Set(debit.id),
             credit_entry_id: Set(credit.id),
             amount: Set(line.amount),
-            created_at: Set(created_at.clone()),
+            created_at: Set(created_at),
         }
         .insert(&receipt.transaction)
         .await?;
@@ -473,7 +473,7 @@ async fn insert_transfer_entry(
             "reference_entry_id": reference.id,
             "balance_bucket": bucket.as_str(),
         })),
-        created_at: Set(created_at.clone()),
+        created_at: Set(created_at),
     }
     .insert(&receipt.transaction)
     .await?;

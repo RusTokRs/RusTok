@@ -1070,12 +1070,12 @@ fn validate_term_name(name: &str) -> TaxonomyResult<()> {
 }
 
 fn validate_optional_description(description: Option<&str>) -> TaxonomyResult<()> {
-    if let Some(description) = description {
-        if description.chars().count() > 2_000 {
-            return Err(TaxonomyError::validation(
-                "Description cannot exceed 2000 characters",
-            ));
-        }
+    if let Some(description) = description
+        && description.chars().count() > 2_000
+    {
+        return Err(TaxonomyError::validation(
+            "Description cannot exceed 2000 characters",
+        ));
     }
     Ok(())
 }
@@ -1150,10 +1150,10 @@ fn resolve_aliases_for_locale(
 
 fn resolve_locale_candidates(locale: &str, fallback_locale: Option<&str>) -> Vec<String> {
     let mut candidates = vec![locale.to_string()];
-    if let Some(fallback_locale) = fallback_locale {
-        if fallback_locale != locale {
-            candidates.push(fallback_locale.to_string());
-        }
+    if let Some(fallback_locale) = fallback_locale
+        && fallback_locale != locale
+    {
+        candidates.push(fallback_locale.to_string());
     }
     if locale != PLATFORM_FALLBACK_LOCALE && fallback_locale != Some(PLATFORM_FALLBACK_LOCALE) {
         candidates.push(PLATFORM_FALLBACK_LOCALE.to_string());

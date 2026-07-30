@@ -1,0 +1,15 @@
+- main [ref=f2e2]:
+  - generic [ref=f2e3]:
+    - generic [ref=f2e5]:
+      - generic [ref=f2e6]: admin only
+      - heading "Translation control plane" [level=1] [ref=f2e7]
+      - paragraph [ref=f2e8]: Exact-locale coverage, required-target policy, inventory repair, and reviewed owner-safe workflow.
+    - tablist "Translation sections" [ref=f2e9]:
+      - tab "Overview" [selected] [ref=f2e10]
+      - tab "Jobs" [ref=f2e11]
+      - tab "Glossaries" [ref=f2e12]
+      - tab "Memory" [ref=f2e13]
+      - tab "Inventory" [ref=f2e14]
+      - tab "Workflow" [ref=f2e15]
+    - tabpanel "Overview" [ref=f2e16]:
+      - paragraph [ref=f2e19]: Loading Translation state…

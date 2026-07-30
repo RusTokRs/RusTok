@@ -24,7 +24,11 @@ export default async function Page() {
       <Suspense
         fallback={<div className='bg-muted h-64 animate-pulse rounded-xl' />}
       >
-        <EventsPage token={token} tenantSlug={tenantSlug} />
+        <EventsPage
+          token={token}
+          tenantSlug={tenantSlug}
+          errorMessage={t('error')}
+        />
       </Suspense>
     </PageContainer>
   );

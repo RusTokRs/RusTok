@@ -36,7 +36,8 @@ pub(crate) fn validate_module_event_listener_contract(
     let expected_fragments: &[&str] = match slug {
         "search" => &[
             "fn register_event_listeners(",
-            "SearchIngestionHandler::new",
+            "search_projection_source_registry_from_extensions",
+            "SearchIngestionHandler::with_forum_source",
         ],
         "workflow" => &[
             "fn register_event_listeners(",
