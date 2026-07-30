@@ -28,7 +28,7 @@ const indexRuntime = requireMarkers(indexRuntimePath, [
   'MissingSchemaRegistry',
   'pub fn materialize_postgres_index_replay_runtime(',
   'extensions.get::<SharedIndexSourceRegistry>().cloned()',
-  'extensions.get::<SharedIndexSchemaRegistry>()',
+  '.get::<SharedIndexSchemaRegistry>()',
   'return Ok(None);',
   'PostgresIndexReplayRunner::new(',
   'extensions.insert(runtime.clone())',
