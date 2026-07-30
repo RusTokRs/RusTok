@@ -12,10 +12,10 @@ use rustok_cli_core::{
 };
 use rustok_core::events::EventTransport;
 use rustok_customer::CustomerService;
-use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::{
     ProfileBackfillTimer, ProfileError, ProfileService, ProfileVisibility, ProfilesReader,
+    backfill_profile_with_event,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService};
@@ -25,7 +25,6 @@ const BACKFILL_HOST_ERROR: &str = "profiles.backfill_host_unavailable";
 const BACKFILL_TENANT_READ_ERROR: &str = "profiles.backfill_tenant_read_failed";
 const BACKFILL_USER_READ_ERROR: &str = "profiles.backfill_user_read_failed";
 const BACKFILL_ENRICHMENT_READ_ERROR: &str = "profiles.backfill_enrichment_read_failed";
-const BACKFILL_EVENT_PUBLISH_ERROR: &str = "profiles.backfill_event_publish_failed";
 
 pub struct ProfilesCommandProvider {
     runtime: RuntimeComposition,
@@ -62,7 +61,7 @@ impl ProfilesCommandProvider {
         let limit = optional_u64(options, "limit")?.unwrap_or(500);
         let visibility = visibility(options)?;
         let dry_run = request.dry_run || flag(options, "dry_run");
-        let emit_events = flag(options, "emit_events");
+        let emit_events = !dry_run;
         let telemetry = ProfileBackfillTimer::start(tenant_id, dry_run, emit_events);
         let host = self.runtime.require_host().map_err(|error| {
             backfill_failed(
@@ -117,12 +116,10 @@ impl ProfilesCommandProvider {
             .into_iter()
             .map(|item| (item.user_id, item))
             .collect::<HashMap<_, _>>();
-        let event_bus = (!dry_run && emit_events).then(|| {
-            TransactionalEventBus::new(
-                Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
-            )
-        });
-        let profiles = ProfileService::new(db);
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
+        );
+        let profiles = ProfileService::new(db.clone());
         let existing = profiles
             .find_profile_summaries(
                 tenant.id,
@@ -165,44 +162,23 @@ impl ProfilesCommandProvider {
                 items.push(serde_json::json!({"user_id": user.id, "email": user.email, "handle": plan.handle, "display_name": plan.display_name, "preferred_locale": plan.preferred_locale, "action": "planned", "event_published": false}));
                 continue;
             }
-            let result = profiles
-                .backfill_profile(
-                    tenant.id,
-                    user.id,
-                    &user.email,
-                    display_name,
-                    Some(locale),
-                    visibility,
-                    Some(&tenant.default_locale),
-                )
-                .await
-                .map_err(|error| backfill_profile_failed(&telemetry, "profile_create", error))?;
-            let mut event_published = false;
+            let result = backfill_profile_with_event(
+                &db,
+                &event_bus,
+                tenant.id,
+                user.id,
+                &user.email,
+                display_name,
+                Some(locale),
+                visibility,
+                Some(&tenant.default_locale),
+            )
+            .await
+            .map_err(|error| backfill_profile_failed(&telemetry, "profile_create", error))?;
+            let event_published = result.created;
             if result.created {
                 created_profiles += 1;
-                if let Some(bus) = &event_bus {
-                    bus.publish(
-                        tenant.id,
-                        None,
-                        DomainEvent::ProfileUpdated {
-                            user_id: result.profile.user_id,
-                            handle: result.profile.handle.clone(),
-                            locale: result.profile.preferred_locale.clone(),
-                        },
-                    )
-                    .await
-                    .map_err(|error| {
-                        backfill_failed(
-                            &telemetry,
-                            "event_publish",
-                            BACKFILL_EVENT_PUBLISH_ERROR,
-                            true,
-                            error,
-                        )
-                    })?;
-                    published_events += 1;
-                    event_published = true;
-                }
+                published_events += 1;
             } else {
                 skipped_existing += 1;
             }
