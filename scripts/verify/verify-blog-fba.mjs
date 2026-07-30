@@ -15,6 +15,7 @@ const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const runtimeSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
 const consumerRuntimeOrderSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
+const commentsEventProjectionPath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
 const richtextInventoryPath = 'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json';
 const richtextInventoryDocPath = 'crates/rustok-blog/docs/richtext-cutover-inventory.md';
 const categorySearchReindexPath = 'crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json';
@@ -26,6 +27,7 @@ const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
 const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
+const commentsEventProjection = json(commentsEventProjectionPath);
 const richtextInventory = json(richtextInventoryPath);
 const categorySearchReindex = json(categorySearchReindexPath);
 const graphqlRateLimit = json(graphqlRateLimitPath);
@@ -33,7 +35,7 @@ const aiRichtextBoundary = json(aiRichtextBoundaryPath);
 const provider = json(providerPath);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 8) fail('registry schema_version drift');
+if (registry.schema_version !== 9) fail('registry schema_version drift');
 if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 for (const failure of collectBlogFbaVerificationChainFailures({
   registry,
@@ -43,6 +45,9 @@ for (const failure of collectBlogFbaVerificationChainFailures({
   fail(failure);
 }
 if (registry.consumer_profile !== 'blog_post_comments') fail('consumer profile drift');
+if (registry.evidence.comments_event_projection !== commentsEventProjectionPath) fail('comments event projection registry path drift');
+if (commentsEventProjection.module !== 'blog' || commentsEventProjection.surface !== 'comments_event_projection' || commentsEventProjection.owner !== 'rustok-blog' || commentsEventProjection.provider !== 'rustok-comments') fail('comments event projection identity drift');
+if (commentsEventProjection.status !== 'source_verified_no_compile' || commentsEventProjection.compile_policy !== 'not_run_by_request') fail('comments event projection status drift');
 if (registry.evidence.richtext_cutover_inventory !== richtextInventoryPath) fail('richtext cutover inventory registry path drift');
 if (registry.evidence.richtext_cutover_inventory_doc !== richtextInventoryDocPath) fail('richtext cutover inventory doc registry path drift');
 if (registry.evidence.category_search_reindex !== categorySearchReindexPath) fail('category Search reindex registry path drift');
@@ -218,10 +223,10 @@ const moduleSource = read('crates/rustok-blog/src/lib.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
 
 const plan = read('crates/rustok-blog/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 
-console.log('[verify-blog-fba] Blog FBA registry, exact admin/storefront/category/rate-limit/GraphQL/AI richtext source-gate chain, comments consumer metadata, and no-compile evidence are consistent');
+console.log('[verify-blog-fba] Blog FBA registry, exact admin/storefront/comments-projection/category/rate-limit/GraphQL/AI richtext source-gate chain, comments consumer metadata, and no-compile evidence are consistent');

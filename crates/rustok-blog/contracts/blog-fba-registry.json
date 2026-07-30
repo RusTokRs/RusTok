@@ -1,5 +1,5 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -36,6 +36,7 @@
   ],
   "evidence": {
     "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
+    "comments_event_projection": "crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json",
     "richtext_cutover_inventory": "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json",
     "richtext_cutover_inventory_doc": "crates/rustok-blog/docs/richtext-cutover-inventory.md",
     "category_search_reindex": "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json",
@@ -55,6 +56,7 @@
       "node scripts/verify/verify-blog-fba.test.mjs",
       "npm run test:verify:blog:admin-boundary",
       "npm run test:verify:blog:storefront-boundary",
+      "npm run test:verify:blog:comments-event-projection",
       "npm run test:verify:blog:category-search-reindex",
       "npm run test:verify:blog:graphql-rate-limit",
       "npm run test:verify:blog:graphql-richtext-boundary",
@@ -71,6 +73,7 @@
       "node scripts/verify/verify-blog-fba.mjs",
       "npm run verify:blog:admin-boundary",
       "npm run verify:blog:storefront-boundary",
+      "npm run verify:blog:comments-event-projection",
       "npm run verify:blog:category-search-reindex",
       "npm run verify:blog:graphql-rate-limit",
       "npm run verify:blog:graphql-richtext-boundary",
@@ -93,6 +96,13 @@
         "verifier": "scripts/verify/verify-blog-storefront-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
+      },
+      "comments_event_projection": {
+        "package_script": "verify:blog:comments-event-projection",
+        "test_package_script": "test:verify:blog:comments-event-projection",
+        "verifier": "scripts/verify/verify-blog-comments-event-projection.mjs",
+        "self_test": "scripts/verify/verify-blog-comments-event-projection.test.mjs",
+        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json"
       },
       "category_search_reindex": {
         "package_script": "verify:blog:category-search-reindex",
