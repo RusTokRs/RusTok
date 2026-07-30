@@ -2,6 +2,7 @@ mod mutation_store;
 mod partition_admission;
 mod query_port;
 mod query_runtime;
+mod replay_runtime;
 mod schema_lease;
 mod schema_registration;
 mod secondary_index;
@@ -38,6 +39,10 @@ pub use partition_admission::{
 pub use query_port::PostgresIndexQueryPort;
 pub use query_runtime::{
     IndexQueryRuntimeCompositionError, materialize_postgres_index_query_runtime,
+};
+pub use replay_runtime::{
+    IndexReplayRuntimeCompositionError, SharedIndexReplayRuntime,
+    materialize_postgres_index_replay_runtime,
 };
 pub use schema_lease::{
     PostgresSchemaLeaseStore, SchemaApplicationLease, SchemaApplicationLeaseRequest,
