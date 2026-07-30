@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-07-30T19:40:00Z",
+  "review_base": "d0e2a1cea5f0cba6102ca857a881f357c1cbd40e",
+  "status": "product_admin_category_graphql_read_error_safety_source_reviewed_unvalidated",
+  "scope": "Product Admin category-bound GraphQL fallback read public error boundary",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/rustok-product/admin/src/catalog_transport.rs",
+    "crates/rustok-product/admin/src/transport.rs",
+    "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
+    "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
+    "crates/rustok-product/admin/src/ui/leptos.rs",
+    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs"
+  ],
+  "findings": [
+    {
+      "id": "product-admin-category-raw-graphql-errors",
+      "severity": "confirmed",
+      "finding": "Five category-bound Product Admin reads preserve native server functions as the first path but returned the final GraphqlHttpError from their GraphQL fallback without a Product-owned public mapper. Http and Graphql variants could therefore carry status text or server messages into UI resources."
+    },
+    {
+      "id": "final-wrapper-compatible-fix",
+      "severity": "selected",
+      "finding": "The smallest compatible fix adds explicit final wrappers in catalog_transport. Each wrapper creates one correlation context before invoking the unchanged native-first compatibility executor and maps only a final returned error."
+    },
+    {
+      "id": "native-first-semantics",
+      "severity": "preserved",
+      "finding": "The compatibility executor still calls native_server_adapter first and calls graphql_adapter only after native failure. The new wrapper adds no retry, second fallback, duplicate owner call, or transport-selection change."
+    },
+    {
+      "id": "safe-category-shape",
+      "severity": "confirmed",
+      "finding": "Private diagnostics retain the typed GraphqlHttpError and record only token presence plus tenant, product, category, and locale character lengths. Effective-form product and category identifiers remain separate shape fields; raw values are not structured fields."
+    },
+    {
+      "id": "prior-guards-preserved",
+      "severity": "confirmed",
+      "finding": "The existing primary-read guard counts its original five primary mappers plus the catalog-options mapper. New category wrappers intentionally use a distinct source marker so the prior source contract remains valid while the focused category guard locks the five new mappings."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-product/admin/src/catalog_transport.rs",
+    "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json",
+    "crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json",
+    "crates/rustok-product/docs/admin-category-graphql-read-error-safety.md",
+    "scripts/verify/verify-product-admin-category-read-error-safety.mjs"
+  ],
+  "preserved": [
+    "native-first category read execution",
+    "GraphQL fallback order",
+    "GraphQL query documents and variables",
+    "GraphQL response DTO mapping",
+    "category-bound read result types",
+    "effective-form request semantics",
+    "attribute-value request semantics",
+    "primary-read and catalog-options public policies",
+    "absence of new retry or fallback paths"
+  ],
+  "remaining_scope": [
+    "Product Admin GraphQL writes and status mutations",
+    "Product Admin focused verifier execution and Cargo compilation",
+    "browser and mounted transport evidence",
+    "remaining ecommerce non-PortError public envelopes"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "browser_runtime_proven": false,
+    "mounted_transport_proven": false
+  },
+  "execution": []
+}
