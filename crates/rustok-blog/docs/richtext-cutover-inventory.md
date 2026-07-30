@@ -19,14 +19,48 @@ server-derived plain text under the fixed `article` profile.
 - Forum-to-Blog orchestration fails closed unless source content is canonical
   and Article-compatible.
 
+## Offline conversion utility
+
+`crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs` prepares retained
+legacy owner rows before the irreversible migration. Dry-run is the default and
+never writes rows or checkpoint state. The tool scans the actual
+`blog_post_translations` / `blog_posts` owner tables, validates canonical roots,
+extracts supported `rt_json_v1` envelopes, and rejects unknown formats.
+
+Writes require `--apply` after a complete successful preflight. Historical
+Markdown remains an offline input only and requires the separate
+`--allow-markdown-plain-text` acknowledgement; it is preserved as literal
+paragraph text rather than interpreted as a platform Markdown contract. Apply
+uses a stable `(updated_at, id)` cursor, reports orphan translations as
+invalid, applies optimistic body/format/updated-at predicates per batch, and
+performs a final post-apply scan. The NDJSON report contains identifiers and
+outcomes, not content bodies.
+
+Evidence: `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`.
+Guardrail: `scripts/verify/verify-blog-richtext-offline-backfill.mjs`.
+
 ## Execution boundary
 
-Compilation, migration execution, retained PostgreSQL evidence, transport
-checks, and browser parity remain maintainer-owned. Legacy rows must be
-converted offline before retrying the fail-closed migration.
+Compilation, database execution, retained PostgreSQL evidence, transport
+checks, and browser parity remain maintainer-owned. Run preflight before the
+schema migration:
+
+```bash
+DATABASE_URL=postgresql://... cargo run -p rustok-blog \
+  --bin blog_article_richtext_backfill -- \
+  --tenant-id=<uuid> --report=artifacts/blog-richtext-preflight.ndjson
+```
+
+After reviewing the report and backup, rerun with `--apply`. Add
+`--allow-markdown-plain-text` only when literal-text conversion is accepted.
+Tenant-scoped runs are useful for rehearsal or incremental conversion, but a
+final unscoped dry-run is required before the global schema migration so orphan
+and cross-tenant rows cannot be missed. The utility does not execute the schema
+migration or Search reindex.
 
 ## Guardrail
 
-The machine inventory and Blog FBA/GraphQL/storefront verifiers reject
-reintroduction of legacy fields, raw JSON aliases, Search fallback, AI Markdown
-writes, or removed summarizers.
+The machine inventory, dedicated offline-backfill verifier, and Blog
+FBA/GraphQL/storefront verifiers reject reintroduction of legacy transport
+fields, raw JSON aliases, Search fallback, AI Markdown writes, removed
+summarizers, unsafe default writes, or checkpoint mutation during dry-run.

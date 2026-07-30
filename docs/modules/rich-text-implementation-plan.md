@@ -41,11 +41,10 @@ The boundary ADR is accepted. The first server foundation is implemented:
   `crates/rustok-content/fixtures/richtext/`, with a committed profile
   manifest and article HTML/plain-text projections.
 
-This is Phase 1 foundation evidence, not the owner cutover. Blog, Forum,
-Comments, orchestration, Search/Index, and both UI hosts still have to move
-atomically before the new policy becomes the only runtime write/read path.
-The old implementation is not a target compatibility contract and must not
-receive new call sites.
+The Phase 1 foundation now backs the Blog article and Comments source
+cutovers. Forum and explicitly opted-in future fields still have to move before
+the shared policy is universal. The old implementation is not a target
+compatibility contract and must not receive new call sites.
 
 The Phase 2 browser runtime slice is now implemented in `packages/richtext`:
 the package owns the explicit Tiptap extension registry, generated profile
@@ -58,12 +57,13 @@ fallback now copies the same hashed assets and applies the dedicated frame
 headers; Firefox/WebKit evidence and wiring the first owner Leptos form remain
 required before Phase 2 is marked complete.
 
-The first Blog article boundary slice is also implemented: the owner validates
-submitted documents with the fixed `article` profile, writes canonical root JSON
-for that path, and exposes server-derived HTML/plain text to the Next admin
-form. This is not the atomic owner cutover yet: the Leptos/storefront
-transports, storage columns, revisions, and Search/AI projections still need
-to move together.
+The Blog article source cutover is implemented: owner and GraphQL writes use
+the fixed `article` document, Next admin submits it, and native/GraphQL
+storefront reads use server projections. Storage retains canonical root JSON;
+Search, SEO, and AI use owner projections; and the format selector is removed by
+a fail-closed irreversible migration. The owner-specific dry-run/apply backfill
+prepares retained legacy rows. Migration, PostgreSQL, and browser execution
+evidence remain maintainer-owned.
 
 ## Decisions fixed by this plan
 
@@ -96,14 +96,14 @@ to move together.
 
 ## Verified current state and inconsistencies
 
-The following inventory was verified on 2026-07-22. Items explicitly marked
-resolved record completed slices; all others are implementation gaps, not
-target behavior:
+The original inventory was verified on 2026-07-22 and reconciled through
+2026-07-30. Items explicitly marked resolved record completed slices; all
+others are implementation gaps, not target behavior:
 
-- resolved for the first Next article slice 2026-07-23: the Blog post form now
-  sends one shared `RichTextDocument`, uses the shared framed runtime, and
-  renders only server-projected HTML; the owner transport/storage cutover is
-  still pending;
+- resolved for Blog article source 2026-07-30: owner and transports use one
+  `RichTextDocument`, storage is canonical, Search/SEO/AI/storefront consume
+  shared projections, and an owner-specific offline backfill precedes the
+  fail-closed migration; runtime evidence is still pending;
 - the Blog package also owns a Forum reply editor and Forum API helpers, which
   violates module UI ownership;
 - the prototype maintains a lossy manual mapping between snake-case RT nodes
@@ -118,21 +118,20 @@ target behavior:
   does not use the platform locale contract;
 - resolved 2026-07-23: direct `rustok-comments` writes accept only
   `RichTextDocument` and always execute the owner-selected `comment` profile;
-- Blog posts and Forum still expose the same source twice as a string body and
-  a `content_json` value; Comments and the Blog comment consumer no longer do;
+- resolved for Blog posts and Comments: typed documents are the only write
+  source; Forum still retains its legacy string/structured compatibility;
 - actual owner storage is `blog_post_translations`,
   `forum_topic_translations`, `forum_reply_bodies`, and `comment_bodies`; their
   rich JSON is serialized into `TEXT`, while locale is a separate column;
 - Forum deletion/revision/event logic still uses the literal `[deleted]` and
   `body_format = 'markdown'` as lifecycle signals;
-- resolved for the Comments vertical 2026-07-23: content orchestration now
-  rejects conversions with comments/replies until Forum adopts canonical
-  richtext; raw Blog-post/Forum-topic conversion remains part of their pending
-  owner cutovers;
-- Blog and shared-content search projectors index the serialized JSON string;
-- the existing migration binary targets obsolete shared content rows, skips
-  current owner tables and existing RT envelopes, mutates checkpoints during
-  dry runs, and bypasses owner events/audit/reindex paths;
+- resolved for Comments and Blog: orchestration fails closed across
+  incompatible richtext profiles; Forum owner conversion remains pending;
+- resolved for Blog Search: canonical documents are parsed through the shared
+  Article plain-text policy and invalid rows roll back projection writes;
+- the legacy shared-content migration binary remains obsolete and deprecated;
+  Blog now has an owner-specific dry-run-first backfill with no checkpoint
+  mutation, explicit apply, and fail-closed conversion policy;
 - Leptos Blog and Forum forms are raw textareas. Their current adapters either
   omit `content_json`, have no native `#[server]` path, or retry failed writes
   through another protocol;
