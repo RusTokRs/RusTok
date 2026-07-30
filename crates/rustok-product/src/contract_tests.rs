@@ -26,6 +26,7 @@ fn product_declares_owner_local_dto_and_entity_sources() {
     assert!(!cargo.contains("rustok-commerce-foundation"));
     assert!(cargo.contains("rustok-pricing-persistence.workspace = true"));
     assert!(!cargo.contains("rustok-commerce-foundation.workspace = true"));
+    assert!(!cargo.contains("rustok-index"));
 }
 
 #[test]
@@ -40,4 +41,16 @@ fn product_owner_boundaries_do_not_depend_on_foundation() {
     assert!(!entities.contains("price"));
     assert!(!entities.contains("inventory_item"));
     assert!(!entities.contains("stock_location"));
+}
+
+#[test]
+fn product_module_publishes_only_a_typed_selection_marker_for_cross_module_bridges() {
+    use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
+
+    let mut extensions = ModuleRuntimeExtensions::default();
+    crate::ProductModule
+        .register_runtime_extensions(&mut extensions)
+        .expect("Product runtime extensions should register");
+    assert!(extensions.contains::<crate::ProductRuntimeSelected>());
+    assert!(!include_str!("lib.rs").contains("rustok_index"));
 }

@@ -201,12 +201,15 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M5/M6 bounded source replay contract: `source_complete_worker_pending`',
   '- M6 one-page replay and durable checkpoint progression: `source_complete`',
   '- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
+  '- M7 first Product schema and bounded source bridge: `source_complete_owner_execution_pending`',
   '- [x] Add a source replay registry with bounded failure classification.',
   '- [x] Add cursor-based `IndexSource::scan` and targeted `load` contracts.',
   '- [x] Add a durable rebuild checkpoint read/write adapter over `index_checkpoints`.',
   '- [x] Add a bounded worker that applies source pages through `PostgresMutationStore` and',
   '- [x] Add durable schema-scoped rebuild jobs, lease/heartbeat, reclaim, attempt fencing,',
-  '- [ ] Add cancellation, bounded multi-page resume, dry-run, targeted/full/shadow rebuild.',
+  '- [x] Add bounded multi-page execution with heartbeat cadence and immediate pending resume.',
+  '- [x] Add durable cancellation requests and fenced between-page terminal cancellation.',
+  '- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-schema-registry.mjs'",

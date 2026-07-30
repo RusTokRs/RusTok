@@ -22,6 +22,7 @@ mod m20260716_000002_add_product_field_cache_generation_trigger;
 mod m20260725_000001_remove_product_image_media_foreign_key;
 mod m20260725_000002_enforce_catalog_category_tree_invariants;
 mod m20260725_000003_remove_transitional_catalog_columns;
+mod m20260730_000001_add_product_index_revision;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -50,6 +51,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260725_000001_remove_product_image_media_foreign_key::Migration),
         Box::new(m20260725_000002_enforce_catalog_category_tree_invariants::Migration),
         Box::new(m20260725_000003_remove_transitional_catalog_columns::Migration),
+        Box::new(m20260730_000001_add_product_index_revision::Migration),
     ]
 }
 

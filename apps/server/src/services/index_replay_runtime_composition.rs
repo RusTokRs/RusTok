@@ -108,9 +108,10 @@ impl fmt::Debug for IndexReplayOperatorRuntime {
 
 /// Materializes the host-owned Index replay capability after all modules have registered sources.
 ///
-/// This function performs no database I/O and starts no worker. It only freezes the complete
-/// source catalog, binds the immutable schema/source registries to the host database, and publishes
-/// the guarded bounded operator capability through `ModuleRuntimeExtensions`.
+/// This function performs no database I/O and starts no worker. It invokes selected source
+/// factories only to construct adapters, freezes the complete source catalog, binds the immutable
+/// schema/source registries to the host database, and publishes the guarded bounded operator
+/// capability through `ModuleRuntimeExtensions`.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -123,6 +124,11 @@ pub(crate) fn materialize_index_replay_runtime(
         ));
     }
 
+    rustok_index::materialize_postgres_index_sources(extensions, db.clone()).map_err(|error| {
+        ServerError::Message(format!(
+            "PostgreSQL Index source factory materialization failed: {error}"
+        ))
+    })?;
     let sources = rustok_index::materialize_index_source_registry(extensions).map_err(|error| {
         ServerError::Message(format!(
             "Index replay source registry materialization failed: {error}"
