@@ -17,7 +17,10 @@ for (const marker of [
   '"apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"',
   'focused-contract:',
   'postgres-concurrency:',
-  'cargo fmt --all -- --check',
+  'TENANT_RUST_FILES:',
+  'rustfmt --edition 2024 $TENANT_RUST_FILES',
+  'crates/rustok-tenant/tests/locale_policy_concurrency_postgres.rs',
+  'crates/rustok-tenant/tests/tenant_ensure_concurrency_postgres.rs',
   'node scripts/verify/verify-tenant-locale-policy-migration.mjs',
   'npm run verify:tenant:fba',
   'node scripts/verify/verify-tenant-hardening-workflow.mjs',
@@ -33,6 +36,10 @@ for (const marker of [
   if (!workflow.includes(marker)) {
     fail(`workflow contract is missing ${marker}`);
   }
+}
+
+if (workflow.includes('cargo fmt --all')) {
+  fail('tenant evidence must not be blocked by unrelated workspace formatting drift');
 }
 
 if (workflow.includes('cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres --locked')) {
