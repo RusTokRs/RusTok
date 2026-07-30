@@ -8,6 +8,7 @@
     "read": "rustok_api::RichTextView",
     "plain_text": "server-derived"
   },
+  "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [
     "body",
     "body_format",
@@ -21,7 +22,9 @@
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "test_coverage": [
     "canonical RichTextDocument/RichTextView fields are required",
-    "new legacy aliases are rejected",
+    "all Blog GraphQL Rust files are scanned recursively",
+    "legacy fields are rejected outside the explicit adapter allowlist",
+    "new legacy aliases are rejected in every GraphQL file",
     "legacy field removal requires evidence and guardrail tightening"
   ],
   "exit_condition": "Remove legacy adapter fields atomically with storage, Leptos, storefront, Search, AI, and SEO cutover; then tighten the guardrail to require their absence."

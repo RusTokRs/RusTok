@@ -70,6 +70,15 @@ for (const marker of [
   "MAX_BLOG_SLUG_LEN",
   "ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_')",
   "content_kind_query",
+  'const FORUM_SOURCE_MODULE: &str = "forum"',
+  'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
+  "canonical_forum_reply_result_url(value)",
+  'parse_payload_uuid(&value.payload, "reply_id")',
+  'parse_payload_uuid(&value.payload, "topic_id")',
+  "if reply_id != value.id",
+  "?topic={topic_id}&reply={reply_id}",
+  "canonical_url_derives_forum_category_topic_and_reply_routes",
+  "canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads",
 ]) {
   requireMarker(engine, marker, enginePath);
 }
@@ -87,10 +96,24 @@ for (const [source, sourcePath, marker] of [
     "fn derive_search_result_url",
     "fn derive_admin_search_result_url",
     'const BLOG_STOREFRONT_ROUTE',
+    'const FORUM_REPLY_ENTITY_TYPE',
     '"/modules/blog"',
+    '"/modules/forum"',
   ]) {
     rejectMarker(source, forbidden, sourcePath);
   }
+}
+
+for (const marker of [
+  '("forum_category", "forum" | "rustok-forum")',
+  "Permission::FORUM_CATEGORIES_READ",
+  '("forum_topic", "forum" | "rustok-forum")',
+  "Permission::FORUM_TOPICS_READ",
+  '("forum_reply", "forum" | "rustok-forum")',
+  "Permission::FORUM_REPLIES_READ",
+  'required_admin_search_permission("forum_reply", "content")',
+]) {
+  requireMarker(adminShell, marker, adminShellPath);
 }
 
 requireMarker(
@@ -98,7 +121,7 @@ requireMarker(
   'include!("native_server_adapter/mapping.rs")',
   adminNativeRootPath,
 );
-for (const marker of ["mod navigation", "enrich_search_result_urls", "blog_result_url"] ) {
+for (const marker of ["mod navigation", "enrich_search_result_urls", "blog_result_url"]) {
   rejectMarker(storefrontFacade, marker, storefrontFacadePath);
 }
 if (existsSync(repoPath(removedCompatibilityPath))) {
@@ -137,12 +160,16 @@ if (evidence) {
   for (const requiredCase of [
     "blog_canonical_route",
     "blog_fail_closed",
+    "forum_category_topic_routes",
+    "forum_reply_canonical_route",
+    "forum_reply_fail_closed",
     "product_and_content_routes",
     "content_kind_injection",
     "graphql_owner_projection",
     "storefront_native_owner_projection",
     "admin_native_owner_projection",
     "admin_shell_owner_projection",
+    "admin_forum_permission_gate",
     "no_transport_fallback",
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);

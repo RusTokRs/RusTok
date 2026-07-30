@@ -32,10 +32,12 @@ const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const blogPath = "crates/rustok-search/src/blog_projector.rs";
 const forumPath = "crates/rustok-search/src/forum_projector.rs";
 const rustTestPath = "crates/rustok-search/tests/search_scope_preservation_contract.rs";
+const replyTestPath = "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
 const searchContractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
 const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
 const visibilityPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
+const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
 const notePath = "crates/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md";
 
 const active = read(activePath);
@@ -45,17 +47,20 @@ const ingestion = read(ingestionPath);
 const blog = read(blogPath);
 const forum = read(forumPath);
 const rustTest = read(rustTestPath);
+const replyTest = read(replyTestPath);
 const note = read(notePath);
 
 let contract = null;
 let searchContract = null;
 let invalidation = null;
 let visibility = null;
+let approvedReply = null;
 for (const [label, source, assign] of [
   [contractPath, read(contractPath), (value) => { contract = value; }],
   [searchContractPath, read(searchContractPath), (value) => { searchContract = value; }],
   [invalidationPath, read(invalidationPath), (value) => { invalidation = value; }],
   [visibilityPath, read(visibilityPath), (value) => { visibility = value; }],
+  [approvedReplyPath, read(approvedReplyPath), (value) => { approvedReply = value; }],
 ]) {
   try {
     assign(JSON.parse(source));
@@ -82,7 +87,7 @@ for (const forbidden of [
 }
 const coreCountSection = active.split("const CORE_SCOPE_COUNT_SQL")[1] ?? "";
 const coreCountSql = coreCountSection.split('"#;')[0] ?? "";
-for (const forbidden of ["blog_post", "forum_category", "forum_topic"]) {
+for (const forbidden of ["blog_post", "forum_category", "forum_topic", "forum_reply"]) {
   rejectMarker(coreCountSql, forbidden, activePath);
 }
 
@@ -126,6 +131,9 @@ for (const marker of [
   "self.create_stage(&tx).await?",
   "delete_forum_scope(&tx, tenant_id).await?",
   "tx.commit().await.map_err(Error::Database)",
+  "'forum_category', 'forum_topic', 'forum_reply'",
+  "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+  "return self.rebuild_tenant(tenant_id).await",
 ]) {
   requireMarker(forum, marker, forumPath);
 }
@@ -133,9 +141,15 @@ for (const marker of [
   "active_tenant_rebuild_never_calls_the_destructive_legacy_tenant_rebuild",
   "full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements",
   "bootstrap_presence_check_ignores_external_only_documents",
-  ".rfind(\"projector.rebuild_tenant\")",
+  '.rfind("projector.rebuild_tenant")',
 ]) {
   requireMarker(rustTest, marker, rustTestPath);
+}
+for (const marker of [
+  "topic_refresh_rebuilds_child_scope",
+  "'forum_category', 'forum_topic', 'forum_reply'",
+]) {
+  requireMarker(replyTest, marker, replyTestPath);
 }
 for (const marker of [
   "FORUM-20BM",
@@ -150,19 +164,14 @@ for (const marker of [
 
 if (contract) {
   if (contract.task !== "FORUM-20BM") failures.push(`${contractPath}: unexpected task`);
-  if (contract.upstream_task !== "FORUM-20BL") {
-    failures.push(`${contractPath}: unexpected upstream task`);
-  }
-  if (contract.downstream_task !== "FORUM-20BN") {
-    failures.push(`${contractPath}: unexpected downstream task`);
-  }
+  if (contract.upstream_task !== "FORUM-20BL") failures.push(`${contractPath}: unexpected upstream task`);
+  if (contract.downstream_task !== "FORUM-20BP") failures.push(`${contractPath}: unexpected downstream task`);
+  if (contract.approved_reply_search_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);
   for (const key of [
     "public_search_projector_is_scope_preserving_facade",
     "legacy_projector_module_is_private",
   ]) {
-    if (contract.ownership_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: ownership boundary ${key} drift`);
-    }
+    if (contract.ownership_boundary?.[key] !== true) failures.push(`${contractPath}: ownership ${key} drift`);
   }
   for (const key of [
     "legacy_projector_reexported",
@@ -171,9 +180,7 @@ if (contract) {
     "core_rebuild_deletes_forum_scope",
     "core_rebuild_deletes_unknown_future_external_scope",
   ]) {
-    if (contract.ownership_boundary?.[key] !== false) {
-      failures.push(`${contractPath}: ownership boundary ${key} must remain false`);
-    }
+    if (contract.ownership_boundary?.[key] !== false) failures.push(`${contractPath}: ownership ${key} must remain false`);
   }
   for (const key of [
     "content_scope_replacement_transactional",
@@ -181,25 +188,31 @@ if (contract) {
     "blog_scope_replacement_transactional",
     "forum_scope_replacement_uses_temporary_stage",
     "forum_scope_replacement_transactional",
+    "forum_scope_delete_includes_approved_reply_documents",
+    "forum_scope_stage_includes_approved_reply_documents",
     "failed_blog_rebuild_keeps_previous_blog_scope",
     "failed_forum_rebuild_keeps_previous_forum_scope",
     "later_source_failure_cannot_remove_untouched_external_scope",
     "earlier_successful_scope_may_commit_before_later_failure",
   ]) {
-    if (contract.replacement_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: replacement boundary ${key} drift`);
+    if (contract.replacement_boundary?.[key] !== true) failures.push(`${contractPath}: replacement ${key} drift`);
+  }
+  for (const type of ["forum_category", "forum_topic", "forum_reply"]) {
+    if (!contract.replacement_boundary?.forum_scope_entity_types?.includes(type)) {
+      failures.push(`${contractPath}: Forum replacement scope missing ${type}`);
     }
   }
-  for (const key of [
-    "global_cross_source_transaction_added",
-    "global_cross_source_atomicity_claimed",
-  ]) {
-    if (contract.replacement_boundary?.[key] !== false) {
-      failures.push(`${contractPath}: replacement boundary ${key} must remain false`);
-    }
+  for (const key of ["global_cross_source_transaction_added", "global_cross_source_atomicity_claimed"]) {
+    if (contract.replacement_boundary?.[key] !== false) failures.push(`${contractPath}: replacement ${key} must remain false`);
   }
   if (contract.bootstrap_boundary?.external_only_documents_suppress_core_bootstrap !== false) {
     failures.push(`${contractPath}: external-only documents must not suppress core bootstrap`);
+  }
+  if (contract.downstream_handoff?.completion_contract !== approvedReplyPath) {
+    failures.push(`${contractPath}: reply completion handoff drift`);
+  }
+  if (contract.remaining_scope?.includes("decide whether approved public replies become separate Search documents under FORUM-23")) {
+    failures.push(`${contractPath}: completed reply decision remains open`);
   }
 }
 
@@ -212,20 +225,23 @@ for (const [label, upstream] of [
   if (upstream.rebuild_scope_preservation_contract !== contractPath) {
     failures.push(`${label}: rebuild preservation contract handoff drift`);
   }
-  if (upstream.downstream_task !== "FORUM-20BN") {
-    failures.push(`${label}: downstream task must advance to FORUM-20BN`);
+  if (upstream.approved_reply_search_contract !== approvedReplyPath) {
+    failures.push(`${label}: approved reply contract handoff drift`);
+  }
+  if (upstream.downstream_task !== "FORUM-20BP") {
+    failures.push(`${label}: downstream task must advance to FORUM-20BP`);
   }
 }
 if (searchContract) {
-  if (searchContract.persistence_boundary?.full_search_rebuild_source_failure_keeps_previous_forum_scope !== true) {
-    failures.push(`${searchContractPath}: previous Forum scope must survive full rebuild source failure`);
-  }
-  if (searchContract.persistence_boundary?.direct_search_rebuild_deletes_external_scopes !== false) {
-    failures.push(`${searchContractPath}: direct Search rebuild must not delete external scopes`);
-  }
-  if (searchContract.persistence_boundary?.global_cross_source_atomicity_added !== false) {
-    failures.push(`${searchContractPath}: global atomicity must remain explicitly unclaimed`);
-  }
+  if (searchContract.persistence_boundary?.full_search_rebuild_source_failure_keeps_previous_forum_scope !== true) failures.push(`${searchContractPath}: previous Forum scope must survive source failure`);
+  if (searchContract.persistence_boundary?.direct_search_rebuild_deletes_external_scopes !== false) failures.push(`${searchContractPath}: direct Search rebuild must not delete external scopes`);
+  if (searchContract.persistence_boundary?.global_cross_source_atomicity_added !== false) failures.push(`${searchContractPath}: global atomicity must remain unclaimed`);
+  if (searchContract.persistence_boundary?.topic_refresh_rebuilds_atomic_forum_scope_with_child_replies !== true) failures.push(`${searchContractPath}: topic/reply atomic scope drift`);
+}
+if (approvedReply) {
+  if (approvedReply.task !== "FORUM-20BO") failures.push(`${approvedReplyPath}: unexpected task`);
+  if (approvedReply.persistence_boundary?.forum_scope_stage_includes_reply_documents !== true) failures.push(`${approvedReplyPath}: reply stage boundary drift`);
+  if (approvedReply.persistence_boundary?.forum_scope_delete_includes_reply_documents !== true) failures.push(`${approvedReplyPath}: reply delete boundary drift`);
 }
 
 if (failures.length > 0) {

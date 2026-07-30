@@ -14,9 +14,14 @@ already a typed consumer of the Comments owner: comment writes use
 `RichTextDocument`, and moderation responses return `RichTextView` plus the
 server-derived plain text. Blog posts remain on their separate article
 cutover. The owner now has a fixed `article` profile boundary and a
-canonical-document write/read projection for the Next admin contract. Do not
-add new `rt_json`/Markdown aliases, `content_json` fields, or local renderers;
-the Leptos/storefront and storage-schema cutover must finish atomically.
+canonical-document write/read projection for the Next admin contract. The Blog
+GraphQL adapter already exposes canonical `RichTextDocument` writes and
+`RichTextView` reads, while `body`, `body_format`, and `content_json` remain
+temporary adapter fields confined to `graphql/types.rs` and
+`graphql/mutation.rs`. An executable guardrail plus its regression test prevents
+new aliases and is registered in `verify:blog:fba`. Do not add new
+`rt_json`/Markdown aliases, `content_json` fields, or local renderers; the
+Leptos/storefront and storage-schema cutover must finish atomically.
 
 The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
 the current request audience. Existing Blog post/list author batches therefore
@@ -99,6 +104,9 @@ outbox publication.
 - Blog Next post forms use one shared `RichTextDocument` editor and consume
   server-rendered `RichTextView` HTML; no format selector or local post
   renderer remains in that path.
+- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
+  the temporary legacy-file allowlist, verifier, self-test, and npm/FBA
+  registration are implemented; execution is user-owned.
 
 ## Evidence and guardrails
 
@@ -109,10 +117,13 @@ outbox publication.
 - `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
 - `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
 - `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
+- `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
+- `scripts/verify/verify-blog-graphql-richtext-boundary.mjs`
+- `scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs`
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
@@ -155,6 +166,9 @@ outbox publication.
 14. Bound GraphQL post/list `authorProfile` batches to the request audience through
     the Profiles owner privacy loader, preserving one base-row privacy query per
     batch and omitting restricted summaries before localized profile/tag reads.
+15. Added a Blog GraphQL richtext containment boundary: machine-readable evidence,
+    an executable canonical-field/legacy-alias guardrail, self-regression coverage,
+    named npm commands, and inclusion in the Blog FBA verification chain.
 
 ## Next results
 
@@ -178,12 +192,13 @@ outbox publication.
    publication.
 6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
    boundary and Next admin slice implemented; storage/Leptos/storefront parity
-   remains.** Replace the string body plus `content_json` transport everywhere
-   with `RichTextDocument`, assign the `article` profile in the owner service,
-   migrate `blog_post_translations` and relevant revision/audit data, and use
-   the canonical server HTML/plain-text projections for admin, both
-   storefronts, Search, AI/SEO, and the already-typed Comments integration.
-   The Blog package must not own Forum editor/API code.
+   remains.** The registered GraphQL guardrail is a containment measure, not the
+   completed cutover. Replace the string body plus `content_json` transport
+   everywhere with `RichTextDocument`, assign the `article` profile in the owner
+   service, migrate `blog_post_translations` and relevant revision/audit data, and
+   use the canonical server HTML/plain-text projections for admin, both
+   storefronts, Search, AI/SEO, and the already-typed Comments integration. The
+   Blog package must not own Forum editor/API code.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and target `rustok-api`/`rustok-content` contracts.
@@ -206,6 +221,8 @@ outbox publication.
   anonymous, authenticated, owner-private, service-principal, hidden, missing,
   and cross-tenant author summaries
 - `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
+- `npm run verify:blog:graphql-richtext-boundary`
+- `npm run test:verify:blog:graphql-richtext-boundary`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `node scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`

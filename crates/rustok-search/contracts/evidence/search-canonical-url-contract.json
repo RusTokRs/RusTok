@@ -22,7 +22,19 @@
     },
     {
       "name": "blog_fail_closed",
-      "expected": "wrong source module, missing slug, non-string slug, traversal, spaces, and overlong slugs remain non-navigable"
+      "expected": "wrong source module missing slug non-string slug traversal spaces and overlong slugs remain non-navigable"
+    },
+    {
+      "name": "forum_category_topic_routes",
+      "expected": "canonical forum_category and forum_topic results derive the existing category and topic query keys"
+    },
+    {
+      "name": "forum_reply_canonical_route",
+      "expected": "canonical forum_reply derives /modules/forum?topic={topic_id}&reply={reply_id} only when payload reply identity matches the result and topic identity is a non-nil UUID"
+    },
+    {
+      "name": "forum_reply_fail_closed",
+      "expected": "wrong source module missing or malformed payload mismatched reply identity and nil topic identity remain non-navigable"
     },
     {
       "name": "product_and_content_routes",
@@ -46,7 +58,11 @@
     },
     {
       "name": "admin_shell_owner_projection",
-      "expected": "admin global search delegates to canonical_search_result_url and accepts canonical Blog result types"
+      "expected": "admin global search delegates to canonical_search_result_url and accepts canonical Blog and Forum result types"
+    },
+    {
+      "name": "admin_forum_permission_gate",
+      "expected": "admin global search requires Forum category topic or reply read permission for canonical Forum results and rejects spoofed source pairs"
     },
     {
       "name": "no_transport_fallback",
@@ -55,10 +71,11 @@
   ],
   "runtime_promotion_requirements": [
     "execute rustok-search engine URL policy tests",
-    "execute GraphQL storefrontSearch against projected Blog documents",
+    "execute GraphQL storefrontSearch against projected Blog and Forum reply documents",
     "execute native storefront search and confirm canonical URLs are present",
-    "execute Search admin preview and admin global search against product, content, and Blog results",
+    "execute Search admin preview and admin global search against product content Blog and Forum results",
+    "verify admin global search enforces Forum category topic and reply domain permissions",
     "verify click analytics records the canonical href",
-    "verify malformed Blog payloads remain non-navigable through every transport"
+    "verify malformed Blog and Forum reply payloads remain non-navigable through every transport"
   ]
 }

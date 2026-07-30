@@ -2,6 +2,7 @@ pub mod changes;
 pub mod fulfillments;
 pub mod orders;
 pub mod payments;
+pub mod post_order_reads;
 pub mod products;
 pub mod returns;
 pub mod shipping;
@@ -196,11 +197,11 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/order-changes",
-            axum::routing::get(changes::list_order_changes),
+            axum::routing::get(post_order_reads::list_order_changes),
         )
         .route(
             "/order-changes/{id}",
-            axum::routing::get(changes::show_order_change),
+            axum::routing::get(post_order_reads::show_order_change),
         )
         .route(
             "/order-changes/{id}/apply",
@@ -210,10 +211,13 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
             "/order-changes/{id}/cancel",
             axum::routing::post(changes::cancel_order_change),
         )
-        .route("/returns", axum::routing::get(returns::list_order_returns))
+        .route(
+            "/returns",
+            axum::routing::get(post_order_reads::list_order_returns),
+        )
         .route(
             "/returns/{id}",
-            axum::routing::get(returns::show_order_return),
+            axum::routing::get(post_order_reads::show_order_return),
         )
         .route(
             "/returns/{id}/complete",

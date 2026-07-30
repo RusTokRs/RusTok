@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29",
-  "status": "storefront_http_cutover_unvalidated",
-  "source_base_revision": "f4ff7627c93b18e7fefd8070f8bac99da7eed78b",
-  "scope": "order detail and filtered list projections for mounted Commerce query consumers",
+  "generated_at": "2026-07-30",
+  "status": "mounted_consumer_cutover_unvalidated",
+  "source_base_revision": "89c7cde43e994df08b7764fe31861b41a0022ddd",
+  "scope": "complete order, return, and order-change projections for mounted Commerce query consumers",
   "owner": {
     "crate": "rustok-order",
     "port": "OrderReadPort",
@@ -33,6 +33,43 @@
       "ordering": "created_at_desc",
       "locale_source": "PortContext.locale",
       "tenant_default_locale_fallback": true
+    },
+    {
+      "name": "read_order_return_projection",
+      "request": "ReadOrderReturnProjectionRequest",
+      "result": "OrderReturnResponse",
+      "optional_not_found": false
+    },
+    {
+      "name": "list_order_return_projections",
+      "request": "ListOrderReturnProjectionsRequest",
+      "result": "OrderReturnProjectionPage",
+      "filters": [
+        "page",
+        "per_page",
+        "order_id",
+        "status"
+      ],
+      "ordering": "created_at_desc"
+    },
+    {
+      "name": "read_order_change_projection",
+      "request": "ReadOrderChangeProjectionRequest",
+      "result": "OrderChangeResponse",
+      "optional_not_found": false
+    },
+    {
+      "name": "list_order_change_projections",
+      "request": "ListOrderChangeProjectionsRequest",
+      "result": "OrderChangeProjectionPage",
+      "filters": [
+        "page",
+        "per_page",
+        "order_id",
+        "status",
+        "change_type"
+      ],
+      "ordering": "created_at_desc"
     }
   ],
   "context": {
@@ -43,10 +80,14 @@
     "locale_retained": true,
     "correlation_retained": true,
     "deadline_required": true,
+    "admin_actor_source": "validated_auth_context_user",
+    "admin_channel_source": "resolved_request_context_channel_slug",
+    "admin_locale_source": "resolved_request_context_locale",
     "admin_deadline_seconds": 2,
     "graphql_actor_source": "validated_auth_context_or_service_actor",
     "graphql_channel_source": "resolved_request_context_channel_slug",
-    "graphql_embedded_context_fallback": "service_actor_without_channel",
+    "graphql_locale_source": "explicit_order_locale_or_resolved_request_context_locale",
+    "graphql_embedded_context_fallback": "service_actor_without_channel_or_resolved_locale",
     "storefront_actor_source": "validated_auth_context_user",
     "storefront_channel_source": "resolved_request_context_channel_slug",
     "storefront_deadline_seconds": 2
@@ -74,16 +115,30 @@
     "database_retryable": true,
     "core_retryable": false,
     "admin_public_envelopes_preserved": true,
-    "storefront_public_envelopes_preserved": true
+    "storefront_public_envelopes_preserved": true,
+    "graphql_order_error_shapes_preserved": true
   },
   "consumer_inventory": {
     "commerce_admin_rest_list_detail": "order_read_port",
     "commerce_admin_rest_cutover_completed": true,
+    "commerce_admin_return_and_order_change_reads": "order_read_port_host_runtime_with_request_context",
+    "commerce_admin_return_and_order_change_reads_cutover_completed": true,
     "commerce_storefront_detail_and_ownership": "order_read_port_host_runtime",
     "commerce_storefront_detail_and_ownership_cutover_completed": true,
+    "commerce_storefront_return_list": "order_read_port_host_runtime",
+    "commerce_storefront_return_list_cutover_completed": true,
+    "commerce_storefront_order_change_list": "order_read_port_host_runtime",
+    "commerce_storefront_order_change_list_cutover_completed": true,
     "commerce_graphql_order_list_detail": "order_read_port_host_runtime_with_request_context",
     "commerce_graphql_order_list_detail_cutover_completed": true,
+    "commerce_graphql_return_and_order_change_reads": "order_read_port_host_runtime_with_request_context",
+    "commerce_graphql_return_and_order_change_reads_cutover_completed": true,
+    "complete_order_projection_consumer_cutover_completed": true,
+    "graphql_post_order_consumer_cutover_completed": true,
+    "admin_post_order_consumer_cutover_completed": true,
+    "post_order_consumer_cutover_completed": true,
     "runtime_composition_published": true,
+    "all_mounted_consumer_cutover_completed": true,
     "all_consumer_cutover_completed": true,
     "cutover_required": false
   },
@@ -91,12 +146,12 @@
     "admin_order_mutations": "concrete_order_service",
     "admin_detail_payment_lookup": "concrete_payment_service",
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service",
-    "storefront_return_mutations_and_reads": "concrete_order_service",
-    "storefront_order_change_reads": "concrete_order_service",
-    "storefront_refund_reads": "concrete_payment_service"
+    "storefront_return_mutation": "concrete_order_service",
+    "storefront_refund_reads": "concrete_payment_service",
+    "unmounted_admin_compatibility_handlers": "concrete_order_service_source_only_not_routed"
   },
   "decision": {
-    "next_slice": "publish wider owner read contracts for returns and order changes separately; execute compile, mounted parity, deadline, restart, and remote-adapter evidence before status promotion",
+    "next_slice": "execute compile, mounted parity, deadline and failure, restart, and remote-adapter evidence; remove unmounted compatibility GET handlers only after validation",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },

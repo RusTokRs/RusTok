@@ -5,6 +5,7 @@ mod postgres_query_result;
 mod postgres_query_sql;
 mod query_port;
 mod registry;
+mod source_schema_registry;
 mod validation;
 
 #[cfg(test)]
@@ -41,5 +42,9 @@ pub use query_port::{
 };
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
+};
+pub use source_schema_registry::{
+    IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,
+    SharedIndexSchemaRegistry, materialize_index_schema_registry, register_index_schema_source,
 };
 pub use validation::{QueryValidationError, RecordValidationError};

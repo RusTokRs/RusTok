@@ -12,6 +12,7 @@ const MAX_BLOG_SLUG_LEN: usize = 200;
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
+const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
 const FORUM_STOREFRONT_ROUTE: &str = "/modules/forum";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,6 +143,9 @@ pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         FORUM_TOPIC_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => {
             Some(format!("{FORUM_STOREFRONT_ROUTE}?topic={}", value.id))
         }
+        FORUM_REPLY_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => {
+            canonical_forum_reply_result_url(value)
+        }
         _ => None,
     }
 }
@@ -177,6 +181,23 @@ fn valid_blog_slug(slug: &str) -> bool {
         && slug
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+}
+
+fn canonical_forum_reply_result_url(value: &SearchResultItem) -> Option<String> {
+    let reply_id = parse_payload_uuid(&value.payload, "reply_id")?;
+    if reply_id != value.id {
+        return None;
+    }
+    let topic_id = parse_payload_uuid(&value.payload, "topic_id")?;
+    Some(format!(
+        "{FORUM_STOREFRONT_ROUTE}?topic={topic_id}&reply={reply_id}"
+    ))
+}
+
+fn parse_payload_uuid(payload: &serde_json::Value, key: &str) -> Option<Uuid> {
+    let value = payload.get(key)?.as_str()?;
+    let value = Uuid::parse_str(value).ok()?;
+    (!value.is_nil()).then_some(value)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -268,9 +289,17 @@ mod tests {
     }
 
     #[test]
-    fn canonical_url_derives_forum_category_and_topic_routes() {
+    fn canonical_url_derives_forum_category_topic_and_reply_routes() {
         let category = item("forum_category", "forum", json!({}));
         let topic = item("forum_topic", "forum", json!({}));
+        let reply = item(
+            "forum_reply",
+            "forum",
+            json!({
+                "reply_id": "00000000-0000-0000-0000-000000000001",
+                "topic_id": "00000000-0000-0000-0000-000000000002"
+            }),
+        );
 
         assert_eq!(
             canonical_search_result_url(&category).as_deref(),
@@ -280,14 +309,30 @@ mod tests {
             canonical_search_result_url(&topic).as_deref(),
             Some("/modules/forum?topic=00000000-0000-0000-0000-000000000001")
         );
+        assert_eq!(
+            canonical_search_result_url(&reply).as_deref(),
+            Some("/modules/forum?topic=00000000-0000-0000-0000-000000000002&reply=00000000-0000-0000-0000-000000000001")
+        );
     }
 
     #[test]
-    fn canonical_url_rejects_spoofed_forum_source_entity_pairs() {
+    fn canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads() {
         for value in [
             item("forum_category", "content", json!({})),
             item("forum_topic", "blog", json!({})),
+            item("forum_reply", "content", json!({
+                "reply_id": "00000000-0000-0000-0000-000000000001",
+                "topic_id": "00000000-0000-0000-0000-000000000002"
+            })),
             item("forum_reply", "forum", json!({})),
+            item("forum_reply", "forum", json!({
+                "reply_id": "00000000-0000-0000-0000-000000000099",
+                "topic_id": "00000000-0000-0000-0000-000000000002"
+            })),
+            item("forum_reply", "forum", json!({
+                "reply_id": "00000000-0000-0000-0000-000000000001",
+                "topic_id": "00000000-0000-0000-0000-000000000000"
+            })),
         ] {
             assert_eq!(canonical_search_result_url(&value), None);
         }

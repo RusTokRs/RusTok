@@ -81,6 +81,54 @@ impl ForumReplyAudienceReadService {
             .await
     }
 
+    /// Exact anonymous public read for one reply. Typed status and parent-topic
+    /// visibility are resolved before the reply body is loaded. Missing, denied,
+    /// non-approved and route-channel-ineligible replies are indistinguishable.
+    pub async fn get_public_storefront_visible_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+        statuses: Option<&[ReplyStatus]>,
+    ) -> ForumResult<Option<ReplyResponse>> {
+        let security = SecurityContext::public_read();
+        enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
+        let reply = match self.reply_service.find_reply(tenant_id, reply_id).await {
+            Ok(reply) => reply,
+            Err(ForumError::ReplyNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        if statuses.is_some_and(|allowed| !allowed.contains(&reply.status)) {
+            return Ok(None);
+        }
+        let viewer = ForumTopicAudienceViewer::public();
+        if !self
+            .visibility
+            .is_topic_visible(tenant_id, reply.topic_id, channel_slug, &viewer)
+            .await?
+        {
+            return Ok(None);
+        }
+
+        match self
+            .reply_service
+            .get_with_locale_fallback(
+                tenant_id,
+                security,
+                reply_id,
+                locale,
+                fallback_locale,
+            )
+            .await
+        {
+            Ok(reply) => Ok(Some(reply)),
+            Err(ForumError::ReplyNotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Exact authenticated REST-style reply list through parent-topic owner
     /// visibility. Denied and missing parent topics both resolve as absent.
     pub async fn list_authenticated_owner_visible_with_audience_context(
