@@ -117,6 +117,12 @@ pub mod module_event_dispatcher {
         if crate::services::notification_recipient_policy::social_graph_index_privacy_shadow_enabled()
             .map_err(Error::Message)?
         {
+            rustok_telemetry::social_graph_index_privacy_shadow_metrics::ensure_registered()
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Social Graph Index privacy shadow metrics registration failed: {error}"
+                    ))
+                })?;
             let index_runtime = extensions
                 .get::<rustok_index::SharedIndexQueryRuntime>()
                 .cloned()

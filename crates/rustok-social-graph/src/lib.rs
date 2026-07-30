@@ -33,7 +33,11 @@ pub use follow_read::{SocialGraphFollowReadPort, SocialGraphFollowState};
 #[cfg(feature = "index")]
 pub use index_privacy::IndexSocialGraphPrivacyReadPort;
 #[cfg(feature = "index")]
-pub use index_privacy_shadow::IndexShadowSocialGraphPrivacyReadPort;
+pub use index_privacy_shadow::{
+    IndexPrivacyShadowFailureCode, IndexPrivacyShadowObservation, IndexPrivacyShadowObserver,
+    IndexPrivacyShadowOperation, IndexPrivacyShadowOutcome, IndexShadowSocialGraphPrivacyReadPort,
+    SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+};
 pub use maintenance::{
     SocialGraphReceiptMaintenanceService, SocialGraphRelationEventMaintenanceService,
 };

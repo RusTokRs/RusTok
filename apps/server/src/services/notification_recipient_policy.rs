@@ -18,10 +18,19 @@ use rustok_profiles::{
     ProfilePrivacyRuntime, ProfilePrivacyService,
 };
 #[cfg(feature = "mod-social_graph")]
-use rustok_social_graph::IndexShadowSocialGraphPrivacyReadPort;
+use rustok_social_graph::{
+    IndexPrivacyShadowFailureCode, IndexPrivacyShadowObservation, IndexPrivacyShadowObserver,
+    IndexPrivacyShadowOperation, IndexPrivacyShadowOutcome,
+    IndexShadowSocialGraphPrivacyReadPort,
+};
 use rustok_social_graph::{
     SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
     SocialGraphService,
+};
+#[cfg(feature = "mod-social_graph")]
+use rustok_telemetry::social_graph_index_privacy_shadow_metrics::{
+    SocialGraphIndexPrivacyShadowOperation as MetricOperation,
+    SocialGraphIndexPrivacyShadowOutcome as MetricOutcome, record_failure, record_observation,
 };
 use sea_orm::DatabaseConnection;
 
@@ -85,6 +94,65 @@ impl NotificationMuteReadPort for SocialGraphNotificationMuteAdapter {
     }
 }
 
+#[cfg(feature = "mod-social_graph")]
+struct TelemetryIndexPrivacyShadowObserver;
+
+#[cfg(feature = "mod-social_graph")]
+impl IndexPrivacyShadowObserver for TelemetryIndexPrivacyShadowObserver {
+    fn observe(&self, observation: IndexPrivacyShadowObservation) {
+        let operation = metric_operation(observation.operation);
+        match (
+            observation.outcome,
+            observation.failure_code,
+            observation.retryable,
+        ) {
+            (IndexPrivacyShadowOutcome::Error, Some(code), Some(retryable)) => record_failure(
+                operation,
+                code.as_str(),
+                retryable,
+                observation.comparison_duration,
+            ),
+            (IndexPrivacyShadowOutcome::Error, _, _) => record_failure(
+                operation,
+                IndexPrivacyShadowFailureCode::Other.as_str(),
+                false,
+                observation.comparison_duration,
+            ),
+            (outcome, _, _) => record_observation(
+                operation,
+                metric_outcome(outcome),
+                observation.comparison_duration,
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "mod-social_graph")]
+fn metric_operation(operation: IndexPrivacyShadowOperation) -> MetricOperation {
+    match operation {
+        IndexPrivacyShadowOperation::BlocksBetween => MetricOperation::BlocksBetween,
+        IndexPrivacyShadowOperation::SourceMutesTarget => MetricOperation::SourceMutesTarget,
+        IndexPrivacyShadowOperation::SourceFollowsTarget => MetricOperation::SourceFollowsTarget,
+        IndexPrivacyShadowOperation::SourceFollowsTargets => MetricOperation::SourceFollowsTargets,
+    }
+}
+
+#[cfg(feature = "mod-social_graph")]
+fn metric_outcome(outcome: IndexPrivacyShadowOutcome) -> MetricOutcome {
+    match outcome {
+        IndexPrivacyShadowOutcome::MatchPositive => MetricOutcome::MatchPositive,
+        IndexPrivacyShadowOutcome::MatchNegative => MetricOutcome::MatchNegative,
+        IndexPrivacyShadowOutcome::FalseNegative => MetricOutcome::FalseNegative,
+        IndexPrivacyShadowOutcome::FalsePositive => MetricOutcome::FalsePositive,
+        IndexPrivacyShadowOutcome::MatchBatchEmpty => MetricOutcome::MatchBatchEmpty,
+        IndexPrivacyShadowOutcome::MatchBatchNonempty => MetricOutcome::MatchBatchNonempty,
+        IndexPrivacyShadowOutcome::BatchMissing => MetricOutcome::BatchMissing,
+        IndexPrivacyShadowOutcome::BatchExtra => MetricOutcome::BatchExtra,
+        IndexPrivacyShadowOutcome::BatchMixed => MetricOutcome::BatchMixed,
+        IndexPrivacyShadowOutcome::Error => MetricOutcome::Error,
+    }
+}
+
 #[derive(Clone)]
 pub struct ServerNotificationRecipientPolicy {
     profiles: ProfilePrivacyRuntime,
@@ -115,7 +183,11 @@ impl ServerNotificationRecipientPolicy {
         let authoritative: Arc<dyn SocialGraphPrivacyReadPort> =
             Arc::new(SocialGraphService::new(db.clone()));
         let shadow: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(
-            IndexShadowSocialGraphPrivacyReadPort::new(authoritative, runtime),
+            IndexShadowSocialGraphPrivacyReadPort::with_observer(
+                authoritative,
+                runtime,
+                Arc::new(TelemetryIndexPrivacyShadowObserver),
+            ),
         );
         Self::compose_with_graph(
             db,

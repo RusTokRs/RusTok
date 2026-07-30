@@ -18,8 +18,8 @@ modules publish generic schema contracts into an Index-owned catalog, the select
 distribution materializes one non-empty immutable registry after all module registrations,
 and the server binds that registry to its database through the Index-owned PostgreSQL
 runtime materializer. Social Graph is the first source publication. Notification block/mute
-policy is the first consumer-shaped parity shadow, protected by a default-off shadow gate
-and explicitly non-authoritative.
+policy is the first consumer-shaped parity shadow, protected by a default-off shadow gate,
+explicitly non-authoritative, and instrumented with bounded Prometheus outcomes.
 
 ## Actualized status
 
@@ -38,7 +38,7 @@ and explicitly non-authoritative.
 - M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 source-owned immutable schema registry: `source_complete_execution_pending`.
 - M4 server-owned shared query runtime composition: `source_complete_execution_pending`.
-- M4 first consumer parity shadow: `source_complete_execution_pending`.
+- M4 first consumer parity shadow: `source_complete_metrics_execution_pending`.
 - M4 authoritative consumer cutover: `blocked_by_freshness_contract`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
@@ -178,14 +178,29 @@ directional mute/follow semantics.
 
 `IndexShadowSocialGraphPrivacyReadPort` wraps the authoritative owner port plus the typed
 Index adapter. It executes the owner read first, compares the projection after owner success,
-records bounded mismatch/error diagnostics without identities, and always returns the owner
-result. Index therefore never decides notification privacy in this slice.
+and always returns the owner result. Index therefore never decides notification privacy in
+this slice.
+
+The Social Graph owner emits a neutral `IndexPrivacyShadowObservation` through an injected
+observer. The record contains only fixed operation/outcome enums, comparison duration, and
+optional bounded failure classification. The owner crate has no telemetry dependency and no
+Prometheus knowledge.
+
+The host-owned Prometheus adapter lives in `rustok-server` and maps the neutral observation
+to the single `rustok-telemetry` registry. Bounded Prometheus outcomes distinguish
+`match_positive`, `match_negative`, `false_negative`, and `false_positive`; follow batches
+distinguish empty/non-empty matches plus `batch_missing`, `batch_extra`, and `batch_mixed`.
+Projection failures use `error` and one of two known stable codes or `other`. Comparison
+duration and last-observed timestamp use the same fixed operation/outcome labels. No tenant,
+user, relation, entity, payload, SQL, or raw storage values are labels.
 
 The final server facade uses the default-off shadow gate
 `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`. While disabled, the ordinary owner policy
-is unchanged. When enabled, the facade requires `SharedIndexQueryRuntime` and recomposes
-notification block/mute policy with the non-authoritative shadow. Custom notification
-relation providers retain priority.
+is unchanged. When enabled, the facade requires successful privacy-shadow collector
+registration and `SharedIndexQueryRuntime`, then recomposes notification block/mute policy
+with the non-authoritative shadow and host-owned Prometheus adapter. Custom notification
+relation providers retain priority. Running an enabled shadow without the process Prometheus
+registry fails bootstrap instead of creating an unmeasured evidence mode.
 
 A direct cutover remains unsafe because a stale but successful Index query can omit a current
 block or mute without returning an error. Schema readiness is not a freshness watermark.
@@ -194,7 +209,9 @@ positive and negative parity, outage/recovery, repair, latency, and negative-res
 fail-closed evidence exists.
 
 Revision-bearing follow reads, profile privacy, GraphQL, storefront, admin, and
-presentation authorization remain outside this shadow.
+presentation authorization remain outside this shadow. The metrics source does not define a
+scrape window, minimum sample size, threshold, retained bundle, review report, or admission
+receipt.
 
 ## Remaining bounded M4 work
 
@@ -204,6 +221,7 @@ remain:
 
 - execute and retain Social Graph privacy shadow parity, freshness, lag, repair, and latency
   evidence before reconsidering authoritative cutover;
+- define retained privacy-shadow metric capture, review policy, and non-authorizing admission;
 - aggregate ordering semantics for paths traversing `many`;
 - publish schemas from additional source owners as consumers are selected;
 - additional non-authoritative shadows and safely freshness-gated consumer cutovers.
@@ -225,6 +243,7 @@ cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo test -p rustok-index query_snapshot_tests -- --nocapture
+cargo test -p rustok-telemetry social_graph_index_privacy_shadow_metrics -- --nocapture
 cargo test -p rustok-social-graph --features index index_privacy -- --nocapture
 cargo test -p rustok-social-graph --features index module_publishes_its_index_schema_through_runtime_extensions -- --nocapture
 cargo test -p rustok-distribution source_schema_catalog_materializes_after_all_modules_register -- --nocapture
@@ -243,6 +262,7 @@ INDEX_QUERY_EQUIVALENCE_EXPECTED_RUN_KEY=<stable-run-key> \
 INDEX_QUERY_EQUIVALENCE_ADMISSION_OUTPUT=<existing-parent>/equivalence-admission.json \
   cargo run -p rustok-benchmarks --bin index-query-equivalence-admission
 cargo check -p rustok-index --all-targets
+cargo check -p rustok-telemetry --all-targets
 cargo check -p rustok-social-graph --features index --all-targets
 cargo check -p rustok-distribution --all-targets
 cargo check -p rustok-server --all-targets

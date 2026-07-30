@@ -3,6 +3,7 @@ pub mod dlq_duplicate_alert_metrics;
 pub mod metrics;
 pub mod otel;
 pub mod runtime_consumer_metrics;
+pub mod social_graph_index_privacy_shadow_metrics;
 
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
