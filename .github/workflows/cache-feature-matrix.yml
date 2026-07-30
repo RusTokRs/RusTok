@@ -75,7 +75,7 @@ jobs:
           for marker in [
               'update conversion must map canonical content directly',
               'update conversion coverage',
-              'create/update conversion-test evidence drift',
+              'delete driftedEvidence.conversion_tests.update',
           ]:
               assert marker in fixture
           plan = Path('crates/rustok-blog/docs/implementation-plan.md').read_text()
