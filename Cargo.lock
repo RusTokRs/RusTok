@@ -14780,6 +14780,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",
  "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -14837,6 +14838,7 @@ dependencies = [
  "axum",
  "chrono",
  "rustok-api",
+ "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
