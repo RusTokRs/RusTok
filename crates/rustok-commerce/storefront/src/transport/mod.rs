@@ -3,6 +3,7 @@ mod graphql_adapter;
 mod native_server_adapter;
 mod payment_collection_command_error_safety;
 mod shared_adapter;
+mod shipping_option_command_error_safety;
 
 use crate::core::{
     CheckoutCompletionCommandRequest, FetchCommerceRequest, PaymentCollectionCommandRequest,
@@ -48,9 +49,11 @@ pub async fn create_storefront_payment_collection(
 pub async fn select_storefront_shipping_option(
     request: SelectShippingOptionRequest,
 ) -> Result<(), ApiError> {
+    let error_context =
+        shipping_option_command_error_safety::ShippingOptionCommandErrorContext::new(&request);
     select_shipping_option(request.owner_request)
         .await
-        .map_err(ApiError::from)
+        .map_err(|error| error_context.map_error(error))
 }
 
 pub async fn complete_storefront_checkout(
