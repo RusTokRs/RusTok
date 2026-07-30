@@ -6,9 +6,7 @@
 - `error`
 - `follow_read`
 - `graphql` behind feature `graphql`
-- `index` behind feature `index`
-- `index_privacy` behind feature `index`
-- `index_privacy_shadow` behind feature `index`
+- `index`, `index_privacy`, and `index_privacy_shadow` behind feature `index`
 - `index_consumer` and `index_dlq_receipt` behind feature `index-consumer`
 - `maintenance`
 - `migrations`
@@ -30,6 +28,8 @@ write-capable owner service used by GraphQL and native storefront composition.
 - `IndexSocialGraphPrivacyReadPort` is the typed Index projection reader.
 - `IndexShadowSocialGraphPrivacyReadPort` compares Index with the authoritative owner port
   while always returning the owner result.
+- `IndexPrivacyShadowObservation` is the telemetry-neutral bounded comparison record consumed
+  by a host-owned Prometheus adapter.
 - `SocialGraphFollowReadPort` exposes revision-bearing follow state and is not served from
   the current Index schema.
 - `SocialGraphReceiptMaintenancePort` owns bounded completed-receipt cleanup.
@@ -64,8 +64,8 @@ write-capable owner service used by GraphQL and native storefront composition.
 
 ## Optional Index projection
 
-Feature `index` enables generic Index conversion, typed privacy comparison, and bounded
-privacy-shadow telemetry without moving source authority into Index.
+Feature `index` enables generic Index conversion, typed privacy comparison, and neutral shadow
+observations without moving source authority into Index.
 
 - `social_graph_relation_index_schema()` declares non-localized relation records keyed by
   tenant and relation ID.
@@ -99,7 +99,8 @@ may be stale and therefore cannot prove that no current block or mute exists.
 ## Non-authoritative Index privacy shadow
 
 `IndexShadowSocialGraphPrivacyReadPort` owns an authoritative
-`Arc<dyn SocialGraphPrivacyReadPort>` plus `IndexSocialGraphPrivacyReadPort`.
+`Arc<dyn SocialGraphPrivacyReadPort>`, the typed Index reader, and an
+`Arc<dyn IndexPrivacyShadowObserver>`.
 
 - Every method executes the owner read first.
 - Owner error is returned unchanged.
@@ -109,16 +110,23 @@ may be stale and therefore cannot prove that no current block or mute exists.
   `false_positive`.
 - Follow batches compare sets and classify empty/non-empty matches, `batch_missing`,
   `batch_extra`, or `batch_mixed`.
-- Projection failure records the bounded outcome `error` plus a bounded stable code.
+- Projection failure records `error`, a bounded `IndexPrivacyShadowFailureCode`, and
+  retryability.
+- `IndexPrivacyShadowObservation` contains only operation, outcome, comparison duration,
+  optional bounded failure code, and optional retryability.
 - Logs contain operation, fixed outcome, booleans/counts, retryability, and comparison
   duration only.
-- Tenant, user, relation, entity, payload, SQL, and raw storage details are not logged or used
-  as metric labels.
+- Tenant, user, relation, entity, payload, SQL, and raw storage details are absent from the
+  neutral observation contract and logs.
 
-The final notification block/mute policy uses this wrapper only when
+The Social Graph crate has no telemetry dependency. `rustok-server` owns the host-owned
+Prometheus adapter from `IndexPrivacyShadowObservation` to the single process metrics
+registry.
+
+The final notification block/mute policy uses the wrapper only when
 `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED=true`. The shadow is default-off. When
-disabled, ordinary owner policy remains unchanged. When enabled, the single Prometheus
-collector and `SharedIndexQueryRuntime` are required, but the owner result remains
+disabled, ordinary owner policy remains unchanged. When enabled, successful collector
+registration and `SharedIndexQueryRuntime` are required, but the owner result remains
 authoritative. Custom notification block/mute runtimes retain priority.
 
 Metrics-disabled or uninitialized telemetry fails explicit shadow activation rather than
@@ -128,8 +136,7 @@ repair, latency, and negative-result fail-closed evidence exists.
 
 ## Privacy shadow metric contract
 
-The `index` feature enables calls into
-`rustok_telemetry::social_graph_index_privacy_shadow_metrics`:
+The host-owned Prometheus adapter publishes:
 
 - `rustok_social_graph_index_privacy_shadow_observations_total{operation,outcome}`;
 - `rustok_social_graph_index_privacy_shadow_failures_total{operation,error_code,retryable}`;
@@ -139,7 +146,7 @@ The `index` feature enables calls into
 Operations are fixed to `blocks_between`, `source_mutes_target`, `source_follows_target`, and
 `source_follows_targets`. Error-code labels are limited to
 `social_graph.index_privacy_unavailable`, `social_graph.index_privacy_contract_invalid`, or
-`other`. The collector never emits tenant and user identifiers, relation/entity IDs, payload,
+`other`. The adapter never emits tenant and user identifiers, relation/entity IDs, payload,
 SQL, or raw storage error labels.
 
 These metrics are measurement source only. They do not define sample thresholds, freshness
@@ -171,6 +178,10 @@ Feature `index-consumer` adds optional persistent Iggy consumption on top of `in
   mutation.
 - Stable error classification exposes no schema JSON, payload, identity, or private storage
   cause.
+
+The persistent consumer acknowledges only after durable projection or a durable terminal DLQ
+result exists and that result is committed. It must not authorize privacy from projection,
+receipt, broker, or lag state.
 
 ## Decoded and raw poison recovery
 
@@ -224,7 +235,7 @@ Feature `index-consumer` adds optional persistent Iggy consumption on top of `in
 - Notification block/mute policy may run the approved Index projection only through
   `IndexShadowSocialGraphPrivacyReadPort`, which always returns the owner result.
 - Index shadow mismatch or failure never authorizes, suppresses, widens, or changes policy.
-- Privacy shadow metrics observe parity but must not authorize or suppress anything.
+- Privacy shadow observations and metrics observe parity but must not authorize or suppress.
 - Profiles privacy, presentation visibility, and revision-bearing follow state must not
   authorize from Index state, DLQ receipts, broker IDs, deduplication state, consumer lag, or
   shadow metrics.
@@ -237,8 +248,6 @@ Feature `index-consumer` adds optional persistent Iggy consumption on top of `in
 - `rustok-events`: sealed relation event family.
 - optional `rustok-index`: schema conversion, registration, mutation persistence, and typed
   query runtime consumption.
-- optional `rustok-telemetry`: bounded privacy-shadow measurement through the single process
-  Prometheus registry.
 - optional `rustok-iggy`: persistent typed cursor, exact payload retention, DLQ publication,
   acknowledgement, and read-only position observation.
 - `rustok-outbox`: transactional event bus.
@@ -253,10 +262,13 @@ Feature `index-consumer` adds optional persistent Iggy consumption on top of `in
 - Constructing `PostgresIndexQueryPort` in Social Graph or bypassing
   `SharedIndexQueryRuntime`.
 - Returning the Index result from the privacy shadow instead of the owner result.
-- Treating shadow mismatch, error, empty projection, or shadow metrics as a privacy decision.
+- Treating shadow mismatch, error, empty projection, observation, or metric as a privacy
+  decision.
 - Treating schema readiness as a freshness watermark.
 - Logging tenant/user/relation identities from shadow comparison.
 - Adding tenant, user, relation, entity, payload, SQL, or raw error metric labels.
+- Adding a telemetry dependency to the Social Graph owner instead of using the host-owned
+  Prometheus adapter.
 - Enabling the evidence shadow without the single process Prometheus registry.
 - Using Index for revision-bearing follow state or Profiles presentation authorization.
 - Acknowledging before durable Index or DLQ result completion.
