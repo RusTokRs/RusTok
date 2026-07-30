@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { collectBlogFbaVerificationChainFailures } from './blog-fba-verification-chain.mjs';
 
 function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
@@ -10,12 +11,6 @@ function sameSet(actual, expected, label) {
   const e = [...expected].sort().join('|');
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
-function sameList(actual, expected, label) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
-}
-
 const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const runtimeSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
@@ -24,37 +19,6 @@ const richtextInventoryPath = 'crates/rustok-blog/contracts/evidence/blog-richte
 const richtextInventoryDocPath = 'crates/rustok-blog/docs/richtext-cutover-inventory.md';
 const providerPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
 const packageJsonPath = 'package.json';
-const expectedVerificationSteps = [
-  'node scripts/verify/verify-blog-fba.mjs',
-  'npm run verify:blog:admin-boundary',
-  'npm run verify:blog:storefront-boundary',
-  'npm run verify:blog:graphql-richtext-boundary',
-  'npm run verify:blog:richtext-offline-backfill',
-  'npm run verify:blog:forum-ui-ownership',
-  'node scripts/verify/verify-consumer-fba-runtime-order.mjs',
-];
-const expectedSourceGates = {
-  admin_boundary: {
-    verifier: 'scripts/verify/verify-blog-admin-boundary.mjs',
-    evidence: 'crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json',
-  },
-  storefront_boundary: {
-    verifier: 'scripts/verify/verify-blog-storefront-boundary.mjs',
-    evidence: 'crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json',
-  },
-  graphql_richtext_boundary: {
-    verifier: 'scripts/verify/verify-blog-graphql-richtext-boundary.mjs',
-    evidence: 'crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json',
-  },
-  richtext_offline_backfill: {
-    verifier: 'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
-    evidence: 'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
-  },
-  forum_ui_ownership: {
-    verifier: 'scripts/verify/verify-blog-forum-ui-ownership.mjs',
-    evidence: 'crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json',
-  },
-};
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
@@ -63,23 +27,14 @@ const richtextInventory = json(richtextInventoryPath);
 const provider = json(providerPath);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 2) fail('registry schema_version drift');
+if (registry.schema_version !== 3) fail('registry schema_version drift');
 if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
-if (registry.verification_chain?.package_script !== 'verify:blog:fba') fail('verification chain package script drift');
-sameList(registry.verification_chain?.steps ?? [], expectedVerificationSteps, 'registry verification chain steps');
-const packageScript = packageJson.scripts?.['verify:blog:fba'];
-if (typeof packageScript !== 'string') fail('package.json missing verify:blog:fba script');
-sameList(packageScript.split(' && '), expectedVerificationSteps, 'package verification chain steps');
-const sourceGates = registry.verification_chain?.source_gates ?? {};
-sameSet(Object.keys(sourceGates), Object.keys(expectedSourceGates), 'registry source gate names');
-for (const [gateName, expectedGate] of Object.entries(expectedSourceGates)) {
-  const gate = sourceGates[gateName];
-  if (gate?.verifier !== expectedGate.verifier || gate?.evidence !== expectedGate.evidence) {
-    fail(`registry source gate ${gateName} path drift`);
-  }
-  for (const filePath of [expectedGate.verifier, expectedGate.evidence]) {
-    if (!fs.existsSync(filePath)) fail(`registry source gate ${gateName} missing ${filePath}`);
-  }
+for (const failure of collectBlogFbaVerificationChainFailures({
+  registry,
+  packageJson,
+  existsSync: fs.existsSync,
+})) {
+  fail(failure);
 }
 if (registry.consumer_profile !== 'blog_post_comments') fail('consumer profile drift');
 if (registry.evidence.richtext_cutover_inventory !== richtextInventoryPath) fail('richtext cutover inventory registry path drift');

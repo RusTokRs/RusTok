@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -47,6 +47,7 @@
   },
   "verification_chain": {
     "package_script": "verify:blog:fba",
+    "self_test": "scripts/verify/verify-blog-fba.test.mjs",
     "steps": [
       "node scripts/verify/verify-blog-fba.mjs",
       "npm run verify:blog:admin-boundary",
