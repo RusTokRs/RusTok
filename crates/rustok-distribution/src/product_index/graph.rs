@@ -24,55 +24,167 @@ const PRODUCT_EVENT_DOMAIN_V2: &str = "rustok-product.product-replay-v2";
 const PRODUCT_VARIANT_EVENT_DOMAIN_V1: &str = "rustok-product.product-variant-replay-v1";
 const PRODUCT_VARIANT_EVENT_DOMAIN_V2: &str = "rustok-product.product-variant-replay-v2";
 
-const PRODUCT_SELECT: &str = r#"
-SELECT
-    p.tenant_id,
-    p.id AS product_id,
-    p.index_revision,
-    p.status::text AS status,
-    p.vendor,
-    p.product_type,
-    p.primary_category_id,
-    p.metadata,
-    t.locale,
-    t.title,
-    t.handle,
-    t.description,
-    COALESCE(
-        (
-            SELECT jsonb_agg(v.id ORDER BY v.id)
-            FROM product_variants v
-            WHERE v.tenant_id = p.tenant_id
-              AND v.product_id = p.id
-        ),
-        '[]'::jsonb
-    ) AS variant_ids
-FROM products p
-JOIN product_translations t
-  ON t.product_id = p.id
- AND t.tenant_id = p.tenant_id
+const PRODUCT_ROWS_CTE: &str = r#"
+product_index_union AS (
+    SELECT
+        FALSE AS is_deleted,
+        p.tenant_id,
+        p.id AS product_id,
+        p.index_revision,
+        p.status::text AS status,
+        p.vendor,
+        p.product_type,
+        p.primary_category_id,
+        p.metadata,
+        t.locale,
+        t.title,
+        t.handle,
+        t.description,
+        COALESCE(
+            (
+                SELECT jsonb_agg(v.id ORDER BY v.id)
+                FROM product_variants v
+                WHERE v.tenant_id = p.tenant_id
+                  AND v.product_id = p.id
+            ),
+            '[]'::jsonb
+        ) AS variant_ids
+    FROM products p
+    JOIN product_translations t
+      ON t.product_id = p.id
+     AND t.tenant_id = p.tenant_id
+    WHERE p.tenant_id = $1
+
+    UNION ALL
+
+    SELECT
+        TRUE AS is_deleted,
+        tombstone.tenant_id,
+        tombstone.product_id,
+        tombstone.source_version AS index_revision,
+        NULL::text AS status,
+        NULL::text AS vendor,
+        NULL::text AS product_type,
+        NULL::uuid AS primary_category_id,
+        NULL::jsonb AS metadata,
+        tombstone.locale,
+        NULL::text AS title,
+        NULL::text AS handle,
+        NULL::text AS description,
+        '[]'::jsonb AS variant_ids
+    FROM product_index_tombstones tombstone
+    WHERE tombstone.tenant_id = $1
+),
+product_index_rows AS (
+    SELECT
+        row.*,
+        COUNT(*) OVER (
+            PARTITION BY row.tenant_id, row.product_id, row.locale
+        ) AS identity_count
+    FROM product_index_union row
+)
 "#;
 
-const PRODUCT_VARIANT_SELECT: &str = r#"
+const PRODUCT_ROW_SELECT: &str = r#"
 SELECT
-    v.tenant_id,
-    v.id AS variant_id,
-    v.product_id,
-    v.index_revision,
-    v.sku,
-    v.barcode,
-    v.shipping_profile_slug,
-    v.ean,
-    v.upc,
-    v.inventory_policy,
-    v.inventory_management,
-    v.inventory_quantity,
-    v.weight_unit,
-    v.option1,
-    v.option2,
-    v.option3,
-    v.position
-FROM product_variants v
+    row.is_deleted,
+    row.identity_count,
+    row.tenant_id,
+    row.product_id,
+    row.index_revision,
+    row.status,
+    row.vendor,
+    row.product_type,
+    row.primary_category_id,
+    row.metadata,
+    row.locale,
+    row.title,
+    row.handle,
+    row.description,
+    row.variant_ids
+FROM product_index_rows row
+"#;
+
+const PRODUCT_VARIANT_ROWS_CTE: &str = r#"
+product_variant_index_union AS (
+    SELECT
+        FALSE AS is_deleted,
+        v.tenant_id,
+        v.id AS variant_id,
+        v.product_id,
+        v.index_revision,
+        v.sku,
+        v.barcode,
+        v.shipping_profile_slug,
+        v.ean,
+        v.upc,
+        v.inventory_policy,
+        v.inventory_management,
+        v.inventory_quantity,
+        v.weight_unit,
+        v.option1,
+        v.option2,
+        v.option3,
+        v.position
+    FROM product_variants v
+    WHERE v.tenant_id = $1
+
+    UNION ALL
+
+    SELECT
+        TRUE AS is_deleted,
+        tombstone.tenant_id,
+        tombstone.variant_id,
+        NULL::uuid AS product_id,
+        tombstone.source_version AS index_revision,
+        NULL::text AS sku,
+        NULL::text AS barcode,
+        NULL::text AS shipping_profile_slug,
+        NULL::text AS ean,
+        NULL::text AS upc,
+        NULL::text AS inventory_policy,
+        NULL::text AS inventory_management,
+        NULL::integer AS inventory_quantity,
+        NULL::text AS weight_unit,
+        NULL::text AS option1,
+        NULL::text AS option2,
+        NULL::text AS option3,
+        NULL::integer AS position
+    FROM product_variant_index_tombstones tombstone
+    WHERE tombstone.tenant_id = $1
+),
+product_variant_index_rows AS (
+    SELECT
+        row.*,
+        COUNT(*) OVER (
+            PARTITION BY row.tenant_id, row.variant_id
+        ) AS identity_count
+    FROM product_variant_index_union row
+)
+"#;
+
+const PRODUCT_VARIANT_ROW_SELECT: &str = r#"
+SELECT
+    row.is_deleted,
+    row.identity_count,
+    row.tenant_id,
+    row.variant_id,
+    row.product_id,
+    row.index_revision,
+    row.sku,
+    row.barcode,
+    row.shipping_profile_slug,
+    row.ean,
+    row.upc,
+    row.inventory_policy,
+    row.inventory_management,
+    row.inventory_quantity,
+    row.weight_unit,
+    row.option1,
+    row.option2,
+    row.option3,
+    row.position
+FROM product_variant_index_rows row
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -440,7 +552,7 @@ impl ProductPostgresIndexSource {
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "{PRODUCT_SELECT}\nWHERE p.tenant_id = $1\n  AND (p.id, t.locale) > ($2, $3)\nORDER BY p.id ASC, t.locale ASC\nLIMIT $4"
+                    "WITH {PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE (row.product_id, row.locale) > ($2, $3)\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $4"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -451,7 +563,7 @@ impl ProductPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "{PRODUCT_SELECT}\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC\nLIMIT $2"
+                    "WITH {PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -485,7 +597,7 @@ impl ProductPostgresIndexSource {
             parameter += 2;
         }
         let sql = format!(
-            "WITH requested(product_id, locale) AS (VALUES {})\n{PRODUCT_SELECT}\nJOIN requested r ON r.product_id = p.id AND r.locale = t.locale\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC",
+            "WITH requested(product_id, locale) AS (VALUES {}),\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.product_id = row.product_id AND requested_key.locale = row.locale\nORDER BY row.product_id ASC, row.locale ASC",
             tuples.join(", ")
         );
         self.db
@@ -588,7 +700,7 @@ impl ProductVariantPostgresIndexSource {
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "{PRODUCT_VARIANT_SELECT}\nWHERE v.tenant_id = $1\n  AND v.id > $2\nORDER BY v.id ASC\nLIMIT $3"
+                    "WITH {PRODUCT_VARIANT_ROWS_CTE}\n{PRODUCT_VARIANT_ROW_SELECT}\nWHERE row.variant_id > $2\nORDER BY row.variant_id ASC\nLIMIT $3"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -598,7 +710,7 @@ impl ProductVariantPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "{PRODUCT_VARIANT_SELECT}\nWHERE v.tenant_id = $1\nORDER BY v.id ASC\nLIMIT $2"
+                    "WITH {PRODUCT_VARIANT_ROWS_CTE}\n{PRODUCT_VARIANT_ROW_SELECT}\nORDER BY row.variant_id ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -629,7 +741,7 @@ impl ProductVariantPostgresIndexSource {
             values.push(key.entity_id.into());
         }
         let sql = format!(
-            "WITH requested(variant_id) AS (VALUES {})\n{PRODUCT_VARIANT_SELECT}\nJOIN requested r ON r.variant_id = v.id\nWHERE v.tenant_id = $1\nORDER BY v.id ASC",
+            "WITH requested(variant_id) AS (VALUES {}),\n{PRODUCT_VARIANT_ROWS_CTE}\n{PRODUCT_VARIANT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.variant_id = row.variant_id\nORDER BY row.variant_id ASC",
             rows.join(", ")
         );
         self.db
@@ -758,6 +870,17 @@ struct ProductRow {
     product_id: Uuid,
     source_version: u64,
     locale: LocaleKey,
+    state: ProductRowState,
+}
+
+#[derive(Debug)]
+enum ProductRowState {
+    Live(ProductLiveFields),
+    Deleted,
+}
+
+#[derive(Debug)]
+struct ProductLiveFields {
     status: String,
     title: String,
     handle: String,
@@ -774,6 +897,12 @@ impl ProductRow {
         row: QueryResult,
         expected_tenant: Uuid,
     ) -> Result<Self, ProductGraphIndexBridgeError> {
+        let is_deleted = row
+            .try_get::<bool>("", "is_deleted")
+            .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+        let identity_count = row
+            .try_get::<i64>("", "identity_count")
+            .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
         let tenant_id = row
             .try_get::<Uuid>("", "tenant_id")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
@@ -786,7 +915,8 @@ impl ProductRow {
         let raw_locale = row
             .try_get::<String>("", "locale")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
-        if tenant_id != expected_tenant
+        if identity_count != 1
+            || tenant_id != expected_tenant
             || tenant_id.is_nil()
             || product_id.is_nil()
             || revision <= 0
@@ -798,6 +928,19 @@ impl ProductRow {
         if locale.as_str() != raw_locale {
             return Err(ProductGraphIndexBridgeError::InvalidRow);
         }
+        let source_version =
+            u64::try_from(revision).map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+
+        if is_deleted {
+            return Ok(Self {
+                tenant_id,
+                product_id,
+                source_version,
+                locale,
+                state: ProductRowState::Deleted,
+            });
+        }
+
         let primary_category_id = row
             .try_get::<Option<Uuid>>("", "primary_category_id")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
@@ -810,18 +953,19 @@ impl ProductRow {
         Ok(Self {
             tenant_id,
             product_id,
-            source_version: u64::try_from(revision)
-                .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?,
+            source_version,
             locale,
-            status: required_string(&row, "status")?,
-            title: required_string(&row, "title")?,
-            handle: required_string(&row, "handle")?,
-            description: optional_string(&row, "description")?,
-            vendor: optional_string(&row, "vendor")?,
-            product_type: optional_string(&row, "product_type")?,
-            primary_category_id,
-            allowed_channel_slugs: extract_allowed_channel_slugs(&metadata),
-            variant_ids: decode_uuid_json_list(&row, "variant_ids")?,
+            state: ProductRowState::Live(ProductLiveFields {
+                status: required_string(&row, "status")?,
+                title: required_string(&row, "title")?,
+                handle: required_string(&row, "handle")?,
+                description: optional_string(&row, "description")?,
+                vendor: optional_string(&row, "vendor")?,
+                product_type: optional_string(&row, "product_type")?,
+                primary_category_id,
+                allowed_channel_slugs: extract_allowed_channel_slugs(&metadata),
+                variant_ids: decode_uuid_json_list(&row, "variant_ids")?,
+            }),
         })
     }
 
@@ -833,7 +977,7 @@ impl ProductRow {
     }
 
     fn into_mutation(
-        mut self,
+        self,
         version: ProductSchemaVersion,
     ) -> Result<IndexMutation, ProductGraphIndexBridgeError> {
         let (schema_version, event_domain) = match version {
@@ -848,25 +992,40 @@ impl ProductRow {
             self.source_version,
         )
         .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+        let key = EntityKey {
+            tenant_id: self.tenant_id,
+            schema: product_schema_ref(schema_version)?,
+            entity_id: self.product_id,
+            locale: Some(self.locale),
+        };
+
+        let ProductRowState::Live(mut live) = self.state else {
+            return Ok(IndexMutation::Delete {
+                event_id,
+                key,
+                source_version: self.source_version,
+            });
+        };
+
         let mut fields = BTreeMap::from([
-            (field_name("status")?, IndexValue::String(self.status)),
-            (field_name("title")?, IndexValue::String(self.title)),
-            (field_name("handle")?, IndexValue::String(self.handle)),
+            (field_name("status")?, IndexValue::String(live.status)),
+            (field_name("title")?, IndexValue::String(live.title)),
+            (field_name("handle")?, IndexValue::String(live.handle)),
             (
                 field_name("description")?,
-                optional_string_value(self.description.take()),
+                optional_string_value(live.description.take()),
             ),
             (
                 field_name("vendor")?,
-                optional_string_value(self.vendor.take()),
+                optional_string_value(live.vendor.take()),
             ),
             (
                 field_name("product_type")?,
-                optional_string_value(self.product_type.take()),
+                optional_string_value(live.product_type.take()),
             ),
             (
                 field_name("primary_category_id")?,
-                self.primary_category_id
+                live.primary_category_id
                     .map(IndexValue::Uuid)
                     .unwrap_or(IndexValue::Null),
             ),
@@ -875,12 +1034,12 @@ impl ProductRow {
             fields.insert(field_name("id")?, IndexValue::Uuid(self.product_id));
             fields.insert(
                 field_name("channel_restricted")?,
-                IndexValue::Boolean(!self.allowed_channel_slugs.is_empty()),
+                IndexValue::Boolean(!live.allowed_channel_slugs.is_empty()),
             );
             fields.insert(
                 field_name("allowed_channel_slugs")?,
                 IndexValue::List(
-                    self.allowed_channel_slugs
+                    live.allowed_channel_slugs
                         .into_iter()
                         .map(IndexValue::String)
                         .collect(),
@@ -889,7 +1048,7 @@ impl ProductRow {
             fields.insert(
                 field_name("variant_ids")?,
                 IndexValue::List(
-                    self.variant_ids
+                    live.variant_ids
                         .iter()
                         .copied()
                         .map(IndexValue::Uuid)
@@ -899,7 +1058,7 @@ impl ProductRow {
             let variant_schema = product_variant_schema_ref(2)?;
             vec![IndexLinkValue {
                 name: link_name("variants")?,
-                targets: self
+                targets: live
                     .variant_ids
                     .into_iter()
                     .map(|variant_id| LinkedEntityKey {
@@ -915,12 +1074,7 @@ impl ProductRow {
         Ok(IndexMutation::Upsert {
             event_id,
             record: IndexRecord {
-                key: EntityKey {
-                    tenant_id: self.tenant_id,
-                    schema: product_schema_ref(schema_version)?,
-                    entity_id: self.product_id,
-                    locale: Some(self.locale),
-                },
+                key,
                 source_version: self.source_version,
                 fields,
                 links,
@@ -933,8 +1087,19 @@ impl ProductRow {
 struct ProductVariantRow {
     tenant_id: Uuid,
     variant_id: Uuid,
-    product_id: Uuid,
     source_version: u64,
+    state: ProductVariantRowState,
+}
+
+#[derive(Debug)]
+enum ProductVariantRowState {
+    Live(ProductVariantLiveFields),
+    Deleted,
+}
+
+#[derive(Debug)]
+struct ProductVariantLiveFields {
+    product_id: Uuid,
     sku: Option<String>,
     barcode: Option<String>,
     shipping_profile_slug: Option<String>,
@@ -955,51 +1120,73 @@ impl ProductVariantRow {
         row: QueryResult,
         expected_tenant: Uuid,
     ) -> Result<Self, ProductGraphIndexBridgeError> {
+        let is_deleted = row
+            .try_get::<bool>("", "is_deleted")
+            .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+        let identity_count = row
+            .try_get::<i64>("", "identity_count")
+            .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
         let tenant_id = row
             .try_get::<Uuid>("", "tenant_id")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
         let variant_id = row
             .try_get::<Uuid>("", "variant_id")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
-        let product_id = row
-            .try_get::<Uuid>("", "product_id")
-            .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
         let revision = row
             .try_get::<i64>("", "index_revision")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
-        if tenant_id != expected_tenant
+        if identity_count != 1
+            || tenant_id != expected_tenant
             || tenant_id.is_nil()
             || variant_id.is_nil()
-            || product_id.is_nil()
             || revision <= 0
         {
+            return Err(ProductGraphIndexBridgeError::InvalidRow);
+        }
+        let source_version =
+            u64::try_from(revision).map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+
+        if is_deleted {
+            return Ok(Self {
+                tenant_id,
+                variant_id,
+                source_version,
+                state: ProductVariantRowState::Deleted,
+            });
+        }
+
+        let product_id = row
+            .try_get::<Uuid>("", "product_id")
+            .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+        if product_id.is_nil() {
             return Err(ProductGraphIndexBridgeError::InvalidRow);
         }
         Ok(Self {
             tenant_id,
             variant_id,
-            product_id,
-            source_version: u64::try_from(revision)
-                .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?,
-            sku: optional_string(&row, "sku")?,
-            barcode: optional_string(&row, "barcode")?,
-            shipping_profile_slug: optional_string(&row, "shipping_profile_slug")?,
-            ean: optional_string(&row, "ean")?,
-            upc: optional_string(&row, "upc")?,
-            inventory_policy: required_string(&row, "inventory_policy")?,
-            inventory_management: required_string(&row, "inventory_management")?,
-            inventory_quantity: i64::from(
-                row.try_get::<i32>("", "inventory_quantity")
-                    .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?,
-            ),
-            weight_unit: optional_string(&row, "weight_unit")?,
-            option1: optional_string(&row, "option1")?,
-            option2: optional_string(&row, "option2")?,
-            option3: optional_string(&row, "option3")?,
-            position: i64::from(
-                row.try_get::<i32>("", "position")
-                    .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?,
-            ),
+            source_version,
+            state: ProductVariantRowState::Live(ProductVariantLiveFields {
+                product_id,
+                sku: optional_string(&row, "sku")?,
+                barcode: optional_string(&row, "barcode")?,
+                shipping_profile_slug: optional_string(&row, "shipping_profile_slug")?,
+                ean: optional_string(&row, "ean")?,
+                upc: optional_string(&row, "upc")?,
+                inventory_policy: required_string(&row, "inventory_policy")?,
+                inventory_management: required_string(&row, "inventory_management")?,
+                inventory_quantity: i64::from(
+                    row.try_get::<i32>("", "inventory_quantity")
+                        .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?,
+                ),
+                weight_unit: optional_string(&row, "weight_unit")?,
+                option1: optional_string(&row, "option1")?,
+                option2: optional_string(&row, "option2")?,
+                option3: optional_string(&row, "option3")?,
+                position: i64::from(
+                    row.try_get::<i32>("", "position")
+                        .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?,
+                ),
+            }),
         })
     }
 
@@ -1010,7 +1197,7 @@ impl ProductVariantRow {
     }
 
     fn into_mutation(
-        mut self,
+        self,
         version: ProductVariantSchemaVersion,
     ) -> Result<IndexMutation, ProductGraphIndexBridgeError> {
         let (schema_version, event_domain) = match version {
@@ -1025,53 +1212,68 @@ impl ProductVariantRow {
             self.source_version,
         )
         .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
+        let key = EntityKey {
+            tenant_id: self.tenant_id,
+            schema: product_variant_schema_ref(schema_version)?,
+            entity_id: self.variant_id,
+            locale: None,
+        };
+
+        let ProductVariantRowState::Live(mut live) = self.state else {
+            return Ok(IndexMutation::Delete {
+                event_id,
+                key,
+                source_version: self.source_version,
+            });
+        };
+
         let mut fields = BTreeMap::from([
             (
                 field_name("product_id")?,
-                IndexValue::Uuid(self.product_id),
+                IndexValue::Uuid(live.product_id),
             ),
-            (field_name("sku")?, optional_string_value(self.sku.take())),
+            (field_name("sku")?, optional_string_value(live.sku.take())),
             (
                 field_name("barcode")?,
-                optional_string_value(self.barcode.take()),
+                optional_string_value(live.barcode.take()),
             ),
             (
                 field_name("shipping_profile_slug")?,
-                optional_string_value(self.shipping_profile_slug.take()),
+                optional_string_value(live.shipping_profile_slug.take()),
             ),
-            (field_name("ean")?, optional_string_value(self.ean.take())),
-            (field_name("upc")?, optional_string_value(self.upc.take())),
+            (field_name("ean")?, optional_string_value(live.ean.take())),
+            (field_name("upc")?, optional_string_value(live.upc.take())),
             (
                 field_name("inventory_policy")?,
-                IndexValue::String(self.inventory_policy),
+                IndexValue::String(live.inventory_policy),
             ),
             (
                 field_name("inventory_management")?,
-                IndexValue::String(self.inventory_management),
+                IndexValue::String(live.inventory_management),
             ),
             (
                 field_name("inventory_quantity")?,
-                IndexValue::Integer(self.inventory_quantity),
+                IndexValue::Integer(live.inventory_quantity),
             ),
             (
                 field_name("weight_unit")?,
-                optional_string_value(self.weight_unit.take()),
+                optional_string_value(live.weight_unit.take()),
             ),
             (
                 field_name("option1")?,
-                optional_string_value(self.option1.take()),
+                optional_string_value(live.option1.take()),
             ),
             (
                 field_name("option2")?,
-                optional_string_value(self.option2.take()),
+                optional_string_value(live.option2.take()),
             ),
             (
                 field_name("option3")?,
-                optional_string_value(self.option3.take()),
+                optional_string_value(live.option3.take()),
             ),
             (
                 field_name("position")?,
-                IndexValue::Integer(self.position),
+                IndexValue::Integer(live.position),
             ),
         ]);
         if version == ProductVariantSchemaVersion::V2 {
@@ -1080,12 +1282,7 @@ impl ProductVariantRow {
         Ok(IndexMutation::Upsert {
             event_id,
             record: IndexRecord {
-                key: EntityKey {
-                    tenant_id: self.tenant_id,
-                    schema: product_variant_schema_ref(schema_version)?,
-                    entity_id: self.variant_id,
-                    locale: None,
-                },
+                key,
                 source_version: self.source_version,
                 fields,
                 links: Vec::new(),
@@ -1248,6 +1445,58 @@ mod tests {
             factory.owner_module() == "product"
                 && factory.factory_name() == PRODUCT_VARIANT_INDEX_SOURCE
         }));
+    }
+
+    #[test]
+    fn retained_rows_emit_versioned_delete_mutations() {
+        let product = ProductRow {
+            tenant_id: Uuid::from_u128(1),
+            product_id: Uuid::from_u128(2),
+            source_version: 9,
+            locale: LocaleKey::new("en-US").unwrap(),
+            state: ProductRowState::Deleted,
+        };
+        let variant = ProductVariantRow {
+            tenant_id: Uuid::from_u128(1),
+            variant_id: Uuid::from_u128(3),
+            source_version: 10,
+            state: ProductVariantRowState::Deleted,
+        };
+
+        let IndexMutation::Delete {
+            key: product_key,
+            source_version: product_version,
+            ..
+        } = product.into_mutation(ProductSchemaVersion::V2).unwrap()
+        else {
+            panic!("retained Product row must emit a delete");
+        };
+        let IndexMutation::Delete {
+            key: variant_key,
+            source_version: variant_version,
+            ..
+        } = variant
+            .into_mutation(ProductVariantSchemaVersion::V1)
+            .unwrap()
+        else {
+            panic!("retained ProductVariant row must emit a delete");
+        };
+
+        assert_eq!(product_key.schema.version, SchemaVersion::new(2));
+        assert_eq!(product_key.locale.unwrap().as_str(), "en-US");
+        assert_eq!(product_version, 9);
+        assert_eq!(variant_key.schema.version, SchemaVersion::INITIAL);
+        assert!(variant_key.locale.is_none());
+        assert_eq!(variant_version, 10);
+    }
+
+    #[test]
+    fn tombstone_sql_fails_closed_on_live_identity_coexistence() {
+        assert!(PRODUCT_ROWS_CTE.contains("COUNT(*) OVER"));
+        assert!(PRODUCT_ROWS_CTE.contains("product_index_tombstones"));
+        assert!(PRODUCT_VARIANT_ROWS_CTE.contains("product_variant_index_tombstones"));
+        assert!(PRODUCT_ROW_SELECT.contains("identity_count"));
+        assert!(PRODUCT_VARIANT_ROW_SELECT.contains("identity_count"));
     }
 
     #[test]
