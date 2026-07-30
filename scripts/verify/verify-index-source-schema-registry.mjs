@@ -25,6 +25,7 @@ const sourceRegistry = requireMarkers(sourceRegistryPath, [
   'pub struct IndexSchemaSourceDescriptor',
   'pub struct SharedIndexSchemaRegistry',
   'DuplicateSchemaOwner',
+  'SchemaIdentityOwnerConflict',
   'Index schema source catalog is empty',
   'registry.register_batch(',
   'register_index_schema_source(',
@@ -33,9 +34,12 @@ const sourceRegistry = requireMarkers(sourceRegistryPath, [
   'owner module is invalid',
   'catalog_materializes_cross_source_links_as_one_batch',
   'duplicate_schema_reference_rejects_ambiguous_ownership',
+  'schema_identity_owner_is_stable_across_versions',
   'extensions_do_not_materialize_an_empty_registry',
+  'fn new(registry: Arc<SchemaRegistry>) -> Self',
 ]);
 for (const forbidden of [
+  'pub fn new(registry: Arc<SchemaRegistry>)',
   'PostgresIndexQueryPort',
   'PostgresSchemaRegistrationStore',
   'DatabaseConnection',
@@ -99,6 +103,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
 requireMarkers('crates/rustok-index/docs/m4-source-schema-registry.md', [
   'Status: `source_complete_execution_pending`',
   '`social_graph`',
+  'entire schema identity across versions',
   '- construct `PostgresIndexQueryPort`;',
   'Not run by the implementation agent',
 ]);
