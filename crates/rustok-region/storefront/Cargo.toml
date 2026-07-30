@@ -12,6 +12,7 @@ ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-region",
+  "dep:tracing",
   "rustok-api/server",
 ]
 
@@ -26,4 +27,5 @@ rustok-ui-transport.workspace = true
 
 rustok-ui-i18n-leptos.workspace = true
 rustok-region = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
