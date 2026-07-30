@@ -5,10 +5,6 @@ edition.workspace = true
 license.workspace = true
 description = "Product domain module extracted from rustok-commerce"
 
-[features]
-default = []
-index = ["dep:rustok-index", "dep:sha2"]
-
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
@@ -19,7 +15,6 @@ rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-seo-targets.workspace = true
 rustok-media.workspace = true
-rustok-index = { workspace = true, optional = true }
 flex.workspace = true
 rustok-taxonomy.workspace = true
 rustok-inventory.workspace = true
@@ -29,7 +24,6 @@ serde.workspace = true
 serde_json.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
-sha2 = { workspace = true, optional = true }
 tracing.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
