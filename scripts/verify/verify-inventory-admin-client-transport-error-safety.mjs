@@ -141,6 +141,8 @@ for (const marker of [
   'const INVENTORY_ADMIN_CLIENT_BOUNDARY: &str = "inventory_admin_client_transport";',
   '"Inventory admin request could not be completed"',
   "pub enum InventoryTransportError",
+  "ServerFn,",
+  'Self::ServerFn => write!(f, "{INVENTORY_ADMIN_CLIENT_PUBLIC_MESSAGE}")',
   "pub(super) struct InventoryTransportErrorContext",
   "raw_error = ?error",
   "owner_operation = self.operation",
@@ -155,12 +157,13 @@ for (const marker of [
   "numeric_input_present = self.numeric_input_present",
   'code = "inventory.admin_client_transport_failed"',
   "boundary = INVENTORY_ADMIN_CLIENT_BOUNDARY",
-  "InventoryTransportError::ServerFn(INVENTORY_ADMIN_CLIENT_PUBLIC_MESSAGE.to_string())",
+  "InventoryTransportError::ServerFn",
 ]) {
   requireText(safety, marker, `${paths.safety}: safe public mapping`);
 }
 
 for (const forbidden of [
+  "ServerFn(String)",
   "tenant_id = %",
   "subject_id = %",
   "locale = %",
@@ -209,6 +212,9 @@ if (
 ) {
   failures.push(`${paths.review}: unexpected status ${review.status}`);
 }
+if (review.findings?.public_error_variant_has_no_string_payload !== true) {
+  failures.push(`${paths.review}: unit public error variant review is required`);
+}
 for (const [key, expected] of Object.entries({
   server_functions_changed: false,
   request_normalization_changed: false,
@@ -216,6 +222,7 @@ for (const [key, expected] of Object.entries({
   operation_count: 8,
   context_created_before_native_call: true,
   raw_server_fn_string_public: false,
+  public_error_payload_constructible: false,
   static_public_message: true,
   original_error_logged_privately: true,
   per_call_correlation_logging: true,
@@ -252,6 +259,7 @@ requireText(
   "Inventory admin request could not be completed",
   `${paths.doc}: static public message`,
 );
+requireText(doc, "unit variant", `${paths.doc}: fail-closed construction`);
 requireText(
   inventoryPlan,
   "Admin client transport error safety: `source_ready_unvalidated`",
