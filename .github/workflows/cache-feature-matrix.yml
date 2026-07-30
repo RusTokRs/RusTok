@@ -100,14 +100,19 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
-          rm .github/agent/blog-storefront-render-evidence-transform.py
+          rm \
+            .github/agent/blog-storefront-render-evidence-transform.py \
+            .github/agent/blog-storefront-render-evidence-verifier.mjs \
+            .github/agent/blog-storefront-render-evidence-selftest.mjs
           git add \
             crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json \
             crates/rustok-blog/docs/implementation-plan.md \
             scripts/verify/verify-blog-storefront-boundary.mjs \
             scripts/verify/verify-blog-storefront-boundary.test.mjs \
             .github/workflows/cache-feature-matrix.yml \
-            .github/agent/blog-storefront-render-evidence-transform.py
+            .github/agent/blog-storefront-render-evidence-transform.py \
+            .github/agent/blog-storefront-render-evidence-verifier.mjs \
+            .github/agent/blog-storefront-render-evidence-selftest.mjs
           git diff --cached --check
           git commit -m "test(blog): bind storefront render evidence"
           git push origin "HEAD:${BRANCH}"
