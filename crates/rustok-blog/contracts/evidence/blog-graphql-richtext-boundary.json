@@ -18,23 +18,21 @@
   "legacy_adapter_files": [
     "crates/rustok-blog/src/graphql/types.rs"
   ],
-  "legacy_adapter_scoped_exceptions": [
-    {
-      "file": "crates/rustok-blog/src/graphql/mutation.rs",
-      "scope": "impl From<UpdatePostInput> for DomainUpdatePostInput",
-      "reason": "temporary GraphQL-to-owner compatibility conversion"
-    }
-  ],
-  "test_only_scope": "crates/rustok-blog/src/graphql/mutation.rs #[cfg(test)] module",
+  "conversion_owner": {
+    "file": "crates/rustok-blog/src/graphql/types.rs",
+    "scope": "impl From<UpdatePostInput> for DomainUpdatePostInput",
+    "reason": "temporary GraphQL-to-owner compatibility conversion"
+  },
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "test_coverage": [
     "canonical RichTextDocument/RichTextView fields are required",
     "create and update resolvers delegate conversion through input.into()",
-    "async resolvers do not read or map richtext fields directly",
+    "mutation resolvers do not own transport conversion or access richtext fields directly",
+    "the retained update conversion and its regression test live beside GraphQL input types",
     "all Blog GraphQL Rust files are scanned recursively",
-    "production legacy fields are rejected outside types.rs and the isolated update conversion",
-    "legacy fields remain required inside each retained adapter scope until evidence is tightened",
+    "legacy fields are rejected outside types.rs",
+    "retained legacy declarations and conversion mappings are checked exactly",
     "new legacy aliases are rejected in every GraphQL file",
     "legacy field removal requires evidence and guardrail tightening"
   ],
