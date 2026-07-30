@@ -266,6 +266,16 @@ export type MachineTranslationUsage = {
   priceSnapshotDigest: string;
 };
 
+export type MachineTranslationEstimate = {
+  inputTokensUpperBound: number;
+  outputTokensUpperBound: number;
+  attemptsUpperBound: number;
+  costMinorUnitsUpperBound: number;
+  currencyCode: string;
+  priceSnapshotDigest: string;
+  reviewRequired: boolean;
+};
+
 export type MachineTranslationDiagnostic = {
   code: string;
   blocking: boolean;
@@ -469,7 +479,7 @@ export type TranslationOperation =
       idempotencyKey: string;
     }
   | {
-      kind: 'generate_machine_proposal';
+      kind: 'estimate_machine_translation' | 'generate_machine_proposal';
       itemId: string;
       fieldKeys: string[];
       minimumMemorySimilarityBasisPoints: number;
@@ -520,6 +530,7 @@ export type TranslationResponse =
   | { kind: 'required_progress'; value: RequiredProviderProgress }
   | { kind: 'item'; value: JobItem }
   | { kind: 'proposal'; value: Proposal }
+  | { kind: 'machine_estimate'; value: MachineTranslationEstimate }
   | { kind: 'machine_proposal'; value: MachineProposal }
   | { kind: 'machine_operation_status'; value: MachineOperationStatus }
   | { kind: 'machine_cancellation'; value: MachineCancellation }

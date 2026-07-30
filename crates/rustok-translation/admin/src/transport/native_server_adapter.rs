@@ -3,6 +3,8 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
+use crate::model::MachineTranslationEstimate;
+#[cfg(feature = "ssr")]
 use crate::model::{
     Actor, ActorKind, ApplyResult, Assignment, Cancellation, Glossary, GlossaryBinding,
     GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossarySummary, GlossaryTermPolicy,
@@ -85,14 +87,16 @@ async fn execute_with_runtime(
     let mut context = port_context(auth, request, operation.idempotency_key())?;
     if matches!(
         &operation,
-        TranslationAdminOperation::GenerateMachineProposal { .. }
+        TranslationAdminOperation::EstimateMachineTranslation { .. }
+            | TranslationAdminOperation::GenerateMachineProposal { .. }
             | TranslationAdminOperation::RecoverMachineOperation { .. }
     ) {
         context.deadline_ms = Some(120_000);
     }
     let machine_port = if matches!(
         &operation,
-        TranslationAdminOperation::GenerateMachineProposal { .. }
+        TranslationAdminOperation::EstimateMachineTranslation { .. }
+            | TranslationAdminOperation::GenerateMachineProposal { .. }
             | TranslationAdminOperation::CancelMachineOperation { .. }
             | TranslationAdminOperation::RecoverMachineOperation { .. }
             | TranslationAdminOperation::ReadMachineOperationStatus { .. }
@@ -607,6 +611,33 @@ async fn dispatch(
                                 })
                             })
                             .collect::<Result<Vec<_>, ServerFnError>>()?,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::EstimateMachineTranslation {
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            ..
+        } => TranslationAdminResponse::MachineEstimate(map_machine_estimate(
+            machine()?
+                .estimate_proposal(
+                    context,
+                    GenerateMachineProposalInput {
+                        item_id: parse_uuid(&item_id, "item_id")?,
+                        field_keys: field_keys
+                            .into_iter()
+                            .map(parse_field_key)
+                            .collect::<Result<Vec<_>, _>>()?,
+                        minimum_memory_similarity_basis_points,
+                        tone,
+                        domain,
+                        style,
                     },
                 )
                 .await
@@ -1522,6 +1553,21 @@ fn map_machine_operation_status(
 }
 
 #[cfg(feature = "ssr")]
+fn map_machine_estimate(
+    value: rustok_translation::MachineTranslationEstimate,
+) -> MachineTranslationEstimate {
+    MachineTranslationEstimate {
+        input_tokens_upper_bound: value.input_tokens_upper_bound,
+        output_tokens_upper_bound: value.output_tokens_upper_bound,
+        attempts_upper_bound: value.attempts_upper_bound,
+        cost_minor_units_upper_bound: value.cost_minor_units_upper_bound,
+        currency_code: value.currency_code,
+        price_snapshot_digest: value.price_snapshot_digest,
+        review_required: value.review_required,
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_apply(value: rustok_translation::ApplyRecord) -> ApplyResult {
     ApplyResult {
         operation_id: value.operation_id.to_string(),
@@ -1624,13 +1670,13 @@ mod tests {
     };
     use rustok_translation::{
         MachineTranslationAttemptEvidence, MachineTranslationBatchRequest,
-        MachineTranslationBatchResult, MachineTranslationDiagnostic,
+        MachineTranslationBatchResult, MachineTranslationDiagnostic, MachineTranslationEstimate,
         MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
         MachineTranslationExecutionStatusEvidence, MachineTranslationPort,
         MachineTranslationPortFactory, MachineTranslationProviderDescriptor,
         MachineTranslationProviderHealth, MachineTranslationProviderState,
         MachineTranslationUnitResult, MachineTranslationUsage, SharedMachineTranslationPortFactory,
-        entities::{apply_operation, job_item, machine_operation},
+        entities::{apply_operation, job_item, machine_operation, proposal},
     };
     use rustok_translation_targets::{
         FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
@@ -1762,6 +1808,23 @@ mod tests {
                     .then(|| "translation.machine.test_unavailable".to_string()),
                 retry_after_ms: (state != MachineTranslationProviderState::Available)
                     .then_some(1_000),
+            })
+        }
+
+        async fn estimate_batch(
+            &self,
+            context: PortContext,
+            request: MachineTranslationBatchRequest,
+        ) -> Result<MachineTranslationEstimate, PortError> {
+            request.validate(&context)?;
+            Ok(MachineTranslationEstimate {
+                input_tokens_upper_bound: 64,
+                output_tokens_upper_bound: 1_048_576,
+                attempts_upper_bound: 1,
+                cost_minor_units_upper_bound: 1,
+                currency_code: "USD".to_string(),
+                price_snapshot_digest: "e".repeat(64),
+                review_required: true,
             })
         }
 
@@ -2389,6 +2452,48 @@ mod tests {
 
         let (_, completed_item) =
             create_http_job_item(&runtime, &auth, &tenant, "native-machine-completed").await;
+        let operation_count = machine_operation::Entity::find()
+            .count(runtime.db())
+            .await
+            .unwrap();
+        let proposal_count = proposal::Entity::find()
+            .count(runtime.db())
+            .await
+            .unwrap();
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::EstimateMachineTranslation {
+                item_id: completed_item.id.clone(),
+                field_keys: vec!["title".to_string()],
+                minimum_memory_similarity_basis_points: 0,
+                tone: Some("neutral".to_string()),
+                domain: Some("media".to_string()),
+                style: None,
+                idempotency_key: "native-machine-estimate".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineEstimate(estimate) = response else {
+            panic!("expected machine estimate response");
+        };
+        assert_eq!(estimate.cost_minor_units_upper_bound, 1);
+        assert!(estimate.review_required);
+        assert_eq!(
+            machine_operation::Entity::find()
+                .count(runtime.db())
+                .await
+                .unwrap(),
+            operation_count
+        );
+        assert_eq!(
+            proposal::Entity::find()
+                .count(runtime.db())
+                .await
+                .unwrap(),
+            proposal_count
+        );
         let response = execute_http_ok(
             &runtime,
             &auth,

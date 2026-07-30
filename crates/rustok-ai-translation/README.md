@@ -16,13 +16,17 @@ observe the generated execution UUID before a timeout or restart.
 ## Responsibilities
 
 - Map bounded Translation batches to provider-neutral structured AI tasks.
+- Map non-billable conservative estimates from the same request, tenant
+  routing, attempt bounds, and immutable AI price snapshots used by execution.
 - Preserve source/target locale, unit identity, source revision/hash, field
   semantics, protected tokens, glossary/Translation Memory context, and
   content-safe evidence.
 - Reject stale prompt policy, missing/extra/duplicate units, changed protected
   tokens, owner length violations, invalid usage, and missing attempt evidence.
 - Return proposal-only, human-review-required results with execution, model,
-  fallback, token, price, and cost evidence.
+fallback, token, price, and cost evidence.
+The estimate path never registers an execution, reserves budget, or calls a
+provider.
 
 ## Interactions
 

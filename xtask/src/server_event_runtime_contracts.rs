@@ -42,7 +42,8 @@ pub(crate) fn validate_server_event_runtime_contract(manifest_path: &Path) -> Re
         );
     }
     let direct_dispatcher_export = services_mod.contains("pub mod module_event_dispatcher;");
-    let dispatcher_facade_export = services_mod.contains("#[path = \"module_event_dispatcher.rs\"]")
+    let dispatcher_facade_export = services_mod
+        .contains("#[path = \"module_event_dispatcher.rs\"]")
         && services_mod.contains("mod module_event_dispatcher_base;")
         && services_mod.contains("pub mod module_event_dispatcher {")
         && services_mod.contains("pub use super::module_event_dispatcher_base::{");

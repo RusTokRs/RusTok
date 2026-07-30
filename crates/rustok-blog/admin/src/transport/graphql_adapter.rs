@@ -191,8 +191,7 @@ pub async fn fetch_posts(
     Ok(response.posts)
 }
 
-pub(crate) fn is_posts_contract_unavailable(error: &ApiError) -> bool {
-    let message = error.to_string();
+pub(crate) fn is_posts_contract_unavailable_message(message: &str) -> bool {
     message.contains("Unknown type \"PostsFilter\"") || message.contains("Unknown field \"posts\"")
 }
 

@@ -61,20 +61,11 @@ pub struct BlogPostAdminEditorFieldClassesViewModel;
 pub fn blog_post_admin_editor_field_classes_view() {}
 pub struct BlogPostAdminTitleInputViewModel;
 pub fn blog_post_admin_title_input_view() {}
-pub struct BlogPostAdminBodyFormatSelectViewModel;
-pub struct BlogPostAdminBodyFormatOptionViewModel;
-pub fn blog_post_admin_body_format_select_view() {}
-pub struct BlogPostAdminBodyFormatChangeViewModel;
-pub fn blog_post_admin_body_format_change_view() {}
-pub fn normalize_blog_post_body_format() {}
 pub struct BlogPostAdminStatusBadgeViewModel;
 pub fn blog_post_admin_status_badge_view() {}
 pub struct BlogPostAdminEditBannerViewModel;
 pub fn edit_banner_class() {}
 pub fn blog_post_admin_edit_banner_view() {}
-pub struct BlogPostAdminRawBodyWarningViewModel;
-pub fn raw_body_warning_class() {}
-pub fn blog_post_admin_raw_body_warning_view() {}
 pub enum BlogPostAdminPostsLoadViewModel {}
 pub fn blog_post_admin_posts_load_view() {}
 pub fn blog_post_admin_posts_load_view_from_list() {}
@@ -114,14 +105,12 @@ pub fn BlogAdmin() {
     let _failure = core::blog_post_transport_failure_issue;
     let _saved = core::blog_post_save_result_view;
     let _edit_banner = core::blog_post_admin_edit_banner_view;
-    let _raw_warning = core::blog_post_admin_raw_body_warning_view;
     let _posts_load = core::blog_post_admin_posts_load_view_from_list;
     let _status_badge = core::blog_post_admin_status_badge_view;
     let _form_copy = core::blog_post_admin_editor_form_copy_view;
     let _field_classes = core::blog_post_admin_editor_field_classes_view;
     let _title_input = core::blog_post_admin_title_input_view;
-    let _body_format = core::blog_post_admin_body_format_select_view;
-    let _body_format_change = core::blog_post_admin_body_format_change_view;
+    let _editor = <BlogRichTextEditor />;
     let _posts_table = core::blog_post_admin_posts_table_view_from_items;
     let _table_classes = core::blog_post_admin_table_classes_view;
     let _shell_classes = core::blog_post_admin_shell_classes_view;
@@ -156,9 +145,13 @@ function transportSource({ includeServerEndpoint = false, omitModeration = false
   return `
 mod graphql_adapter;
 ${omitModeration ? "" : "mod moderation_adapter;"}
+mod native_server_adapter;
 
+use rustok_ui_transport::{execute_selected_transport, UiTransportPath};
+
+fn selected_transport_path() -> UiTransportPath { UiTransportPath::Graphql }
 pub fn is_posts_contract_unavailable() { graphql_adapter::is_posts_contract_unavailable(); }
-pub async fn fetch_posts() { graphql_adapter::fetch_posts().await; }
+pub async fn fetch_posts() { execute_selected_transport(UiTransportPath::NativeServer, native_server_adapter::fetch_posts, graphql_adapter::fetch_posts).await; }
 pub async fn fetch_post() { graphql_adapter::fetch_post().await; }
 pub async fn create_post() { graphql_adapter::create_post().await; }
 pub async fn update_post() { graphql_adapter::update_post().await; }
@@ -197,15 +190,41 @@ const MODERATE_BLOG_COMMENT_MUTATION: &str = "moderateComment BlogCommentModerat
 `;
 }
 
+function nativeAdapterSource({ nativeGraphqlLeak = false } = {}) {
+  return `
+use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
+use rustok_outbox::TransactionalEventBus;
+use rustok_blog::{CommentService, PostService};
+use rustok_core::security_context_from_access_token;
+${nativeGraphqlLeak ? "use rustok_graphql::GraphqlRequest;" : ""}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/posts")]
+async fn blog_admin_posts_native() {}
+#[server(prefix = "/api/fn", endpoint = "blog/admin/create-post")]
+async fn blog_admin_create_post_native() {}
+#[server(prefix = "/api/fn", endpoint = "blog/admin/update-post")]
+async fn blog_admin_update_post_native() {}
+#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]
+async fn blog_admin_moderation_comments_native() {}
+#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]
+async fn blog_admin_moderate_comment_native() {
+  let _ = Permission::BLOG_POSTS_MANAGE;
+}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-boundary-"));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/moderation.rs", moderationSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/moderation_adapter.rs", moderationAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(root, "apps/admin/Cargo.toml", 'csr = ["rustok-blog-admin/csr"]\nhydrate = ["rustok-blog-admin/hydrate"]\nssr = ["rustok-blog-admin/ssr"]');
   writeFixtureFile(root, "crates/rustok-blog/src/graphql/types.rs", options.omitModeration ? "pub struct GqlPost;" : "async fn moderation_comments() {} Permission::BLOG_POSTS_MANAGE GqlModerationCommentList");
   writeFixtureFile(root, "crates/rustok-blog/src/graphql/mutation.rs", options.omitModeration ? "pub struct BlogMutation;" : "async fn moderate_comment() {} Permission::BLOG_POSTS_MANAGE ModerateCommentInput");
   writeFixtureFile(root, "crates/rustok-blog/src/graphql/rate_limit.rs", options.omitModeration ? "enum Surface {}" : "ModerateComment moderateComment Permission::BLOG_POSTS_MANAGE");
@@ -307,6 +326,13 @@ test("blog admin boundary verifier rejects swallowed posts contract-unavailable 
   withRoot({ swallowPostsContractUnavailable: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must not swallow posts contract-unavailable errors/);
+  });
+});
+
+test("blog admin boundary verifier rejects GraphQL calls from the native adapter", () => {
+  withRoot({ nativeGraphqlLeak: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /native server-function adapter must not call GraphQL/);
   });
 });
 

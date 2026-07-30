@@ -17,6 +17,7 @@ const POLICY_FIELDS: &str = "tenantId requiredTargetLocales tenantLocalePolicyRe
 const JOB_PROGRESS_FIELDS: &str = "jobId sourceDigest totalItems assignedItems terminalItems missingItems draftItems inReviewItems approvedItems applyingItems appliedItems staleItems conflictItems blockedItems excludedItems cancelledItems requiredUnits optionalUnits appliedRequiredUnits appliedOptionalUnits approvedRequiredUnits approvedOptionalUnits completeResources sourceCharacters translatedCharacters revision updatedAt";
 const PROVIDER_PROGRESS_FIELDS: &str = "ownerSlug resourceKind sourceLocale targetLocale requiredUnits exactRequiredUnits optionalUnits exactOptionalUnits resources completeResources ownerChangeCursor projectedCursor checkpointRevision checkpointUpdatedAt freshness";
 const PROPOSAL_FIELDS: &str = "id itemId proposalRevision origin values { key value expectedSourceHash } qaIssues { field severity code message } qaAccepted status approvalReceiptId";
+const MACHINE_ESTIMATE_FIELDS: &str = "inputTokensUpperBound outputTokensUpperBound attemptsUpperBound costMinorUnitsUpperBound currencyCode priceSnapshotDigest reviewRequired";
 const MACHINE_PROPOSAL_FIELDS: &str = "operationId itemId proposalId adapterSlug providerSlug providerPolicyDigest machineRequestDigest glossaryRevision glossaryDigest memoryDigest executionId executionRequestDigest promptPolicyDigest attempts { attempt providerProfileId providerSlug model fallback } usage { inputTokens outputTokens totalTokens costMinorUnits currencyCode priceSnapshotDigest } diagnostics { code blocking unitId } reviewRequired createdAt updatedAt";
 const MACHINE_CANCELLATION_FIELDS: &str = "cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt";
 const MACHINE_OPERATION_STATUS_FIELDS: &str =
@@ -97,6 +98,9 @@ pub async fn execute(
         | TranslationAdminOperation::SubmitProposal { .. }
         | TranslationAdminOperation::ApproveProposal { .. } => Ok(
             TranslationAdminResponse::Proposal(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::EstimateMachineTranslation { .. } => Ok(
+            TranslationAdminResponse::MachineEstimate(field_value(&data, field)?),
         ),
         TranslationAdminOperation::GenerateMachineProposal { .. }
         | TranslationAdminOperation::RecoverMachineOperation { .. } => Ok(
@@ -429,6 +433,27 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
                 "idempotencyKey": idempotency_key,
             }}),
             "importTranslationItem",
+        ),
+        TranslationAdminOperation::EstimateMachineTranslation {
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            idempotency_key,
+        } => (
+            format!("mutation EstimateMachineTranslation($input: GenerateMachineTranslationProposalInput!) {{ estimateMachineTranslation(input: $input) {{ {MACHINE_ESTIMATE_FIELDS} }} }}"),
+            json!({ "input": {
+                "itemId": item_id,
+                "fieldKeys": field_keys,
+                "minimumMemorySimilarityBasisPoints": minimum_memory_similarity_basis_points,
+                "tone": tone,
+                "domain": domain,
+                "style": style,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "estimateMachineTranslation",
         ),
         TranslationAdminOperation::GenerateMachineProposal {
             item_id,
@@ -909,6 +934,15 @@ mod tests {
                     value: "Alt".to_string(),
                 }],
                 idempotency_key: "import-item-1".to_string(),
+            },
+            TranslationAdminOperation::EstimateMachineTranslation {
+                item_id: "00000000-0000-0000-0000-000000000002".to_string(),
+                field_keys: vec!["alt".to_string()],
+                minimum_memory_similarity_basis_points: 7_000,
+                tone: Some("neutral".to_string()),
+                domain: Some("media".to_string()),
+                style: None,
+                idempotency_key: "machine-estimate-1".to_string(),
             },
             TranslationAdminOperation::GenerateMachineProposal {
                 item_id: "00000000-0000-0000-0000-000000000002".to_string(),

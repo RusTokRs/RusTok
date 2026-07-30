@@ -42,6 +42,10 @@ The implemented persistence foundation owns:
   validation;
 - bounded full-rescan recovery that atomically replaces one provider's
   inventory only while its checkpoint remains unchanged;
+- file-backed inventory concurrency where independent database pools read one
+  checkpoint revision and converge on one update plus one typed conflict, and
+  separate-process outage recovery that resumes cursor sync before an atomic
+  full-rescan;
 - idempotent job creation and owner-provider-backed immutable item snapshots
   with request hashes and job revision CAS;
 - tenant-scoped glossary metadata and lifecycle CAS, durable actor-bound
@@ -66,7 +70,10 @@ The implemented persistence foundation owns:
   `Deleted` observations atomically add content-free lifecycle evidence during
   inventory synchronization. The module-owned runtime worker automatically
   tombstones expired or owner-deleted entries and purges them after a 24-hour
-  grace period, while excluding legal hold and machine-operation pins;
+  grace period, while excluding legal hold and machine-operation pins.
+  File-backed evidence verifies concurrent independent replica pools converge
+  on one revision and receipt, and separate processes reclaim post-claim work
+  across tombstone and purge restarts;
 - owner-validated proposal drafts, review submission, and approval transitions
   with operation-specific idempotency bindings, item revision CAS, persisted QA
   evidence, and translator/reviewer separation;
@@ -122,6 +129,13 @@ The implemented persistence foundation owns:
   original generation command and reconstructed request digest, retrieves only
   an already completed provider result, and resumes canonical proposal save
   without another billable translation call.
+
+File-backed separate-process evidence closes the original runtime before
+recovery and covers both durable `saving` states: no proposal persisted yet,
+and the canonical proposal already persisted while operation completion was
+interrupted. Both paths produce one proposal and one audit receipt, release
+memory pins on completion, preserve an already persisted proposal identity, and
+make terminal replay provider-free.
 
 Inventory rows never copy source or translated field values. Source text is
 stored only in workflow item snapshots with an explicit job/tenant boundary;
@@ -191,8 +205,10 @@ locale, permission, deadline, and idempotency evidence and never reads an owner
 table. Both adapters share Translation's redacted public-error classification.
 Its six-tab Leptos `core/transport/ui` workbench is manifest-mounted in
 `apps/admin`; the matching `@rustok/translation-admin` package is mounted by
-the Next host through a thin client wrapper and uses the same 38-operation
-GraphQL contract. The Jobs surface includes bounded immutable snapshot export
+the Next host through a thin client wrapper and uses the same 39-operation
+GraphQL contract. The Jobs surface includes a non-billable conservative
+machine-translation estimate derived from AI-owned tenant routing and immutable
+price snapshots before proposal generation, plus bounded immutable snapshot export
 and atomic per-item import through canonical QA. Both clients use
 `memory_entry_id` for explicit memory selection and never auto-select the first
 entry.

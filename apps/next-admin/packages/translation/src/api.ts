@@ -12,6 +12,7 @@ import type {
   MemoryMutation,
   MemorySuggestion,
   MachineCancellation,
+  MachineTranslationEstimate,
   MachineOperationStatus,
   MachineProposal,
   Proposal,
@@ -31,6 +32,8 @@ const PROVIDER_PROGRESS_FIELDS =
   'ownerSlug resourceKind sourceLocale targetLocale requiredUnits exactRequiredUnits optionalUnits exactOptionalUnits resources completeResources ownerChangeCursor projectedCursor checkpointRevision checkpointUpdatedAt freshness';
 const PROPOSAL_FIELDS =
   'id itemId proposalRevision origin values { key value expectedSourceHash } qaIssues { field severity code message } qaAccepted status approvalReceiptId';
+const MACHINE_ESTIMATE_FIELDS =
+  'inputTokensUpperBound outputTokensUpperBound attemptsUpperBound costMinorUnitsUpperBound currencyCode priceSnapshotDigest reviewRequired';
 const MACHINE_PROPOSAL_FIELDS =
   'operationId itemId proposalId adapterSlug providerSlug providerPolicyDigest machineRequestDigest glossaryRevision glossaryDigest memoryDigest executionId executionRequestDigest promptPolicyDigest attempts { attempt providerProfileId providerSlug model fallback } usage { inputTokens outputTokens totalTokens costMinorUnits currencyCode priceSnapshotDigest } diagnostics { code blocking unitId } reviewRequired createdAt updatedAt';
 const MACHINE_CANCELLATION_FIELDS =
@@ -542,6 +545,27 @@ export async function executeTranslationOperation(
         { input }
       );
       return { kind: 'proposal', value: data.importTranslationItem };
+    }
+    case 'estimate_machine_translation': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { estimateMachineTranslation: MachineTranslationEstimate }
+      >(
+        context,
+        `mutation EstimateMachineTranslation(
+          $input: GenerateMachineTranslationProposalInput!
+        ) {
+          estimateMachineTranslation(input: $input) {
+            ${MACHINE_ESTIMATE_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'machine_estimate',
+        value: data.estimateMachineTranslation
+      };
     }
     case 'generate_machine_proposal': {
       const input = withoutKind(operation);

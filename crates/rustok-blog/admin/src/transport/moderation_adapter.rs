@@ -131,8 +131,7 @@ pub async fn moderate_comment(
     Ok(response.moderate_comment)
 }
 
-pub fn is_contract_unavailable(error: &GraphqlHttpError) -> bool {
-    let message = error.to_string();
+pub(crate) fn is_contract_unavailable_message(message: &str) -> bool {
     message.contains("Unknown field \"moderationComments\"")
         || message.contains("Unknown field \"moderateComment\"")
         || message.contains("Unknown type \"BlogCommentModerationStatus\"")

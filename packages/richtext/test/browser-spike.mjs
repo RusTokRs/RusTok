@@ -13,7 +13,7 @@ const server = createServer(async (request, response) => {
   const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
   if (pathname === '/') {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    response.end(parentHtml());
+    response.end(parentHtml(manifest.leptos_adapter));
     return;
   }
   if (pathname === '/favicon.ico') {
@@ -38,7 +38,12 @@ const server = createServer(async (request, response) => {
       ? 'text/css; charset=utf-8'
       : 'text/javascript; charset=utf-8';
   response.writeHead(200, {
-    'cache-control': 'public, max-age=31536000, immutable',
+    'cache-control':
+      pathname === '/richtext/frame' ||
+      pathname === '/richtext/frame/' ||
+      asset === manifest.leptos_adapter
+        ? 'no-store'
+        : 'public, max-age=31536000, immutable',
     'content-security-policy': (pathname === '/richtext/frame' || pathname.endsWith('.html'))
       ? "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
       : "default-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'",
@@ -65,6 +70,7 @@ try {
   page.on('pageerror', (error) => console.log(`[browser:error] ${error.stack ?? error.message}`));
   const frameResponse = await page.request.get(`${baseUrl}/richtext/frame`);
   assert.equal(frameResponse.status(), 200);
+  assert.equal(frameResponse.headers()['cache-control'], 'no-store');
   assert.equal(frameResponse.headers()['x-content-type-options'], 'nosniff');
   assert.match(frameResponse.headers()['content-security-policy'], /frame-ancestors 'self'/);
   await page.goto(baseUrl);
@@ -96,7 +102,29 @@ try {
   // are both denied because allow-same-origin is absent.
   assert.equal(originEvidence.cookie, 'blocked');
   assert.equal(originEvidence.parentSameOrigin, 'blocked');
+  await page.evaluate(() => {
+    const controlled = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'Controlled update' }]
+        }
+      ]
+    };
+    window.RustokRichText.setLeptosRichTextDocument(
+      window.__richTextState.handle,
+      JSON.stringify(controlled)
+    );
+  });
+  await child.waitForFunction(
+    () =>
+      document
+        .querySelector('[contenteditable="true"]')
+        ?.textContent?.includes('Controlled update') === true
+  );
   await child.locator('[contenteditable="true"]').click();
+  await page.keyboard.press('Control+A');
   await page.keyboard.type('Hello from the frame');
   await page.waitForFunction(() => window.__richTextState?.changed === true);
   const document = await page.evaluate(() => window.__richTextState.document);
@@ -107,14 +135,28 @@ try {
   server.close();
 }
 
-function parentHtml() {
-  return `<!doctype html><meta charset="utf-8"><iframe sandbox="allow-scripts" style="width:640px;height:360px"></iframe><script>
-const state = { initialized: false, changed: false, document: null }; window.__richTextState = state;
-const iframe = document.querySelector('iframe'); const nonce = crypto.randomUUID(); const session = crypto.randomUUID(); let outbound = 0;
+function parentHtml(leptosAdapter) {
+  return `<!doctype html><meta charset="utf-8"><iframe sandbox="allow-scripts" style="width:640px;height:360px"></iframe><script type="module">
+import '/richtext/frame/${leptosAdapter}';
+const state = { initialized: false, changed: false, document: null, handle: null }; window.__richTextState = state;
+const iframe = document.querySelector('iframe');
 const doc = { type: 'doc', content: [{ type: 'paragraph' }] };
 const messages = { bold:'Bold', italic:'Italic', strike:'Strike', code:'Code', heading:'Heading', bullet_list:'Bulleted list', ordered_list:'Numbered list', blockquote:'Quote', code_block:'Code block', horizontal_rule:'Horizontal rule', link:'Link', link_url:'Link URL', apply_link:'Apply', remove_link:'Remove', clear_formatting:'Clear formatting', undo:'Undo', redo:'Redo', editor:'Rich text editor' };
-iframe.src = '/richtext/frame#nonce=' + encodeURIComponent(nonce);
-window.addEventListener('message', (event) => { if (event.source !== iframe.contentWindow || event.data?.type !== 'ready' || event.data.nonce !== nonce) return; const channel = new MessageChannel(); const port = channel.port1; port.onmessage = ({data}) => { const msg = data.message; if (msg.type === 'initialized') state.initialized = true; if (msg.type === 'document_changed') { state.changed = true; state.document = msg.payload.document; } }; port.start(); iframe.contentWindow.postMessage({ protocol:'rustok.richtext', revision:1, type:'connect', nonce, session }, '*', [channel.port2]); send(port, { type:'initialize', payload:{ profile:'article', document:doc, messages, editable:true } }); });
-function send(port, message) { outbound += 1; port.postMessage({ protocol:'rustok.richtext', revision:1, session, sequence:outbound, message }); }
+state.handle = window.RustokRichText.mountLeptosRichTextFrame(
+  iframe,
+  '/richtext/frame',
+  'article',
+  JSON.stringify(doc),
+  JSON.stringify(messages),
+  true,
+  (documentJson) => {
+    state.changed = true;
+    state.document = JSON.parse(documentJson);
+  },
+  (code, message) => {
+    throw new Error(code + ': ' + message);
+  }
+);
+state.handle.controller.ready.then(() => { state.initialized = true; });
 </script>`;
 }

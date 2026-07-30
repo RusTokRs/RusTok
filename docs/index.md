@@ -86,7 +86,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) -
   owner-safe inventory/workflow, required-target policy, deterministic QA,
-  versioned glossaries, Translation Memory lifecycle, 38-operation GraphQL
+  versioned glossaries, Translation Memory lifecycle, 39-operation GraphQL
   plus native admin parity, and the machine-translation adapter/control track
 - [Machine-readable Translation Surface Readiness Registry](./modules/translation-surfaces.json)
 - [`rustok-translation-targets` owner-provider contract](../crates/rustok-translation-targets/docs/README.md)
@@ -104,8 +104,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
 - [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
-- [Richtext Track](./modules/rich-text-implementation-plan.md) — shared
-  editor runtime and the first Blog article owner boundary
+- [Richtext Track](./modules/rich-text-implementation-plan.md) — shared editor
+  runtime, completed Blog article source cutover, and Next/Leptos integration
 - [Shared browser richtext runtime](../packages/richtext/README.md)
 - [Page Builder Track](./modules/page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)

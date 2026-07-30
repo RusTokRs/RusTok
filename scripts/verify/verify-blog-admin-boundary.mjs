@@ -40,11 +40,14 @@ function assertNotContains(text, pattern, description) {
 
 const libPath = "crates/rustok-blog/admin/src/lib.rs";
 const corePath = "crates/rustok-blog/admin/src/core.rs";
+const modelPath = "crates/rustok-blog/admin/src/model.rs";
 const uiPath = "crates/rustok-blog/admin/src/ui/leptos.rs";
 const moderationPath = "crates/rustok-blog/admin/src/moderation.rs";
 const transportPath = "crates/rustok-blog/admin/src/transport/mod.rs";
 const graphqlAdapterPath = "crates/rustok-blog/admin/src/transport/graphql_adapter.rs";
 const moderationAdapterPath = "crates/rustok-blog/admin/src/transport/moderation_adapter.rs";
+const nativeAdapterPath = "crates/rustok-blog/admin/src/transport/native_server_adapter.rs";
+const hostCargoPath = "apps/admin/Cargo.toml";
 const graphqlTypesPath = "crates/rustok-blog/src/graphql/types.rs";
 const graphqlMutationPath = "crates/rustok-blog/src/graphql/mutation.rs";
 const graphqlRateLimitPath = "crates/rustok-blog/src/graphql/rate_limit.rs";
@@ -59,11 +62,14 @@ if (existsSync(repoPath(legacyApiPath))) {
 for (const filePath of [
   libPath,
   corePath,
+  modelPath,
   uiPath,
   moderationPath,
   transportPath,
   graphqlAdapterPath,
   moderationAdapterPath,
+  nativeAdapterPath,
+  hostCargoPath,
   graphqlTypesPath,
   graphqlMutationPath,
   graphqlRateLimitPath,
@@ -75,11 +81,14 @@ for (const filePath of [
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
+const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
 const moderation = readRepo(moderationPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const moderationAdapter = readRepo(moderationAdapterPath);
+const nativeAdapter = readRepo(nativeAdapterPath);
+const hostCargo = readRepo(hostCargoPath);
 const graphqlTypes = readRepo(graphqlTypesPath);
 const graphqlMutation = readRepo(graphqlMutationPath);
 const graphqlRateLimit = readRepo(graphqlRateLimitPath);
@@ -133,20 +142,11 @@ for (const marker of [
   "blog_post_admin_editor_field_classes_view",
   "BlogPostAdminTitleInputViewModel",
   "blog_post_admin_title_input_view",
-  "BlogPostAdminBodyFormatSelectViewModel",
-  "BlogPostAdminBodyFormatOptionViewModel",
-  "blog_post_admin_body_format_select_view",
-  "BlogPostAdminBodyFormatChangeViewModel",
-  "blog_post_admin_body_format_change_view",
-  "normalize_blog_post_body_format",
   "BlogPostAdminStatusBadgeViewModel",
   "blog_post_admin_status_badge_view",
   "BlogPostAdminEditBannerViewModel",
   "edit_banner_class",
   "blog_post_admin_edit_banner_view",
-  "BlogPostAdminRawBodyWarningViewModel",
-  "raw_body_warning_class",
-  "blog_post_admin_raw_body_warning_view",
   "BlogPostAdminPostsLoadViewModel",
   "blog_post_admin_posts_load_view",
   "blog_post_admin_posts_load_view_from_list",
@@ -175,14 +175,12 @@ assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter m
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
-assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI must use core-owned raw-body warning view policy`);
 assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
 assertContains(ui, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
 assertContains(ui, "core::blog_post_admin_editor_field_classes_view", `${uiPath}: UI must use core-owned editor field class presentation policy`);
 assertContains(ui, "core::blog_post_admin_title_input_view", `${uiPath}: UI must use core-owned title input/autoslug policy`);
-assertContains(ui, "core::blog_post_admin_body_format_select_view", `${uiPath}: UI must use core-owned body-format select option policy`);
-assertContains(ui, "core::blog_post_admin_body_format_change_view", `${uiPath}: UI must use core-owned body-format change normalization policy`);
+assertContains(ui, "<BlogRichTextEditor", `${uiPath}: UI must mount the shared rich-text editor adapter`);
 assertContains(ui, "core::blog_post_admin_posts_table_view_from_items", `${uiPath}: UI must use core-owned posts-table normalization and row view-model policy`);
 assertContains(ui, "core::blog_post_admin_table_classes_view", `${uiPath}: UI must use core-owned posts-table class presentation policy`);
 assertContains(ui, "core::blog_post_admin_shell_classes_view", `${uiPath}: UI must use core-owned admin shell class presentation policy`);
@@ -234,8 +232,13 @@ for (const marker of [
 }
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must own the CRUD GraphQL adapter module`);
 assertContains(transport, "mod moderation_adapter;", `${transportPath}: transport facade must own the moderation adapter module`);
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must own the native server-function adapter module`);
+assertContains(transport, "execute_selected_transport", `${transportPath}: transport facade must select one transport without fallback`);
+assertContains(transport, "UiTransportPath::NativeServer", `${transportPath}: Leptos SSR/hydrate profiles must select native server functions`);
+assertContains(transport, "UiTransportPath::Graphql", `${transportPath}: GraphQL must remain the parallel public/headless transport`);
 assertContains(transport, "graphql_adapter::", `${transportPath}: transport facade must delegate CRUD through transport/graphql_adapter.rs`);
 assertContains(transport, "moderation_adapter::", `${transportPath}: transport facade must delegate moderation through transport/moderation_adapter.rs`);
+assertContains(transport, "native_server_adapter::", `${transportPath}: transport facade must delegate the Leptos path through native server functions`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the blog admin transport facade`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: blog admin GraphQL adapter must keep the GraphQL transport contract`);
 assertContains(graphqlAdapter, "BLOG_POSTS_QUERY", `${graphqlAdapterPath}: GraphQL adapter must own blog posts query text`);
@@ -248,6 +251,36 @@ for (const marker of [
   "BlogCommentModerationStatus!",
 ]) {
   assertContains(moderationAdapter, marker, `${moderationAdapterPath}: missing moderation GraphQL marker ${marker}`);
+}
+
+for (const marker of [
+  "#[server(",
+  "HostRuntimeContext",
+  "TransactionalEventBus",
+  "AuthContext",
+  "TenantContext",
+  "security_context_from_access_token",
+  "PostService",
+  "CommentService",
+  "Permission::BLOG_POSTS_MANAGE",
+  "blog_admin_posts_native",
+  "blog_admin_create_post_native",
+  "blog_admin_update_post_native",
+  "blog_admin_moderation_comments_native",
+  "blog_admin_moderate_comment_native",
+]) {
+  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: missing native server-function boundary marker ${marker}`);
+}
+for (const marker of ["GraphqlRequest", "BLOG_POSTS_QUERY", "MODERATE_BLOG_COMMENT_MUTATION"]) {
+  assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native server-function adapter must not call GraphQL (${marker})`);
+}
+for (const marker of ["body_format", "bodyFormat", "raw_body", "rawWarning", "rt_json_v1", "rich_text_v1"]) {
+  assertNotContains(core, marker, `${corePath}: canonical rich-text admin core must not expose legacy format state (${marker})`);
+  assertNotContains(model, marker, `${modelPath}: canonical rich-text admin model must not expose legacy format state (${marker})`);
+  assertNotContains(ui, marker, `${uiPath}: canonical rich-text admin UI must not expose legacy format state (${marker})`);
+}
+for (const feature of ["rustok-blog-admin/csr", "rustok-blog-admin/hydrate", "rustok-blog-admin/ssr"]) {
+  assertContains(hostCargo, feature, `${hostCargoPath}: host must propagate the blog admin ${feature.split("/")[1]} feature`);
 }
 
 for (const marker of [

@@ -75,7 +75,8 @@ pub struct BlogModerationComment {
     pub created_at: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum BlogModerationStatus {
     Approved,
     Spam,
@@ -92,7 +93,7 @@ impl BlogModerationStatus {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDraft {
     pub locale: String,
     pub title: String,

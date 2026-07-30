@@ -102,7 +102,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
                     </p>
                 </div>
                 <span class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                    {t(panel_locale.as_deref(), "blog.moderation.graphql", "GraphQL managed")}
+                        {t(panel_locale.as_deref(), "blog.moderation.transport", "Native and GraphQL")}
                 </span>
             </div>
 

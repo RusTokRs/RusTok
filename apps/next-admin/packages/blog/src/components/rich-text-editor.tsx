@@ -47,7 +47,7 @@ export function RichTextEditor({
         value={value}
         messages={messages}
         onChange={onChange}
-        style={{ width: '100%', minHeight: '18rem', border: 0 }}
+        className='h-72 w-full border-0'
       />
     </div>
   );

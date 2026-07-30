@@ -968,6 +968,31 @@ pub struct MachineTranslationUsage {
 }
 
 #[derive(SimpleObject)]
+pub struct MachineTranslationEstimate {
+    pub input_tokens_upper_bound: u64,
+    pub output_tokens_upper_bound: u64,
+    pub attempts_upper_bound: u16,
+    pub cost_minor_units_upper_bound: u64,
+    pub currency_code: String,
+    pub price_snapshot_digest: String,
+    pub review_required: bool,
+}
+
+impl From<crate::MachineTranslationEstimate> for MachineTranslationEstimate {
+    fn from(value: crate::MachineTranslationEstimate) -> Self {
+        Self {
+            input_tokens_upper_bound: value.input_tokens_upper_bound,
+            output_tokens_upper_bound: value.output_tokens_upper_bound,
+            attempts_upper_bound: value.attempts_upper_bound,
+            cost_minor_units_upper_bound: value.cost_minor_units_upper_bound,
+            currency_code: value.currency_code,
+            price_snapshot_digest: value.price_snapshot_digest,
+            review_required: value.review_required,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
 pub struct MachineTranslationDiagnostic {
     pub code: String,
     pub blocking: bool,

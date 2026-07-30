@@ -253,12 +253,16 @@ impl ModuleWorkHandler for TranslationMemoryRetentionWorkAdapter {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
     use chrono::{DateTime, FixedOffset};
     use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
     use sea_orm::{
-        ActiveModelTrait, ConnectionTrait, Database, DbBackend, EntityTrait, Set, Statement,
+        ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DbBackend, EntityTrait,
+        PaginatorTrait, Set, Statement,
     };
     use sea_orm_migration::SchemaManager;
+    use tokio::process::Command;
 
     use super::*;
     use crate::{
@@ -267,8 +271,51 @@ mod tests {
         migrations,
     };
 
+    struct SqliteTestFileGuard(PathBuf);
+
+    impl Drop for SqliteTestFileGuard {
+        fn drop(&mut self) {
+            for path in sqlite_test_files(&self.0) {
+                if path.exists() {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+    }
+
     async fn fixture() -> (DatabaseConnection, Uuid) {
         let database = Database::connect("sqlite::memory:").await.unwrap();
+        initialize_fixture(database).await
+    }
+
+    async fn fixture_at(database_path: &Path) -> (DatabaseConnection, Uuid) {
+        let database = connect_file(database_path, true).await;
+        initialize_fixture(database).await
+    }
+
+    async fn connect_file(database_path: &Path, create_if_missing: bool) -> DatabaseConnection {
+        let database_path = database_path.to_path_buf();
+        let mut options =
+            ConnectOptions::new("sqlite://translation-retention-placeholder.sqlite?mode=rwc");
+        options
+            .max_connections(4)
+            .min_connections(1)
+            .sqlx_logging(false)
+            .map_sqlx_sqlite_opts(move |options| {
+                options
+                    .filename(database_path.clone())
+                    .create_if_missing(create_if_missing)
+                    .busy_timeout(StdDuration::from_secs(5))
+            });
+        let database = Database::connect(options).await.unwrap();
+        database
+            .execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .unwrap();
+        database
+    }
+
+    async fn initialize_fixture(database: DatabaseConnection) -> (DatabaseConnection, Uuid) {
         database
             .execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL)")
             .await
@@ -287,6 +334,15 @@ mod tests {
             .await
             .unwrap();
         (database, tenant_id)
+    }
+
+    fn sqlite_test_files(database_path: &Path) -> [PathBuf; 4] {
+        [
+            database_path.to_path_buf(),
+            PathBuf::from(format!("{}-journal", database_path.display())),
+            PathBuf::from(format!("{}-shm", database_path.display())),
+            PathBuf::from(format!("{}-wal", database_path.display())),
+        ]
     }
 
     async fn insert_memory_entry(
@@ -440,6 +496,201 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn independent_replica_pools_converge_on_one_retention_receipt() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("workspace path");
+        let evidence_dir = workspace.join("target/translation-retention-process-tests");
+        std::fs::create_dir_all(&evidence_dir)
+            .expect("Translation retention process evidence directory");
+        let evidence_dir = evidence_dir
+            .canonicalize()
+            .expect("Translation retention process evidence path");
+        assert!(evidence_dir.starts_with(workspace.join("target")));
+        let database_path = evidence_dir.join(format!(
+            "rustok-translation-retention-{}.sqlite",
+            Uuid::new_v4()
+        ));
+        let _database_cleanup = SqliteTestFileGuard(database_path.clone());
+        let (database, tenant_id) = fixture_at(&database_path).await;
+        let entry_id = insert_memory_entry(
+            &database,
+            tenant_id,
+            "retain_until",
+            Some(Utc::now().fixed_offset() - Duration::minutes(1)),
+            None,
+            None,
+        )
+        .await;
+        database.close().await.unwrap();
+
+        let first_database = connect_file(&database_path, false).await;
+        let second_database = connect_file(&database_path, false).await;
+        let first = TranslationMemoryRetentionWorkAdapter::new(first_database.clone());
+        let second = TranslationMemoryRetentionWorkAdapter::new(second_database.clone());
+        let first_item = first
+            .claim(TRANSLATION_MEMORY_RETENTION_WORKER)
+            .await
+            .unwrap()
+            .unwrap();
+        let second_item = second
+            .claim(TRANSLATION_MEMORY_RETENTION_WORKER)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(first_item.id, entry_id);
+        assert_eq!(second_item.id, entry_id);
+
+        let (first_outcome, second_outcome) =
+            tokio::join!(first.execute(first_item), second.execute(second_item));
+        assert_eq!(first_outcome.unwrap(), ModuleWorkOutcome::Completed);
+        assert_eq!(second_outcome.unwrap(), ModuleWorkOutcome::Completed);
+        assert_eq!(
+            memory_entry::Entity::find_by_id(entry_id)
+                .one(&first_database)
+                .await
+                .unwrap()
+                .unwrap()
+                .revision,
+            2
+        );
+        assert_eq!(
+            memory_receipt::Entity::find()
+                .count(&first_database)
+                .await
+                .unwrap(),
+            1
+        );
+        first_database.close().await.unwrap();
+        second_database.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn separate_process_recovers_claimed_retention_and_completes_purge() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("workspace path");
+        let evidence_dir = workspace.join("target/translation-retention-process-tests");
+        std::fs::create_dir_all(&evidence_dir)
+            .expect("Translation retention process evidence directory");
+        let evidence_dir = evidence_dir
+            .canonicalize()
+            .expect("Translation retention process evidence path");
+        assert!(evidence_dir.starts_with(workspace.join("target")));
+        let database_path = evidence_dir.join(format!(
+            "rustok-translation-retention-{}.sqlite",
+            Uuid::new_v4()
+        ));
+        let _database_cleanup = SqliteTestFileGuard(database_path.clone());
+        let (database, tenant_id) = fixture_at(&database_path).await;
+        let tombstone_id = insert_memory_entry(
+            &database,
+            tenant_id,
+            "retain_until",
+            Some(Utc::now().fixed_offset() - Duration::minutes(1)),
+            None,
+            None,
+        )
+        .await;
+        let purge_id = insert_memory_entry(
+            &database,
+            tenant_id,
+            "owner_lifecycle",
+            None,
+            Some(Utc::now().fixed_offset() - Duration::hours(30)),
+            Some(Utc::now().fixed_offset() - Duration::hours(25)),
+        )
+        .await;
+        let claimed = TranslationMemoryRetentionWorkAdapter::new(database.clone())
+            .claim(TRANSLATION_MEMORY_RETENTION_WORKER)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(claimed.id, tombstone_id);
+        database.close().await.unwrap();
+
+        for expected_entry_id in [tombstone_id, purge_id] {
+            let output =
+                Command::new(std::env::current_exe().expect("Translation test executable"))
+                    .args([
+                        "--exact",
+                        "scheduler::tests::retention_recovery_child_process",
+                        "--ignored",
+                        "--nocapture",
+                        "--test-threads=1",
+                    ])
+                    .env("RUSTOK_TRANSLATION_TEST_RETENTION_DB_PATH", &database_path)
+                    .env(
+                        "RUSTOK_TRANSLATION_TEST_RETENTION_ENTRY_ID",
+                        expected_entry_id.to_string(),
+                    )
+                    .output()
+                    .await
+                    .expect("Translation retention child process");
+            assert!(
+                output.status.success(),
+                "Translation retention child failed for entry {expected_entry_id}:\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        let database = connect_file(&database_path, false).await;
+        let tombstoned = memory_entry::Entity::find_by_id(tombstone_id)
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(tombstoned.tombstoned_at.is_some());
+        assert_eq!(tombstoned.revision, 2);
+        assert!(
+            memory_entry::Entity::find_by_id(purge_id)
+                .one(&database)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            memory_receipt::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            2
+        );
+        assert_eq!(run_adapter_once(&database).await, 0);
+        database.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "internal child process for Translation retention recovery evidence"]
+    async fn retention_recovery_child_process() {
+        let Some(database_path) = std::env::var_os("RUSTOK_TRANSLATION_TEST_RETENTION_DB_PATH")
+        else {
+            return;
+        };
+        let expected_entry_id = Uuid::parse_str(
+            &std::env::var("RUSTOK_TRANSLATION_TEST_RETENTION_ENTRY_ID")
+                .expect("Translation retention child entry id"),
+        )
+        .expect("Translation retention child entry UUID");
+        let database = connect_file(Path::new(&database_path), false).await;
+        let adapter = TranslationMemoryRetentionWorkAdapter::new(database.clone());
+        let item = adapter
+            .claim(TRANSLATION_MEMORY_RETENTION_WORKER)
+            .await
+            .unwrap()
+            .expect("child process must reclaim retention work");
+        assert_eq!(item.id, expected_entry_id);
+        assert_eq!(
+            adapter.execute(item).await.unwrap(),
+            ModuleWorkOutcome::Completed
+        );
+        database.close().await.unwrap();
     }
 
     #[tokio::test]

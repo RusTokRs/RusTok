@@ -66,7 +66,11 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   bounded requests, batches existing-row lookup, and has integration evidence
   for tenant isolation, cursor replay, invalid bounds, and provider outage
   without partial persistence. Bounded full-rescan drains the owner cursor and
-  replaces provider inventory only under an unchanged checkpoint;
+  replaces provider inventory only under an unchanged checkpoint. File-backed
+  Translation-side evidence verifies independent database pools converge on
+  one checkpoint advance plus one typed conflict, and separate processes
+  recover from provider outage through cursor sync and atomic full-rescan.
+  Isolated live Media deployment evidence remains provider-owned;
 - tenant-scoped jobs, immutable owner-provider item snapshots, proposal and
   approval persistence, and owner-application receipt persistence now exist.
   Job creation and item admission are idempotent and request-hash bound; item
@@ -105,7 +109,7 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   target discovery, policy, job/provider progress, inventory
   synchronization/rebuild, and every implemented workflow command. Its
   capability-owned runtime factory consumes only neutral typed host values.
-  `rustok-translation-admin` adds one typed 38-operation transport contract,
+  `rustok-translation-admin` adds one typed 39-operation transport contract,
   SSR/hydrate native `#[server]` execution over `HostRuntimeContext`,
   CSR/headless execution through `rustok-graphql`, and the module-owned Leptos
   workbench. The matching `@rustok/translation-admin` package renders the Next
@@ -130,7 +134,11 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   policies plus revision-guarded tombstone and purge have actor-bound durable
   idempotency receipts. Tombstones immediately leave lookup, while purge
   removes content and preserves content-free receipt evidence. Owner-deletion
-  propagation and automated retention enforcement remain open. Machine
+  propagation and automated retention enforcement are implemented. File-backed
+  evidence proves concurrent independent worker pools converge on one
+  transition/receipt and separate processes reclaim post-claim work through
+  tombstone and purge restarts. Production-database multi-replica evidence
+  remains separate. Machine
   operations pin normalized memory entry identities, order, and match scores
   until completion or cancellation; replay can read tombstoned pins, and purge
   is blocked while a pin exists;
@@ -262,7 +270,7 @@ Four related planes must remain distinct:
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
 | Flex exact-locale behavior | Some attached and standalone paths seed or read through fallback/default locale | Add exact read/apply operations and finish the parallel localized-record cutover before onboarding |
 | Static catalogs | `rustok-core` match tables and compiled UI bundles are separate systems | Finish the Fluent/catalog ownership track before claiming all platform copy is editable |
-| AI task contract | `AiStructuredTaskPort` defines bounded execute/health/status/cancel and typed attempt/usage/cost evidence. A private canonical implementation now binds the exact task descriptor to tenant routing, durable accounting, ordered structured inference/fallback, cancellation, deadlines, and encrypted TTL-bound result replay. Tenant accounting policies have permission-checked GraphQL/native provisioning, the keyring remains deployment-owned, the AI scheduler performs recovery and expiry cleanup before claims, and the optional distribution bridge publishes a Translation-owned lazy runtime factory. | Enable the bridge in the production profile and collect live failure/restart evidence without routing machine translation through chat sessions |
+| AI task contract | `AiStructuredTaskPort` defines bounded non-billable estimate plus execute/health/status/cancel and typed attempt/usage/cost evidence. The estimate uses the same tenant routing, attempt bounds, and immutable provider price policies as reservation without registering execution, reserving budget, or calling a provider. A private canonical implementation binds the exact task descriptor to tenant routing, durable accounting, ordered structured inference/fallback, cancellation, deadlines, and encrypted TTL-bound result replay. Tenant accounting policies have permission-checked GraphQL/native provisioning, the keyring remains deployment-owned, the AI scheduler performs recovery and expiry cleanup before claims, and the optional distribution bridge publishes a Translation-owned lazy runtime factory. | Enable the bridge in the production profile and collect live failure/restart evidence without routing machine translation through chat sessions |
 | AI task ownership | Completed at contract level: the hard-coded `"translation"` free-locale alias is removed and `rustok-ai-translation` owns `machine_translation` | Register only after the structured runtime activation gate passes |
 | AI accounting/recovery | Durable token/cost/quota, request idempotency, typed retryability, ordered fallback, cancellation, recovery, atomic encrypted result handoff, permission-checked tenant policy provisioning, deployment-owned keyring publication, and scheduler recovery/expiry cleanup now exist | Verify multi-replica maintenance and accounting behavior in the live machine-translation composition |
 | Multilingual storage gaps | Alloy, RBAC, Channel, Workflow, MCP, AI control-plane copy, and Order prose remain open | Close or explicitly exclude each owner gap before its provider is marked ready |
@@ -817,6 +825,12 @@ operations without starting another billable execution: it binds the actor,
 idempotency key, reason, and observed operation revision before retrieval,
 reconstructs and revalidates the original request digest, reads the completed
 result through the stable provider key, and resumes canonical proposal save.
+File-backed separate-process evidence closes the original runtime and resumes
+that command in a child process for both durable crash boundaries: provider
+completion before proposal persistence, and proposal persistence before
+operation completion. It proves one proposal, one recovery receipt, preserved
+proposal identity for the latter boundary, atomic memory-pin release, and
+provider-free terminal replay.
 
 Missing units, extra units, invalid structured output, changed placeholders,
 invalid locale, malformed Unicode, owner-limit violations, or structure drift
@@ -908,7 +922,7 @@ mutation of transaction history.
 The current GraphQL control plane and the `rustok-translation-admin` native
 adapter expose policy, progress, inventory, reviewed workflow, versioned
 glossary, Translation Memory, and bounded interchange operations through one
-38-operation client
+39-operation client
 contract. The manifest publishes its module-owned six-tab Leptos workbench,
 while `@rustok/translation-admin` renders the matching Next workbench through
 the same GraphQL contract. Both keep glossary and memory selection in
@@ -923,7 +937,6 @@ later domain capabilities land, for:
 - additional memory propagation and automation;
 - additional interchange batch orchestration beyond atomic per-item import;
 - additional glossary operator context;
-- AI estimate and live stuck-save recovery evidence;
 - import/export lifecycle and reports.
 
 REST is reserved for bounded streaming import/export, webhooks if a future TMS

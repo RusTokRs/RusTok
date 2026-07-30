@@ -25,7 +25,10 @@ for (const asset of [manifest.script, manifest.style]) {
 }
 await cp(resolve(packageDist, manifest.frame), resolve(targetRoot, 'index.html'));
 await cp(resolve(packageDist, 'asset-manifest.json'), resolve(targetRoot, 'asset-manifest.json'));
-await cp(resolve(packageDist, 'leptos-adapter.mjs'), resolve(targetRoot, 'leptos-adapter.mjs'));
+await cp(
+  resolve(packageDist, manifest.leptos_adapter),
+  resolve(targetRoot, manifest.leptos_adapter)
+);
 
 async function exists(path) {
   try {

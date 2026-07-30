@@ -270,6 +270,17 @@ pub struct MachineTranslationBatchResult {
     pub review_required: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MachineTranslationEstimate {
+    pub input_tokens_upper_bound: u64,
+    pub output_tokens_upper_bound: u64,
+    pub attempts_upper_bound: u16,
+    pub cost_minor_units_upper_bound: u64,
+    pub currency_code: String,
+    pub price_snapshot_digest: String,
+    pub review_required: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MachineTranslationExecutionStatus {
@@ -296,6 +307,12 @@ pub trait MachineTranslationPort: Send + Sync {
         &self,
         context: PortContext,
     ) -> Result<MachineTranslationProviderHealth, PortError>;
+
+    async fn estimate_batch(
+        &self,
+        context: PortContext,
+        request: MachineTranslationBatchRequest,
+    ) -> Result<MachineTranslationEstimate, PortError>;
 
     async fn translate_batch(
         &self,

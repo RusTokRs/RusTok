@@ -24,10 +24,17 @@ export function mountLeptosRichTextFrame(
     onDocumentChange(document: RichTextDocument): void;
     onError?(code: string, message: string): void;
   }
-): { controller: RichTextFrameController; dispose(): void } {
+): {
+  controller: RichTextFrameController;
+  setDocument(document: RichTextDocument): void;
+  setEditable(editable: boolean): void;
+  dispose(): void;
+} {
   const controller = connectRichTextFrame({ iframe, ...options });
   return {
     controller,
+    setDocument: (document) => controller.setDocument(document),
+    setEditable: (editable) => controller.setEditable(editable),
     dispose: () => controller.destroy()
   };
 }

@@ -35,6 +35,9 @@ const files = {
   translationCargo: "crates/rustok-translation/Cargo.toml",
   translationPort: "crates/rustok-translation/src/machine.rs",
   translationService: "crates/rustok-translation/src/machine_service.rs",
+  translationScheduler: "crates/rustok-translation/src/scheduler.rs",
+  translationInventoryTests: "crates/rustok-translation/tests/inventory_sync.rs",
+  translationPlan: "crates/rustok-translation/docs/implementation-plan.md",
   translationMachineEntity:
     "crates/rustok-translation/src/entities/machine_operation.rs",
   translationMemoryBindingEntity:
@@ -79,6 +82,9 @@ const aiLocalePolicy = read(files.aiLocalePolicy);
 const translationCargo = read(files.translationCargo);
 const translationPort = read(files.translationPort);
 const translationService = read(files.translationService);
+const translationScheduler = read(files.translationScheduler);
+const translationInventoryTests = read(files.translationInventoryTests);
+const translationPlan = read(files.translationPlan);
 const translationMachineEntity = read(files.translationMachineEntity);
 const translationMemoryBindingEntity = read(
   files.translationMemoryBindingEntity,
@@ -264,6 +270,23 @@ for (const marker of [
   "ai_put_structured_provider_policy_native",
 ])
   requireText(aiNativeAdmin, marker, "AI structured-accounting native writes");
+for (const marker of [
+  "AiStructuredTaskEstimate",
+  "async fn estimate",
+  "registering an execution, reserving budget, or calling a provider",
+])
+  requireText(aiPort, marker, "AI structured estimate contract");
+for (const marker of [
+  "pub(crate) async fn estimate",
+  "estimate_uses_active_price_snapshot_without_mutating_accounting_state",
+  "price_snapshot_digest",
+])
+  requireText(aiAccounting, marker, "AI structured estimate accounting");
+requireText(
+  aiStructuredRuntime,
+  "self.accounting",
+  "AI structured estimate runtime delegation",
+);
 forbidText(
   aiAccounting,
   "TerminalOutcome::Completed",
@@ -276,9 +299,11 @@ for (const marker of [
   "SharedMachineTranslationPortFactory",
   "machine_translation_port_from_context",
   "MachineTranslationBatchRequest",
+  "MachineTranslationEstimate",
   "MachineTranslationExecutionEvidence",
   "review_required",
   "execution_status",
+  "estimate_batch",
   "recover_batch",
   "cancel_execution",
 ])
@@ -286,6 +311,7 @@ for (const marker of [
 for (const marker of [
   "pub struct TranslationMachineService",
   "pub async fn generate_proposal",
+  "pub async fn estimate_proposal",
   "project_glossary",
   "MemoryLookupInput",
   "validate_provider_compatibility",
@@ -308,6 +334,11 @@ for (const marker of [
     marker,
     "Translation machine proposal command",
   );
+requireText(
+  translationService,
+  "estimate_does_not_register_operation_proposal_or_memory_pin",
+  "Translation machine estimate non-mutation evidence",
+);
 for (const marker of [
   "translation_machine_operations",
   "machine_request_digest",
@@ -376,6 +407,11 @@ for (const marker of [
   );
 requireText(
   translationGraphqlMutation,
+  "estimate_machine_translation",
+  "Translation machine estimate GraphQL mutation",
+);
+requireText(
+  translationGraphqlMutation,
   "generate_machine_translation_proposal",
   "Translation machine GraphQL mutation",
 );
@@ -388,6 +424,11 @@ requireText(
   translationGraphqlMutation,
   "recover_machine_translation_operation",
   "Translation machine recovery GraphQL mutation",
+);
+requireText(
+  translationNativeAdmin,
+  "TranslationAdminOperation::EstimateMachineTranslation",
+  "Translation machine estimate native command",
 );
 requireText(
   translationNativeAdmin,
@@ -405,6 +446,42 @@ requireText(
   "Translation machine recovery native command",
 );
 for (const marker of [
+  "separate_process_recovers_both_machine_save_crash_boundaries",
+  "machine_recovery_child_process",
+  "RUSTOK_TRANSLATION_TEST_MACHINE_RECOVERY_DB_PATH",
+  "for proposal_was_saved in [false, true]",
+  "replay_machine_port.recover_calls.load(Ordering::SeqCst)",
+])
+  requireText(
+    translationService,
+    marker,
+    "Translation separate-process recovery evidence",
+  );
+for (const marker of [
+  "independent_replica_pools_converge_on_one_retention_receipt",
+  "separate_process_recovers_claimed_retention_and_completes_purge",
+  "retention_recovery_child_process",
+  "RUSTOK_TRANSLATION_TEST_RETENTION_DB_PATH",
+  "tokio::join!(first.execute(first_item), second.execute(second_item))",
+])
+  requireText(
+    translationScheduler,
+    marker,
+    "Translation retention restart and replica evidence",
+  );
+for (const marker of [
+  "independent_replica_pools_converge_on_one_inventory_checkpoint",
+  "separate_process_recovers_inventory_after_outage_and_rebuilds_atomically",
+  "inventory_process_recovery_child",
+  "RUSTOK_TRANSLATION_TEST_INVENTORY_DB_PATH",
+  "Err(TranslationError::CheckpointConflict)",
+])
+  requireText(
+    translationInventoryTests,
+    marker,
+    "Translation inventory restart and replica evidence",
+  );
+for (const marker of [
   "rustok_ai",
   "AiStructuredTaskPort",
   "AiManagementService",
@@ -421,6 +498,8 @@ for (const marker of [
   "machine_translation_output_schema_digest",
   "machine_translation_port_from_context",
   "AiStructuredTaskExecutionKey",
+  "estimate_batch",
+  "estimates_with_the_same_bounded_request_without_execution",
   "cancel_by_key",
   "recover_batch",
   "output_unit_missing",
@@ -506,6 +585,21 @@ requireText(
   adapterPlan,
   "Real separate-process recovery evidence uses a file-backed database",
   "adapter process-recovery evidence docs",
+);
+requireText(
+  translationPlan,
+  "File-backed separate-process recovery now covers both canonical `saving`",
+  "Translation process-recovery evidence docs",
+);
+requireText(
+  translationPlan,
+  "File-backed retention evidence now covers independent replica pools",
+  "Translation retention recovery evidence docs",
+);
+requireText(
+  translationPlan,
+  "File-backed Translation-side inventory evidence now covers independent",
+  "Translation inventory recovery evidence docs",
 );
 
 if (failures.length > 0) {

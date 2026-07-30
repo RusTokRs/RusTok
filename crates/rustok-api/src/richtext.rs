@@ -37,7 +37,13 @@ impl RichTextDocument {
     pub fn empty() -> Self {
         Self {
             kind: "doc".to_string(),
-            content: Vec::new(),
+            content: vec![RichTextNode {
+                kind: "paragraph".to_string(),
+                attrs: BTreeMap::new(),
+                content: Vec::new(),
+                marks: Vec::new(),
+                text: None,
+            }],
         }
     }
 
@@ -272,7 +278,7 @@ mod tests {
     fn empty_document_uses_the_canonical_root_shape() {
         assert_eq!(
             serde_json::to_value(RichTextDocument::empty()).expect("serialize"),
-            json!({"type": "doc", "content": []})
+            json!({"type": "doc", "content": [{"type": "paragraph"}]})
         );
     }
 

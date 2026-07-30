@@ -48,11 +48,12 @@ deleted from the admin host.
   host context and must not add local cookie/header/query fallback chains.
 - Keep module-control-plane native reads behind owner services and the
   host-composed marketplace catalog handle.
-- Prepare the Leptos side of the atomic
-  [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md):
-  mount the shared sandboxed editor frame through a thin support adapter, keep
-  native `#[server]` as the internal owner path with parallel GraphQL, and do
-  not retry failed mutations blindly through another protocol.
+- Continue the owner-by-owner
+  [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md).
+  Blog now mounts the shared sandboxed editor during hydration and selects
+  native `#[server]` for SSR/hydrate with parallel GraphQL for CSR/headless use.
+  Remaining owners must reuse that capability and must not retry failed
+  mutations through another protocol.
 
 ## Open Improvement Areas
 

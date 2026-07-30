@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::{
     GlossaryBinding, GlossaryTermPolicy, MachineTranslationAttemptEvidence,
-    MachineTranslationBatchRequest, MachineTranslationBatchResult,
+    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationEstimate,
     MachineTranslationExecutionStatus, MachineTranslationGlossaryTerm,
     MachineTranslationMemorySuggestion, MachineTranslationPort, MachineTranslationProviderState,
     MachineTranslationResourceContext, MachineTranslationUnit, MachineTranslationUsage,
@@ -335,6 +335,34 @@ impl TranslationMachineService {
             &result,
         )
         .await
+    }
+
+    pub async fn estimate_proposal(
+        &self,
+        context: PortContext,
+        input: GenerateMachineProposalInput,
+    ) -> TranslationResult<MachineTranslationEstimate> {
+        let tenant_id = authorize_machine_generation(&context)?;
+        validate_generation_input(&input)?;
+        let item = find_item(&self.database, tenant_id, input.item_id).await?;
+        enforce_machine_assignment(&item, &context)?;
+        if !matches!(
+            item.status.as_str(),
+            "missing" | "draft" | "stale" | "conflict"
+        ) {
+            return Err(TranslationError::ItemNotWritable(item.status));
+        }
+        let snapshot: TranslationResourceSnapshot =
+            serde_json::from_value(item.source_snapshot.clone())?;
+        let request = self
+            .build_request(context.clone(), tenant_id, &item, &snapshot, &input, None)
+            .await?;
+        request.validate(&context)?;
+        validate_provider_compatibility(&request, self.machine_port.descriptor())?;
+        self.machine_port
+            .estimate_batch(child_write_context(&context, "machine-estimate")?, request)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn recover_operation(
@@ -1765,7 +1793,8 @@ fn machine_proposal_record(
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
+        path::{Path, PathBuf},
         sync::atomic::{AtomicUsize, Ordering},
         time::Duration,
     };
@@ -1777,12 +1806,16 @@ mod tests {
         ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyProjection,
     };
     use rustok_translation_targets::{
-        OpaqueRevision, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
-        TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourceSummary,
-        TranslationStrategy, TranslationValueProfile,
+        ListTranslationResourcesRequest, OpaqueRevision, OwnerSlug, ReadTranslationResourceRequest,
+        ResourceId, ResourceKind, TranslationApplicationReceipt, TranslationDataClassification,
+        TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
+        TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSummary,
+        TranslationStrategy, TranslationTargetCapability, TranslationTargetProvider,
+        TranslationTargetProviderDescriptor, TranslationValueProfile,
     };
-    use sea_orm::{Database, DbBackend, PaginatorTrait, Statement};
+    use sea_orm::{ConnectOptions, Database, DbBackend, PaginatorTrait, Statement};
     use sea_orm_migration::SchemaManager;
+    use tokio::process::Command;
 
     use super::*;
     use crate::{
@@ -1799,9 +1832,29 @@ mod tests {
     struct RecoveryMachinePort {
         descriptor: MachineTranslationProviderDescriptor,
         recover_calls: AtomicUsize,
+        recovered_result: Option<MachineTranslationBatchResult>,
     }
 
+    struct EstimatingMachinePort {
+        descriptor: MachineTranslationProviderDescriptor,
+        estimate_calls: AtomicUsize,
+    }
+
+    struct RecoveryTargetProvider;
+
+    struct SqliteTestFileGuard(PathBuf);
+
     struct RecoveryTenantLocalePolicies;
+
+    impl Drop for SqliteTestFileGuard {
+        fn drop(&mut self) {
+            for path in sqlite_test_files(&self.0) {
+                if path.exists() {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+    }
 
     #[async_trait]
     impl TenantLocalePolicyPort for RecoveryTenantLocalePolicies {
@@ -1856,6 +1909,14 @@ mod tests {
             _context: PortContext,
         ) -> Result<crate::MachineTranslationProviderHealth, rustok_api::PortError> {
             unreachable!("cancellation test does not check health")
+        }
+
+        async fn estimate_batch(
+            &self,
+            _context: PortContext,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<crate::MachineTranslationEstimate, rustok_api::PortError> {
+            unreachable!("cancellation test does not estimate")
         }
 
         async fn translate_batch(
@@ -1918,6 +1979,14 @@ mod tests {
             unreachable!("machine recovery never checks provider health")
         }
 
+        async fn estimate_batch(
+            &self,
+            _context: PortContext,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<crate::MachineTranslationEstimate, PortError> {
+            unreachable!("machine recovery test does not estimate")
+        }
+
         async fn translate_batch(
             &self,
             _context: PortContext,
@@ -1942,7 +2011,7 @@ mod tests {
         ) -> Result<Option<MachineTranslationBatchResult>, PortError> {
             assert!(execution_idempotency_key.starts_with("translation-machine:machine-port:"));
             self.recover_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(None)
+            Ok(self.recovered_result.clone())
         }
 
         async fn cancel_execution(
@@ -1952,6 +2021,138 @@ mod tests {
         ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
             unreachable!("machine recovery test does not cancel")
         }
+    }
+
+    #[async_trait]
+    impl MachineTranslationPort for EstimatingMachinePort {
+        fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
+            &self.descriptor
+        }
+
+        async fn health(
+            &self,
+            _context: PortContext,
+        ) -> Result<crate::MachineTranslationProviderHealth, PortError> {
+            unreachable!("estimate does not use the health endpoint")
+        }
+
+        async fn estimate_batch(
+            &self,
+            context: PortContext,
+            request: MachineTranslationBatchRequest,
+        ) -> Result<crate::MachineTranslationEstimate, PortError> {
+            request.validate(&context)?;
+            self.estimate_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(crate::MachineTranslationEstimate {
+                input_tokens_upper_bound: 256,
+                output_tokens_upper_bound: 1_048_576,
+                attempts_upper_bound: 2,
+                cost_minor_units_upper_bound: 17,
+                currency_code: "USD".to_string(),
+                price_snapshot_digest: "9".repeat(64),
+                review_required: true,
+            })
+        }
+
+        async fn translate_batch(
+            &self,
+            _context: PortContext,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<MachineTranslationBatchResult, PortError> {
+            unreachable!("estimate must not execute machine translation")
+        }
+
+        async fn execution_status(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            unreachable!("estimate does not read execution status")
+        }
+
+        async fn recover_batch(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<Option<MachineTranslationBatchResult>, PortError> {
+            unreachable!("estimate does not recover an execution")
+        }
+
+        async fn cancel_execution(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            unreachable!("estimate does not cancel an execution")
+        }
+    }
+
+    #[async_trait]
+    impl TranslationTargetProvider for RecoveryTargetProvider {
+        fn descriptor(&self) -> TranslationTargetProviderDescriptor {
+            TranslationTargetProviderDescriptor {
+                owner_slug: OwnerSlug::new("media").unwrap(),
+                resource_kind: ResourceKind::new("asset").unwrap(),
+                display_name: "Recovery test media asset".to_string(),
+                capabilities: BTreeSet::from([TranslationTargetCapability::ValidatePatch]),
+                read_permission_floor: BTreeSet::new(),
+                apply_permission_floor: BTreeSet::new(),
+            }
+        }
+
+        async fn list_resources(
+            &self,
+            _context: PortContext,
+            _request: ListTranslationResourcesRequest,
+        ) -> Result<TranslationResourcePage, PortError> {
+            Err(PortError::unavailable(
+                "translation.test_unavailable",
+                "recovery fixture does not list resources",
+            ))
+        }
+
+        async fn read_resource(
+            &self,
+            _context: PortContext,
+            _request: ReadTranslationResourceRequest,
+        ) -> Result<TranslationResourceSnapshot, PortError> {
+            Err(PortError::unavailable(
+                "translation.test_unavailable",
+                "recovery fixture does not read resources",
+            ))
+        }
+
+        async fn validate_patch(
+            &self,
+            _context: PortContext,
+            request: TranslationPatchRequest,
+        ) -> Result<TranslationPatchValidation, PortError> {
+            request.validate().map_err(|error| {
+                PortError::validation("translation.test_patch", error.to_string())
+            })?;
+            Ok(TranslationPatchValidation {
+                accepted: true,
+                issues: Vec::new(),
+            })
+        }
+
+        async fn apply_patch(
+            &self,
+            _context: PortContext,
+            _request: TranslationPatchRequest,
+        ) -> Result<TranslationApplicationReceipt, PortError> {
+            Err(PortError::unavailable(
+                "translation.test_unavailable",
+                "recovery fixture does not apply patches",
+            ))
+        }
+    }
+
+    fn recovery_registry() -> Arc<TranslationTargetRegistry> {
+        let mut registry = TranslationTargetRegistry::default();
+        registry.register(RecoveryTargetProvider).unwrap();
+        Arc::new(registry)
     }
 
     fn request() -> MachineTranslationBatchRequest {
@@ -2126,6 +2327,105 @@ mod tests {
 
     async fn persistence_fixture(tombstoned: bool) -> (DatabaseConnection, Uuid, Uuid, Uuid, Uuid) {
         let database = Database::connect("sqlite::memory:").await.unwrap();
+        initialize_persistence_fixture(database, tombstoned).await
+    }
+
+    #[tokio::test]
+    async fn estimate_does_not_register_operation_proposal_or_memory_pin() {
+        let (database, tenant_id, actor_id, operation_id, _memory_entry_id) =
+            persistence_fixture(false).await;
+        let port = Arc::new(EstimatingMachinePort {
+            descriptor: descriptor(100),
+            estimate_calls: AtomicUsize::new(0),
+        });
+        let service = recovery_service(database.clone(), port.clone());
+        let operation_count = machine_operation::Entity::find()
+            .count(&database)
+            .await
+            .unwrap();
+        let proposal_count = crate::entities::proposal::Entity::find()
+            .count(&database)
+            .await
+            .unwrap();
+        let binding_count = machine_memory_binding::Entity::find()
+            .count(&database)
+            .await
+            .unwrap();
+        let item_id = find_operation(&database, tenant_id, operation_id)
+            .await
+            .unwrap()
+            .item_id;
+
+        let estimate = service
+            .estimate_proposal(
+                recovery_context(tenant_id, actor_id)
+                    .with_idempotency_key("estimate-machine-translation"),
+                recovery_proposal(item_id),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(estimate.cost_minor_units_upper_bound, 17);
+        assert_eq!(port.estimate_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            machine_operation::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            operation_count
+        );
+        assert_eq!(
+            crate::entities::proposal::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            proposal_count
+        );
+        assert_eq!(
+            machine_memory_binding::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            binding_count
+        );
+    }
+
+    async fn persistence_fixture_at(
+        database_path: &Path,
+        tombstoned: bool,
+    ) -> (DatabaseConnection, Uuid, Uuid, Uuid, Uuid) {
+        let database = connect_persistence_file(database_path, true).await;
+        initialize_persistence_fixture(database, tombstoned).await
+    }
+
+    async fn connect_persistence_file(
+        database_path: &Path,
+        create_if_missing: bool,
+    ) -> DatabaseConnection {
+        let database_path = database_path.to_path_buf();
+        let mut options =
+            ConnectOptions::new("sqlite://translation-recovery-placeholder.sqlite?mode=rwc");
+        options
+            .max_connections(4)
+            .min_connections(1)
+            .sqlx_logging(false)
+            .map_sqlx_sqlite_opts(move |options| {
+                options
+                    .filename(database_path.clone())
+                    .create_if_missing(create_if_missing)
+            });
+        let database = Database::connect(options).await.unwrap();
+        database
+            .execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .unwrap();
+        database
+    }
+
+    async fn initialize_persistence_fixture(
+        database: DatabaseConnection,
+        tombstoned: bool,
+    ) -> (DatabaseConnection, Uuid, Uuid, Uuid, Uuid) {
         database
             .execute_unprepared("PRAGMA foreign_keys = ON")
             .await
@@ -2181,7 +2481,7 @@ mod tests {
             source_revision: Set("source-a".to_string()),
             target_revision: Set(None),
             source_snapshot: Set(serde_json::to_value(snapshot()).unwrap()),
-            source_digest: Set("b".repeat(64)),
+            source_digest: Set(hash_manifest(&snapshot()).unwrap()),
             status: Set("missing".to_string()),
             current_proposal_id: Set(None),
             active_apply_operation_id: Set(None),
@@ -2296,6 +2596,127 @@ mod tests {
         .with_role("manager")
         .with_idempotency_key(idempotency_key)
         .with_deadline(Duration::from_secs(5))
+    }
+
+    fn recovery_context(tenant_id: Uuid, actor_id: Uuid) -> PortContext {
+        machine_control_context(tenant_id, actor_id, "recover-machine-restart")
+            .with_claim(Permission::new(Resource::Translations, Action::Manage).to_string())
+            .with_claim(Permission::new(Resource::Translations, Action::Update).to_string())
+    }
+
+    fn recovery_proposal(item_id: Uuid) -> GenerateMachineProposalInput {
+        GenerateMachineProposalInput {
+            item_id,
+            field_keys: vec![FieldKey::new("alt_text").unwrap()],
+            minimum_memory_similarity_basis_points: 7_000,
+            tone: None,
+            domain: None,
+            style: None,
+        }
+    }
+
+    fn recovery_service(
+        database: DatabaseConnection,
+        machine_port: Arc<dyn MachineTranslationPort>,
+    ) -> TranslationMachineService {
+        TranslationMachineService::new(
+            database.clone(),
+            recovery_registry(),
+            Arc::new(RecoveryTenantLocalePolicies),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database))),
+            machine_port,
+        )
+    }
+
+    async fn prepare_saving_recovery(
+        service: &TranslationMachineService,
+        context: &PortContext,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> RecoverMachineOperationInput {
+        let operation = find_operation(&service.database, tenant_id, operation_id)
+            .await
+            .unwrap();
+        let proposal = recovery_proposal(operation.item_id);
+        let item = find_item(&service.database, tenant_id, proposal.item_id)
+            .await
+            .unwrap();
+        let request = service
+            .build_request(
+                context.clone(),
+                tenant_id,
+                &item,
+                &snapshot(),
+                &proposal,
+                Some(&operation),
+            )
+            .await
+            .unwrap();
+        let observed_updated_at = Utc::now().fixed_offset();
+        machine_operation::Entity::update_many()
+            .col_expr(machine_operation::Column::Status, Expr::value("saving"))
+            .col_expr(
+                machine_operation::Column::CommandHash,
+                Expr::value(hash_manifest(&proposal).unwrap()),
+            )
+            .col_expr(
+                machine_operation::Column::MachineRequestDigest,
+                Expr::value(hash_manifest(&request).unwrap()),
+            )
+            .col_expr(
+                machine_operation::Column::ProviderPolicyDigest,
+                Expr::value(descriptor(100).policy_digest),
+            )
+            .col_expr(
+                machine_operation::Column::UpdatedAt,
+                Expr::value(observed_updated_at),
+            )
+            .filter(machine_operation::Column::Id.eq(operation_id))
+            .exec(&service.database)
+            .await
+            .unwrap();
+        RecoverMachineOperationInput {
+            operation_id,
+            expected_updated_at: observed_updated_at,
+            proposal,
+            reason: "Recover the completed provider result after an interrupted save".to_string(),
+        }
+    }
+
+    async fn save_proposal_without_completing_operation(
+        service: &TranslationMachineService,
+        context: PortContext,
+        operation: &machine_operation::Model,
+        input: &RecoverMachineOperationInput,
+    ) -> Uuid {
+        let mut save_context = context;
+        save_context.idempotency_key =
+            Some(child_idempotency_key(&operation.idempotency_key, "save-proposal").unwrap());
+        service
+            .workflow
+            .save_recovered_machine_proposal(
+                save_context,
+                SaveProposalInput {
+                    item_id: input.proposal.item_id,
+                    origin: ProposalOrigin::Ai,
+                    values: vec![ProposalValue {
+                        key: FieldKey::new("alt_text").unwrap(),
+                        value: "Hallo {name} {count}".to_string(),
+                    }],
+                },
+            )
+            .await
+            .unwrap()
+            .id
+    }
+
+    fn sqlite_test_files(database_path: &Path) -> [PathBuf; 4] {
+        [
+            database_path.to_path_buf(),
+            PathBuf::from(format!("{}-journal", database_path.display())),
+            PathBuf::from(format!("{}-shm", database_path.display())),
+            PathBuf::from(format!("{}-wal", database_path.display())),
+        ]
     }
 
     #[tokio::test]
@@ -2420,11 +2841,184 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn separate_process_recovers_both_machine_save_crash_boundaries() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("workspace path");
+        let evidence_dir = workspace.join("target/translation-recovery-process-tests");
+        std::fs::create_dir_all(&evidence_dir)
+            .expect("Translation recovery process evidence directory");
+        let evidence_dir = evidence_dir
+            .canonicalize()
+            .expect("Translation recovery process evidence path");
+        assert!(evidence_dir.starts_with(workspace.join("target")));
+
+        for proposal_was_saved in [false, true] {
+            let database_path = evidence_dir.join(format!(
+                "rustok-translation-recovery-{}.sqlite",
+                Uuid::new_v4()
+            ));
+            let _database_cleanup = SqliteTestFileGuard(database_path.clone());
+            let (database, tenant_id, actor_id, operation_id, _) =
+                persistence_fixture_at(&database_path, false).await;
+            let machine_port = Arc::new(RecoveryMachinePort {
+                descriptor: descriptor(100),
+                recover_calls: AtomicUsize::new(0),
+                recovered_result: Some(result()),
+            });
+            let service = recovery_service(database.clone(), machine_port);
+            let context = recovery_context(tenant_id, actor_id);
+            let input = prepare_saving_recovery(&service, &context, tenant_id, operation_id).await;
+            let expected_proposal_id = if proposal_was_saved {
+                let operation = find_operation(&database, tenant_id, operation_id)
+                    .await
+                    .unwrap();
+                Some(
+                    save_proposal_without_completing_operation(
+                        &service,
+                        context.clone(),
+                        &operation,
+                        &input,
+                    )
+                    .await,
+                )
+            } else {
+                None
+            };
+            drop(service);
+            database.close().await.unwrap();
+
+            let output =
+                Command::new(std::env::current_exe().expect("Translation test executable"))
+                    .args([
+                        "--exact",
+                        "machine_service::tests::machine_recovery_child_process",
+                        "--ignored",
+                        "--nocapture",
+                        "--test-threads=1",
+                    ])
+                    .env(
+                        "RUSTOK_TRANSLATION_TEST_MACHINE_RECOVERY_DB_PATH",
+                        &database_path,
+                    )
+                    .output()
+                    .await
+                    .expect("Translation recovery child process");
+            assert!(
+                output.status.success(),
+                "Translation recovery child failed for proposal_was_saved={proposal_was_saved}:\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let database = connect_persistence_file(&database_path, false).await;
+            let operation = find_operation(&database, tenant_id, operation_id)
+                .await
+                .unwrap();
+            assert_eq!(operation.status, "completed");
+            assert_eq!(operation.provider_slug.as_deref(), Some("provider-a"));
+            assert_eq!(operation.execution_id.as_deref(), Some("execution-a"));
+            let proposal_id = operation.proposal_id.unwrap();
+            if let Some(expected_proposal_id) = expected_proposal_id {
+                assert_eq!(proposal_id, expected_proposal_id);
+            }
+            assert_eq!(
+                crate::entities::proposal::Entity::find()
+                    .filter(crate::entities::proposal::Column::TenantId.eq(tenant_id))
+                    .filter(crate::entities::proposal::Column::ItemId.eq(operation.item_id))
+                    .count(&database)
+                    .await
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                machine_recovery::Entity::find()
+                    .filter(machine_recovery::Column::OperationId.eq(operation_id))
+                    .count(&database)
+                    .await
+                    .unwrap(),
+                1
+            );
+            assert!(
+                machine_memory_binding::Entity::find()
+                    .filter(machine_memory_binding::Column::OperationId.eq(operation_id))
+                    .one(&database)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(
+                find_item(&database, tenant_id, operation.item_id)
+                    .await
+                    .unwrap()
+                    .current_proposal_id,
+                Some(proposal_id)
+            );
+
+            let replay_machine_port = Arc::new(RecoveryMachinePort {
+                descriptor: descriptor(100),
+                recover_calls: AtomicUsize::new(0),
+                recovered_result: Some(result()),
+            });
+            let replay_service = recovery_service(database.clone(), replay_machine_port.clone());
+            let replay = replay_service
+                .recover_operation(context, input)
+                .await
+                .unwrap();
+            assert_eq!(replay.proposal_id, proposal_id);
+            assert_eq!(replay_machine_port.recover_calls.load(Ordering::SeqCst), 0);
+            drop(replay_service);
+            database.close().await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "internal child process for Translation machine recovery evidence"]
+    async fn machine_recovery_child_process() {
+        let Some(database_path) =
+            std::env::var_os("RUSTOK_TRANSLATION_TEST_MACHINE_RECOVERY_DB_PATH")
+        else {
+            return;
+        };
+        let database = connect_persistence_file(Path::new(&database_path), false).await;
+        let operation = machine_operation::Entity::find()
+            .filter(machine_operation::Column::Status.eq("saving"))
+            .one(&database)
+            .await
+            .unwrap()
+            .expect("child process must observe a saving operation");
+        let tenant_id = operation.tenant_id;
+        let actor_id = Uuid::parse_str(&operation.requested_by_actor_id)
+            .expect("fixture machine operation actor");
+        let context = recovery_context(tenant_id, actor_id);
+        let input = RecoverMachineOperationInput {
+            operation_id: operation.id,
+            expected_updated_at: operation.updated_at,
+            proposal: recovery_proposal(operation.item_id),
+            reason: "Recover the completed provider result after an interrupted save".to_string(),
+        };
+        let machine_port = Arc::new(RecoveryMachinePort {
+            descriptor: descriptor(100),
+            recover_calls: AtomicUsize::new(0),
+            recovered_result: Some(result()),
+        });
+        let service = recovery_service(database.clone(), machine_port.clone());
+
+        let recovered = service.recover_operation(context, input).await.unwrap();
+        assert_eq!(recovered.operation_id, operation.id);
+        assert_eq!(machine_port.recover_calls.load(Ordering::SeqCst), 1);
+        drop(service);
+        database.close().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn stuck_save_recovery_is_audited_and_never_starts_a_new_execution() {
         let (database, tenant_id, actor_id, operation_id, _) = persistence_fixture(false).await;
         let machine_port = Arc::new(RecoveryMachinePort {
             descriptor: descriptor(100),
             recover_calls: AtomicUsize::new(0),
+            recovered_result: None,
         });
         let service = TranslationMachineService::new(
             database.clone(),

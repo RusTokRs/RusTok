@@ -4,9 +4,25 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+csr = ["leptos/csr"]
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:rustok-blog",
+  "dep:rustok-core",
+  "dep:rustok-outbox",
+  "dep:sea-orm",
+  "rustok-api/server",
+]
+
 [dependencies]
 rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
 leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
 leptos_router.workspace = true
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
@@ -14,11 +30,17 @@ leptos-ui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rustok-api = { workspace = true, default-features = false }
-
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true
+rustok-blog = { path = "..", default-features = false, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 rustok-seo-admin-support.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["HtmlIFrameElement"] }
 

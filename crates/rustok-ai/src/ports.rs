@@ -249,6 +249,16 @@ pub struct AiStructuredTaskHealth {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiStructuredTaskEstimate {
+    pub input_tokens_upper_bound: u64,
+    pub output_tokens_upper_bound: u64,
+    pub attempts_upper_bound: u16,
+    pub cost_minor_units_upper_bound: u64,
+    pub currency_code: String,
+    pub price_snapshot_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AiStructuredTaskUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
@@ -335,6 +345,15 @@ pub trait AiStructuredTaskPort: Send + Sync {
         context: PortContext,
         task_slug: String,
     ) -> Result<AiStructuredTaskHealth, PortError>;
+
+    /// Non-billable conservative cost projection. Implementations must use the
+    /// same tenant routing and immutable pricing policies as `execute`, without
+    /// registering an execution, reserving budget, or calling a provider.
+    async fn estimate(
+        &self,
+        context: PortContext,
+        request: AiStructuredTaskRequest,
+    ) -> Result<AiStructuredTaskEstimate, PortError>;
 
     /// Billable structured inference. Implementations must enforce write-like
     /// deadline and idempotency semantics and persist execution evidence.

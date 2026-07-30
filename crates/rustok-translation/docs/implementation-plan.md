@@ -30,6 +30,12 @@ selection.
   cross-provider identity rejection without partial persistence. Bounded
   full-rescan drains the owner cursor, replaces one provider projection
   atomically, and rolls back if that checkpoint advances during listing.
+  File-backed Translation-side inventory evidence now covers independent
+  replica pools reading the same checkpoint revision: one advances and one
+  receives `CheckpointConflict`, without duplicate inventory. Separate
+  processes also recover from a provider outage, resume cursor sync, and
+  atomically replace the projection through full-rescan. Actual isolated Media
+  deployment evidence remains a provider-owned rollout gate.
 - The first manual-workflow persistence slice creates tenant-scoped jobs,
   immutable owner-provider source snapshots, proposal/approval tables, and
   application-receipt tables. `TranslationWorkflowService` exposes idempotent
@@ -115,7 +121,11 @@ selection.
   existing receipts as its durable queue/completion boundary. It automatically
   tombstones expired `retain_until` and deleted `owner_lifecycle` entries,
   waits 24 hours before purge, and excludes legal hold and machine-operation
-  pins.
+  pins. File-backed retention evidence now covers independent replica pools
+  concurrently claiming the same revision and converging on one transition and
+  receipt. Separate child processes also reclaim an item after the original
+  runtime crashes post-claim, then complete tombstone and purge across
+  successive restarts without duplicate lifecycle evidence.
 - The bounded interchange core is implemented. Job export reads only immutable
   workflow snapshots and enforces item, field, value-byte, and total-document
   bounds. It exports only public or tenant-private non-excluded owner fields
@@ -139,9 +149,10 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  38 operations, including the six glossary and six memory operations,
+  39 operations, including the six glossary and six memory operations,
   bounded job export and atomic item import, plus
-  machine-proposal generation, status, and cancellation; GraphQL
+  non-billable machine-translation estimation, machine-proposal generation,
+  status, and cancellation; GraphQL
   documents are validated against the module-owned schema, and every
   idempotency-bound command carries its caller key into `PortContext`.
 - Translation exposes one redacted public-error classifier shared by GraphQL
@@ -194,6 +205,11 @@ selection.
   profile/strategy/classification, protected tokens, glossary and Translation
   Memory context, provider health, execution/attempt/usage/cost evidence, and a
   mandatory review-required result. `rustok-translation` imports no AI crate.
+- The SPI and `TranslationMachineService` expose a conservative estimate path
+  over the same canonical batch, glossary, memory, routing, attempt, and price
+  snapshot inputs as execution. Estimate requests authorize and validate like
+  generation but create no operation, proposal, memory pin, budget reservation,
+  or provider call.
 - The stateless `rustok-ai-translation` support crate now maps that SPI to the
   AI-owned `AiStructuredTaskPort`, owns the `machine_translation` policy and
   typed schemas, and rejects stale policy, missing/extra units, placeholder
@@ -232,8 +248,9 @@ selection.
   exact receipt replay retries incomplete propagation. Once proposal save has
   entered `saving`, cancellation fails closed because the canonical save
   outcome may already be in flight.
-- GraphQL and native Leptos transports expose the same machine-proposal,
-  cancellation, and recovery commands plus content-free local/provider status.
+- GraphQL and native Leptos transports expose the same machine estimate,
+  proposal, cancellation, and recovery commands plus content-free
+  local/provider status.
   Recovery is Manage/Update-authorized, actor/idempotency-bound, revision
   guarded, and persists a content-free audit receipt before retrieving an
   already completed result through the stable provider key. It reconstructs
@@ -241,6 +258,13 @@ selection.
   save without another billable execution. Manual Translation surfaces remain
   available when the optional machine provider is absent or fails to
   materialize.
+- File-backed separate-process recovery now covers both canonical `saving`
+  crash boundaries: provider completion before proposal persistence, and
+  proposal persistence before operation completion. The original runtime closes
+  its database before a child process resumes the audited command. Evidence
+  verifies one proposal, one recovery receipt, atomic memory-pin release,
+  preserved proposal identity after the second boundary, and terminal replay
+  without another provider recovery or billable execution.
 
 ## FFA/FBA status
 
@@ -276,6 +300,10 @@ selection.
   - authenticated Next browser execution verifies the Jobs/interchange and
     Glossaries surfaces, URL-owned tab state, accessible tab semantics, and the
     host module-disabled fallback;
+  - a file-backed separate-process test closes the original runtime and recovers
+    both machine `saving` crash boundaries, proving proposal uniqueness,
+    proposal-identity preservation, one audit receipt, memory-pin release, and
+    provider-free terminal replay;
   - the production application-router runtime test verifies tenant cache and
     resolution, locale negotiation, JWT/session/RBAC, channel, rate-limit, and
     security middleware around the registered native read-policy function,
@@ -289,17 +317,21 @@ selection.
 
 ## Milestones
 
-1. Complete Media multi-replica evidence for the implemented inventory replay,
-   tenant isolation, stale-checkpoint conflict, provider outage, and
-   full-rescan recovery contracts.
+1. File-backed Translation-side multi-replica/restart evidence is complete for
+   inventory replay, stale-checkpoint conflict, provider outage recovery, and
+   atomic full-rescan. Tenant isolation is covered by integration execution.
+   Complete the provider-owned gate with isolated live Media deployment and
+   production-database multi-replica evidence.
 2. Registered native HTTP server-function parity is runtime-verified for
    recovery, assignment, cancellation, retry, policy, glossaries, Translation
    Memory, QA, progress, inventory, interchange, and manual workflow
    operations.
-3. Collect multi-replica and restart evidence for the implemented
-   owner-deletion propagation and automated Translation Memory retention
-   worker. The bounded memory and immutable glossary projections into machine
-   requests are implemented.
+3. File-backed independent-pool and separate-process evidence is complete for
+   automated Translation Memory retention: duplicate replica claims converge
+   on one revision/receipt, a crash after claim is reclaimed, and successive
+   restarts complete tombstone then purge. Owner-deletion propagation,
+   bounded memory, and immutable glossary projections are implemented. Retain
+   production-database multi-replica evidence separately.
 4. Full application-router middleware execution is runtime-verified for the
    registered native read-policy function, including tenant cache/resolution,
    locale, JWT/session/RBAC, channel, rate-limit, security headers, and
@@ -325,8 +357,11 @@ selection.
    recovery evidence with the ignored durable structured-runtime probe and
    retain the run output. File-backed separate-process AI recovery is complete;
    retain production-database multi-replica concurrency evidence separately.
-8. Collect live restart evidence for the audited `saving` recovery command,
-   including crash after provider completion and crash after proposal save.
+8. File-backed separate-process restart evidence is complete for the audited
+   `saving` recovery command. It covers crash after provider completion and
+   crash after proposal save, while proving one canonical proposal, stable
+   proposal identity, one audit receipt, atomic memory-pin release, and replay
+   without another provider call.
 
 ## Verification
 

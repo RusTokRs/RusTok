@@ -17,7 +17,12 @@
     "clear_formatting": "Clear formatting",
     "undo": "Undo",
     "redo": "Redo",
-    "editor": "Rich text editor"
+    "editor": "Rich text editor",
+    "error": {
+      "serialize": "The richtext document could not be prepared.",
+      "invalidPayload": "The editor returned an invalid richtext document.",
+      "frameUnavailable": "The richtext editor is unavailable."
+    }
   },
   "app": {
     "dashboard": {

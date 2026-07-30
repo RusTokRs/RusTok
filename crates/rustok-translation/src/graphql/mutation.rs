@@ -18,7 +18,7 @@ use super::{
         CancelMachineTranslationOperationInput, CancelTranslationJobInput,
         CreateTranslationGlossaryInput, CreateTranslationJobInput,
         GenerateMachineTranslationProposalInput, ImportTranslationItemInput,
-        MachineTranslationCancellation, MachineTranslationProposal,
+        MachineTranslationCancellation, MachineTranslationEstimate, MachineTranslationProposal,
         RecoverMachineTranslationOperationInput as GraphqlRecoverMachineTranslationOperationInput,
         RecoverTranslationApplyInput, ReplaceTranslationGlossaryTermsInput,
         ReplaceTranslationPolicyInput, RetryTranslationItemInput, SaveTranslationProposalInput,
@@ -629,6 +629,39 @@ impl TranslationMutation {
                 parse_locale(source_locale)?,
                 parse_locale(target_locale)?,
                 page_size,
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn estimate_machine_translation(
+        &self,
+        ctx: &Context<'_>,
+        input: GenerateMachineTranslationProposalInput,
+    ) -> Result<MachineTranslationEstimate> {
+        let mut context =
+            write_port_context(ctx, "estimate-machine-translation", input.idempotency_key)?;
+        context.deadline_ms = Some(120_000);
+        let field_keys = input
+            .field_keys
+            .into_iter()
+            .map(parse_field_key)
+            .collect::<Result<Vec<_>>>()?;
+        runtime(ctx)?
+            .machine_service()
+            .map_err(translation_error)?
+            .estimate_proposal(
+                context,
+                GenerateMachineProposalInput {
+                    item_id: input.item_id,
+                    field_keys,
+                    minimum_memory_similarity_basis_points: input
+                        .minimum_memory_similarity_basis_points,
+                    tone: input.tone,
+                    domain: input.domain,
+                    style: input.style,
+                },
             )
             .await
             .map(Into::into)

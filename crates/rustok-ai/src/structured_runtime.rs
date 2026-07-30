@@ -8,10 +8,10 @@ use uuid::Uuid;
 
 use crate::{
     AiError, AiHostRuntime, AiManagementService, AiStructuredTaskAvailability,
-    AiStructuredTaskCatalog, AiStructuredTaskDescriptor, AiStructuredTaskExecution,
-    AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef, AiStructuredTaskHealth,
-    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus, ChatMessage,
-    ChatMessageRole, InferenceEngine, ProviderCapability, ProviderChatRequest,
+    AiStructuredTaskCatalog, AiStructuredTaskDescriptor, AiStructuredTaskEstimate,
+    AiStructuredTaskExecution, AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef,
+    AiStructuredTaskHealth, AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus,
+    ChatMessage, ChatMessageRole, InferenceEngine, ProviderCapability, ProviderChatRequest,
     ProviderStructuredRequest, ProviderStructuredResponse, RouterProviderProfile,
     accounting::{AttemptOutcome, StructuredAccounting, TerminalOutcome},
     router::ordered_provider_candidates,
@@ -608,6 +608,38 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         }
     }
 
+    async fn estimate(
+        &self,
+        context: PortContext,
+        request: AiStructuredTaskRequest,
+    ) -> Result<AiStructuredTaskEstimate, PortError> {
+        request.validate(&context)?;
+        Self::validate_descriptor(&self.catalog, &request)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let mut candidates = self
+            .candidates(tenant_id, &request.task_slug, &context.roles)
+            .await?;
+        candidates.truncate(usize::from(request.limits.max_attempts));
+        let input_tokens_upper_bound = u64::try_from(
+            serde_json::to_vec(&request.input)
+                .map_err(|_| runtime_invariant())?
+                .len(),
+        )
+        .map_err(|_| runtime_invariant())?;
+        self.accounting
+            .estimate(
+                tenant_id,
+                input_tokens_upper_bound,
+                u64::from(request.limits.max_output_bytes),
+                request.limits.max_attempts,
+                &candidates
+                    .iter()
+                    .map(|candidate| candidate.profile.id)
+                    .collect::<Vec<_>>(),
+            )
+            .await
+    }
+
     async fn execute(
         &self,
         context: PortContext,
@@ -883,7 +915,9 @@ mod tests {
     use rustok_core::ModuleRegistry;
     use rustok_outbox::{OutboxTransport, TransactionalEventBus};
     use rustok_secrets::SecretResolverRegistry;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
+    };
     use serde_json::json;
     use tokio::sync::Notify;
 
@@ -893,7 +927,10 @@ mod tests {
         ProviderUsage,
         accounting::{BudgetPolicy, ProviderPolicy},
         engine::{AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy},
-        entities::{ai_provider_profiles, ai_structured_budgets},
+        entities::{
+            ai_provider_profiles, ai_structured_budgets, ai_structured_executions,
+            ai_structured_reservations,
+        },
         structured_result::StructuredResultKeyring,
         structured_test_support,
     };
@@ -1167,6 +1204,38 @@ mod tests {
             keyring.clone(),
         );
         let context = request_context(tenant_id);
+        let estimate = first_port
+            .estimate(context.clone(), request.clone())
+            .await
+            .expect("structured estimate");
+        assert_eq!(estimate.output_tokens_upper_bound, 4096);
+        assert_eq!(estimate.attempts_upper_bound, 3);
+        assert_eq!(estimate.currency_code, "USD");
+        assert_eq!(estimate.price_snapshot_digest.len(), 64);
+        assert_eq!(first_engine.calls(), 0);
+        assert_eq!(
+            ai_structured_executions::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            ai_structured_reservations::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            0
+        );
+        let budget_before_execution = ai_structured_budgets::Entity::find()
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(budget_before_execution.reserved_minor_units, 0);
+        assert_eq!(budget_before_execution.committed_minor_units, 0);
+        assert_eq!(budget_before_execution.in_flight, 0);
+
         let completed = first_port
             .execute(context.clone(), request.clone())
             .await

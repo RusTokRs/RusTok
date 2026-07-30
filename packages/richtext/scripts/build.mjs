@@ -83,7 +83,17 @@ const frameName = `frame.${htmlHash}.html`;
 await writeFile(resolve(dist, frameName), html);
 await writeFile(
   resolve(dist, 'asset-manifest.json'),
-  `${JSON.stringify({ revision: 1, frame: frameName, script: scriptName, style: styleName }, null, 2)}\n`
+  `${JSON.stringify(
+    {
+      revision: 1,
+      frame: frameName,
+      script: scriptName,
+      style: styleName,
+      leptos_adapter: 'leptos-adapter.mjs'
+    },
+    null,
+    2
+  )}\n`
 );
 await cp(resolve(root, 'README.md'), resolve(dist, 'README.md'));
 await rm(temporary, { recursive: true, force: true });

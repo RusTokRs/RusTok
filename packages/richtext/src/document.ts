@@ -126,11 +126,27 @@ function validateMark(
 }
 
 function isSafeHref(href: string, maxBytes: number): boolean {
-  if (new TextEncoder().encode(href).byteLength > maxBytes || href.trim() !== href) return false;
-  if (href.startsWith('/') && !href.startsWith('//')) return true;
+  if (
+    new TextEncoder().encode(href).byteLength > maxBytes ||
+    href.trim() !== href ||
+    href.length === 0 ||
+    /[\u0000-\u001f\u007f]/u.test(href) ||
+    href.includes('\\') ||
+    href.startsWith('//')
+  ) {
+    return false;
+  }
+  if (href.startsWith('/')) return true;
+  if (href.startsWith('#')) return href.length > 1;
   try {
     const url = new URL(href);
-    return (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:') && !url.username && !url.password;
+    if (url.protocol === 'mailto:') return true;
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.username &&
+      !url.password &&
+      Boolean(url.hostname)
+    );
   } catch {
     return false;
   }

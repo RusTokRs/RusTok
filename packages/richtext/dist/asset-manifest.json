@@ -1,6 +1,7 @@
 {
   "revision": 1,
-  "frame": "frame.a99375e3329392c9.html",
-  "script": "richtext-frame.45516c95990013b6.js",
-  "style": "richtext-frame.45516c95990013b6.css"
+  "frame": "frame.8b9ef59dbbf34e6f.html",
+  "script": "richtext-frame.3aac9d59b6945bd1.js",
+  "style": "richtext-frame.3aac9d59b6945bd1.css",
+  "leptos_adapter": "leptos-adapter.mjs"
 }

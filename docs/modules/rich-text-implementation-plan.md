@@ -41,11 +41,10 @@ The boundary ADR is accepted. The first server foundation is implemented:
   `crates/rustok-content/fixtures/richtext/`, with a committed profile
   manifest and article HTML/plain-text projections.
 
-This is Phase 1 foundation evidence, not the owner cutover. Blog, Forum,
-Comments, orchestration, Search/Index, and both UI hosts still have to move
-atomically before the new policy becomes the only runtime write/read path.
-The old implementation is not a target compatibility contract and must not
-receive new call sites.
+The foundation is active. Comments and Blog articles have completed their
+target source cutovers; Forum and later opt-in fields remain separate owner
+tasks. The old implementation is not a target compatibility contract and must
+not receive new call sites.
 
 The Phase 2 browser runtime slice is now implemented in `packages/richtext`:
 the package owns the explicit Tiptap extension registry, generated profile
@@ -54,16 +53,18 @@ adapter, and hashed frame assets. The Blog editor now consumes that adapter and
 the Forum reply selects the `discussion` profile. A Chromium spike verified the
 sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
 `MessageChannel`, and canonical document updates. The Leptos Trunk/SSR static
-fallback now copies the same hashed assets and applies the dedicated frame
-headers; Firefox/WebKit evidence and wiring the first owner Leptos form remain
-required before Phase 2 is marked complete.
+fallback copies the same hashed frame plus browser adapter, applies dedicated
+no-store bootstrap headers and immutable hashed-asset headers, and mounts the
+Blog editor only during hydration. Firefox/WebKit and full mounted-host
+accessibility evidence remain required before Phase 2 is marked complete.
 
-The first Blog article boundary slice is also implemented: the owner validates
-submitted documents with the fixed `article` profile, writes canonical root JSON
-for that path, and exposes server-derived HTML/plain text to the Next admin
-form. This is not the atomic owner cutover yet: the Leptos/storefront
-transports, storage columns, revisions, and Search/AI projections still need
-to move together.
+The Blog article source cutover is implemented: the owner validates submitted
+documents with the fixed `article` profile, writes canonical root JSON, and
+exposes server-derived HTML/plain text to Next and Leptos admin/storefront
+surfaces. Native `#[server]` is selected for Leptos SSR/hydrate, GraphQL remains
+parallel for CSR/headless use, and mutation failures do not cross protocols.
+The fail-closed migration exists; retained PostgreSQL migration and full browser
+parity evidence remain open.
 
 ## Decisions fixed by this plan
 
@@ -76,10 +77,10 @@ to move together.
    owner request context carry locale. The editor receives locale only for UI,
    spellcheck, and directionality.
 4. **Tiptap/ProseMirror JSON is the wire shape.** The stored value is the root
-   ProseMirror document (`{"type":"doc","content":[]}`), without an outer
-   RusToK envelope or a handwritten snake-case-to-Tiptap tree codec. RusToK's
-   server profiles, not Tiptap defaults, define which nodes and attributes are
-   valid.
+   ProseMirror document; a new editor starts with one empty paragraph rather
+   than an invalid zero-child root. There is no outer RusToK envelope or
+   handwritten snake-case-to-Tiptap tree codec. RusToK's server profiles, not
+   Tiptap defaults, define which nodes and attributes are valid.
 5. **One canonical read renderer.** `rustok-content::richtext` produces safe
    semantic HTML and plain text. Next and Leptos consume the same server-owned
    projection; they do not maintain independent production renderers.
@@ -100,10 +101,10 @@ The following inventory was verified on 2026-07-22. Items explicitly marked
 resolved record completed slices; all others are implementation gaps, not
 target behavior:
 
-- resolved for the first Next article slice 2026-07-23: the Blog post form now
-  sends one shared `RichTextDocument`, uses the shared framed runtime, and
-  renders only server-projected HTML; the owner transport/storage cutover is
-  still pending;
+- resolved for Blog articles 2026-07-30: Next and Leptos forms send one shared
+  `RichTextDocument`, use the shared framed runtime, and render only
+  server-projected HTML; owner, transport, storage, Search, and AI source paths
+  are target-only;
 - the Blog package also owns a Forum reply editor and Forum API helpers, which
   violates module UI ownership;
 - the prototype maintains a lossy manual mapping between snake-case RT nodes
@@ -118,26 +119,26 @@ target behavior:
   does not use the platform locale contract;
 - resolved 2026-07-23: direct `rustok-comments` writes accept only
   `RichTextDocument` and always execute the owner-selected `comment` profile;
-- Blog posts and Forum still expose the same source twice as a string body and
-  a `content_json` value; Comments and the Blog comment consumer no longer do;
+- Forum still exposes its source through pre-cutover fields; Blog posts,
+  Comments, and the Blog comment consumer use canonical typed documents;
 - actual owner storage is `blog_post_translations`,
   `forum_topic_translations`, `forum_reply_bodies`, and `comment_bodies`; their
   rich JSON is serialized into `TEXT`, while locale is a separate column;
 - Forum deletion/revision/event logic still uses the literal `[deleted]` and
   `body_format = 'markdown'` as lifecycle signals;
-- resolved for the Comments vertical 2026-07-23: content orchestration now
-  rejects conversions with comments/replies until Forum adopts canonical
-  richtext; raw Blog-post/Forum-topic conversion remains part of their pending
-  owner cutovers;
-- Blog and shared-content search projectors index the serialized JSON string;
+- resolved for the Comments vertical 2026-07-23: content orchestration rejects
+  conversions with comments/replies until Forum adopts canonical richtext;
+  Blog-to-Forum conversion also fails closed on noncanonical source content;
+- Blog Search derives text through the shared `Article` profile; Forum and
+  remaining shared-content projections still require owner cutovers;
 - the existing migration binary targets obsolete shared content rows, skips
   current owner tables and existing RT envelopes, mutates checkpoints during
   dry runs, and bypasses owner events/audit/reindex paths;
-- Leptos Blog and Forum forms are raw textareas. Their current adapters either
-  omit `content_json`, have no native `#[server]` path, or retry failed writes
-  through another protocol;
-- storefronts do not have a real richtext read path; some surfaces display raw
-  payload summaries;
+- the Leptos Blog form uses the shared framed editor and native `#[server]`
+  transport without protocol retry; the Forum form still requires its owner
+  cutover;
+- the Blog storefront uses the owner `RichTextView`; remaining owner
+  storefronts must migrate independently;
 - the parent Leptos/server CSP forbids style attributes, while ProseMirror core
   and extensions such as Dropcursor create inline styles. Loading Tiptap
   directly into the parent document would violate the current CSP contract.

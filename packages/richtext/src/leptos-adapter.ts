@@ -1,8 +1,15 @@
 import { mountLeptosRichTextFrame } from './leptos';
-import type { RichTextProfileId } from './generated/contracts';
+import type {
+  RichTextDocument,
+  RichTextProfileId
+} from './generated/contracts';
 import type { RichTextMessages } from './messages';
 
-type RichTextHandle = { dispose(): void };
+type RichTextHandle = {
+  setDocument(document: RichTextDocument): void;
+  setEditable(editable: boolean): void;
+  dispose(): void;
+};
 
 declare global {
   interface Window {
@@ -17,6 +24,14 @@ declare global {
         onDocumentChange: (documentJson: string) => void,
         onError: (code: string, message: string) => void
       ): RichTextHandle;
+      setLeptosRichTextDocument(
+        handle: RichTextHandle,
+        documentJson: string
+      ): void;
+      setLeptosRichTextEditable(
+        handle: RichTextHandle,
+        editable: boolean
+      ): void;
       disposeLeptosRichTextFrame(handle: RichTextHandle): void;
     };
   }
@@ -33,7 +48,7 @@ window.RustokRichText = {
     onDocumentChange,
     onError
   ) {
-    return mountLeptosRichTextFrame(iframe, {
+    const handle = mountLeptosRichTextFrame(iframe, {
       frameUrl,
       profile,
       document: JSON.parse(documentJson),
@@ -42,9 +57,23 @@ window.RustokRichText = {
       onDocumentChange: (document) => onDocumentChange(JSON.stringify(document)),
       onError
     });
+    handle.controller.ready.catch((error: unknown) => {
+      onError(
+        'frame_unavailable',
+        error instanceof Error
+          ? error.message
+          : 'The editor frame failed to load.'
+      );
+    });
+    return handle;
+  },
+  setLeptosRichTextDocument(handle, documentJson) {
+    handle.setDocument(JSON.parse(documentJson) as RichTextDocument);
+  },
+  setLeptosRichTextEditable(handle, editable) {
+    handle.setEditable(editable);
   },
   disposeLeptosRichTextFrame(handle) {
     handle.dispose();
   }
 };
-

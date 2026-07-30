@@ -11,13 +11,17 @@
   exist.
 - Stable-key execution status, completed-result recovery, and cancellation are
   mapped to AI without exposing AI persistence to Translation.
+- Provider-neutral conservative cost estimation uses the exact structured
+  request, tenant routing, attempt limits, and immutable price policies used
+  by execution without registering work, reserving budget, or invoking a
+  provider.
 - The bridge publishes an exact registered-task descriptor containing its
   owner, task identity, immutable prompt policy, input/output schema digests,
   system prompt, classification policy, and hard execution limits.
 - The optional `server` feature composes the descriptor and AI port from the
   neutral host context without exposing the concrete AI runtime to the host.
-- Tests cover request mapping, review-required output, stale policy, missing
-  units, and protected-token drift.
+- Tests cover request and estimate mapping, review-required output, stale
+  policy, missing units, and protected-token drift.
 - The optional distribution feature `ai-translation` publishes the
   Translation-owned lazy runtime factory without a server-owned capability
   match.

@@ -20,10 +20,11 @@ Host adapters must provide:
 
 The React adapter calls the controller directly. A Leptos module-owned UI
 package renders the iframe in its `ui/leptos.rs`, invokes
-`mountLeptosRichTextFrame` from its wasm `on_mount` binding, and calls the
-returned `dispose` function from `on_cleanup`. That Rust package remains a
-transport/UI binding; it does not copy the editor schema, toolbar, or frame
-protocol.
+`mountLeptosRichTextFrame` from a browser-only hydration `Effect`, synchronizes
+controlled document/editable changes through the returned handle, and calls
+`dispose` from `on_cleanup`. SSR only emits iframe markup; it does not execute
+the WASM bridge. That Rust package remains a transport/UI binding; it does not
+copy the editor schema, toolbar, or frame protocol.
 
 The frame validates structure, profile membership, message size, session id,
 and monotonic sequence before applying input. This is a browser boundary and a

@@ -160,13 +160,15 @@ splits the backend and the external Trunk host.
 
 Tailwind CSS for this debug profile is built by the Trunk post-build hook `scripts\tailwind-build.cmd`.
 The hook writes `output.css` to `TRUNK_STAGING_DIR`, so CSS survives the `dist` cleanup inside the Trunk pipeline.
-The same post-build phase copies the immutable `@rustok/richtext` frame into
-`dist/richtext/frame/`. The frame is served by the Leptos static fallback at
-`/richtext/frame` with the dedicated sandbox CSP and `SAMEORIGIN` headers; the
-copy step runs the package build first when the hashed assets are absent. A
-module-owned Leptos form uses `mountLeptosRichTextFrame` from the package in
-its wasm `on_mount` binding and disposes it from `on_cleanup`; no Rust editor
-implementation or second toolbar is introduced.
+The same post-build phase copies the immutable `@rustok/richtext` frame and its
+browser adapter into `dist/richtext/frame/`. The frame is served by the Leptos
+static fallback at `/richtext/frame` with the dedicated sandbox CSP and
+`SAMEORIGIN` headers. Bootstrap HTML and the adapter are `no-store`; hashed
+assets are immutable. A module-owned Leptos form mounts
+`mountLeptosRichTextFrame` from a browser-only hydration `Effect`, synchronizes
+controlled document changes, and disposes the handle from `on_cleanup`. SSR
+only emits iframe markup; no Rust editor implementation or second toolbar is
+introduced.
 Locally, the command can be run separately just for a quick CSS check:
 
 ```powershell

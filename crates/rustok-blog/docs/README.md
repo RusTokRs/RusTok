@@ -114,6 +114,7 @@ Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.
 
 Leptos render adapters for admin and storefront live in `admin/src/ui/leptos.rs`
 and `storefront/src/ui/leptos.rs`. Crate roots connect module layers and
-re-export `BlogAdmin` / `BlogView`. Admin operations go through
-`admin/src/transport.rs`; storefront native and GraphQL adapters remain behind
-the storefront transport facade.
+re-export `BlogAdmin` / `BlogView`. Both packages expose a transport facade:
+SSR/hydrate selects native `#[server]` functions and standalone CSR selects the
+parallel GraphQL contract. Selected-transport failures are returned directly;
+mutations are never retried through another protocol.

@@ -1,4 +1,9 @@
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -18,11 +23,14 @@ use rustok_translation_targets::{
     TranslationTargetProviderDescriptor, TranslationTargetRegistry,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    EntityTrait, PaginatorTrait, QueryFilter, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Set, Statement,
 };
 use sea_orm_migration::SchemaManager;
-use tokio::sync::Notify;
+use tokio::{
+    process::Command,
+    sync::{Barrier, Notify},
+};
 use uuid::Uuid;
 
 #[derive(Clone, Copy)]
@@ -43,7 +51,20 @@ struct ProviderGate {
 struct CursorProvider {
     page: ChangePageFixture,
     change_gate: Option<ProviderGate>,
+    change_barrier: Option<Arc<Barrier>>,
     list_gate: Option<ProviderGate>,
+}
+
+struct SqliteTestFileGuard(PathBuf);
+
+impl Drop for SqliteTestFileGuard {
+    fn drop(&mut self) {
+        for path in sqlite_test_files(&self.0) {
+            if path.exists() {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -136,6 +157,9 @@ impl TranslationTargetProvider for CursorProvider {
         _context: PortContext,
         request: TranslationTargetChangesRequest,
     ) -> Result<TranslationTargetChangePage, PortError> {
+        if let Some(barrier) = &self.change_barrier {
+            barrier.wait().await;
+        }
         if let Some(gate) = &self.change_gate {
             gate.entered.notify_one();
             gate.resume.notified().await;
@@ -244,6 +268,7 @@ async fn fixture(
     fixture_with_provider(CursorProvider {
         page,
         change_gate: None,
+        change_barrier: None,
         list_gate: None,
     })
     .await
@@ -253,6 +278,43 @@ async fn fixture_with_provider(
     provider: CursorProvider,
 ) -> (DatabaseConnection, TranslationInventoryService, PortContext) {
     let database = Database::connect("sqlite::memory:").await.unwrap();
+    initialize_fixture(database, provider).await
+}
+
+async fn fixture_at(
+    database_path: &Path,
+    provider: CursorProvider,
+) -> (DatabaseConnection, TranslationInventoryService, PortContext) {
+    let database = connect_file(database_path, true).await;
+    initialize_fixture(database, provider).await
+}
+
+async fn connect_file(database_path: &Path, create_if_missing: bool) -> DatabaseConnection {
+    let database_path = database_path.to_path_buf();
+    let mut options =
+        ConnectOptions::new("sqlite://translation-inventory-placeholder.sqlite?mode=rwc");
+    options
+        .max_connections(4)
+        .min_connections(1)
+        .sqlx_logging(false)
+        .map_sqlx_sqlite_opts(move |options| {
+            options
+                .filename(database_path.clone())
+                .create_if_missing(create_if_missing)
+                .busy_timeout(Duration::from_secs(5))
+        });
+    let database = Database::connect(options).await.unwrap();
+    database
+        .execute_unprepared("PRAGMA foreign_keys = ON")
+        .await
+        .unwrap();
+    database
+}
+
+async fn initialize_fixture(
+    database: DatabaseConnection,
+    provider: CursorProvider,
+) -> (DatabaseConnection, TranslationInventoryService, PortContext) {
     database
         .execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL)")
         .await
@@ -270,6 +332,15 @@ async fn fixture_with_provider(
         ))
         .await
         .unwrap();
+    let (service, context) = service_and_context(database.clone(), tenant_id, provider);
+    (database, service, context)
+}
+
+fn service_and_context(
+    database: DatabaseConnection,
+    tenant_id: Uuid,
+    provider: CursorProvider,
+) -> (TranslationInventoryService, PortContext) {
     let mut registry = TranslationTargetRegistry::default();
     registry.register(provider).unwrap();
     let service = TranslationInventoryService::new(database.clone(), Arc::new(registry));
@@ -280,7 +351,36 @@ async fn fixture_with_provider(
         "translation-inventory-sync",
     )
     .with_deadline(Duration::from_secs(5));
-    (database, service, context)
+    (service, context)
+}
+
+fn sqlite_test_files(database_path: &Path) -> [PathBuf; 4] {
+    [
+        database_path.to_path_buf(),
+        PathBuf::from(format!("{}-journal", database_path.display())),
+        PathBuf::from(format!("{}-shm", database_path.display())),
+        PathBuf::from(format!("{}-wal", database_path.display())),
+    ]
+}
+
+fn inventory_test_database() -> (PathBuf, SqliteTestFileGuard) {
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("workspace path");
+    let evidence_dir = workspace.join("target/translation-inventory-process-tests");
+    std::fs::create_dir_all(&evidence_dir)
+        .expect("Translation inventory process evidence directory");
+    let evidence_dir = evidence_dir
+        .canonicalize()
+        .expect("Translation inventory process evidence path");
+    assert!(evidence_dir.starts_with(workspace.join("target")));
+    let database_path = evidence_dir.join(format!(
+        "rustok-translation-inventory-{}.sqlite",
+        Uuid::new_v4()
+    ));
+    let guard = SqliteTestFileGuard(database_path.clone());
+    (database_path, guard)
 }
 
 #[tokio::test]
@@ -574,6 +674,7 @@ async fn stale_checkpoint_is_rejected_before_inventory_persistence() {
     let (database, service, context) = fixture_with_provider(CursorProvider {
         page: ChangePageFixture::Valid,
         change_gate: Some(gate.clone()),
+        change_barrier: None,
         list_gate: None,
     })
     .await;
@@ -663,6 +764,7 @@ async fn full_rescan_rolls_back_when_checkpoint_advances_during_listing() {
     let (database, service, context) = fixture_with_provider(CursorProvider {
         page: ChangePageFixture::Valid,
         change_gate: None,
+        change_barrier: None,
         list_gate: Some(gate.clone()),
     })
     .await;
@@ -709,4 +811,250 @@ async fn full_rescan_rolls_back_when_checkpoint_advances_during_listing() {
         .unwrap();
     assert_eq!(checkpoint.cursor.as_deref(), Some("cursor-concurrent"));
     assert_eq!(checkpoint.revision, 7);
+}
+
+#[tokio::test]
+async fn independent_replica_pools_converge_on_one_inventory_checkpoint() {
+    let (database_path, _database_cleanup) = inventory_test_database();
+    let (database, service, context) = fixture_at(
+        &database_path,
+        CursorProvider {
+            page: ChangePageFixture::Valid,
+            change_gate: None,
+            change_barrier: None,
+            list_gate: None,
+        },
+    )
+    .await;
+    let tenant_id = Uuid::parse_str(&context.tenant_id).unwrap();
+    drop(service);
+    database.close().await.unwrap();
+
+    let barrier = Arc::new(Barrier::new(2));
+    let first_database = connect_file(&database_path, false).await;
+    let second_database = connect_file(&database_path, false).await;
+    let (first, first_context) = service_and_context(
+        first_database.clone(),
+        tenant_id,
+        CursorProvider {
+            page: ChangePageFixture::Valid,
+            change_gate: None,
+            change_barrier: Some(barrier.clone()),
+            list_gate: None,
+        },
+    );
+    let (second, second_context) = service_and_context(
+        second_database.clone(),
+        tenant_id,
+        CursorProvider {
+            page: ChangePageFixture::Valid,
+            change_gate: None,
+            change_barrier: Some(barrier),
+            list_gate: None,
+        },
+    );
+
+    let (first_result, second_result) = tokio::join!(
+        first.sync_provider_changes(
+            first_context,
+            OwnerSlug::new("media").unwrap(),
+            ResourceKind::new("asset").unwrap(),
+            10,
+        ),
+        second.sync_provider_changes(
+            second_context,
+            OwnerSlug::new("media").unwrap(),
+            ResourceKind::new("asset").unwrap(),
+            10,
+        )
+    );
+    let mut completed = 0;
+    let mut conflicts = 0;
+    for result in [first_result, second_result] {
+        match result {
+            Ok(result) => {
+                completed += 1;
+                assert_eq!(result.checkpoint_revision, 1);
+            }
+            Err(TranslationError::CheckpointConflict) => conflicts += 1,
+            Err(error) => panic!("unexpected replica sync failure: {error}"),
+        }
+    }
+    assert_eq!(completed, 1);
+    assert_eq!(conflicts, 1);
+    assert_eq!(
+        inventory_resource::Entity::find()
+            .filter(inventory_resource::Column::TenantId.eq(tenant_id))
+            .count(&first_database)
+            .await
+            .unwrap(),
+        1
+    );
+    let checkpoint = provider_checkpoint::Entity::find()
+        .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
+        .one(&first_database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(checkpoint.cursor.as_deref(), Some("cursor-1"));
+    assert_eq!(checkpoint.revision, 1);
+    first_database.close().await.unwrap();
+    second_database.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn separate_process_recovers_inventory_after_outage_and_rebuilds_atomically() {
+    let (database_path, _database_cleanup) = inventory_test_database();
+    let (database, service, context) = fixture_at(
+        &database_path,
+        CursorProvider {
+            page: ChangePageFixture::ProviderOutage,
+            change_gate: None,
+            change_barrier: None,
+            list_gate: None,
+        },
+    )
+    .await;
+    let tenant_id = Uuid::parse_str(&context.tenant_id).unwrap();
+    let error = service
+        .sync_provider_changes(
+            context,
+            OwnerSlug::new("media").unwrap(),
+            ResourceKind::new("asset").unwrap(),
+            10,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        TranslationError::Provider {
+            ref code,
+            retryable: true,
+            ..
+        } if code == "media.translation_changes_unavailable"
+    ));
+    assert_eq!(
+        inventory_resource::Entity::find()
+            .count(&database)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        provider_checkpoint::Entity::find()
+            .count(&database)
+            .await
+            .unwrap(),
+        0
+    );
+    drop(service);
+    database.close().await.unwrap();
+
+    for action in ["sync", "rebuild"] {
+        let output = Command::new(std::env::current_exe().expect("Translation test executable"))
+            .args([
+                "--exact",
+                "inventory_process_recovery_child",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("RUSTOK_TRANSLATION_TEST_INVENTORY_DB_PATH", &database_path)
+            .env(
+                "RUSTOK_TRANSLATION_TEST_INVENTORY_TENANT_ID",
+                tenant_id.to_string(),
+            )
+            .env("RUSTOK_TRANSLATION_TEST_INVENTORY_ACTION", action)
+            .output()
+            .await
+            .expect("Translation inventory child process");
+        assert!(
+            output.status.success(),
+            "Translation inventory child failed for action {action}:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let database = connect_file(&database_path, false).await;
+    let rows = inventory_resource::Entity::find()
+        .filter(inventory_resource::Column::TenantId.eq(tenant_id))
+        .all(&database)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.resource_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["scan-asset-1", "scan-asset-2"])
+    );
+    let checkpoint = provider_checkpoint::Entity::find()
+        .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(checkpoint.cursor.as_deref(), Some("cursor-1"));
+    assert_eq!(checkpoint.revision, 3);
+    database.close().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "internal child process for Translation inventory recovery evidence"]
+async fn inventory_process_recovery_child() {
+    let Some(database_path) = std::env::var_os("RUSTOK_TRANSLATION_TEST_INVENTORY_DB_PATH") else {
+        return;
+    };
+    let tenant_id = Uuid::parse_str(
+        &std::env::var("RUSTOK_TRANSLATION_TEST_INVENTORY_TENANT_ID")
+            .expect("Translation inventory child tenant id"),
+    )
+    .expect("Translation inventory child tenant UUID");
+    let action = std::env::var("RUSTOK_TRANSLATION_TEST_INVENTORY_ACTION")
+        .expect("Translation inventory child action");
+    let database = connect_file(Path::new(&database_path), false).await;
+    let (service, context) = service_and_context(
+        database.clone(),
+        tenant_id,
+        CursorProvider {
+            page: ChangePageFixture::Valid,
+            change_gate: None,
+            change_barrier: None,
+            list_gate: None,
+        },
+    );
+    match action.as_str() {
+        "sync" => {
+            let result = service
+                .sync_provider_changes(
+                    context,
+                    OwnerSlug::new("media").unwrap(),
+                    ResourceKind::new("asset").unwrap(),
+                    10,
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.observed_resources, 1);
+            assert_eq!(result.checkpoint_revision, 1);
+        }
+        "rebuild" => {
+            let result = service
+                .rebuild_provider_inventory(
+                    context,
+                    OwnerSlug::new("media").unwrap(),
+                    ResourceKind::new("asset").unwrap(),
+                    TenantLocale::new("en").unwrap(),
+                    TenantLocale::new("de").unwrap(),
+                    1,
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.observed_resources, 2);
+            assert_eq!(result.checkpoint_revision, 3);
+        }
+        _ => panic!("unknown Translation inventory child action"),
+    }
+    drop(service);
+    database.close().await.unwrap();
 }

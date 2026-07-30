@@ -66,11 +66,7 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
     if is_richtext_frame_surface(&path) {
         headers.insert(
             "cache-control",
-            HeaderValue::from_static(if path == "/richtext/frame" {
-                "no-store"
-            } else {
-                "public, max-age=31536000, immutable"
-            }),
+            HeaderValue::from_static(richtext_cache_control(path.as_str())),
         );
     }
     if hsts_enabled() {
@@ -102,6 +98,17 @@ fn is_api_surface(path: &str) -> bool {
 
 fn is_richtext_frame_surface(path: &str) -> bool {
     path == "/richtext/frame" || path.starts_with("/richtext/frame/")
+}
+
+fn richtext_cache_control(path: &str) -> &'static str {
+    if matches!(
+        path,
+        "/richtext/frame" | "/richtext/frame/" | "/richtext/frame/leptos-adapter.mjs"
+    ) {
+        "no-store"
+    } else {
+        "public, max-age=31536000, immutable"
+    }
 }
 
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
@@ -161,7 +168,7 @@ fn is_production_environment() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{API_CSP, admin_security_headers, select_csp};
+    use super::{API_CSP, admin_security_headers, richtext_cache_control, select_csp};
     use axum::{
         Extension, Router,
         body::{Body, to_bytes},
@@ -225,6 +232,21 @@ mod tests {
         assert!(policy.contains("style-src-attr 'unsafe-inline'"));
         assert!(policy.contains("connect-src 'none'"));
         assert!(policy.contains("frame-ancestors 'self'"));
+    }
+
+    #[test]
+    fn unhashed_richtext_bootstrap_is_not_classified_as_immutable() {
+        for path in [
+            "/richtext/frame",
+            "/richtext/frame/",
+            "/richtext/frame/leptos-adapter.mjs",
+        ] {
+            assert_eq!(richtext_cache_control(path), "no-store");
+        }
+        assert_eq!(
+            richtext_cache_control("/richtext/frame/frame.0123456789abcdef.html"),
+            "public, max-age=31536000, immutable"
+        );
     }
 
     #[tokio::test]

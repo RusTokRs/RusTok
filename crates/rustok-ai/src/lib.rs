@@ -92,10 +92,10 @@ pub use model::{
 pub use policy::ToolExecutionPolicy;
 pub use ports::{
     AiStructuredTaskAttempt, AiStructuredTaskAvailability, AiStructuredTaskCatalog,
-    AiStructuredTaskDescriptor, AiStructuredTaskExecution, AiStructuredTaskExecutionKey,
-    AiStructuredTaskExecutionRef, AiStructuredTaskHealth, AiStructuredTaskLimits,
-    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus, AiStructuredTaskUsage,
-    AiTaskDataClassification, MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES,
+    AiStructuredTaskDescriptor, AiStructuredTaskEstimate, AiStructuredTaskExecution,
+    AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef, AiStructuredTaskHealth,
+    AiStructuredTaskLimits, AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus,
+    AiStructuredTaskUsage, AiTaskDataClassification, MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES,
     MAX_STRUCTURED_TASK_INPUT_BYTES, MAX_STRUCTURED_TASK_OUTPUT_BYTES,
     MAX_STRUCTURED_TASK_SCHEMA_BYTES, MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES,
 };

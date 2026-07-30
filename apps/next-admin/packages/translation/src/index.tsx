@@ -2197,13 +2197,15 @@ function receiptKey(kind: TranslationResponse['kind']): string {
                 ? 'memorySuggestions'
                 : kind === 'memory_mutation'
                   ? 'memoryMutation'
-                  : kind === 'machine_proposal'
-                    ? 'machineProposal'
-                    : kind === 'machine_operation_status'
-                      ? 'machineOperationStatus'
-                      : kind === 'machine_cancellation'
-                        ? 'machineCancellation'
-                        : kind;
+                  : kind === 'machine_estimate'
+                    ? 'machineEstimate'
+                    : kind === 'machine_proposal'
+                      ? 'machineProposal'
+                      : kind === 'machine_operation_status'
+                        ? 'machineOperationStatus'
+                        : kind === 'machine_cancellation'
+                          ? 'machineCancellation'
+                          : kind;
 }
 
 function responseFacts(response: TranslationResponse): Array<[string, string]> {
@@ -2317,6 +2319,15 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
         ['Item ID', response.value.itemId],
         ['Status', response.value.status],
         ['QA issues', String(response.value.qaIssues.length)]
+      ];
+    case 'machine_estimate':
+      return [
+        [
+          'Maximum cost',
+          `${response.value.costMinorUnitsUpperBound} ${response.value.currencyCode}`
+        ],
+        ['Maximum attempts', String(response.value.attemptsUpperBound)],
+        ['Review required', String(response.value.reviewRequired)]
       ];
     case 'machine_proposal':
       return [

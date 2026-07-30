@@ -443,6 +443,30 @@ pub fn operation_receipt_view_model(
                 ),
             ],
         },
+        TranslationAdminResponse::MachineEstimate(estimate) => OperationReceiptViewModel {
+            title_key: "translation.receipt.machineEstimate",
+            fallback_title: "Machine translation estimated",
+            facts: vec![
+                fact(
+                    "translation.field.maximumCost",
+                    "Maximum cost",
+                    format!(
+                        "{} {}",
+                        estimate.cost_minor_units_upper_bound, estimate.currency_code
+                    ),
+                ),
+                fact(
+                    "translation.field.maximumAttempts",
+                    "Maximum attempts",
+                    estimate.attempts_upper_bound.to_string(),
+                ),
+                fact(
+                    "translation.field.reviewRequired",
+                    "Review required",
+                    estimate.review_required.to_string(),
+                ),
+            ],
+        },
         TranslationAdminResponse::MachineProposal(proposal) => OperationReceiptViewModel {
             title_key: "translation.receipt.machineProposal",
             fallback_title: "Machine proposal generated",

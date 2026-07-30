@@ -4,8 +4,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useRef,
-  type CSSProperties
+  useRef
 } from 'react';
 import type {
   RichTextDocument,
@@ -30,7 +29,6 @@ export interface RichTextEditorProps {
   messages: RichTextMessages;
   disabled?: boolean;
   className?: string;
-  style?: CSSProperties;
   onChange(document: RichTextDocument): void;
   onError?(code: string, message: string): void;
 }
@@ -91,7 +89,6 @@ export const RichTextEditor = forwardRef<
       title={props.label}
       sandbox='allow-scripts'
       className={props.className}
-      style={props.style}
       referrerPolicy='no-referrer'
     />
   );

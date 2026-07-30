@@ -10,12 +10,12 @@ use sea_orm::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::ProviderUsage;
 use crate::entities::{
     ai_structured_attempts, ai_structured_budgets, ai_structured_executions,
     ai_structured_provider_policies, ai_structured_reservations, ai_structured_results,
 };
 use crate::structured_result::SealedStructuredResult;
+use crate::{AiStructuredTaskEstimate, ProviderUsage};
 
 const TOKENS_PER_PRICE_UNIT: u128 = 1_000_000;
 const RECOVERY_ERROR_CODE: &str = "ai.structured.execution_lease_expired";
@@ -95,6 +95,12 @@ struct PriceSnapshot<'a> {
     input_cost_per_million_minor: i64,
     output_cost_per_million_minor: i64,
     revision: i64,
+}
+
+#[derive(Serialize)]
+struct EstimatePriceSnapshot {
+    provider_profile_id: Uuid,
+    price_snapshot_digest: String,
 }
 
 impl StructuredAccounting {
@@ -275,61 +281,20 @@ impl StructuredAccounting {
             return map_reservation(existing);
         }
 
-        let policies = ai_structured_provider_policies::Entity::find()
-            .filter(ai_structured_provider_policies::Column::TenantId.eq(execution.tenant_id))
-            .filter(
-                ai_structured_provider_policies::Column::ProviderProfileId
-                    .is_in(provider_profile_ids.iter().copied()),
-            )
-            .filter(ai_structured_provider_policies::Column::IsActive.eq(true))
-            .all(&self.database)
-            .await
-            .map_err(|_| accounting_unavailable())?;
-        if policies.len() != provider_profile_ids.len() {
-            return Err(PortError::unavailable(
-                "ai.structured.provider_accounting_unavailable",
-                "one or more structured generation providers have no active accounting policy",
-            ));
-        }
-        let currency = policies[0].currency_code.clone();
-        if policies
-            .iter()
-            .any(|policy| policy.currency_code != currency)
-        {
-            return Err(PortError::validation(
-                "ai.structured.provider_currency_mismatch",
-                "structured execution fallback providers must use one budget currency",
-            ));
-        }
         let input_tokens = u64::try_from(execution.input_bytes).map_err(|_| accounting_limit())?;
         let output_tokens =
             u64::try_from(execution.max_output_bytes).map_err(|_| accounting_limit())?;
-        let maximum_attempt_cost = policies
-            .iter()
-            .map(|policy| {
-                estimated_cost(
-                    input_tokens,
-                    output_tokens,
-                    u64::try_from(policy.input_cost_per_million_minor)
-                        .map_err(|_| accounting_limit())?,
-                    u64::try_from(policy.output_cost_per_million_minor)
-                        .map_err(|_| accounting_limit())?,
-                )
-            })
-            .collect::<Result<Vec<_>, PortError>>()?
-            .into_iter()
-            .max()
-            .unwrap_or_default();
-        let reservation_amount = maximum_attempt_cost
-            .checked_mul(
-                u64::try_from(execution.max_attempts)
-                    .map_err(|_| accounting_limit())?
-                    .min(
-                        u64::try_from(provider_profile_ids.len())
-                            .map_err(|_| accounting_limit())?,
-                    ),
+        let estimate = self
+            .estimate(
+                execution.tenant_id,
+                input_tokens,
+                output_tokens,
+                u16::try_from(execution.max_attempts).map_err(|_| accounting_limit())?,
+                provider_profile_ids,
             )
-            .ok_or_else(accounting_limit)?;
+            .await?;
+        let currency = estimate.currency_code;
+        let reservation_amount = estimate.cost_minor_units_upper_bound;
         let reservation_amount_i64 = to_i64(reservation_amount)?;
 
         let transaction = self
@@ -1285,6 +1250,90 @@ impl StructuredAccounting {
         })
         .map_err(|_| accounting_invariant())
     }
+
+    pub(crate) async fn estimate(
+        &self,
+        tenant_id: Uuid,
+        input_tokens_upper_bound: u64,
+        output_tokens_upper_bound: u64,
+        max_attempts: u16,
+        provider_profile_ids: &[Uuid],
+    ) -> Result<AiStructuredTaskEstimate, PortError> {
+        if provider_profile_ids.is_empty() {
+            return Err(PortError::unavailable(
+                "ai.structured.provider_unavailable",
+                "no structured generation provider is available",
+            ));
+        }
+        let policies = ai_structured_provider_policies::Entity::find()
+            .filter(ai_structured_provider_policies::Column::TenantId.eq(tenant_id))
+            .filter(
+                ai_structured_provider_policies::Column::ProviderProfileId
+                    .is_in(provider_profile_ids.iter().copied()),
+            )
+            .filter(ai_structured_provider_policies::Column::IsActive.eq(true))
+            .all(&self.database)
+            .await
+            .map_err(|_| accounting_unavailable())?;
+        if policies.len() != provider_profile_ids.len() {
+            return Err(PortError::unavailable(
+                "ai.structured.provider_accounting_unavailable",
+                "one or more structured generation providers have no active accounting policy",
+            ));
+        }
+        let currency_code = policies[0].currency_code.clone();
+        if policies
+            .iter()
+            .any(|policy| policy.currency_code != currency_code)
+        {
+            return Err(PortError::validation(
+                "ai.structured.provider_currency_mismatch",
+                "structured execution fallback providers must use one budget currency",
+            ));
+        }
+        let maximum_attempt_cost = policies
+            .iter()
+            .map(|policy| {
+                estimated_cost(
+                    input_tokens_upper_bound,
+                    output_tokens_upper_bound,
+                    u64::try_from(policy.input_cost_per_million_minor)
+                        .map_err(|_| accounting_limit())?,
+                    u64::try_from(policy.output_cost_per_million_minor)
+                        .map_err(|_| accounting_limit())?,
+                )
+            })
+            .collect::<Result<Vec<_>, PortError>>()?
+            .into_iter()
+            .max()
+            .unwrap_or_default();
+        let attempts_upper_bound = max_attempts
+            .min(u16::try_from(provider_profile_ids.len()).map_err(|_| accounting_limit())?);
+        let cost_minor_units_upper_bound = maximum_attempt_cost
+            .checked_mul(u64::from(attempts_upper_bound))
+            .ok_or_else(accounting_limit)?;
+        let mut snapshots = policies
+            .iter()
+            .map(|policy| {
+                Ok(EstimatePriceSnapshot {
+                    provider_profile_id: policy.provider_profile_id,
+                    price_snapshot_digest: Self::price_snapshot_digest(policy)?,
+                })
+            })
+            .collect::<Result<Vec<_>, PortError>>()?;
+        snapshots.sort_by_key(|snapshot| snapshot.provider_profile_id);
+        let price_snapshot_digest =
+            hash_manifest(&snapshots).map_err(|_| accounting_invariant())?;
+
+        Ok(AiStructuredTaskEstimate {
+            input_tokens_upper_bound,
+            output_tokens_upper_bound,
+            attempts_upper_bound,
+            cost_minor_units_upper_bound,
+            currency_code,
+            price_snapshot_digest,
+        })
+    }
 }
 
 struct TerminalFields {
@@ -1774,6 +1823,50 @@ mod tests {
             created_at,
             expires_at: created_at + chrono::Duration::minutes(5),
         }
+    }
+
+    #[tokio::test]
+    async fn estimate_uses_active_price_snapshot_without_mutating_accounting_state() {
+        let (_ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+
+        let first = accounting
+            .estimate(tenant_id, 25, 100, 3, &[provider_id])
+            .await
+            .unwrap();
+        let replay = accounting
+            .estimate(tenant_id, 25, 100, 3, &[provider_id])
+            .await
+            .unwrap();
+
+        assert_eq!(first, replay);
+        assert_eq!(first.input_tokens_upper_bound, 25);
+        assert_eq!(first.output_tokens_upper_bound, 100);
+        assert_eq!(first.attempts_upper_bound, 1);
+        assert_eq!(first.cost_minor_units_upper_bound, 225);
+        assert_eq!(first.currency_code, "USD");
+        assert_eq!(first.price_snapshot_digest.len(), 64);
+        assert_eq!(
+            ai_structured_executions::Entity::find()
+                .count(&accounting.database)
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            ai_structured_reservations::Entity::find()
+                .count(&accounting.database)
+                .await
+                .unwrap(),
+            0
+        );
+        let budget = ai_structured_budgets::Entity::find()
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(budget.reserved_minor_units, 0);
+        assert_eq!(budget.committed_minor_units, 0);
+        assert_eq!(budget.in_flight, 0);
     }
 
     #[tokio::test]

@@ -30,6 +30,7 @@ csr = [
   "rustok-workflow-admin/csr",
   "rustok-auth-admin/csr",
   "rustok-page-builder-admin/csr",
+  "rustok-blog-admin/csr",
 ]
 hydrate = [
   "leptos/hydrate",
@@ -69,6 +70,7 @@ hydrate = [
   "rustok-translation-admin/hydrate",
   "rustok-workflow-admin/hydrate",
   "rustok-auth-admin/hydrate",
+  "rustok-blog-admin/hydrate",
 ]
 ssr = [
   "leptos/ssr",
@@ -123,6 +125,7 @@ ssr = [
   "rustok-translation-admin/ssr",
   "rustok-workflow-admin/ssr",
   "rustok-auth-admin/ssr",
+  "rustok-blog-admin/ssr",
 ]
 
 [dependencies]

@@ -15,7 +15,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, manifest_hash::hash_man
 use rustok_translation::MachineTranslationPortFactory;
 use rustok_translation::{
     MachineTranslationAttemptEvidence, MachineTranslationBatchRequest,
-    MachineTranslationBatchResult, MachineTranslationDiagnostic,
+    MachineTranslationBatchResult, MachineTranslationDiagnostic, MachineTranslationEstimate,
     MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
     MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
     MachineTranslationMemorySuggestion, MachineTranslationPort,
@@ -125,6 +125,52 @@ impl AiMachineTranslationAdapter {
             descriptor: machine_translation_descriptor(),
         }
     }
+
+    fn structured_request(
+        &self,
+        context: &PortContext,
+        request: &MachineTranslationBatchRequest,
+    ) -> Result<AiStructuredTaskRequest, PortError> {
+        request.validate(context)?;
+        if request.adapter_policy_digest != self.descriptor.policy_digest {
+            return Err(PortError::conflict(
+                "translation.machine.adapter_policy_stale",
+                "machine translation request does not match the active adapter policy",
+            ));
+        }
+        if request
+            .units
+            .iter()
+            .any(|unit| !self.descriptor.supported_profiles.contains(&unit.profile))
+        {
+            return Err(PortError::validation(
+                "translation.machine.profile_unsupported",
+                "the selected machine translation provider does not support this field profile",
+            ));
+        }
+        let input = serde_json::to_value(task_input(request)).map_err(|_| {
+            PortError::validation(
+                "translation.machine.input_invalid",
+                "machine translation input could not be serialized",
+            )
+        })?;
+        let structured_request = AiStructuredTaskRequest {
+            owner: "translation".to_string(),
+            task_slug: MACHINE_TRANSLATION_TASK_SLUG.to_string(),
+            prompt_policy_digest: self.descriptor.policy_digest.clone(),
+            input_schema_digest: machine_translation_input_schema_digest(),
+            input,
+            output_schema: machine_translation_output_schema(),
+            classification: batch_classification(&request.units),
+            evidence: request.evidence.clone(),
+            limits: AiStructuredTaskLimits {
+                max_output_bytes: 1_048_576,
+                max_attempts: 3,
+            },
+        };
+        structured_request.validate(context)?;
+        Ok(structured_request)
+    }
 }
 
 /// Composes the optional machine-translation provider from the neutral host
@@ -186,54 +232,30 @@ impl MachineTranslationPort for AiMachineTranslationAdapter {
         Ok(map_health(health))
     }
 
+    async fn estimate_batch(
+        &self,
+        context: PortContext,
+        request: MachineTranslationBatchRequest,
+    ) -> Result<MachineTranslationEstimate, PortError> {
+        let structured_request = self.structured_request(&context, &request)?;
+        let estimate = self.ai.estimate(context, structured_request).await?;
+        Ok(MachineTranslationEstimate {
+            input_tokens_upper_bound: estimate.input_tokens_upper_bound,
+            output_tokens_upper_bound: estimate.output_tokens_upper_bound,
+            attempts_upper_bound: estimate.attempts_upper_bound,
+            cost_minor_units_upper_bound: estimate.cost_minor_units_upper_bound,
+            currency_code: estimate.currency_code,
+            price_snapshot_digest: estimate.price_snapshot_digest,
+            review_required: self.descriptor.review_required,
+        })
+    }
+
     async fn translate_batch(
         &self,
         context: PortContext,
         request: MachineTranslationBatchRequest,
     ) -> Result<MachineTranslationBatchResult, PortError> {
-        request.validate(&context)?;
-        if request.adapter_policy_digest != self.descriptor.policy_digest {
-            return Err(PortError::conflict(
-                "translation.machine.adapter_policy_stale",
-                "machine translation request does not match the active adapter policy",
-            ));
-        }
-        if request
-            .units
-            .iter()
-            .any(|unit| !self.descriptor.supported_profiles.contains(&unit.profile))
-        {
-            return Err(PortError::validation(
-                "translation.machine.profile_unsupported",
-                "the selected machine translation provider does not support this field profile",
-            ));
-        }
-
-        let task_input = task_input(&request);
-        let output_schema = machine_translation_output_schema();
-        let input_schema_digest = machine_translation_input_schema_digest();
-        let input = serde_json::to_value(task_input).map_err(|_| {
-            PortError::validation(
-                "translation.machine.input_invalid",
-                "machine translation input could not be serialized",
-            )
-        })?;
-
-        let structured_request = AiStructuredTaskRequest {
-            owner: "translation".to_string(),
-            task_slug: MACHINE_TRANSLATION_TASK_SLUG.to_string(),
-            prompt_policy_digest: self.descriptor.policy_digest.clone(),
-            input_schema_digest,
-            input,
-            output_schema,
-            classification: batch_classification(&request.units),
-            evidence: request.evidence.clone(),
-            limits: AiStructuredTaskLimits {
-                max_output_bytes: 1_048_576,
-                max_attempts: 3,
-            },
-        };
-        structured_request.validate(&context)?;
+        let structured_request = self.structured_request(&context, &request)?;
         let execution = self.ai.execute(context, structured_request).await?;
 
         map_execution(&self.descriptor, &request, execution)
@@ -802,8 +824,8 @@ mod tests {
     use std::{sync::Mutex, time::Duration};
 
     use rustok_ai::{
-        AiStructuredTaskAttempt, AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef,
-        AiStructuredTaskUsage,
+        AiStructuredTaskAttempt, AiStructuredTaskEstimate, AiStructuredTaskExecutionKey,
+        AiStructuredTaskExecutionRef, AiStructuredTaskUsage,
     };
     use rustok_api::{PortActor, TenantLocale};
     use rustok_translation::{MachineTranslationResourceContext, MachineTranslationUnit};
@@ -829,6 +851,22 @@ mod tests {
                 availability: AiStructuredTaskAvailability::Available,
                 reason_code: None,
                 retry_after_ms: None,
+            })
+        }
+
+        async fn estimate(
+            &self,
+            _context: PortContext,
+            request: AiStructuredTaskRequest,
+        ) -> Result<AiStructuredTaskEstimate, PortError> {
+            self.requests.lock().unwrap().push(request);
+            Ok(AiStructuredTaskEstimate {
+                input_tokens_upper_bound: 512,
+                output_tokens_upper_bound: 1_048_576,
+                attempts_upper_bound: 2,
+                cost_minor_units_upper_bound: 42,
+                currency_code: "USD".to_string(),
+                price_snapshot_digest: "e".repeat(64),
             })
         }
 
@@ -985,6 +1023,22 @@ mod tests {
             AiTaskDataClassification::TenantPrivate
         );
         assert!(requests[0].input.get("policy").is_some());
+    }
+
+    #[tokio::test]
+    async fn estimates_with_the_same_bounded_request_without_execution() {
+        let ai = Arc::new(RecordingAiPort::default());
+        let adapter = AiMachineTranslationAdapter::new(ai.clone());
+
+        let estimate = adapter.estimate_batch(context(), request()).await.unwrap();
+
+        assert_eq!(estimate.cost_minor_units_upper_bound, 42);
+        assert_eq!(estimate.attempts_upper_bound, 2);
+        assert!(estimate.review_required);
+        let requests = ai.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].task_slug, MACHINE_TRANSLATION_TASK_SLUG);
+        assert!(ai.output.lock().unwrap().is_none());
     }
 
     #[tokio::test]

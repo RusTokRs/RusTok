@@ -343,6 +343,15 @@ pub enum TranslationAdminOperation {
         values: Vec<ProposalValueInput>,
         idempotency_key: String,
     },
+    EstimateMachineTranslation {
+        item_id: String,
+        field_keys: Vec<String>,
+        minimum_memory_similarity_basis_points: u16,
+        tone: Option<String>,
+        domain: Option<String>,
+        style: Option<String>,
+        idempotency_key: String,
+    },
     GenerateMachineProposal {
         item_id: String,
         field_keys: Vec<String>,
@@ -471,6 +480,9 @@ impl TranslationAdminOperation {
             | Self::ImportItem {
                 idempotency_key, ..
             }
+            | Self::EstimateMachineTranslation {
+                idempotency_key, ..
+            }
             | Self::GenerateMachineProposal {
                 idempotency_key, ..
             }
@@ -543,6 +555,7 @@ pub enum TranslationAdminResponse {
     Job(Job),
     Item(JobItem),
     Proposal(Proposal),
+    MachineEstimate(MachineTranslationEstimate),
     MachineProposal(MachineProposal),
     MachineOperationStatus(MachineOperationStatus),
     MachineCancellation(MachineCancellation),
@@ -750,6 +763,18 @@ pub struct MachineTranslationUsage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MachineTranslationEstimate {
+    pub input_tokens_upper_bound: u64,
+    pub output_tokens_upper_bound: u64,
+    pub attempts_upper_bound: u16,
+    pub cost_minor_units_upper_bound: u64,
+    pub currency_code: String,
+    pub price_snapshot_digest: String,
+    pub review_required: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MachineTranslationDiagnostic {
     pub code: String,
     pub blocking: bool,
@@ -940,6 +965,15 @@ mod tests {
                     value: "Beschreibung".to_string(),
                 }],
                 idempotency_key: "import-item".to_string(),
+            },
+            TranslationAdminOperation::EstimateMachineTranslation {
+                item_id: "item-1".to_string(),
+                field_keys: vec!["alt".to_string()],
+                minimum_memory_similarity_basis_points: 7_000,
+                tone: None,
+                domain: None,
+                style: None,
+                idempotency_key: "estimate-machine-translation".to_string(),
             },
             TranslationAdminOperation::GenerateMachineProposal {
                 item_id: "item-1".to_string(),

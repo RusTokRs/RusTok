@@ -11,11 +11,12 @@ pub fn BlogRichTextEditor(
     let route_context = use_context::<rustok_ui_core::UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.unwrap_or_else(|| "en".to_string());
     let iframe_ref = NodeRef::<html::Iframe>::new();
+    let editor_error = RwSignal::new(None::<String>);
 
     #[cfg(target_arch = "wasm32")]
     {
         use crate::i18n::t;
-        use wasm_bindgen::{JsValue, closure::Closure};
+        use wasm_bindgen::prelude::{Closure, JsValue, wasm_bindgen};
         use web_sys::HtmlIFrameElement;
 
         let messages = serde_json::json!({
@@ -38,10 +39,25 @@ pub fn BlogRichTextEditor(
             "redo": t(Some(locale.as_str()), "richText.redo", "Redo"),
             "editor": t(Some(locale.as_str()), "richText.editor", "Rich text editor")
         });
+        let serialization_error = t(
+            Some(locale.as_str()),
+            "richText.error.serialize",
+            "The richtext document could not be prepared.",
+        );
+        let invalid_payload_error = t(
+            Some(locale.as_str()),
+            "richText.error.invalidPayload",
+            "The editor returned an invalid richtext document.",
+        );
+        let frame_error = t(
+            Some(locale.as_str()),
+            "richText.error.frameUnavailable",
+            "The richtext editor is unavailable.",
+        );
 
-        #[wasm_bindgen::wasm_bindgen]
-        extern "C" {
-            #[wasm_bindgen::wasm_bindgen(
+        #[wasm_bindgen]
+        unsafe extern "C" {
+            #[wasm_bindgen(
                 js_namespace = RustokRichText,
                 js_name = mountLeptosRichTextFrame
             )]
@@ -52,34 +68,90 @@ pub fn BlogRichTextEditor(
                 document_json: &str,
                 messages_json: &str,
                 editable: bool,
-                on_document_change: &Closure<dyn FnMut(String)>,
-                on_error: &Closure<dyn FnMut(String, String)>,
+                on_document_change: &Closure<dyn FnMut(JsValue)>,
+                on_error: &Closure<dyn FnMut(JsValue, JsValue)>,
             ) -> JsValue;
 
-            #[wasm_bindgen::wasm_bindgen(
+            #[wasm_bindgen(
+                js_namespace = RustokRichText,
+                js_name = setLeptosRichTextDocument
+            )]
+            fn set_richtext_document(handle: &JsValue, document_json: &str);
+
+            #[wasm_bindgen(
                 js_namespace = RustokRichText,
                 js_name = disposeLeptosRichTextFrame
             )]
             fn dispose_richtext_frame(handle: &JsValue);
         }
 
-        let initial_document = document.get_untracked();
         let messages_json =
             serde_json::to_string(&messages).expect("richtext messages must serialize");
+        let editor_handle = StoredValue::new_local(None::<JsValue>);
+        let callback_handles = StoredValue::new_local(
+            None::<(
+                Closure<dyn FnMut(JsValue)>,
+                Closure<dyn FnMut(JsValue, JsValue)>,
+            )>,
+        );
+        let controlled_serialization_error = serialization_error.clone();
+
+        Effect::new(move |_| {
+            let document = document.get();
+            let Some(handle) = editor_handle.get_value() else {
+                return;
+            };
+            let Ok(document_json) = serde_json::to_string(&document) else {
+                editor_error.set(Some(controlled_serialization_error.clone()));
+                return;
+            };
+            set_richtext_document(&handle, &document_json);
+        });
+
         let iframe_ref = iframe_ref;
-        on_mount(move || {
+        Effect::new(move |_| {
+            if editor_handle.get_value().is_some() {
+                return;
+            }
             let Some(iframe) = iframe_ref.get() else {
                 return;
             };
-            let on_document_change = Closure::<dyn FnMut(String)>::new(move |document_json| {
-                if let Ok(document) = serde_json::from_str::<RichTextDocument>(&document_json) {
-                    set_document.set(document);
+            let invalid_payload_error = invalid_payload_error.clone();
+            let frame_error = frame_error.clone();
+            let serialization_error = serialization_error.clone();
+            let on_document_change =
+                Closure::<dyn FnMut(JsValue)>::new(move |document_json: JsValue| {
+                    let Some(document_json) = document_json.as_string() else {
+                        editor_error.set(Some(invalid_payload_error.clone()));
+                        return;
+                    };
+                    match serde_json::from_str::<RichTextDocument>(document_json.as_str()) {
+                        Ok(document) => {
+                            editor_error.set(None);
+                            set_document.set(document);
+                        }
+                        Err(_) => {
+                            editor_error.set(Some(invalid_payload_error.clone()));
+                        }
+                    }
+                });
+            let on_error = Closure::<dyn FnMut(JsValue, JsValue)>::new(
+                move |code: JsValue, _message: JsValue| {
+                    let code = code
+                        .as_string()
+                        .unwrap_or_else(|| "frame_error".to_string());
+                    editor_error.set(Some(format!("{frame_error} ({code})")));
+                },
+            );
+            let initial_document = document.get_untracked();
+            let document_json = match serde_json::to_string(&initial_document) {
+                Ok(document_json) => document_json,
+                Err(_) => {
+                    editor_error.set(Some(serialization_error.clone()));
+                    return;
                 }
-            });
-            let on_error = Closure::<dyn FnMut(String, String)>::new(move |_code, _message| {});
-            let document_json =
-                serde_json::to_string(&initial_document).expect("document must serialize");
-            let handle = mount_richtext_frame(
+            };
+            let mounted_handle = mount_richtext_frame(
                 &iframe,
                 "/richtext/frame",
                 "article",
@@ -89,10 +161,12 @@ pub fn BlogRichTextEditor(
                 &on_document_change,
                 &on_error,
             );
+            editor_handle.set_value(Some(mounted_handle.clone()));
+            callback_handles.set_value(Some((on_document_change, on_error)));
             on_cleanup(move || {
-                dispose_richtext_frame(&handle);
-                drop(on_document_change);
-                drop(on_error);
+                dispose_richtext_frame(&mounted_handle);
+                editor_handle.set_value(None);
+                callback_handles.set_value(None);
             });
         });
     }
@@ -108,8 +182,13 @@ pub fn BlogRichTextEditor(
                 title=label
                 sandbox="allow-scripts"
                 referrerpolicy="no-referrer"
-                style="width:100%;min-height:18rem;border:0"
+                class="h-72 w-full border-0"
             ></iframe>
+            <Show when=move || editor_error.get().is_some()>
+                <p class="text-sm text-destructive" role="alert">
+                    {move || editor_error.get().unwrap_or_default()}
+                </p>
+            </Show>
         </div>
     }
 }
