@@ -99,6 +99,9 @@ impl ProfileService {
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, user_id = %user_id))]
+    #[deprecated(
+        note = "use ProfileMutationService::upsert_profile_with_event so owner writes and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn upsert_profile(
         &self,
         tenant_id: Uuid,
@@ -173,6 +176,9 @@ impl ProfileService {
             .await
     }
 
+    #[deprecated(
+        note = "use ProfileMutationService::update_profile_handle_with_event so owner writes and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn update_profile_handle(
         &self,
         tenant_id: Uuid,
@@ -194,6 +200,9 @@ impl ProfileService {
             .await
     }
 
+    #[deprecated(
+        note = "use ProfileMutationService::update_profile_content_with_event so owner writes and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn update_profile_content(
         &self,
         tenant_id: Uuid,
@@ -224,6 +233,9 @@ impl ProfileService {
         .await
     }
 
+    #[deprecated(
+        note = "use ProfileMutationService::update_profile_locale_with_event so owner writes and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn update_profile_locale(
         &self,
         tenant_id: Uuid,
@@ -256,6 +268,9 @@ impl ProfileService {
         .await
     }
 
+    #[deprecated(
+        note = "use ProfileMutationService::update_profile_visibility_with_event so owner writes and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn update_profile_visibility(
         &self,
         tenant_id: Uuid,
@@ -273,6 +288,9 @@ impl ProfileService {
             .await
     }
 
+    #[deprecated(
+        note = "use ProfileMutationService::update_profile_media_with_event so owner writes and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn update_profile_media(
         &self,
         tenant_id: Uuid,
@@ -318,7 +336,10 @@ impl ProfileService {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, deprecated)]
+    #[deprecated(
+        note = "use ProfileMutationService::backfill_profile_with_event so profile creation and durable ProfileUpdated publication remain atomic"
+    )]
     pub async fn backfill_profile(
         &self,
         tenant_id: Uuid,
