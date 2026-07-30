@@ -11,18 +11,21 @@ const workflow = read('.github/workflows/tenant-hardening.yml');
 
 for (const marker of [
   'name: Tenant hardening',
+  'contents: read',
   '"crates/rustok-tenant/**"',
   '"crates/rustok-auth/cli/**"',
   '"apps/storefront/src/shared/context/enabled_modules.rs"',
   '"apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"',
+  '"scripts/verify/verify-tenant-admin-native-error-safety.mjs"',
   'focused-contract:',
   'postgres-concurrency:',
   'redis-recovery:',
   'TENANT_RUST_FILES:',
-  'rustfmt --edition 2024 $TENANT_RUST_FILES',
+  'rustfmt --edition 2024 --check $TENANT_RUST_FILES',
   'crates/rustok-tenant/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-tenant/tests/locale_policy_concurrency_postgres.rs',
   'crates/rustok-tenant/tests/tenant_ensure_concurrency_postgres.rs',
+  'node scripts/verify/verify-tenant-admin-native-error-safety.mjs',
   'node scripts/verify/verify-tenant-locale-policy-migration.mjs',
   'npm run verify:tenant:fba',
   'node scripts/verify/verify-tenant-hardening-workflow.mjs',
@@ -45,8 +48,17 @@ for (const marker of [
   }
 }
 
-if (workflow.includes('cargo fmt --all')) {
-  fail('tenant evidence must not be blocked by unrelated workspace formatting drift');
+for (const forbidden of [
+  'cargo fmt --all',
+  'contents: write',
+  'git push',
+  'github-actions[bot]',
+  'Publish focused formatting',
+  'Update tenant verification handoff',
+]) {
+  if (workflow.includes(forbidden)) {
+    fail(`tenant evidence workflow must remain read-only and focused; found ${forbidden}`);
+  }
 }
 
 if (workflow.includes('cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres --locked')) {
@@ -54,5 +66,5 @@ if (workflow.includes('cargo test -p rustok-tenant --test tenant_ensure_concurre
 }
 
 console.log(
-  '[verify-tenant-hardening-workflow] focused tenant admin/storefront, PostgreSQL and Redis evidence workflow is retained',
+  '[verify-tenant-hardening-workflow] read-only tenant admin/storefront, PostgreSQL and Redis evidence workflow is retained',
 );
