@@ -36,6 +36,22 @@ cleanup, and module-disabled cleanup followed by enable-time rebuild. Source-tab
 availability resolves through the active PostgreSQL `search_path` instead of
 hard-coding `public`.
 
+The generic platform-settings projection is now secret-safe: `search.api_key` is
+bootstrap-only, tenant writes containing it fail closed, and public read/update
+responses expose only `api_key_configured`. Historical rows remain inaccessible
+through the API but require an append-only migration owned by the platform settings
+table owner for physical at-rest removal.
+
+Search ingestion is not yet durably terminal. `OutboxRelay` may mark a remote or
+local transport publish successful before the in-process module handler succeeds.
+The module event dispatcher retries a handler four times, then records an error and
+discards the result; broadcast lag similarly skips deliveries. The admin rebuild
+endpoint publishes `ReindexRequested` through the same best-effort local listener
+path, so it is not an independent durable repair mechanism. Search remains blocked
+until handler completion is backed by a durable per-consumer inbox/job/DLQ or an
+owner-local repair command that does not depend on the same lossy path, with retained
+recovery evidence.
+
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`.
@@ -55,6 +71,9 @@ hard-coding `public`.
   `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
 - Canonical URL guardrail:
   `scripts/verify/verify-search-canonical-url-contract.mjs`.
+- Secret-projection guardrail:
+  `scripts/verify/verify-search-settings-secret-projection.mjs`, executed by the
+  standard Search FBA verifier.
 - Blog projection evidence:
   `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
 - Blog projection harness status: `executable_no_run`; execution remains user-owned
@@ -82,12 +101,14 @@ The extraction boundary follows
 Meilisearch, Typesense, and Algolia remain connector implementations inside the
 Search service. They receive canonical `SearchQuery` and document inputs and
 return normalized `SearchResult` and suggestion DTOs. Connector results must pass
-through Search-owned mapping before transport serialization.
+through Search-owned mapping before transport serialization. Connector credentials
+are host-bootstrap secrets and must never cross the generic tenant settings API.
 
 `rustok-index` remains a separate ingestion/read-model owner. Query-time reads of
 index-owned category and attribute tables should move to Search-owned denormalized
 fields before database isolation. Search continues to own event ingestion and
-rebuild behavior through replayable event transport.
+rebuild behavior, but current in-process handler delivery is not a sufficient durable
+replay contract.
 
 ## Completed implementation slices
 
@@ -110,31 +131,44 @@ rebuild behavior through replayable event transport.
     every transport-local URL implementation and require no transport fallback.
 11. Added canonical URL ownership to the standard Search FBA gate alongside the
     provider port, fallback, runtime contract, and invocation evidence.
+12. Removed `search.api_key` from generic settings projections, rejected new tenant
+    storage of the key, exposed only `api_key_configured`, and added a standard FBA
+    secret-projection guard.
 
 ## Next results
 
-1. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
-   storefront Search, native storefront Search, Search admin preview, and admin
-   global search against projected product, content, and Blog documents. Retain
-   proof that malformed Blog payloads remain non-navigable everywhere.
-2. **Verify click analytics.** Confirm every Search surface records the canonical
-   href without reconstructing routes in analytics code.
-3. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
-   and retain migration/`pg_trgm`, event-delivery, targeted missing-post cleanup,
-   module-disable cleanup, and category reindex results.
-4. **Execute live provider evidence.** Run query and suggestion providers under
-   deadline, error, locale, tenant, channel, ranking, and catalog-filter conditions.
-5. **Harden operations.** Add bounded ingestion/rebuild retry and DLQ behavior with
-   observable lag, consistency, and recovery outcomes.
-6. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
-   connectors must not bypass Search ports, owner URL mapping, or PostgreSQL
-   baseline selection.
+1. **Make Search delivery durably terminal.** Add a consumer-owned durable inbox/job
+   with idempotent completion, retry, DLQ, lag, restart, and replay semantics, or an
+   equivalent durable consumer transport. Outbox terminal state must not imply Search
+   projection completion until the consumer result is durable.
+2. **Add an independent owner repair entrypoint.** Rebuild/reconcile commands must call
+   Search owner services directly or enqueue a durable Search job; they must not publish
+   `ReindexRequested` into the same lossy local listener path they are intended to repair.
+3. **Scrub historical credentials through the correct owner.** Add an irreversible,
+   append-only platform migration that removes `api_key` and the computed marker from
+   existing `platform_settings` rows where `category = 'search'`.
+4. **Persist ordering authority for destructive events.** Add source revision or an
+   authoritative re-read rule for delete/restore so delayed deletes cannot erase a
+   newer projection.
+5. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL storefront
+   Search, native storefront Search, Search admin preview, and admin global search
+   against projected product, content, and Blog documents.
+6. **Execute live Blog projection evidence.** Retain migration/`pg_trgm`, event-delivery,
+   targeted missing-post cleanup, module-disable cleanup, category reindex, and failure
+   recovery results.
+7. **Execute live provider evidence.** Run query and suggestion providers under deadline,
+   error, locale, tenant, channel, ranking, and catalog-filter conditions.
+8. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
+   connectors must not bypass Search ports, owner URL mapping, PostgreSQL baseline
+   selection, or the bootstrap credential boundary.
 
 ## Verification
 
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `node scripts/verify/verify-search-canonical-url-contract.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
+- `node scripts/verify/verify-search-settings-secret-projection.mjs`
+- `cargo test -p rustok-server settings_service --lib -- --nocapture`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
 - `node scripts/verify/verify-search-blog-projection.mjs`
@@ -152,12 +186,12 @@ rebuild behavior through replayable event transport.
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
-- Status: `in_progress`
+- Status: `blocked`
 - Last verified at (UTC): `2026-07-30`
-- Scope inspected: `owner README, module docs, current implementation plan and carried secret-projection blocker`
-- Findings: `P0=0, P1=1, P2=0, P3=0`
-- Fixed in this pass: `none yet; verification just resumed`
-- Remaining risks or blockers: `carried P1: generic settings projection serializes search.api_key; event replay/rebuild, tenant/locale/channel isolation, deletion and out-of-order delivery still require inspection`
-- Evidence: `current owner documentation and verification cursor read from main before source inspection`
-- Next action: `trace settings serialization and every search ingestion/rebuild publisher-consumer path, fix P0/P1, then run targeted static and Rust checks`
-- Resume command: `cargo xtask module validate search && npm run verify:search:fba && node scripts/verify/verify-search-blog-projection.mjs`
+- Scope inspected: `connector-secret projection, generic settings GraphQL read/write, Search ingestion/projectors, tenant/locale/channel scope, module event registration, outbox/local fan-out, dispatcher retry/lag behavior and admin rebuild entrypoint`
+- Findings: `P0=0, P1=2, P2=2, P3=0`
+- Fixed in this pass: `removed search.api_key from public generic settings projections; rejected new tenant storage of the bootstrap key; made api_key_configured read-only; added service regressions and an FBA-integrated static guard`
+- Remaining risks or blockers: `P1: remote/local outbox publication can become terminal before Search handler success, while final handler errors and broadcast lag are discarded; ReindexRequested uses the same non-durable path. P2: historical platform_settings search rows still require a platform-owner irreversible scrub migration. P2: destructive delete events have no persisted source revision, so out-of-order delete/restore safety is not proven. Draft PR #2512 is not mergeable with current main and same-SHA Search FBA/CI remain queued.`
+- Evidence: `source inspection of EventDispatcher, EventRuntime local fan-out, SearchIngestionHandler, SearchProjector and native rebuild transport; Index Scale Run Contract and Index Scale Evidence passed on head 30c003b; Search hardening/CI were still queued; local targeted execution was unavailable because github.com DNS/direct HTTPS failed`
+- Next action: `move to core/outbox and determine the owner-correct durable consumer completion model; later add the platform settings scrub migration and retained Search replay/recovery evidence`
+- Resume command: `node scripts/verify/verify-search-settings-secret-projection.mjs && npm run verify:search:fba && cargo test -p rustok-server settings_service --lib -- --nocapture && cargo test -p rustok-search --test blog_ingestion_contract_test -- --nocapture`
