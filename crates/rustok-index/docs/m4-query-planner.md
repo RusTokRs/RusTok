@@ -13,12 +13,13 @@ detection. The repository owner still needs to execute and admit one fresh real
 PostgreSQL partition packet. That owner gate blocks production partition lifecycle
 design but does not block M4 query source work.
 
-The previous server-composition blocker is now removed at the capability level. Source
+The previous server-composition blocker is removed at the capability level. Source
 modules publish generic schema contracts into an Index-owned catalog, the selected
 distribution materializes one non-empty immutable registry after all module registrations,
 and the server binds that registry to its database through the Index-owned PostgreSQL
-runtime materializer. Social Graph is the first source publication. Authorization,
-transport endpoints, tenant schema readiness, and consumer cutover remain separate gates.
+runtime materializer. Social Graph is the first source publication and notification
+block/mute policy is the first authorized consumer cutover. Additional transports,
+tenant readiness evidence, and consumer cutovers remain separate gates.
 
 ## Actualized status
 
@@ -37,6 +38,7 @@ transport endpoints, tenant schema readiness, and consumer cutover remain separa
 - M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 source-owned immutable schema registry: `source_complete_execution_pending`.
 - M4 server-owned shared query runtime composition: `source_complete_execution_pending`.
+- M4 first authorized consumer cutover: `source_complete_execution_pending`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -165,6 +167,20 @@ Runtime presence does not establish persisted tenant schema readiness. Every exe
 still performs the exact active fingerprint and semantic JSON preflight inside
 `PostgresIndexQueryPort`.
 
+## First authorized consumer
+
+`IndexSocialGraphPrivacyReadPort` is the first owner-defined adapter consuming
+`SharedIndexQueryRuntime`. It preserves the existing `SocialGraphPrivacyReadPort`
+authorization and request bounds while translating block, mute, and follow checks into
+typed filters over the owner-published relation schema.
+
+The final server facade recomposes notification block/mute policy only after the shared
+runtime exists. Block remains symmetric, mute remains recipient-to-actor directional, and
+custom notification relation providers retain priority. Missing tenant schema or storage
+readiness is retryable fail-closed and cannot become an implicit allow. Revision-bearing
+follow reads, profile privacy, GraphQL, storefront, admin, and presentation authorization
+remain outside this cutover.
+
 ## Remaining bounded M4 work
 
 The canonical checklist remains open until the owner runs the fixture through capture,
@@ -173,8 +189,8 @@ remain:
 
 - aggregate ordering semantics for paths traversing `many`;
 - publish schemas from additional source owners as consumers are selected;
-- server/storefront/admin/search authorization and first consumer cutover;
-- transport-specific error mapping that preserves bounded query-port failures.
+- additional server/storefront/admin/search authorization and consumer cutovers;
+- live execution and lag/freshness evidence for projection-backed policy reads.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
@@ -193,6 +209,7 @@ cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo test -p rustok-index query_snapshot_tests -- --nocapture
+cargo test -p rustok-social-graph --features index index_privacy -- --nocapture
 cargo test -p rustok-social-graph --features index module_publishes_its_index_schema_through_runtime_extensions -- --nocapture
 cargo test -p rustok-distribution source_schema_catalog_materializes_after_all_modules_register -- --nocapture
 cargo test -p rustok-server host_materializes_index_query_runtime_after_source_registry -- --nocapture
@@ -226,5 +243,6 @@ node scripts/verify/verify-index-query-equivalence-capture.mjs
 node scripts/verify/verify-index-query-equivalence-admission.mjs
 node scripts/verify/verify-index-source-schema-registry.mjs
 node scripts/verify/verify-index-query-runtime-composition.mjs
+node scripts/verify/verify-index-social-graph-privacy-consumer.mjs
 cargo xtask module validate index
 ```
