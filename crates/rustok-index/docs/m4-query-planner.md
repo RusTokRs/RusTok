@@ -18,8 +18,8 @@ modules publish generic schema contracts into an Index-owned catalog, the select
 distribution materializes one non-empty immutable registry after all module registrations,
 and the server binds that registry to its database through the Index-owned PostgreSQL
 runtime materializer. Social Graph is the first source publication. Notification block/mute
-policy is the first authorized consumer source, protected by a default-off activation gate
-until retained projection readiness, lag, and result-parity evidence exists.
+policy is the first consumer-shaped parity shadow, protected by a default-off shadow gate
+and explicitly non-authoritative.
 
 ## Actualized status
 
@@ -38,8 +38,8 @@ until retained projection readiness, lag, and result-parity evidence exists.
 - M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 source-owned immutable schema registry: `source_complete_execution_pending`.
 - M4 server-owned shared query runtime composition: `source_complete_execution_pending`.
-- M4 first authorized consumer cutover source: `source_complete_execution_pending`.
-- M4 first consumer activation: `open_owner_action`.
+- M4 first consumer parity shadow: `source_complete_execution_pending`.
+- M4 authoritative consumer cutover: `blocked_by_freshness_contract`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -168,24 +168,33 @@ Runtime presence does not establish persisted tenant schema readiness. Every exe
 still performs the exact active fingerprint and semantic JSON preflight inside
 `PostgresIndexQueryPort`.
 
-## First authorized consumer source
+## First consumer parity shadow
 
-`IndexSocialGraphPrivacyReadPort` is the first owner-defined adapter consuming
-`SharedIndexQueryRuntime`. It preserves the existing `SocialGraphPrivacyReadPort`
-authorization and request bounds while translating block, mute, and follow checks into
-typed filters over the owner-published relation schema.
+`IndexSocialGraphPrivacyReadPort` translates the existing
+`SocialGraphPrivacyReadPort` contract into typed Index filters over the owner-published
+relation schema. It preserves tenant/read authorization, self-relation rejection, follow
+source-actor checks, the 100-target batch bound, bidirectional block semantics, and
+directional mute/follow semantics.
 
-The final server facade uses the default-off activation gate
-`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED`. While disabled, the authoritative owner
-read path remains selected. When enabled, the facade requires `SharedIndexQueryRuntime` and
-recomposes notification block/mute policy. Block remains symmetric, mute remains
-recipient-to-actor directional, and custom notification relation providers retain
-priority. Missing tenant schema or storage readiness is retryable fail-closed and cannot
-become an implicit allow; no owner-table fallback exists after activation.
+`IndexShadowSocialGraphPrivacyReadPort` wraps the authoritative owner port plus the typed
+Index adapter. It executes the owner read first, compares the projection after owner success,
+records bounded mismatch/error diagnostics without identities, and always returns the owner
+result. Index therefore never decides notification privacy in this slice.
+
+The final server facade uses the default-off shadow gate
+`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`. While disabled, the ordinary owner policy
+is unchanged. When enabled, the facade requires `SharedIndexQueryRuntime` and recomposes
+notification block/mute policy with the non-authoritative shadow. Custom notification
+relation providers retain priority.
+
+A direct cutover remains unsafe because a stale but successful Index query can omit a current
+block or mute without returning an error. Schema readiness is not a freshness watermark.
+Authoritative use therefore remains blocked until retained per-tenant watermark/lag,
+positive and negative parity, outage/recovery, repair, latency, and negative-result
+fail-closed evidence exists.
 
 Revision-bearing follow reads, profile privacy, GraphQL, storefront, admin, and
-presentation authorization remain outside this cutover. The activation flag must remain
-off until the owner retains projection readiness, lag, and result-parity evidence.
+presentation authorization remain outside this shadow.
 
 ## Remaining bounded M4 work
 
@@ -193,11 +202,11 @@ The canonical checklist remains open until the owner runs the fixture through ca
 admits the retained bundle, and preserves both bundle and receipt. Additional boundaries
 remain:
 
-- retain Social Graph projection readiness, lag, and result-parity evidence and decide
-  whether to activate the first consumer;
+- execute and retain Social Graph privacy shadow parity, freshness, lag, repair, and latency
+  evidence before reconsidering authoritative cutover;
 - aggregate ordering semantics for paths traversing `many`;
 - publish schemas from additional source owners as consumers are selected;
-- additional server/storefront/admin/search authorization and consumer cutovers.
+- additional non-authoritative shadows and safely freshness-gated consumer cutovers.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
