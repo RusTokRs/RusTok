@@ -25,6 +25,15 @@ five-second database reconciliation performs a safe namespace-wide local clear
 when delivery was missed, the generation regressed, or a replica starts from an
 unverified baseline. The worker runtime is a critical host guardrail.
 
+Cycle-001 source changes add database-owned fail-closed invariants for channel
+selection and tenant relations. PostgreSQL and SQLite serialize default-channel,
+active-policy-set and primary-target promotion; host target claims are rebuilt
+from authoritative channel rows and uniquely scoped by tenant; OAuth bindings
+and policy actions reject cross-tenant relations and incompatible parent tenant
+moves. Historical duplicates or mismatches block the migration instead of being
+silently rewritten. These changes remain source-complete, not compiled/live
+verified, until the current migration and cache workflows finish on one SHA.
+
 The source now includes eleven durable-recovery evidence layers:
 
 - SQLite reader tests prove that independent replica handles observe committed
@@ -101,7 +110,22 @@ contracts documented and source-locked.
 
 ## Open results
 
-1. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
+1. **Move channel display copy to locale-attributed storage.** `channels.slug`
+   remains the language-neutral identity, while `channels.name` is still
+   human-facing copy in the base row. Add tenant-composite
+   `channel_translations`, backfill legacy copy with truthful provenance, require
+   a host-resolved effective locale for writes, and return exact-locale/fallback
+   projections consistently from REST, native server functions, owner ports,
+   cache values and admin UI. Policy-set display names must be classified and
+   cut over in the same owner migration if they are tenant-visible copy.
+   **Depends on:** the accepted multilingual database contract and translation
+   control-plane boundary.
+   **Done when:** base rows are language-neutral, locale columns are at least
+   `VARCHAR(32)`, writes are atomic with translations, and runtime tests cover
+   requested -> tenant default -> first available selection without returning
+   storage-only `und` as a request fallback.
+
+2. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
    server two-replica, lagged-listener resolved-value, PostgreSQL, Redis readiness,
    Redis restart and cache-owned latency/circuit scenarios on one reconciled
    `main` revision, then fix every format, compile, test or Clippy failure before
@@ -111,7 +135,7 @@ contracts documented and source-locked.
    **Done when:** `compiled-contract`, `postgres-channel`, and `live-redis` pass
    on the same revision and the result is recorded without copying raw logs.
 
-2. **Collect full runtime evidence for channel resolution.** Exercise
+3. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
    selection, inactive/degraded behavior, cache isolation, generation rollover,
    and the durable cross-replica behavior before promotion beyond
@@ -120,14 +144,14 @@ contracts documented and source-locked.
    **Done when:** targeted Rust middleware/port tests provide reproducible
    runtime evidence for every published read and fallback profile.
 
-3. **Extend channel-aware proof points only with owner evidence.** New domain
+4. **Extend channel-aware proof points only with owner evidence.** New domain
    reads must use the already resolved `ChannelContext`, local tests, and local
    documentation; they must not introduce a second channel-selection mechanism.
    **Depends on:** the consuming module's public contract.
    **Done when:** the proof-point verifier and affected module docs identify the
    same resolved-channel source and visibility behavior.
 
-4. **Defer richer target or connector taxonomy until pressure is concrete.**
+5. **Defer richer target or connector taxonomy until pressure is concrete.**
    Do not add speculative target types or connector abstraction merely to expand
    the model.
    **Depends on:** a demonstrated runtime/product need.
@@ -141,6 +165,7 @@ contracts documented and source-locked.
 - `npm run verify:channel:resolution-contract`
 - `npm run verify:channel:proof-points`
 - `cargo check -p rustok-channel --lib`
+- `cargo test -p rustok-channel --lib`
 - `cargo test -p rustok-channel invalidation_generation --lib`
 - `cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib`
 - `cargo test -p rustok-server channel_cache_invalidation --lib`
@@ -153,12 +178,13 @@ contracts documented and source-locked.
 - `cargo clippy -p rustok-channel --lib -- -D warnings`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- Targeted policy-lifecycle tests.
+- Targeted policy-lifecycle and migration-invariant tests.
 
 ## References
 
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Cache operations and recovery runbook](../../rustok-cache/docs/operations.md)
+- [Multilingual database contract audit](../../../docs/architecture/database-multilingual-audit.md)
 
 ## Change rules
 
@@ -169,16 +195,18 @@ contracts documented and source-locked.
    selection documentation with a public contract change.
 4. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.
+5. Keep channel base rows language-neutral; tenant-visible display copy belongs
+   to locale-attributed owner translations.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-07-29`
-- Scope inspected: `channel ownership, documented resolution precedence, durable generation contract, cache dimensions, policy and OAuth binding boundaries`
-- Findings: `P0=0, P1=0, P2=0, P3=1`
-- Fixed in this pass: `added the missing current-cycle verification handoff`
-- Remaining risks or blockers: `source audit and targeted workflow evidence are still in progress`
-- Evidence: `AGENTS.md, docs/index.md, current cycle cursor, crate README, local docs and implementation plan were read on the fresh branch`
-- Next action: `inspect tenant-scoped writes, migration triggers, resolution policy selection, cache key dimensions and OAuth application binding trust`
-- Resume command: `cargo xtask module validate channel && cargo xtask module test channel && cargo test -p rustok-channel invalidation_generation --lib`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `channel ownership and transport boundaries; tenant-scoped reads/writes; OAuth and policy relation integrity; default/active/primary selection concurrency; host claim uniqueness; durable invalidation and migration replay; cache dimensions; multilingual database contract`
+- Findings: `P0=0, P1=5, P2=0, P3=1`
+- Fixed in this pass: `added DB-owned single-default, single-active-policy and single-primary promotion; serialized tenant-scoped host claims; rejected cross-tenant OAuth/policy relations and unsafe parent moves; added fail-fast historical preflights, replay-safe derived-state rebuilds and SQLite regressions; isolated the legacy o_auth_apps fixture normalization to cfg(test)`
+- Remaining risks or blockers: `P1 channel-display-name multilingual cutover remains open; compile, migration, PostgreSQL and Redis jobs on the current SHA are queued and no pass is claimed`
+- Evidence: `owner service, REST/native adapters, ChannelReadPort, navigation consumer, resolution pipeline, all channel migrations, durable invalidation tests, cache workflow, migration workflow and the multilingual database audit were inspected; PR #2469 contains the current source changes`
+- Next action: `inspect the first completed workflow jobs, fix every channel-specific failure, then mark the item blocked for the multilingual cutover or complete only if that P1 is resolved`
+- Resume command: `cargo xtask module validate channel && cargo xtask module test channel && cargo test -p rustok-channel --lib`
