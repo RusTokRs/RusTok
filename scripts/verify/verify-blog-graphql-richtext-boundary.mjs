@@ -72,10 +72,6 @@ const updateConversion = sourceRange(
   TYPES_PATH,
 );
 assert.ok(
-  updateConversion.source.includes('content: input.content'),
-  'Blog GraphQL input conversion must forward RichTextDocument to the owner service',
-);
-assert.ok(
   !mutationSource.includes(UPDATE_CONVERSION_START),
   'Blog GraphQL mutation resolvers must not own UpdatePostInput transport conversion',
 );
@@ -110,19 +106,29 @@ for (const [resolver, source] of resolverSources) {
   }
 }
 
-const legacyFields = ['body', 'body_format', 'content_json'];
-const legacyAdapterScopes = new Map([
-  [TYPES_PATH, typesSource],
-  [`${TYPES_PATH}::UpdatePostInput conversion`, updateConversion.source],
-]);
+const retainedLegacyDeclarations = [
+  'pub body: Option<String>',
+  'pub body_format: String',
+  'pub content_json: Option<Value>',
+];
+for (const declaration of retainedLegacyDeclarations) {
+  assert.ok(
+    typesSource.includes(declaration),
+    `${TYPES_PATH} no longer contains ${declaration}; update the evidence status and tighten this guardrail`,
+  );
+}
 
-for (const [scope, source] of legacyAdapterScopes) {
-  for (const field of legacyFields) {
-    assert.ok(
-      source.includes(field),
-      `${scope} no longer contains ${field}; update the evidence status and tighten this guardrail`,
-    );
-  }
+const retainedConversionMappings = [
+  'body: input.body',
+  'body_format: input.body_format',
+  'content_json: input.content_json',
+  'content: input.content',
+];
+for (const mapping of retainedConversionMappings) {
+  assert.ok(
+    updateConversion.source.includes(mapping),
+    `${TYPES_PATH} UpdatePostInput conversion no longer contains ${mapping}; update the evidence status and tighten this guardrail`,
+  );
 }
 
 const legacyLeakPatterns = [
