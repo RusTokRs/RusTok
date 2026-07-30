@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+mod forum_inbox;
 mod forum_projector;
 #[cfg(feature = "graphql")]
 pub mod graphql;
