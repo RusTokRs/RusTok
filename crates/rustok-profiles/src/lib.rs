@@ -43,6 +43,7 @@ pub use privacy::{
 };
 pub use reader::ProfilesReader;
 pub use services::{ProfileBackfillResult, ProfileService};
+pub use upsert_write::backfill_profile_with_event;
 
 pub struct ProfilesModule;
 
