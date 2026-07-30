@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-07-30T19:18:00Z",
+  "review_base": "1c27a58320db2d91179beabfda064f22bcf82619",
+  "status": "product_admin_catalog_search_options_error_safety_source_reviewed_unvalidated",
+  "scope": "Product Admin catalog search-options public error boundary",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/rustok-product/admin/Cargo.toml",
+    "crates/rustok-product/admin/src/lib.rs",
+    "crates/rustok-product/admin/src/catalog_transport.rs",
+    "crates/rustok-product/admin/src/transport.rs",
+    "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
+    "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
+    "crates/rustok-product/admin/src/ui/catalog_admin.rs",
+    "scripts/verify/verify-product-admin-boundary.mjs"
+  ],
+  "findings": [
+    {
+      "id": "catalog-options-public-string-cause",
+      "severity": "confirmed",
+      "finding": "The Product Admin catalog search-options fallback converted three GraphQL failures with err.to_string() and returned the resulting String to the UI resource boundary. GraphQL server messages, HTTP status text, or transport classification could therefore become the public error value."
+    },
+    {
+      "id": "native-first-sequence",
+      "severity": "preserved",
+      "finding": "The native search-options endpoint remains the first attempt. Only after native failure does the legacy fallback load bootstrap, categories, and attributes in that order."
+    },
+    {
+      "id": "smallest-compatible-boundary",
+      "severity": "selected",
+      "finding": "The crate-root catalog transport wrapper is the smallest compatible public boundary because it receives the final String after the existing fallback sequence without changing owner calls, projections, or the UI result type."
+    },
+    {
+      "id": "private-cause-safe-shape",
+      "severity": "confirmed",
+      "finding": "The wrapper retains the captured String only in private tracing with a unique correlation id and token/tenant/locale shape facts. It exposes one static public message and does not log request values."
+    },
+    {
+      "id": "remaining-product-admin-scope",
+      "severity": "open",
+      "finding": "Other Product Admin reads and mutations still expose GraphqlHttpError directly and require separate bounded slices; this change does not claim broad Product Admin transport completion."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-product/admin/Cargo.toml",
+    "crates/rustok-product/admin/src/catalog_transport.rs",
+    "crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json",
+    "crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json",
+    "crates/rustok-product/docs/admin-catalog-search-options-error-safety.md",
+    "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs"
+  ],
+  "preserved": [
+    "native-first fallback order",
+    "GraphQL bootstrap, category, and attribute operations",
+    "search-option projection and labels",
+    "UI resource call shape",
+    "ProductCatalogSearchOptions DTO",
+    "no fallback or retry expansion"
+  ],
+  "remaining_scope": [
+    "other Product Admin GraphQL public envelopes",
+    "broader ecommerce correlation-safe mapper cleanup",
+    "focused verifier, Cargo, browser, and mounted fallback execution"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  },
+  "execution": []
+}

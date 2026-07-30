@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -38,6 +38,7 @@
     "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
     "richtext_cutover_inventory": "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json",
     "richtext_cutover_inventory_doc": "crates/rustok-blog/docs/richtext-cutover-inventory.md",
+    "ai_richtext_boundary": "crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-blog-fba.mjs",
     "static_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
@@ -53,6 +54,7 @@
       "npm run test:verify:blog:admin-boundary",
       "npm run test:verify:blog:storefront-boundary",
       "npm run test:verify:blog:graphql-richtext-boundary",
+      "npm run test:verify:blog:ai-richtext-boundary",
       "npm run test:verify:blog:richtext-offline-backfill",
       "npm run test:verify:blog:forum-ui-ownership",
       "npm run test:verify:consumer:fba-runtime-order"
@@ -66,6 +68,7 @@
       "npm run verify:blog:admin-boundary",
       "npm run verify:blog:storefront-boundary",
       "npm run verify:blog:graphql-richtext-boundary",
+      "npm run verify:blog:ai-richtext-boundary",
       "npm run verify:blog:richtext-offline-backfill",
       "npm run verify:blog:forum-ui-ownership",
       "node scripts/verify/verify-consumer-fba-runtime-order.mjs"
@@ -91,6 +94,13 @@
         "verifier": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json"
+      },
+      "ai_richtext_boundary": {
+        "package_script": "verify:blog:ai-richtext-boundary",
+        "test_package_script": "test:verify:blog:ai-richtext-boundary",
+        "verifier": "scripts/verify/verify-blog-ai-richtext-boundary.mjs",
+        "self_test": "scripts/verify/verify-blog-ai-richtext-boundary.test.mjs",
+        "evidence": "crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json"
       },
       "richtext_offline_backfill": {
         "package_script": "verify:blog:richtext-offline-backfill",
