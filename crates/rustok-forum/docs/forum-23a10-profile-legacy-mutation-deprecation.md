@@ -35,7 +35,7 @@ Each diagnostic explains that the replacement couples the owner write to durable
 
 ## Boundary composition
 
-The deprecation warning is the downstream API signal. Inside this repository, the stronger
+The compiler deprecation warning is the downstream API signal. Inside this repository, the stronger
 `FORUM-23A8` source gate still rejects production Rust call sites for the legacy methods. The active
 GraphQL and CLI paths remain bound to `ProfileMutationService` by the `FORUM-23A9` verifier.
 
