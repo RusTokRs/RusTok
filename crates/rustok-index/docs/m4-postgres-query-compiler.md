@@ -72,9 +72,14 @@ by the invariant ascending root `entity_id` tie-breaker. Plain `asc` / `desc` th
 many link remains rejected. Callers must select `min_asc`, `min_desc`, `max_asc`, or
 `max_desc`.
 
-Many-link aggregate ordering is accepted only for sortable scalar integer, decimal, string,
-or timestamp fields and only with bounded offset pagination. Boolean, UUID, list-valued,
+Many-link aggregate ordering is accepted only for sortable scalar integer, string, or
+timestamp fields and only with bounded offset pagination. Boolean, Decimal, UUID, list-valued,
 singular-path, cursor-paginated, and unsortable aggregate orders fail closed.
+
+Decimal ordinary filters and root/one-link ordering remain supported. Only Decimal many-link
+aggregation is deferred because the hidden order column must round-trip through the exact tagged
+`IndexValue` JSON representation; the current PostgreSQL numeric JSON emission is not yet an
+admitted exact `rust_decimal` wire contract.
 
 ## Many-link filter boundary
 
@@ -129,6 +134,10 @@ PostgreSQL aggregate null behavior is the contract:
 - an empty or all-null relation set produces SQL `NULL`;
 - the selected `__order_N` value is SQL null or tagged `IndexValue` JSONB;
 - `ORDER BY` uses the typed scalar expression, explicit null placement, and root ID tie-break.
+
+The admitted aggregate order wire types in this slice are integer, string, and timestamp.
+Decimal and UUID remain rejected until their exact hidden-order transport is independently
+specified and covered by PostgreSQL/reference evidence.
 
 Compiler validation independently rejects forged plans that omit the aggregate on a many path,
 place an aggregate on a singular path, use an unsupported type, mutate nullable metadata, or
@@ -201,8 +210,10 @@ child multiplicity cannot inflate the count.
 
 Aggregate cursor continuation remains rejected until a stable derived-value cursor identity,
 strict null/value continuation semantics, and independent reference coverage are implemented.
-Compiler validation recalculates propagated many metadata and nested projection groups, and
-rejects missing or inconsistent join/field/result contracts before SQL emission.
+Decimal aggregate ordering remains rejected until an exact tagged-wire contract and retained
+PostgreSQL/reference scenario exist. Compiler validation recalculates propagated many metadata
+and nested projection groups, and rejects missing or inconsistent join/field/result contracts
+before SQL emission.
 
 ## Non-claims
 
@@ -212,6 +223,7 @@ This source chain does not:
 - add aggregate scenarios to the retained PostgreSQL/reference fixture or evidence bundle;
 - authorize callers;
 - weaken persisted schema readiness checks;
+- support Decimal aggregate ordering;
 - support aggregate cursor continuation;
 - read source-module tables;
 - change migrations, runtime composition, or production partition lifecycle state.
