@@ -8,6 +8,63 @@ use crate::core::FetchCommerceRequest;
 use crate::model::StorefrontCheckoutWorkspace;
 use crate::model::StorefrontCommerceData;
 
+#[cfg(feature = "ssr")]
+const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str =
+    "commerce_storefront_native_transport";
+#[cfg(feature = "ssr")]
+const STOREFRONT_COMMERCE_CONSUMER_OPERATION: &str = "fetch_storefront_commerce";
+
+#[cfg(feature = "ssr")]
+fn map_storefront_native_validation_error(
+    request_context: &rustok_api::RequestContext,
+    tenant_id: uuid::Uuid,
+    owner_operation: &'static str,
+    error: ApiError,
+) -> ServerFnError {
+    tracing::warn!(
+        error = ?error,
+        owner = "rustok_commerce.storefront_transport",
+        owner_operation,
+        consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION,
+        correlation_id = %request_context.correlation_id,
+        tenant_id = %tenant_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        code = "commerce.storefront_cart_id_invalid",
+        boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+        "storefront commerce request validation failed"
+    );
+    ServerFnError::new("Invalid cart selection")
+}
+
+#[cfg(feature = "ssr")]
+fn map_storefront_native_owner_error<E: std::fmt::Debug>(
+    request_context: &rustok_api::RequestContext,
+    tenant_id: uuid::Uuid,
+    owner: &'static str,
+    owner_operation: &'static str,
+    code: &'static str,
+    public_message: &'static str,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner,
+        owner_operation,
+        consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION,
+        correlation_id = %request_context.correlation_id,
+        tenant_id = %tenant_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        code,
+        boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+        "storefront commerce owner transport failed"
+    );
+    ServerFnError::new(public_message)
+}
+
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,
 ) -> Result<StorefrontCommerceData, ApiError> {
@@ -29,6 +86,7 @@ async fn storefront_commerce_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let tenant_id = tenant.id;
         let normalized_locale = shared_adapter::resolve_requested_locale(
             locale,
             Some(request_context.locale.as_str()),
@@ -48,7 +106,14 @@ async fn storefront_commerce_native(
         };
 
         let Some((normalized_cart_id, _)) = shared_adapter::parse_cart_id(selected_cart_id)
-            .map_err(|err| ServerFnError::new(err.to_string()))?
+            .map_err(|error| {
+                map_storefront_native_validation_error(
+                    &request_context,
+                    tenant_id,
+                    "parse_cart_id",
+                    error,
+                )
+            })?
         else {
             return Ok(data);
         };
@@ -59,7 +124,17 @@ async fn storefront_commerce_native(
             ),
         )
         .await
-        .map_err(|err| ServerFnError::new(err.to_string()))?;
+        .map_err(|error| {
+            map_storefront_native_owner_error(
+                &request_context,
+                tenant_id,
+                "rustok_cart.storefront",
+                "fetch_cart",
+                "commerce.storefront_cart_unavailable",
+                "Storefront cart data is temporarily unavailable",
+                error,
+            )
+        })?;
         let payment_collection = if cart_data.cart.is_some() {
             rustok_payment_storefront::transport::fetch_payment_collection(
                 rustok_payment_storefront::transport::build_payment_collection_fetch_request(
@@ -67,7 +142,17 @@ async fn storefront_commerce_native(
                 ),
             )
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?
+            .map_err(|error| {
+                map_storefront_native_owner_error(
+                    &request_context,
+                    tenant_id,
+                    "rustok_payment.storefront",
+                    "fetch_payment_collection",
+                    "commerce.storefront_payment_collection_unavailable",
+                    "Storefront payment collection is temporarily unavailable",
+                    error,
+                )
+            })?
         } else {
             None
         };
