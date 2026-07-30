@@ -1,0 +1,237 @@
+name: Agent Blog AI richtext writer
+
+on:
+  push:
+    branches:
+      - agent/blog-ai-richtext-writer-20260730
+
+permissions:
+  contents: write
+
+jobs:
+  apply-source-slice:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/blog-ai-richtext-writer-20260730
+          fetch-depth: 0
+
+      - name: Apply Blog AI richtext writer slice
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:120]!r}")
+              target.write_text(text.replace(old, new, 1))
+
+          direct = "crates/rustok-ai/src/direct.rs"
+          replace_once(
+              direct,
+              "use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};",
+              "use rustok_blog::richtext::article_document_from_plain_text;\nuse rustok_blog::{CreatePostInput, PostService, UpdatePostInput};",
+          )
+          replace_once(
+              direct,
+              "use rustok_core::{CONTENT_FORMAT_MARKDOWN, SecurityContext};",
+              "use rustok_core::SecurityContext;",
+          )
+          replace_once(
+              direct,
+              """        body: normalize_optional_text(input.source_body.clone())
+            .or_else(|| existing_post.map(|post| post.body.clone())),""",
+              """        body: normalize_optional_text(input.source_body.clone())
+            .or_else(|| {
+                existing_post
+                    .and_then(|post| normalize_optional_text(post.content_plain_text.clone()))
+            })
+            .or_else(|| existing_post.map(|post| post.body.clone())),""",
+          )
+          replace_once(
+              direct,
+              """                        body: Some(body.clone()),
+                        body_format: Some(CONTENT_FORMAT_MARKDOWN.to_string()),
+                        content_json: None,
+                        content: None,""",
+              """                        body: None,
+                        body_format: None,
+                        content_json: None,
+                        content: Some(article_document_from_plain_text(&body)),""",
+          )
+          replace_once(
+              direct,
+              """        body: body.to_string(),
+        body_format: CONTENT_FORMAT_MARKDOWN.to_string(),
+        content_json: None,
+        content: None,""",
+              """        body: String::new(),
+        body_format: \"richtext\".to_string(),
+        content_json: None,
+        content: Some(article_document_from_plain_text(body)),""",
+          )
+          replace_once(
+              direct,
+              """        assert_eq!(create.title, \"Generated title\");
+        assert_eq!(create.tags, vec![\"ai\".to_string()]);""",
+              """        assert_eq!(create.title, \"Generated title\");
+        assert!(create.body.is_empty());
+        assert_eq!(create.body_format, \"richtext\");
+        assert!(create.content_json.is_none());
+        let content = create.content.as_ref().expect(\"canonical article content\");
+        assert_eq!(content.kind, \"doc\");
+        assert_eq!(content.content.len(), 1);
+        assert_eq!(
+            content.content[0].content[0].text.as_deref(),
+            Some(\"Generated body\")
+        );
+        assert_eq!(create.tags, vec![\"ai\".to_string()]);""",
+          )
+
+          inventory_path = Path("crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json")
+          inventory = json.loads(inventory_path.read_text())
+          ai_check = next(check for check in inventory["checks"] if check["name"] == "ai_blog_draft_writer")
+          ai_check["status"] = "implemented_source_verified_no_compile"
+          ai_check["required_markers"] = [
+              "use rustok_blog::richtext::article_document_from_plain_text;",
+              "post.content_plain_text.clone()",
+              "body: None,",
+              "body_format: None,",
+              "content: Some(article_document_from_plain_text(&body))",
+              "body: String::new(),",
+              "body_format: \"richtext\".to_string(),",
+              "content: Some(article_document_from_plain_text(body))",
+          ]
+          ai_check["forbidden_markers"] = [
+              "CONTENT_FORMAT_MARKDOWN",
+              "content: None",
+              "body: Some(body.clone())",
+              "body: body.to_string()",
+          ]
+          inventory["blocking_surfaces"] = ["storage_schema"]
+          inventory_path.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n")
+
+          replace_once(
+              "scripts/verify/verify-blog-fba.mjs",
+              "['storage_schema', 'ai_blog_draft_writer']",
+              "['storage_schema']",
+          )
+
+          Path("crates/rustok-blog/docs/richtext-cutover-inventory.md").write_text("""# Blog article richtext cutover inventory
+
+Status: `in_progress_source_verified_no_compile`.
+
+The Blog article cutover is atomic. A surface is not considered migrated merely because it can expose `RichTextDocument` or `RichTextView`; storage, every writer, every reader, Search, SEO, and AI must agree on the same owner contract before compatibility fields are removed.
+
+## Owner contract
+
+- writes: `rustok_api::RichTextDocument`
+- reads: `rustok_api::RichTextView`
+- text consumers: server-derived plain text
+- fixed owner profile: `article`
+
+## Implemented boundaries
+
+- `crates/rustok-blog/src/richtext.rs` owns article validation, canonical JSON, HTML projection, and plain-text projection.
+- The same owner module exposes `article_document_from_plain_text` for format-free text import. Blank lines delimit canonical paragraphs; the adapter accepts no Markdown alias, raw JSON, HTML, or caller-selected profile.
+- GraphQL exposes canonical writes and reads while temporary compatibility declarations remain contained in `graphql/types.rs`.
+- Next admin uses a shared `RichTextDocument` editor and consumes `RichTextView`.
+- Blog Leptos storefront GraphQL and native transports now carry the same `RichTextView` plus server-derived plain text; the UI renders only owner-generated HTML.
+- **SEO projection** summarizes `PostResponse.content_plain_text` for descriptions, OpenGraph, structured data, and template fields; legacy `PostResponse.body` is not read.
+- **Search projection** parses canonical storage rows as `RichTextDocument` and derives their body through `rustok-content::plain_text` with the fixed `Article` profile in the same projector transaction. Legacy storage rows retain a contained raw-body fallback until the storage migration removes `body_format`.
+- **AI Blog draft writer** converts generated text through `article_document_from_plain_text` and sends canonical `content` on create and update. Existing-post source resolution prefers server-derived `content_plain_text`; the raw body is retained only as a temporary legacy-row fallback.
+
+## Blocking surface
+
+1. **Storage schema** — `blog_post_translations` still stores canonical documents in the compatibility `body` / `body_format` columns. The migration must introduce the target canonical document and server-derived text representation before those columns and transport compatibility fields can be removed.
+
+The storage transition must land atomically with GraphQL compatibility removal, Search fallback removal, and physical deletion of the quarantined storefront summarizers. Until then, implemented writers and readers continue using the owner contract over the compatibility storage representation.
+
+## Executable evidence
+
+`crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json` records the exact source markers for completed and blocked surfaces. `scripts/verify/verify-blog-fba.mjs` validates the inventory as part of the existing Blog FBA chain.
+
+The verifier is a source guard only. Compilation, runtime tests, migration execution, Search reindex verification, and browser parity remain user-owned.
+""")
+
+          plan = "crates/rustok-blog/docs/implementation-plan.md"
+          replace_once(
+              plan,
+              """The now-unused pure-core body-format summarizer
+remains to be removed, and storage, the AI Blog draft writer, remaining Leptos
+cleanup, and final compatibility removal must still finish atomically.""",
+              """The AI Blog draft writer now converts generated text through the owner plain-text
+adapter and sends canonical `RichTextDocument` content for create/update; when
+copying an existing post it prefers server-derived plain text and retains raw body
+only for legacy rows. The quarantined pure-core body-format summarizers remain to
+be removed, and storage plus final compatibility removal must still finish
+atomically.""",
+          )
+          replace_once(
+              plan,
+              """- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
+  the single temporary `types.rs` adapter/conversion owner, symmetric create/update
+  conversion regression coverage, resolver delegation, verifier, self-test, and
+  npm/FBA registration are implemented; execution is user-owned.
+""",
+              """- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
+  the single temporary `types.rs` adapter/conversion owner, symmetric create/update
+  conversion regression coverage, resolver delegation, verifier, self-test, and
+  npm/FBA registration are implemented; execution is user-owned.
+- AI Blog draft writer: `source_verified_no_compile`; generated text is imported
+  through the Blog owner adapter and canonical `content` is sent for both create
+  and update, while existing-post input prefers server-derived plain text.
+""",
+          )
+          replace_once(
+              plan,
+              """21. Migrated canonical Blog Search rows to the shared `Article` plain-text policy
+    in the same projector transaction, retained a contained legacy storage
+    fallback, and made invalid canonical documents fail closed before commit.
+""",
+              """21. Migrated canonical Blog Search rows to the shared `Article` plain-text policy
+    in the same projector transaction, retained a contained legacy storage
+    fallback, and made invalid canonical documents fail closed before commit.
+22. Migrated the AI Blog draft writer to the owner plain-text import adapter:
+    create/update now send canonical `RichTextDocument` content, existing-post
+    source prefers server-derived plain text, and Markdown compatibility writes
+    are forbidden by the Blog FBA inventory.
+""",
+          )
+          replace_once(
+              plan,
+              """6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
+   boundary, Next admin, Blog storefront reads, SEO, and canonical Search
+   projection are implemented; storage, AI draft writes, remaining Leptos cleanup,
+   and compatibility removal remain.** The registered GraphQL/storefront/FBA
+   guardrails are containment measures, not the completed cutover. Replace the
+   string body plus `content_json` transport everywhere with `RichTextDocument`,
+   migrate `blog_post_translations` and relevant revision/audit data, switch the AI
+   Blog draft writer to the owner text-import adapter, remove the unused storefront
+   format summarizer, and remove Search's legacy raw-body fallback with the storage
+   transition.""",
+              """6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
+   boundary, Next admin, Blog storefront reads, SEO, canonical Search projection,
+   and AI draft writes are implemented; storage and final compatibility removal
+   remain.** The registered GraphQL/storefront/FBA guardrails are containment
+   measures, not the completed cutover. Migrate `blog_post_translations` and
+   relevant revision/audit data to the target canonical document plus server-derived
+   text representation, remove the temporary string body / `content_json` transport,
+   physically delete the quarantined storefront format summarizers, and remove
+   Search's legacy raw-body fallback in the same storage transition.""",
+          )
+
+          Path(".github/workflows/agent-blog-ai-richtext-writer.yml").unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(blog): write AI drafts as owner richtext"
+          git push origin HEAD:agent/blog-ai-richtext-writer-20260730
