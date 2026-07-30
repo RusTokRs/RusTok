@@ -1,20 +1,65 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "comments",
-  "status": "planned_cases_locked",
+  "surface": "comments_thread_port_boundary",
+  "role": "provider",
   "generated_from": "crates/rustok-comments/contracts/comments-fba-registry.json",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "pending",
+  "source_contract": {
+    "shared_port_policy": "crates/rustok-api/src/ports.rs",
+    "provider_port": "crates/rustok-comments/src/ports.rs",
+    "public_projection": "crates/rustok-comments/src/public_read.rs",
+    "dto": "crates/rustok-comments/src/dto.rs",
+    "richtext": "crates/rustok-comments/src/richtext.rs",
+    "provider_registry": "crates/rustok-comments/contracts/comments-fba-registry.json"
+  },
+  "profiles": {
+    "source_verified": ["in_process"],
+    "pending": ["remote_adapter_placeholder"]
+  },
   "cases": [
-    {"operation": "create_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]},
-    {"operation": "get_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"]},
-    {"operation": "list_comments_for_target", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
-    {"operation": "list_public_comments_for_target", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"]},
-    {"operation": "update_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]},
-    {"operation": "set_comment_status", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
-    {"operation": "delete_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]}
+    {
+      "operation": "create_comment",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "get_comment",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "list_comments_for_target",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "list_public_comments_for_target",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "update_comment",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "set_comment_status",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "delete_comment",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "runtime_evidence": "pending"
+    }
   ],
   "fallback_smoke": {
     "status": "planned",
     "profiles": ["embedded_native"],
-    "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"]
+    "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
+    "runtime_evidence": "pending"
   }
 }
