@@ -45,6 +45,15 @@ cleanup, and module-disabled cleanup followed by enable-time rebuild. Source-tab
 availability resolves through the active PostgreSQL `search_path` instead of
 hard-coding `public`.
 
+The retained Blog projection evidence is
+`crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
+guarded by `scripts/verify/verify-search-blog-projection.mjs` and focused fixture
+`scripts/verify/verify-search-blog-projection.test.mjs`. Exact commands
+`verify:search:blog-projection` and `test:verify:search:blog-projection` run after
+the canonical URL leaf in the Search FBA verify/test chains. The aggregate guard
+locks their paths, commands, order, test targets, and `executable_no_run` status;
+PostgreSQL execution remains maintainer-owned.
+
 Forum public category, topic, and approved-reply projections now support an exact
 category filter through the existing bounded `category_ids` query field. Product
 queries retain normalized `index_product_categories` matching. Forum category
@@ -103,6 +112,12 @@ projection can remain stale after recovery.
   chains by `scripts/verify/verify-search-fba.mjs`.
 - Blog projection evidence:
   `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
+- Blog projection guardrail and fixture:
+  `scripts/verify/verify-search-blog-projection.mjs` and
+  `scripts/verify/verify-search-blog-projection.test.mjs`.
+- Blog projection leaf commands: `verify:search:blog-projection` and
+  `test:verify:search:blog-projection`; exact commands and aggregate order are
+  locked by `scripts/verify/verify-search-fba.mjs`.
 - Blog projection harness status: `executable_no_run`; execution remains user-owned
   and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
 - Exact Forum category filter status: `source_complete_execution_pending`.
@@ -174,6 +189,9 @@ rebuild behavior through replayable event transport.
 14. Reconciled the canonical URL fixture with the expanded Forum/admin verifier,
     added exact verify/test leaf commands, and locked both commands plus their
     order into the Search FBA aggregate package chains.
+15. Registered the existing Blog projection harness as a first-class Search FBA
+    leaf, added exact verify/test commands, and bound evidence, verifier, fixture,
+    test targets, status, and aggregate order without recording PostgreSQL execution.
 
 ## Next results
 
@@ -222,10 +240,10 @@ should run the relevant subset, including:
 - `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
+- `npm run verify:search:blog-projection`
+- `npm run test:verify:search:blog-projection`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
-- `node scripts/verify/verify-search-blog-projection.mjs`
-- `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `npm run verify:search:fba`
 - `npm run test:verify:search:fba`
 - `npm run verify:search:ui-boundary`
