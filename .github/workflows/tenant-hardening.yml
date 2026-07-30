@@ -46,6 +46,7 @@ env:
     apps/storefront/src/shared/context/enabled_modules.rs
     apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs
     crates/rustok-auth/cli/src/lib.rs
+    crates/rustok-tenant/admin/src/transport/native_server_adapter.rs
     crates/rustok-tenant/src/dto/mod.rs
     crates/rustok-tenant/src/lib.rs
     crates/rustok-tenant/src/migrations/m20260726_000001_enforce_tenant_locale_policy.rs
@@ -96,9 +97,10 @@ jobs:
           node scripts/verify/verify-tenant-locale-policy-migration.mjs
           node scripts/verify/verify-tenant-hardening-workflow.mjs
           npm run verify:tenant:fba
-      - name: Compile tenant and storefront boundaries
+      - name: Compile tenant, admin and storefront boundaries
         run: |
           cargo check -p rustok-tenant --tests
+          cargo check -p rustok-tenant-admin --features ssr
           cargo check -p rustok-storefront
           cargo check -p rustok-auth-cli --tests
       - name: Focused unit and lifecycle guards
