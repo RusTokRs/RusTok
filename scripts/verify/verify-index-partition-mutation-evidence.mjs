@@ -101,7 +101,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition mutation/WAL evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.',
   '- [ ] Execute retained PostgreSQL maintenance and cutover evidence.',
-  'The tenth M3 slice adds owner-operated baseline/shadow mutation and WAL evidence.',
+  '10. The mutation/WAL runner validates the same manifest and catalog, requires count',
+  'parity and matching generic anchors, executes rollback-only mutation samples,',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [
