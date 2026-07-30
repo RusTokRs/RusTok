@@ -7,6 +7,7 @@ mod schema_lease;
 mod schema_registration;
 mod secondary_index;
 mod source_factory;
+mod source_reconciliation_runner;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_runner;
@@ -23,6 +24,8 @@ mod schema_lease_tests;
 mod schema_registration_tests;
 #[cfg(test)]
 mod secondary_index_tests;
+#[cfg(test)]
+mod source_reconciliation_runner_tests;
 #[cfg(test)]
 mod source_replay_job_tests;
 #[cfg(test)]
@@ -61,6 +64,11 @@ pub use source_factory::{
     PostgresIndexSourceFactory, PostgresIndexSourceFactoryCatalog,
     PostgresIndexSourceFactoryDescriptor, PostgresIndexSourceFactoryError,
     materialize_postgres_index_sources, register_postgres_index_source_factory,
+};
+pub use source_reconciliation_runner::{
+    IndexReconciliationCancelOutcome, IndexReconciliationRunError,
+    IndexReconciliationRunOutcome, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
+    IndexReconciliationTerminalState, PostgresIndexReconciliationRunner,
 };
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
