@@ -12,7 +12,6 @@ import {
   absolutePath,
   analyzeWindow,
   artifactDescriptor,
-  canonicalRegularFile,
   ensure,
   ensureAbsent,
   ensureInventory,
@@ -28,6 +27,7 @@ import {
   writeJsonNew,
   writeNewFile,
 } from './lib/social-graph-privacy-shadow-evidence.mjs';
+import { canonicalizeSnapshot } from './lib/social-graph-privacy-shadow-canonical.mjs';
 
 const CAPTURE_OPT_IN = 'SOCIAL_GRAPH_PRIVACY_SHADOW_ALLOW_CAPTURE';
 const START_INPUT_ENV = 'SOCIAL_GRAPH_PRIVACY_SHADOW_START_PROM';
@@ -46,16 +46,30 @@ function required(name) {
   return value.trim();
 }
 
+function canonicalInput(value, workspaceRoot, label) {
+  const requested = absolutePath(value, workspaceRoot);
+  const requestedMetadata = fs.lstatSync(requested);
+  ensure(requestedMetadata.isFile() && !requestedMetadata.isSymbolicLink(), `${label} must be a regular non-symlink file`);
+  const resolved = fs.realpathSync(requested);
+  const resolvedMetadata = fs.lstatSync(resolved);
+  ensure(resolvedMetadata.isFile() && !resolvedMetadata.isSymbolicLink(), `${label} must resolve to a regular file`);
+  return resolved;
+}
+
 function loadConfig() {
   ensure(process.env[CAPTURE_OPT_IN] === '1', `${CAPTURE_OPT_IN}=1 is required`);
-  const workspaceRoot = fs.realpathSync(absolutePath(process.env[WORKSPACE_ENV] || process.cwd()));
-  const workspaceMetadata = fs.lstatSync(workspaceRoot);
-  ensure(workspaceMetadata.isDirectory() && !workspaceMetadata.isSymbolicLink(), 'workspace must be a regular non-symlink directory');
+  const requestedWorkspace = absolutePath(process.env[WORKSPACE_ENV] || process.cwd());
+  const requestedWorkspaceMetadata = fs.lstatSync(requestedWorkspace);
+  ensure(
+    requestedWorkspaceMetadata.isDirectory() && !requestedWorkspaceMetadata.isSymbolicLink(),
+    'workspace must be a regular non-symlink directory',
+  );
+  const workspaceRoot = fs.realpathSync(requestedWorkspace);
   ensure(fs.statSync(path.join(workspaceRoot, 'Cargo.toml')).isFile(), 'workspace must contain Cargo.toml');
   ensure(fs.existsSync(path.join(workspaceRoot, '.git')), 'workspace must be a Git checkout');
 
-  const startInput = canonicalRegularFile(absolutePath(required(START_INPUT_ENV), workspaceRoot), 'start snapshot');
-  const endInput = canonicalRegularFile(absolutePath(required(END_INPUT_ENV), workspaceRoot), 'end snapshot');
+  const startInput = canonicalInput(required(START_INPUT_ENV), workspaceRoot, 'start snapshot');
+  const endInput = canonicalInput(required(END_INPUT_ENV), workspaceRoot, 'end snapshot');
   ensure(startInput !== endInput, 'start and end snapshots must be different files');
 
   const commit = required(COMMIT_ENV);
@@ -91,6 +105,13 @@ function loadConfig() {
   };
 }
 
+function validateRunner(runner) {
+  for (const [key, value] of Object.entries(runner)) {
+    ensure(typeof value === 'string' && value.length >= 1 && value.length <= 128, `runner ${key} must contain 1-128 characters`);
+    ensure(/^[\x20-\x7E]+$/.test(value), `runner ${key} must contain printable ASCII only`);
+  }
+}
+
 function publishBundle(config, descriptor, startBytes, endBytes) {
   ensureAbsent(config.outputRoot, 'privacy-shadow evidence output');
   const parent = path.dirname(config.outputRoot);
@@ -118,11 +139,25 @@ function main() {
   const config = loadConfig();
   ensureAbsent(config.outputRoot, 'privacy-shadow evidence output');
   verifySourceIdentity(config.workspaceRoot, config.commit);
-  const startBytes = readStableRegularFile(config.startInput, MAX_SNAPSHOT_BYTES, 'start Prometheus snapshot');
-  const endBytes = readStableRegularFile(config.endInput, MAX_SNAPSHOT_BYTES, 'end Prometheus snapshot');
+  const rawStart = readStableRegularFile(config.startInput, MAX_SNAPSHOT_BYTES, 'start Prometheus snapshot');
+  const rawEnd = readStableRegularFile(config.endInput, MAX_SNAPSHOT_BYTES, 'end Prometheus snapshot');
   verifySourceIdentity(config.workspaceRoot, config.commit);
 
-  const metrics = analyzeWindow(parseSnapshot(startBytes), parseSnapshot(endBytes), config.window);
+  const startSnapshot = parseSnapshot(rawStart);
+  const endSnapshot = parseSnapshot(rawEnd);
+  const startBytes = canonicalizeSnapshot(startSnapshot);
+  const endBytes = canonicalizeSnapshot(endSnapshot);
+  const metrics = analyzeWindow(startSnapshot, endSnapshot, config.window);
+  const windowStartSeconds = Math.floor(Date.parse(config.window.started_at) / 1000);
+  ensure(
+    metrics.collector_started_timestamp_seconds <= windowStartSeconds + 60,
+    'collector epoch is later than the declared evidence-window start',
+  );
+  const runner = runnerIdentity(
+    ['SOCIAL_GRAPH_PRIVACY_SHADOW_CAPTURE_JOB', 'GITHUB_JOB'],
+    'social-graph-privacy-shadow-capture',
+  );
+  validateRunner(runner);
   const descriptor = {
     contract: CAPTURE_CONTRACT,
     completed_at: new Date().toISOString(),
@@ -132,10 +167,7 @@ function main() {
       run_key: config.runKey,
       clean_worktree: true,
     },
-    runner: runnerIdentity(
-      ['SOCIAL_GRAPH_PRIVACY_SHADOW_CAPTURE_JOB', 'GITHUB_JOB'],
-      'social-graph-privacy-shadow-capture',
-    ),
+    runner,
     window: config.window,
     start: artifactDescriptor(START_FILE, startBytes),
     end: artifactDescriptor(END_FILE, endBytes),
