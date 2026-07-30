@@ -26,7 +26,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 ## Current state
 
 - Rewrite status: `in_progress`
-- Current milestone: `M6 - bounded multi-page replay cancellation (source complete; in-page interruption, scheduling, and retained evidence open)`
+- Current milestone: `M6 - replay runtime host composition and operator guard (source complete; scheduler, graceful shutdown, command transport, and retained evidence open)`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -67,6 +67,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M6 one-page replay and durable checkpoint progression: `source_complete`
 - M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`
 - M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`
+- M6 replay runtime host composition and operator guard: `source_complete_owner_execution_pending`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
   full-capture orchestration, exact-byte packet assembly, retained bundle review,
@@ -81,10 +82,12 @@ pull requests record checks and PostgreSQL runs that were not executed.
   bounded source replay/load contracts, one-page replay mutation application, durable
   rebuild checkpoint progression, schema-scoped rebuild job claims, lease/heartbeat,
   attempt fencing, fenced checkpoint writes, bounded multi-page execution, immediate
-  pending resume, durable cancellation requests, and fenced between-page terminal
-  cancellation are implemented; one retained admitted packet, live PostgreSQL/reference
-  equivalence, in-page interruption, retry/backoff, dead-letter scheduling, host
-  scheduling, freshness/recovery evidence, authoritative consumer cutover, and
+  pending resume, durable cancellation requests, fenced between-page terminal
+  cancellation, immutable source-registry host materialization, shared replay-runtime
+  publication, and request-bound operator authorization are implemented; one retained
+  admitted packet, live PostgreSQL/reference equivalence, in-page interruption,
+  retry/backoff, dead-letter scheduling, host scheduling, graceful task shutdown,
+  command transport, freshness/recovery evidence, authoritative consumer cutover, and
   production partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
@@ -100,10 +103,11 @@ nested identities/values, lookahead pagination, and scoped cursor construction,
 repeatable-read page/count snapshot, source-owned schema and replay catalogs, a
 neutral bounded `IndexSource` scan/load boundary, a one-page replay executor,
 `PostgresIndexReplayJobStore` for durable fenced schema-scoped rebuild ownership,
-a lease-bound PostgreSQL rebuild-checkpoint adapter, and
-`PostgresIndexReplayRunner` for bounded heartbeat/yield/cancellation execution.
-Owner-operated evidence tools live under `ops/benches`; they do not become runtime
-storage code.
+a lease-bound PostgreSQL rebuild-checkpoint adapter, `PostgresIndexReplayRunner` for
+bounded heartbeat/yield/cancellation execution, and `SharedIndexReplayRuntime` for
+host capability transfer. The server publishes `IndexReplayOperatorRuntime` as the
+request-bound authorization boundary. Owner-operated evidence tools live under
+`ops/benches`; they do not become runtime storage code.
 
 ## Ownership
 
@@ -147,11 +151,15 @@ crates/rustok-index/src/
     source_replay.rs
     source_replay_job.rs
     source_replay_runner.rs
+    replay_runtime.rs
     schema_lease.rs
     secondary_index.rs
     partition_admission.rs
     query_port.rs
   api/
+
+apps/server/src/services/
+  index_replay_runtime_composition.rs
 
 ops/benches/src/index_storage/
   runner.rs
@@ -446,29 +454,43 @@ database, or transport causes stay in owner logs.
       and require a durable null-cursor checkpoint before terminal success.
 - [x] Add bounded multi-page execution with heartbeat cadence and immediate pending resume.
 - [x] Add durable cancellation requests and fenced between-page terminal cancellation.
-- [ ] Bind job requests directly to the materialized source registry in server composition.
+- [x] Bind job requests directly to the materialized source registry in server composition.
 - [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.
 - [ ] Add bounded retry/backoff, dead-letter state, and global scheduling ownership.
 - [ ] Add locale/partition replay checkpoint dimensions.
 - [ ] Add reconciliation and drift repair.
-- [ ] Cover crash, lease expiry, restart, cancellation, and incremental/full
+- [ ] Cover crash, lease expiry, restart, cancellation, authorization, and incremental/full
       equivalence with retained PostgreSQL evidence.
 
 The one-page executor, replay job store, checkpoint adapter, bounded multi-page runner,
-and cancellation path are source complete. `PostgresIndexReplayJobStore` serializes one
-tenant/schema claim, validates the exact `index_replay_job_v1` request and active persisted
-schema, reclaims expired attempts with an incremented fence, and rejects stale heartbeat or
-terminal updates. `PostgresIndexReplayCheckpointStore` is constructed from the acquired
-lease; it locks and validates that exact attempt before every checkpoint read or write.
+cancellation path, and host composition are source complete. `PostgresIndexReplayJobStore`
+serializes one tenant/schema claim, validates the exact `index_replay_job_v1` request and
+active persisted schema, reclaims expired attempts with an incremented fence, and rejects
+stale heartbeat or terminal updates. `PostgresIndexReplayCheckpointStore` is constructed
+from the acquired lease; it locks and validates that exact attempt before every checkpoint
+read or write.
+
 `PostgresIndexReplayRunner` resolves the source from the materialized registry, executes at
 most 1024 pages, heartbeats between pages, completes only after a durable JSON null cursor,
 and returns unfinished work to immediately claimable `pending` state while preserving the
 same job UUID and checkpoint. `request_cancel` terminalizes pending jobs immediately and
-marks running jobs for observation before/after pages; success, failure, and yield all require
-`cancel_requested = FALSE`, so cancellation committed first cannot be overwritten. A running
-cancel request survives reclaim and is terminalized by the next fenced attempt before source
-access. In-page interruption, automatic retry/backoff, dead-letter scheduling, host scheduling,
-and retained multi-instance PostgreSQL evidence remain open.
+marks running jobs for observation before/after pages; success, failure, and yield all
+require `cancel_requested = FALSE`, so cancellation committed first cannot be overwritten.
+A running cancel request survives reclaim and is terminalized by the next fenced attempt
+before source access.
+
+The server materializes `SharedIndexSourceRegistry` only after all selected modules have
+registered their source-owned schema and replay contracts. The Index-owned
+`materialize_postgres_index_replay_runtime` requires both immutable registries, performs no
+SQL, starts no task, and publishes only bounded `run` and `request_cancel` through
+`SharedIndexReplayRuntime`.
+
+`IndexReplayOperatorRuntime` requires an exact request-bound tenant/actor permission snapshot,
+requires `modules:manage`, rejects cross-tenant run requests before delegation, and derives
+cancel tenant scope only from the authorized context. GraphQL, HTTP, CLI, and admin transports
+must not call the raw replay runtime directly. In-page interruption, automatic retry/backoff,
+dead-letter scheduling, host scheduling, graceful task shutdown, command/audit transports,
+production source adapters, and retained multi-instance PostgreSQL evidence remain open.
 
 ### M7 - First vertical slice
 
@@ -525,6 +547,8 @@ cargo test -p rustok-index source_registry --lib -- --nocapture
 cargo test -p rustok-index source_replay --lib -- --nocapture
 cargo test -p rustok-index source_replay_job --lib -- --nocapture
 cargo test -p rustok-index source_replay_runner --lib -- --nocapture
+cargo test -p rustok-index replay_runtime --lib -- --nocapture
+cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
 cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
@@ -569,6 +593,7 @@ node scripts/verify/verify-index-many-link-filtering.mjs
 node scripts/verify/verify-index-source-replay-contract.mjs
 node scripts/verify/verify-index-replay-job-leases.mjs
 node scripts/verify/verify-index-replay-multipage-runner.mjs
+node scripts/verify/verify-index-replay-runtime-composition.mjs
 ```
 
 ## Progress log
@@ -620,8 +645,13 @@ node scripts/verify/verify-index-replay-multipage-runner.mjs
 - 2026-07-30: added durable pending/running cancellation requests, typed terminal and
   not-found outcomes, cancellation observation before/after bounded pages, cancellation
   persistence across reclaim, and cancel-first fenced success/failure/yield transitions.
+- 2026-07-30: materialized the immutable source registry in server composition, added
+  `SharedIndexReplayRuntime`, transferred it through the typed host seam, and published
+  `IndexReplayOperatorRuntime` with exact request-bound tenant/actor scope and
+  `modules:manage`. Composition performs no SQL and starts no task.
 - Repository test/fixture suites, verifiers, in-page interruption, automatic retry/backoff,
-  dead-letter and host scheduling, live freshness/recovery evidence, one admitted
+  dead-letter and host scheduling, graceful task shutdown, authorized command transports,
+  production source adapters, live freshness/recovery evidence, one admitted
   PostgreSQL/reference equivalence bundle, and one real full PostgreSQL partition packet
   remain for the owner to execute and admit before authoritative consumer or production
   partition cutover.
@@ -631,10 +661,10 @@ node scripts/verify/verify-index-replay-multipage-runner.mjs
 - Cycle: `cycle-001`
 - Status: `blocked`
 - Last verified at (UTC): `2026-07-30`
-- Scope inspected: `Index ownership, migrations, mutation/version ordering, query execution, partition evidence guards, Social Graph consumer authority, privacy shadow deadline behavior, source replay ownership, replay checkpoint ordering, replay job attempt fencing, bounded multi-page replay progression, cancellation ordering, and source/search/server boundaries`
+- Scope inspected: `Index ownership, migrations, mutation/version ordering, query execution, partition evidence guards, Social Graph consumer authority, privacy shadow deadline behavior, source replay ownership, replay checkpoint ordering, replay job attempt fencing, bounded multi-page replay progression, cancellation ordering, host replay composition, operator authorization, and source/search/server boundaries`
 - Findings: `P0=0, P1=2, P2=0, P3=1`
-- Fixed in this pass: `bounded the non-authoritative Social Graph privacy comparison by the remaining caller deadline while preserving the owner result; repaired stale Index scale/FBA and retained-artifact guards; added a canonical bounded source replay/load registry; added one-page replay mutation application with stable event checks and checkpoint progression only after durable mutation outcomes; added schema-scoped rebuild job claims with lease/heartbeat, expired-attempt reclaim, attempt fencing, fenced checkpoint access, durable null-cursor-gated success, bounded multi-page execution with between-page heartbeat and immediate pending resume, and durable cancel-first terminalization`
-- Remaining risks or blockers: `one retained admitted real PostgreSQL partition packet is absent; live PostgreSQL/reference query equivalence remains open; in-page interruption, automatic retry/backoff, dead-letter scheduling, host scheduling, locale/partition checkpoint dimensions, and production source adapters remain absent; no retained per-tenant freshness/watermark, lag, negative-result safety, outage/restart/backlog catch-up, cancellation, or replay-repair evidence exists; consumer and production partition cutover remain forbidden`
-- Evidence: `PR #2544 merged as b647a5a17f27b34a07c20cd57525ed1806994c49; PR #2554 merged as 5b9d49e65295819ee9e8e9c199688c0e2ac73d35; PR #2576 merged as aef96f57d3babc2efdc65cc0c57cfea6fb48b5ad; same-SHA Index Storage Scale Run Contract and full Scale Evidence contract passed JavaScript syntax, workflow contracts, repository contracts, direct validator arguments and fixture suites; source replay registry, one-page checkpoint progression, replay job fencing, bounded multi-page runner, and cancellation source are present without implementation-agent test execution; general CI/Hardening received no jobs; Rust-hosted smoke previously stopped before compilation because Cargo.lock required an Athanor update under --locked`
-- Next action: `bind the replay runner into host/server composition with explicit operator authorization and graceful shutdown ownership, then add the first Product source adapter before executing retained PostgreSQL packet, live query equivalence, and per-tenant freshness/outage/recovery evidence`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-index --all-targets && node scripts/verify/verify-index-query-contract.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`
+- Fixed in this pass: `bounded the non-authoritative Social Graph privacy comparison by the remaining caller deadline while preserving the owner result; repaired stale Index scale/FBA and retained-artifact guards; added a canonical bounded source replay/load registry; added one-page replay mutation application with stable event checks and checkpoint progression only after durable mutation outcomes; added schema-scoped rebuild job claims with lease/heartbeat, expired-attempt reclaim, attempt fencing, fenced checkpoint access, durable null-cursor-gated success, bounded multi-page execution with between-page heartbeat and immediate pending resume, durable cancel-first terminalization, immutable source-registry host materialization, one shared replay runtime, and a request-bound modules:manage operator guard`
+- Remaining risks or blockers: `one retained admitted real PostgreSQL partition packet is absent; live PostgreSQL/reference query equivalence remains open; in-page interruption, automatic retry/backoff, dead-letter scheduling, host scheduling, graceful task shutdown, authorized command transports, locale/partition checkpoint dimensions, and production source adapters remain absent; no retained per-tenant freshness/watermark, lag, negative-result safety, outage/restart/backlog catch-up, cancellation, authorization, or replay-repair evidence exists; consumer and production partition cutover remain forbidden`
+- Evidence: `PR #2544 merged as b647a5a17f27b34a07c20cd57525ed1806994c49; PR #2554 merged as 5b9d49e65295819ee9e8e9c199688c0e2ac73d35; PR #2576 merged as aef96f57d3babc2efdc65cc0c57cfea6fb48b5ad; PR #2578 merged as 9d725de7bac2039c86d5b5dffdf5d6be1b4812a8; same-SHA Index Storage Scale Run Contract and full Scale Evidence contract passed JavaScript syntax, workflow contracts, repository contracts, direct validator arguments and fixture suites; source replay registry, one-page checkpoint progression, replay job fencing, bounded multi-page runner, cancellation, shared replay runtime, and operator guard source are present without implementation-agent test execution; general CI/Hardening received no jobs; Rust-hosted smoke previously stopped before compilation because Cargo.lock required an Athanor update under --locked`
+- Next action: `add the first Product-owned schema/source adapter and bounded rebuild command surface, then implement scheduler/retry/shutdown ownership only after the source and operator command contracts are fixed; execute retained PostgreSQL packet, live query equivalence, and per-tenant freshness/outage/recovery evidence before authoritative cutover`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-index --all-targets && cargo check -p rustok-server --all-targets && node scripts/verify/verify-index-query-contract.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`
