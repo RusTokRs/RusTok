@@ -58,7 +58,34 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
         .execute_unprepared(&format!(
-            "CREATE UNIQUE INDEX {UNIQUE_ACTIVE_INDEX} ON channel_resolution_policy_sets (tenant_id) WHERE is_active"
+            r#"
+            CREATE OR REPLACE FUNCTION channel_promote_single_active_policy_set()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.is_active THEN
+                    UPDATE channel_resolution_policy_sets
+                       SET is_active = FALSE,
+                           updated_at = CURRENT_TIMESTAMP
+                     WHERE tenant_id = NEW.tenant_id
+                       AND id <> NEW.id
+                       AND is_active;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS channel_policy_sets_promote_single_active
+                ON channel_resolution_policy_sets;
+            CREATE TRIGGER channel_policy_sets_promote_single_active
+            BEFORE INSERT OR UPDATE OF is_active, tenant_id
+                ON channel_resolution_policy_sets
+            FOR EACH ROW
+            EXECUTE FUNCTION channel_promote_single_active_policy_set();
+
+            CREATE UNIQUE INDEX {UNIQUE_ACTIVE_INDEX}
+                ON channel_resolution_policy_sets (tenant_id)
+                WHERE is_active;
+            "#
         ))
         .await?;
     Ok(())
@@ -68,7 +95,35 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
         .execute_unprepared(&format!(
-            "CREATE UNIQUE INDEX IF NOT EXISTS {UNIQUE_ACTIVE_INDEX} ON channel_resolution_policy_sets (tenant_id) WHERE is_active = 1"
+            r#"
+            CREATE TRIGGER IF NOT EXISTS channel_policy_sets_promote_single_active_insert
+            BEFORE INSERT ON channel_resolution_policy_sets
+            WHEN NEW.is_active = 1
+            BEGIN
+                UPDATE channel_resolution_policy_sets
+                   SET is_active = 0,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE tenant_id = NEW.tenant_id
+                   AND id <> NEW.id
+                   AND is_active = 1;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS channel_policy_sets_promote_single_active_update
+            BEFORE UPDATE OF is_active, tenant_id ON channel_resolution_policy_sets
+            WHEN NEW.is_active = 1
+            BEGIN
+                UPDATE channel_resolution_policy_sets
+                   SET is_active = 0,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE tenant_id = NEW.tenant_id
+                   AND id <> NEW.id
+                   AND is_active = 1;
+            END;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS {UNIQUE_ACTIVE_INDEX}
+                ON channel_resolution_policy_sets (tenant_id)
+                WHERE is_active = 1;
+            "#
         ))
         .await?;
     Ok(())
@@ -108,7 +163,8 @@ mod tests {
             CREATE TABLE channel_resolution_policy_sets (
                 id TEXT PRIMARY KEY NOT NULL,
                 tenant_id TEXT NOT NULL,
-                is_active INTEGER NOT NULL
+                is_active INTEGER NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             "#,
         )
@@ -119,20 +175,34 @@ mod tests {
 
     async fn insert_policy_set(
         db: &sea_orm::DatabaseConnection,
+        id: Uuid,
         tenant_id: Uuid,
         is_active: bool,
     ) -> Result<(), sea_orm::DbErr> {
         db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO channel_resolution_policy_sets (id, tenant_id, is_active) VALUES (?1, ?2, ?3)",
-            vec![Uuid::new_v4().into(), tenant_id.into(), is_active.into()],
+            vec![id.into(), tenant_id.into(), is_active.into()],
         ))
         .await?;
         Ok(())
     }
 
+    async fn active_count(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) -> i64 {
+        db.query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM channel_resolution_policy_sets WHERE tenant_id = ?1 AND is_active = 1",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .expect("active count query")
+        .expect("active count row")
+        .try_get("", "count")
+        .expect("active count")
+    }
+
     #[tokio::test]
-    async fn sqlite_rejects_a_second_active_policy_set_for_the_same_tenant() {
+    async fn sqlite_promotion_demotes_the_previous_active_policy_set() {
         let db = sqlite_policy_schema().await;
         Migration
             .up(&SchemaManager::new(&db))
@@ -140,14 +210,33 @@ mod tests {
             .expect("single-active invariant");
 
         let tenant_id = Uuid::new_v4();
-        insert_policy_set(&db, tenant_id, true)
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        insert_policy_set(&db, first_id, tenant_id, true)
             .await
             .expect("first active set");
-        assert!(insert_policy_set(&db, tenant_id, true).await.is_err());
-        insert_policy_set(&db, tenant_id, false)
+        insert_policy_set(&db, second_id, tenant_id, true)
+            .await
+            .expect("promoted active set");
+
+        assert_eq!(active_count(&db, tenant_id).await, 1);
+        let promoted: i64 = db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT is_active FROM channel_resolution_policy_sets WHERE id = ?1",
+                vec![second_id.into()],
+            ))
+            .await
+            .expect("promoted query")
+            .expect("promoted row")
+            .try_get("", "is_active")
+            .expect("promoted flag");
+        assert_eq!(promoted, 1);
+
+        insert_policy_set(&db, Uuid::new_v4(), tenant_id, false)
             .await
             .expect("inactive set");
-        insert_policy_set(&db, Uuid::new_v4(), true)
+        insert_policy_set(&db, Uuid::new_v4(), Uuid::new_v4(), true)
             .await
             .expect("other tenant active set");
     }
@@ -156,10 +245,10 @@ mod tests {
     async fn migration_rejects_preexisting_duplicate_active_sets() {
         let db = sqlite_policy_schema().await;
         let tenant_id = Uuid::new_v4();
-        insert_policy_set(&db, tenant_id, true)
+        insert_policy_set(&db, Uuid::new_v4(), tenant_id, true)
             .await
             .expect("first historical active set");
-        insert_policy_set(&db, tenant_id, true)
+        insert_policy_set(&db, Uuid::new_v4(), tenant_id, true)
             .await
             .expect("second historical active set");
 
