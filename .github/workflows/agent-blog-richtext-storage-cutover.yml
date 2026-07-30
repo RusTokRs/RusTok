@@ -1,9 +1,12 @@
 name: Agent Blog richtext storage cutover
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/blog-richtext-storage-cutover-20260730
+      - main
+    paths:
+      - .github/workflows/agent-blog-richtext-storage-cutover.yml
+      - scripts/agent/blog_richtext_storage_cutover.py.gz.b64
 
 permissions:
   contents: write
