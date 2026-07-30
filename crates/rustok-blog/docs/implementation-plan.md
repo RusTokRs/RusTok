@@ -43,6 +43,12 @@ core and Leptos UI, removes the dead `blog.form.bodyFormat` and
 machine evidence plus self-regression fixtures. The guardrail is part of the
 Blog FBA command chain.
 
+The Blog FBA source-gate chain is now registry-locked. The package command must
+preserve the exact admin, storefront, GraphQL richtext, offline backfill, Forum UI
+ownership, and consumer runtime-order sequence; the FBA verifier also checks every
+registered verifier/evidence path. Storefront can no longer disappear from the
+aggregate gate while the module still claims `core_transport_ui` readiness.
+
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
 `contentPlainText`; native SSR maps `PostResponse.content` and
@@ -122,6 +128,9 @@ outbox publication.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v2
+  locks the exact package order and requires admin, storefront, GraphQL richtext,
+  offline backfill, Forum ownership, and consumer runtime-order gates.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
@@ -279,6 +288,9 @@ outbox publication.
 27. Removed dead body-format/raw-payload EN/RU locale keys and extended the
     canonical admin evidence, verifier, and self-test to fail closed if those
     legacy UI contracts return.
+28. Locked the Blog FBA package command to registry schema v2 and restored the
+    missing storefront boundary gate, with exact ordered-step and source-path
+    validation in the aggregate verifier.
 
 ## Next results
 

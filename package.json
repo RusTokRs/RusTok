@@ -143,7 +143,7 @@
     "verify:seo:admin-boundary": "node scripts/verify/verify-seo-admin-boundary.mjs",
     "verify:consumer:fba-runtime-order": "node scripts/verify/verify-consumer-fba-runtime-order.mjs",
     "test:verify:consumer:fba-runtime-order": "node scripts/verify/verify-consumer-fba-runtime-order.test.mjs",
-    "verify:blog:fba": "node scripts/verify/verify-blog-fba.mjs && npm run verify:blog:admin-boundary && npm run verify:blog:graphql-richtext-boundary && npm run verify:blog:richtext-offline-backfill && npm run verify:blog:forum-ui-ownership && node scripts/verify/verify-consumer-fba-runtime-order.mjs",
+    "verify:blog:fba": "node scripts/verify/verify-blog-fba.mjs && npm run verify:blog:admin-boundary && npm run verify:blog:storefront-boundary && npm run verify:blog:graphql-richtext-boundary && npm run verify:blog:richtext-offline-backfill && npm run verify:blog:forum-ui-ownership && node scripts/verify/verify-consumer-fba-runtime-order.mjs",
     "verify:seo:fba": "node scripts/verify/verify-seo-fba.mjs && node scripts/verify/verify-consumer-fba-runtime-order.mjs",
     "verify:ai:fba-baseline": "node scripts/verify/verify-ai-fba-baseline.mjs",
     "verify:ai-content:fba": "node scripts/verify/verify-ai-fba-baseline.mjs",
