@@ -15,7 +15,7 @@ pub(super) fn expand_search_category_scope_from_visible_tree(
     }
 
     let mut ordered_nodes = Vec::new();
-    collect_visible_nodes(roots, &mut ordered_nodes);
+    collect_active_visible_nodes(roots, &mut ordered_nodes);
     let hierarchy = CategoryHierarchy::from_ordered_nodes(ordered_nodes)?;
     let expanded_category_ids =
         hierarchy.expand_visible_subtrees(&requested_category_ids, &HashSet::new())?;
@@ -26,12 +26,15 @@ pub(super) fn expand_search_category_scope_from_visible_tree(
     })
 }
 
-fn collect_visible_nodes(
+fn collect_active_visible_nodes(
     nodes: &[CategoryTreeNode],
     output: &mut Vec<(Uuid, Option<Uuid>)>,
 ) {
     for node in nodes {
+        if node.is_archived {
+            continue;
+        }
         output.push((node.id, node.parent_id));
-        collect_visible_nodes(&node.children, output);
+        collect_active_visible_nodes(&node.children, output);
     }
 }
