@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "cart_storefront_graphql_error_safety_source_reviewed_unvalidated",
+  "base_main_sha": "57ad4a48b8d27ecf168d67a4bba98015be627e9a",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-cart/storefront/Cargo.toml",
+    "crates/rustok-cart/storefront/src/core/request.rs",
+    "crates/rustok-cart/storefront/src/core/policy.rs",
+    "crates/rustok-cart/storefront/src/transport/mod.rs",
+    "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "scripts/verify/verify-cart-storefront-boundary.mjs"
+  ],
+  "findings": [
+    {
+      "id": "cart-storefront-graphql-public-detail",
+      "severity": "p1",
+      "finding": "The cart storefront GraphQL adapter converted GraphqlHttpError to ApiError::Graphql using the full display string, and all three public facade closures delegated to that adapter without an owner sanitizer.",
+      "resolution": "Create an operation-specific per-call context at the public consumer boundary and map only ApiError::Graphql to static public envelopes."
+    },
+    {
+      "id": "cart-storefront-validation-preservation",
+      "severity": "contract",
+      "finding": "Cart UUID, line-item UUID, and quantity-command validation execute before the GraphQL request and return ApiError::Validation.",
+      "resolution": "Pass Validation and ServerFn variants through unchanged and leave the private adapter and core policy unmodified."
+    },
+    {
+      "id": "cart-storefront-correlation-context",
+      "severity": "contract",
+      "finding": "The selected GraphQL paths had no cart-owner correlation event retaining operation and safe request-shape context.",
+      "resolution": "Generate a unique per-call correlation id and retain only configuration facts, identifier lengths, optional-field presence, and command kind in internal diagnostics."
+    }
+  ],
+  "preserved_behavior": [
+    "explicit feature-based transport selection",
+    "no native-to-GraphQL fallback",
+    "private GraphQL query and mutation documents",
+    "cart storefront request and response DTOs",
+    "cart and line-item identifier validation",
+    "decrement quantity command policy",
+    "native SSR error-safety policy",
+    "Commerce aggregate cart and payment composition"
+  ],
+  "execution": {
+    "commands": [],
+    "tests": [],
+    "verifiers": [],
+    "cargo": [],
+    "format": [],
+    "workflows": [],
+    "ci": []
+  },
+  "claims": {
+    "source_reviewed": true,
+    "source_ready": true,
+    "compiled": false,
+    "runtime_verified": false,
+    "mounted_parity_verified": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "production_promoted": false
+  }
+}
