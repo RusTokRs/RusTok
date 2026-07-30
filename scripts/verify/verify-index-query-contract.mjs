@@ -23,6 +23,7 @@ const scripts = [
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-product-source.mjs',
   'verify-index-product-variant-source.mjs',
+  'verify-index-sales-channel-source.mjs',
   'verify-index-query-runtime-composition.mjs',
   'verify-index-social-graph-privacy-consumer.mjs',
   'verify-social-graph-privacy-shadow-evidence.mjs',
