@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 
+use super::native_client_error_safety::NativeClientDiagnosticContext;
 #[cfg(feature = "ssr")]
 use super::super::CheckoutAdjustment;
 use super::super::{CheckoutCompletion, CheckoutCompletionTransportError, CompleteCheckoutRequest};
@@ -16,14 +17,11 @@ const ORDER_STOREFRONT_NATIVE_BOUNDARY: &str = "order_storefront_native_transpor
 pub async fn complete_checkout_server(
     request: CompleteCheckoutRequest,
 ) -> Result<CheckoutCompletion, CheckoutCompletionTransportError> {
+    let context = NativeClientDiagnosticContext::new(&request);
     storefront_order_complete_checkout_native(request)
         .await
         .map_err(|error| {
-            tracing::error!(
-                error = ?error,
-                operation = "complete_checkout_server",
-                "native checkout transport failed"
-            );
+            context.record_error(&error);
             CheckoutCompletionTransportError::ServerFn(
                 "Checkout transport is temporarily unavailable".to_string(),
             )
@@ -143,6 +141,7 @@ fn native_checkout_runtime_error(
         error = ?error,
         owner = ORDER_STOREFRONT_NATIVE_OWNER,
         owner_operation = "complete_storefront_checkout",
+        correlation_id = %request_context.correlation_id,
         tenant_id = %tenant_id,
         channel_id = ?request_context.channel_id,
         channel_slug = ?request_context.channel_slug,
