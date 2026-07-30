@@ -51,6 +51,8 @@ use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_mcp::graphql::{McpMutation, McpQuery};
 use rustok_rbac::graphql::{RbacGraphqlRoleWriterHandle, RbacMutation, RbacQuery};
 use rustok_search::graphql::{SearchGraphqlRateLimiterHandle, SearchMutationRoot, SearchQueryRoot};
+#[cfg(feature = "mod-forum")]
+use rustok_search::graphql::ForumStorefrontSearchQuery;
 
 /// Slugs used for runtime `tenant_modules.is_enabled()` guards.
 pub mod module_slug {
@@ -67,6 +69,8 @@ pub mod module_slug {
 pub struct Query(
     RootQuery,
     SearchQueryRoot,
+    #[cfg(feature = "mod-forum")]
+    ForumStorefrontSearchQuery,
     AuthQuery,
     OAuthQuery,
     McpQuery,
