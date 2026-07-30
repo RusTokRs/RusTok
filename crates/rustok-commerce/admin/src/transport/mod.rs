@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod graphql_error_safety;
 #[cfg(not(feature = "ssr"))]
 mod native_server_adapter;
 #[cfg(feature = "ssr")]

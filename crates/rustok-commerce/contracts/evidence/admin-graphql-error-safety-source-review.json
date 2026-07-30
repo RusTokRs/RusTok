@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "status": "commerce_admin_graphql_error_safety_source_reviewed_unvalidated",
+  "captured_at": "2026-07-30",
+  "base_main_sha": "48e8a2ed59208d19e89968a153bd222c1f31dc75",
+  "review": {
+    "graphql_http_error_variants_reviewed": [
+      "Network",
+      "Graphql(String)",
+      "Http(String)",
+      "Unauthorized"
+    ],
+    "graphql_display_round_trip_reviewed": true,
+    "shipping_profile_public_signatures_preserved": true,
+    "order_change_public_signatures_preserved": true,
+    "shipping_profile_graphql_calls_preserved": true,
+    "browser_order_change_graphql_calls_preserved": true,
+    "native_order_change_calls_preserved": true,
+    "graphql_queries_and_variables_unchanged": true,
+    "dto_mapping_unchanged": true,
+    "raw_adapter_is_private": true,
+    "tokens_are_not_logged": true,
+    "tenant_slug_value_is_not_logged": true,
+    "static_public_envelopes_reviewed": true,
+    "cross_transport_uuid_dependency_reviewed": true
+  },
+  "execution": {
+    "commands_run": [],
+    "tests_run": [],
+    "verifiers_run": [],
+    "cargo_run": false,
+    "formatting_run": false,
+    "browser_run": false,
+    "ssr_run": false,
+    "workflow_or_ci_run": false
+  },
+  "limitations": [
+    "No compiler evidence has been retained.",
+    "No browser or SSR GraphQL request has been executed.",
+    "No live unauthorized, network, HTTP, GraphQL rejection, or malformed error scenario has been retained.",
+    "The low-level private GraphQL adapter still converts GraphqlHttpError to its display string before the public wrapper reparses and sanitizes it.",
+    "The broad ecommerce correlation-safe mapper cleanup remains open for other adapters and envelopes."
+  ]
+}
