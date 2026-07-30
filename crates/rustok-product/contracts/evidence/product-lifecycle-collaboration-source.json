@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "product_lifecycle_collaboration_contained_unvalidated",
+  "source_base_revision": "c4cd6e281e6a40122843617e0471edc8f589f931",
+  "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
+  "module_topology": {
+    "product_dependencies": [
+      "taxonomy"
+    ],
+    "inventory_dependencies": [
+      "product"
+    ],
+    "pricing_dependencies": [
+      "product"
+    ],
+    "ordinary_reverse_dependencies_forbidden": true,
+    "reason": "Declaring Inventory or Pricing as ordinary Product dependencies would create a module dependency cycle",
+    "default_enabled_bundle": [
+      "product",
+      "pricing",
+      "inventory"
+    ],
+    "standalone_product_write_activation_proven": false
+  },
+  "inventory_collaboration": {
+    "owner_crate": "rustok-inventory",
+    "contract": "BootstrapService",
+    "input": "InitialInventory",
+    "operations": [
+      "ensure_default_location_in_tx",
+      "create_initial_records_in_tx",
+      "load_available_quantities",
+      "delete_records_for_variants_in_tx"
+    ],
+    "same_transaction_connection": true,
+    "transport_contract_published": false
+  },
+  "pricing_collaboration": {
+    "owner_crate": "rustok-pricing-persistence",
+    "contract": "BootstrapService",
+    "input": "InitialPrice",
+    "operations": [
+      "create_initial_prices_in_tx",
+      "load_prices_for_variants",
+      "delete_prices_for_variants_in_tx"
+    ],
+    "same_transaction_connection": true,
+    "transport_contract_published": false
+  },
+  "product_boundary": {
+    "foreign_owner_entities_imported": false,
+    "foreign_owner_tables_queried_directly": false,
+    "owner_bootstrap_services_only": true,
+    "product_variant_persistence_owned_by_product": true,
+    "initial_inventory_persistence_owned_by_inventory": true,
+    "initial_price_persistence_owned_by_pricing": true
+  },
+  "decision": {
+    "containment_complete": true,
+    "dependency_contract_resolved": false,
+    "next_slice": "Choose and implement a control-plane co-requisite contract or host-injected transaction participant ports; prove Product write behavior when optional modules are selected outside the default ecommerce bundle",
+    "do_not": [
+      "add inventory or pricing to Product ordinary module dependencies",
+      "move Inventory or Pricing ORM entities into Product",
+      "replace atomic owner collaboration with unproven best-effort post-commit writes",
+      "claim standalone Product write activation"
+    ]
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "standalone_activation_proven": false,
+    "transaction_rollback_proven": false
+  }
+}
