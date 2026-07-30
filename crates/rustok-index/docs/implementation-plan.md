@@ -510,6 +510,10 @@ node scripts/verify/verify-index-many-link-filtering.mjs
   compiler-metadata-driven row adaptation. Server/consumer composition, plan/SQL
   snapshots, live PostgreSQL execution, and PostgreSQL/reference equivalence remain
   open.
+- 2026-07-30: bounded the non-authoritative Social Graph privacy shadow by the caller's
+  remaining deadline, repaired stale Index repository/evidence guards and retained
+  fixtures, and added the owner-local bounded Social Graph replay CLI needed for an
+  operational projection repair entrypoint.
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
   lifecycle work begins.
@@ -517,12 +521,12 @@ node scripts/verify/verify-index-many-link-filtering.mjs
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
-- Status: `in_progress`
+- Status: `blocked`
 - Last verified at (UTC): `2026-07-30`
-- Scope inspected: `index ownership and roadmap documentation; mutation storage, query port, migrations, replay/delete/version ordering, tenant/locale isolation, publishers, rebuild and search-consumer integration audit pending`
-- Findings: `P0=0, P1=0, P2=0, P3=1`
-- Fixed in this pass: `added the missing current-cycle handoff without changing guard-bound roadmap wording`
-- Remaining risks or blockers: `source and cross-module audit is in progress; PostgreSQL and retained-evidence execution remains open; no compiled verification is claimed`
-- Evidence: `root README, local docs and the complete implementation roadmap were read on the branch`
-- Next action: `inspect mutation_store, query_port, migrations and all source/search/server integrations for tenant/locale isolation, delete replay, monotonic versions, crash recovery and rebuild correctness`
-- Resume command: `cargo xtask module validate index && cargo xtask module test index && cargo test -p rustok-index planner_tests -- --nocapture`
+- Scope inspected: `Index ownership, migrations, mutation/version ordering, query execution, partition evidence, Social Graph consumer authority, privacy shadow deadlines, replay/repair composition and source/search/server boundaries`
+- Findings: `P0=0, P1=3, P2=0, P3=1`
+- Fixed in this pass: `bounded the non-authoritative Social Graph privacy projection by the remaining caller deadline; repaired stale Index evidence guards and fail-closed retained fixtures; added a canonical owner-local tenant/cursor-bounded transactional-outbox replay CLI for Social Graph projection repair`
+- Remaining risks or blockers: `one retained admitted real PostgreSQL partition packet is absent; PostgreSQL/reference query equivalence and live execution remain open; no retained per-tenant freshness/watermark, lag, negative-result safety, outage/restart/backlog catch-up or replay-repair evidence exists; fixes remain in draft PR #2512; workspace Clippy currently stops on 59 rustok-index lint errors and the local environment cannot reach GitHub`
+- Evidence: `same-SHA Index Scale Evidence passed repository contracts, direct validator arguments and fixture suites on the pre-CLI source; subsequent source/API/owner guards were updated; workspace Clippy reached rustok-index and failed on result_large_err, never_loop and large_enum_variant debt before downstream targeted validation`
+- Next action: `obtain same-SHA formatting and targeted Social Graph replay/CLI evidence, execute retained PostgreSQL/query equivalence and freshness/repair packets, then revisit Index at the closing gate before any authoritative consumer or partition cutover`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-social-graph-cli --all-targets && cargo test -p rustok-social-graph-cli -- --nocapture && cargo test -p rustok-social-graph --test relation_event_replay_sqlite -- --nocapture && node scripts/verify/verify-social-graph-relation-event-replay.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`
