@@ -36,8 +36,6 @@ rustok-api = { workspace = true, default-features = false }
 
 
 
-
-
 rustok-ui-i18n-leptos.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-auth = { workspace = true, optional = true }
@@ -55,4 +53,5 @@ rustok-graphql.workspace = true
 gloo-storage = { workspace = true }
 reqwest = { workspace = true, optional = true }
 serde_urlencoded.workspace = true
+tracing.workspace = true
 web-sys = { version = "0.3", features = ["MouseEvent"] }
