@@ -26,6 +26,8 @@ mod postgres_query_result_tests;
 mod query_snapshot_tests;
 #[cfg(test)]
 mod reference;
+#[cfg(test)]
+mod source_replay_tests;
 
 pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
