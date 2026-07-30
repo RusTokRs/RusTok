@@ -86,6 +86,7 @@ mod reply_owner {
     include!("reply_owner_inline.rs");
 }
 pub mod revision;
+mod search_result_eligibility;
 pub mod storefront_read_state {
     include!("storefront_read_state.rs");
     include!("storefront_read_state_bulk.rs");
@@ -101,9 +102,9 @@ mod topic_audience {
     include!("topic_audience.rs");
     include!("topic_audience_owner.rs");
 }
-mod topic_audience_visibility;
 mod topic_audience_list;
 mod topic_audience_read;
+mod topic_audience_visibility;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_owner {
@@ -123,9 +124,7 @@ pub use category_audience::{
     ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,
     SetForumCategoryAudiencePolicyInput,
 };
-pub use category_audience_read::{
-    ForumCategoryAudiencePage, ForumCategoryAudienceReadService,
-};
+pub use category_audience_read::{ForumCategoryAudiencePage, ForumCategoryAudienceReadService};
 pub use category_audience_visibility::{
     ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
 };
@@ -195,6 +194,10 @@ pub use reply_create_audience_authorization::{
 };
 pub use reply_facade::ReplyService;
 pub use revision::RevisionService;
+pub use search_result_eligibility::{
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
+    ForumSearchResultEligibilityService, MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES,
+};
 pub use storefront_read_state::{
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicUnreadSummary,
@@ -205,11 +208,11 @@ pub use topic_audience::{
     ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
     SetForumTopicAudiencePolicyInput,
 };
+pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
+pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
-pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
-pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };

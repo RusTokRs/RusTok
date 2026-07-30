@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2D",
+  "status": "source_complete_execution_pending",
+  "scope": "Apply exact Forum topic-local and reply eligibility before storefront Search pagination, totals, facets, and transport mapping",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "forum_owner": "crates/rustok-forum/src/services/search_result_eligibility.rs",
+  "topic_visibility_owner": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
+  "neutral_search_port": "crates/rustok-search/src/storefront_result_eligibility.rs",
+  "search_execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "host_adapter": "apps/server/src/services/forum_search_result_eligibility.rs",
+  "host_composition": "apps/server/src/services/mod.rs",
+  "graphql_transport": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "native_transport": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2d-search-result-eligibility.md",
+  "verifier": "scripts/verify/verify-forum-search-result-eligibility.mjs",
+  "bounds": {
+    "maximum_raw_result_rows": 100,
+    "raw_search_page_size": 50,
+    "maximum_owner_candidates": 100,
+    "too_broad_query_fails_closed": true,
+    "candidate_scan_total_must_remain_stable": true,
+    "continuation_page_must_advance": true,
+    "raw_row_identity_includes_locale": true
+  },
+  "candidate_contract": {
+    "search_owned_kinds": [
+      "forum_topic",
+      "forum_reply"
+    ],
+    "forum_owned_kinds": [
+      "topic",
+      "reply"
+    ],
+    "owner_may_only_return_requested_candidates": true,
+    "owner_may_not_return_duplicates": true,
+    "missing_owner_port_fails_closed": true,
+    "category_rows_are_pre_authorized_by_forum_category_scope": true
+  },
+  "owner_decision": {
+    "topic_reuses_exact_storefront_topic_audience_visibility": true,
+    "topic_must_be_currently_open": true,
+    "topic_route_channel_is_rechecked": true,
+    "inherited_category_audience_is_rechecked": true,
+    "topic_local_audience_narrowing_is_rechecked": true,
+    "role_trust_channel_group_allow_deny_rules_are_reused": true,
+    "reply_must_exist_in_the_exact_tenant": true,
+    "reply_must_be_currently_approved": true,
+    "reply_inherits_parent_topic_decision": true,
+    "missing_or_denied_targets_are_omitted_non_oracularly": true,
+    "missing_required_external_facts_fail_closed": true
+  },
+  "transport_authority": {
+    "tenant_comes_from_trusted_transport_context": true,
+    "auth_comes_from_trusted_transport_context": true,
+    "route_channel_slug_comes_from_request_context": true,
+    "authenticated_owner_context_has_deadline": true,
+    "authenticated_owner_context_preserves_permission_claims": true,
+    "graphql_and_native_share_one_execution_owner": true,
+    "public_error_messages_are_bounded": true,
+    "auth_tenant_must_match": true,
+    "request_context_tenant_must_match": true,
+    "request_context_actor_must_match_auth": true
+  },
+  "search_semantics": {
+    "raw_query_uses_existing_dictionary_preset_ranking_and_postgres_search": true,
+    "eligibility_is_applied_before_visible_offset_and_limit": true,
+    "visible_total_is_computed_after_eligibility": true,
+    "visible_facets_are_computed_after_eligibility": true,
+    "raw_ranking_order_is_preserved_for_allowed_rows": true,
+    "query_rules_run_only_after_eligibility": true,
+    "existing_category_filter_remains_present": true,
+    "mixed_product_blog_content_paths_changed": false,
+    "projection_shape_changed": false,
+    "migration_required": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "derive trusted channel authority consistently for every storefront Search predicate, including non-Forum results",
+    "add remaining Forum Search filters",
+    "complete monotonic projection revisions and durable ordering",
+    "add reconciliation and ACL/deletion cleanup evidence",
+    "capture maintainer-executed PostgreSQL and LINK-FORUM-03 runtime evidence"
+  ]
+}
