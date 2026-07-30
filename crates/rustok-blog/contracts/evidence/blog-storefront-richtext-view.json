@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "owner": "rustok-blog",
   "boundary": "storefront-post-richtext-view",
   "status": "source_verified_no_compile",
@@ -24,6 +24,20 @@
     "read": "rustok_api::RichTextView",
     "html": "server-derived",
     "plain_text": "server-derived"
+  },
+  "render_contract": {
+    "component": "SelectedPostCard",
+    "html_sink": "inner_html=content.html",
+    "fallback_sink": "selected_post_content.body",
+    "forbidden_storefront_markers": [
+      "RichTextDocument",
+      "content.document",
+      "pulldown_cmark",
+      "comrak::",
+      "markdown_to_html",
+      "render_richtext",
+      "render_document"
+    ]
   },
   "guardrail": "scripts/verify/verify-blog-storefront-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",

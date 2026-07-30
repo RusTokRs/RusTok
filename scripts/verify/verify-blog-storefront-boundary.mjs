@@ -19,7 +19,45 @@ const files = {
   plan: "crates/rustok-blog/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
+  verifier: "scripts/verify/verify-blog-storefront-boundary.mjs",
   verifierTest: "scripts/verify/verify-blog-storefront-boundary.test.mjs",
+};
+
+const expectedScope = [
+  files.core,
+  files.model,
+  files.graphql,
+  files.native,
+  files.ui,
+];
+const expectedContract = {
+  graphql_owner_view: true,
+  native_owner_view: true,
+  server_html_render: true,
+  plain_text_fallback: true,
+  legacy_body_transport: false,
+  legacy_body_format_transport: false,
+  local_format_renderer: false,
+  legacy_summarizer_removed: true,
+};
+const expectedCanonicalContract = {
+  read: "rustok_api::RichTextView",
+  html: "server-derived",
+  plain_text: "server-derived",
+};
+const expectedRenderContract = {
+  component: "SelectedPostCard",
+  html_sink: "inner_html=content.html",
+  fallback_sink: "selected_post_content.body",
+  forbidden_storefront_markers: [
+    "RichTextDocument",
+    "content.document",
+    "pulldown_cmark",
+    "comrak::",
+    "markdown_to_html",
+    "render_richtext",
+    "render_document",
+  ],
 };
 
 const legacySummarizerMarkers = [
@@ -50,6 +88,15 @@ function assertNotContains(source, needle, message) {
   if (source.includes(needle)) fail(message);
 }
 
+function between(source, start, end, filePath) {
+  const from = source.indexOf(start);
+  const to = source.indexOf(end, from + start.length);
+  if (from === -1 || to === -1) {
+    fail(`${filePath}: could not isolate ${start} before ${end}`);
+  }
+  return source.slice(from, to);
+}
+
 function rustFilesUnder(root) {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(root, entry.name).replaceAll("\\", "/");
@@ -73,6 +120,12 @@ const plan = text(files.plan);
 const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
 const pkg = JSON.parse(text(files.packageJson));
+const selectedPostUi = between(
+  ui,
+  "fn SelectedPostCard",
+  "fn PublicCommentsList",
+  files.ui,
+);
 
 if (existsSync(files.legacyApi)) {
   fail(`${files.legacyApi}: legacy api.rs must stay removed; transport adapters own native/GraphQL endpoints`);
@@ -92,6 +145,9 @@ for (const rustFile of rustFilesUnder(files.storefrontSrc)) {
   const source = text(rustFile);
   for (const marker of legacySummarizerMarkers) {
     assertNotContains(source, marker, `${rustFile}: removed legacy summarizer ${marker} must not return`);
+  }
+  for (const marker of expectedRenderContract.forbidden_storefront_markers) {
+    assertNotContains(source, marker, `${rustFile}: storefront must not introduce local richtext renderer marker ${marker}`);
   }
 }
 
@@ -119,11 +175,20 @@ assertNotContains(model, "pub body_format: String", `${files.model}: storefront 
 assertContains(ui, "use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY)", `${files.ui}: UI must read route-owned comments page state`);
 assertContains(ui, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
 assertContains(ui, "transport::fetch_blog(request, comments_page)", `${files.ui}: UI must pass the current comments page through transport`);
-assertContains(ui, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
+assertContains(selectedPostUi, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
 assertContains(ui, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
-assertContains(ui, "let content = post.content;", `${files.ui}: UI must consume RichTextView from the storefront DTO`);
-assertContains(ui, "post.content_plain_text", `${files.ui}: UI must retain server-derived plain-text fallback`);
-assertContains(ui, "inner_html=content.html", `${files.ui}: UI must render owner-generated HTML`);
+assertContains(selectedPostUi, "let content = post.content;", `${files.ui}: selected post must consume RichTextView from the storefront DTO`);
+assertContains(selectedPostUi, "post.content_plain_text", `${files.ui}: selected post must retain server-derived plain-text fallback`);
+assertContains(selectedPostUi, expectedRenderContract.fallback_sink, `${files.ui}: selected post must render the server-derived plain-text fallback`);
+
+const innerHtmlBindings = [...selectedPostUi.matchAll(/\binner_html\s*=\s*([A-Za-z0-9_.]+)/g)]
+  .map((match) => match[1]);
+if (
+  innerHtmlBindings.length !== 1 ||
+  innerHtmlBindings[0] !== "content.html"
+) {
+  fail(`${files.ui}: SelectedPostCard must have exactly one owner HTML sink bound to content.html`);
+}
 assertNotContains(ui, "post.body", `${files.ui}: UI must not read legacy body`);
 assertNotContains(ui, "body_format", `${files.ui}: UI must not read legacy body format`);
 assertNotContains(ui, "crate::api", `${files.ui}: UI must not call legacy api module`);
@@ -181,28 +246,55 @@ for (const marker of [
   assertContains(graphqlTypes, marker, `${files.graphqlTypes}: missing richtext/public-comments GraphQL marker ${marker}`);
 }
 
-if (evidence.status !== "source_verified_no_compile") {
-  fail(`${files.evidence}: status must remain source_verified_no_compile until maintainer execution`);
+if (
+  evidence.schema_version !== 2 ||
+  evidence.owner !== "rustok-blog" ||
+  evidence.boundary !== "storefront-post-richtext-view" ||
+  evidence.status !== "source_verified_no_compile"
+) {
+  fail(`${files.evidence}: evidence identity/status drift`);
 }
-for (const field of [
-  "graphql_owner_view",
-  "native_owner_view",
-  "server_html_render",
-  "plain_text_fallback",
-  "legacy_summarizer_removed",
-]) {
-  if (evidence.contract?.[field] !== true) {
-    fail(`${files.evidence}: contract.${field} must be true`);
-  }
+if (JSON.stringify(evidence.scope) !== JSON.stringify(expectedScope)) {
+  fail(`${files.evidence}: evidence scope drift`);
 }
-if (evidence.validation?.tests_run !== false || evidence.validation?.verifier_run !== false || evidence.validation?.cargo_run !== false) {
+if (JSON.stringify(evidence.contract) !== JSON.stringify(expectedContract)) {
+  fail(`${files.evidence}: storefront richtext contract drift`);
+}
+if (JSON.stringify(evidence.canonical_contract) !== JSON.stringify(expectedCanonicalContract)) {
+  fail(`${files.evidence}: canonical read contract drift`);
+}
+if (JSON.stringify(evidence.render_contract) !== JSON.stringify(expectedRenderContract)) {
+  fail(`${files.evidence}: selected-post render contract drift`);
+}
+if (
+  evidence.guardrail !== files.verifier ||
+  evidence.guardrail_test !== files.verifierTest
+) {
+  fail(`${files.evidence}: verifier path drift`);
+}
+if (
+  evidence.validation?.tests_run !== false ||
+  evidence.validation?.verifier_run !== false ||
+  evidence.validation?.cargo_run !== false ||
+  evidence.validation?.format_run !== false ||
+  evidence.validation?.workflow_checks_run !== false ||
+  evidence.validation?.ci_run !== false
+) {
   fail(`${files.evidence}: validation flags must record that execution remains maintainer-owned`);
+}
+if (
+  !Array.isArray(evidence.remaining) ||
+  evidence.remaining.length !== 1 ||
+  evidence.remaining[0] !== "execute compile, migration, transport parity, and browser evidence"
+) {
+  fail(`${files.evidence}: remaining execution contract drift`);
 }
 
 assertContains(plan, "verify-blog-storefront-boundary.mjs", `${files.plan}: local plan must mention storefront guardrail`);
 assertContains(plan, "public comments", `${files.plan}: local plan must record public comment rendering parity`);
 assertContains(plan, "storefront comment pagination", `${files.plan}: local plan must record route-owned comment pagination`);
 assertContains(plan, "server-rendered `RichTextView` HTML", `${files.plan}: local plan must record storefront owner projection`);
+assertContains(plan, "exactly one `content.html` sink", `${files.plan}: local plan must record the selected-post render sink`);
 assertContains(registry, "verify-blog-storefront-boundary.mjs", `${files.registry}: central board must mention storefront guardrail`);
 assertContains(verifierTest, "passes canonical fixture", `${files.verifierTest}: fixture tests must cover canonical pass path`);
 assertContains(verifierTest, "rejects legacy api module", `${files.verifierTest}: fixture tests must reject legacy api module`);
@@ -210,6 +302,9 @@ assertContains(verifierTest, "rejects missing public comments parity", `${files.
 assertContains(verifierTest, "rejects missing comment pagination parity", `${files.verifierTest}: fixture tests must reject missing pagination parity`);
 assertContains(verifierTest, "rejects legacy richtext transport", `${files.verifierTest}: fixture tests must reject legacy richtext transport`);
 assertContains(verifierTest, "rejects removed richtext summarizer", `${files.verifierTest}: fixture tests must reject removed summarizers`);
+assertContains(verifierTest, "rejects local richtext renderer", `${files.verifierTest}: fixture tests must reject local renderers`);
+assertContains(verifierTest, "rejects alternate selected-post HTML sink", `${files.verifierTest}: fixture tests must reject alternate HTML sinks`);
+assertContains(verifierTest, "rejects evidence false-contract drift", `${files.verifierTest}: fixture tests must reject false-contract drift`);
 
 const scripts = pkg.scripts ?? {};
 if (scripts["verify:blog:storefront-boundary"] !== "node scripts/verify/verify-blog-storefront-boundary.mjs") {

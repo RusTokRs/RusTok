@@ -69,8 +69,12 @@ The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
 `contentPlainText`; native SSR maps `PostResponse.content` and
 `content_plain_text`; Leptos renders only server-rendered `RichTextView` HTML and
-uses server-derived plain text when the projection is absent. The storefront DTO
-and active UI path expose no legacy body or format field. Blog SEO also consumes
+uses server-derived plain text when the projection is absent. Evidence schema v2
+locks the selected-post component to exactly one `content.html` sink, rejects
+`RichTextDocument`/`content.document` consumption and local Markdown/richtext
+renderers throughout the storefront package, and fail-closes every true/false
+transport contract. The storefront DTO and active UI path expose no legacy body
+or format field. Blog SEO also consumes
 `content_plain_text`. Search canonical richtext rows are parsed as
 `RichTextDocument` and projected with `rustok-content::plain_text` under the fixed
 `Article` profile in the same projector transaction. The target-only source
@@ -328,6 +332,9 @@ outbox publication.
 33. Bound the GraphQL target-only richtext verifier to evidence schema v3, exact
     create/update conversion scopes, direct canonical content mapping, and both
     conversion regression markers, with focused negative fixtures for each drift.
+34. Bound the storefront richtext verifier to evidence schema v2, the exact
+    `SelectedPostCard` render scope, one owner `content.html` sink, server-derived
+    fallback text, and explicit rejection of local document/Markdown renderers.
 
 ## Next results
 
