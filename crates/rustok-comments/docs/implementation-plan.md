@@ -67,7 +67,8 @@ before the schema column is dropped.
   UUID suffix, verifies that unrelated storage errors propagate, and forbids broad
   `Err(_)` fallback or prefix-only classification.
 - Classifier unit harness:
-  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`; it records
+  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`, registered by
+  `#[cfg(test)] mod thread_insert_error_tests;` in the entities module. It records
   exact-scope acceptance, malformed-owner rejection, wrong-scope rejection, and
   unrelated `DbErr` preservation as database failure. It is written but not run.
 - Exact leaf commands: `verify:comments:thread-write-invariants` and
@@ -107,9 +108,10 @@ The continuation audit at `48d478dc2e4ef55dc6015ba8038dde59c908990a`
 found that the new classifier accepted any custom error beginning with the expected
 scope prefix, including a malformed or empty canonical-thread suffix, and had no
 Rust unit harness retained by the FBA source gate. Slice 13 requires one valid UUID
-suffix, adds `thread_insert_error_tests`, upgrades registry and evidence to schema
-v3, and adds focused regressions for prefix-only parsing and missing test source.
-No unit test, verifier, compile, database, workflow, or CI execution is recorded.
+suffix, adds and registers `thread_insert_error_tests`, upgrades registry and
+evidence to schema v3, and adds focused regressions for prefix-only parsing,
+missing test source, and missing test-module registration. No unit test, verifier,
+compile, database, workflow, or CI execution is recorded.
 
 ## Completed implementation slices
 
@@ -144,8 +146,9 @@ No unit test, verifier, compile, database, workflow, or CI execution is recorded
     insert `DbErr`, upgraded thread evidence to schema v2, and added focused
     regression guards for the classifier, broad catch, and propagation branch.
 13. Hardened the identity classifier from prefix-only matching to exact scope plus
-    a valid canonical thread UUID, added a four-case Rust unit harness, upgraded
-    registry/evidence schema v3, and retained the harness in the existing FBA leaf.
+    a valid canonical thread UUID, added and registered a four-case Rust unit
+    harness, upgraded registry/evidence schema v3, and retained the harness in the
+    existing FBA leaf.
 
 ## Open results
 
@@ -207,7 +210,7 @@ should run the relevant subset, including:
 - `npm run test:verify:comments:thread-write-invariants`
 - `npm run verify:comments:fba`
 - `npm run test:verify:comments:fba`
-- `cargo test -p rustok-comments --lib thread_identity_conflict_classifier`
+- `cargo test -p rustok-comments --lib thread_insert_error_tests`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_write_invariants postgres_concurrent_creates_and_delete_preserve_thread_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_creation_concurrency`
