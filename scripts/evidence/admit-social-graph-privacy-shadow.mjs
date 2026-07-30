@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import fs from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -11,12 +10,14 @@ import {
   MAX_DESCRIPTOR_BYTES,
   MAX_SNAPSHOT_BYTES,
   START_FILE,
+  TIMESTAMP_SKEW_SECONDS,
   absolutePath,
   artifactDescriptor,
   assessMetrics,
   ensure,
   ensureAbsent,
   ensureInventory,
+  parseUtc,
   readStableRegularFile,
   resolveReceiptPath,
   runnerIdentity,
@@ -54,6 +55,15 @@ function requiredPositiveNumber(name) {
   const value = Number(required(name));
   ensure(Number.isFinite(value) && value > 0, `${name} must be a positive finite number`);
   return value;
+}
+
+function validateRunner(runner, label) {
+  ensure(runner && typeof runner === 'object' && !Array.isArray(runner), `${label} must be an object`);
+  for (const key of ['job', 'runner_os', 'runner_arch']) {
+    const value = runner[key];
+    ensure(typeof value === 'string' && value.length >= 1 && value.length <= 128, `${label}.${key} must contain 1-128 characters`);
+    ensure(/^[\x20-\x7E]+$/.test(value), `${label}.${key} must contain printable ASCII only`);
+  }
 }
 
 function loadConfig() {
@@ -122,11 +132,20 @@ function main() {
     throw new Error(`failed to decode privacy-shadow capture descriptor: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  const completedAt = parseUtc(descriptor.completed_at, 'completed_at');
+  const endedAt = parseUtc(descriptor.window?.ended_at, 'window.ended_at');
+  ensure(completedAt.getTime() >= endedAt.getTime(), 'capture completed_at precedes window end');
+  validateRunner(descriptor.runner, 'capture_runner');
   const metrics = validateCaptureDescriptor(
     descriptor,
     config.expected,
     startBytes,
     endBytes,
+  );
+  const startedAtSeconds = Math.floor(parseUtc(descriptor.window.started_at, 'window.started_at').getTime() / 1000);
+  ensure(
+    metrics.collector_started_timestamp_seconds <= startedAtSeconds + TIMESTAMP_SKEW_SECONDS,
+    'collector epoch is later than the declared evidence-window start',
   );
   const assessment = assessMetrics(metrics, config.policy);
 
@@ -145,6 +164,11 @@ function main() {
     'end snapshot changed during admission review',
   );
 
+  const reviewer = runnerIdentity(
+    ['SOCIAL_GRAPH_PRIVACY_SHADOW_ADMISSION_JOB', 'GITHUB_JOB'],
+    'social-graph-privacy-shadow-admission',
+  );
+  validateRunner(reviewer, 'reviewer');
   const receipt = {
     contract: ADMISSION_CONTRACT,
     reviewed_at: new Date().toISOString(),
@@ -153,10 +177,7 @@ function main() {
     authoritative_cutover_authorized: false,
     source: descriptor.source,
     capture_runner: descriptor.runner,
-    reviewer: runnerIdentity(
-      ['SOCIAL_GRAPH_PRIVACY_SHADOW_ADMISSION_JOB', 'GITHUB_JOB'],
-      'social-graph-privacy-shadow-admission',
-    ),
+    reviewer,
     window: descriptor.window,
     policy: config.policy,
     assessment,
