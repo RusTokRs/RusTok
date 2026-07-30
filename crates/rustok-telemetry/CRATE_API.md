@@ -17,6 +17,10 @@
 
 ## Social Graph Index privacy shadow metrics
 
+- `rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds` is a
+  no-label gauge set once when the bounded collector is initialized. Retained evidence compares
+  this value across start/end snapshots for restart detection; a changed epoch invalidates the
+  window.
 - `rustok_social_graph_index_privacy_shadow_observations_total{operation,outcome}` records
   fixed parity outcomes.
 - `rustok_social_graph_index_privacy_shadow_failures_total{operation,error_code,retryable}`
@@ -32,6 +36,9 @@
   forbidden labels.
 - The collector uses the single process registry. An explicitly enabled evidence shadow may
   fail activation when registration is unavailable rather than silently running unmeasured.
+- The collector-start gauge establishes only one-process continuity for a retained metric
+  window. It is not a projection watermark, broker lag, tenant freshness, or authorization
+  signal.
 
 ## Contract invariants
 
