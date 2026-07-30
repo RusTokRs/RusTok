@@ -41,3 +41,32 @@ fn product_owner_boundaries_do_not_depend_on_foundation() {
     assert!(!entities.contains("inventory_item"));
     assert!(!entities.contains("stock_location"));
 }
+
+#[cfg(feature = "index")]
+#[test]
+fn product_publishes_index_schema_and_postgres_source_factory() {
+    use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
+
+    let mut extensions = ModuleRuntimeExtensions::default();
+    crate::ProductModule
+        .register_runtime_extensions(&mut extensions)
+        .expect("Product Index contracts should register");
+
+    let schema = crate::product_index_schema().expect("Product Index schema");
+    let schemas = extensions
+        .get::<rustok_index::IndexSchemaSourceCatalog>()
+        .expect("schema source catalog");
+    let descriptor = schemas
+        .get(&schema.reference)
+        .expect("Product schema descriptor");
+    assert_eq!(descriptor.owner_module, "product");
+    assert_eq!(descriptor.schema, schema);
+
+    let factories = extensions
+        .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+        .expect("PostgreSQL source factory catalog");
+    assert_eq!(factories.len(), 1);
+    let factory = factories.iter().next().expect("Product source factory");
+    assert_eq!(factory.owner_module(), "product");
+    assert_eq!(factory.factory_name(), crate::PRODUCT_INDEX_SOURCE_FACTORY);
+}
