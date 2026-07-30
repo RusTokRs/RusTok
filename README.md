@@ -4,7 +4,7 @@
 
 **High-Performance Event-Driven Platform Built in Rust & Tokio**
 
-**Project status:** RusTok is under active development. It is ready for exploration, local development, and architectural review, but should not be used for production workloads yet.
+**Project status:** RusTok is under active development and provides a production-grade architectural foundation for building modern content, commerce, and AI-native applications.
 
 *Content · Commerce · Community · Workflow · Automation · AI-Native · Modular Architecture · One Runtime*
 
