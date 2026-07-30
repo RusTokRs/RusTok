@@ -8,14 +8,34 @@ import { spawnSync } from 'node:child_process';
 
 const verifier = resolve('scripts/verify/verify-blog-graphql-richtext-boundary.mjs');
 
-async function runFixture({ typesSource, mutationSource, extraFiles = {} }) {
+const canonicalCreateConversionTest = `
+fn create_post_input_conversion_preserves_transport_fields() {
+    let content = RichTextDocument::single_paragraph("canonical");
+}
+
+fn create_post_input_conversion_applies_legacy_defaults() {
+    let format = rustok_core::CONTENT_FORMAT_MARKDOWN;
+}
+`;
+
+async function runFixture({
+  typesSource,
+  mutationSource,
+  createConversionTestSource = canonicalCreateConversionTest,
+  extraFiles = {},
+}) {
   const root = await mkdtemp(join(tmpdir(), 'blog-graphql-richtext-'));
   try {
     await mkdir(join(root, 'scripts/verify'), { recursive: true });
     await mkdir(join(root, 'crates/rustok-blog/src/graphql'), { recursive: true });
+    await mkdir(join(root, 'crates/rustok-blog/tests'), { recursive: true });
     await copyFile(verifier, join(root, 'scripts/verify/verify-blog-graphql-richtext-boundary.mjs'));
     await writeFile(join(root, 'crates/rustok-blog/src/graphql/types.rs'), typesSource);
     await writeFile(join(root, 'crates/rustok-blog/src/graphql/mutation.rs'), mutationSource);
+    await writeFile(
+      join(root, 'crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs'),
+      createConversionTestSource,
+    );
 
     for (const [path, source] of Object.entries(extraFiles)) {
       const target = join(root, path);
@@ -32,7 +52,21 @@ async function runFixture({ typesSource, mutationSource, extraFiles = {} }) {
   }
 }
 
-const canonicalConversion = `
+const canonicalCreateConversion = `
+impl From<CreatePostInput> for DomainCreatePostInput {
+    fn from(input: CreatePostInput) -> Self {
+        Self {
+            body: input.body.unwrap_or_default(),
+            body_format: input
+                .body_format
+                .unwrap_or_else(|| rustok_core::CONTENT_FORMAT_MARKDOWN.to_string()),
+            content_json: input.content_json,
+            content: input.content,
+        }
+    }
+}
+`;
+const canonicalUpdateConversion = `
 impl From<UpdatePostInput> for DomainUpdatePostInput {
     fn from(input: UpdatePostInput) -> Self {
         Self {
@@ -51,7 +85,8 @@ pub content: Option<RichTextDocument>,
 pub body: Option<String>,
 pub body_format: String,
 pub content_json: Option<Value>,
-${canonicalConversion}
+${canonicalCreateConversion}
+${canonicalUpdateConversion}
 #[cfg(test)]
 mod tests {}
 `;
@@ -85,6 +120,24 @@ const missingCanonical = await runFixture({
 assert.notEqual(missingCanonical.status, 0);
 assert.match(missingCanonical.stderr, /missing canonical field/);
 
+const missingCreateConversionTest = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation,
+  createConversionTestSource: '',
+});
+assert.notEqual(missingCreateConversionTest.status, 0);
+assert.match(missingCreateConversionTest.stderr, /must cover CreatePostInput transport conversion/);
+
+const manualCreateMapping = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation.replace(
+    'let create_input: DomainCreatePostInput = input.into();',
+    'let create_input = DomainCreatePostInput { body: input.body.unwrap_or_default(), body_format: input.body_format.unwrap_or_default(), content_json: input.content_json, content: input.content };',
+  ),
+});
+assert.notEqual(manualCreateMapping.status, 0);
+assert.match(manualCreateMapping.stderr, /must delegate transport conversion through input\.into\(\)/);
+
 const manualUpdateMapping = await runFixture({
   typesSource: canonicalTypes,
   mutationSource: canonicalMutation.replace(
@@ -115,19 +168,44 @@ const mutationHelperLeak = await runFixture({
 assert.notEqual(mutationHelperLeak.status, 0);
 assert.match(mutationHelperLeak.stderr, /must stay confined to types\.rs/);
 
-const mutationOwnsConversion = await runFixture({
+const mutationOwnsCreateConversion = await runFixture({
   typesSource: canonicalTypes,
-  mutationSource: `${canonicalMutation}\n${canonicalConversion}`,
+  mutationSource: `${canonicalMutation}\n${canonicalCreateConversion}`,
 });
-assert.notEqual(mutationOwnsConversion.status, 0);
-assert.match(mutationOwnsConversion.stderr, /mutation resolvers must not own UpdatePostInput transport conversion/);
+assert.notEqual(mutationOwnsCreateConversion.status, 0);
+assert.match(mutationOwnsCreateConversion.stderr, /must not own CreatePostInput transport conversion/);
 
-const conversionFieldRemoved = await runFixture({
+const mutationOwnsUpdateConversion = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: `${canonicalMutation}\n${canonicalUpdateConversion}`,
+});
+assert.notEqual(mutationOwnsUpdateConversion.status, 0);
+assert.match(mutationOwnsUpdateConversion.stderr, /must not own UpdatePostInput transport conversion/);
+
+const createConversionFieldRemoved = await runFixture({
+  typesSource: canonicalTypes.replace('            content: input.content,\n', ''),
+  mutationSource: canonicalMutation,
+});
+assert.notEqual(createConversionFieldRemoved.status, 0);
+assert.match(createConversionFieldRemoved.stderr, /CreatePostInput conversion no longer contains/);
+
+const updateConversionFieldRemoved = await runFixture({
   typesSource: canonicalTypes.replace('            body_format: input.body_format,\n', ''),
   mutationSource: canonicalMutation,
 });
-assert.notEqual(conversionFieldRemoved.status, 0);
-assert.match(conversionFieldRemoved.stderr, /update the evidence status and tighten this guardrail/);
+assert.notEqual(updateConversionFieldRemoved.status, 0);
+assert.match(updateConversionFieldRemoved.stderr, /UpdatePostInput conversion no longer contains/);
+
+const createCanonicalCoverageRemoved = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation,
+  createConversionTestSource: canonicalCreateConversionTest.replace(
+    'RichTextDocument::single_paragraph',
+    'legacy_document',
+  ),
+});
+assert.notEqual(createCanonicalCoverageRemoved.status, 0);
+assert.match(createCanonicalCoverageRemoved.stderr, /missing create conversion coverage/);
 
 const newAlias = await runFixture({
   typesSource: canonicalTypes,
