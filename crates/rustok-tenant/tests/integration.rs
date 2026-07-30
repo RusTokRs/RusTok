@@ -1,7 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use rustok_outbox::entity as outbox_entity;
-use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
+use rustok_outbox::SysEvents;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, PortErrorKind, ReplaceTenantLocalePolicyRequest,
     TenantError, TenantLocale, TenantLocalePolicyEntry, TenantLocalePolicyPort, TenantReadPort,
@@ -592,11 +592,9 @@ async fn tenant_locale_policy_rejects_und_invalid_fallback_and_key_reuse() {
 
 #[tokio::test]
 #[allow(deprecated)]
-async fn tenant_mutations_publish_outbox_events() {
+async fn tenant_mutations_always_publish_outbox_events() {
     let db = setup_db().await;
-    let transport = Arc::new(OutboxTransport::new(db.clone()));
-    let event_bus = TransactionalEventBus::new(transport);
-    let service = TenantService::with_event_bus(db.clone(), event_bus);
+    let service = TenantService::new(db.clone());
 
     let tenant = service
         .create_tenant(CreateTenantInput {
