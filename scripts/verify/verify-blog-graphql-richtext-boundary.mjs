@@ -28,6 +28,14 @@ async function collectRustFiles(directory) {
   return files;
 }
 
+function sourceBetween(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert.notEqual(start, -1, `Blog GraphQL mutation is missing ${startMarker}`);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(end, -1, `Blog GraphQL mutation is missing ${endMarker}`);
+  return source.slice(start, end);
+}
+
 const graphqlFiles = await collectRustFiles(GRAPHQL_ROOT);
 const sources = new Map(await Promise.all(
   graphqlFiles.map(async (path) => [path, await readFile(path, 'utf8')]),
@@ -53,8 +61,32 @@ for (const needle of canonicalTypeChecks) {
 
 assert.ok(
   mutationSource.includes('content: input.content'),
-  'Blog GraphQL mutations must forward RichTextDocument to the owner service',
+  'Blog GraphQL input conversion must forward RichTextDocument to the owner service',
 );
+
+const resolverSources = new Map([
+  ['create_post', sourceBetween(mutationSource, 'async fn create_post(', 'async fn update_post(')],
+  ['update_post', sourceBetween(mutationSource, 'async fn update_post(', 'async fn delete_post(')],
+]);
+const resolverRichtextAccesses = [
+  'input.body',
+  'input.body_format',
+  'input.content_json',
+  'input.content',
+];
+
+for (const [resolver, source] of resolverSources) {
+  assert.ok(
+    source.includes('input.into()'),
+    `Blog GraphQL ${resolver} must delegate transport conversion through input.into()`,
+  );
+  for (const access of resolverRichtextAccesses) {
+    assert.ok(
+      !source.includes(access),
+      `Blog GraphQL ${resolver} must not wire richtext fields inside the async resolver: ${access}`,
+    );
+  }
+}
 
 const legacyFields = ['body', 'body_format', 'content_json'];
 const allowedLegacyFiles = new Map([
