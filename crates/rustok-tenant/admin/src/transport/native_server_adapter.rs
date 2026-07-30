@@ -6,7 +6,21 @@ use crate::model::TenantAdminBootstrap;
 #[cfg(feature = "ssr")]
 use crate::model::{TenantAdminModule, TenantAdminTenant};
 #[cfg(feature = "ssr")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Deserialize, Default)]
+struct RuntimeModulesManifest {
+    #[serde(default)]
+    settings: RuntimeSettingsManifest,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Deserialize, Default)]
+struct RuntimeSettingsManifest {
+    #[serde(default)]
+    default_enabled: Vec<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -72,7 +86,8 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             ));
         }
 
-        let service = TenantService::new(runtime_ctx.db_clone());
+        let db = runtime_ctx.db_clone();
+        let service = TenantService::new(db.clone());
         let tenant_record = service
             .get_tenant(tenant.id)
             .await
@@ -85,26 +100,47 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             .map(|module| (module.module_slug, module.enabled))
             .collect::<HashMap<_, _>>();
 
+        let control_plane = rustok_modules::ModuleControlPlane::new(db);
+        let snapshot = control_plane
+            .composition()
+            .active_snapshot()
+            .await
+            .map_err(ServerFnError::new)?;
+        let manifest: RuntimeModulesManifest = serde_json::from_value(snapshot.manifest)
+            .map_err(|error| ServerFnError::new(format!("invalid active module manifest: {error}")))?;
+        let manifest_defaults = manifest
+            .settings
+            .default_enabled
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let effective_modules = control_plane
+            .effective_policy(&registry, manifest.settings.default_enabled)
+            .resolve_enabled(tenant.id)
+            .await
+            .map_err(ServerFnError::new)?;
+
         let mut modules = registry
             .list()
             .into_iter()
             .map(|module| {
                 let is_core = registry.is_core(module.slug());
                 let explicit = explicit_modules.get(module.slug()).copied();
+                let enabled = effective_modules.contains(module.slug());
                 TenantAdminModule {
                     slug: module.slug().to_string(),
                     name: module.name().to_string(),
                     description: module.description().to_string(),
                     kind: if is_core { "core" } else { "optional" }.to_string(),
-                    enabled: if is_core {
-                        true
-                    } else {
-                        explicit.unwrap_or(false)
-                    },
+                    enabled,
                     source: if is_core {
                         "core-default".to_string()
                     } else if explicit.is_some() {
                         "tenant-override".to_string()
+                    } else if manifest_defaults.contains(module.slug()) {
+                        "manifest-default".to_string()
+                    } else if enabled {
+                        "policy-dependency".to_string()
                     } else {
                         "disabled".to_string()
                     },
