@@ -4,21 +4,57 @@ function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-comments-fba] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
+function sameList(actual, expected) { return JSON.stringify(actual) === JSON.stringify(expected); }
 
 const registryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
 const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json';
+const threadWriteEvidencePath = 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json';
+const threadWriteVerifierPath = 'scripts/verify/verify-comments-thread-write-invariants.mjs';
+const threadWriteSelfTestPath = 'scripts/verify/verify-comments-thread-write-invariants.test.mjs';
+const packageJsonPath = 'package.json';
+const expectedVerifySteps = [
+  'node scripts/verify/verify-comments-fba.mjs',
+  'npm run verify:comments:thread-write-invariants',
+  'npm run verify:owner:fba-runtime-order',
+];
+const expectedTestSteps = [
+  'npm run test:verify:comments:thread-write-invariants',
+  'npm run test:verify:owner:fba-runtime-order',
+];
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 const threadWriteEvidence = json(registry.evidence.thread_write_invariants);
+const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 1) fail('registry schema_version drift');
+if (registry.schema_version !== 2) fail('registry schema_version drift');
 if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
 const port = registry.ports?.[0];
 if (!port || port.name !== 'CommentsThreadPort') fail('port name drift');
 hasAll(JSON.stringify(port), ['create_comment','get_comment','list_comments_for_target','list_public_comments_for_target','update_comment','set_comment_status','delete_comment'], 'port operations');
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
+
+const chain = registry.verification_chain;
+if (chain?.package_script !== 'verify:comments:fba') fail('verification chain package script drift');
+if (chain?.test_package_script !== 'test:verify:comments:fba') fail('verification chain test package script drift');
+if (!sameList(chain?.steps ?? [], expectedVerifySteps)) fail('registry verification chain steps drift');
+if (!sameList(chain?.test_steps ?? [], expectedTestSteps)) fail('registry verification chain test steps drift');
+const threadWriteGate = chain?.source_gates?.thread_write_invariants;
+if (
+  threadWriteGate?.package_script !== 'verify:comments:thread-write-invariants'
+  || threadWriteGate?.test_package_script !== 'test:verify:comments:thread-write-invariants'
+  || threadWriteGate?.verifier !== threadWriteVerifierPath
+  || threadWriteGate?.self_test !== threadWriteSelfTestPath
+  || threadWriteGate?.evidence !== threadWriteEvidencePath
+) fail('thread write source gate drift');
+if (!sameList(packageJson.scripts?.['verify:comments:fba']?.split(' && ') ?? [], expectedVerifySteps)) fail('package Comments FBA verify chain drift');
+if (!sameList(packageJson.scripts?.['test:verify:comments:fba']?.split(' && ') ?? [], expectedTestSteps)) fail('package Comments FBA test chain drift');
+if (packageJson.scripts?.['verify:comments:thread-write-invariants'] !== `node ${threadWriteVerifierPath}`) fail('thread write leaf verifier command drift');
+if (packageJson.scripts?.['test:verify:comments:thread-write-invariants'] !== `node ${threadWriteSelfTestPath}`) fail('thread write leaf self-test command drift');
+for (const filePath of [threadWriteEvidencePath, threadWriteVerifierPath, threadWriteSelfTestPath]) {
+  if (!fs.existsSync(filePath)) fail(`thread write source gate file is missing ${filePath}`);
+}
 
 const manifest = read('crates/rustok-comments/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/comments-fba-registry.json"', 'contract_version = "comments.thread.v1"'], 'manifest');
@@ -117,8 +153,9 @@ for (const c of runtimeSmoke.cases) {
   }
 }
 
-if (registry.evidence.thread_write_invariants !== 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json') fail('thread write evidence path drift');
-if (registry.evidence.thread_write_invariants_runner !== 'scripts/verify/verify-comments-thread-write-invariants.mjs') fail('thread write verifier path drift');
+if (registry.evidence.thread_write_invariants !== threadWriteEvidencePath) fail('thread write evidence path drift');
+if (registry.evidence.thread_write_invariants_runner !== threadWriteVerifierPath) fail('thread write verifier path drift');
+if (registry.evidence.thread_write_invariants_self_test !== threadWriteSelfTestPath) fail('thread write self-test path drift');
 if (registry.evidence.thread_write_invariants_test !== 'crates/rustok-comments/tests/thread_write_invariants.rs') fail('thread write test path drift');
 if (registry.evidence.thread_creation_concurrency_test !== 'crates/rustok-comments/tests/thread_creation_concurrency.rs') fail('thread creation test path drift');
 if (threadWriteEvidence.module !== 'comments' || threadWriteEvidence.surface !== 'thread_write_invariants' || threadWriteEvidence.owner !== 'rustok-comments') fail('thread write evidence identity drift');
@@ -223,13 +260,19 @@ hasAll(firstThreadTest, [
   'assert_eq!(threads.len(), 1)',
   'assert_eq!(threads[0].comment_count, 2)',
 ], 'thread creation concurrency test');
-const threadWriteVerifier = read(registry.evidence.thread_write_invariants_runner);
+const threadWriteVerifier = read(threadWriteVerifierPath);
 hasAll(threadWriteVerifier, [
   'identity_lock::Entity::update_many()',
   'postgres_concurrent_first_comments_share_one_thread',
   'status_only_thread_update_preserves_comment_count',
   'postgres_concurrent_creates_and_delete_preserve_thread_invariants',
 ], 'thread write invariant verifier');
+const threadWriteSelfTest = read(threadWriteSelfTestPath);
+hasAll(threadWriteSelfTest, [
+  'thread write verifier accepts the owner invariant contract',
+  'rejects position allocation without tenant lock',
+  'rejects missing first-thread concurrency harness',
+], 'thread write invariant self-test');
 
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
 hasAll(plan, [
@@ -245,8 +288,11 @@ hasAll(plan, [
   'concurrent PostgreSQL',
   'identity-lock',
   'thread_creation_concurrency',
+  'verify:comments:thread-write-invariants',
+  'test:verify:comments:thread-write-invariants',
+  'test:verify:comments:fba',
 ], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-comments-fba] comments FBA provider metadata, runtime-order evidence, transactional thread writes, and first-thread identity serialization are consistent');
+console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, transactional thread writes, and first-thread identity serialization are consistent');
