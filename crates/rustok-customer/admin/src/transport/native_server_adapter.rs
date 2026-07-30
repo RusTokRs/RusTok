@@ -9,6 +9,11 @@ use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, Custom
 #[cfg(feature = "ssr")]
 use crate::model::{CurrentTenant, CustomerListItem, CustomerProfileRecord, CustomerRecord};
 
+#[cfg(feature = "ssr")]
+const CUSTOMER_ADMIN_OWNER: &str = "rustok_customer.admin_transport";
+#[cfg(feature = "ssr")]
+const CUSTOMER_ADMIN_BOUNDARY: &str = "customer_admin_native_transport";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
     ServerFn(String),
@@ -61,6 +66,176 @@ pub async fn update_customer(
     customer_update_native(customer_id, payload)
         .await
         .map_err(Into::into)
+}
+
+#[cfg(feature = "ssr")]
+fn customer_admin_correlation_id(owner_operation: &'static str) -> String {
+    format!("customer-admin:{owner_operation}:{}", uuid::Uuid::new_v4())
+}
+
+#[cfg(feature = "ssr")]
+fn customer_context_error<E: std::fmt::Debug>(
+    error: E,
+    owner_operation: &'static str,
+    context_kind: &'static str,
+    correlation_id: &str,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = CUSTOMER_ADMIN_OWNER,
+        owner_operation,
+        context_kind,
+        correlation_id,
+        code,
+        boundary = CUSTOMER_ADMIN_BOUNDARY,
+        "customer admin request context extraction failed"
+    );
+    ServerFnError::new(public_message)
+}
+
+#[cfg(feature = "ssr")]
+fn auth_context_error<E: std::fmt::Debug>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    customer_context_error(
+        error,
+        owner_operation,
+        "auth",
+        correlation_id,
+        "customer.admin_auth_context_unavailable",
+        "Customer authentication context is temporarily unavailable",
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn tenant_context_error<E: std::fmt::Debug>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    customer_context_error(
+        error,
+        owner_operation,
+        "tenant",
+        correlation_id,
+        "customer.admin_tenant_context_unavailable",
+        "Customer tenant context is temporarily unavailable",
+    )
+}
+
+#[cfg(feature = "ssr")]
+async fn optional_request_context(
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> Option<rustok_api::RequestContext> {
+    match leptos_axum::extract::<rustok_api::RequestContext>().await {
+        Ok(context) => Some(context),
+        Err(error) => {
+            tracing::warn!(
+                error = ?error,
+                owner = CUSTOMER_ADMIN_OWNER,
+                owner_operation,
+                context_kind = "request",
+                correlation_id,
+                code = "customer.admin_optional_request_context_unavailable",
+                boundary = CUSTOMER_ADMIN_BOUNDARY,
+                "customer admin optional request context extraction failed"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn customer_owner_error(
+    error: rustok_customer::CustomerError,
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+    customer_id: Option<uuid::Uuid>,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> ServerFnError {
+    use rustok_customer::CustomerError;
+
+    let (public_message, public_code, technical) = match &error {
+        CustomerError::Validation(_) => (
+            "Customer request is invalid",
+            "customer.admin_request_invalid",
+            false,
+        ),
+        CustomerError::CustomerNotFound(_) | CustomerError::CustomerByUserNotFound(_) => (
+            "Customer was not found",
+            "customer.admin_not_found",
+            false,
+        ),
+        CustomerError::DuplicateEmail(_) => (
+            "Customer email already exists",
+            "customer.admin_duplicate_email",
+            false,
+        ),
+        CustomerError::DuplicateUserLink(_) => (
+            "Customer is already linked to a user",
+            "customer.admin_duplicate_user_link",
+            false,
+        ),
+        CustomerError::Profile(_) => (
+            "Customer profile is temporarily unavailable",
+            "customer.admin_profile_unavailable",
+            true,
+        ),
+        CustomerError::Database(_) => (
+            "Customer data is temporarily unavailable",
+            "customer.admin_storage_unavailable",
+            true,
+        ),
+    };
+
+    if technical {
+        tracing::error!(
+            error = ?error,
+            owner = "rustok_customer",
+            consumer = CUSTOMER_ADMIN_OWNER,
+            owner_operation,
+            correlation_id,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            customer_id = ?customer_id,
+            request_tenant_id = ?request_context.map(|context| context.tenant_id),
+            request_user_id = ?request_context.and_then(|context| context.user_id),
+            channel_id = ?request_context.and_then(|context| context.channel_id),
+            channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
+            locale = ?request_context.map(|context| context.locale.as_str()),
+            public_code,
+            boundary = CUSTOMER_ADMIN_BOUNDARY,
+            "customer admin owner operation failed"
+        );
+    } else {
+        tracing::warn!(
+            error = ?error,
+            owner = "rustok_customer",
+            consumer = CUSTOMER_ADMIN_OWNER,
+            owner_operation,
+            correlation_id,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            customer_id = ?customer_id,
+            request_tenant_id = ?request_context.map(|context| context.tenant_id),
+            request_user_id = ?request_context.and_then(|context| context.user_id),
+            channel_id = ?request_context.and_then(|context| context.channel_id),
+            channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
+            locale = ?request_context.map(|context| context.locale.as_str()),
+            public_code,
+            boundary = CUSTOMER_ADMIN_BOUNDARY,
+            "customer admin owner operation was rejected"
+        );
+    }
+
+    ServerFnError::new(public_message)
 }
 
 #[cfg(feature = "ssr")]
@@ -195,8 +370,12 @@ async fn load_customer_detail(
     customer_service: &rustok_customer::CustomerService,
     profile_service: &rustok_profiles::ProfilePresentationService,
     tenant: &rustok_api::TenantContext,
+    actor_id: uuid::Uuid,
     customer_id: uuid::Uuid,
     requested_locale: Option<&str>,
+    request_context: Option<&rustok_api::RequestContext>,
+    correlation_id: &str,
+    owner_operation: &'static str,
 ) -> Result<CustomerDetail, ServerFnError> {
     let detail = customer_service
         .get_customer_with_profile(
@@ -207,7 +386,17 @@ async fn load_customer_detail(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| {
+            customer_owner_error(
+                error,
+                owner_operation,
+                correlation_id,
+                tenant.id,
+                actor_id,
+                Some(customer_id),
+                request_context,
+            )
+        })?;
 
     Ok(CustomerDetail {
         customer: map_customer_record(detail.customer),
@@ -222,12 +411,14 @@ async fn customer_bootstrap_native() -> Result<CustomerAdminBootstrap, ServerFnE
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
 
+        let owner_operation = "bootstrap";
+        let correlation_id = customer_admin_correlation_id(owner_operation);
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
 
         ensure_permission(
             &auth.permissions,
@@ -260,13 +451,16 @@ async fn customer_list_native(
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_customer::ListCustomersInput;
 
+        let owner_operation = "list_customers";
+        let correlation_id = customer_admin_correlation_id(owner_operation);
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
 
         ensure_permission(
             &auth.permissions,
@@ -295,7 +489,17 @@ async fn customer_list_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                customer_owner_error(
+                    error,
+                    owner_operation,
+                    &correlation_id,
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    request_context.as_ref(),
+                )
+            })?;
 
         Ok(CustomerList {
             items: items.into_iter().map(map_customer_list_item).collect(),
@@ -322,13 +526,16 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
         use rustok_api::Permission;
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
 
+        let owner_operation = "get_customer_detail";
+        let correlation_id = customer_admin_correlation_id(owner_operation);
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
 
         ensure_permission(
             &auth.permissions,
@@ -344,8 +551,12 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
             &customer_service,
             &profile_service,
             &tenant,
+            auth.user_id,
             customer_id,
             Some(tenant.default_locale.as_str()),
+            request_context.as_ref(),
+            &correlation_id,
+            owner_operation,
         )
         .await
     }
@@ -367,13 +578,16 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_customer::CreateCustomerInput;
 
+        let owner_operation = "create_customer";
+        let correlation_id = customer_admin_correlation_id(owner_operation);
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
 
         ensure_permission(
             &auth.permissions,
@@ -402,14 +616,28 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                customer_owner_error(
+                    error,
+                    owner_operation,
+                    &correlation_id,
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    request_context.as_ref(),
+                )
+            })?;
 
         load_customer_detail(
             &customer_service,
             &profile_service,
             &tenant,
+            auth.user_id,
             created.id,
             Some(requested_locale.as_str()),
+            request_context.as_ref(),
+            &correlation_id,
+            owner_operation,
         )
         .await
     }
@@ -434,13 +662,16 @@ async fn customer_update_native(
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_customer::UpdateCustomerInput;
 
+        let owner_operation = "update_customer";
+        let correlation_id = customer_admin_correlation_id(owner_operation);
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
 
         ensure_permission(
             &auth.permissions,
@@ -473,14 +704,28 @@ async fn customer_update_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                customer_owner_error(
+                    error,
+                    owner_operation,
+                    &correlation_id,
+                    tenant.id,
+                    auth.user_id,
+                    Some(customer_id),
+                    request_context.as_ref(),
+                )
+            })?;
 
         load_customer_detail(
             &customer_service,
             &profile_service,
             &tenant,
+            auth.user_id,
             customer_id,
             Some(locale.as_str()),
+            request_context.as_ref(),
+            &correlation_id,
+            owner_operation,
         )
         .await
     }
