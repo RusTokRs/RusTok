@@ -74,12 +74,13 @@ const worker = requireMarkers(workerPath, [
   'pub struct IndexReplayWorker',
   'pub async fn run_next_page(',
   'load_replay_checkpoint(&checkpoint_key)',
+  'CheckpointIdentityMismatch',
   'IndexReplayPageStatus::AlreadyComplete',
   'let mut event_ids = BTreeSet::new();',
   'event_id.is_nil()',
   'DuplicateReplayEventId',
   '.apply_replay_mutation(',
-  'last_delivery_id = Some(event_id.to_string())',
+  'last_delivery_id = Some(mutation.event_id().to_string())',
   '.commit_replay_checkpoint(&checkpoint)',
   'IndexReplayPageStatus::Complete',
   'IndexReplayPageStatus::Advanced',
@@ -103,10 +104,16 @@ for (const forbidden of [
   }
 }
 const runStart = worker.indexOf('pub async fn run_next_page(');
+const validationPosition = worker.indexOf('let mut event_ids = BTreeSet::new();', runStart);
 const applyPosition = worker.indexOf('.apply_replay_mutation(', runStart);
 const commitPosition = worker.indexOf('.commit_replay_checkpoint(&checkpoint)', runStart);
-if (runStart < 0 || applyPosition < runStart || commitPosition <= applyPosition) {
-  fail(`${workerPath} does not commit the checkpoint after mutation application`);
+if (
+  runStart < 0
+  || validationPosition < runStart
+  || applyPosition <= validationPosition
+  || commitPosition <= applyPosition
+) {
+  fail(`${workerPath} must validate the full page, apply mutations, then commit the checkpoint`);
 }
 
 const postgresPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
@@ -136,6 +143,7 @@ requireMarkers(testsPath, [
   'replay_page_commits_checkpoint_after_mutations',
   'checkpoint_failure_replays_the_same_event_delivery',
   'completed_checkpoint_skips_the_source',
+  'checkpoint_watermark_never_regresses',
   'nil_replay_event_is_rejected_before_persistence',
   'vec!["mutation", "checkpoint"]',
   'vec![event_id, event_id]',
