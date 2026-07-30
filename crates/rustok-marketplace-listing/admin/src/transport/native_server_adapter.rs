@@ -11,6 +11,108 @@ use crate::model::{
     MarketplaceListingAdminFilters,
 };
 
+#[cfg(feature = "ssr")]
+const MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER: &str = "rustok_marketplace_listing.admin";
+#[cfg(feature = "ssr")]
+const MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION: &str = "native_request";
+#[cfg(feature = "ssr")]
+const MARKETPLACE_LISTING_ADMIN_NATIVE_BOUNDARY: &str =
+    "marketplace_listing_admin_native_transport";
+
+#[cfg(feature = "ssr")]
+fn map_runtime_dependency_error(
+    action: MarketplaceListingAdminAction,
+    dependency: &'static str,
+) -> ServerFnError {
+    tracing::error!(
+        owner = MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER,
+        owner_operation = MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION,
+        action = ?action,
+        dependency,
+        code = "marketplace_listing.admin_runtime_unavailable",
+        boundary = MARKETPLACE_LISTING_ADMIN_NATIVE_BOUNDARY,
+        "marketplace listing admin native runtime dependency is unavailable"
+    );
+    ServerFnError::new("Marketplace listing service is temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_auth_context_error<E: std::fmt::Display>(
+    action: MarketplaceListingAdminAction,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = %error,
+        owner = MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER,
+        owner_operation = MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION,
+        action = ?action,
+        code = "marketplace_listing.admin_auth_context_unavailable",
+        boundary = MARKETPLACE_LISTING_ADMIN_NATIVE_BOUNDARY,
+        "marketplace listing admin authentication context extraction failed"
+    );
+    ServerFnError::new("Marketplace listing request context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_tenant_context_error<E: std::fmt::Display>(
+    action: MarketplaceListingAdminAction,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = %error,
+        owner = MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER,
+        owner_operation = MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION,
+        action = ?action,
+        code = "marketplace_listing.admin_tenant_context_unavailable",
+        boundary = MARKETPLACE_LISTING_ADMIN_NATIVE_BOUNDARY,
+        "marketplace listing admin tenant context extraction failed"
+    );
+    ServerFnError::new("Marketplace listing request context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_request_context_error<E: std::fmt::Display>(
+    action: MarketplaceListingAdminAction,
+    tenant_id: uuid::Uuid,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = %error,
+        owner = MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER,
+        owner_operation = MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION,
+        action = ?action,
+        tenant_id = %tenant_id,
+        code = "marketplace_listing.admin_request_context_unavailable",
+        boundary = MARKETPLACE_LISTING_ADMIN_NATIVE_BOUNDARY,
+        "marketplace listing admin request context extraction failed"
+    );
+    ServerFnError::new("Marketplace listing request context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_module_availability_error<E: std::fmt::Display>(
+    action: MarketplaceListingAdminAction,
+    tenant_id: uuid::Uuid,
+    request: &rustok_api::request::RequestContext,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = %error,
+        owner = MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER,
+        owner_operation = MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION,
+        action = ?action,
+        correlation_id = %request.correlation_id,
+        tenant_id = %tenant_id,
+        channel_id = ?request.channel_id,
+        channel_slug = ?request.channel_slug,
+        locale = %request.locale,
+        code = "marketplace_listing.admin_module_availability_failed",
+        boundary = MARKETPLACE_LISTING_ADMIN_NATIVE_BOUNDARY,
+        "marketplace listing admin module availability check failed"
+    );
+    ServerFnError::new("Marketplace listing service is temporarily unavailable")
+}
+
 #[derive(Debug, Clone)]
 pub struct NativeMarketplaceListingAdminError(pub String);
 
@@ -311,19 +413,19 @@ async fn native_request(
     use rustok_api::{AuthContext, HostRuntimeContext, PortActor, TenantContext};
 
     let host = use_context::<HostRuntimeContext>()
-        .ok_or_else(|| ServerFnError::new("marketplace listing host runtime is not mounted"))?;
+        .ok_or_else(|| map_runtime_dependency_error(action, "HostRuntimeContext"))?;
     let runtime = host
         .shared_get::<rustok_marketplace_listing::MarketplaceListingRuntime>()
-        .ok_or_else(|| ServerFnError::new("marketplace listing owner ports are not composed"))?;
+        .ok_or_else(|| map_runtime_dependency_error(action, "MarketplaceListingRuntime"))?;
     let auth = leptos_axum::extract::<AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| map_auth_context_error(action, error))?;
     let tenant = leptos_axum::extract::<TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| map_tenant_context_error(action, error))?;
     let request = leptos_axum::extract::<RequestContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| map_request_context_error(action, tenant.id, error))?;
 
     if !rustok_api::has_effective_permission(&auth.permissions, &action.permission()) {
         return Err(ServerFnError::new(
@@ -341,8 +443,8 @@ async fn native_request(
     let module_enabled =
         rustok_api::is_tenant_module_enabled(host.db(), tenant.id, "marketplace_listing")
             .await
-            .map_err(|_| {
-                ServerFnError::new("marketplace listing module availability check failed")
+            .map_err(|error| {
+                map_module_availability_error(action, tenant.id, &request, error)
             })?;
     if !module_enabled {
         return Err(ServerFnError::new(
