@@ -1,5 +1,6 @@
 mod catalog_list_native;
 mod graphql_adapter;
+mod graphql_error_safety;
 mod native_server_adapter;
 
 use crate::catalog_controls::CatalogListInput;
@@ -33,7 +34,13 @@ pub async fn fetch_products(
         "product",
         selected_transport_path(),
         move || catalog_list_native::fetch_products(native_request, native_controls),
-        move || graphql_adapter::fetch_products(request, controls),
+        move || async move {
+            let context =
+                graphql_error_safety::GraphqlCallContext::fetch_products(&request, &controls);
+            graphql_adapter::fetch_products(request, controls)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
@@ -46,7 +53,13 @@ pub async fn fetch_catalog_search_options(
         "product",
         selected_transport_path(),
         move || native_server_adapter::fetch_catalog_search_options(native_locale),
-        move || graphql_adapter::fetch_catalog_search_options(locale),
+        move || async move {
+            let context =
+                graphql_error_safety::GraphqlCallContext::fetch_catalog_search_options(&locale);
+            graphql_adapter::fetch_catalog_search_options(locale)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
