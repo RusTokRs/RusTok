@@ -14,8 +14,8 @@ use rustok_core::events::EventTransport;
 use rustok_customer::CustomerService;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::{
-    ProfileBackfillTimer, ProfileError, ProfileService, ProfileVisibility, ProfilesReader,
-    backfill_profile_with_event,
+    ProfileBackfillTimer, ProfileError, ProfileMutationService, ProfileService, ProfileVisibility,
+    ProfilesReader,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService};
@@ -119,6 +119,7 @@ impl ProfilesCommandProvider {
         let event_bus = TransactionalEventBus::new(
             Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
         );
+        let profile_mutations = ProfileMutationService::new(&db, &event_bus);
         let profiles = ProfileService::new(db.clone());
         let existing = profiles
             .find_profile_summaries(
@@ -162,19 +163,18 @@ impl ProfilesCommandProvider {
                 items.push(serde_json::json!({"user_id": user.id, "email": user.email, "handle": plan.handle, "display_name": plan.display_name, "preferred_locale": plan.preferred_locale, "action": "planned", "event_published": false}));
                 continue;
             }
-            let result = backfill_profile_with_event(
-                &db,
-                &event_bus,
-                tenant.id,
-                user.id,
-                &user.email,
-                display_name,
-                Some(locale),
-                visibility,
-                Some(&tenant.default_locale),
-            )
-            .await
-            .map_err(|error| backfill_profile_failed(&telemetry, "profile_create", error))?;
+            let result = profile_mutations
+                .backfill_profile_with_event(
+                    tenant.id,
+                    user.id,
+                    &user.email,
+                    display_name,
+                    Some(locale),
+                    visibility,
+                    Some(&tenant.default_locale),
+                )
+                .await
+                .map_err(|error| backfill_profile_failed(&telemetry, "profile_create", error))?;
             let event_published = result.created;
             if result.created {
                 created_profiles += 1;
@@ -208,6 +208,7 @@ fn options(args: &serde_json::Value) -> CliCoreResult<&serde_json::Map<String, s
             message: "profiles backfill expects normalized command options".to_string(),
         })
 }
+
 fn required_uuid(
     options: &serde_json::Map<String, serde_json::Value>,
     key: &str,
@@ -224,6 +225,7 @@ fn required_uuid(
             })
         })
 }
+
 fn optional_u64(
     options: &serde_json::Map<String, serde_json::Value>,
     key: &str,
@@ -244,12 +246,14 @@ fn optional_u64(
         })
         .transpose()
 }
+
 fn flag(options: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
     options
         .get(key)
         .and_then(serde_json::Value::as_str)
         .is_some_and(|value| matches!(value, "1" | "true" | "yes" | "on"))
 }
+
 fn visibility(
     options: &serde_json::Map<String, serde_json::Value>,
 ) -> CliCoreResult<ProfileVisibility> {
@@ -267,6 +271,7 @@ fn visibility(
         }),
     }
 }
+
 fn port_context(tenant_id: Uuid) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
@@ -276,6 +281,7 @@ fn port_context(tenant_id: Uuid) -> PortContext {
     )
     .with_deadline(Duration::from_secs(5))
 }
+
 fn display_name(item: &rustok_customer::CustomerProfileEnrichment) -> Option<String> {
     let first = item
         .first_name
@@ -294,6 +300,7 @@ fn display_name(item: &rustok_customer::CustomerProfileEnrichment) -> Option<Str
         (None, None) => None,
     }
 }
+
 fn backfill_port_failed(
     telemetry: &ProfileBackfillTimer,
     stage: &'static str,
@@ -303,6 +310,7 @@ fn backfill_port_failed(
     telemetry.finish_failure(stage, error_code, error.retryable);
     command_failed(error.message)
 }
+
 fn backfill_profile_failed(
     telemetry: &ProfileBackfillTimer,
     stage: &'static str,
@@ -311,6 +319,7 @@ fn backfill_profile_failed(
     telemetry.finish_failure(stage, error.code(), error.is_retryable());
     command_failed(error)
 }
+
 fn backfill_failed(
     telemetry: &ProfileBackfillTimer,
     stage: &'static str,
@@ -321,6 +330,7 @@ fn backfill_failed(
     telemetry.finish_failure(stage, error_code, retryable);
     command_failed(error)
 }
+
 fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
     CliCoreError::CommandFailed {
         message: error.to_string(),
