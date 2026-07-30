@@ -3,7 +3,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use rustok_core::ModuleRuntimeExtensions;
 use thiserror::Error;
 
-use crate::domain::{DomainError, IndexSchema, SchemaFingerprint, SchemaRef};
+use crate::domain::{
+    DomainError, IndexSchema, SchemaFingerprint, SchemaIdentity, SchemaRef,
+};
 
 use super::{SchemaRegistry, SchemaRegistryError};
 
@@ -50,11 +52,12 @@ impl IndexSchemaSourceCatalog {
         self.sources.values()
     }
 
-    /// Registers exactly one source owner for an exact schema reference.
+    /// Registers exactly one source owner for an exact schema reference and its
+    /// complete module/entity identity across versions.
     ///
-    /// Duplicate ownership is rejected even when the semantic contract is equal;
-    /// two publishers for one schema reference would make replay and drift repair
-    /// ownership ambiguous.
+    /// Duplicate exact references are rejected even when the semantic contract is
+    /// equal. Different source owners also cannot split versions of one schema
+    /// identity, because that would make replay and drift repair ownership ambiguous.
     pub fn register(
         &mut self,
         owner_module: impl Into<String>,
@@ -68,6 +71,18 @@ impl IndexSchemaSourceCatalog {
         if let Some(existing) = self.sources.get(&reference) {
             return Err(IndexSchemaSourceError::DuplicateSchemaOwner {
                 reference,
+                existing_owner: existing.owner_module.clone(),
+                incoming_owner: owner_module,
+            });
+        }
+
+        let identity = reference.identity();
+        if let Some(existing) = self.sources.values().find(|existing| {
+            existing.schema.reference.identity() == identity
+                && existing.owner_module.as_str() != owner_module.as_str()
+        }) {
+            return Err(IndexSchemaSourceError::SchemaIdentityOwnerConflict {
+                identity,
                 existing_owner: existing.owner_module.clone(),
                 incoming_owner: owner_module,
             });
@@ -130,6 +145,14 @@ pub enum IndexSchemaSourceError {
     )]
     DuplicateSchemaOwner {
         reference: SchemaRef,
+        existing_owner: String,
+        incoming_owner: String,
+    },
+    #[error(
+        "Index schema identity {identity} changes source owner across versions: existing={existing_owner}, incoming={incoming_owner}"
+    )]
+    SchemaIdentityOwnerConflict {
+        identity: SchemaIdentity,
         existing_owner: String,
         incoming_owner: String,
     },
@@ -222,6 +245,12 @@ mod tests {
         }
     }
 
+    fn target_schema_version(version: u32) -> IndexSchema {
+        let mut schema = target_schema();
+        schema.reference.version = SchemaVersion::new(version);
+        schema
+    }
+
     fn source_schema() -> IndexSchema {
         IndexSchema {
             reference: reference("test-owner", "post"),
@@ -275,6 +304,27 @@ mod tests {
         assert!(matches!(
             error,
             IndexSchemaSourceError::DuplicateSchemaOwner {
+                existing_owner,
+                incoming_owner,
+                ..
+            } if existing_owner == "profiles" && incoming_owner == "accounts"
+        ));
+    }
+
+    #[test]
+    fn schema_identity_owner_is_stable_across_versions() {
+        let mut catalog = IndexSchemaSourceCatalog::new();
+        catalog.register("profiles", target_schema()).unwrap();
+        catalog
+            .register("profiles", target_schema_version(2))
+            .expect("one owner may publish a later schema version");
+        let error = catalog
+            .register("accounts", target_schema_version(3))
+            .expect_err("schema identity ownership must not move across versions");
+
+        assert!(matches!(
+            error,
+            IndexSchemaSourceError::SchemaIdentityOwnerConflict {
                 existing_owner,
                 incoming_owner,
                 ..
