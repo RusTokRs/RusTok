@@ -1,0 +1,202 @@
+use rustok_core::ModuleRuntimeExtensions;
+use sea_orm::DatabaseConnection;
+
+use crate::error::{Error, Result};
+
+/// Materializes the host-owned Index replay capability after all modules have registered sources.
+///
+/// This function performs no database I/O and starts no worker. It only freezes the complete
+/// source catalog, binds the immutable schema/source registries to the host database, and publishes
+/// the bounded operator capability through `ModuleRuntimeExtensions`.
+pub(crate) fn materialize_index_replay_runtime(
+    extensions: &mut ModuleRuntimeExtensions,
+    db: DatabaseConnection,
+) -> Result<()> {
+    if extensions.contains::<rustok_index::SharedIndexSourceRegistry>() {
+        return Err(Error::Message(
+            "shared Index source registry is already materialized".to_string(),
+        ));
+    }
+
+    let sources = rustok_index::materialize_index_source_registry(extensions).map_err(|error| {
+        Error::Message(format!(
+            "Index replay source registry materialization failed: {error}"
+        ))
+    })?;
+    if let Some(sources) = sources {
+        extensions.insert(sources);
+    }
+
+    rustok_index::materialize_postgres_index_replay_runtime(extensions, db).map_err(|error| {
+        Error::Message(format!(
+            "Index replay runtime composition failed: {error}"
+        ))
+    })?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use rustok_core::{MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule};
+    use rustok_index::{
+        EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexSource,
+        IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
+        IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+        SharedIndexReplayRuntime, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+        register_index_schema_source, register_index_source,
+    };
+    use sea_orm::Database;
+    use sea_orm_migration::MigrationTrait;
+
+    use super::materialize_index_replay_runtime;
+
+    struct DemoReplayModule;
+    struct NoopSource;
+
+    #[async_trait]
+    impl IndexSource for NoopSource {
+        async fn scan(
+            &self,
+            request: IndexSourceScanRequest,
+        ) -> Result<IndexSourcePage, IndexSourceFailure> {
+            Ok(IndexSourcePage::new(&request, Vec::new(), None)
+                .expect("empty final replay page should be valid"))
+        }
+
+        async fn load(
+            &self,
+            request: IndexSourceLoadRequest,
+        ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
+            Ok(IndexSourceLoadBatch::new(&request, Vec::new())
+                .expect("empty targeted load should be valid"))
+        }
+    }
+
+    impl MigrationSource for DemoReplayModule {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            Vec::new()
+        }
+    }
+
+    #[async_trait]
+    impl RusToKModule for DemoReplayModule {
+        fn slug(&self) -> &'static str {
+            "demo_replay"
+        }
+
+        fn name(&self) -> &'static str {
+            "Demo replay"
+        }
+
+        fn description(&self) -> &'static str {
+            "Test source-owned Index replay publisher"
+        }
+
+        fn version(&self) -> &'static str {
+            "0.1.0"
+        }
+
+        fn register_runtime_extensions(
+            &self,
+            extensions: &mut ModuleRuntimeExtensions,
+        ) -> rustok_core::Result<()> {
+            let schema = demo_schema();
+            register_index_schema_source(extensions, self.slug(), schema.clone()).map_err(
+                |error| {
+                    rustok_core::Error::Validation(format!(
+                        "demo replay schema registration failed: {error}"
+                    ))
+                },
+            )?;
+            register_index_source(
+                extensions,
+                self.slug(),
+                "demo-replay-primary",
+                [schema.reference],
+                NoopSource,
+            )
+            .map_err(|error| {
+                rustok_core::Error::Validation(format!(
+                    "demo replay source registration failed: {error}"
+                ))
+            })
+        }
+    }
+
+    fn demo_schema() -> IndexSchema {
+        IndexSchema {
+            reference: SchemaRef {
+                module: ModuleName::new("demo-replay").unwrap(),
+                entity: EntityName::new("item").unwrap(),
+                version: SchemaVersion::INITIAL,
+            },
+            locale_mode: LocaleMode::None,
+            fields: vec![IndexField {
+                name: FieldName::new("id").unwrap(),
+                value_type: IndexValueType::Uuid,
+                cardinality: FieldCardinality::One,
+                nullable: false,
+                selectable: true,
+                filterable: true,
+                sortable: true,
+            }],
+            links: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_replay_sources_do_not_publish_false_host_runtime() {
+        let registry = ModuleRegistry::new().register(IndexModule);
+        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
+            .expect("empty Index composition should build");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+
+        materialize_index_replay_runtime(&mut extensions, db)
+            .expect("missing sources should remain optional");
+        assert!(!extensions.contains::<SharedIndexSourceRegistry>());
+        assert!(!extensions.contains::<SharedIndexReplayRuntime>());
+    }
+
+    #[tokio::test]
+    async fn complete_source_catalog_publishes_replay_runtime_to_host_context() {
+        let registry = ModuleRegistry::new()
+            .register(IndexModule)
+            .register(DemoReplayModule);
+        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
+            .expect("source schema composition should build");
+        assert!(extensions.contains::<SharedIndexSchemaRegistry>());
+        assert!(!extensions.contains::<SharedIndexSourceRegistry>());
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+
+        materialize_index_replay_runtime(&mut extensions, db.clone())
+            .expect("complete replay runtime should compose");
+        assert!(extensions.contains::<SharedIndexSourceRegistry>());
+        assert!(extensions.contains::<SharedIndexReplayRuntime>());
+
+        let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
+        assert!(host.shared_get::<SharedIndexReplayRuntime>().is_some());
+    }
+
+    #[tokio::test]
+    async fn duplicate_host_replay_materialization_fails_closed() {
+        let registry = ModuleRegistry::new()
+            .register(IndexModule)
+            .register(DemoReplayModule);
+        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
+            .expect("source schema composition should build");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        materialize_index_replay_runtime(&mut extensions, db.clone())
+            .expect("first replay materialization");
+
+        let error = materialize_index_replay_runtime(&mut extensions, db)
+            .expect_err("duplicate replay materialization must fail");
+        assert!(error.to_string().contains("already materialized"));
+    }
+}
