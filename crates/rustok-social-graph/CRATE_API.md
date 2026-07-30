@@ -8,6 +8,7 @@
 - `graphql` behind feature `graphql`
 - `index` behind feature `index`
 - `index_privacy` behind feature `index`
+- `index_privacy_shadow` behind feature `index`
 - `index_consumer` and `index_dlq_receipt` behind feature `index-consumer`
 - `maintenance`
 - `migrations`
@@ -26,12 +27,13 @@ write-capable owner service used by GraphQL and native storefront composition.
 
 - `SocialGraphCommandPort::set_relation` owns validated, idempotent relation commands.
 - `SocialGraphPrivacyReadPort` owns block, mute, and bounded directional follow policy reads.
-- `IndexSocialGraphPrivacyReadPort` is the typed Index-backed privacy implementation.
+- `IndexSocialGraphPrivacyReadPort` is the typed Index projection reader.
+- `IndexShadowSocialGraphPrivacyReadPort` compares Index with the authoritative owner port
+  while always returning the owner result.
 - `SocialGraphFollowReadPort` exposes revision-bearing follow state and is not served from
   the current Index schema.
 - `SocialGraphReceiptMaintenancePort` owns bounded completed-receipt cleanup.
-- `SocialGraphRelationEventMaintenancePort` owns bounded replay of authoritative relation
-  facts.
+- `SocialGraphRelationEventMaintenancePort` owns bounded replay of authoritative facts.
 - `SocialRelationKind::{Block, Mute, Follow}` defines canonical persistence and event values.
 
 ## Command and receipt contract
@@ -58,12 +60,12 @@ write-capable owner service used by GraphQL and native storefront composition.
   and rolls relation plus receipt back together.
 - Bounded Social Graph replay republishes the same sealed facts. Consumers must handle
   duplicate/stale delivery through monotonic revision.
-- Social Graph storage, commands, events, replay, and drift repair remain authoritative.
+- Social Graph persistence remains authoritative for drift repair.
 
 ## Optional Index projection
 
-Feature `index` enables generic Index conversion and typed privacy consumption without
-moving source authority into Index.
+Feature `index` enables generic Index conversion and typed privacy comparison without moving
+source authority into Index.
 
 - `social_graph_relation_index_schema()` declares non-localized relation records keyed by
   tenant and relation ID.
@@ -74,7 +76,7 @@ moving source authority into Index.
 - Relation revision becomes Index `source_version`.
 - Projection conversion contains no database, broker, or privacy authorization logic.
 
-## Index privacy read adapter
+## Typed Index privacy reader
 
 `IndexSocialGraphPrivacyReadPort::new(SharedIndexQueryRuntime)` stores only the neutral
 `Arc<dyn IndexQueryPort>` capability. It receives no database connection, never constructs
@@ -86,19 +88,35 @@ moving source authority into Index.
 - Follow batches retain the 100-target bound, deduplicate input, use typed `In`, validate
   projected UUIDs, and return deterministic sorted IDs.
 - All operations preserve `PortCallPolicy::read`, tenant parsing, and self-relation rejection.
-- Missing tenant schema or storage availability maps to retryable fail-closed
+- Missing tenant schema or storage availability maps to retryable
   `social_graph.index_privacy_unavailable`.
 - Plan/compiler/decoder/backend/result-contract drift maps to non-retryable
   `social_graph.index_privacy_contract_invalid`.
 
-The final notification block/mute policy selects this adapter only when
-`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED=true`. The flag is default-off. Before
-activation the authoritative owner read path remains selected. After activation,
-`SharedIndexQueryRuntime` is mandatory and no owner-table fallback is allowed. Custom
-notification block/mute runtimes retain priority.
+The typed reader is not independently authorized to decide privacy. A successful empty result
+may be stale and therefore cannot prove that no current block or mute exists.
 
-This adapter does not provide revision-bearing `SocialGraphFollowReadPort` results and must
-not authorize Profiles presentation visibility.
+## Non-authoritative Index privacy shadow
+
+`IndexShadowSocialGraphPrivacyReadPort` owns an authoritative
+`Arc<dyn SocialGraphPrivacyReadPort>` plus `IndexSocialGraphPrivacyReadPort`.
+
+- Every method executes the owner read first.
+- Owner error is returned unchanged.
+- After owner success, the same request is issued to Index for comparison.
+- Match, mismatch, or Index error is recorded with bounded operation/result fields only.
+- Tenant, user, relation, entity, payload, SQL, and storage details are not logged.
+- All four methods return the owner result; the Index shadow never authorizes or suppresses.
+
+The final notification block/mute policy uses this wrapper only when
+`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED=true`. The shadow is default-off. When
+disabled, ordinary owner policy remains unchanged. When enabled, `SharedIndexQueryRuntime`
+is required, but the owner result remains authoritative. Custom notification block/mute
+runtimes retain priority.
+
+Authoritative cutover is blocked until retained per-tenant freshness/watermark, lag,
+positive/negative parity, outage/recovery, repair, latency, and negative-result fail-closed
+evidence exists.
 
 ## Durable Index consumer
 
@@ -173,13 +191,11 @@ Feature `index-consumer` adds optional persistent Iggy consumption on top of `in
 
 ## Authority boundary
 
-- Social Graph owner storage, commands, events, replay, and drift repair remain authoritative
-  for block, mute, and follow.
-- Notification block/mute policy may consume the approved Index projection only through
-  `IndexSocialGraphPrivacyReadPort` and only after the explicit default-off activation flag
-  is enabled.
-- Once activated, missing readiness is retryable fail-closed and never becomes an implicit
-  allow or owner-table fallback.
+- Social Graph owner storage, commands, events, replay, drift repair, and privacy decisions
+  remain authoritative for block, mute, and follow.
+- Notification block/mute policy may run the approved Index projection only through
+  `IndexShadowSocialGraphPrivacyReadPort`, which always returns the owner result.
+- Index shadow mismatch or failure never authorizes, suppresses, widens, or changes policy.
 - Profiles privacy, presentation visibility, and revision-bearing follow state must not
   authorize from Index state, DLQ receipts, broker IDs, deduplication state, or consumer lag.
 - Projection infrastructure must not independently authorize presentation.
@@ -204,9 +220,10 @@ Feature `index-consumer` adds optional persistent Iggy consumption on top of `in
 - Reading Social Graph tables from Profiles, Index, or another consumer.
 - Constructing `PostgresIndexQueryPort` in Social Graph or bypassing
   `SharedIndexQueryRuntime`.
-- Enabling Index privacy reads before retained readiness, lag, and result-parity evidence.
-- Falling back to owner-table notification block/mute reads after the activation flag is true.
-- Treating missing Index schema readiness as no block or no mute.
+- Returning the Index result from the privacy shadow instead of the owner result.
+- Treating shadow mismatch, error, or empty projection as a privacy decision.
+- Treating schema readiness as a freshness watermark.
+- Logging tenant/user/relation identities from shadow comparison.
 - Using Index for revision-bearing follow state or Profiles presentation authorization.
 - Acknowledging before durable Index or DLQ result completion.
 - Inventing tenant/event identity for undecodable bytes.
