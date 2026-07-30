@@ -43,7 +43,8 @@ fn forum_events_are_strictly_ordered_by_envelope_revision() {
         "FOR UPDATE",
         "due_at > Utc::now()",
         "return Ok(None)",
-        "pg_advisory_xact_lock(hashtextextended($1, 0))",
+        "pg_try_advisory_xact_lock(hashtextextended($1, 0))",
+        "AS acquired",
         "search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}",
         "load_effective_watermark",
         "load_watermark(transaction, tenant_id, FULL_SCOPE_KEY)",
@@ -56,6 +57,7 @@ fn forum_events_are_strictly_ordered_by_envelope_revision() {
     ] {
         require(INBOX, marker);
     }
+    reject(INBOX, "pg_advisory_xact_lock(");
     reject(INBOX, "OnceLock");
     reject(INBOX, "OwnedMutexGuard");
     reject(INBOX, "SystemTime::now");
