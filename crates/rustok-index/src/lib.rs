@@ -4,8 +4,9 @@
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
 //! storage-schema migrations, atomic mutation persistence, tenant-scoped source
 //! schema registration, bounded source replay/load contracts, one-page replay
-//! orchestration with durable fenced checkpoint progression, durable replay-job
-//! and schema-application leases, schema-derived secondary-index lifecycle,
+//! orchestration with durable fenced checkpoint progression, bounded multi-page
+//! replay coordination with heartbeat/yield semantics, durable replay-job and
+//! schema-application leases, schema-derived secondary-index lifecycle,
 //! fail-closed measured partition admission, and the PostgreSQL execution adapter
 //! for structured Index queries.
 
@@ -26,18 +27,20 @@ pub use domain::*;
 pub use infrastructure::postgres::{
     evaluate_partition_admission, materialize_postgres_index_query_runtime,
     IndexQueryRuntimeCompositionError, IndexReplayJobAcquireOutcome, IndexReplayJobError,
-    IndexReplayJobLease, IndexReplayJobLeaseRequest, MutationApplyOutcome, MutationDelivery,
+    IndexReplayJobLease, IndexReplayJobLeaseRequest, IndexReplayRunError, IndexReplayRunOutcome,
+    IndexReplayRunRequest, IndexReplayRunStatus, MutationApplyOutcome, MutationDelivery,
     MutationStorageError, PartitionAdmissionError, PartitionAdmissionOutcome,
     PartitionAdmissionPolicy, PartitionAdmissionReason, PartitionBaselineEvidence,
     PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
     PartitionShadowEvidence, PartitionShadowPlan, PartitionStrategy,
     PersistedSchemaRegistrationOutcome, PostgresIndexQueryPort,
-    PostgresIndexReplayCheckpointStore, PostgresIndexReplayJobStore, PostgresMutationStore,
-    PostgresSchemaLeaseStore, PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager,
-    SchemaApplicationLease, SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome,
-    SchemaLeaseError, SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
-    SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
-    SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
+    PostgresIndexReplayCheckpointStore, PostgresIndexReplayJobStore, PostgresIndexReplayRunner,
+    PostgresMutationStore, PostgresSchemaLeaseStore, PostgresSchemaRegistrationStore,
+    PostgresSecondaryIndexManager, SchemaApplicationLease, SchemaApplicationLeaseRequest,
+    SchemaLeaseAcquireOutcome, SchemaLeaseError, SchemaRegistrationError,
+    SecondaryIndexClaimOutcome, SecondaryIndexError, SecondaryIndexExecutionOutcome,
+    SecondaryIndexKind, SecondaryIndexLease, SecondaryIndexOperation, SecondaryIndexPlan,
+    SecondaryIndexRequest, SecondaryIndexSpec,
 };
 
 pub struct IndexModule;
