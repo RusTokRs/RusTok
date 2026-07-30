@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "commerce_admin_order_change_client_transport_error_safety_source_reviewed_unvalidated",
+  "reviewed_boundary": "commerce_admin_order_change_client_transport",
+  "review_findings": [
+    "All three public order-change operations retain the existing Result success and ApiError contracts.",
+    "The GraphQL branches and their existing map_graphql_error calls are unchanged.",
+    "Each native branch creates an operation-specific context before moving request arguments into the unchanged adapter call.",
+    "Each native branch maps only the final returned ApiError to one static public message.",
+    "The original native error remains available only to structured tracing diagnostics.",
+    "Diagnostics retain only token presence and bounded string presence or character-length shape.",
+    "No token, tenant, order, status, or action-draft value is logged by the new client boundary.",
+    "Default and SSR native adapters, mounted endpoints, permissions, owner calls, and response mapping are outside the diff.",
+    "Promotion transport is outside the diff.",
+    "The broad ecommerce mapper cleanup remains open."
+  ],
+  "execution": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  },
+  "review_note": "Source review corrected a generic iterator-count expression to explicit closures; no execution evidence is claimed."
+}
