@@ -16,6 +16,7 @@ ssr = [
   "rustok-api/server",
   "dep:leptos_axum",
   "dep:rustok-marketplace-listing",
+  "dep:tracing",
 ]
 
 [dependencies]
@@ -29,4 +30,5 @@ rustok-ui-i18n-leptos.workspace = true
 rustok-ui-transport.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tracing = { workspace = true, optional = true }
 uuid.workspace = true
