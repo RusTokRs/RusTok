@@ -41,10 +41,26 @@ pub body_format: String,
 pub content_json: Option<Value>,
 `;
 const canonicalMutation = `
-body: input.body,
-body_format: input.body_format,
-content_json: input.content_json,
-content: input.content,
+async fn create_post(input: CreatePostInput) {
+    let create_input: DomainCreatePostInput = input.into();
+}
+
+async fn update_post(input: UpdatePostInput) {
+    let update_input: DomainUpdatePostInput = input.into();
+}
+
+async fn delete_post() {}
+
+impl From<UpdatePostInput> for DomainUpdatePostInput {
+    fn from(input: UpdatePostInput) -> Self {
+        Self {
+            body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
+            content: input.content,
+        }
+    }
+}
 `;
 
 const passing = await runFixture({
@@ -62,6 +78,26 @@ const missingCanonical = await runFixture({
 });
 assert.notEqual(missingCanonical.status, 0);
 assert.match(missingCanonical.stderr, /missing canonical field/);
+
+const manualUpdateMapping = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation.replace(
+    'let update_input: DomainUpdatePostInput = input.into();',
+    'let update_input = DomainUpdatePostInput { body: input.body, body_format: input.body_format, content_json: input.content_json, content: input.content };',
+  ),
+});
+assert.notEqual(manualUpdateMapping.status, 0);
+assert.match(manualUpdateMapping.stderr, /must delegate transport conversion through input\.into\(\)/);
+
+const resolverFieldAccess = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation.replace(
+    'let update_input: DomainUpdatePostInput = input.into();',
+    'let _legacy = input.content_json.as_ref();\n    let update_input: DomainUpdatePostInput = input.into();',
+  ),
+});
+assert.notEqual(resolverFieldAccess.status, 0);
+assert.match(resolverFieldAccess.stderr, /must not wire richtext fields inside the async resolver/);
 
 const newAlias = await runFixture({
   typesSource: canonicalTypes,
