@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import './verify-commerce-storefront-aggregate-error-safety.mjs';
 import './verify-commerce-storefront-payment-command-error-safety.mjs';
 import './verify-commerce-storefront-shipping-command-error-safety.mjs';
+import './verify-commerce-storefront-checkout-command-error-safety.mjs';
 
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const rootPath = configuredRoot
@@ -188,5 +189,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ commerce storefront request/tenant context plus cart/payment transport failures retain actual request identity, static public envelopes, and no client-side raw causes; runtime evidence remains open',
+  '✔ commerce storefront request/tenant context plus aggregate, payment, shipping, and checkout transport failures retain static public envelopes and no client-side raw causes; runtime evidence remains open',
 );
