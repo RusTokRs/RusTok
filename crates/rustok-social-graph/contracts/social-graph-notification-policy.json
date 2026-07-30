@@ -10,6 +10,7 @@
   "service": "crates/rustok-social-graph/src/service.rs",
   "ports": "crates/rustok-social-graph/src/ports.rs",
   "index_privacy": "crates/rustok-social-graph/src/index_privacy.rs",
+  "index_privacy_shadow": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
   "relation_state": {
     "table": "social_graph_relations",
     "kinds": ["block", "mute"],
@@ -25,7 +26,8 @@
     "mute_source_to_target_only": true,
     "notification_mute_source": "recipient_id",
     "notification_mute_target": "actor_id",
-    "index_readiness_failure_suppresses_allow_when_enabled": true
+    "authoritative_owner_result_always_returned": true,
+    "index_shadow_never_authorizes": true
   },
   "server_composition": {
     "adapter": "apps/server/src/services/notification_recipient_policy.rs",
@@ -36,12 +38,12 @@
     "candidate_worker_runtime_delivered": true,
     "candidate_worker_default_enabled": false,
     "candidate_worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
-    "index_query_runtime_required_when_enabled": true,
-    "notification_block_mute_index_cutover_source_complete": true,
-    "index_privacy_activation_env": "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED",
-    "index_privacy_default_enabled": false,
-    "authoritative_table_path_before_activation": true,
-    "authoritative_table_fallback_after_activation": false
+    "index_query_runtime_required_when_shadow_enabled": true,
+    "notification_block_mute_index_shadow_source_complete": true,
+    "notification_block_mute_index_cutover": false,
+    "index_privacy_shadow_env": "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED",
+    "index_privacy_shadow_default_enabled": false,
+    "owner_policy_remains_authoritative": true
   },
   "distribution": {
     "registry": "crates/rustok-distribution/src/lib.rs",
@@ -61,7 +63,7 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "activation after retained projection readiness, lag, and result-parity evidence",
+    "authoritative cutover after retained freshness, lag, negative-result safety, and result-parity evidence",
     "default candidate worker enablement after health and lag metrics",
     "friend and follow presentation cutover",
     "block and mute transports",
