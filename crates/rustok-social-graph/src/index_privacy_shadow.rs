@@ -762,10 +762,7 @@ mod tests {
 
         let result = tokio::time::timeout(
             Duration::from_millis(100),
-            shadow.blocks_between(
-                context_with_deadline(Duration::from_millis(10)),
-                pair(),
-            ),
+            shadow.blocks_between(context_with_deadline(Duration::from_millis(10)), pair()),
         )
         .await
         .expect("shadow observation must not outlive the caller budget")
