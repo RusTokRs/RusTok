@@ -146,18 +146,18 @@ impl ProfilesCommandProvider {
             let locale = enrichment
                 .and_then(|item| item.preferred_locale.as_deref())
                 .unwrap_or(&tenant.default_locale);
-            let plan = profiles
-                .plan_backfill_profile(
-                    tenant.id,
-                    user.id,
-                    &user.email,
-                    display_name,
-                    Some(locale),
-                    visibility,
-                )
-                .await
-                .map_err(|error| backfill_profile_failed(&telemetry, "profile_plan", error))?;
             if dry_run {
+                let plan = profiles
+                    .plan_backfill_profile(
+                        tenant.id,
+                        user.id,
+                        &user.email,
+                        display_name,
+                        Some(locale),
+                        visibility,
+                    )
+                    .await
+                    .map_err(|error| backfill_profile_failed(&telemetry, "profile_plan", error))?;
                 planned_creates += 1;
                 items.push(serde_json::json!({"user_id": user.id, "email": user.email, "handle": plan.handle, "display_name": plan.display_name, "preferred_locale": plan.preferred_locale, "action": "planned", "event_published": false}));
                 continue;
