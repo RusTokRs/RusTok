@@ -17,6 +17,7 @@ for (const marker of [
   '"apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"',
   'focused-contract:',
   'postgres-concurrency:',
+  'redis-recovery:',
   'TENANT_RUST_FILES:',
   'rustfmt --edition 2024 $TENANT_RUST_FILES',
   'crates/rustok-tenant/tests/locale_policy_concurrency_postgres.rs',
@@ -32,6 +33,10 @@ for (const marker of [
   'postgres:17-alpine',
   'cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture',
   'cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture',
+  'RUSTOK_CACHE_REAL_REDIS_URL:',
+  'redis:7-alpine',
+  'cargo test -p rustok-server --test tenant_locale_generation_guard',
+  'cargo test -p rustok-server tenant_locale_generation --lib -- --ignored --nocapture --test-threads=1',
 ]) {
   if (!workflow.includes(marker)) {
     fail(`workflow contract is missing ${marker}`);
@@ -47,5 +52,5 @@ if (workflow.includes('cargo test -p rustok-tenant --test tenant_ensure_concurre
 }
 
 console.log(
-  '[verify-tenant-hardening-workflow] focused tenant, storefront and PostgreSQL evidence workflow is retained',
+  '[verify-tenant-hardening-workflow] focused tenant, storefront, PostgreSQL and Redis evidence workflow is retained',
 );
