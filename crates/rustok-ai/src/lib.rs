@@ -2,6 +2,8 @@
 mod accounting;
 pub mod agent;
 #[cfg(feature = "server")]
+mod rustok_blog;
+#[cfg(feature = "server")]
 pub mod direct;
 pub mod engine;
 #[cfg(feature = "server")]

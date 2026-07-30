@@ -36,9 +36,14 @@ and active UI path no longer expose or interpret `body` / `bodyFormat`. Blog SEO
 also consumes `content_plain_text`. Search canonical richtext rows are parsed as
 `RichTextDocument` and projected with `rustok-content::plain_text` under the fixed
 `Article` profile in the same projector transaction; legacy storage rows retain a
-contained raw-body fallback. The now-unused pure-core body-format summarizer
-remains to be removed, and storage, the AI Blog draft writer, remaining Leptos
-cleanup, and final compatibility removal must still finish atomically. Do not add
+contained raw-body fallback. The AI Blog draft path now passes create/update
+operations through a `rustok-ai` owner adapter that converts generated text with
+`article_document_from_plain_text`, clears legacy writer fields before the Blog
+service call, and prefers server-derived `content_plain_text` when an existing
+post is used as source material. Markdown-shaped direct-task DTO construction is
+retained only as contained compatibility behind that adapter. The quarantined
+pure-core body-format summarizers remain to be removed, and storage plus final
+GraphQL/AI/Search compatibility removal must still finish atomically. Do not add
 new `rt_json`/Markdown aliases, `content_json` fields, or local renderers.
 
 The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
@@ -136,6 +141,10 @@ outbox publication.
   the single temporary `types.rs` adapter/conversion owner, symmetric create/update
   conversion regression coverage, resolver delegation, verifier, self-test, and
   npm/FBA registration are implemented; execution is user-owned.
+- AI Blog draft owner writes: `source_verified_no_compile`; generated create/update
+  text is converted to `RichTextDocument` before the Blog service call, existing
+  source content prefers server-derived plain text, and the remaining direct-task
+  Markdown-shaped fields are contained behind the adapter.
 
 ## Evidence and guardrails
 
@@ -221,6 +230,10 @@ outbox publication.
 21. Migrated canonical Blog Search rows to the shared `Article` plain-text policy
     in the same projector transaction, retained a contained legacy storage
     fallback, and made invalid canonical documents fail closed before commit.
+22. Added a `rustok-ai` Blog owner adapter that converts AI draft create/update
+    text into canonical `RichTextDocument` content before owner service calls,
+    prefers server-derived plain text for existing-post source material, and
+    prevents direct-task compatibility fields from reaching the owner unchanged.
 
 ## Next results
 
@@ -244,15 +257,16 @@ outbox publication.
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
 6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
-   boundary, Next admin, Blog storefront reads, SEO, and canonical Search
-   projection are implemented; storage, AI draft writes, remaining Leptos cleanup,
-   and compatibility removal remain.** The registered GraphQL/storefront/FBA
-   guardrails are containment measures, not the completed cutover. Replace the
-   string body plus `content_json` transport everywhere with `RichTextDocument`,
-   migrate `blog_post_translations` and relevant revision/audit data, switch the AI
-   Blog draft writer to the owner text-import adapter, remove the unused storefront
-   format summarizer, and remove Search's legacy raw-body fallback with the storage
-   transition. The Blog package must not own Forum editor/API code.
+   boundary, Next admin, Blog storefront reads, SEO, canonical Search projection,
+   and AI draft owner writes are implemented; storage and final compatibility
+   removal remain.** The registered GraphQL/storefront/FBA guardrails are
+   containment measures, not the completed cutover. Migrate
+   `blog_post_translations` and relevant revision/audit data to the target canonical
+   document plus server-derived text representation, remove the temporary string
+   body / `content_json` GraphQL and AI direct-task compatibility, physically
+   delete the quarantined storefront format summarizers, and remove Search's
+   legacy raw-body fallback in the same storage transition. The Blog package must
+   not own Forum editor/API code.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and target `rustok-api`/`rustok-content` contracts.

@@ -65,7 +65,7 @@ for (const check of richtextInventory.checks ?? []) {
 }
 sameSet(
   richtextInventory.blocking_surfaces ?? [],
-  ['storage_schema', 'ai_blog_draft_writer'],
+  ['storage_schema'],
   'richtext cutover blockers',
 );
 const richtextCheckNames = new Set((richtextInventory.checks ?? []).map((check) => check.name));
@@ -81,6 +81,7 @@ for (const requiredCheck of [
   'search_projection',
   'seo_projection',
   'ai_blog_draft_writer',
+  'ai_blog_draft_direct_compatibility',
 ]) {
   if (!richtextCheckNames.has(requiredCheck)) fail(`richtext cutover inventory missing check ${requiredCheck}`);
 }
