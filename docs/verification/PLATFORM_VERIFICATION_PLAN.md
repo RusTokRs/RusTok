@@ -38,13 +38,13 @@ This block is the first place an agent reads after `docs/index.md`.
 
 - Cycle: `cycle-001`
 - Cycle status: `active`
-- Current item: `core/index`
-- Next item: `core/index`
+- Current item: `core/search`
+- Next item: `core/search`
 - Started at (UTC): `2026-07-20`
 - Last handoff at (UTC): `2026-07-30`
-- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued; core/email P1: settings:read exposed runtime smtp.password and native admin returned raw email settings, with secret-safe fixes staged only in draft PR #2490; core/email P1: delivery lacks a durable receipt/outbox, auth uses a detached server-owned bypass, saved tenant settings do not drive runtime SMTP, and historical secret-bearing rows lack an owned scrub migration; core/search P1: the generic settings projection serializes search.api_key`
+- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued; core/email P1: settings:read exposed runtime smtp.password and native admin returned raw email settings, with secret-safe fixes staged only in draft PR #2490; core/email P1: delivery lacks a durable receipt/outbox, auth uses a detached server-owned bypass, saved tenant settings do not drive runtime SMTP, and historical secret-bearing rows lack an owned scrub migration; core/index P1: the non-authoritative Social Graph privacy shadow could outlive the caller deadline and no canonical operational owner replay entrypoint existed; fixes are staged in draft PR #2512, while retained PostgreSQL/query-equivalence and per-tenant freshness/replay evidence remain absent; core/search P1: the generic settings projection serializes search.api_key`
 - Release readiness: `not_assessed`
-- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only local targeted regressions for cache/channel/email could not run because github.com DNS resolution failed; channel Actions runs 30517068108 and 30517068093 remained queued; email Cargo jobs on SHA 53f84914b37d61b7b5078a3cba42caf65c96a65a had not started, an earlier smoke stopped before compilation because Cargo.lock required an Athanor update, and dependency advisory exceptions expired on 2026-07-24; these conditions are not classified as product defects`
+- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only local targeted regressions for cache/channel/email/index could not run because github.com DNS resolution and direct HTTPS routing failed; channel Actions runs 30517068108 and 30517068093 remained queued; email Cargo jobs on SHA 53f84914b37d61b7b5078a3cba42caf65c96a65a had not started, an earlier smoke stopped before compilation because Cargo.lock required an Athanor update, and dependency advisory exceptions expired on 2026-07-24; Index same-SHA repository contracts, direct validator arguments and fixture suites passed before the replay CLI slice, while workspace Clippy later stopped on 59 rustok-index lint errors and the MSRV job requested unavailable toolchain 1.100.0 before Cargo; these conditions are not classified as product defects`
 
 Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
 `in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may
@@ -181,8 +181,8 @@ These are Core modules because the current `modules.toml` declares them with
 - [x] `core/cache` — `crates/rustok-cache` — blocked
 - [x] `core/channel` — `crates/rustok-channel` — blocked
 - [x] `core/email` — `crates/rustok-email` — blocked
-- [ ] `core/index` — `crates/rustok-index`
-- [ ] `core/search` — `crates/rustok-search`
+- [x] `core/index` — `crates/rustok-index` — blocked
+- [ ] `core/search` — `crates/rustok-search` — in_progress
 - [ ] `core/outbox` — `crates/rustok-outbox`
 - [ ] `core/tenant` — `crates/rustok-tenant`
 - [ ] `core/rbac` — `crates/rustok-rbac`

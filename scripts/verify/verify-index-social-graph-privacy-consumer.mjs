@@ -125,7 +125,11 @@ const shadow = requireMarkers(shadowPath, [
   '.source_mutes_target(context.clone(), request)',
   '.source_follows_target(context.clone(), request)',
   '.source_follows_targets(context.clone(), request.clone())',
-  'let started_at = Instant::now();',
+  'let operation_started_at = Instant::now();',
+  'let budget = shadow_budget(&context);',
+  'projected_within_remaining_budget(',
+  'tokio::time::timeout(remaining, future)',
+  'social graph Index privacy shadow exceeded the caller deadline budget',
   'observer.observe(IndexPrivacyShadowObservation {',
   'IndexPrivacyShadowOutcome::FalseNegative',
   'IndexPrivacyShadowOutcome::FalsePositive',
@@ -139,10 +143,17 @@ const shadow = requireMarkers(shadowPath, [
   'batch_outcomes_distinguish_missing_extra_and_mixed',
   'mismatch_returns_authoritative_boolean_and_observes_false_negative',
   'projected_error_returns_authoritative_batch_and_bounded_failure',
+  'projected_timeout_returns_authoritative_result_within_caller_budget',
 ]);
 const authoritativeReturns = shadow.match(/Ok\(authoritative\)/g) ?? [];
 if (authoritativeReturns.length !== 4) {
   fail(`${shadowPath} must return the authoritative result from all four privacy methods`);
+}
+const shadowWithoutAllowedDeadlineDefaults = shadow
+  .replace('Duration::from_millis(context.deadline_ms.unwrap_or_default())', '')
+  .replace('.checked_sub(operation_started_at.elapsed())\n        .unwrap_or_default()', '');
+if (shadowWithoutAllowedDeadlineDefaults.includes('unwrap_or_default()')) {
+  fail(`${shadowPath} contains an unapproved default fallback outside fail-closed deadline accounting`);
 }
 for (const forbidden of [
   'rustok_telemetry',
@@ -154,7 +165,6 @@ for (const forbidden of [
   'PostgresIndexQueryPort',
   'DatabaseConnection',
   'unwrap_or(false)',
-  'unwrap_or_default()',
 ]) {
   if (shadow.includes(forbidden)) fail(`${shadowPath} contains forbidden telemetry/runtime marker ${forbidden}`);
 }
@@ -172,6 +182,7 @@ requireMarkers('crates/rustok-social-graph/src/lib.rs', [
 ]);
 requireMarkers('crates/rustok-social-graph/Cargo.toml', [
   'index = ["dep:rustok-index"]',
+  'tokio.workspace = true',
 ]);
 const socialCargo = read('crates/rustok-social-graph/Cargo.toml');
 if (socialCargo.includes('rustok-telemetry')) {
@@ -315,6 +326,7 @@ requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
   'default-off',
   'always returns the owner result',
+  'remaining caller deadline budget',
   '`false_negative`',
   '`batch_missing`',
   'single Prometheus registry',
@@ -337,6 +349,7 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
   'owner result',
   'never authorizes',
+  'remaining caller deadline budget',
   '`false_negative`',
   '`batch_mixed`',
 ]);

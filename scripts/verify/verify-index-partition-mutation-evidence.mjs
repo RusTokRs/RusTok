@@ -17,6 +17,13 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
+const requireNormalizedMarkers = (relative, markers) => {
+  const source = read(relative).replace(/\s+/gu, ' ');
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
 
 const runner = requireMarkers('ops/benches/src/index_storage/partition_mutation.rs', [
   'INDEX_PARTITION_ALLOW_MUTATION_EVIDENCE',
@@ -76,7 +83,7 @@ requireMarkers('ops/benches/Cargo.toml', [
   'path = "src/bin/index_partition_mutation_evidence.rs"',
 ]);
 
-requireMarkers('ops/benches/README.md', [
+requireNormalizedMarkers('ops/benches/README.md', [
   'Index partition mutation/WAL evidence',
   'INDEX_PARTITION_ALLOW_MUTATION_EVIDENCE=1',
   'INDEX_PARTITION_MUTATION_SAMPLES=7',
@@ -85,23 +92,23 @@ requireMarkers('ops/benches/README.md', [
   'maximum per-sample plan-node WAL bytes',
 ]);
 
-requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'index-partition-mutation-evidence',
   'mutation.json',
   'maximum per-sample plan-node WAL bytes',
   'Every validation and EXPLAIN mutation is rolled back to a savepoint',
 ]);
 
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
   'M3 partition mutation/WAL evidence runner: `complete`',
   'maintenance and cutover evidence remain open',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition mutation/WAL evidence runner: `complete`',
-  '- [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.',
-  '- [ ] Execute retained PostgreSQL maintenance and cutover evidence.',
-  'The tenth M3 slice adds owner-operated baseline/shadow mutation and WAL evidence.',
+  '- [x] Add owner-operated PostgreSQL mutation/WAL evidence capture.',
+  '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',
+  '10. The mutation/WAL runner validates the same manifest and catalog, requires count parity and matching generic anchors, executes rollback-only mutation samples,',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [

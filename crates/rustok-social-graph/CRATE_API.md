@@ -23,6 +23,10 @@ writes fail closed until a transactional event bus is supplied.
 SocialGraphService::with_event_bus(DatabaseConnection, TransactionalEventBus) creates the
 write-capable owner service used by GraphQL and native storefront composition.
 
+SocialGraphRelationEventMaintenanceService::with_outbox(DatabaseConnection) creates the
+owner-local operational replay service with the canonical transactional outbox. CLI and host
+adapters must use this constructor instead of constructing transport outside Social Graph.
+
 - `SocialGraphCommandPort::set_relation` owns validated, idempotent relation commands.
 - `SocialGraphPrivacyReadPort` owns block, mute, and bounded directional follow policy reads.
 - `IndexSocialGraphPrivacyReadPort` is the typed Index projection reader.
@@ -60,6 +64,14 @@ write-capable owner service used by GraphQL and native storefront composition.
   and rolls relation plus receipt back together.
 - Bounded Social Graph replay republishes the same sealed facts. Consumers must handle
   duplicate/stale delivery through monotonic revision.
+- The replay port accepts service/system actors only, selects one tenant-scoped UUID-cursor
+  page, enforces the 1000-row maximum, and returns the last selected relation as the next
+  explicit cursor.
+- Dry-run selects and reports one page without publishing. A live page publishes every fact
+  through the transactional outbox and rolls the whole page back if one append fails.
+- `rustok-cli social_graph relation-event-replay` is the canonical operational adapter. It
+  requires a tenant, supports an optional cursor and bounded limit, processes one page per
+  invocation, and never reads owner-private tables or constructs outbox transport itself.
 - Social Graph persistence remains authoritative for drift repair.
 
 ## Optional Index projection
@@ -105,6 +117,10 @@ may be stale and therefore cannot prove that no current block or mute exists.
 - Every method executes the owner read first.
 - Owner error is returned unchanged.
 - After owner success, the same request is issued to Index for comparison.
+- The projected comparison receives only the remaining caller deadline budget measured from
+  entry to the shadow wrapper.
+- Budget exhaustion or projected timeout records retryable
+  `social_graph.index_privacy_unavailable` without changing the owner result.
 - All four methods return the owner result; the Index shadow never authorizes or suppresses.
 - Boolean comparisons classify `match_positive`, `match_negative`, `false_negative`, or
   `false_positive`.
@@ -234,7 +250,9 @@ receipt, broker, or lag state.
   remain authoritative for block, mute, and follow.
 - Notification block/mute policy may run the approved Index projection only through
   `IndexShadowSocialGraphPrivacyReadPort`, which always returns the owner result.
-- Index shadow mismatch or failure never authorizes, suppresses, widens, or changes policy.
+- Index shadow mismatch, timeout, or failure never authorizes, suppresses, widens, or changes
+  policy.
+- The projected comparison must stay within the remaining caller deadline budget.
 - Privacy shadow observations and metrics observe parity but must not authorize or suppress.
 - Profiles privacy, presentation visibility, and revision-bearing follow state must not
   authorize from Index state, DLQ receipts, broker IDs, deduplication state, consumer lag, or
@@ -252,6 +270,7 @@ receipt, broker, or lag state.
   acknowledgement, and read-only position observation.
 - `rustok-outbox`: transactional event bus.
 - `sha2`: deterministic receipt-bound UUIDv8 derivation.
+- `tokio`: bounded async shadow comparison and test/runtime scheduling.
 
 ## Common mistakes
 
@@ -259,9 +278,12 @@ receipt, broker, or lag state.
 - Publishing arbitrary strings or publishing after relation commit.
 - Emitting an event for receipt replay or persisted-state no-op.
 - Reading Social Graph tables from Profiles, Index, or another consumer.
+- Constructing replay outbox transport in CLI or host code instead of using
+  `SocialGraphRelationEventMaintenanceService::with_outbox`.
 - Constructing `PostgresIndexQueryPort` in Social Graph or bypassing
   `SharedIndexQueryRuntime`.
 - Returning the Index result from the privacy shadow instead of the owner result.
+- Awaiting the projected privacy shadow beyond the remaining caller deadline budget.
 - Treating shadow mismatch, error, empty projection, observation, or metric as a privacy
   decision.
 - Treating schema readiness as a freshness watermark.

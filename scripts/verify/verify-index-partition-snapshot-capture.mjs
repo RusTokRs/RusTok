@@ -40,8 +40,11 @@ const runner = requireMarkers('ops/benches/src/index_storage/partition_snapshot.
   'fs::hard_link(&shadow_temp, shadow_path)',
   'refusing to overwrite {baseline_path:?}',
   'refusing to overwrite {shadow_path:?}',
+  'deterministic_manifest_and_bootstrap_remain_shadow_only',
+  'assert!(!sql.contains(forbidden), "bootstrap contains {forbidden}")',
 ]);
 
+const productionRunner = runner.split('\n#[cfg(test)]', 1)[0];
 for (const forbidden of [
   'ALTER TABLE "index_entities"',
   'ALTER TABLE "index_links"',
@@ -54,7 +57,9 @@ for (const forbidden of [
   'rustok_content',
   'rustok_flex',
 ]) {
-  if (runner.includes(forbidden)) fail(`snapshot runner contains forbidden marker ${forbidden}`);
+  if (productionRunner.includes(forbidden)) {
+    fail(`snapshot runner production code contains forbidden marker ${forbidden}`);
+  }
 }
 
 requireMarkers('ops/benches/src/bin/index_partition_snapshot_capture.rs', [
@@ -103,7 +108,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition baseline/shadow snapshot runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.',
   '- [ ] Execute retained PostgreSQL query, mutation, maintenance, and cutover evidence.',
-  'The eighth M3 slice adds an owner-operated PostgreSQL snapshot runner.',
+  '8. The snapshot runner creates evidence-bound shadow parents/children, copies one',
+  'repeatable-read baseline, attaches shadow integrity, records parity/size/catch-up,',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [

@@ -13,8 +13,9 @@ Notifications, Index, search, and other projections must not read owner tables o
 authorize from replicated relation state.
 
 The source-complete path includes durable command receipts, bounded cleanup,
-transactional sealed relation events, bounded owner replay, the approved generic
-Index relation projection, Index-owned tenant schema registration, result-first
+transactional sealed relation events, bounded owner replay, an owner-local bounded
+relation-event replay CLI through the canonical transactional outbox, the approved
+generic Index relation projection, Index-owned tenant schema registration, result-first
 persistent Iggy consumption, typed exact-byte decode failures, connector-owned neutral
 poison receipts, one shared EventRuntime Iggy transport, default-off server lifecycle,
 bounded projection/DLQ/receipt/ack retry, decoded-event and raw-delivery durable DLQ
@@ -73,6 +74,11 @@ runtime evidence remain maintainer-run or pending.
 - Event publication failure rolls relation and receipt back together.
 - `SocialGraphRelationEventMaintenancePort` provides service/system-only tenant and
   exclusive-UUID-cursor replay with dry-run and page-atomic publication.
+- `SocialGraphRelationEventMaintenanceService::with_outbox` composes that owner service
+  with the canonical transactional outbox without leaking transport construction to CLI.
+- `rustok-social-graph-cli` exposes `social_graph relation-event-replay`; tenant is
+  mandatory, cursor is optional, limit defaults to 100 and is bounded to 1000, one page
+  is processed per invocation, and dry-run publishes no event.
 - Replay is at-least-once; consumers apply by relation id plus monotonic revision.
 - Social Graph persistence remains authoritative for drift repair.
 
@@ -220,8 +226,9 @@ The harness and source guard are source-complete; no PostgreSQL run has been exe
    transaction, or a DB-owned DLQ/outbox relay before stronger duplicate guarantees.
 6. Validate lag and poison aggregates under concurrent publication, missing checkpoints,
    expired claims, TLS/auth failures, rebalancing, and multiple replicas before alerts.
-7. Corrupt/delete projection state and prove bounded owner replay/rescan repair while
-   Profiles privacy remains on authoritative owner ports.
+7. Execute the bounded owner replay CLI against corrupted/deleted projection state and
+   retain repair, cursor continuation, redelivery, rollback, and outage/catch-up evidence
+   while Profiles privacy remains on authoritative owner ports.
 8. Define decoded/raw receipt retention and reconciliation before deletion; retain
    cleanup CLI dry-run/live evidence.
 9. Retain receipt/event concurrency, replay-window, rollback, telemetry, storefront,
@@ -255,6 +262,9 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consu
 cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
 cargo test -p rustok-social-graph --features index-consumer index_dlq_receipt::tests -- --nocapture
 cargo test -p rustok-social-graph --features index-consumer index_dlq_message_id::tests -- --nocapture
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets
+cargo test -p rustok-social-graph-cli -- --nocapture
+cargo test -p rustok-social-graph --test relation_event_replay_sqlite -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets
 cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture
 cargo test -p rustok-server runtime_guardrails --lib -- --nocapture
@@ -271,7 +281,21 @@ node scripts/verify/verify-social-graph-relation-outbox.mjs
 node scripts/verify/verify-social-graph-relation-event-replay.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run
+rustok-cli social_graph relation-event-replay --tenant-id <uuid> --limit 100 --dry-run
 ```
 
 These commands remain maintainer-run and were not executed manually while publishing
-this slice.
+this slice. GitHub Actions evidence is recorded separately in the periodic handoff.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `blocked`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `authoritative relation events, owner replay port, CLI composition, Index privacy shadow deadline, tenant/cursor/limit validation, transactional outbox rollback and repair boundaries`
+- Findings: `P0=0, P1=2, P2=0, P3=1`
+- Fixed in this pass: `bounded non-authoritative Index shadow reads by the remaining caller deadline; added the missing owner-local transactional-outbox replay CLI with tenant scope, UUID cursor, bounded page, dry-run and idempotency semantics`
+- Remaining risks or blockers: `the fixes remain in draft PR #2512; no retained live PostgreSQL replay/repair, per-tenant freshness/watermark, outage/catch-up, negative-result safety or independently admitted shadow evidence exists; targeted Cargo verification is blocked by workspace-wide Index Clippy debt and the unavailable local GitHub network route`
+- Evidence: `same-SHA Index repository contracts, direct validator arguments and fixture suites passed before the replay CLI slice; source guards, API docs and owner boundaries were updated; workspace Clippy reached rustok-index and failed on 59 pre-existing lint errors before validating downstream crates`
+- Next action: `obtain same-SHA formatting and targeted Social Graph CLI/replay test evidence, execute retained repair/freshness evidence, then revisit authoritative-cutover blockers`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-social-graph-cli --all-targets && cargo test -p rustok-social-graph-cli -- --nocapture && cargo test -p rustok-social-graph --test relation_event_replay_sqlite -- --nocapture && node scripts/verify/verify-social-graph-relation-event-replay.mjs`
