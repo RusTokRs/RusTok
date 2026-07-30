@@ -278,7 +278,7 @@ async fn storefront_payment_create_collection_native(
                 tenant_id,
                 owner_operation,
                 "payment.storefront_collection_create_failed",
-                "Storefront payment collection could not be created",
+                "Storefront payment collection is temporarily unavailable",
                 error,
             )
         })?;
