@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+import "./verify-marketplace-listing-admin-native-request-error-safety.mjs";
+
 const root = process.cwd();
 const files = {
   workspace: "Cargo.toml",
