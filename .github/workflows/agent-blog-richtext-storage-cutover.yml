@@ -35,6 +35,16 @@ jobs:
           test "$(wc -c < /tmp/blog-cutover.b64)" -eq 15044
           test "$(sha256sum /tmp/blog-cutover.b64 | cut -d' ' -f1)" = "66c6f00ff5207058459541fe8b1f52ca2fa0a55343a3c51686d23a0a42c74741"
           base64 --decode /tmp/blog-cutover.b64 | gzip --decompress > scripts/agent/apply_blog_richtext_storage_cutover.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/agent/apply_blog_richtext_storage_cutover.py')
+          source = path.read_text(encoding='utf-8')
+          old = '''once(svc, "            body,\n            body_format,\n            content_json,\n            content,\n", "            content,\n")'''
+          new = '''once(svc, "        let CreatePostInput {\n            locale,\n            title,\n            body,\n            body_format,\n            content_json,\n            content,\n", "        let CreatePostInput {\n            locale,\n            title,\n            content,\n")'''
+          if source.count(old) != 1:
+              raise RuntimeError(f'owner create hotfix expected once, got {source.count(old)}')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
           rm scripts/agent/blog_richtext_storage_cutover.part*
           rm -f scripts/agent/blog_richtext_storage_cutover.py.gz.b64
           rm -f scripts/agent/archive-link.md
