@@ -14,17 +14,17 @@ This slice adds the owner operation that applies those delivered audience rules 
 
 ## Owner contract
 
-`ForumSearchCategoryAudienceScopeService` exposes separate public and authenticated entrypoints.
+`ForumSearchCategoryAudienceScopeService` exposes separate public and authenticated entrypoints. It does not reimplement category policy: both paths obtain an already-pruned canonical tree from `ForumCategoryAudienceReadService`, and the Search-specific layer only selects roots and converts that visible tree into `ForumSearchCategoryScope`.
 
 The public entrypoint:
 
-- uses `SecurityContext::public_read()` and the public Forum audience viewer;
-- excludes authenticated-floor categories, archived categories, and every richer layer that requires an authenticated selector;
+- uses the public richer-audience category tree owner;
+- excludes authenticated-floor categories and every richer layer that requires an authenticated selector;
 - never invokes an optional trust, Channel, or Groups owner capability for an anonymous viewer.
 
 The authenticated entrypoint:
 
-- requires the existing `forum_categories:list` owner permission;
+- requires the existing `forum_categories:list` owner permission through the canonical category tree read;
 - requires an exact user `SecurityContext` and matching tenant/user `PortContext`;
 - reuses `ForumCategoryAudienceVisibilityService`, including inherited root-to-category conjunction semantics;
 - lets local explicit deny, explicit allow, and role decisions remain locally decidable;
@@ -35,11 +35,12 @@ Both entrypoints:
 
 - accept at most ten raw selected roots before deduplication;
 - reuse the canonical 512-node, depth-16 category tree;
-- exclude archived categories;
-- prune a denied ancestor together with all descendants;
+- exclude archived categories in the shared active-visible-tree expander;
+- prune a denied or archived ancestor together with all descendants;
 - return a denied, archived, missing, or foreign selected root as `CategoryNotFound`;
 - preserve selected-root first occurrence and canonical child order;
-- emit deterministic preorder IDs and deduplicate overlapping roots.
+- emit deterministic preorder IDs and deduplicate overlapping roots;
+- reuse the B2A `CategoryHierarchy` expansion algorithm instead of creating a second subtree implementation.
 
 ## Search integration boundary
 
