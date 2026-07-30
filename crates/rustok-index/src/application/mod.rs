@@ -7,6 +7,7 @@ mod postgres_query_sql;
 mod query_port;
 mod query_runtime;
 mod registry;
+mod source_registry;
 mod source_schema_registry;
 mod validation;
 
@@ -48,6 +49,12 @@ pub use query_port::{
 pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
+};
+pub use source_registry::{
+    IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
+    IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
+    IndexSourcePage, IndexSourceScanRequest, SharedIndexSourceRegistry,
+    materialize_index_source_registry, register_index_source,
 };
 pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,
