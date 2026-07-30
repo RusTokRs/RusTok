@@ -54,13 +54,22 @@ the canonical URL leaf in the Search FBA verify/test chains. The aggregate guard
 locks their paths, commands, order, test targets, and `executable_no_run` status;
 PostgreSQL execution remains maintainer-owned.
 
-Forum public category, topic, and approved-reply projections now support an exact
-category filter through the existing bounded `category_ids` query field. Product
-queries retain normalized `index_product_categories` matching. Forum category
-documents match their document identifier, while topic and reply documents match
-the owner-projected `facets.category_id`. Search does not resolve descendants or
-copy Forum category-tree policy; bounded subtree expansion remains Forum-owned
-follow-up work.
+Forum public category, topic, and approved-reply projections support exact
+category filtering through the existing bounded `category_ids` query field.
+Product queries retain normalized `index_product_categories` matching. Forum
+category documents match their document identifier, while topic and reply
+documents match the owner-projected `facets.category_id`.
+
+The source-ready Forum-only storefront Search path now composes an owner-authorized
+category subtree without importing Forum into Search. `StorefrontSearchCategoryScopePort`
+is a neutral optional contract; the server adapter delegates to the richer Forum
+category-audience owner, and GraphQL `forumStorefrontSearch` plus the native
+`search/forum-storefront-search` endpoint share one Search execution owner.
+The module-owned storefront selector chooses this path only for exactly
+`source_modules: ["forum"]` with non-empty category roots. Mixed, unspecified,
+Product, Blog, Content, and Forum-without-category requests remain on the existing
+exact-category `storefrontSearch` path. Topic-local and reply-specific Search
+eligibility remain open.
 
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
@@ -125,6 +134,14 @@ projection can remain stale after recovery.
   `crates/rustok-forum/contracts/forum-search-exact-category-filter.json`.
 - Exact Forum category filter guardrail:
   `scripts/verify/verify-forum-search-exact-category-filter.mjs`.
+- Forum category-subtree owner status: `source_complete_execution_pending`.
+- Forum richer-audience subtree contract:
+  `crates/rustok-forum/contracts/forum-search-category-audience-scope.json`.
+- Forum-only storefront Search composition status:
+  `source_complete_execution_pending`.
+- Forum-only storefront Search contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-storefront-scope.json` and
+  `scripts/verify/verify-forum-search-storefront-scope.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -192,6 +209,9 @@ rebuild behavior through replayable event transport.
 15. Registered the existing Blog projection harness as a first-class Search FBA
     leaf, added exact verify/test commands, and bound evidence, verifier, fixture,
     test targets, status, and aggregate order without recording PostgreSQL execution.
+16. Added the neutral Forum category-scope port, host adapter, explicit GraphQL and
+    native Forum-only storefront Search paths, and one Search execution owner while
+    preserving the existing mixed/product storefront Search behavior.
 
 ## Next results
 
@@ -210,10 +230,9 @@ rebuild behavior through replayable event transport.
    **Done when:** terminal handler failure, transport lag, duplicate/out-of-order
    delivery, and process restart cannot leave a stale projection without an
    observable durable recovery action.
-3. **Complete Forum category-subtree filtering.** Accept a bounded owner-authorized
-   category scope from Forum rather than reading its tree in Search. Preserve exact
-   matching as the fallback foundation and keep descendant count, visibility, and
-   request cost bounded.
+3. **Complete Forum Search eligibility.** Apply exact topic-local audience narrowing
+   and reply authorization after the delivered richer category subtree scope. Keep
+   unavailable targets non-oracular and preserve bounded Search result processing.
 4. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
    storefront Search, native storefront Search, Search admin preview, and admin
    global search against projected product, content, Blog, and Forum documents.
@@ -237,7 +256,11 @@ should run the relevant subset, including:
 - `cargo test -p rustok-server settings_service`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
+- `cargo test -p rustok-search storefront_category_scope -- --nocapture`
+- `cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture`
+- `cargo test -p rustok-server --features mod-forum forum_search_category_scope -- --nocapture`
 - `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
+- `node scripts/verify/verify-forum-search-storefront-scope.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
 - `npm run verify:search:blog-projection`
@@ -255,6 +278,8 @@ should run the relevant subset, including:
 - [Search documentation](./README.md)
 - [Search FBA registry](../contracts/search-fba-registry.json)
 - [Forum exact-category contract](../../rustok-forum/contracts/forum-search-exact-category-filter.json)
+- [Forum category audience scope contract](../../rustok-forum/contracts/forum-search-category-audience-scope.json)
+- [Forum storefront Search scope contract](../../rustok-forum/contracts/forum-search-storefront-scope.json)
 
 ## Periodic release verification handoff
 

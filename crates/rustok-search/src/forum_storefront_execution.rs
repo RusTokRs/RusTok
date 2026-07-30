@@ -1,0 +1,443 @@
+use std::fmt::{Display, Formatter};
+use std::time::Instant;
+
+use rustok_api::{AuthContext, PortError, RequestContext};
+use sea_orm::DatabaseConnection;
+use uuid::Uuid;
+
+use crate::{
+    FORUM_SEARCH_SOURCE_MODULE, PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter,
+    SearchDictionaryService, SearchEngine, SearchFilterPresetService, SearchQuery,
+    SearchQueryLogRecord, SearchRankingProfile, SearchResult, SearchSettingsService,
+    SharedStorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchTransport, resolve_storefront_search_category_ids,
+};
+
+const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
+const MAX_SEARCH_QUERY_LEN: usize = 256;
+const MAX_FILTER_VALUES: usize = 10;
+const MAX_FILTER_VALUE_LEN: usize = 64;
+const MAX_ATTRIBUTE_FILTERS: usize = 10;
+const MAX_LOCALE_LEN: usize = 16;
+
+#[derive(Clone, Debug)]
+pub struct ForumStorefrontSearchAttributeFilter {
+    pub attribute_code: String,
+    pub values: Vec<String>,
+    pub min: Option<String>,
+    pub max: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct ForumStorefrontSearchRequest {
+    pub tenant_id: Uuid,
+    pub query: String,
+    pub locale: Option<String>,
+    pub fallback_locale: String,
+    pub channel_id: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+    pub ranking_profile: Option<String>,
+    pub preset_key: Option<String>,
+    pub entity_types: Vec<String>,
+    pub source_modules: Vec<String>,
+    pub statuses: Vec<String>,
+    pub category_ids: Vec<String>,
+    pub attribute_filters: Vec<ForumStorefrontSearchAttributeFilter>,
+    pub sort_attribute_code: Option<String>,
+    pub sort_desc: bool,
+    pub auth: Option<AuthContext>,
+    pub request_context: Option<RequestContext>,
+    pub transport: StorefrontSearchTransport,
+}
+
+pub struct ForumStorefrontSearchExecution {
+    pub result: SearchResult,
+    pub query_log_id: Option<i64>,
+    pub preset_key: Option<String>,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug)]
+pub enum ForumStorefrontSearchExecutionError {
+    Validation(String),
+    Scope(PortError),
+    Search(rustok_core::Error),
+    Database(sea_orm::DbErr),
+}
+
+impl Display for ForumStorefrontSearchExecutionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Validation(message) => formatter.write_str(message),
+            Self::Scope(error) => formatter.write_str(&error.message),
+            Self::Search(error) => Display::fmt(error, formatter),
+            Self::Database(_) => formatter.write_str("Forum storefront Search is temporarily unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for ForumStorefrontSearchExecutionError {}
+
+impl From<rustok_core::Error> for ForumStorefrontSearchExecutionError {
+    fn from(error: rustok_core::Error) -> Self {
+        Self::Search(error)
+    }
+}
+
+impl From<sea_orm::DbErr> for ForumStorefrontSearchExecutionError {
+    fn from(error: sea_orm::DbErr) -> Self {
+        Self::Database(error)
+    }
+}
+
+impl From<PortError> for ForumStorefrontSearchExecutionError {
+    fn from(error: PortError) -> Self {
+        Self::Scope(error)
+    }
+}
+
+struct NormalizedForumStorefrontSearchRequest {
+    tenant_id: Uuid,
+    query: String,
+    locale: Option<String>,
+    fallback_locale: String,
+    channel_id: Option<Uuid>,
+    limit: usize,
+    offset: usize,
+    ranking_profile: Option<String>,
+    preset_key: Option<String>,
+    entity_types: Vec<String>,
+    source_modules: Vec<String>,
+    statuses: Vec<String>,
+    category_ids: Vec<Uuid>,
+    attribute_filters: Vec<SearchAttributeFilter>,
+    sort_attribute_code: Option<String>,
+    sort_desc: bool,
+    auth: Option<AuthContext>,
+    request_context: Option<RequestContext>,
+    transport: StorefrontSearchTransport,
+}
+
+pub async fn execute_forum_storefront_search(
+    db: &DatabaseConnection,
+    category_scope_port: Option<SharedStorefrontSearchCategoryScopePort>,
+    request: ForumStorefrontSearchRequest,
+) -> Result<ForumStorefrontSearchExecution, ForumStorefrontSearchExecutionError> {
+    let input = normalize_request(request)?;
+    let started_at = Instant::now();
+    let transform = SearchDictionaryService::transform_query(db, input.tenant_id, &input.query).await?;
+    let settings = SearchSettingsService::load_effective(db, Some(input.tenant_id)).await?;
+    let resolved_preset = SearchFilterPresetService::resolve(
+        &settings.config,
+        STOREFRONT_SEARCH_SURFACE,
+        input.preset_key.as_deref(),
+        input.entity_types,
+        input.source_modules,
+        input.statuses,
+    )?;
+    if resolved_preset.source_modules.as_slice() != [FORUM_SEARCH_SOURCE_MODULE] {
+        return Err(ForumStorefrontSearchExecutionError::Validation(
+            "Forum storefront Search requires an explicit Forum-only resolved source scope"
+                .to_string(),
+        ));
+    }
+    let ranking_profile = SearchRankingProfile::resolve(
+        &settings.config,
+        STOREFRONT_SEARCH_SURFACE,
+        input.ranking_profile.as_deref(),
+        resolved_preset.ranking_profile,
+    )?;
+    let category_ids = resolve_storefront_search_category_ids(
+        category_scope_port,
+        StorefrontSearchCategoryScopeRequest {
+            tenant_id: input.tenant_id,
+            locale: input
+                .locale
+                .clone()
+                .unwrap_or_else(|| input.fallback_locale.clone()),
+            fallback_locale: Some(input.fallback_locale.clone()),
+            source_modules: resolved_preset.source_modules.clone(),
+            category_ids: input.category_ids,
+            auth: input.auth,
+            request_context: input.request_context,
+            transport: input.transport,
+        },
+    )
+    .await?;
+    let search_query = SearchQuery {
+        tenant_id: Some(input.tenant_id),
+        locale: input.locale,
+        channel_id: input.channel_id,
+        original_query: transform.original_query,
+        query: transform.effective_query,
+        ranking_profile,
+        preset_key: resolved_preset.preset.map(|preset| preset.key),
+        limit: input.limit,
+        offset: input.offset,
+        published_only: true,
+        entity_types: resolved_preset.entity_types,
+        source_modules: resolved_preset.source_modules,
+        statuses: resolved_preset.statuses,
+        category_ids,
+        attribute_filters: input.attribute_filters,
+        sort_attribute_code: input.sort_attribute_code,
+        sort_desc: input.sort_desc,
+    };
+    let result = PgSearchEngine::new(db.clone()).search(search_query.clone()).await?;
+    let result = SearchDictionaryService::apply_query_rules(db, &search_query, result).await?;
+    let query_log_id = SearchAnalyticsService::record_query(
+        db,
+        SearchQueryLogRecord {
+            tenant_id: input.tenant_id,
+            surface: STOREFRONT_SEARCH_SURFACE.to_string(),
+            query: search_query.original_query.clone(),
+            locale: search_query.locale.clone(),
+            engine: result.engine,
+            result_count: result.total,
+            took_ms: result.took_ms,
+            status: "success".to_string(),
+            entity_types: search_query.entity_types.clone(),
+            source_modules: search_query.source_modules.clone(),
+            statuses: search_query.statuses.clone(),
+        },
+    )
+    .await
+    .ok()
+    .flatten();
+
+    Ok(ForumStorefrontSearchExecution {
+        result,
+        query_log_id,
+        preset_key: search_query.preset_key,
+        elapsed_ms: started_at.elapsed().as_millis() as u64,
+    })
+}
+
+fn normalize_request(
+    request: ForumStorefrontSearchRequest,
+) -> Result<NormalizedForumStorefrontSearchRequest, ForumStorefrontSearchExecutionError> {
+    if request.tenant_id.is_nil() {
+        return validation("Forum storefront Search requires a tenant");
+    }
+    let query = normalize_query(&request.query)?;
+    let locale = normalize_locale(request.locale.as_deref())?;
+    let fallback_locale = normalize_required_locale(&request.fallback_locale)?;
+    let source_modules = normalize_filter_values("source_modules", request.source_modules)?;
+    if source_modules.as_slice() != [FORUM_SEARCH_SOURCE_MODULE] {
+        return validation("Forum storefront Search requires source_modules: [forum]");
+    }
+    let category_ids = normalize_uuid_values("category_ids", request.category_ids)?;
+    if category_ids.is_empty() {
+        return validation("Forum storefront Search requires at least one category_id");
+    }
+    let ranking_profile = request
+        .ranking_profile
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    if let Some(value) = ranking_profile.as_deref() {
+        if SearchRankingProfile::try_from_str(value).is_none() {
+            return validation("Unsupported ranking profile");
+        }
+    }
+
+    Ok(NormalizedForumStorefrontSearchRequest {
+        tenant_id: request.tenant_id,
+        query,
+        locale,
+        fallback_locale,
+        channel_id: parse_optional_uuid("channel_id", request.channel_id.as_deref())?,
+        limit: request.limit.unwrap_or(12).clamp(1, 50) as usize,
+        offset: request.offset.unwrap_or(0).max(0) as usize,
+        ranking_profile,
+        preset_key: normalize_preset_key(request.preset_key)?,
+        entity_types: normalize_filter_values("entity_types", request.entity_types)?,
+        source_modules,
+        statuses: normalize_filter_values("statuses", request.statuses)?,
+        category_ids,
+        attribute_filters: normalize_attribute_filters(request.attribute_filters)?,
+        sort_attribute_code: normalize_attribute_code(request.sort_attribute_code)?,
+        sort_desc: request.sort_desc,
+        auth: request.auth,
+        request_context: request.request_context,
+        transport: request.transport,
+    })
+}
+
+fn normalize_query(value: &str) -> Result<String, ForumStorefrontSearchExecutionError> {
+    let value = value.trim();
+    if value.len() > MAX_SEARCH_QUERY_LEN {
+        return validation("Search query exceeds the maximum length of 256 characters");
+    }
+    if value.chars().any(char::is_control) {
+        return validation("Search query contains unsupported control characters");
+    }
+    Ok(value.to_string())
+}
+
+fn normalize_locale(
+    value: Option<&str>,
+) -> Result<Option<String>, ForumStorefrontSearchExecutionError> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_required_locale)
+        .transpose()
+}
+
+fn normalize_required_locale(
+    value: &str,
+) -> Result<String, ForumStorefrontSearchExecutionError> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > MAX_LOCALE_LEN
+        || !value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return validation("Invalid locale format");
+    }
+    Ok(value.to_ascii_lowercase())
+}
+
+fn normalize_filter_values(
+    field: &str,
+    values: Vec<String>,
+) -> Result<Vec<String>, ForumStorefrontSearchExecutionError> {
+    if values.len() > MAX_FILTER_VALUES {
+        return validation(format!("{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"));
+    }
+    values
+        .into_iter()
+        .map(|value| {
+            let value = value.trim().to_ascii_lowercase();
+            if value.is_empty()
+                || value.len() > MAX_FILTER_VALUE_LEN
+                || !value
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == ':')
+            {
+                return validation(format!("{field} contains an invalid value"));
+            }
+            Ok(value)
+        })
+        .collect()
+}
+
+fn normalize_uuid_values(
+    field: &str,
+    values: Vec<String>,
+) -> Result<Vec<Uuid>, ForumStorefrontSearchExecutionError> {
+    if values.len() > MAX_FILTER_VALUES {
+        return validation(format!("{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"));
+    }
+    values
+        .into_iter()
+        .map(|value| {
+            Uuid::parse_str(value.trim())
+                .map_err(|_| ForumStorefrontSearchExecutionError::Validation(format!(
+                    "{field} contains an invalid UUID"
+                )))
+        })
+        .collect()
+}
+
+fn parse_optional_uuid(
+    field: &str,
+    value: Option<&str>,
+) -> Result<Option<Uuid>, ForumStorefrontSearchExecutionError> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            Uuid::parse_str(value).map_err(|_| {
+                ForumStorefrontSearchExecutionError::Validation(format!(
+                    "{field} contains an invalid UUID"
+                ))
+            })
+        })
+        .transpose()
+}
+
+fn normalize_preset_key(
+    value: Option<String>,
+) -> Result<Option<String>, ForumStorefrontSearchExecutionError> {
+    let value = value
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    if let Some(value) = value.as_deref() {
+        if value.len() > MAX_FILTER_VALUE_LEN
+            || !value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == ':')
+        {
+            return validation("Invalid preset key");
+        }
+    }
+    Ok(value)
+}
+
+fn normalize_attribute_code(
+    value: Option<String>,
+) -> Result<Option<String>, ForumStorefrontSearchExecutionError> {
+    let value = value
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    if let Some(value) = value.as_deref() {
+        validate_attribute_code(value)?;
+    }
+    Ok(value)
+}
+
+fn normalize_attribute_filters(
+    filters: Vec<ForumStorefrontSearchAttributeFilter>,
+) -> Result<Vec<SearchAttributeFilter>, ForumStorefrontSearchExecutionError> {
+    if filters.len() > MAX_ATTRIBUTE_FILTERS {
+        return validation(format!(
+            "attribute_filters exceeds the maximum size of {MAX_ATTRIBUTE_FILTERS} filters"
+        ));
+    }
+    filters
+        .into_iter()
+        .map(|filter| {
+            let attribute_code = filter.attribute_code.trim().to_ascii_lowercase();
+            validate_attribute_code(&attribute_code)?;
+            Ok(SearchAttributeFilter {
+                attribute_code,
+                values: normalize_filter_values("attribute_filter.values", filter.values)?,
+                min: normalize_attribute_bound(filter.min)?,
+                max: normalize_attribute_bound(filter.max)?,
+            })
+        })
+        .collect()
+}
+
+fn validate_attribute_code(value: &str) -> Result<(), ForumStorefrontSearchExecutionError> {
+    if value.is_empty()
+        || value.len() > MAX_FILTER_VALUE_LEN
+        || !value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    {
+        return validation("attribute_code contains an invalid value");
+    }
+    Ok(())
+}
+
+fn normalize_attribute_bound(
+    value: Option<String>,
+) -> Result<Option<String>, ForumStorefrontSearchExecutionError> {
+    let value = value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty());
+    if let Some(value) = value.as_deref() {
+        if value.len() > MAX_FILTER_VALUE_LEN || value.chars().any(char::is_control) {
+            return validation("attribute filter bound contains an invalid value");
+        }
+    }
+    Ok(value)
+}
+
+fn validation<T>(
+    message: impl Into<String>,
+) -> Result<T, ForumStorefrontSearchExecutionError> {
+    Err(ForumStorefrontSearchExecutionError::Validation(message.into()))
+}

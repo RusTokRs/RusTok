@@ -10,6 +10,8 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+pub mod forum_storefront_execution;
+mod forum_storefront_execution_public;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
@@ -28,6 +30,7 @@ mod projector_legacy;
 pub mod projector;
 pub mod ranking;
 pub mod search_settings;
+pub mod storefront_category_scope;
 pub mod suggestions;
 
 pub use analytics::{
@@ -52,6 +55,11 @@ pub use forum_reconciliation::{
     DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
     ForumProjectionReconciler, ForumProjectionSweepReport,
 };
+pub use forum_storefront_execution::{
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,
+    ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
+    execute_forum_storefront_search,
+};
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
@@ -65,6 +73,11 @@ pub use projection_source::{
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;
 pub use search_settings::SearchSettingsService;
+pub use storefront_category_scope::{
+    FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchTransport, resolve_storefront_search_category_ids,
+};
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
 };
