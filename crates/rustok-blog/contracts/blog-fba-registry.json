@@ -1,5 +1,5 @@
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -56,6 +56,7 @@
       "node scripts/verify/verify-blog-fba.test.mjs",
       "npm run test:verify:blog:admin-boundary",
       "npm run test:verify:blog:storefront-boundary",
+      "npm run test:verify:blog:comments-port-boundary",
       "npm run test:verify:blog:comments-event-projection",
       "npm run test:verify:blog:category-search-reindex",
       "npm run test:verify:blog:graphql-rate-limit",
@@ -73,6 +74,7 @@
       "node scripts/verify/verify-blog-fba.mjs",
       "npm run verify:blog:admin-boundary",
       "npm run verify:blog:storefront-boundary",
+      "npm run verify:blog:comments-port-boundary",
       "npm run verify:blog:comments-event-projection",
       "npm run verify:blog:category-search-reindex",
       "npm run verify:blog:graphql-rate-limit",
@@ -96,6 +98,13 @@
         "verifier": "scripts/verify/verify-blog-storefront-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
+      },
+      "comments_port_boundary": {
+        "package_script": "verify:blog:comments-port-boundary",
+        "test_package_script": "test:verify:blog:comments-port-boundary",
+        "verifier": "scripts/verify/verify-blog-comments-port-boundary.mjs",
+        "self_test": "scripts/verify/verify-blog-comments-port-boundary.test.mjs",
+        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
       },
       "comments_event_projection": {
         "package_script": "verify:blog:comments-event-projection",
@@ -157,25 +166,21 @@
     "status": "implemented_static_only"
   },
   "contract_tests": {
-    "status": "planned_cases_locked",
+    "status": "source_verified_no_compile",
+    "runtime_status": "pending",
     "source": "crates/rustok-blog/contracts/blog-fba-registry.json",
-    "runner": "scripts/verify/verify-blog-fba.mjs",
+    "runner": "scripts/verify/verify-blog-comments-port-boundary.mjs",
     "profiles": [
       "in_process",
       "remote_adapter_placeholder"
     ],
+    "source_profiles": [
+      "in_process"
+    ],
+    "pending_profiles": [
+      "remote_adapter_placeholder"
+    ],
     "cases": [
-      {
-        "provider": "comments",
-        "operation": "set_comment_status",
-        "assertions": [
-          "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "write_idempotency_required",
-          "server_richtext_view_projection",
-          "server_plain_text_projection"
-        ]
-      },
       {
         "provider": "comments",
         "operation": "create_comment",
@@ -184,8 +189,17 @@
           "context_deadline_preserved",
           "write_idempotency_required",
           "typed_richtext_input",
-          "server_selected_comment_profile",
-          "degraded_hide_comment_form_on_unavailable"
+          "server_selected_comment_profile"
+        ]
+      },
+      {
+        "provider": "comments",
+        "operation": "get_comment",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "server_richtext_view_projection",
+          "server_plain_text_projection"
         ]
       },
       {
@@ -194,8 +208,7 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "server_plain_text_preview",
-          "degraded_cached_thread_snapshot_on_unavailable"
+          "server_plain_text_preview"
         ]
       },
       {
@@ -205,8 +218,7 @@
           "typed_port_error_mapping",
           "context_deadline_preserved",
           "approved_only_projection",
-          "server_plain_text_preview",
-          "degraded_cached_thread_snapshot_on_unavailable"
+          "server_plain_text_preview"
         ]
       },
       {
@@ -222,6 +234,17 @@
       },
       {
         "provider": "comments",
+        "operation": "set_comment_status",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required",
+          "server_richtext_view_projection",
+          "server_plain_text_projection"
+        ]
+      },
+      {
+        "provider": "comments",
         "operation": "delete_comment",
         "assertions": [
           "typed_port_error_mapping",
@@ -231,14 +254,15 @@
       }
     ],
     "fallback_smoke": {
-      "status": "source_verified_no_compile",
+      "status": "planned",
       "profiles": [
         "embedded_native"
       ],
       "degraded_modes": [
         "hide_comment_form",
         "show_cached_thread_snapshot"
-      ]
+      ],
+      "runtime_evidence": "pending"
     }
   }
 }
