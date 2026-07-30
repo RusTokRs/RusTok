@@ -36,6 +36,8 @@
   ],
   "evidence": {
     "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
+    "richtext_cutover_inventory": "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json",
+    "richtext_cutover_inventory_doc": "crates/rustok-blog/docs/richtext-cutover-inventory.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-blog-fba.mjs",
     "static_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
