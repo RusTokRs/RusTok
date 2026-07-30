@@ -5,7 +5,8 @@ const FORUM_STOREFRONT_SEARCH_UNAVAILABLE: &str =
 
 impl ForumStorefrontSearchExecutionError {
     /// Returns the bounded message that public transports may expose. Internal
-    /// Search, database, provider, and serialization details remain server-only.
+    /// Search, database, provider, serialization, and candidate-scan details
+    /// remain server-only.
     pub fn public_message(&self) -> String {
         match self {
             Self::Validation(message) => message.clone(),
@@ -20,7 +21,7 @@ impl ForumStorefrontSearchExecutionError {
                 | rustok_core::Error::NotFound(message)
                 | rustok_core::Error::InvalidIdFormat(message),
             ) => message.clone(),
-            Self::Search(_) | Self::Database(_) => {
+            Self::Search(_) | Self::Database(_) | Self::Invariant(_) => {
                 FORUM_STOREFRONT_SEARCH_UNAVAILABLE.to_string()
             }
         }
