@@ -5,7 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const resolve = (relative) => path.join(root, relative);
+const read = (relative) => fs.readFileSync(resolve(relative), 'utf8');
 const fail = (message) => {
   console.error(`[verify-index-product-source] ${message}`);
   process.exit(1);
@@ -46,51 +47,84 @@ forbidMarkers(factoryPath, factory, [
   'rustok_product',
 ]);
 
+const eventIdPath = 'crates/rustok-index/src/application/source_event_id.rs';
+const eventId = requireMarkers(eventIdPath, [
+  'pub fn derive_index_source_event_id(',
+  'rustok-index-source-event-id-v1',
+  'IndexSourceEventIdError::NilTenantId',
+  'IndexSourceEventIdError::NilEntityId',
+  'IndexSourceEventIdError::ZeroSourceVersion',
+  'source_event_identity_is_stable_and_scope_sensitive',
+]);
+forbidMarkers(eventIdPath, eventId, ['rand::', 'Uuid::new_v4', 'tokio::']);
+requireMarkers('crates/rustok-index/src/application/mod.rs', [
+  'mod source_event_id;',
+  'IndexSourceEventIdError',
+  'derive_index_source_event_id',
+]);
 requireMarkers('crates/rustok-index/src/lib.rs', [
   'PostgresIndexSourceFactoryCatalog',
   'materialize_postgres_index_sources',
   'register_postgres_index_source_factory',
   'extensions.get_or_insert_with::<PostgresIndexSourceFactoryCatalog',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
-  'mod source_factory;',
-  'PostgresIndexSourceFactory',
-  'PostgresIndexSourceFactoryCatalog',
-  'materialize_postgres_index_sources',
-]);
 
-const productCargo = requireMarkers('crates/rustok-product/Cargo.toml', [
-  'index = ["dep:rustok-index", "dep:sha2"]',
-  'rustok-index = { workspace = true, optional = true }',
-  'sha2 = { workspace = true, optional = true }',
-]);
+const productCargo = read('crates/rustok-product/Cargo.toml');
 forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, [
-  'rustok-search =',
+  'rustok-index',
+  'dep:sha2',
+  '[features]',
 ]);
-
 const productRootPath = 'crates/rustok-product/src/lib.rs';
 const productRoot = requireMarkers(productRootPath, [
-  '#[cfg(feature = "index")]',
-  'pub mod index;',
-  '&["taxonomy", "index"]',
-  'register_index_schema_source(extensions, self.slug(), schema)',
-  'register_postgres_index_source_factory(',
-  'ProductPostgresIndexSourceFactory',
+  'pub struct ProductRuntimeSelected;',
+  'extensions.insert(ProductRuntimeSelected);',
+  '&["taxonomy"]',
 ]);
 forbidMarkers(productRootPath, productRoot, [
-  'PostgresMutationStore',
-  'PostgresIndexReplayRunner',
+  'rustok_index',
+  'register_index_schema_source',
+  'PostgresIndexSourceFactory',
 ]);
+if (fs.existsSync(resolve('crates/rustok-product/src/index.rs'))) {
+  fail('Product owner crate must not contain the selected cross-module Index adapter');
+}
 
-const sourcePath = 'crates/rustok-product/src/index.rs';
+const distributionCargo = requireMarkers('crates/rustok-distribution/Cargo.toml', [
+  'mod-product = ["dep:rustok-product", "mod-taxonomy"]',
+  'async-trait.workspace = true',
+  'sea-orm.workspace = true',
+]);
+forbidMarkers('crates/rustok-distribution/Cargo.toml', distributionCargo, [
+  'rustok-product/index',
+]);
+const distributionRoot = requireMarkers('crates/rustok-distribution/src/lib.rs', [
+  '#[cfg(feature = "mod-product")]',
+  'mod product_index;',
+  'register_selected_index_bridges(&mut extensions)?;',
+  'product_index::register(extensions)?;',
+  'selected_product_bridge_publishes_schema_and_source_factory',
+]);
+const bridgeRegistration = distributionRoot.indexOf(
+  'register_selected_index_bridges(&mut extensions)?;',
+);
+const schemaMaterialization = distributionRoot.indexOf(
+  'materialize_index_schema_sources(&mut extensions)?;',
+  bridgeRegistration,
+);
+if (bridgeRegistration < 0 || schemaMaterialization <= bridgeRegistration) {
+  fail('selected Index bridges must register before immutable schema materialization');
+}
+
+const sourcePath = 'crates/rustok-distribution/src/product_index.rs';
 const source = requireMarkers(sourcePath, [
-  'pub const PRODUCT_INDEX_MODULE: &str = "rustok-product";',
-  'pub const PRODUCT_INDEX_ENTITY: &str = "product";',
-  'pub const PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary";',
+  'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
+  'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay-v1"',
+  'extensions.contains::<rustok_product::ProductRuntimeSelected>()',
+  'register_index_schema_source(extensions, "product", schema)',
+  'register_postgres_index_source_factory(',
   'locale_mode: LocaleMode::Required',
-  'pub struct ProductPostgresIndexSourceFactory',
   'impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory',
-  'pub struct ProductPostgresIndexSource',
   'impl IndexSource for ProductPostgresIndexSource',
   'p.tenant_id,',
   'p.index_revision,',
@@ -99,12 +133,13 @@ const source = requireMarkers(sourcePath, [
   'request.limit() + 1',
   'WITH requested(product_id, locale) AS (VALUES {})',
   'JOIN requested r ON r.product_id = p.id AND r.locale = t.locale',
-  'rustok-product-index-replay-event-v1',
+  'derive_index_source_event_id(',
   'product_index_storage_unavailable',
   'product_index_backend_unsupported',
-  'product_schema_is_locale_required_and_scalar_only',
-  'replay_event_identity_is_stable_and_revision_sensitive',
-  'cursor_rejects_nil_product_and_noncanonical_locale',
+  '#[serde(deny_unknown_fields)]',
+  'if locale.as_str() != raw_locale',
+  'selected_product_bridge_skips_partial_registry_without_product_module',
+  'selected_product_bridge_registers_schema_and_factory',
 ]);
 forbidMarkers(sourcePath, source, [
   'index_entities',
@@ -125,12 +160,13 @@ const migrationPath =
 const migration = requireMarkers(migrationPath, [
   'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
   'chk_products_index_revision_positive',
+  'OLD.index_revision = 9223372036854775807',
+  'NEW.index_revision := OLD.index_revision + 1;',
   'trg_products_bump_index_revision',
   'trg_product_translations_bump_index_revision',
   'AFTER INSERT OR UPDATE OR DELETE ON product_translations',
 ]);
 forbidMarkers(migrationPath, migration, [
-  'idx_products_index_replay',
   'index_entities',
   'index_links',
   'index_jobs',
@@ -153,9 +189,6 @@ requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
   'Box::new(m20260730_000001_add_product_index_revision::Migration)',
 ]);
 
-requireMarkers('crates/rustok-distribution/Cargo.toml', [
-  'mod-product = ["dep:rustok-product", "rustok-product/index", "mod-taxonomy"]',
-]);
 const serverPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
 const server = requireMarkers(serverPath, [
   'materialize_postgres_index_sources(extensions, db.clone())',
@@ -183,17 +216,16 @@ if (
 forbidMarkers(serverPath, server, ['rustok_product', 'ProductPostgresIndexSource']);
 
 requireMarkers('crates/rustok-product/src/contract_tests.rs', [
-  'product_publishes_index_schema_and_postgres_source_factory',
-  'PostgresIndexSourceFactoryCatalog',
+  'product_module_publishes_only_a_typed_selection_marker_for_cross_module_bridges',
+  'assert!(!cargo.contains("rustok-index"));',
 ]);
 requireMarkers('crates/rustok-product/tests/module.rs', [
-  '#[cfg(feature = "index")]',
-  '&["taxonomy", "index"]',
+  'assert_eq!(module.dependencies(), &["taxonomy"]);',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-source.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`rustok-product::product@1`',
-  '`ProductPostgresIndexSource`',
+  '`rustok-distribution` is the selected cross-module bridge.',
   'stable `(product_id, locale)` identity',
   'it is not the scan cursor.',
   'Product hard deletes do not yet emit durable Index tombstones.',
@@ -201,10 +233,10 @@ requireMarkers('crates/rustok-index/docs/m7-product-source.md', [
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-product/README.md', [
-  'publish one owner-generic locale-required',
+  '`ProductRuntimeSelected`',
   '`index_revision`',
   '`(product_id, locale)`',
-  'Hard-delete tombstones',
+  'does not depend on `rustok-index`',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-source.mjs'",
