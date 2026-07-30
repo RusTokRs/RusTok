@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-07-30T20:05:00Z",
+  "review_base": "9dcbcf31e527a406cb9556bdc2e20165c141e6bf",
+  "status": "product_admin_fallback_graphql_mutation_error_safety_source_reviewed_unvalidated",
+  "scope": "Product Admin native-first GraphQL fallback mutation public error boundary",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/rustok-product/admin/src/catalog_transport.rs",
+    "crates/rustok-product/admin/src/transport.rs",
+    "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
+    "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
+    "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
+    "crates/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
+    "crates/rustok-product/admin/src/ui/leptos.rs",
+    "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
+    "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
+    "scripts/verify/verify-product-admin-boundary.mjs"
+  ],
+  "findings": [
+    {
+      "id": "product-admin-fallback-mutations-returned-raw-graphql-errors",
+      "severity": "confirmed",
+      "finding": "Eleven category, schema, binding, and attribute-value commands used native server adapters first and returned the final GraphQL fallback GraphqlHttpError directly. Http carried response status text and Graphql carried the first server error message into Product Admin command handling."
+    },
+    {
+      "id": "separate-fallback-mutation-policy",
+      "severity": "selected",
+      "finding": "A separate fallback-mutation context keeps the already merged primary mutation and read policies unchanged while applying the same static typed public envelope to the remaining commands."
+    },
+    {
+      "id": "explicit-facade-shadowing",
+      "severity": "selected",
+      "finding": "The facade explicitly re-exports the eleven sanitized wrappers. Named imports take precedence over the retained legacy glob without moving or deleting compatibility executors."
+    },
+    {
+      "id": "native-first-single-fallback-preserved",
+      "severity": "preserved",
+      "finding": "Each wrapper invokes exactly one unchanged compatibility executor. The executor still performs one native server call and invokes one existing GraphQL mutation only after native failure."
+    },
+    {
+      "id": "safe-shape-diagnostics",
+      "severity": "confirmed",
+      "finding": "Diagnostics record token presence, character lengths, collection counts, input presence, and fallback state. Token, tenant, actor, resource, locale, draft, patch, and attribute identifier values are not structured fields."
+    },
+    {
+      "id": "product-admin-known-graphql-source-sweep",
+      "severity": "bounded",
+      "finding": "With the catalog-options, primary read, category read, primary mutation, and this fallback mutation slice, the known Product Admin GraphQL transport functions are source-covered. Browser and mounted execution evidence remain open."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-product/admin/src/catalog_transport.rs",
+    "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
+    "crates/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
+    "crates/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source.json",
+    "crates/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source-review.json",
+    "crates/rustok-product/docs/admin-fallback-graphql-mutation-error-safety.md",
+    "scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs"
+  ],
+  "preserved": [
+    "native server adapter first execution",
+    "single existing GraphQL fallback",
+    "mutation documents and variables",
+    "mutation DTOs and result types",
+    "input normalization and response mapping",
+    "Product Admin UI command composition",
+    "previous error-safety policies and their focused guards",
+    "absence of new retries or transport fallback paths"
+  ],
+  "remaining_scope": [
+    "Product Admin focused verifier execution and Cargo compilation",
+    "Product Admin browser and mounted transport evidence",
+    "remaining ecommerce non-PortError public envelopes"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "browser_runtime_proven": false,
+    "mounted_transport_proven": false
+  },
+  "execution": []
+}
