@@ -10,12 +10,20 @@ const fail = (message) => {
 };
 
 const cargo = read('crates/rustok-commerce/Cargo.toml');
+const manifest = read('crates/rustok-commerce/rustok-module.toml');
+const lib = read('crates/rustok-commerce/src/lib.rs');
 const context = read('crates/rustok-commerce/src/services/context.rs');
 const tests = read('crates/rustok-commerce/tests/context_service_test.rs');
 const support = read('crates/rustok-commerce/tests/support/mod.rs');
 
 if (!cargo.includes('rustok-tenant.workspace = true')) {
   fail('commerce must depend on the tenant owner module in production');
+}
+if (!manifest.includes('tenant = { version_req = ">=0.1.0" }')) {
+  fail('commerce module manifest must declare the tenant owner dependency');
+}
+if (!lib.includes('"tenant",')) {
+  fail('CommerceModule runtime dependencies must include tenant');
 }
 
 for (const marker of [
@@ -62,4 +70,4 @@ for (const marker of [
   if (!support.includes(marker)) fail(`commerce tenant fixture schema missing ${marker}`);
 }
 
-console.log('[verify-commerce-tenant-locale-boundary] commerce store context consumes tenant owner ports and canonical locale semantics');
+console.log('[verify-commerce-tenant-locale-boundary] commerce declares and consumes tenant owner ports with canonical locale semantics');
