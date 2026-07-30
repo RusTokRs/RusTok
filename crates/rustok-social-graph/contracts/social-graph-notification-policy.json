@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "slice": "SOCIAL-01A/NOTIFY-07C",
   "promoted_by_slice": "NOTIFY-03C",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
@@ -11,6 +11,7 @@
   "ports": "crates/rustok-social-graph/src/ports.rs",
   "index_privacy": "crates/rustok-social-graph/src/index_privacy.rs",
   "index_privacy_shadow": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
+  "index_privacy_shadow_metrics": "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
   "relation_state": {
     "table": "social_graph_relations",
     "kinds": ["block", "mute"],
@@ -39,11 +40,52 @@
     "candidate_worker_default_enabled": false,
     "candidate_worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
     "index_query_runtime_required_when_shadow_enabled": true,
+    "index_privacy_shadow_metrics_required_when_enabled": true,
     "notification_block_mute_index_shadow_source_complete": true,
     "notification_block_mute_index_cutover": false,
     "index_privacy_shadow_env": "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED",
     "index_privacy_shadow_default_enabled": false,
     "owner_policy_remains_authoritative": true
+  },
+  "telemetry": {
+    "single_registry": true,
+    "observations_metric": "rustok_social_graph_index_privacy_shadow_observations_total",
+    "failures_metric": "rustok_social_graph_index_privacy_shadow_failures_total",
+    "duration_metric": "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
+    "last_observation_metric": "rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds",
+    "operations": [
+      "blocks_between",
+      "source_mutes_target",
+      "source_follows_target",
+      "source_follows_targets"
+    ],
+    "outcomes": [
+      "match_positive",
+      "match_negative",
+      "false_negative",
+      "false_positive",
+      "match_batch_empty",
+      "match_batch_nonempty",
+      "batch_missing",
+      "batch_extra",
+      "batch_mixed",
+      "error"
+    ],
+    "bounded_error_codes": [
+      "social_graph.index_privacy_unavailable",
+      "social_graph.index_privacy_contract_invalid",
+      "other"
+    ],
+    "identity_labels_forbidden": [
+      "tenant_id",
+      "source_user_id",
+      "target_user_id",
+      "relation_id",
+      "entity_id",
+      "payload",
+      "sql",
+      "storage_error"
+    ]
   },
   "distribution": {
     "registry": "crates/rustok-distribution/src/lib.rs",
@@ -55,7 +97,8 @@
   "tests": [
     "crates/rustok-social-graph/tests/privacy_sqlite.rs",
     "crates/rustok-social-graph/src/index_privacy.rs",
-    "crates/rustok-social-graph/src/index_privacy_shadow.rs"
+    "crates/rustok-social-graph/src/index_privacy_shadow.rs",
+    "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
@@ -64,6 +107,7 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
+    "retained shadow metric capture and review",
     "bounded shadow latency and resource overhead evidence",
     "authoritative cutover after retained freshness, lag, negative-result safety, and result-parity evidence",
     "default candidate worker enablement after health and lag metrics",
