@@ -26,6 +26,8 @@ const registry = requireMarkers(registryPath, [
   'pub struct IndexSourceCatalog',
   'pub struct SharedIndexSourceRegistry',
   'pub struct IndexSourceCursor',
+  "impl<'de> Deserialize<'de> for IndexSourceCursor",
+  'Self::new(value).map_err(D::Error::custom)',
   'pub struct IndexSourceScanRequest',
   'pub struct IndexSourceLoadRequest',
   'pub struct IndexSourcePage',
@@ -46,6 +48,8 @@ const registry = requireMarkers(registryPath, [
   'register_index_source(',
   'source_materialization_requires_exact_schema_owner',
   'schema_identity_cannot_move_between_replay_sources',
+  'cursor_and_scan_limits_are_bounded',
+  'serde_json::from_value::<IndexSourceCursor>',
   'targeted_load_is_one_bounded_tenant_schema_scope',
 ]);
 
