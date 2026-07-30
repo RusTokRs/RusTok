@@ -62,9 +62,14 @@
 - The selected bridge emits `IndexMutation::Upsert` for live owner rows and
   `IndexMutation::Delete` for retained hard-delete identities without changing
   schema fingerprints, source names, cursor shapes, or replay event domains.
-  Incremental event ingestion, tombstone retention/purge admission, durable
-  Product/ProductVariant-to-SalesChannel relations, and authoritative Index
-  consumer cutover remain later Index/reconciliation slices.
+- The Index-owned bounded multi-pass reconciliation runner can restart these
+  unchanged sources from the beginning and catch live or retained identities
+  inserted behind an earlier cursor. It is explicit and crash-resumable, but it
+  does not establish a repeatable-read owner snapshot or close the final-pass
+  concurrent-write window.
+  Incremental event ingestion, snapshot/watermark admission, tombstone
+  retention/purge admission, durable Product/ProductVariant-to-SalesChannel
+  relations, and authoritative Index consumer cutover remain later slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -164,5 +169,6 @@
 See also `docs/README.md`, the Index
 [M7 Product source contract](../rustok-index/docs/m7-product-source.md),
 [M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md),
-[M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md), and
-[M7 Product tombstone replay contract](../rustok-index/docs/m7-product-tombstone-source.md).
+[M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md),
+[M7 Product tombstone replay contract](../rustok-index/docs/m7-product-tombstone-source.md), and
+[M7 bounded Product reconciliation contract](../rustok-index/docs/m7-product-reconciliation.md).
