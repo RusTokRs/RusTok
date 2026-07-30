@@ -214,8 +214,9 @@ async fn replay_page_commits_checkpoint_after_mutations() {
     assert_eq!(outcome.applied_count(), 1);
     assert_eq!(*order.lock().unwrap(), vec!["mutation", "checkpoint"]);
     let stored = checkpoint.lock().unwrap().clone().unwrap();
+    let expected_delivery_id = event_id.to_string();
     assert!(stored.is_complete());
-    assert_eq!(stored.last_delivery_id(), Some(event_id.to_string().as_str()));
+    assert_eq!(stored.last_delivery_id(), Some(expected_delivery_id.as_str()));
 }
 
 #[tokio::test]
@@ -284,8 +285,43 @@ async fn completed_checkpoint_skips_the_source() {
 }
 
 #[tokio::test]
-async fn nil_replay_event_is_rejected_before_persistence() {
+async fn checkpoint_watermark_never_regresses() {
     let tenant_id = Uuid::from_u128(4);
+    let event_id = Uuid::from_u128(10);
+    let key = IndexReplayCheckpointKey::new(tenant_id, "product-primary", schema_ref()).unwrap();
+    let cursor = IndexSourceCursor::new(serde_json::json!({ "offset": 1 })).unwrap();
+    let checkpoint = Arc::new(Mutex::new(Some(
+        IndexReplayCheckpoint::new(
+            key,
+            Some(cursor),
+            Some(9),
+            Some(Uuid::from_u128(5).to_string()),
+        )
+        .unwrap(),
+    )));
+    let worker = worker(
+        tenant_id,
+        event_id,
+        Arc::new(AtomicUsize::new(0)),
+        Arc::new(AtomicUsize::new(0)),
+        Arc::new(Mutex::new(Vec::new())),
+        checkpoint.clone(),
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Mutex::new(Vec::new())),
+    );
+
+    let outcome = worker
+        .run_next_page(IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.checkpoint().source_version(), Some(9));
+    assert_eq!(checkpoint.lock().unwrap().as_ref().unwrap().source_version(), Some(9));
+}
+
+#[tokio::test]
+async fn nil_replay_event_is_rejected_before_persistence() {
+    let tenant_id = Uuid::from_u128(5);
     let mutation_calls = Arc::new(AtomicUsize::new(0));
     let checkpoint = Arc::new(Mutex::new(None));
     let worker = worker(
