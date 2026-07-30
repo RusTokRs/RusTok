@@ -1,0 +1,48 @@
+name: Agent Blog richtext finalize
+
+on:
+  pull_request:
+    types: [synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-source:
+    if: github.head_ref == 'agent/blog-richtext-storage-cutover-20260730' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/blog-richtext-storage-cutover-20260730
+          fetch-depth: 0
+      - name: Finalize source branch
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge --no-edit origin/main
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/rustok-blog/src/services/post.rs')
+          source = path.read_text(encoding='utf-8')
+          old = 'rustok_blog::richtext::article_document_from_plain_text'
+          count = source.count(old)
+          if count != 5:
+              raise SystemExit(f'expected 5 owner unit-test paths, found {count}')
+          path.write_text(source.replace(old, 'crate::richtext::article_document_from_plain_text'), encoding='utf-8')
+          PY
+          rm .github/workflows/agent-blog-richtext-finalize.yml
+          git diff --check
+          if grep -q 'rustok_blog::richtext::article_document_from_plain_text' crates/rustok-blog/src/services/post.rs; then
+            echo 'self-crate path remains in owner unit tests' >&2
+            exit 1
+          fi
+      - name: Commit final source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(blog): finalize richtext cutover branch"
+          git push origin HEAD:agent/blog-richtext-storage-cutover-20260730
