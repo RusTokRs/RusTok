@@ -59,23 +59,29 @@ semantics without widening the requested scope.
 `IndexReplayWorker::run_next_page` executes exactly one bounded source page:
 
 1. Resolve the registered source for the exact schema.
-2. Read the durable rebuild checkpoint identified by tenant, source, schema, and bounded
-   partition key.
+2. Read the durable rebuild checkpoint identified by tenant, source, and exact schema.
 3. Return `AlreadyComplete` without calling the source when the stored cursor is complete.
 4. Scan from the stored opaque cursor.
-5. Apply mutations sequentially through `PostgresMutationStore`, using each mutation
+5. Reject nil or duplicate event UUIDs before persistence.
+6. Apply mutations sequentially through `PostgresMutationStore`, using each mutation
    event UUID as the stable delivery ID.
-6. Commit the next cursor only after every mutation result is durable.
+7. Commit the next cursor only after every mutation result is durable.
+
+A source adapter must return the same non-nil event UUID for the same logical entity
+mutation and source version whenever a page is retried. This makes the replay delivery
+identity stable without importing source-domain identifiers into Index core.
 
 Applied, duplicate, and stale mutation outcomes are counted separately. A failure after
 one or more mutation commits but before checkpoint commit does not lose progress safety:
 the page is retried from the previous cursor and the existing inbox identity makes the
-same event deliveries idempotent.
+same stable event deliveries idempotent.
 
 `PostgresIndexReplayCheckpointStore` writes the existing `index_checkpoints` rebuild
 row. JSON `null` represents a completed cursor. Empty final pages preserve the last
 stored source version and delivery ID through `COALESCE`, while still marking the cursor
-complete. This adapter does not claim a job lease or global worker owner.
+complete. The locale and partition storage dimensions remain the reserved empty values
+until a separately admitted locale/partition replay contract exists. This adapter does
+not claim a job lease or global worker owner.
 
 ## Failures
 
@@ -94,6 +100,7 @@ durable terminal state; this slice does not define that scheduling policy.
 - fenced `index_jobs` claims, leases, heartbeat, cancellation, and global ownership;
 - a bounded multi-page loop, resume command, dry-run, targeted/full/shadow modes, and
   retry/dead-letter scheduling;
+- locale/partition replay checkpoint dimensions;
 - reconciliation, drift repair, retained freshness/outage/recovery evidence, and
   incremental/rebuild equivalence;
 - source adapters for Product and later vertical slices.
