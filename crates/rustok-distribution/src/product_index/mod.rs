@@ -1,7 +1,9 @@
+mod graph;
 mod product;
 #[path = "../product_variant_index.rs"]
 mod variant;
 
+pub(crate) use graph::PRODUCT_GRAPH_INDEX_SOURCE;
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 pub(crate) use variant::PRODUCT_VARIANT_INDEX_SOURCE;
 
@@ -9,17 +11,20 @@ pub(crate) fn register(
     extensions: &mut rustok_core::ModuleRuntimeExtensions,
 ) -> rustok_core::Result<()> {
     product::register(extensions)?;
-    variant::register(extensions)
+    variant::register(extensions)?;
+    graph::register(extensions)
 }
 
 #[cfg(test)]
 mod tests {
     use rustok_core::ModuleRuntimeExtensions;
 
-    use super::{PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE, register};
+    use super::{
+        PRODUCT_GRAPH_INDEX_SOURCE, PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE, register,
+    };
 
     #[test]
-    fn selected_product_bridge_set_registers_two_schemas_and_two_factories() {
+    fn selected_product_bridge_set_registers_versioned_graph_schemas_and_factories() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
@@ -32,12 +37,12 @@ mod tests {
                 .get::<rustok_index::IndexSchemaSourceCatalog>()
                 .unwrap()
                 .len(),
-            2
+            4
         );
         let factories = extensions
             .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
             .unwrap();
-        assert_eq!(factories.len(), 2);
+        assert_eq!(factories.len(), 3);
         assert!(factories.iter().any(|factory| {
             factory.owner_module() == "product"
                 && factory.factory_name() == PRODUCT_INDEX_SOURCE
@@ -45,6 +50,10 @@ mod tests {
         assert!(factories.iter().any(|factory| {
             factory.owner_module() == "product"
                 && factory.factory_name() == PRODUCT_VARIANT_INDEX_SOURCE
+        }));
+        assert!(factories.iter().any(|factory| {
+            factory.owner_module() == "product"
+                && factory.factory_name() == PRODUCT_GRAPH_INDEX_SOURCE
         }));
     }
 }
