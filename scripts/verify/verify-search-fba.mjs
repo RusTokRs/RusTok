@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 
 function read(path) { return fs.readFileSync(path, 'utf8'); }
@@ -13,6 +14,7 @@ const runtimeContractPath = 'crates/rustok-search/contracts/evidence/search-runt
 const runtimeInvocationPath = 'crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json';
 const canonicalUrlEvidencePath = 'crates/rustok-search/contracts/evidence/search-canonical-url-contract.json';
 const canonicalUrlVerifierPath = 'scripts/verify/verify-search-canonical-url-contract.mjs';
+const secretProjectionVerifierPath = 'scripts/verify/verify-search-settings-secret-projection.mjs';
 const removedNavigationPath = 'crates/rustok-search/storefront/src/transport/navigation.rs';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
@@ -118,9 +120,14 @@ const adminShell = read(canonicalContract.admin_shell_projection);
 hasAll(adminShell, ['rustok_search::canonical_search_result_url(&item)', '("blog_post", "blog" | "rustok-blog")'], 'admin global Search mapping');
 hasNone(adminShell, ['fn derive_admin_search_result_url', '"/modules/blog"'], 'admin global Search mapping');
 
+const secretProjection = spawnSync(process.execPath, [secretProjectionVerifierPath], { encoding: 'utf8' });
+if (secretProjection.status !== 0) {
+  fail(`secret-safe settings projection failed: ${secretProjection.stderr || secretProjection.stdout}`);
+}
+
 const plan = read('crates/rustok-search/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md', 'search-canonical-url-contract.json', 'single owner policy', 'no transport fallback'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-search-fba] Search provider metadata, port semantics, current-only canonical URL ownership, static evidence, and executable no-compile runtime contracts are consistent');
+console.log('[verify-search-fba] Search provider metadata, secret-safe settings projection, current-only canonical URL ownership, static evidence, and executable no-compile runtime contracts are consistent');
