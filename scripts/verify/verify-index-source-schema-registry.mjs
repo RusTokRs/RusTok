@@ -99,6 +99,7 @@ for (const forbidden of [
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-schema-registry.mjs'",
+  "'verify-index-source-replay-contract.mjs'",
   "'verify-index-query-runtime-composition.mjs'",
 ]);
 requireMarkers('crates/rustok-index/docs/m4-source-schema-registry.md', [
@@ -115,7 +116,8 @@ requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
   'M4 server-owned shared query runtime composition: `source_complete_execution_pending`',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
-  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
+  '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
+  '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
 ]);
 
 console.log('[verify-index-source-schema-registry] OK');

@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod graphql_error_safety;
 mod native_server_adapter;
 
 use std::fmt::{Display, Formatter};
@@ -94,7 +95,12 @@ pub async fn complete_checkout(
         "order",
         selected_transport_path(),
         move || native_server_adapter::complete_checkout(native_request),
-        move || graphql_adapter::complete_checkout(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::new(&request);
+            graphql_adapter::complete_checkout(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }

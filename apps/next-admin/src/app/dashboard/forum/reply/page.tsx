@@ -1,10 +1,12 @@
 import { auth } from '@/auth';
 import { buttonVariants } from '@/shared/ui/shadcn/button';
-import { listForumTopics } from '../../../../../packages/blog/src';
 import { cn } from '@/shared/lib/utils';
 import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
-import { ForumReplyEditor } from '../../../../../packages/blog/src';
+import {
+  ForumReplyEditor,
+  listForumTopics
+} from '../../../../../packages/forum/src';
 import {
   listRouteQueryEntries,
   readRouteSelection

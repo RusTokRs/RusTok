@@ -14,7 +14,8 @@ domain contract and must not dissolve into middleware or host-specific logic.
 - tenant and tenant-module entities/DTOs/services;
 - public CRUD, legacy low-level module override and tenant settings contract;
 - schema guard for tenant settings (object JSON + depth/key/payload limits);
-- transactional outbox publication of tenant lifecycle events (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) when wiring `TenantService` with `TransactionalEventBus`;
+- mandatory transactional outbox publication of tenant lifecycle and locale-policy
+  events from every owner mutation, including installer/bootstrap tenant creation;
 - tenant-scoped business rules consumed by other platform modules;
 - invariants of the multi-tenant model: `tenant_id`, tenant filtering and tenant-scoped module enablement.
 
@@ -22,7 +23,8 @@ domain contract and must not dissolve into middleware or host-specific logic.
 
 - `apps/server` owns only the middleware resolution entry point, cache infrastructure and runtime bootstrap around the tenant resolver path;
 - tenant context is resolved by `uuid`, `slug` or `host` before entering business logic; the module-owned `TenantReadPort` covers read projection lookup by id/slug/domain for host resolver/provisioning consumers; `apps/server` resolver uses this port on the cache-miss path instead of raw entity lookup, and installer provisioning/verification uses slug projection before create-candidate decisions and verify step;
-- outbox relay/dispatch infrastructure remains a host/runtime concern, but `rustok-tenant` must publish tenant lifecycle events through `TransactionalEventBus` without local bypasses;
+- outbox relay/dispatch infrastructure remains a host/runtime concern, but `rustok-tenant` always inserts each owner lifecycle event through `TransactionalEventBus::publish_root_in_tx` before the state transaction commits;
+- `TenantService::new` is the only service constructor; lifecycle publication cannot be disabled by omitted host wiring;
 - tenant admin read paths must go through tenant-scoped RBAC checks (`tenants:(read|list|manage)` + `modules:(read|list|manage)`) and remain synchronized with server adapters;
 - tenant admin native server-function transport consumes host-provided `rustok_api::HostRuntimeContext` for DB access and must not import a host-wide `AppContext`;
 - Redis/in-memory cache semantics and cross-instance invalidation belong to the host cache layer, but must remain synchronized with the module contract;
@@ -38,6 +40,7 @@ domain contract and must not dissolve into middleware or host-specific logic.
 - `cargo xtask module test tenant`
 - `npm run verify:tenant:fba`
 - `node --check scripts/verify/verify-tenant-fba.mjs`
+- `cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture`
 - `cargo test -p rustok-tenant tenant_read_port --test integration` for FBA read-port runtime smoke (deadline, typed error mapping, slug/domain lookup, inactive degraded mode)
 - targeted tests for tenant CRUD, module toggles, resolver invariants and cache-aware integration path
 

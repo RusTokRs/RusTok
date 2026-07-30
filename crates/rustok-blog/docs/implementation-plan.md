@@ -11,12 +11,43 @@ parallel transports over the same owner services.
 The neutral `rustok-api::richtext` contract and executable
 `rustok-content::richtext` profiles are active. Blog comments are a typed
 consumer of the Comments owner: comment writes use `RichTextDocument`, and
-moderation responses return `RichTextView` plus server-derived plain text.
-Blog articles use the fixed `article` profile across owner DTOs, storage,
-GraphQL, native server functions, Search, AI, and admin/storefront packages.
-The target contract contains no body-format selector, raw JSON alias, Markdown
-mode, or versioned richtext envelope. The irreversible storage migration
-validates all existing article rows before removing `body_format`.
+moderation responses return `RichTextView` plus server-derived plain text. The
+Blog article source cutover is complete: owner and GraphQL writes accept only
+the fixed `article` document, reads expose `RichTextView` plus derived text, and
+`body`, `body_format`, `content_json`, Markdown aliases, and raw JSON transport
+paths are absent from production DTOs. The GraphQL mutation layer delegates
+typed `input.into()` values and the recursive guardrail requires the removed
+fields to remain absent.
+
+The owner-specific offline backfill at
+`crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs` now closes the
+pre-migration operational gap. It is dry-run by default, scans the real Blog
+owner tables, emits a content-free NDJSON report, requires `--apply` for writes,
+requires a separate `--allow-markdown-plain-text` acknowledgement for lossy
+historical Markdown handling, uses optimistic updates, and verifies the result
+again. It neither executes the irreversible migration nor triggers Search
+reindex; those remain explicit operator steps.
+
+The Next admin Forum reply composer is no longer owned by Blog. Forum navigation,
+GraphQL helpers, the reply editor, and its contained `rt_json_v1` compatibility
+adapter now live under `apps/next-admin/packages/forum/src`; the host registers
+that package independently. Blog and Forum consume the same thin shared React
+lifecycle adapter at `apps/next-admin/src/shared/ui/rich-text-editor.tsx`, while
+profile selection remains owner-specific (`article` versus `discussion`).
+
+The Blog admin FFA guardrail now matches the canonical article editor. It
+requires typed `RichTextDocument` state and the owner `BlogRichTextEditor`,
+rejects reintroduction of body-format selectors and raw-body warnings in both
+core and Leptos UI, removes the dead `blog.form.bodyFormat` and
+`blog.form.rawWarning` locale contract from EN/RU catalogs, and validates
+machine evidence plus self-regression fixtures. The guardrail is part of the
+Blog FBA command chain.
+
+The Blog FBA source-gate chain is now registry-locked. The package command must
+preserve the exact admin, storefront, GraphQL richtext, offline backfill, Forum UI
+ownership, and consumer runtime-order sequence; the FBA verifier also checks every
+registered verifier/evidence path. Storefront can no longer disappear from the
+aggregate gate while the module still claims `core_transport_ui` readiness.
 
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
@@ -100,15 +131,29 @@ outbox publication.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v2
+  locks the exact package order and requires admin, storefront, GraphQL richtext,
+  offline backfill, Forum ownership, and consumer runtime-order gates.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
   user-owned.
-- Blog article richtext cutover: `source_and_compile_verified`; target-only
-  owner/storage/GraphQL/native/Search/AI/admin/storefront source is implemented,
+- Blog article richtext cutover: `implemented_source_verified_no_compile`;
+  target-only owner/storage/GraphQL/native/Search/AI/admin/storefront source is implemented,
   focused native SSR and WASM hydration package checks pass, the irreversible
   migration is fail-closed, and retained PostgreSQL/browser execution remains
   open.
+- Blog article offline backfill: `executable_no_run`; dry-run preflight,
+  content-free reporting, explicit apply/Markdown acknowledgement, orphan
+  detection, stable cursoring, optimistic writes, and post-apply verification
+  are implemented.
+- Next admin Forum UI ownership: `source_verified_no_compile`; Blog no longer
+  registers or exports Forum navigation, GraphQL helpers, reply UI, or legacy
+  format adapters, and both owners use the shared richtext lifecycle adapter.
+- Blog admin canonical richtext guardrail: `source_verified_no_compile`; the
+  FFA verifier requires typed document/editor state, rejects removed selector,
+  raw-body helper, and locale-key contracts, validates machine evidence, and has
+  negative fixtures.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -134,13 +179,12 @@ outbox publication.
   HTML and server-derived plain text through GraphQL and native SSR.
 - Blog SEO projection consumes server-derived plain text and no longer reads the
   legacy post body.
-- Blog GraphQL richtext boundary: canonical typed fields, resolver delegation,
-  verifier, self-test, and npm/FBA registration are implemented; no legacy
-  adapter remains.
+- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical-only
+  create/update fields, typed conversion, resolver delegation, recursive absence
+  guards, verifier, self-test, and npm/FBA registration are implemented.
 - AI Blog draft owner writes: `source_verified_no_compile`; generated create/update
-  text is converted to `RichTextDocument` before the Blog service call, existing
-  source content prefers server-derived plain text, and the remaining direct-task
-  Markdown-shaped fields are contained behind the adapter.
+  text is converted directly to `RichTextDocument`, existing source content uses
+  server-derived plain text, and no Markdown-shaped compatibility adapter remains.
 
 ## Evidence and guardrails
 
@@ -154,6 +198,9 @@ outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
 - `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
 - `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`
+- `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`
+- `crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json`
+- `crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json`
 - `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
@@ -161,6 +208,8 @@ outbox publication.
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs`
+- `scripts/verify/verify-blog-richtext-offline-backfill.mjs`
+- `scripts/verify/verify-blog-forum-ui-ownership.mjs`
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
@@ -230,6 +279,22 @@ outbox publication.
 23. Mounted the shared framed editor in Leptos through a browser-only hydration
     bridge with controlled updates, visible failures, cleanup, and strict
     no-store frame/adapter headers.
+24. Added the owner-specific Blog article offline backfill: dry-run-first scanning
+    of current owner tables, content-free NDJSON reporting, explicit apply and
+    Markdown acknowledgement, fail-closed format/profile validation, optimistic
+    batch writes, and post-apply verification.
+25. Removed Forum Next admin ownership from the Blog package, introduced the
+    Forum-owned package registration/navigation/API/editor boundary, and moved
+    the reusable React richtext lifecycle adapter to the host shared UI layer.
+26. Reconciled the Blog admin FFA guardrail with the canonical article editor:
+    removed stale required legacy helpers, added typed editor/document evidence,
+    negative regression fixtures, and FBA-chain execution.
+27. Removed dead body-format/raw-payload EN/RU locale keys and extended the
+    canonical admin evidence, verifier, and self-test to fail closed if those
+    legacy UI contracts return.
+28. Locked the Blog FBA package command to registry schema v2 and restored the
+    missing storefront boundary gate, with exact ordered-step and source-path
+    validation in the aggregate verifier.
 
 ## Next results
 
@@ -252,12 +317,15 @@ outbox publication.
    reads, moderation, pagination, independent create commands, duplicate event
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
-6. **Execute and retain Blog article richtext cutover evidence.** The target-only
-   source and irreversible fail-closed migration are implemented. Run migration
-   preflight, convert rejected legacy rows offline, execute the migration, and
-   retain Next/Leptos save-reload-SSR, GraphQL/native, Search reindex/rollback,
-   AI draft persistence, and browser evidence on the same commit. **Done when:**
-   the migration has executed on representative PostgreSQL data and no runtime
+6. **Execute and retain Blog article richtext cutover evidence.** Run the new
+   owner-specific offline backfill in default dry-run mode and retain its NDJSON
+   report. Resolve unknown formats manually; use `--allow-markdown-plain-text`
+   only after accepting literal-text conversion, then rerun with `--apply`.
+   Complete a final unscoped dry-run before the global migration. Execute the
+   irreversible migration, perform Blog Search reindex/rollback, and
+   retain Next/Leptos save-reload-SSR, GraphQL/native, AI draft persistence, and
+   browser evidence on the same commit. **Done when:** representative PostgreSQL
+   rows pass post-apply verification, the migration has executed, and no runtime
    path accepts Markdown, format aliases, or raw JSON.
 
 ## Verification
@@ -277,6 +345,9 @@ outbox publication.
 - `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `npm run verify:blog:graphql-richtext-boundary`
 - `npm run test:verify:blog:graphql-richtext-boundary`
+- `npm run verify:blog:richtext-offline-backfill`
+- `npm run verify:blog:forum-ui-ownership`
+- `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `node scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
@@ -284,6 +355,7 @@ outbox publication.
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
 - `cargo check -p rustok-server --features mod-blog`
 - `npm run verify:blog:admin-boundary`
+- `npm run test:verify:blog:admin-boundary`
 - `npm run verify:blog:storefront-boundary`
 - `npm run verify:blog:fba`
 - `npm run verify --prefix packages/richtext`

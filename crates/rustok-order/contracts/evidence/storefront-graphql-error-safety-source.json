@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "order_storefront_graphql_error_safety_source_unvalidated",
+  "scope": "order-owned storefront GraphQL checkout completion transport",
+  "covered_operations": [
+    "complete_storefront_checkout"
+  ],
+  "source_contract": {
+    "public_consumer_boundary_sanitized": true,
+    "private_graphql_adapter_changed": false,
+    "graphql_document_changed": false,
+    "request_response_dto_changed": false,
+    "idempotency_validation_changed": false,
+    "native_server_functions_changed": false,
+    "transport_selection_changed": false,
+    "native_to_graphql_fallback_added": false,
+    "graphql_http_error_reparsed": true,
+    "network_static_public_envelope": true,
+    "http_static_public_envelope": true,
+    "unauthorized_static_public_envelope": true,
+    "graphql_rejection_static_public_envelope": true,
+    "unknown_static_public_envelope": true,
+    "correlation_logging": true,
+    "safe_request_shape_logging": true,
+    "raw_cart_id_logged": false,
+    "raw_idempotency_key_logged": false,
+    "raw_tenant_slug_logged": false,
+    "raw_command_metadata_logged": false,
+    "raw_graphql_error_public": false,
+    "non_graphql_errors_pass_through": true
+  },
+  "stable_public_messages": {
+    "network_or_http": "Checkout completion is temporarily unavailable",
+    "unauthorized": "Checkout authentication is required",
+    "graphql_rejection_or_unknown": "Checkout request could not be completed"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-order-storefront-graphql-error-safety.mjs",
+    "node scripts/verify/verify-order-storefront-runtime-error-diagnostics.mjs",
+    "node scripts/verify/verify-order-storefront-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-order-storefront",
+    "cargo check -p rustok-order-storefront --features hydrate",
+    "cargo check -p rustok-order-storefront --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false,
+    "production_proven": false
+  }
+}

@@ -1,0 +1,767 @@
+use std::time::Duration;
+
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value as SqlValue,
+};
+use serde_json::{json, Value as JsonValue};
+use thiserror::Error;
+use uuid::Uuid;
+
+use crate::SchemaRef;
+
+const REPLAY_JOB_REQUEST_CONTRACT: &str = "index_replay_job_v1";
+const MAX_SOURCE_NAME_BYTES: usize = 128;
+const MAX_WORKER_ID_BYTES: usize = 191;
+const MAX_ERROR_CODE_BYTES: usize = 128;
+const MAX_LEASE_SECONDS: u64 = 86_400;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexReplayJobLeaseRequest {
+    tenant_id: Uuid,
+    schema: SchemaRef,
+    source_name: String,
+    worker_id: String,
+    lease_seconds: u64,
+}
+
+impl IndexReplayJobLeaseRequest {
+    pub fn new(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        source_name: impl Into<String>,
+        worker_id: impl Into<String>,
+        lease_duration: Duration,
+    ) -> Result<Self, IndexReplayJobError> {
+        if tenant_id.is_nil() {
+            return Err(IndexReplayJobError::NilTenantId);
+        }
+        let source_name = source_name.into();
+        validate_source_name(&source_name)?;
+        let worker_id = worker_id.into();
+        validate_worker_id(&worker_id)?;
+        let lease_seconds = validate_lease_duration(lease_duration)?;
+        Ok(Self {
+            tenant_id,
+            schema,
+            source_name,
+            worker_id,
+            lease_seconds,
+        })
+    }
+
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn schema(&self) -> &SchemaRef {
+        &self.schema
+    }
+
+    pub fn source_name(&self) -> &str {
+        &self.source_name
+    }
+
+    pub fn worker_id(&self) -> &str {
+        &self.worker_id
+    }
+
+    pub fn lease_duration(&self) -> Duration {
+        Duration::from_secs(self.lease_seconds)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexReplayJobLease {
+    tenant_id: Uuid,
+    job_id: Uuid,
+    schema: SchemaRef,
+    source_name: String,
+    worker_id: String,
+    attempt_count: u32,
+}
+
+impl IndexReplayJobLease {
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn job_id(&self) -> Uuid {
+        self.job_id
+    }
+
+    pub fn schema(&self) -> &SchemaRef {
+        &self.schema
+    }
+
+    pub fn source_name(&self) -> &str {
+        &self.source_name
+    }
+
+    pub fn worker_id(&self) -> &str {
+        &self.worker_id
+    }
+
+    pub fn attempt_count(&self) -> u32 {
+        self.attempt_count
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexReplayJobAcquireOutcome {
+    Acquired(IndexReplayJobLease),
+    Busy,
+    AlreadyComplete { job_id: Uuid },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum IndexReplayJobError {
+    #[error("Index replay job tenant id must not be nil")]
+    NilTenantId,
+    #[error("invalid Index replay source name: {reason}")]
+    InvalidSourceName { reason: &'static str },
+    #[error("invalid Index replay worker id: {reason}")]
+    InvalidWorkerId { reason: &'static str },
+    #[error("Index replay lease duration must be a whole number of seconds between 1 and 86400")]
+    InvalidLeaseDuration,
+    #[error("invalid Index replay error code: {reason}")]
+    InvalidErrorCode { reason: &'static str },
+    #[error("Index replay schema is not persisted for this tenant: {0}")]
+    SchemaNotRegistered(SchemaRef),
+    #[error("Index replay schema is retired: {0}")]
+    SchemaRetired(SchemaRef),
+    #[error("stored Index replay job is invalid: {0}")]
+    InvalidStoredJob(String),
+    #[error("Index replay completion checkpoint is missing")]
+    CheckpointMissing,
+    #[error("Index replay completion checkpoint still has a continuation cursor")]
+    CheckpointIncomplete,
+    #[error("Index replay job lease ownership was lost")]
+    LeaseLost,
+    #[error("Index replay job storage operation failed")]
+    Storage(String),
+}
+
+#[derive(Clone)]
+pub struct PostgresIndexReplayJobStore {
+    db: DatabaseConnection,
+}
+
+impl PostgresIndexReplayJobStore {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    pub async fn acquire(
+        &self,
+        request: &IndexReplayJobLeaseRequest,
+    ) -> Result<IndexReplayJobAcquireOutcome, IndexReplayJobError> {
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        let result = self.acquire_in_transaction(&transaction, request).await;
+        match result {
+            Ok(outcome) => {
+                transaction.commit().await.map_err(storage_error)?;
+                Ok(outcome)
+            }
+            Err(error) => {
+                transaction.rollback().await.map_err(storage_error)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn heartbeat(
+        &self,
+        lease: &IndexReplayJobLease,
+        lease_duration: Duration,
+    ) -> Result<(), IndexReplayJobError> {
+        let lease_seconds = validate_lease_duration(lease_duration)?;
+        let backend = self.db.get_database_backend();
+        ensure_supported_backend(backend)?;
+        let updated = self
+            .db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                heartbeat_sql(backend),
+                vec![
+                    uuid_value(lease.tenant_id, backend),
+                    uuid_value(lease.job_id, backend),
+                    lease.worker_id.clone().into(),
+                    i64::from(lease.attempt_count).into(),
+                    i64::try_from(lease_seconds)
+                        .map_err(|_| IndexReplayJobError::InvalidLeaseDuration)?
+                        .into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if updated.rows_affected() != 1 {
+            return Err(IndexReplayJobError::LeaseLost);
+        }
+        Ok(())
+    }
+
+    pub async fn succeed(&self, lease: &IndexReplayJobLease) -> Result<(), IndexReplayJobError> {
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        let result = async {
+            let backend = transaction.get_database_backend();
+            ensure_supported_backend(backend)?;
+            assert_active_replay_job_lease(&transaction, lease, backend).await?;
+            require_complete_checkpoint(&transaction, lease, backend).await?;
+            finish_job(&transaction, lease, "succeeded", None, None, backend).await
+        }
+        .await;
+        match result {
+            Ok(()) => {
+                transaction.commit().await.map_err(storage_error)?;
+                Ok(())
+            }
+            Err(error) => {
+                transaction.rollback().await.map_err(storage_error)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn fail(
+        &self,
+        lease: &IndexReplayJobLease,
+        error_code: impl Into<String>,
+        error_details: JsonValue,
+    ) -> Result<(), IndexReplayJobError> {
+        let error_code = error_code.into();
+        validate_error_code(&error_code)?;
+        let backend = self.db.get_database_backend();
+        ensure_supported_backend(backend)?;
+        let updated = self
+            .db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                finish_job_sql(backend),
+                vec![
+                    "failed".into(),
+                    Some(error_code).into(),
+                    SqlValue::Json(Some(Box::new(error_details))),
+                    uuid_value(lease.tenant_id, backend),
+                    uuid_value(lease.job_id, backend),
+                    lease.worker_id.clone().into(),
+                    i64::from(lease.attempt_count).into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if updated.rows_affected() != 1 {
+            return Err(IndexReplayJobError::LeaseLost);
+        }
+        Ok(())
+    }
+
+    async fn acquire_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        request: &IndexReplayJobLeaseRequest,
+    ) -> Result<IndexReplayJobAcquireOutcome, IndexReplayJobError> {
+        let backend = transaction.get_database_backend();
+        ensure_supported_backend(backend)?;
+        lock_replay_scope(transaction, request, backend).await?;
+        verify_schema_registration(transaction, request, backend).await?;
+
+        let rows = transaction
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                select_replay_jobs_sql(backend),
+                replay_scope_values(request, backend),
+            ))
+            .await
+            .map_err(storage_error)?;
+
+        let mut claimable = None;
+        for row in rows {
+            let stored = stored_job(&row, backend)?;
+            if stored.source_name != request.source_name {
+                return Err(IndexReplayJobError::InvalidStoredJob(
+                    "request.source_name does not match the replay scope owner".to_owned(),
+                ));
+            }
+            match stored.state.as_str() {
+                "succeeded" => {
+                    return Ok(IndexReplayJobAcquireOutcome::AlreadyComplete {
+                        job_id: stored.job_id,
+                    });
+                }
+                "running" if !stored.claimable => {
+                    return Ok(IndexReplayJobAcquireOutcome::Busy);
+                }
+                "pending" if !stored.claimable => {
+                    return Ok(IndexReplayJobAcquireOutcome::Busy);
+                }
+                "pending" | "running" => {
+                    claimable = Some(stored);
+                    break;
+                }
+                state => {
+                    return Err(IndexReplayJobError::InvalidStoredJob(format!(
+                        "unexpected active state {state}"
+                    )));
+                }
+            }
+        }
+
+        let job_id;
+        let attempt_count;
+        if let Some(stored) = claimable {
+            job_id = stored.job_id;
+            attempt_count = stored.attempt_count.checked_add(1).ok_or_else(|| {
+                IndexReplayJobError::InvalidStoredJob("attempt count overflow".to_owned())
+            })?;
+            let claimed = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    claim_job_sql(backend),
+                    vec![
+                        uuid_value(request.tenant_id, backend),
+                        uuid_value(job_id, backend),
+                        request.worker_id.clone().into(),
+                        i64::from(attempt_count).into(),
+                        i64::try_from(request.lease_seconds)
+                            .map_err(|_| IndexReplayJobError::InvalidLeaseDuration)?
+                            .into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if claimed.rows_affected() != 1 {
+                return Err(IndexReplayJobError::LeaseLost);
+            }
+        } else {
+            job_id = Uuid::new_v4();
+            attempt_count = 1;
+            let job_request = json!({
+                "contract": REPLAY_JOB_REQUEST_CONTRACT,
+                "source_name": request.source_name.clone(),
+            });
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    insert_job_sql(backend),
+                    vec![
+                        uuid_value(request.tenant_id, backend),
+                        uuid_value(job_id, backend),
+                        request.schema.module.as_str().to_owned().into(),
+                        request.schema.entity.as_str().to_owned().into(),
+                        i64::from(request.schema.version.get()).into(),
+                        SqlValue::Json(Some(Box::new(job_request))),
+                        request.worker_id.clone().into(),
+                        i64::try_from(request.lease_seconds)
+                            .map_err(|_| IndexReplayJobError::InvalidLeaseDuration)?
+                            .into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+        }
+
+        Ok(IndexReplayJobAcquireOutcome::Acquired(IndexReplayJobLease {
+            tenant_id: request.tenant_id,
+            job_id,
+            schema: request.schema.clone(),
+            source_name: request.source_name.clone(),
+            worker_id: request.worker_id.clone(),
+            attempt_count,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct StoredJob {
+    job_id: Uuid,
+    state: String,
+    source_name: String,
+    attempt_count: u32,
+    claimable: bool,
+}
+
+fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, IndexReplayJobError> {
+    let request: JsonValue = row.try_get("", "request").map_err(storage_error)?;
+    let object = request.as_object().ok_or_else(|| {
+        IndexReplayJobError::InvalidStoredJob("request must be a JSON object".to_owned())
+    })?;
+    if object.len() != 2
+        || object.get("contract").and_then(JsonValue::as_str)
+            != Some(REPLAY_JOB_REQUEST_CONTRACT)
+    {
+        return Err(IndexReplayJobError::InvalidStoredJob(
+            "request must use the exact index_replay_job_v1 contract".to_owned(),
+        ));
+    }
+    let source_name = object
+        .get("source_name")
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| {
+            IndexReplayJobError::InvalidStoredJob(
+                "request.source_name must be a string".to_owned(),
+            )
+        })?
+        .to_owned();
+    validate_source_name(&source_name).map_err(|_| {
+        IndexReplayJobError::InvalidStoredJob(
+            "request.source_name is outside the replay source contract".to_owned(),
+        )
+    })?;
+    let attempt_count: i64 = row
+        .try_get("", "attempt_count_value")
+        .map_err(storage_error)?;
+    let attempt_count = u32::try_from(attempt_count).map_err(|_| {
+        IndexReplayJobError::InvalidStoredJob("attempt count is outside the u32 range".to_owned())
+    })?;
+    Ok(StoredJob {
+        job_id: stored_uuid(row, "job_id", backend)?,
+        state: row.try_get("", "state").map_err(storage_error)?,
+        source_name,
+        attempt_count,
+        claimable: row.try_get("", "claimable").map_err(storage_error)?,
+    })
+}
+
+pub(super) async fn assert_active_replay_job_lease(
+    transaction: &DatabaseTransaction,
+    lease: &IndexReplayJobLease,
+    backend: DbBackend,
+) -> Result<(), IndexReplayJobError> {
+    ensure_supported_backend(backend)?;
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            active_lease_sql(backend),
+            vec![
+                uuid_value(lease.tenant_id, backend),
+                uuid_value(lease.job_id, backend),
+                lease.worker_id.clone().into(),
+                i64::from(lease.attempt_count).into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    let Some(row) = row else {
+        return Err(IndexReplayJobError::LeaseLost);
+    };
+    let active: bool = row.try_get("", "active").map_err(storage_error)?;
+    if !active {
+        return Err(IndexReplayJobError::LeaseLost);
+    }
+    Ok(())
+}
+
+async fn require_complete_checkpoint(
+    transaction: &DatabaseTransaction,
+    lease: &IndexReplayJobLease,
+    backend: DbBackend,
+) -> Result<(), IndexReplayJobError> {
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            complete_checkpoint_sql(backend),
+            vec![
+                uuid_value(lease.tenant_id, backend),
+                lease.source_name.clone().into(),
+                lease.schema.module.as_str().to_owned().into(),
+                lease.schema.entity.as_str().to_owned().into(),
+                i64::from(lease.schema.version.get()).into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or(IndexReplayJobError::CheckpointMissing)?;
+    let cursor: JsonValue = row.try_get("", "cursor").map_err(storage_error)?;
+    if !cursor.is_null() {
+        return Err(IndexReplayJobError::CheckpointIncomplete);
+    }
+    Ok(())
+}
+
+async fn finish_job(
+    transaction: &DatabaseTransaction,
+    lease: &IndexReplayJobLease,
+    state: &'static str,
+    error_code: Option<String>,
+    error_details: Option<JsonValue>,
+    backend: DbBackend,
+) -> Result<(), IndexReplayJobError> {
+    let updated = transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            finish_job_sql(backend),
+            vec![
+                state.into(),
+                error_code.into(),
+                SqlValue::Json(error_details.map(Box::new)),
+                uuid_value(lease.tenant_id, backend),
+                uuid_value(lease.job_id, backend),
+                lease.worker_id.clone().into(),
+                i64::from(lease.attempt_count).into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    if updated.rows_affected() != 1 {
+        return Err(IndexReplayJobError::LeaseLost);
+    }
+    Ok(())
+}
+
+async fn lock_replay_scope(
+    transaction: &DatabaseTransaction,
+    request: &IndexReplayJobLeaseRequest,
+    backend: DbBackend,
+) -> Result<(), IndexReplayJobError> {
+    if backend == DbBackend::Sqlite {
+        return Ok(());
+    }
+    let lock_key = format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        request.tenant_id,
+        request.schema.module.as_str(),
+        request.schema.entity.as_str(),
+        request.schema.version.get(),
+    );
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![lock_key.into()],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(())
+}
+
+async fn verify_schema_registration(
+    transaction: &DatabaseTransaction,
+    request: &IndexReplayJobLeaseRequest,
+    backend: DbBackend,
+) -> Result<(), IndexReplayJobError> {
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            select_schema_sql(backend),
+            replay_scope_values(request, backend),
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or_else(|| IndexReplayJobError::SchemaNotRegistered(request.schema.clone()))?;
+    let status: String = row.try_get("", "status").map_err(storage_error)?;
+    if status != "active" {
+        return Err(IndexReplayJobError::SchemaRetired(request.schema.clone()));
+    }
+    Ok(())
+}
+
+fn validate_source_name(source_name: &str) -> Result<(), IndexReplayJobError> {
+    if source_name.is_empty() {
+        return Err(IndexReplayJobError::InvalidSourceName {
+            reason: "must not be empty",
+        });
+    }
+    if source_name.len() > MAX_SOURCE_NAME_BYTES {
+        return Err(IndexReplayJobError::InvalidSourceName {
+            reason: "exceeds the storage limit",
+        });
+    }
+    if !source_name.bytes().all(|byte| {
+        byte.is_ascii_lowercase()
+            || byte.is_ascii_digit()
+            || matches!(byte, b'-' | b'_' | b'.')
+    }) {
+        return Err(IndexReplayJobError::InvalidSourceName {
+            reason: "must be a lowercase machine name",
+        });
+    }
+    Ok(())
+}
+
+fn validate_worker_id(worker_id: &str) -> Result<(), IndexReplayJobError> {
+    validate_storage_text(worker_id, MAX_WORKER_ID_BYTES)
+        .map_err(|reason| IndexReplayJobError::InvalidWorkerId { reason })
+}
+
+fn validate_error_code(error_code: &str) -> Result<(), IndexReplayJobError> {
+    validate_storage_text(error_code, MAX_ERROR_CODE_BYTES)
+        .map_err(|reason| IndexReplayJobError::InvalidErrorCode { reason })
+}
+
+fn validate_storage_text(value: &str, max_bytes: usize) -> Result<(), &'static str> {
+    if value.is_empty() {
+        return Err("must not be empty");
+    }
+    if value.trim() != value {
+        return Err("must not contain leading or trailing whitespace");
+    }
+    if value.len() > max_bytes {
+        return Err("exceeds the storage limit");
+    }
+    if value.chars().any(char::is_control) {
+        return Err("must not contain control characters");
+    }
+    Ok(())
+}
+
+fn validate_lease_duration(lease_duration: Duration) -> Result<u64, IndexReplayJobError> {
+    if lease_duration.subsec_nanos() != 0 {
+        return Err(IndexReplayJobError::InvalidLeaseDuration);
+    }
+    let seconds = lease_duration.as_secs();
+    if seconds == 0 || seconds > MAX_LEASE_SECONDS {
+        return Err(IndexReplayJobError::InvalidLeaseDuration);
+    }
+    Ok(seconds)
+}
+
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayJobError> {
+    match backend {
+        DbBackend::Postgres => Ok(()),
+        DbBackend::Sqlite if cfg!(test) => Ok(()),
+        backend => Err(IndexReplayJobError::Storage(format!(
+            "Index replay jobs do not support {backend:?}"
+        ))),
+    }
+}
+
+fn storage_error(error: impl std::fmt::Display) -> IndexReplayJobError {
+    IndexReplayJobError::Storage(error.to_string())
+}
+
+fn placeholder_prefix(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Postgres => "$",
+        DbBackend::Sqlite => "?",
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
+    match backend {
+        DbBackend::Postgres => value.into(),
+        DbBackend::Sqlite => value.to_string().into(),
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn stored_uuid(
+    row: &QueryResult,
+    column: &str,
+    backend: DbBackend,
+) -> Result<Uuid, IndexReplayJobError> {
+    match backend {
+        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        DbBackend::Sqlite => {
+            let value: String = row.try_get("", column).map_err(storage_error)?;
+            Uuid::parse_str(&value).map_err(storage_error)
+        }
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn replay_scope_values(
+    request: &IndexReplayJobLeaseRequest,
+    backend: DbBackend,
+) -> Vec<SqlValue> {
+    vec![
+        uuid_value(request.tenant_id, backend),
+        request.schema.module.as_str().to_owned().into(),
+        request.schema.entity.as_str().to_owned().into(),
+        i64::from(request.schema.version.get()).into(),
+    ]
+}
+
+fn select_schema_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "SELECT status FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1"
+    )
+}
+
+fn select_replay_jobs_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let (attempt_count, claimable) = match backend {
+        DbBackend::Postgres => (
+            "CAST(attempt_count AS BIGINT)",
+            "((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))",
+        ),
+        DbBackend::Sqlite => (
+            "CAST(attempt_count AS INTEGER)",
+            "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
+        ),
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "SELECT job_id, state, request, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 ELSE 2 END, created_at DESC"
+    )
+}
+
+fn insert_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lease_expires = lease_expires_expression(backend, 8);
+    format!(
+        "INSERT INTO index_jobs (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, request, attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at) VALUES ({prefix}1, {prefix}2, 'rebuild', 'running', 'schema', {prefix}3, {prefix}4, {prefix}5, {prefix}6, 1, CURRENT_TIMESTAMP, {prefix}7, {lease_expires}, CURRENT_TIMESTAMP)"
+    )
+}
+
+fn claim_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lease_expires = lease_expires_expression(backend, 5);
+    format!(
+        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+    )
+}
+
+fn heartbeat_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lease_expires = lease_expires_expression(backend, 5);
+    format!(
+        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP"
+    )
+}
+
+fn finish_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = {prefix}1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = {prefix}2, last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}4 AND job_id = {prefix}5 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}6 AND attempt_count = {prefix}7 AND lease_expires_at > CURRENT_TIMESTAMP"
+    )
+}
+
+fn active_lease_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lock = match backend {
+        DbBackend::Postgres => " FOR UPDATE",
+        DbBackend::Sqlite => "",
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "SELECT CASE WHEN lease_expires_at > CURRENT_TIMESTAMP THEN TRUE ELSE FALSE END AS active FROM index_jobs WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 LIMIT 1{lock}"
+    )
+}
+
+fn complete_checkpoint_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lock = match backend {
+        DbBackend::Postgres => " FOR UPDATE",
+        DbBackend::Sqlite => "",
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "SELECT cursor FROM index_checkpoints WHERE tenant_id = {prefix}1 AND checkpoint_kind = 'rebuild' AND source_name = {prefix}2 AND module_name = {prefix}3 AND entity_name = {prefix}4 AND schema_version = {prefix}5 AND locale_key = '' AND partition_key = '' LIMIT 1{lock}"
+    )
+}
+
+fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
+    let prefix = placeholder_prefix(backend);
+    match backend {
+        DbBackend::Postgres => {
+            format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
+        }
+        DbBackend::Sqlite => {
+            format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
+        }
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}

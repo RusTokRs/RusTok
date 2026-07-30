@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "order_storefront_graphql_error_safety_source_reviewed_unvalidated",
+  "base_main_sha": "5b9d49e65295819ee9e8e9c199688c0e2ac73d35",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-order/storefront/Cargo.toml",
+    "crates/rustok-order/storefront/src/transport.rs",
+    "crates/rustok-order/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "scripts/verify/verify-order-storefront-boundary.mjs"
+  ],
+  "findings": [
+    {
+      "id": "order-storefront-graphql-public-detail",
+      "severity": "p1",
+      "finding": "The order storefront facade delegated its selected GraphQL closure directly to the private adapter, so GraphqlHttpError display text was retained in UiTransportError.graphql_error.",
+      "resolution": "Create a per-call owner context at the public consumer boundary and map only CheckoutCompletionTransportError::Graphql to static public envelopes."
+    },
+    {
+      "id": "order-storefront-validation-preservation",
+      "severity": "contract",
+      "finding": "Cart UUID and checkout idempotency-key validation execute inside the private adapter before the GraphQL request.",
+      "resolution": "Pass Validation and ServerFn variants through unchanged and leave the private adapter unmodified."
+    },
+    {
+      "id": "order-storefront-correlation-context",
+      "severity": "contract",
+      "finding": "The client-side GraphQL path had no owner correlation event for failures.",
+      "resolution": "Generate a unique per-call correlation id and retain only tenant configuration, identifier lengths, and create-fulfillment policy in internal diagnostics."
+    }
+  ],
+  "preserved_behavior": [
+    "explicit feature-based transport selection",
+    "no native-to-GraphQL fallback",
+    "private GraphQL mutation and variables",
+    "checkout completion request and response DTOs",
+    "cart UUID and idempotency-key validation",
+    "native server-function error policy",
+    "Commerce owner-facade delegation"
+  ],
+  "execution": {
+    "commands": [],
+    "tests": [],
+    "verifiers": [],
+    "cargo": [],
+    "format": [],
+    "workflows": [],
+    "ci": []
+  },
+  "claims": {
+    "source_reviewed": true,
+    "source_ready": true,
+    "compiled": false,
+    "runtime_verified": false,
+    "mounted_parity_verified": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "production_promoted": false
+  }
+}

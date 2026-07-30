@@ -3,15 +3,14 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormInput } from '@/shared/ui/forms';
+import { RichTextEditor } from '@/shared/ui/rich-text-editor';
 import { Form } from '@/shared/ui/shadcn/form';
 import { emptyRichTextDocument, type RichTextDocument } from '@rustok/richtext';
 import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { createForumReply } from '../api/forum';
-import type { GqlOpts } from '../api/posts';
-import { RichTextEditor } from './rich-text-editor';
+import { createForumReply, type GqlOpts } from '../api/forum';
 import {
   normalizeRtJsonPayload,
   stringifyRtDoc,

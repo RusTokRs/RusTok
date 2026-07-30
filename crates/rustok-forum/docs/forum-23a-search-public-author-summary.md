@@ -4,10 +4,10 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-Latest slice: `FORUM-23A2`
+Latest slice: `FORUM-23A7`
 
 This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
-and approved-reply documents now obtain author presentation from the Profiles owner instead of
+and approved-reply documents obtain author presentation from the Profiles owner instead of
 serializing the raw Forum author identifier.
 
 The machine-readable contract is
@@ -37,38 +37,70 @@ empty author: it fails projection so the durable Search inbox can retry.
 ## Durable redaction
 
 Embedded summaries require invalidation when profile presentation changes. Profiles publishes
-`ProfileUpdated` for handle, display content, locale, visibility, and media changes. Search treats
-that owner event as a Forum projection event whenever the Forum source is composed.
+`ProfileUpdated` for handle, display content, locale, visibility, media, self-service upsert, and
+CLI backfill creation. Search treats that owner event as a Forum projection event whenever the
+Forum source is composed.
 
 The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
 `ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
 publication fails, the visibility write is explicitly rolled back and the mutation returns a
-retryable owner error. A successful private visibility change therefore cannot commit without the
-durable invalidation consumed by Forum Search.
+retryable owner error.
 
 `FORUM-23A2` applies the same owner rule to `update_my_profile_handle`. Handle normalization,
-duplicate-owner validation, the profile row update, and the `ProfileUpdated` outbox envelope now
-share one Profiles-owned transaction. If event publication fails, the handle write is rolled back;
-a successful public-handle change cannot commit while Forum Search retains only the previous
-handle because the invalidation event was lost.
+duplicate-owner validation, the profile row update, and the `ProfileUpdated` outbox envelope share
+one transaction. If event publication fails, the handle write is rolled back.
 
-Both paths use the shared transactional publisher in
+`FORUM-23A3` applies the same rule to `update_my_profile_content`. Display-name normalization, the
+profile revision timestamp, the selected localized display-name/biography row, and the durable
+`ProfileUpdated` envelope commit together. The shared publisher accepts the actual Profiles owner
+model returned by SeaORM, matching the handle and visibility helpers.
+
+`FORUM-23A4` applies the owner rule to `update_my_profile_media`. Media ownership and access are
+validated before opening the Profiles transaction. The avatar/banner identifiers, profile revision
+timestamp, and durable `ProfileUpdated` envelope then commit in one transaction. If outbox
+publication fails, the media owner write is rolled back. A new public avatar therefore cannot
+commit while Forum Search retains the previous `avatar_media_id` because its invalidation was lost.
+Banner remains owner data and is never serialized into Forum Search.
+
+`FORUM-23A5` applies the same rule to `update_my_profile_locale`. The preferred locale is normalized
+before the owner transaction. The tenant-scoped profile row, revision timestamp, and durable
+`ProfileUpdated` envelope then commit together. If publication fails, the locale write is rolled
+back. The path preserves the existing selection-only rule: changing preferred locale does not copy,
+insert, or update localized display content.
+
+`FORUM-23A6` applies the owner rule to `upsert_my_profile`. Media ownership is validated before the
+transaction. Inside one Profiles-owned transaction the path checks tenant-scoped handle ownership,
+creates or updates the profile row, upserts the selected localized display-name/biography row,
+replaces taxonomy-backed profile tags, and writes the durable `ProfileUpdated` envelope. Event
+failure rolls back every owner row, including newly created profiles, translations, and tag
+relations. The GraphQL mutation no longer has a post-commit event publisher.
+
+`FORUM-23A7` applies the create-only variant of the same owner transaction to the Profiles CLI
+backfill. Non-dry-run backfill always constructs the outbox transport and cannot opt out of durable
+invalidation. The create-if-missing transaction rechecks profile absence, checks handle ownership,
+creates the profile and localized content, writes the `ProfileUpdated` envelope with a system actor,
+and commits last. Event failure rolls back the new profile. If a profile appears concurrently, the
+transaction is rolled back and the CLI reports the item as skipped without overwriting user-owned
+state. Dry-run still plans only and emits no event. The historical `--emit-events` option remains an
+accepted compatibility input, but it no longer disables events for writes.
+
+All self-service mutations and CLI backfill creation now use the shared transactional publisher in
 `crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
-classification cannot drift independently. Profile upsert, display-content, locale, and media
-mutations still publish after their owner write and are not claimed to be transactionally coupled
-in this slice.
+classification cannot drift independently. This does not claim every callable Profiles mutation API
+is event-coupled: direct non-event `ProfileService` mutation methods remain and require a separate
+restriction, consolidation, or production reachability proof.
 
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
-consumer rebuilds the Forum tenant projection from current owner state, so a profile changed to
-private removes the previously stored public summary and a committed handle change replaces the
-old Search presentation.
+consumer rebuilds the Forum tenant projection from current owner state, so committed visibility,
+handle, public display-name, locale selection, avatar, self-service upsert, and CLI backfill changes
+replace stale Search presentation.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
-ordering is solved; owner-issued monotonic revisions remain the next ordering hardening task.
-It also does not treat `UserDeleted` as sufficient deletion evidence because that event does not
-prove that the Profiles owner has already removed or hidden its state.
+ordering is solved; owner-issued monotonic revisions remain an ordering-hardening task. It also
+does not treat `UserDeleted` as sufficient deletion evidence because that event does not prove
+that the Profiles owner has already removed or hidden its state.
 
 ## Search shape
 
@@ -86,14 +118,15 @@ discovery contract are unchanged.
 
 No database migration, Search query API change, Forum GraphQL/REST change, Forum owner-storage
 change, Profiles owner-storage change, dependency change, or `Cargo.lock` change is introduced.
-Existing Search document rows are replaced by the next Forum rebuild or relevant durable event.
+The operational CLI safety rule is tightened: every non-dry-run profile creation now includes the
+durable event in the owner transaction. Existing Search document rows are replaced by the next
+Forum rebuild or relevant durable event.
 
 ## Remaining FORUM-23 scope
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
-- transactionally couple profile upsert, display-content, locale, and media summary updates to
-  their owner events;
+- consolidate or restrict direct non-event `ProfileService` mutation APIs;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
@@ -107,6 +140,7 @@ Suggested commands:
 
 ```bash
 cargo check -p rustok-profiles --all-targets
+cargo check -p rustok-profiles-cli --all-targets
 cargo test -p rustok-profiles error -- --nocapture
 cargo test -p rustok-forum search_projection_author -- --nocapture
 cargo test -p rustok-search forum_inbox -- --nocapture

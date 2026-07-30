@@ -31,22 +31,11 @@ pub type TenantResult<T> = Result<T, TenantError>;
 
 pub struct TenantService {
     db: DatabaseConnection,
-    event_bus: Option<TransactionalEventBus>,
 }
 
 impl TenantService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self {
-            db,
-            event_bus: None,
-        }
-    }
-
-    pub fn with_event_bus(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self {
-            db,
-            event_bus: Some(event_bus),
-        }
+        Self { db }
     }
 
     #[instrument(skip(self, input), fields(slug = %input.slug))]
@@ -511,14 +500,9 @@ impl TenantService {
     where
         C: sea_orm::ConnectionTrait,
     {
-        if let Some(event_bus) = &self.event_bus {
-            event_bus
-                .publish_in_tx(txn, tenant_id, None, event)
-                .await
-                .map_err(|error| TenantError::EventPublish(error.to_string()))?;
-        }
-
-        Ok(())
+        TransactionalEventBus::publish_root_in_tx(txn, tenant_id, None, event)
+            .await
+            .map_err(|error| TenantError::EventPublish(error.to_string()))
     }
 }
 

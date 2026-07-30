@@ -16,6 +16,12 @@ receipt, and emits tenant/locale events in the owner transaction. Server locale
 resolution loads this projection through the port and keeps only host-owned
 cache/invalidation behavior.
 
+Every tenant, tenant-module, and locale-policy mutation now writes its validated
+lifecycle event to the canonical outbox before committing the owner transaction.
+`TenantService::new` is the only constructor; event publication cannot be omitted
+by host wiring. Installer/bootstrap `ensure_tenant` calls therefore use the same
+`tenant.created` transaction as ordinary tenant creation.
+
 The host cache-miss resolver and installer provisioning/verification use
 `TenantReadPort` for typed id, slug, and domain reads. Idempotent installer
 tenant provisioning uses `TenantService::ensure_tenant`, so the host does not
@@ -38,6 +44,8 @@ runtime guardrail.
 
 Source evidence now covers:
 
+- mandatory same-transaction outbox insertion for ordinary and installer tenant
+  creation, tenant updates, low-level module overrides, and locale-policy changes;
 - two independent serving contexts whose real `content-language` values prove
   exact UUID invalidation leaves another tenant cached until a later wildcard
   clear;
@@ -54,9 +62,10 @@ Source evidence now covers:
   Redis tests, durable-before-apply ordering, durable-ahead full recovery and the
   prohibition on tracker rebaselining after regression.
 
-This evidence is source-complete but is not compiled or live verified on the
-current revision until the cache workflow reports successful compiled and Redis
-jobs.
+The lifecycle outbox regression is staged for same-SHA execution. Multi-replica
+cache evidence remains source-complete but is not compiled or live verified on
+the current revision until the cache workflow reports successful compiled and
+Redis jobs.
 
 ## FFA/FBA boundary
 
@@ -92,8 +101,9 @@ jobs.
 
 3. **Keep lifecycle and cache behavior synchronized.** Any change to create,
    update, deactivate, domain, locale, or module-toggle behavior must preserve
-   typed `TenantReadPort` use and the shared durable generation contract for UUID,
-   slug, host and locale cache views.
+   mandatory same-transaction outbox insertion, typed `TenantReadPort` use, and
+   the shared durable generation contract for UUID, slug, host and locale cache
+   views.
    **Depends on:** the server resolver/cache adapters and
    `ModuleLifecycleService`.
    **Done when:** targeted resolver/invalidation tests cover the changed state
@@ -120,6 +130,7 @@ jobs.
 - `npm run verify:tenant:admin-boundary`
 - `cargo xtask module validate tenant`
 - `cargo xtask module test tenant`
+- `cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture`
 - `cargo test -p rustok-tenant tenant_read_port --test integration`
 - `cargo test -p rustok-tenant tenant_locale_policy --test integration`
 - `cargo test -p rustok-server --test tenant_locale_generation_guard`
@@ -138,3 +149,16 @@ jobs.
    a public/runtime contract change.
 3. Update this status block and `docs/modules/registry.md` with a UI or
    transport boundary change.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `tenant owner CRUD, locale-policy CAS, lifecycle outbox publication, installer provisioning, read ports, FBA guard; resolver/cache generation, migrations, module lifecycle and RBAC consumers remain under audit`
+- Findings: `P0=0, P1=1, P2=0, P3=0`
+- Fixed in this pass: `removed the optional TransactionalEventBus constructor and made every TenantService mutation publish through TransactionalEventBus::publish_root_in_tx in the owner transaction, including installer ensure_tenant creation`
+- Remaining risks or blockers: `same-SHA targeted Rust evidence is pending; multi-replica Redis evidence is source-complete but unexecuted; migration constraints, resolver invalidation, lifecycle consumers, multilingual storage and RBAC parity require continued current-source inspection`
+- Evidence: `ordinary TenantService::new SQLite regression now verifies tenant.created, tenant.updated and tenant.module.toggled outbox rows; FBA guard forbids optional event_bus/with_event_bus and binds the installer seed path to TenantService::ensure_tenant`
+- Next action: `run same-SHA Tenant FBA and targeted integration evidence, merge the focused P1 fix, then inspect migrations, cache invalidation and module lifecycle consumers on a fresh branch`
+- Resume command: `npm run verify:tenant:fba && cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture && cargo xtask module validate tenant`

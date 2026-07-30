@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_compensation_admission_context_source_reviewed_unvalidated",
+  "reviewed_at": "2026-07-30",
+  "base_main_sha": "43b77b303569ea1e4c38db78c18f2a30ebe0c217",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-api/src/ports.rs",
+    "crates/rustok-payment/src/lib.rs",
+    "crates/rustok-payment/src/checkout_compensation.rs",
+    "crates/rustok-payment/src/checkout_compensation_context.rs",
+    "crates/rustok-payment/src/checkout_compensation_api.rs",
+    "scripts/verify/verify-payment-checkout-compensation-local-context.mjs"
+  ],
+  "findings": [
+    "The master ecommerce plan still keeps payment execution and compensation mapper cleanup open.",
+    "The persistent compensation owner returned write-policy and write-semantics errors before provider or lifecycle work.",
+    "The context wrapper retained safe request facts but previously excluded admission envelopes.",
+    "The public module path exposed the persistent implementation type and factory as a diagnostic bypass.",
+    "No production source outside the wrapper referenced crate::checkout_compensation internals.",
+    "PortContext admission envelopes are stable sanitized PortError pairs for missing idempotency and deadline semantics."
+  ],
+  "reviewed_contract": {
+    "persistent_source_private": true,
+    "public_module_facade_present": true,
+    "root_and_module_wrapper_parity": true,
+    "admission_mapping_exact": true,
+    "same_port_error_returned": true,
+    "provider_and_lifecycle_source_unchanged": true
+  },
+  "executed_commands": [],
+  "validation": {
+    "focused_verifier": false,
+    "cargo": false,
+    "tests": false,
+    "runtime": false,
+    "ci": false
+  }
+}

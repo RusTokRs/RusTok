@@ -1,0 +1,700 @@
+use std::{sync::Arc, time::Duration};
+
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    TransactionTrait, Value as SqlValue,
+};
+use serde_json::{json, Value as JsonValue};
+use thiserror::Error;
+use uuid::Uuid;
+
+use crate::{
+    IndexReplayError, IndexReplayFailureKind, IndexReplayPageRequest, IndexReplayPageStatus,
+    IndexReplayWorker, IndexSourceError, IndexSourceFailureKind, SchemaRef, SchemaRegistry,
+    SharedIndexSourceRegistry,
+};
+
+use super::{
+    IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
+    IndexReplayJobLeaseRequest, PostgresIndexReplayCheckpointStore, PostgresIndexReplayJobStore,
+    PostgresMutationStore,
+};
+
+const MAX_PAGES_PER_RUN: usize = 1_024;
+const REPLAY_PAGE_FAILURE_CODE: &str = "index.replay_page_failed";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexReplayRunRequest {
+    page_request: IndexReplayPageRequest,
+    worker_id: String,
+    lease_duration: Duration,
+    max_pages: usize,
+    heartbeat_every_pages: usize,
+}
+
+impl IndexReplayRunRequest {
+    pub fn new(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        worker_id: impl Into<String>,
+        page_limit: usize,
+        max_pages: usize,
+        heartbeat_every_pages: usize,
+        lease_duration: Duration,
+    ) -> Result<Self, IndexReplayRunError> {
+        if !(1..=MAX_PAGES_PER_RUN).contains(&max_pages) {
+            return Err(IndexReplayRunError::InvalidMaxPages {
+                actual: max_pages,
+                max: MAX_PAGES_PER_RUN,
+            });
+        }
+        if heartbeat_every_pages == 0 || heartbeat_every_pages > max_pages {
+            return Err(IndexReplayRunError::InvalidHeartbeatCadence {
+                actual: heartbeat_every_pages,
+                max: max_pages,
+            });
+        }
+        let page_request = IndexReplayPageRequest::new(tenant_id, schema, page_limit)
+            .map_err(IndexReplayRunError::InvalidPageRequest)?;
+        Ok(Self {
+            page_request,
+            worker_id: worker_id.into(),
+            lease_duration,
+            max_pages,
+            heartbeat_every_pages,
+        })
+    }
+
+    pub fn page_request(&self) -> &IndexReplayPageRequest {
+        &self.page_request
+    }
+
+    pub fn worker_id(&self) -> &str {
+        &self.worker_id
+    }
+
+    pub fn lease_duration(&self) -> Duration {
+        self.lease_duration
+    }
+
+    pub fn max_pages(&self) -> usize {
+        self.max_pages
+    }
+
+    pub fn heartbeat_every_pages(&self) -> usize {
+        self.heartbeat_every_pages
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexReplayRunStatus {
+    Busy,
+    AlreadyComplete,
+    Complete,
+    Cancelled,
+    Yielded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexReplayRunOutcome {
+    status: IndexReplayRunStatus,
+    job_id: Option<Uuid>,
+    attempt_count: Option<u32>,
+    pages_processed: usize,
+    heartbeat_count: usize,
+    mutation_count: usize,
+    applied_count: usize,
+    duplicate_count: usize,
+    stale_count: usize,
+}
+
+impl IndexReplayRunOutcome {
+    pub fn status(&self) -> IndexReplayRunStatus {
+        self.status
+    }
+
+    pub fn job_id(&self) -> Option<Uuid> {
+        self.job_id
+    }
+
+    pub fn attempt_count(&self) -> Option<u32> {
+        self.attempt_count
+    }
+
+    pub fn pages_processed(&self) -> usize {
+        self.pages_processed
+    }
+
+    pub fn heartbeat_count(&self) -> usize {
+        self.heartbeat_count
+    }
+
+    pub fn mutation_count(&self) -> usize {
+        self.mutation_count
+    }
+
+    pub fn applied_count(&self) -> usize {
+        self.applied_count
+    }
+
+    pub fn duplicate_count(&self) -> usize {
+        self.duplicate_count
+    }
+
+    pub fn stale_count(&self) -> usize {
+        self.stale_count
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexReplayTerminalState {
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexReplayCancelOutcome {
+    Requested,
+    Cancelled,
+    AlreadyTerminal(IndexReplayTerminalState),
+    NotFound,
+}
+
+#[derive(Clone)]
+pub struct PostgresIndexReplayRunner {
+    db: DatabaseConnection,
+    sources: SharedIndexSourceRegistry,
+    schema_registry: Arc<SchemaRegistry>,
+}
+
+impl PostgresIndexReplayRunner {
+    pub fn new(
+        db: DatabaseConnection,
+        sources: SharedIndexSourceRegistry,
+        schema_registry: Arc<SchemaRegistry>,
+    ) -> Self {
+        Self {
+            db,
+            sources,
+            schema_registry,
+        }
+    }
+
+    pub async fn request_cancel(
+        &self,
+        tenant_id: Uuid,
+        job_id: Uuid,
+    ) -> Result<IndexReplayCancelOutcome, IndexReplayRunError> {
+        if tenant_id.is_nil() {
+            return Err(IndexReplayRunError::NilCancelTenantId);
+        }
+        if job_id.is_nil() {
+            return Err(IndexReplayRunError::NilCancelJobId);
+        }
+        let transaction = self.db.begin().await.map_err(job_storage_error)?;
+        let result = request_cancel_in_transaction(&transaction, tenant_id, job_id).await;
+        match result {
+            Ok(outcome) => {
+                transaction.commit().await.map_err(job_storage_error)?;
+                Ok(outcome)
+            }
+            Err(error) => {
+                transaction.rollback().await.map_err(job_storage_error)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn run(
+        &self,
+        request: IndexReplayRunRequest,
+    ) -> Result<IndexReplayRunOutcome, IndexReplayRunError> {
+        let source_name = self
+            .sources
+            .source_for_schema(request.page_request().schema())
+            .ok_or_else(|| {
+                IndexReplayRunError::UnknownSchemaSource(
+                    request.page_request().schema().clone(),
+                )
+            })?
+            .source_name()
+            .to_owned();
+        let lease_request = IndexReplayJobLeaseRequest::new(
+            request.page_request().tenant_id(),
+            request.page_request().schema().clone(),
+            source_name,
+            request.worker_id().to_owned(),
+            request.lease_duration(),
+        )?;
+        let job_store = PostgresIndexReplayJobStore::new(self.db.clone());
+        let lease = match job_store.acquire(&lease_request).await? {
+            IndexReplayJobAcquireOutcome::Busy => {
+                return Ok(empty_outcome(IndexReplayRunStatus::Busy, None, None));
+            }
+            IndexReplayJobAcquireOutcome::AlreadyComplete { job_id } => {
+                return Ok(empty_outcome(
+                    IndexReplayRunStatus::AlreadyComplete,
+                    Some(job_id),
+                    None,
+                ));
+            }
+            IndexReplayJobAcquireOutcome::Acquired(lease) => lease,
+        };
+
+        let checkpoint_store =
+            PostgresIndexReplayCheckpointStore::new(self.db.clone(), lease.clone());
+        let worker = IndexReplayWorker::new(
+            self.sources.clone(),
+            self.schema_registry.clone(),
+            PostgresMutationStore::new(self.db.clone()),
+            checkpoint_store,
+        );
+
+        let mut aggregate = IndexReplayRunOutcome {
+            status: IndexReplayRunStatus::Yielded,
+            job_id: Some(lease.job_id()),
+            attempt_count: Some(lease.attempt_count()),
+            pages_processed: 0,
+            heartbeat_count: 0,
+            mutation_count: 0,
+            applied_count: 0,
+            duplicate_count: 0,
+            stale_count: 0,
+        };
+
+        for page_index in 0..request.max_pages() {
+            if cancel_if_requested(&self.db, &lease).await? {
+                aggregate.status = IndexReplayRunStatus::Cancelled;
+                return Ok(aggregate);
+            }
+
+            if page_index > 0 && page_index % request.heartbeat_every_pages() == 0 {
+                heartbeat(&job_store, &lease, request.lease_duration()).await?;
+                aggregate.heartbeat_count += 1;
+                if cancel_if_requested(&self.db, &lease).await? {
+                    aggregate.status = IndexReplayRunStatus::Cancelled;
+                    return Ok(aggregate);
+                }
+            }
+
+            let page = match worker.run_next_page(request.page_request().clone()).await {
+                Ok(page) => page,
+                Err(error) if replay_error_is_lease_lost(&error) => {
+                    return Err(lease_lost(&lease));
+                }
+                Err(error) => {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
+                    let details = replay_failure_details(&error);
+                    match finish_failure(&self.db, &lease, details).await? {
+                        TerminalWriteOutcome::Written => {
+                            return Err(IndexReplayRunError::PageFailed {
+                                job_id: lease.job_id(),
+                                error: Box::new(error),
+                            });
+                        }
+                        TerminalWriteOutcome::Cancelled => {
+                            aggregate.status = IndexReplayRunStatus::Cancelled;
+                            return Ok(aggregate);
+                        }
+                    }
+                }
+            };
+
+            if page.status() != IndexReplayPageStatus::AlreadyComplete {
+                aggregate.pages_processed += 1;
+            }
+            aggregate.mutation_count += page.mutation_count();
+            aggregate.applied_count += page.applied_count();
+            aggregate.duplicate_count += page.duplicate_count();
+            aggregate.stale_count += page.stale_count();
+
+            if cancel_if_requested(&self.db, &lease).await? {
+                aggregate.status = IndexReplayRunStatus::Cancelled;
+                return Ok(aggregate);
+            }
+
+            if matches!(
+                page.status(),
+                IndexReplayPageStatus::Complete | IndexReplayPageStatus::AlreadyComplete
+            ) {
+                match finish_success(&self.db, &lease).await? {
+                    TerminalWriteOutcome::Written => {
+                        aggregate.status = IndexReplayRunStatus::Complete;
+                        return Ok(aggregate);
+                    }
+                    TerminalWriteOutcome::Cancelled => {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
+                }
+            }
+        }
+
+        match yield_for_resume(&self.db, &lease).await? {
+            TerminalWriteOutcome::Written => Ok(aggregate),
+            TerminalWriteOutcome::Cancelled => {
+                aggregate.status = IndexReplayRunStatus::Cancelled;
+                Ok(aggregate)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalWriteOutcome {
+    Written,
+    Cancelled,
+}
+
+fn empty_outcome(
+    status: IndexReplayRunStatus,
+    job_id: Option<Uuid>,
+    attempt_count: Option<u32>,
+) -> IndexReplayRunOutcome {
+    IndexReplayRunOutcome {
+        status,
+        job_id,
+        attempt_count,
+        pages_processed: 0,
+        heartbeat_count: 0,
+        mutation_count: 0,
+        applied_count: 0,
+        duplicate_count: 0,
+        stale_count: 0,
+    }
+}
+
+async fn heartbeat(
+    job_store: &PostgresIndexReplayJobStore,
+    lease: &IndexReplayJobLease,
+    lease_duration: Duration,
+) -> Result<(), IndexReplayRunError> {
+    match job_store.heartbeat(lease, lease_duration).await {
+        Ok(()) => Ok(()),
+        Err(IndexReplayJobError::LeaseLost) => Err(lease_lost(lease)),
+        Err(error) => Err(IndexReplayRunError::Job(error)),
+    }
+}
+
+async fn request_cancel_in_transaction(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    job_id: Uuid,
+) -> Result<IndexReplayCancelOutcome, IndexReplayRunError> {
+    let backend = transaction.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            select_cancel_job_sql(backend),
+            vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    let Some(row) = row else {
+        return Ok(IndexReplayCancelOutcome::NotFound);
+    };
+    let state: String = row.try_get("", "state").map_err(job_storage_error)?;
+    match state.as_str() {
+        "pending" => {
+            let updated = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    cancel_pending_job_sql(backend),
+                    vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
+                ))
+                .await
+                .map_err(job_storage_error)?;
+            if updated.rows_affected() != 1 {
+                return Err(IndexReplayRunError::CancellationRace);
+            }
+            Ok(IndexReplayCancelOutcome::Cancelled)
+        }
+        "running" => {
+            let updated = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    request_running_cancel_sql(backend),
+                    vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
+                ))
+                .await
+                .map_err(job_storage_error)?;
+            if updated.rows_affected() != 1 {
+                return Err(IndexReplayRunError::CancellationRace);
+            }
+            Ok(IndexReplayCancelOutcome::Requested)
+        }
+        "succeeded" => Ok(IndexReplayCancelOutcome::AlreadyTerminal(
+            IndexReplayTerminalState::Succeeded,
+        )),
+        "failed" => Ok(IndexReplayCancelOutcome::AlreadyTerminal(
+            IndexReplayTerminalState::Failed,
+        )),
+        "cancelled" => Ok(IndexReplayCancelOutcome::AlreadyTerminal(
+            IndexReplayTerminalState::Cancelled,
+        )),
+        other => Err(IndexReplayRunError::InvalidStoredJobState(other.to_owned())),
+    }
+}
+
+async fn cancel_if_requested(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+) -> Result<bool, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            cancel_active_job_sql(backend),
+            lease_values(lease, backend),
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    Ok(updated.rows_affected() == 1)
+}
+
+async fn finish_success(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let mut values = lease_values(lease, backend);
+    values.push(lease.source_name().to_owned().into());
+    values.push(lease.schema().module.as_str().to_owned().into());
+    values.push(lease.schema().entity.as_str().to_owned().into());
+    values.push(i64::from(lease.schema().version.get()).into());
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            finish_success_sql(backend),
+            values,
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    terminal_write_outcome(db, lease, updated.rows_affected()).await
+}
+
+async fn finish_failure(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+    details: JsonValue,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let mut values = lease_values(lease, backend);
+    values.push(REPLAY_PAGE_FAILURE_CODE.to_owned().into());
+    values.push(SqlValue::Json(Some(Box::new(details))));
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            finish_failure_sql(backend),
+            values,
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    terminal_write_outcome(db, lease, updated.rows_affected()).await
+}
+
+async fn yield_for_resume(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            yield_job_sql(backend),
+            lease_values(lease, backend),
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    terminal_write_outcome(db, lease, updated.rows_affected()).await
+}
+
+async fn terminal_write_outcome(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+    rows_affected: u64,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    if rows_affected == 1 {
+        return Ok(TerminalWriteOutcome::Written);
+    }
+    if cancel_if_requested(db, lease).await? {
+        return Ok(TerminalWriteOutcome::Cancelled);
+    }
+    Err(lease_lost(lease))
+}
+
+fn replay_error_is_lease_lost(error: &IndexReplayError) -> bool {
+    match error {
+        IndexReplayError::CheckpointReadFailed(failure)
+        | IndexReplayError::CheckpointCommitFailed(failure) => {
+            failure.code() == "checkpoint_lease_lost"
+        }
+        _ => false,
+    }
+}
+
+fn replay_failure_details(error: &IndexReplayError) -> JsonValue {
+    let (code, retryable) = match error {
+        IndexReplayError::SourceContract(IndexSourceError::SourceFailure { failure, .. }) => (
+            failure.code(),
+            failure.kind() == IndexSourceFailureKind::Retryable,
+        ),
+        IndexReplayError::MutationFailed { failure, .. }
+        | IndexReplayError::CheckpointReadFailed(failure)
+        | IndexReplayError::CheckpointCommitFailed(failure) => (
+            failure.code(),
+            failure.kind() == IndexReplayFailureKind::Retryable,
+        ),
+        IndexReplayError::SourceContract(_) => ("source_contract_invalid", false),
+        _ => ("replay_contract_invalid", false),
+    };
+    json!({
+        "contract": "index_replay_run_failure_v1",
+        "dependency_code": code,
+        "retryable": retryable,
+    })
+}
+
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayRunError> {
+    match backend {
+        DbBackend::Postgres => Ok(()),
+        DbBackend::Sqlite if cfg!(test) => Ok(()),
+        backend => Err(IndexReplayRunError::Job(IndexReplayJobError::Storage(
+            format!("Index replay runner does not support {backend:?}"),
+        ))),
+    }
+}
+
+fn placeholder_prefix(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Postgres => "$",
+        DbBackend::Sqlite => "?",
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
+    match backend {
+        DbBackend::Postgres => value.into(),
+        DbBackend::Sqlite => value.to_string().into(),
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn lease_values(lease: &IndexReplayJobLease, backend: DbBackend) -> Vec<SqlValue> {
+    vec![
+        uuid_value(lease.tenant_id(), backend),
+        uuid_value(lease.job_id(), backend),
+        lease.worker_id().to_owned().into(),
+        i64::from(lease.attempt_count()).into(),
+    ]
+}
+
+fn select_cancel_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lock = match backend {
+        DbBackend::Postgres => " FOR UPDATE",
+        DbBackend::Sqlite => "",
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "SELECT state FROM index_jobs WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' LIMIT 1{lock}"
+    )
+}
+
+fn cancel_pending_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'cancelled', cancel_requested = TRUE, completed_at = CURRENT_TIMESTAMP, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'pending'"
+    )
+}
+
+fn request_running_cancel_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET cancel_requested = TRUE, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running'"
+    )
+}
+
+fn cancel_active_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = TRUE"
+    )
+}
+
+fn finish_success_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let complete_cursor = match backend {
+        DbBackend::Postgres => "checkpoint.cursor = 'null'::jsonb",
+        DbBackend::Sqlite => "json_type(checkpoint.cursor) = 'null'",
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "UPDATE index_jobs SET state = 'succeeded', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE AND EXISTS (SELECT 1 FROM index_checkpoints AS checkpoint WHERE checkpoint.tenant_id = {prefix}1 AND checkpoint.checkpoint_kind = 'rebuild' AND checkpoint.source_name = {prefix}5 AND checkpoint.module_name = {prefix}6 AND checkpoint.entity_name = {prefix}7 AND checkpoint.schema_version = {prefix}8 AND checkpoint.locale_key = '' AND checkpoint.partition_key = '' AND {complete_cursor})"
+    )
+}
+
+fn finish_failure_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6 WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+    )
+}
+
+fn yield_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+    )
+}
+
+fn job_storage_error(error: impl std::fmt::Display) -> IndexReplayRunError {
+    IndexReplayRunError::Job(IndexReplayJobError::Storage(error.to_string()))
+}
+
+fn lease_lost(lease: &IndexReplayJobLease) -> IndexReplayRunError {
+    IndexReplayRunError::LeaseLost {
+        job_id: lease.job_id(),
+        attempt_count: lease.attempt_count(),
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum IndexReplayRunError {
+    #[error("Index replay run page request is invalid")]
+    InvalidPageRequest(#[source] IndexReplayError),
+    #[error("Index replay run max pages is invalid: actual={actual}, max={max}")]
+    InvalidMaxPages { actual: usize, max: usize },
+    #[error("Index replay heartbeat cadence is invalid: actual={actual}, max={max}")]
+    InvalidHeartbeatCadence { actual: usize, max: usize },
+    #[error("Index replay cancellation tenant id must not be nil")]
+    NilCancelTenantId,
+    #[error("Index replay cancellation job id must not be nil")]
+    NilCancelJobId,
+    #[error("No Index replay source owns schema {0}")]
+    UnknownSchemaSource(SchemaRef),
+    #[error("stored Index replay job has unsupported state {0}")]
+    InvalidStoredJobState(String),
+    #[error("Index replay cancellation lost a concurrent state transition")]
+    CancellationRace,
+    #[error(transparent)]
+    Job(#[from] IndexReplayJobError),
+    #[error("Index replay job {job_id} lost attempt {attempt_count} ownership")]
+    LeaseLost { job_id: Uuid, attempt_count: u32 },
+    #[error("Index replay job {job_id} failed while processing a page")]
+    PageFailed {
+        job_id: Uuid,
+        #[source]
+        error: Box<IndexReplayError>,
+    },
+}

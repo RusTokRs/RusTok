@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod graphql_error_safety;
 #[cfg(not(feature = "ssr"))]
 mod native_server_adapter;
 #[cfg(feature = "ssr")]
@@ -33,7 +34,12 @@ pub async fn fetch_cart(request: CartFetchRequest) -> TransportResult<Storefront
         "cart",
         selected_transport_path(),
         move || native_server_adapter::fetch_cart(native_request),
-        move || graphql_adapter::fetch_cart(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::fetch_cart(&request);
+            graphql_adapter::fetch_cart(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
@@ -44,7 +50,12 @@ pub async fn decrement_line_item(request: CartLineItemDecrementRequest) -> Trans
         "cart",
         selected_transport_path(),
         move || native_server_adapter::decrement_line_item(native_request),
-        move || graphql_adapter::decrement_line_item(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::decrement_line_item(&request);
+            graphql_adapter::decrement_line_item(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
@@ -55,7 +66,12 @@ pub async fn remove_line_item(request: CartLineItemMutationRequest) -> Transport
         "cart",
         selected_transport_path(),
         move || native_server_adapter::remove_line_item(native_request),
-        move || graphql_adapter::remove_line_item(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::remove_line_item(&request);
+            graphql_adapter::remove_line_item(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }

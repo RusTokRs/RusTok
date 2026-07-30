@@ -34,13 +34,15 @@ ${includeApiLikeText ? "// harmless api; text must not be treated as module wiri
 `;
 }
 
-function coreSource({ includeLeptos = false, omitSaveCommand = false } = {}) {
+function coreSource({ includeLeptos = false, omitSaveCommand = false, legacyRichtextCore = false } = {}) {
   return `
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
-pub struct BlogPostFormInput;
+use rustok_api::RichTextDocument;
+pub struct BlogPostFormInput<'a> { pub content: &'a RichTextDocument }
 pub fn build_blog_post_draft() {}
+pub fn has_required_draft_fields() {}
 ${omitSaveCommand ? "" : "pub enum BlogPostSaveOperation { Create }\npub struct BlogPostSaveCommand;\npub fn prepare_blog_post_save_command() {}"}
-pub struct BlogPostEditorFormState;
+pub struct BlogPostEditorFormState { pub content: RichTextDocument }
 pub struct BlogPostAdminTableRowViewModel;
 pub fn blog_post_admin_table_row_view() {}
 pub struct BlogPostAdminTableViewModel;
@@ -61,6 +63,7 @@ pub struct BlogPostAdminEditorFieldClassesViewModel;
 pub fn blog_post_admin_editor_field_classes_view() {}
 pub struct BlogPostAdminTitleInputViewModel;
 pub fn blog_post_admin_title_input_view() {}
+${legacyRichtextCore ? "pub struct BlogPostAdminBodyFormatSelectViewModel;\npub struct BlogPostAdminBodyFormatOptionViewModel;\npub fn blog_post_admin_body_format_select_view() {}\npub struct BlogPostAdminBodyFormatChangeViewModel;\npub fn blog_post_admin_body_format_change_view() {}\npub fn normalize_blog_post_body_format() {}\npub struct BlogPostAdminRawBodyWarningViewModel;\npub fn raw_body_warning_class() {}\npub fn blog_post_admin_raw_body_warning_view() {}" : ""}
 pub struct BlogPostAdminStatusBadgeViewModel;
 pub fn blog_post_admin_status_badge_view() {}
 pub struct BlogPostAdminEditBannerViewModel;
@@ -94,23 +97,27 @@ pub fn blog_post_admin_clear_post_query_intent() {}
 `;
 }
 
-function uiSource({ rawApiCall = false, rawServiceCall = false, omitSaveCommand = false } = {}) {
+function uiSource({ rawApiCall = false, rawServiceCall = false, omitSaveCommand = false, legacyRichtextUi = false } = {}) {
   return `
 use crate::{core, transport};
+use rustok_api::RichTextDocument;
+use super::richtext::BlogRichTextEditor;
 
 pub fn BlogAdmin() {
+    let (content, set_content) = signal(RichTextDocument::empty());
+    <BlogRichTextEditor document=content set_document=set_content />;
     let _posts = transport::fetch_posts;
     ${omitSaveCommand ? "" : "let _save = core::prepare_blog_post_save_command;\n    let _op = core::BlogPostSaveOperation::Create;"}
     let _load = core::blog_post_load_result_view;
     let _failure = core::blog_post_transport_failure_issue;
     let _saved = core::blog_post_save_result_view;
     let _edit_banner = core::blog_post_admin_edit_banner_view;
+    ${legacyRichtextUi ? "let _raw_warning = core::blog_post_admin_raw_body_warning_view;\n    let _body_format = core::blog_post_admin_body_format_select_view;\n    let _body_format_change = core::blog_post_admin_body_format_change_view;" : ""}
     let _posts_load = core::blog_post_admin_posts_load_view_from_list;
     let _status_badge = core::blog_post_admin_status_badge_view;
     let _form_copy = core::blog_post_admin_editor_form_copy_view;
     let _field_classes = core::blog_post_admin_editor_field_classes_view;
     let _title_input = core::blog_post_admin_title_input_view;
-    let _editor = <BlogRichTextEditor />;
     let _posts_table = core::blog_post_admin_posts_table_view_from_items;
     let _table_classes = core::blog_post_admin_table_classes_view;
     let _shell_classes = core::blog_post_admin_shell_classes_view;
@@ -232,6 +239,36 @@ function withFixture(options = {}) {
     writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }
   writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-admin-boundary.mjs ${options.omitModeration ? "" : "moderation"}`);
+  const localeCatalog = { "blog.form.body": "Body" };
+  if (options.legacyLocaleKeys) {
+    localeCatalog["blog.form.bodyFormat"] = "Body format";
+    localeCatalog["blog.form.rawWarning"] = "Raw payload warning";
+  }
+  writeFixtureFile(root, "crates/rustok-blog/admin/locales/en.json", JSON.stringify(localeCatalog));
+  writeFixtureFile(root, "crates/rustok-blog/admin/locales/ru.json", JSON.stringify(localeCatalog));
+  writeFixtureFile(root, "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json", JSON.stringify({
+    schema_version: 2,
+    module: "blog",
+    surface: "leptos_admin_article_richtext_boundary",
+    status: "source_verified_no_compile",
+    compile_policy: "not_run_by_request",
+    sources: {
+      core: "crates/rustok-blog/admin/src/core.rs",
+      ui: "crates/rustok-blog/admin/src/ui/leptos.rs",
+      locales: {
+        en: "crates/rustok-blog/admin/locales/en.json",
+        ru: "crates/rustok-blog/admin/locales/ru.json"
+      }
+    },
+    required_markers: {
+      core: ["RichTextDocument", "content: &'a RichTextDocument", "content: RichTextDocument", "has_required_draft_fields"],
+      ui: ["use super::richtext::BlogRichTextEditor;", "let (content, set_content) = signal(RichTextDocument::empty());", "<BlogRichTextEditor", "document=content", "set_document=set_content"]
+    },
+    forbidden_markers: ["blog_post_admin_body_format_select_view", "blog_post_admin_body_format_change_view", "normalize_blog_post_body_format", "blog_post_admin_raw_body_warning_view"],
+    forbidden_locale_keys: ["blog.form.bodyFormat", "blog.form.rawWarning"],
+    verifier: "scripts/verify/verify-blog-admin-boundary.mjs",
+    self_test: "scripts/verify/verify-blog-admin-boundary.test.mjs"
+  }, null, 2));
   writeFixtureFile(root, "docs/modules/registry.md", "verify-blog-admin-boundary.mjs");
   return root;
 }
@@ -257,6 +294,27 @@ test("blog admin boundary verifier passes canonical fixture", () => {
   withRoot({}, (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /blog admin boundary verification passed/);
+  });
+});
+
+test("blog admin boundary verifier rejects legacy richtext helpers in core", () => {
+  withRoot({ legacyRichtextCore: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /canonical richtext core must not reintroduce legacy admin helper/);
+  });
+});
+
+test("blog admin boundary verifier rejects legacy richtext helpers in UI", () => {
+  withRoot({ legacyRichtextUi: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /canonical richtext UI must not reintroduce legacy admin helper/);
+  });
+});
+
+test("blog admin boundary verifier rejects legacy richtext locale keys", () => {
+  withRoot({ legacyLocaleKeys: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /canonical richtext locale catalog must not expose legacy key/);
   });
 });
 

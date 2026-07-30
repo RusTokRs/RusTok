@@ -11,6 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const lib = read('crates/rustok-payment/src/lib.rs');
+const api = read('crates/rustok-payment/src/checkout_compensation_api.rs');
 const wrapper = read('crates/rustok-payment/src/checkout_compensation_context.rs');
 const owner = read('crates/rustok-payment/src/checkout_compensation.rs');
 const commerce = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
@@ -33,16 +34,33 @@ const between = (content, start, end, label) => {
 };
 
 for (const [value, label] of [
-  ['pub mod checkout_compensation;', 'legacy compensation module path'],
+  ['#[path = "checkout_compensation.rs"]\nmod checkout_compensation_persistent;', 'private persistent owner module'],
+  ['#[path = "checkout_compensation_api.rs"]\npub mod checkout_compensation;', 'public compensation API facade'],
   ['mod checkout_compensation_context;', 'private context wrapper module'],
-  ['pub use checkout_compensation::{', 'selective legacy contract export'],
+  ['pub use checkout_compensation::{', 'root facade export'],
   ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'root trait/request compatibility'],
-  ['pub use checkout_compensation_context::{', 'canonical context wrapper export'],
-  ['InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,', 'root type/factory cutover'],
+  ['InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,', 'root wrapper type/factory'],
 ]) requireText(lib, value, label);
-forbidText(lib, 'pub use checkout_compensation::*;', 'legacy root glob bypass');
+for (const value of [
+  'pub mod checkout_compensation_persistent',
+  'pub use checkout_compensation_persistent::',
+  'pub use checkout_compensation_context::',
+]) forbidText(lib, value, 'persistent compensation bypass');
 
 for (const [value, label] of [
+  ['pub use crate::checkout_compensation_context::{', 'module-path wrapper export'],
+  ['InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,', 'module-path wrapper type/factory'],
+  ['pub use crate::checkout_compensation_persistent::{', 'module-path contract export'],
+  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'module-path trait/request compatibility'],
+]) requireText(api, value, label);
+for (const value of [
+  'PersistentCheckoutPaymentCompensationPort',
+  'checkout_compensation_persistent::InProcessCheckoutPaymentCompensationPort',
+  'checkout_compensation_persistent::in_process_checkout_payment_compensation_port',
+]) forbidText(api, value, 'public persistent implementation exposure');
+
+for (const [value, label] of [
+  ['use crate::checkout_compensation_persistent::{', 'private persistent import'],
   ['InProcessCheckoutPaymentCompensationPort as PersistentCheckoutPaymentCompensationPort', 'persistent owner alias'],
   ['inner: PersistentCheckoutPaymentCompensationPort', 'wrapper inner owner'],
   ['PersistentCheckoutPaymentCompensationPort::new(db)', 'default constructor delegation'],
@@ -50,6 +68,7 @@ for (const [value, label] of [
   ['pub fn in_process_checkout_payment_compensation_port(', 'canonical factory'],
   ['Arc::new(InProcessCheckoutPaymentCompensationPort::new(db))', 'factory wrapper construction'],
 ]) requireText(wrapper, value, label);
+forbidText(wrapper, 'use crate::checkout_compensation::{', 'wrapper import through public facade');
 
 const operation = between(
   wrapper,
@@ -98,15 +117,11 @@ for (const value of [
   'metadata: request.metadata',
 ]) forbidText(facts, value, 'raw compensation payload retention');
 
-const mapper = wrapper.slice(
-  wrapper.indexOf('fn map_checkout_payment_compensation_local_port_error('),
-);
-requireText(
-  mapper,
-  'match (error.code.as_str(), error.message.as_str())',
-  'exact code-and-message matching',
-);
+const mapper = wrapper.slice(wrapper.indexOf('fn map_checkout_payment_compensation_local_port_error('));
+requireText(mapper, 'match (error.code.as_str(), error.message.as_str())', 'exact code-and-message matching');
 for (const [code, message, operationLabel] of [
+  ['port.idempotency_key_required', 'write port calls require a non-empty idempotency key', 'admit_write_idempotency'],
+  ['port.deadline_required', 'port calls require deadline semantics', 'admit_deadline'],
   ['payment.checkout_compensation_identity_invalid', 'checkout operation and payment collection identity must be non-nil UUIDs', 'validate_compensation_identity'],
   ['payment.collection_not_found', 'payment collection was not found', 'load_collection'],
   ['payment.checkout_compensation_manual_reconciliation', 'payment checkout compensation requires manual reconciliation', 'require_manual_reconciliation'],
@@ -163,33 +178,24 @@ for (const [value, label] of [
 for (const value of [
   'payment.tenant_id_invalid',
   'payment.checkout_compensation_causation_invalid',
-]) forbidText(mapper, value, 'pre-delegation context errors must pass through');
-for (const value of [
-  'reason =',
-  'metadata =',
-]) forbidText(mapper, value, 'raw compensation payload diagnostics');
+]) forbidText(mapper, value, 'tenant and causation errors must remain owner pass-through');
+for (const value of ['reason =', 'metadata =']) forbidText(mapper, value, 'raw compensation payload diagnostics');
 
 for (const [value, label] of [
-  ['pub trait CheckoutPaymentCompensationPort', 'legacy owner trait'],
-  ['pub struct CheckoutPaymentCompensationRequest', 'legacy request DTO'],
-  ['pub struct InProcessCheckoutPaymentCompensationPort', 'legacy direct owner path'],
-  ['pub fn in_process_checkout_payment_compensation_port(', 'legacy module factory'],
-  ['context.require_policy(PortCallPolicy::write())?;', 'legacy write policy'],
-  ['context.require_write_semantics()?;', 'legacy write semantics'],
-  ['parse_tenant_id(&context, owner_operation)?;', 'legacy tenant validation'],
-  ['require_operation_context(&context, owner_operation, request.checkout_operation_id)?;', 'legacy causation validation'],
+  ['pub trait CheckoutPaymentCompensationPort', 'persistent owner trait'],
+  ['pub struct CheckoutPaymentCompensationRequest', 'persistent request DTO'],
+  ['pub struct InProcessCheckoutPaymentCompensationPort', 'private persistent owner type'],
+  ['pub fn in_process_checkout_payment_compensation_port(', 'private persistent factory'],
+  ['context.require_policy(PortCallPolicy::write())?;', 'persistent write policy'],
+  ['context.require_write_semantics()?;', 'persistent write semantics'],
+  ['parse_tenant_id(&context, owner_operation)?;', 'persistent tenant validation'],
+  ['require_operation_context(&context, owner_operation, request.checkout_operation_id)?;', 'persistent causation validation'],
   ['format!("payment_collection:{}:cancel", collection.id)', 'canonical cancel idempotency key'],
   ['"operation": "cancel_payment_collection"', 'canonical provider metadata operation'],
   ['.execute_cancel(provider_id.as_str(), provider_request)', 'provider cancel execution'],
   ['.mark_provider_succeeded(', 'provider success checkpoint'],
   ['.cancel_local_collection(', 'local cancellation'],
   ['.mark_committed(outcome.operation_id)', 'provider commit checkpoint'],
-  ['"payment.checkout_compensation_identity_invalid"', 'identity envelope source'],
-  ['"payment.checkout_compensation_provider_state_conflict"', 'provider state envelope source'],
-  ['"payment.checkout_compensation_metadata_invalid"', 'metadata envelope source'],
-  ['"payment.checkout_compensation_provider_identity_conflict"', 'provider identity envelope source'],
-  ['"payment.checkout_compensation_encoding_failed"', 'encoding envelope source'],
-  ['"payment.checkout_compensation_manual_reconciliation"', 'manual reconciliation envelope source'],
 ]) requireText(owner, value, label);
 
 for (const [value, label] of [
@@ -198,7 +204,7 @@ for (const [value, label] of [
   ['InProcessCheckoutPaymentCompensationPort, PaymentCollectionStatusKind, PaymentProviderRegistry,', 'commerce root wrapper type'],
   ['in_process_checkout_payment_compensation_port,', 'commerce root wrapper factory'],
 ]) requireText(commerce, value, label);
-forbidText(commerce, 'rustok_payment::checkout_compensation::', 'commerce direct legacy owner construction');
+forbidText(commerce, 'rustok_payment::checkout_compensation_persistent::', 'commerce private persistent construction');
 
 if (failures.length > 0) {
   console.error('Payment checkout compensation local-context verification failed:');
@@ -207,5 +213,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Canonical payment compensation root construction retains delegated context and safe request facts for exact stable local outcomes without changing persistent owner semantics',
+  '✔ Public payment compensation construction always uses the context wrapper, including exact admission outcomes, while persistent owner semantics and PortError results remain unchanged',
 );

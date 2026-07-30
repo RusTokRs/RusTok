@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import "./verify-order-storefront-runtime-error-diagnostics.mjs";
+import "./verify-order-storefront-graphql-error-safety.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -94,6 +95,7 @@ for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", 
 for (const marker of ["CompleteCheckoutRequest", "CheckoutCompletion", "build_complete_checkout_request", "complete_checkout", "mod graphql_adapter;", "normalize_required"]) {
   assertContains(transport, marker, `${transportPath}: expected transport-owned request marker ${marker}`);
 }
+assertContains(transport, "mod graphql_error_safety;", `${transportPath}: order transport facade must wire GraphQL error safety`);
 assertContains(transport, "mod native_server_adapter;", `${transportPath}: order transport facade must wire native server adapter`);
 for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
   assertNotContains(transport, marker, `${transportPath}: transport facade must stay framework/native-endpoint free (${marker})`);

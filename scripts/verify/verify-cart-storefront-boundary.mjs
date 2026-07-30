@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import "./verify-cart-storefront-native-error-safety.mjs";
+import "./verify-cart-storefront-graphql-error-safety.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -46,6 +47,8 @@ const files = {
   transport: "crates/rustok-cart/storefront/src/transport/mod.rs",
   legacyApi: "crates/rustok-cart/storefront/src/api.rs",
   graphqlAdapter: "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs",
+  graphqlSafety: "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  graphqlEvidence: "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
   nativeServerAdapter: "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs",
   model: "crates/rustok-cart/storefront/src/model.rs",
   implementationPlan: "crates/rustok-cart/docs/implementation-plan.md",
@@ -66,6 +69,8 @@ const core = readRepo(files.coreDir);
 const ui = readRepo(files.ui);
 const transport = readRepo(files.transport);
 const graphqlAdapter = readRepo(files.graphqlAdapter);
+const graphqlSafety = readRepo(files.graphqlSafety);
+const graphqlEvidence = JSON.parse(readRepo(files.graphqlEvidence));
 const nativeServerAdapter = readRepo(files.nativeServerAdapter);
 const model = readRepo(files.model);
 const implementationPlan = readRepo(files.implementationPlan);
@@ -96,13 +101,38 @@ for (const marker of ["fetch_cart", "decrement_line_item", "remove_line_item"]) 
   assertContains(transport, marker, `${files.transport}: transport facade must expose ${marker}`);
 }
 assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport must wire GraphQL adapter`);
+assertContains(transport, "mod graphql_error_safety;", `${files.transport}: transport must wire GraphQL error safety`);
 assertContains(transport, "mod native_server_adapter;", `${files.transport}: transport must wire native server adapter`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not import legacy api module`);
-assertContains(graphqlAdapter, "request_graphql_cart", `${files.graphqlAdapter}: GraphQL adapter must keep cart GraphQL read path`);
-assertContains(graphqlAdapter, "update_storefront_cart_line_item_quantity", `${files.graphqlAdapter}: GraphQL adapter must keep line-item quantity GraphQL path`);
-assertContains(graphqlAdapter, "remove_storefront_cart_line_item", `${files.graphqlAdapter}: GraphQL adapter must keep line-item removal GraphQL path`);
+for (const marker of [
+  "GraphqlCallContext::fetch_cart(&request)",
+  "GraphqlCallContext::decrement_line_item(&request)",
+  "GraphqlCallContext::remove_line_item(&request)",
+  ".map_err(|error| context.map_error(error))",
+]) {
+  assertContains(transport, marker, `${files.transport}: expected correlation-safe GraphQL consumer marker ${marker}`);
+}
+assertNotContains(transport, "move || graphql_adapter::", `${files.transport}: raw GraphQL closures must not bypass error safety`);
+
+for (const marker of ["request_graphql_cart", "update_storefront_cart_line_item_quantity", "remove_storefront_cart_line_item"]) {
+  assertContains(graphqlAdapter, marker, `${files.graphqlAdapter}: GraphQL adapter must keep cart operation ${marker}`);
+}
 assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: GraphQL adapter must keep GraphQL fallback request contract`);
 assertContains(graphqlAdapter, "availableShippingOptions { id name currencyCode amount providerId active }", `${files.graphqlAdapter}: cart owner read query must expose full shipping option summaries`);
+for (const marker of [
+  "GraphqlHttpError::from_str",
+  "Cart storefront is temporarily unavailable",
+  "Cart authentication is required",
+  "Cart request could not be completed",
+  "correlation_id = %self.correlation_id",
+  "ApiError::Graphql(public_message.to_string())",
+]) {
+  assertContains(graphqlSafety, marker, `${files.graphqlSafety}: expected GraphQL error-safety marker ${marker}`);
+}
+if (graphqlEvidence.status !== "cart_storefront_graphql_error_safety_source_unvalidated") {
+  fail(`${files.graphqlEvidence}: GraphQL error-safety evidence must remain source-unvalidated`);
+}
+
 assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);
 assertContains(nativeServerAdapter, "HostRuntimeContext", `${files.nativeServerAdapter}: native server adapter must use host runtime context`);
 assertContains(nativeServerAdapter, "db_clone()", `${files.nativeServerAdapter}: native server adapter must use host runtime DB clone`);

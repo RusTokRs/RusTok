@@ -10,6 +10,11 @@ function sameSet(actual, expected, label) {
   const e = [...expected].sort().join('|');
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
+function sameList(actual, expected, label) {
+  const a = JSON.stringify(actual);
+  const e = JSON.stringify(expected);
+  if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
+}
 
 const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
@@ -18,15 +23,64 @@ const consumerRuntimeOrderSmokePath = 'crates/rustok-blog/contracts/evidence/blo
 const richtextInventoryPath = 'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json';
 const richtextInventoryDocPath = 'crates/rustok-blog/docs/richtext-cutover-inventory.md';
 const providerPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
+const packageJsonPath = 'package.json';
+const expectedVerificationSteps = [
+  'node scripts/verify/verify-blog-fba.mjs',
+  'npm run verify:blog:admin-boundary',
+  'npm run verify:blog:storefront-boundary',
+  'npm run verify:blog:graphql-richtext-boundary',
+  'npm run verify:blog:richtext-offline-backfill',
+  'npm run verify:blog:forum-ui-ownership',
+  'node scripts/verify/verify-consumer-fba-runtime-order.mjs',
+];
+const expectedSourceGates = {
+  admin_boundary: {
+    verifier: 'scripts/verify/verify-blog-admin-boundary.mjs',
+    evidence: 'crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json',
+  },
+  storefront_boundary: {
+    verifier: 'scripts/verify/verify-blog-storefront-boundary.mjs',
+    evidence: 'crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json',
+  },
+  graphql_richtext_boundary: {
+    verifier: 'scripts/verify/verify-blog-graphql-richtext-boundary.mjs',
+    evidence: 'crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json',
+  },
+  richtext_offline_backfill: {
+    verifier: 'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
+    evidence: 'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
+  },
+  forum_ui_ownership: {
+    verifier: 'scripts/verify/verify-blog-forum-ui-ownership.mjs',
+    evidence: 'crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json',
+  },
+};
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
 const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 const richtextInventory = json(richtextInventoryPath);
 const provider = json(providerPath);
+const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 1) fail('registry schema_version drift');
+if (registry.schema_version !== 2) fail('registry schema_version drift');
 if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
+if (registry.verification_chain?.package_script !== 'verify:blog:fba') fail('verification chain package script drift');
+sameList(registry.verification_chain?.steps ?? [], expectedVerificationSteps, 'registry verification chain steps');
+const packageScript = packageJson.scripts?.['verify:blog:fba'];
+if (typeof packageScript !== 'string') fail('package.json missing verify:blog:fba script');
+sameList(packageScript.split(' && '), expectedVerificationSteps, 'package verification chain steps');
+const sourceGates = registry.verification_chain?.source_gates ?? {};
+sameSet(Object.keys(sourceGates), Object.keys(expectedSourceGates), 'registry source gate names');
+for (const [gateName, expectedGate] of Object.entries(expectedSourceGates)) {
+  const gate = sourceGates[gateName];
+  if (gate?.verifier !== expectedGate.verifier || gate?.evidence !== expectedGate.evidence) {
+    fail(`registry source gate ${gateName} path drift`);
+  }
+  for (const filePath of [expectedGate.verifier, expectedGate.evidence]) {
+    if (!fs.existsSync(filePath)) fail(`registry source gate ${gateName} missing ${filePath}`);
+  }
+}
 if (registry.consumer_profile !== 'blog_post_comments') fail('consumer profile drift');
 if (registry.evidence.richtext_cutover_inventory !== richtextInventoryPath) fail('richtext cutover inventory registry path drift');
 if (registry.evidence.richtext_cutover_inventory_doc !== richtextInventoryDocPath) fail('richtext cutover inventory doc registry path drift');
@@ -40,7 +94,7 @@ sameSet(dependency.fallback_profiles, provider.consumers?.find(c => c.module ===
 sameSet(dependency.degraded_modes, provider.consumers?.find(c => c.module === 'blog')?.degraded_modes ?? [], 'consumer/provider degraded modes');
 if (dependency.context !== 'rustok_api::ports::PortContext' || dependency.error !== 'rustok_api::ports::PortError') fail('consumer context/error drift');
 
-if (richtextInventory.schema_version !== 2) fail('richtext cutover inventory schema_version drift');
+if (richtextInventory.schema_version !== 3) fail('richtext cutover inventory schema_version drift');
 if (richtextInventory.module !== 'blog' || richtextInventory.surface !== 'article_richtext_cutover') fail('richtext cutover inventory identity drift');
 if (richtextInventory.status !== 'implemented_source_verified_no_compile') fail('richtext cutover inventory status drift');
 if (richtextInventory.compile_policy !== 'not_run_by_request' || richtextInventory.atomicity !== 'required') fail('richtext cutover inventory execution/atomicity drift');
@@ -52,8 +106,7 @@ if (richtextInventory.owner_contract?.write !== 'rustok_api::RichTextDocument'
 }
 const allowedRichtextStatuses = new Set([
   'implemented_source_verified_no_compile',
-  'contained_compatibility',
-  'legacy_blocker',
+  'executable_no_run',
 ]);
 for (const check of richtextInventory.checks ?? []) {
   if (!check.name || !check.path || !allowedRichtextStatuses.has(check.status)) {
@@ -73,6 +126,7 @@ for (const requiredCheck of [
   'owner_article_projection',
   'storage_schema',
   'storage_migration',
+  'offline_backfill',
   'graphql_transport',
   'next_admin',
   'leptos_storefront_model',
@@ -91,6 +145,7 @@ hasAll(
   richtextInventory.completion_conditions ?? [],
   [
     'storage_schema_uses_canonical_document_and_server_plain_text',
+    'legacy_rows_have_owner_specific_dry_run_backfill',
     'search_indexes_server_derived_plain_text',
     'seo_uses_server_derived_plain_text',
     'ai_blog_drafts_write_richtext_document',
@@ -104,6 +159,9 @@ hasAll(
   [
     richtextInventoryPath,
     'Storage schema',
+    'crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
+    'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
+    'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
     'Search projection',
     'SEO projection',
     'AI Blog draft writer',
@@ -193,4 +251,4 @@ hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.j
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 
-console.log('[verify-blog-fba] blog FBA comments consumer metadata, richtext cutover inventory, static evidence, and no-compile fallback smoke are consistent');
+console.log('[verify-blog-fba] Blog FBA registry, exact admin/storefront/richtext source-gate chain, comments consumer metadata, and no-compile evidence are consistent');

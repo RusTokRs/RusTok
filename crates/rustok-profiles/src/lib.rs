@@ -3,13 +3,16 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod content_write;
 pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
 mod handle_write;
 pub mod loader;
+mod locale_write;
 pub mod media;
+mod media_write;
 pub mod migrations;
 pub mod observability;
 pub mod presentation;
@@ -17,6 +20,7 @@ mod profile_updated_event;
 pub mod privacy;
 pub mod reader;
 pub mod services;
+mod upsert_write;
 mod visibility_write;
 
 pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInput};
@@ -39,6 +43,7 @@ pub use privacy::{
 };
 pub use reader::ProfilesReader;
 pub use services::{ProfileBackfillResult, ProfileService};
+pub use upsert_write::backfill_profile_with_event;
 
 pub struct ProfilesModule;
 

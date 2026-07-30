@@ -5,6 +5,9 @@ mod query_runtime;
 mod schema_lease;
 mod schema_registration;
 mod secondary_index;
+mod source_replay;
+mod source_replay_job;
+mod source_replay_runner;
 
 #[cfg(test)]
 mod mutation_store_tests;
@@ -18,6 +21,10 @@ mod schema_lease_tests;
 mod schema_registration_tests;
 #[cfg(test)]
 mod secondary_index_tests;
+#[cfg(test)]
+mod source_replay_job_tests;
+#[cfg(test)]
+mod source_replay_runner_tests;
 
 pub use mutation_store::{
     MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
@@ -43,4 +50,13 @@ pub use secondary_index::{
     PostgresSecondaryIndexManager, SecondaryIndexClaimOutcome, SecondaryIndexError,
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
+};
+pub use source_replay::PostgresIndexReplayCheckpointStore;
+pub use source_replay_job::{
+    IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
+    IndexReplayJobLeaseRequest, PostgresIndexReplayJobStore,
+};
+pub use source_replay_runner::{
+    IndexReplayCancelOutcome, IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest,
+    IndexReplayRunStatus, IndexReplayTerminalState, PostgresIndexReplayRunner,
 };

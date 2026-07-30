@@ -3,9 +3,9 @@
 ## Mission
 
 `rustok-index` is the platform-owned cross-module relational index and query engine.
-Source modules publish generic schemas, records, mutations, and links; Index
-materializes them into PostgreSQL and executes structured filtering, projection,
-sorting, counting, and pagination without runtime fan-out to source tables.
+Source modules publish generic schemas, records, mutations, links, and bounded replay
+sources; Index materializes them into PostgreSQL and executes structured filtering,
+projection, sorting, counting, and pagination without runtime fan-out to source tables.
 
 `rustok-index` is not a search engine. Ranking, relevance, typo tolerance, synonyms,
 autocomplete, search UX, and external search-engine connectors remain owned by
@@ -26,7 +26,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 ## Current state
 
 - Rewrite status: `in_progress`
-- Current milestone: `M4 - Query engine v1 (PostgreSQL query port source added; M3 retained packet owner gate remains open)`
+- Current milestone: `M6 - bounded multi-page replay cancellation (source complete; in-page interruption, scheduling, and retained evidence open)`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -58,6 +58,15 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M4 many-link `EXISTS` filtering: `complete`
 - M4 nested many-link projection aggregation: `complete`
 - M4 PostgreSQL query port and strict row adapter: `source_complete`
+- M4 retained plan/SQL snapshots: `source_complete`
+- M4 explicit many-link aggregate ordering: `source_complete`
+- M4 source-owned schema catalog and shared query runtime: `source_complete`
+- M4 first Social Graph privacy parity shadow: `source_complete_metrics_evidence_tooling_execution_pending`
+- M5 inbox deduplication and monotonic source-version persistence: `complete`
+- M5/M6 bounded source replay contract: `source_complete_worker_pending`
+- M6 one-page replay and durable checkpoint progression: `source_complete`
+- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`
+- M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
   full-capture orchestration, exact-byte packet assembly, retained bundle review,
@@ -65,11 +74,18 @@ pull requests record checks and PostgreSQL runs that were not executed.
   filesystem integrity checks, typed executable query planning, controlled projection,
   root/one-link filtering, ordering, exact-count, keyset, bounded-offset SQL
   compilation, correlated many-link filtering, deterministic nested many-link
-  projection aggregation, one-row page lookahead, tagged row decoding, exact-count
-  decoding, scoped next-cursor construction, persisted-schema query preflight,
-  PostgreSQL page/count execution, and compiler-driven row adaptation are implemented;
-  one retained admitted packet, server/consumer query-port composition,
-  PostgreSQL/reference equivalence, and production partition lifecycle remain open
+  projection aggregation, explicit bounded many-link MIN/MAX ordering, one-row page
+  lookahead, tagged row decoding, exact-count decoding, scoped next-cursor construction,
+  persisted-schema query preflight, PostgreSQL page/count execution, compiler-driven
+  row adaptation, source-owned schema publication, shared query-runtime composition,
+  bounded source replay/load contracts, one-page replay mutation application, durable
+  rebuild checkpoint progression, schema-scoped rebuild job claims, lease/heartbeat,
+  attempt fencing, fenced checkpoint writes, bounded multi-page execution, immediate
+  pending resume, durable cancellation requests, and fenced between-page terminal
+  cancellation are implemented; one retained admitted packet, live PostgreSQL/reference
+  equivalence, in-page interruption, retry/backoff, dead-letter scheduling, host
+  scheduling, freshness/recovery evidence, authoritative consumer cutover, and
+  production partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
 M3 tables, an atomic mutation adapter, durable schema leases, secondary-index
@@ -77,28 +93,34 @@ lifecycle management, measured partition admission that emits shadow bootstrap
 plans only, an M4 typed structural query planner with deterministic relation aliases,
 a controlled PostgreSQL compiler for root/one-link projection, filtering, ordering,
 exact count, keyset and bounded offset plus duplicate-free correlated many-link
-filtering and nested many-link projection aggregates, a strict compiled-row decoder
-with aligned nested identities/values, lookahead pagination, and scoped cursor
-construction, and `PostgresIndexQueryPort` for exact-schema-preflighted execution in
-one read-only repeatable-read page/count snapshot. Owner-operated evidence tools live
-under `ops/benches`; they do not become runtime storage code.
+filtering, deterministic nested many-link projection aggregates, and explicit
+many-link MIN/MAX aggregate ordering, a strict compiled-row decoder with aligned
+nested identities/values, lookahead pagination, and scoped cursor construction,
+`PostgresIndexQueryPort` for exact-schema-preflighted execution in one read-only
+repeatable-read page/count snapshot, source-owned schema and replay catalogs, a
+neutral bounded `IndexSource` scan/load boundary, a one-page replay executor,
+`PostgresIndexReplayJobStore` for durable fenced schema-scoped rebuild ownership,
+a lease-bound PostgreSQL rebuild-checkpoint adapter, and
+`PostgresIndexReplayRunner` for bounded heartbeat/yield/cancellation execution.
+Owner-operated evidence tools live under `ops/benches`; they do not become runtime
+storage code.
 
 ## Ownership
 
-Index owns schema/link registration, generic records and mutations, ingestion,
+Index owns schema/link/source registration, generic records and mutations, ingestion,
 inbox deduplication, PostgreSQL storage, query validation/planning/compilation,
 filtering, projection, sorting, counting, pagination, rebuild, checkpointing,
 reconciliation, drift repair, distributed coordination, and operator diagnostics.
 
 Source modules own normalized domain data, schema declarations, conversion to
-generic Index records/mutations, rebuild scan/load adapters, and source ordering and
-version information.
+generic Index records/mutations, bounded `IndexSource::scan` and targeted `load`
+adapters, stable replay event identities, and source ordering and version information.
 
 ## Target architecture
 
 ```text
 source modules
-    -> IndexSource / IndexMutation
+    -> IndexSchemaSourceCatalog / IndexSourceCatalog / IndexMutation
     -> ingestion and rebuild engines
     -> PostgreSQL index storage
     -> schema/link registry and query planner
@@ -116,9 +138,15 @@ crates/rustok-index/src/
     postgres_query_sql.rs
     postgres_query_result.rs
     query_port.rs
+    source_schema_registry.rs
+    source_registry.rs
+    source_replay.rs
   migrations/
   infrastructure/postgres/
     mutation_store.rs
+    source_replay.rs
+    source_replay_job.rs
+    source_replay_runner.rs
     schema_lease.rs
     secondary_index.rs
     partition_admission.rs
@@ -148,8 +176,8 @@ snapshot libraries only when their slices require them.
 
 Forbidden in Index core: source-domain dependencies, ranking/search libraries, a
 second database stack, unvalidated JSON-only public queries, unbounded rebuild ID
-collection, direct source-table reads, and destructive partition cutover without
-retained evidence and rollback proof.
+collection, direct source-table reads, source-owned writes to Index tables, and
+destructive partition cutover without retained evidence and rollback proof.
 
 ## Milestones
 
@@ -319,7 +347,12 @@ relations.
 - [x] Add explicit many-link `EXISTS` filtering.
 - [x] Add nested many-link projection aggregation.
 - [x] Add PostgreSQL `IndexQueryPort` execution and strict SeaORM row adaptation.
-- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.
+- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.
+- [x] Add explicit many-link MIN/MAX aggregate ordering for integer, string, timestamp,
+      and Decimal terminals under bounded offset pagination.
+- [x] Publish source-owned schemas, compose one shared query runtime, and stage the first
+      default-off owner-authoritative Social Graph privacy parity shadow.
+- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.
 
 The first M4 slice is database independent. `SchemaRegistry::plan_query` validates
 before planning, assigns stable `t0`, `t1`, ... aliases from sorted explicit link
@@ -367,35 +400,81 @@ repeatable-read transaction, converts every `PostgresBindValue` to a SeaORM valu
 maps only compiler-declared UUID/JSONB/bigint aliases into `CompiledPostgresRow` before
 calling the strict decoder. Authentication and transport policy remain caller-owned.
 
-Many-link ordering remains rejected until an aggregate ordering policy exists.
-Server/storefront/admin/search composition, source schema/mutation publication,
-consumer cutover, plan/SQL snapshots, live PostgreSQL execution evidence, and
-PostgreSQL/reference-engine equivalence remain open.
+Many-link ordering is admitted only through caller-explicit `min_asc`, `min_desc`,
+`max_asc`, and `max_desc`. Integer, string, timestamp, and Decimal terminals retain
+typed PostgreSQL aggregation and ordering; Decimal encodes only the hidden aggregate
+order value through the exact tagged string wire. UUID aggregate ordering, implicit
+first-row semantics, and aggregate cursor continuation remain fail closed. Aggregate
+ordering is bounded-offset-only and does not change root cardinality or exact count.
+
+Source-owned schema publication, shared query-runtime composition, retained plan/SQL
+snapshots, and the first default-off Social Graph privacy parity shadow are source
+complete. The shadow is non-authoritative, records bounded parity observations, uses
+only the caller's remaining deadline budget, and always returns the owner result.
+Live metrics/evidence execution, PostgreSQL/reference-engine equivalence admission,
+and authoritative consumer cutover remain open.
 
 ### M5 - Incremental ingestion
 
-- [ ] Add source and mutation registries.
-- [ ] Add inbox deduplication and monotonic source versions.
-- [ ] Add batch transactions, retry classification, backoff, dead-letter state, and
-      lag metrics.
-- [ ] Protect against out-of-order update/delete delivery.
+- [x] Add a source replay registry with bounded failure classification.
+- [ ] Add a mutation-source event registry and broker acknowledgement orchestration.
+- [x] Add inbox deduplication and monotonic source versions.
+- [ ] Add batch transactions, retry classification, bounded backoff, dead-letter state,
+      and lag metrics around the source contracts.
+- [ ] Protect the complete event-to-ack path against out-of-order update/delete delivery.
 - [ ] Cover crash between commit and acknowledgement.
+
+The source registry fixes one replay source for every exact schema and the complete
+schema identity across versions. Materialization requires every replay schema to exist
+in the source-owned schema catalog with the same module owner. Source failures expose
+only bounded machine-readable codes classified as retryable or permanent; raw source,
+database, or transport causes stay in owner logs.
 
 ### M6 - Rebuild and reconciliation
 
-- [ ] Add cursor-based `IndexSource::scan` and targeted `load`.
-- [ ] Add durable jobs, checkpoints, leases, heartbeat, and ownership.
-- [ ] Add bounded streaming; never collect all IDs first.
-- [ ] Add cancellation, resume, dry-run, targeted/full/shadow rebuild.
+- [x] Add cursor-based `IndexSource::scan` and targeted `load` contracts.
+- [x] Bound cursor bytes, scan pages, targeted key counts, tenant/schema scope,
+      uniqueness, and continuation progress; never collect all IDs first.
+- [x] Add a durable rebuild checkpoint read/write adapter over `index_checkpoints`.
+- [x] Add a bounded worker that applies source pages through `PostgresMutationStore` and
+      commits checkpoints only after durable mutation results.
+- [x] Reject nil/duplicate replay event UUIDs and require stable event identity across
+      retries for the same logical mutation and source version.
+- [x] Add durable schema-scoped rebuild jobs, lease/heartbeat, reclaim, attempt fencing,
+      exact request validation, and terminal-state fencing.
+- [x] Bind checkpoint reads and writes to the active `(job_id, worker_id, attempt_count)`
+      and require a durable null-cursor checkpoint before terminal success.
+- [x] Add bounded multi-page execution with heartbeat cadence and immediate pending resume.
+- [x] Add durable cancellation requests and fenced between-page terminal cancellation.
+- [ ] Bind job requests directly to the materialized source registry in server composition.
+- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.
+- [ ] Add bounded retry/backoff, dead-letter state, and global scheduling ownership.
+- [ ] Add locale/partition replay checkpoint dimensions.
 - [ ] Add reconciliation and drift repair.
 - [ ] Cover crash, lease expiry, restart, cancellation, and incremental/full
-      equivalence.
+      equivalence with retained PostgreSQL evidence.
+
+The one-page executor, replay job store, checkpoint adapter, bounded multi-page runner,
+and cancellation path are source complete. `PostgresIndexReplayJobStore` serializes one
+tenant/schema claim, validates the exact `index_replay_job_v1` request and active persisted
+schema, reclaims expired attempts with an incremented fence, and rejects stale heartbeat or
+terminal updates. `PostgresIndexReplayCheckpointStore` is constructed from the acquired
+lease; it locks and validates that exact attempt before every checkpoint read or write.
+`PostgresIndexReplayRunner` resolves the source from the materialized registry, executes at
+most 1024 pages, heartbeats between pages, completes only after a durable JSON null cursor,
+and returns unfinished work to immediately claimable `pending` state while preserving the
+same job UUID and checkpoint. `request_cancel` terminalizes pending jobs immediately and
+marks running jobs for observation before/after pages; success, failure, and yield all require
+`cancel_requested = FALSE`, so cancellation committed first cannot be overwritten. A running
+cancel request survives reclaim and is terminalized by the next fenced attempt before source
+access. In-page interruption, automatic retry/backoff, dead-letter scheduling, host scheduling,
+and retained multi-instance PostgreSQL evidence remain open.
 
 ### M7 - First vertical slice
 
 Entities: Product, ProductVariant, SalesChannel.
 
-- [ ] Register owner-published schemas and links.
+- [ ] Register owner-published schemas, links, and bounded source adapters.
 - [ ] Implement mutations and rebuild sources.
 - [ ] Support tenant, locale, status, projection, link filters, sorting, and cursor
       pagination.
@@ -442,6 +521,10 @@ cargo test --workspace --doc --all-features
 cargo test -p rustok-index planner_tests -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
+cargo test -p rustok-index source_registry --lib -- --nocapture
+cargo test -p rustok-index source_replay --lib -- --nocapture
+cargo test -p rustok-index source_replay_job --lib -- --nocapture
+cargo test -p rustok-index source_replay_runner --lib -- --nocapture
 cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
@@ -463,7 +546,7 @@ cargo test -p rustok-benchmarks partition_cutover
 cargo check -p rustok-benchmarks --bin index-partition-capture-finalize
 ```
 
-Targeted M3/M4 guards:
+Targeted M3/M4/M5/M6 guards:
 
 ```bash
 node scripts/verify/verify-index-mutation-storage.mjs
@@ -478,10 +561,14 @@ node scripts/verify/verify-index-partition-maintenance-evidence.mjs
 node scripts/verify/verify-index-partition-cutover-evidence.mjs
 node scripts/verify/verify-index-partition-full-capture.mjs
 node scripts/verify/verify-index-partition-post-inspection-drift.mjs
+node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
 node scripts/verify/verify-index-many-link-filtering.mjs
+node scripts/verify/verify-index-source-replay-contract.mjs
+node scripts/verify/verify-index-replay-job-leases.mjs
+node scripts/verify/verify-index-replay-multipage-runner.mjs
 ```
 
 ## Progress log
@@ -507,26 +594,47 @@ node scripts/verify/verify-index-many-link-filtering.mjs
   deterministic nested many-link projection aggregation with aligned identity/value
   decoding, and PostgreSQL `IndexQueryPort` source with exact persisted-schema
   preflight, one repeatable-read page/count snapshot, exhaustive bind conversion, and
-  compiler-metadata-driven row adaptation. Server/consumer composition, plan/SQL
-  snapshots, live PostgreSQL execution, and PostgreSQL/reference equivalence remain
-  open.
+  compiler-metadata-driven row adaptation.
+- 2026-07-30: completed retained v4 plan/SQL snapshots, explicit many-link MIN/MAX
+  aggregate ordering for integer, string, timestamp, and Decimal terminals, exact
+  Decimal tagged string wire, source-owned schema publication, shared query-runtime
+  composition, and the first default-off Social Graph privacy parity shadow.
 - 2026-07-30: bounded the non-authoritative Social Graph privacy shadow by the caller's
   remaining deadline and repaired stale Index repository/evidence guards and retained
-  fixtures. No authoritative cutover, replay entrypoint, or live PostgreSQL evidence is
-  claimed by this change.
-- Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
-  packet remain for the owner to execute and admit before production partition
-  lifecycle work begins.
+  fixtures. No authoritative cutover or live PostgreSQL evidence is claimed.
+- 2026-07-30: added the neutral bounded replay source registry, opaque JSON cursor and
+  scan/load contracts, exact schema-owner materialization, tenant/schema/result bounds,
+  continuation-progress checks, and retryable/permanent source failure classification.
+- 2026-07-30: added the one-page replay executor, stable replay event checks,
+  `PostgresMutationStore` sink composition, durable rebuild-checkpoint read/write
+  adapter, post-mutation checkpoint ordering, completion no-op, and replay-after-
+  checkpoint-failure contracts.
+- 2026-07-30: added schema-scoped durable rebuild job claims, advisory-lock exclusion,
+  lease/heartbeat, expired-attempt reclaim, attempt fencing, exact request validation,
+  lease-bound checkpoint reads/writes, stale-writer rejection, and null-cursor-gated
+  terminal success.
+- 2026-07-30: added `PostgresIndexReplayRunner` with a 1024-page invocation bound,
+  registry-derived source ownership, between-page heartbeat cadence, accumulated page/
+  mutation outcomes, terminal failure classification, graceful lease-loss handling,
+  null-cursor completion, and immediate `pending` yield/resume with attempt fencing.
+- 2026-07-30: added durable pending/running cancellation requests, typed terminal and
+  not-found outcomes, cancellation observation before/after bounded pages, cancellation
+  persistence across reclaim, and cancel-first fenced success/failure/yield transitions.
+- Repository test/fixture suites, verifiers, in-page interruption, automatic retry/backoff,
+  dead-letter and host scheduling, live freshness/recovery evidence, one admitted
+  PostgreSQL/reference equivalence bundle, and one real full PostgreSQL partition packet
+  remain for the owner to execute and admit before authoritative consumer or production
+  partition cutover.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `blocked`
 - Last verified at (UTC): `2026-07-30`
-- Scope inspected: `Index ownership, migrations, mutation/version ordering, query execution, partition evidence guards, Social Graph consumer authority, privacy shadow deadline behavior, and source/search/server boundaries`
+- Scope inspected: `Index ownership, migrations, mutation/version ordering, query execution, partition evidence guards, Social Graph consumer authority, privacy shadow deadline behavior, source replay ownership, replay checkpoint ordering, replay job attempt fencing, bounded multi-page replay progression, cancellation ordering, and source/search/server boundaries`
 - Findings: `P0=0, P1=2, P2=0, P3=1`
-- Fixed in this pass: `bounded the non-authoritative Social Graph privacy comparison by the remaining caller deadline while preserving the owner result; repaired stale Index scale/FBA and retained-artifact guards so current accepted M2/M4 contracts execute again`
-- Remaining risks or blockers: `one retained admitted real PostgreSQL partition packet is absent; live PostgreSQL/reference query equivalence remains open; no retained per-tenant freshness/watermark, lag, negative-result safety, outage/restart/backlog catch-up, or replay-repair evidence exists; consumer and production partition cutover remain forbidden`
-- Evidence: `PR #2544 merged as b647a5a17f27b34a07c20cd57525ed1806994c49; same-SHA Index Storage Scale Run Contract and full Scale Evidence contract passed JavaScript syntax, workflow contracts, repository contracts, direct validator arguments and fixture suites; general CI/Hardening received no jobs; Rust-hosted smoke stopped before compilation because Cargo.lock required an Athanor update under --locked`
-- Next action: `execute the retained PostgreSQL packet, live query equivalence and per-tenant freshness/outage/recovery evidence; add a canonical bounded replay/rebuild owner path before reconsidering authoritative consumers or partition lifecycle`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-social-graph --all-targets --all-features && node scripts/verify/verify-index-query-contract.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`
+- Fixed in this pass: `bounded the non-authoritative Social Graph privacy comparison by the remaining caller deadline while preserving the owner result; repaired stale Index scale/FBA and retained-artifact guards; added a canonical bounded source replay/load registry; added one-page replay mutation application with stable event checks and checkpoint progression only after durable mutation outcomes; added schema-scoped rebuild job claims with lease/heartbeat, expired-attempt reclaim, attempt fencing, fenced checkpoint access, durable null-cursor-gated success, bounded multi-page execution with between-page heartbeat and immediate pending resume, and durable cancel-first terminalization`
+- Remaining risks or blockers: `one retained admitted real PostgreSQL partition packet is absent; live PostgreSQL/reference query equivalence remains open; in-page interruption, automatic retry/backoff, dead-letter scheduling, host scheduling, locale/partition checkpoint dimensions, and production source adapters remain absent; no retained per-tenant freshness/watermark, lag, negative-result safety, outage/restart/backlog catch-up, cancellation, or replay-repair evidence exists; consumer and production partition cutover remain forbidden`
+- Evidence: `PR #2544 merged as b647a5a17f27b34a07c20cd57525ed1806994c49; PR #2554 merged as 5b9d49e65295819ee9e8e9c199688c0e2ac73d35; PR #2576 merged as aef96f57d3babc2efdc65cc0c57cfea6fb48b5ad; same-SHA Index Storage Scale Run Contract and full Scale Evidence contract passed JavaScript syntax, workflow contracts, repository contracts, direct validator arguments and fixture suites; source replay registry, one-page checkpoint progression, replay job fencing, bounded multi-page runner, and cancellation source are present without implementation-agent test execution; general CI/Hardening received no jobs; Rust-hosted smoke previously stopped before compilation because Cargo.lock required an Athanor update under --locked`
+- Next action: `bind the replay runner into host/server composition with explicit operator authorization and graceful shutdown ownership, then add the first Product source adapter before executing retained PostgreSQL packet, live query equivalence, and per-tenant freshness/outage/recovery evidence`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-index --all-targets && node scripts/verify/verify-index-query-contract.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`

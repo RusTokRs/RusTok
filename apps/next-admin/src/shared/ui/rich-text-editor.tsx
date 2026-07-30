@@ -7,12 +7,12 @@ import { useTranslations } from 'next-intl';
 export function RichTextEditor({
   label,
   value,
-  profile = 'article',
+  profile,
   onChange
 }: {
   label: string;
   value: RichTextDocument;
-  profile?: RichTextProfileId;
+  profile: RichTextProfileId;
   onChange: (doc: RichTextDocument) => void;
 }) {
   const t = useTranslations('richText');

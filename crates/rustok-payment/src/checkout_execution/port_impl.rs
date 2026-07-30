@@ -26,8 +26,7 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
         request: PrepareCheckoutPaymentCollectionRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
         let owner_operation = PREPARE_CHECKOUT_COLLECTION_OPERATION;
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_checkout_payment_write_admission(&context, owner_operation)?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         require_operation_context(
             &context,
@@ -58,8 +57,7 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
         request: AuthorizeCheckoutPaymentCollectionRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
         let owner_operation = AUTHORIZE_CHECKOUT_COLLECTION_OPERATION;
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_checkout_payment_write_admission(&context, owner_operation)?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         require_operation_context(
             &context,
@@ -92,8 +90,7 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
         request: CaptureCheckoutPaymentCollectionRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
         let owner_operation = CAPTURE_CHECKOUT_COLLECTION_OPERATION;
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_checkout_payment_write_admission(&context, owner_operation)?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         require_operation_context(
             &context,
@@ -124,7 +121,7 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
         request: ReadCheckoutPaymentCollectionRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
         let owner_operation = READ_CHECKOUT_COLLECTION_OPERATION;
-        context.require_policy(PortCallPolicy::read())?;
+        require_checkout_payment_read_admission(&context, owner_operation)?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         require_operation_context(
             &context,

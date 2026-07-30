@@ -108,8 +108,9 @@ requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
   'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
-  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
-  'plan/SQL snapshots',
+  '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
+  '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
+  'M4 retained plan/SQL snapshots: `source_complete`',
 ]);
 
 console.log('[verify-index-query-snapshots] OK');
