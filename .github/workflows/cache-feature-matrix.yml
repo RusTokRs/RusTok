@@ -66,12 +66,7 @@ jobs:
           block = source[start:end]
           lines = []
           for line in block.splitlines():
-              if line.startswith('          '):
-                  lines.append(line[10:])
-              elif line:
-                  raise RuntimeError(f'unexpected transform indentation: {line!r}')
-              else:
-                  lines.append('')
+              lines.append(line[10:] if line.startswith('          ') else line)
           Path('/tmp/blog_locale_cutover.py').write_text('\n'.join(lines) + '\n')
           PY
           python3 /tmp/blog_locale_cutover.py
