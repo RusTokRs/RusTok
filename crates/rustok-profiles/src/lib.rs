@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod account_redaction;
 mod content_write;
 pub mod dto;
 pub mod entities;
@@ -24,6 +25,7 @@ pub mod services;
 mod upsert_write;
 mod visibility_write;
 
+pub use account_redaction::redact_profile_for_account_deactivation_in_tx;
 pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInput};
 pub use entities::ProfileRecord;
 pub use error::{ProfileError, ProfileResult};

@@ -17,6 +17,15 @@ function read(relativePath) {
   return readFileSync(target, "utf8");
 }
 
+function parseJson(relativePath) {
+  try {
+    return JSON.parse(read(relativePath));
+  } catch (error) {
+    failures.push(`${relativePath}: invalid JSON: ${error.message}`);
+    return null;
+  }
+}
+
 function requireMarker(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
@@ -33,58 +42,75 @@ function rejectAll(source, markers, label) {
   for (const marker of markers) rejectMarker(source, marker, label);
 }
 
-function requireOrder(source, first, second, label) {
-  const firstIndex = source.indexOf(first);
-  const secondIndex = source.indexOf(second);
-  if (firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex) {
-    failures.push(`${label}: expected ${first} before ${second}`);
+function requireOrder(source, markers, label) {
+  let previous = -1;
+  for (const marker of markers) {
+    const index = source.indexOf(marker, previous + 1);
+    if (index < 0) {
+      failures.push(`${label}: missing ordered marker ${marker}`);
+      return;
+    }
+    previous = index;
   }
 }
 
-const sourcePath = "crates/rustok-forum/src/search_projection.rs";
-const authorPath = "crates/rustok-forum/src/search_projection_author.rs";
-const forumLibPath = "crates/rustok-forum/src/lib.rs";
-const inboxPath = "crates/rustok-search/src/forum_inbox.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const profilesPath = "crates/rustok-profiles/src/presentation.rs";
-const profilesLibPath = "crates/rustok-profiles/src/lib.rs";
-const profilesMutationPath = "crates/rustok-profiles/src/graphql/mutation.rs";
-const profilesUpdatedEventPath = "crates/rustok-profiles/src/profile_updated_event.rs";
-const profilesContentWritePath = "crates/rustok-profiles/src/content_write.rs";
-const profilesHandleWritePath = "crates/rustok-profiles/src/handle_write.rs";
-const profilesLocaleWritePath = "crates/rustok-profiles/src/locale_write.rs";
-const profilesMediaWritePath = "crates/rustok-profiles/src/media_write.rs";
-const profilesUpsertWritePath = "crates/rustok-profiles/src/upsert_write.rs";
-const profilesVisibilityWritePath = "crates/rustok-profiles/src/visibility_write.rs";
-const profilesErrorPath = "crates/rustok-profiles/src/error.rs";
-const profilesCliBackfillPath = "crates/rustok-profiles/cli/src/lib.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-search-public-author-summary.json";
-const notePath = "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md";
+const paths = {
+  source: "crates/rustok-forum/src/search_projection.rs",
+  author: "crates/rustok-forum/src/search_projection_author.rs",
+  forumLib: "crates/rustok-forum/src/lib.rs",
+  presentation: "crates/rustok-profiles/src/presentation.rs",
+  profilesLib: "crates/rustok-profiles/src/lib.rs",
+  mutationFacade: "crates/rustok-profiles/src/mutations.rs",
+  graphqlMutation: "crates/rustok-profiles/src/graphql/mutation.rs",
+  profileEvent: "crates/rustok-profiles/src/profile_updated_event.rs",
+  contentWrite: "crates/rustok-profiles/src/content_write.rs",
+  handleWrite: "crates/rustok-profiles/src/handle_write.rs",
+  localeWrite: "crates/rustok-profiles/src/locale_write.rs",
+  mediaWrite: "crates/rustok-profiles/src/media_write.rs",
+  visibilityWrite: "crates/rustok-profiles/src/visibility_write.rs",
+  upsertWrite: "crates/rustok-profiles/src/upsert_write.rs",
+  cli: "crates/rustok-profiles/cli/src/lib.rs",
+  accountRedaction: "crates/rustok-profiles/src/account_redaction.rs",
+  authDelete: "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs",
+  inbox: "crates/rustok-search/src/forum_inbox.rs",
+  ingestion: "crates/rustok-search/src/ingestion.rs",
+  serviceBoundaryContract:
+    "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json",
+  facadeContract:
+    "crates/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json",
+  deprecationContract:
+    "crates/rustok-forum/contracts/forum-search-profile-legacy-mutation-deprecation.json",
+  deletionContract:
+    "crates/rustok-forum/contracts/forum-search-account-deletion-redaction.json",
+  contract: "crates/rustok-forum/contracts/forum-search-public-author-summary.json",
+  note: "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
+};
 
-const source = read(sourcePath);
-const author = read(authorPath);
-const forumLib = read(forumLibPath);
-const inbox = read(inboxPath);
-const ingestion = read(ingestionPath);
-const profiles = read(profilesPath);
-const profilesLib = read(profilesLibPath);
-const profilesMutation = read(profilesMutationPath);
-const profilesUpdatedEvent = read(profilesUpdatedEventPath);
-const profilesContentWrite = read(profilesContentWritePath);
-const profilesHandleWrite = read(profilesHandleWritePath);
-const profilesLocaleWrite = read(profilesLocaleWritePath);
-const profilesMediaWrite = read(profilesMediaWritePath);
-const profilesUpsertWrite = read(profilesUpsertWritePath);
-const profilesVisibilityWrite = read(profilesVisibilityWritePath);
-const profilesError = read(profilesErrorPath);
-const profilesCliBackfill = read(profilesCliBackfillPath);
-const note = read(notePath);
-let contract = null;
-try {
-  contract = JSON.parse(read(contractPath));
-} catch (error) {
-  failures.push(`${contractPath}: invalid JSON: ${error.message}`);
-}
+const source = read(paths.source);
+const author = read(paths.author);
+const forumLib = read(paths.forumLib);
+const presentation = read(paths.presentation);
+const profilesLib = read(paths.profilesLib);
+const mutationFacade = read(paths.mutationFacade);
+const graphqlMutation = read(paths.graphqlMutation);
+const profileEvent = read(paths.profileEvent);
+const contentWrite = read(paths.contentWrite);
+const handleWrite = read(paths.handleWrite);
+const localeWrite = read(paths.localeWrite);
+const mediaWrite = read(paths.mediaWrite);
+const visibilityWrite = read(paths.visibilityWrite);
+const upsertWrite = read(paths.upsertWrite);
+const cli = read(paths.cli);
+const accountRedaction = read(paths.accountRedaction);
+const authDelete = read(paths.authDelete);
+const inbox = read(paths.inbox);
+const ingestion = read(paths.ingestion);
+const note = read(paths.note);
+const serviceBoundaryContract = parseJson(paths.serviceBoundaryContract);
+const facadeContract = parseJson(paths.facadeContract);
+const deprecationContract = parseJson(paths.deprecationContract);
+const deletionContract = parseJson(paths.deletionContract);
+const contract = parseJson(paths.contract);
 
 requireAll(
   author,
@@ -99,7 +125,7 @@ requireAll(
     "public_author_payload_exposes_only_the_safe_summary",
     "absent_or_denied_author_is_not_serialized",
   ],
-  authorPath,
+  paths.author,
 );
 rejectAll(
   author,
@@ -107,10 +133,11 @@ rejectAll(
     '"tags": summary.tags',
     '"preferred_locale": summary.preferred_locale',
     '"visibility": summary.visibility',
+    '"bio": summary.bio',
+    '"banner_media_id": summary.banner_media_id',
   ],
-  authorPath,
+  paths.author,
 );
-
 requireAll(
   source,
   [
@@ -121,28 +148,25 @@ requireAll(
     '"author_id": author_id',
     '"has_public_author": author_id.is_some()',
   ],
-  sourcePath,
+  paths.source,
 );
-rejectAll(
-  source,
-  ['"author_id": topic.author_id', '"author_id": reply.author_id'],
-  sourcePath,
-);
-requireMarker(forumLib, "mod search_projection_author;", forumLibPath);
+rejectAll(source, ['"author_id": topic.author_id', '"author_id": reply.author_id'], paths.source);
+requireMarker(forumLib, "mod search_projection_author;", paths.forumLib);
 
 requireAll(
-  profiles,
+  presentation,
   [
     "ProfilePrivacyService::new(self.db.clone())",
     "ProfileAccessAudience::Anonymous",
     "ProfilePrivacyDecision::Allow",
   ],
-  profilesPath,
+  paths.presentation,
 );
 
 requireAll(
   profilesLib,
   [
+    "mod account_redaction;",
     "mod content_write;",
     "mod handle_write;",
     "mod locale_write;",
@@ -150,248 +174,150 @@ requireAll(
     "mod profile_updated_event;",
     "mod upsert_write;",
     "mod visibility_write;",
-    "pub use upsert_write::backfill_profile_with_event;",
+    "pub use account_redaction::redact_profile_for_account_deactivation_in_tx;",
+    "pub use mutations::ProfileMutationService;",
   ],
-  profilesLibPath,
+  paths.profilesLib,
 );
 
+const facadeMethods = [
+  "upsert_profile_with_event",
+  "update_profile_handle_with_event",
+  "update_profile_content_with_event",
+  "update_profile_locale_with_event",
+  "update_profile_visibility_with_event",
+  "update_profile_media_with_event",
+  "backfill_profile_with_event",
+];
+for (const method of facadeMethods) {
+  requireMarker(mutationFacade, `pub async fn ${method}(`, paths.mutationFacade);
+}
 requireAll(
-  profilesMutation,
+  mutationFacade,
+  ["db: &'a DatabaseConnection", "event_bus: &'a TransactionalEventBus", "self.event_bus"],
+  paths.mutationFacade,
+);
+requireAll(
+  graphqlMutation,
   [
-    "upsert_profile_with_event(",
-    "update_profile_content_with_event(",
-    "update_profile_handle_with_event(",
-    "update_profile_locale_with_event(",
-    "update_profile_media_with_event(",
-    "update_profile_visibility_with_event(",
+    "ProfileMutationService::new(db, event_bus)",
+    "mutations.upsert_profile_with_event(",
+    "mutations.update_profile_handle_with_event(",
+    "mutations.update_profile_content_with_event(",
+    "mutations.update_profile_locale_with_event(",
+    "mutations.update_profile_visibility_with_event(",
+    "mutations.update_profile_media_with_event(",
     "validate_profile_media_references(",
-    "ProfileError::EventPublishUnavailable",
   ],
-  profilesMutationPath,
+  paths.graphqlMutation,
 );
 rejectAll(
-  profilesMutation,
-  [
-    "service.upsert_profile(",
-    "service.update_profile_content(",
-    "service.update_profile_handle(",
-    "service.update_profile_locale(",
-    "service.update_profile_media(",
-    "service.update_profile_visibility(",
-    "async fn publish_profile_updated(",
-    "DomainEvent::ProfileUpdated",
-    "use rustok_events::DomainEvent;",
-  ],
-  profilesMutationPath,
-);
-requireOrder(
-  profilesMutation,
-  "validate_profile_media_references(",
-  "upsert_profile_with_event(",
-  profilesMutationPath,
+  graphqlMutation,
+  ["DomainEvent::ProfileUpdated", "service.upsert_profile(", "service.update_profile_"],
+  paths.graphqlMutation,
 );
 
 requireAll(
-  profilesUpdatedEvent,
+  profileEvent,
   [
     "publish_profile_updated_in_tx",
     "publish_profile_updated_with_actor_in_tx",
     "actor_id: Option<Uuid>",
-    "profile: &entities::profile::Model",
     ".publish_in_tx(",
     "DomainEvent::ProfileUpdated",
-    "ProfileOperation::PublishUpdatedEvent",
     "ProfileError::EventPublishUnavailable",
-    "Profile update event publication failed",
   ],
-  profilesUpdatedEventPath,
-);
-rejectMarker(profilesUpdatedEvent, "profile: &ProfileRecord", profilesUpdatedEventPath);
-requireOrder(
-  profilesUpdatedEvent,
-  "publish_profile_updated_in_tx",
-  "publish_profile_updated_with_actor_in_tx",
-  profilesUpdatedEventPath,
+  paths.profileEvent,
 );
 
-function verifyTransactionalHelper(sourceText, helperPath, markers, writeMarker, logMarker) {
+for (const [helperPath, helper] of [
+  [paths.contentWrite, contentWrite],
+  [paths.handleWrite, handleWrite],
+  [paths.localeWrite, localeWrite],
+  [paths.mediaWrite, mediaWrite],
+  [paths.visibilityWrite, visibilityWrite],
+]) {
   requireAll(
-    sourceText,
-    [
-      "db.begin().await?",
-      ...markers,
-      writeMarker,
-      "publish_profile_updated_in_tx",
-      "txn.rollback().await?",
-      "txn.commit().await?",
-      logMarker,
-    ],
+    helper,
+    ["db.begin().await?", "publish_profile_updated_in_tx", "txn.rollback().await?", "txn.commit().await?"],
     helperPath,
   );
-  requireOrder(sourceText, writeMarker, "publish_profile_updated_in_tx", helperPath);
-  requireOrder(sourceText, "publish_profile_updated_in_tx", "txn.commit().await?", helperPath);
+  requireOrder(helper, ["db.begin().await?", "publish_profile_updated_in_tx", "txn.commit().await?"], helperPath);
 }
-
-verifyTransactionalHelper(
-  profilesContentWrite,
-  profilesContentWritePath,
-  [
-    "ProfileService::normalize_display_name(display_name)?",
-    "Column::ProfileUserId.eq(user_id)",
-    "active.display_name = Set(display_name)",
-    "active.bio = Set(bio.map(str::to_string))",
-    ".insert(&txn)",
-  ],
-  ".update(&txn).await?",
-  "Profile content event publication failed; rolling back owner write",
-);
-
-verifyTransactionalHelper(
-  profilesHandleWrite,
-  profilesHandleWritePath,
-  [
-    "ProfileService::normalize_handle(handle)?",
-    "Column::Handle.eq(handle.clone())",
-    "ProfileError::DuplicateHandle(handle)",
-  ],
-  ".update(&txn).await?",
-  "Profile handle event publication failed; rolling back owner write",
-);
-
-verifyTransactionalHelper(
-  profilesLocaleWrite,
-  profilesLocaleWritePath,
-  [
-    "ProfileService::normalize_locale(preferred_locale)?",
-    "ProfileService::normalize_locale(tenant_default_locale)?",
-    "active.preferred_locale = Set(preferred_locale)",
-    "selection policy only",
-  ],
-  ".update(&txn).await?",
-  "Profile locale event publication failed; rolling back owner write",
-);
-rejectMarker(profilesLocaleWrite, "profile_translation", profilesLocaleWritePath);
-
-verifyTransactionalHelper(
-  profilesMediaWrite,
-  profilesMediaWritePath,
-  [
-    "active.avatar_media_id = Set(avatar_media_id)",
-    "active.banner_media_id = Set(banner_media_id)",
-  ],
-  ".update(&txn).await?",
-  "Profile media event publication failed; rolling back owner write",
-);
-
-verifyTransactionalHelper(
-  profilesVisibilityWrite,
-  profilesVisibilityWritePath,
-  ["active.visibility = Set(visibility)"],
-  ".update(&txn).await?",
-  "Profile visibility event publication failed; rolling back owner write",
-);
-
+rejectMarker(localeWrite, "profile_translation", paths.localeWrite);
 requireAll(
-  profilesUpsertWrite,
+  upsertWrite,
   [
     "pub async fn backfill_profile_with_event(",
     "ExistingProfilePolicy::Update",
     "ExistingProfilePolicy::Skip",
-    "existing_policy == ExistingProfilePolicy::Skip && existing.is_some()",
-    "ProfileService::normalize_handle(&handle)?",
-    "ProfileService::normalize_display_name(&display_name)?",
-    "ProfileService::normalize_locale(preferred_locale.as_deref())?",
     "db.begin().await?",
-    "Column::TenantId.eq(tenant_id)",
-    "Column::Handle.eq(handle.clone())",
-    "ProfileError::DuplicateHandle(handle)",
     "entities::profile::ActiveModel",
     "entities::profile_translation::Entity::find()",
     "entities::profile_tag::Entity::delete_many()",
-    "ensure_terms_for_module_in_tx",
-    "TaxonomyTermKind::Tag",
-    ".insert(&txn)",
     "publish_profile_updated_in_tx",
     "publish_profile_updated_with_actor_in_tx",
     "txn.rollback().await?",
     "txn.commit().await?",
-    "Profile upsert event publication failed; rolling back owner write",
   ],
-  profilesUpsertWritePath,
+  paths.upsertWrite,
 );
-requireOrder(
-  profilesUpsertWrite,
-  "existing_policy == ExistingProfilePolicy::Skip && existing.is_some()",
-  "let handle_owner = entities::profile::Entity::find()",
-  profilesUpsertWritePath,
-);
-requireOrder(
-  profilesUpsertWrite,
-  "entities::profile::ActiveModel",
-  "publish_profile_updated_in_tx",
-  profilesUpsertWritePath,
-);
-requireOrder(
-  profilesUpsertWrite,
-  "entities::profile_translation::Entity::find()",
-  "publish_profile_updated_in_tx",
-  profilesUpsertWritePath,
-);
-requireOrder(
-  profilesUpsertWrite,
-  "entities::profile_tag::Entity::delete_many()",
-  "publish_profile_updated_in_tx",
-  profilesUpsertWritePath,
-);
-requireOrder(
-  profilesUpsertWrite,
-  "publish_profile_updated_with_actor_in_tx",
-  "txn.commit().await?",
-  profilesUpsertWritePath,
-);
-
 requireAll(
-  profilesCliBackfill,
+  cli,
   [
     "let emit_events = !dry_run;",
     "TransactionalEventBus::new(",
-    "OutboxTransport::new(db.clone())",
-    "backfill_profile_with_event(",
+    "ProfileMutationService::new(&db, &event_bus)",
+    ".backfill_profile_with_event(",
     "let event_published = result.created;",
-    "published_events += 1;",
-    '"event_published": false',
-    '"emit_events": emit_events',
   ],
-  profilesCliBackfillPath,
+  paths.cli,
 );
-rejectAll(
-  profilesCliBackfill,
-  [
-    'flag(options, "emit_events")',
-    "DomainEvent::ProfileUpdated",
-    "use rustok_events::DomainEvent;",
-    "BACKFILL_EVENT_PUBLISH_ERROR",
-    "if let Some(bus)",
-    "bus.publish(",
-    ".backfill_profile(",
-  ],
-  profilesCliBackfillPath,
-);
-requireOrder(
-  profilesCliBackfill,
-  "if dry_run",
-  "backfill_profile_with_event(",
-  profilesCliBackfillPath,
-);
+rejectAll(cli, ["DomainEvent::ProfileUpdated", "bus.publish(", ".backfill_profile("], paths.cli);
 
 requireAll(
-  profilesError,
+  accountRedaction,
   [
-    "EventPublishUnavailable",
-    '"profiles.event_publish_unavailable"',
-    "Self::PresentationUnavailable | Self::EventPublishUnavailable | Self::Database(_)",
+    "pub async fn redact_profile_for_account_deactivation_in_tx(",
+    "transaction: &DatabaseTransaction",
+    "Column::TenantId.eq(tenant_id)",
+    "return Ok(false);",
+    "active.status = Set(ProfileStatus::Hidden)",
+    "active.update(transaction).await?",
   ],
-  profilesErrorPath,
+  paths.accountRedaction,
+);
+requireAll(
+  authDelete,
+  [
+    "TransactionalEventBus::new(",
+    "OutboxTransport::new(self.db.clone())",
+    "AuthLifecycleService::deactivate_user_in_tx",
+    "redact_profile_for_account_deactivation_in_tx(",
+    "revoke_active_sessions(&tx",
+    "reserve_rbac_invalidation_generation(&tx)",
+    ".publish_in_tx(",
+    "Some(context.actor_id)",
+    "DomainEvent::UserDeleted { user_id: user.id }",
+    "tx.rollback().await.err()",
+    "tx.commit()",
+  ],
+  paths.authDelete,
+);
+requireOrder(
+  authDelete,
+  [
+    "async fn delete_user(",
+    "AuthLifecycleService::deactivate_user_in_tx",
+    "redact_profile_for_account_deactivation_in_tx(",
+    "revoke_active_sessions(&tx",
+    "reserve_rbac_invalidation_generation(&tx)",
+    ".publish_in_tx(",
+    "DomainEvent::UserDeleted { user_id: user.id }",
+    "tx.commit()",
+    "publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await",
+  ],
+  paths.authDelete,
 );
 
 requireAll(
@@ -399,58 +325,86 @@ requireAll(
   [
     "Author(Uuid)",
     "DomainEvent::ProfileUpdated { user_id, .. }",
-    "AUTHOR_SCOPE_PREFIX",
+    "DomainEvent::UserDeleted { user_id }",
+    "Some(Self::Author(*user_id))",
     "scope_key.starts_with(AUTHOR_SCOPE_PREFIX)",
-    "profile_changes_have_redaction_barrier_scope",
+    "profile_and_account_changes_have_redaction_barrier_scope",
   ],
-  inboxPath,
+  paths.inbox,
 );
-rejectMarker(inbox, "DomainEvent::UserDeleted", inboxPath);
 requireAll(
   ingestion,
   [
     "DomainEvent::ProfileUpdated { .. }",
+    "DomainEvent::UserDeleted { .. }",
     '"rebuild_forum_author_projection"',
     "projector.rebuild_tenant(envelope.tenant_id).await",
   ],
-  ingestionPath,
+  paths.ingestion,
 );
-rejectMarker(ingestion, "DomainEvent::UserDeleted", ingestionPath);
+
+if (serviceBoundaryContract?.task !== "FORUM-23A8") {
+  failures.push(`${paths.serviceBoundaryContract}: expected A8 source gate`);
+}
+if (serviceBoundaryContract?.source_boundary?.repository_production_call_sites_are_forbidden !== true) {
+  failures.push(`${paths.serviceBoundaryContract}: production source gate drift`);
+}
+if (facadeContract?.task !== "FORUM-23A9") {
+  failures.push(`${paths.facadeContract}: expected A9 facade contract`);
+}
+if (facadeContract?.mutation_api_boundary?.facade_is_publicly_exported !== true) {
+  failures.push(`${paths.facadeContract}: public facade drift`);
+}
+if (deprecationContract?.task !== "FORUM-23A10") {
+  failures.push(`${paths.deprecationContract}: expected A10 deprecation contract`);
+}
+if (deprecationContract?.deprecation_boundary?.legacy_methods_emit_rust_deprecation_diagnostics !== true) {
+  failures.push(`${paths.deprecationContract}: legacy deprecation drift`);
+}
+if (deletionContract?.task !== "FORUM-23A11") {
+  failures.push(`${paths.deletionContract}: expected A11 deletion contract`);
+}
 
 requireAll(
   note,
   [
-    "FORUM-23A7",
+    "Latest slice: `FORUM-23A11`",
     "ProfilePresentationService",
-    "forum_author:<user_id>",
     "raw `payload.author_id`",
+    "FORUM-23A11: canonical account deletion redaction",
+    "redact_profile_for_account_deactivation_in_tx",
+    "DomainEvent::UserDeleted",
+    "authenticated administrator",
+    "forum_author:<user_id>",
+    "arbitrary `update_user` status changes",
     "owner-issued monotonic",
-    "upsert_my_profile",
-    "CLI backfill",
-    "system actor",
-    "--emit-events",
-    "direct non-event",
-    "does not treat `UserDeleted`",
     "Not run by the implementation agent",
   ],
-  notePath,
+  paths.note,
 );
 
 if (contract) {
-  if (contract.task !== "FORUM-23A") failures.push(`${contractPath}: unexpected task`);
-  if (contract.latest_slice !== "FORUM-23A7") {
-    failures.push(`${contractPath}: unexpected latest slice`);
+  if (contract.task !== "FORUM-23A") failures.push(`${paths.contract}: unexpected task`);
+  if (contract.latest_slice !== "FORUM-23A11") {
+    failures.push(`${paths.contract}: unexpected latest slice`);
   }
   if (contract.status !== "source_complete_execution_pending") {
-    failures.push(`${contractPath}: unexpected status`);
+    failures.push(`${paths.contract}: unexpected status`);
   }
-  if (contract.profiles_upsert_event_owner !== profilesUpsertWritePath) {
-    failures.push(`${contractPath}: unexpected upsert event owner`);
+  const expectedPaths = {
+    forum_projection_source: paths.source,
+    forum_author_adapter: paths.author,
+    profiles_owner: paths.presentation,
+    profiles_account_redaction_owner: paths.accountRedaction,
+    auth_account_deactivation_owner: paths.authDelete,
+    search_inbox: paths.inbox,
+    search_ingestion: paths.ingestion,
+    owner_note: paths.note,
+    verifier: "scripts/verify/verify-forum-search-public-author-summary.mjs",
+  };
+  for (const [key, expected] of Object.entries(expectedPaths)) {
+    if (contract[key] !== expected) failures.push(`${paths.contract}: ${key} drift`);
   }
-  if (contract.profiles_cli_backfill_owner !== profilesCliBackfillPath) {
-    failures.push(`${contractPath}: unexpected CLI backfill owner`);
-  }
-
   for (const key of [
     "anonymous_profiles_presentation_is_authoritative",
     "forum_does_not_copy_profile_privacy_policy",
@@ -466,86 +420,68 @@ if (contract) {
     "author_filter_value_is_populated_only_for_public_author",
   ]) {
     if (contract.projection_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: projection boundary ${key} drift`);
+      failures.push(`${paths.contract}: projection boundary ${key} drift`);
     }
   }
-
   for (const key of [
     "profile_updated_is_durable",
-    "profile_updated_is_emitted_after_owner_write",
-    "transactional_profile_event_publisher_is_shared",
-    "transactional_profile_event_publisher_accepts_owner_model",
-    "transactional_profile_event_publisher_accepts_system_actor",
     "profile_visibility_write_and_event_are_atomic",
-    "visibility_event_failure_rolls_back_owner_write",
     "profile_handle_write_and_event_are_atomic",
-    "handle_event_failure_rolls_back_owner_write",
     "profile_content_write_and_event_are_atomic",
-    "content_event_failure_rolls_back_owner_write",
     "profile_locale_write_and_event_are_atomic",
-    "locale_event_failure_rolls_back_owner_write",
-    "locale_write_does_not_create_translations",
     "profile_media_write_and_event_are_atomic",
-    "media_event_failure_rolls_back_owner_write",
     "profile_upsert_write_and_event_are_atomic",
-    "upsert_event_failure_rolls_back_owner_write",
-    "upsert_couples_profile_translation_tags_and_event",
-    "upsert_media_validation_precedes_owner_transaction",
     "profiles_cli_backfill_creation_and_event_are_atomic",
-    "profiles_cli_backfill_event_failure_rolls_back_owner_write",
-    "profiles_cli_backfill_requires_event_for_non_dry_run",
-    "profiles_cli_backfill_dry_run_emits_no_event",
-    "profiles_cli_backfill_skips_concurrent_existing_profile",
-    "remaining_profile_summary_write_and_event_pairs_are_atomic",
+    "canonical_delete_user_deactivates_auth_and_hides_profile_in_one_transaction",
+    "missing_profile_is_valid_but_still_emits_user_deleted",
+    "user_deleted_is_persisted_in_the_deactivation_transaction",
+    "user_deleted_event_failure_rolls_back_auth_profile_session_and_rbac_writes",
+    "user_deleted_uses_authenticated_admin_actor",
+    "user_deleted_uses_author_redaction_scope",
     "author_scope_is_tenant_and_user_scoped",
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark",
     "author_change_rebuilds_current_forum_owner_state",
+    "user_deleted_rebuilds_current_forum_owner_state",
     "projection_failure_remains_retryable",
     "tenant_advisory_lock_is_preserved",
   ]) {
     if (contract.redaction_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: redaction boundary ${key} drift`);
+      failures.push(`${paths.contract}: redaction boundary ${key} drift`);
     }
   }
   if (contract.redaction_boundary?.schema_migration_added !== false) {
-    failures.push(`${contractPath}: schema migration must remain absent`);
+    failures.push(`${paths.contract}: schema migration must remain absent`);
   }
-
   for (const key of [
     "forum_graphql_changed",
     "forum_rest_changed",
     "search_query_api_changed",
     "search_document_schema_changed",
-    "forum_owner_storage_changed",
-    "profiles_owner_storage_changed",
+    "profiles_owner_storage_schema_changed",
+    "auth_owner_storage_schema_changed",
+    "event_schema_changed",
+    "dependency_added",
     "cargo_lock_changed",
   ]) {
     if (contract.compatibility?.[key] !== false) {
-      failures.push(`${contractPath}: compatibility ${key} must remain false`);
+      failures.push(`${paths.contract}: compatibility ${key} must remain false`);
     }
   }
-
   for (const nonClaim of [
-    "account deletion redaction is complete",
-    "all Profiles owner writes trigger durable Forum Search invalidation",
-    "direct non-event ProfileService mutation APIs are production-inaccessible",
+    "arbitrary user status updates outside canonical delete_user redact Profiles owner state",
+    "canonical delete_user performs hard account erasure",
+    "deprecated ProfileService mutation methods are compile-time private",
+    "general cross-producer owner revision ordering is complete",
   ]) {
     if (!contract.non_claims?.includes(nonClaim)) {
-      failures.push(`${contractPath}: missing non-claim ${nonClaim}`);
+      failures.push(`${paths.contract}: missing non-claim ${nonClaim}`);
     }
   }
-  if (
-    !contract.remaining_scope?.includes(
-      "consolidate or restrict direct non-event ProfileService mutation APIs",
-    )
-  ) {
-    failures.push(`${contractPath}: missing direct service mutation debt`);
+  if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
+    failures.push(`${paths.contract}: execution status drift`);
   }
   if (contract.downstream_task !== "FORUM-23B") {
-    failures.push(`${contractPath}: unexpected downstream task`);
-  }
-  if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
-    failures.push(`${contractPath}: execution status drift`);
+    failures.push(`${paths.contract}: unexpected downstream task`);
   }
 }
 

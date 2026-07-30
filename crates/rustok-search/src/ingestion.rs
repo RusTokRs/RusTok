@@ -109,7 +109,8 @@ impl SearchIngestionHandler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. } => {
+            | DomainEvent::ProfileUpdated { .. }
+            | DomainEvent::UserDeleted { .. } => {
                 projector.rebuild_tenant(envelope.tenant_id).await
             }
             DomainEvent::TenantModuleToggled {
@@ -206,7 +207,8 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. } => self.forum_projector.is_some(),
+            | DomainEvent::ProfileUpdated { .. }
+            | DomainEvent::UserDeleted { .. } => self.forum_projector.is_some(),
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
@@ -446,6 +448,9 @@ mod tests {
             handle: "public-author".to_string(),
             locale: Some("en".to_string()),
         }));
+        assert!(!handler.handles(&DomainEvent::UserDeleted {
+            user_id: Uuid::new_v4(),
+        }));
     }
 }
 
@@ -496,7 +501,9 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
                 "delete_forum_scope"
             }
         }
-        DomainEvent::ProfileUpdated { .. } => "rebuild_forum_author_projection",
+        DomainEvent::ProfileUpdated { .. } | DomainEvent::UserDeleted { .. } => {
+            "rebuild_forum_author_projection"
+        }
         DomainEvent::ForumTopicCreated { .. }
         | DomainEvent::ForumTopicReplied { .. }
         | DomainEvent::ForumTopicStatusChanged { .. }

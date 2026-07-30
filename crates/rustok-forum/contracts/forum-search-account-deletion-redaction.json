@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23A11",
+  "status": "source_complete_execution_pending",
+  "scope": "Atomically hide Profiles owner presentation and persist canonical UserDeleted invalidation during Auth admin account deactivation, then route it through the Forum author redaction barrier",
+  "canonical_event_owner": "crates/rustok-events/src/types.rs",
+  "auth_deactivation_owner": "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs",
+  "profiles_redaction_owner": "crates/rustok-profiles/src/account_redaction.rs",
+  "profiles_redaction_test": "crates/rustok-profiles/tests/account_redaction_test.rs",
+  "profiles_public_api": "crates/rustok-profiles/src/lib.rs",
+  "search_inbox": "crates/rustok-search/src/forum_inbox.rs",
+  "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+  "umbrella_contract": "crates/rustok-forum/contracts/forum-search-public-author-summary.json",
+  "owner_note": "crates/rustok-forum/docs/forum-23a11-account-deletion-redaction.md",
+  "verifier": "scripts/verify/verify-forum-search-account-deletion-redaction.mjs",
+  "owner_transaction_boundary": {
+    "auth_delete_is_deactivation_not_hard_erasure": true,
+    "auth_user_is_locked_in_tenant_scope": true,
+    "auth_user_is_deactivated_in_transaction": true,
+    "profiles_redaction_helper_accepts_caller_transaction": true,
+    "profiles_redaction_is_tenant_scoped": true,
+    "existing_profile_is_marked_hidden": true,
+    "missing_profile_is_valid_redacted_state": true,
+    "profiles_redaction_test_covers_existing_missing_and_cross_tenant_states": true,
+    "sessions_are_revoked_in_transaction": true,
+    "rbac_generation_is_reserved_in_transaction": true,
+    "user_deleted_is_published_in_transaction": true,
+    "user_deleted_uses_authenticated_admin_actor": true,
+    "event_insertion_precedes_commit": true,
+    "event_failure_explicitly_rolls_back": true,
+    "post_commit_rbac_fast_fanout_is_preserved": true
+  },
+  "search_redaction_boundary": {
+    "user_deleted_is_existing_canonical_event": true,
+    "user_deleted_maps_to_forum_author_scope": true,
+    "user_deleted_is_handled_only_when_forum_source_is_composed": true,
+    "user_deleted_rebuilds_current_forum_owner_state": true,
+    "author_scope_remains_redaction_barrier": true,
+    "hidden_or_missing_profile_projects_null_author": true,
+    "projection_failure_remains_retryable": true
+  },
+  "compatibility": {
+    "hard_account_erasure_added": false,
+    "auth_admin_port_signature_changed": false,
+    "event_schema_changed": false,
+    "database_migration_added": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false,
+    "forum_graphql_changed": false,
+    "forum_rest_changed": false,
+    "search_query_api_changed": false,
+    "search_document_schema_changed": false
+  },
+  "remaining_scope": [
+    "define explicit Profiles redaction behavior for update_user status changes outside delete_user",
+    "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
+    "remove or compile-time restrict deprecated ProfileService mutation methods",
+    "capture maintainer-executed PostgreSQL account-redaction and Search rebuild evidence"
+  ],
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "node scripts/verify/verify-forum-search-account-deletion-redaction.mjs",
+      "node scripts/verify/verify-forum-search-public-author-summary.mjs",
+      "cargo check -p rustok-profiles --all-targets",
+      "cargo check -p rustok-search --all-targets",
+      "cargo check -p rustok-server --all-targets",
+      "cargo test -p rustok-profiles account_redaction -- --nocapture",
+      "cargo test -p rustok-search forum_inbox -- --nocapture",
+      "cargo test -p rustok-search ingestion -- --nocapture"
+    ]
+  },
+  "non_claims": {
+    "all_user_status_disabling_paths_are_redacted": true,
+    "account_rows_are_physically_deleted": true,
+    "profiles_rows_are_physically_deleted": true,
+    "user_deleted_alone_without_owner_redaction_is_sufficient": true,
+    "general_cross_producer_owner_revision_ordering_is_complete": true,
+    "runtime_verification_was_executed": true
+  },
+  "downstream_task": "FORUM-23B"
+}

@@ -19,6 +19,7 @@
 - Provide explicit backfill helpers for provisioning missing profiles from existing user/customer data.
 - Expose `ProfileMutationService` as the preferred production mutation boundary; its constructor requires a database connection and transactional event bus, and every mutation delegates to an owner-write/outbox transaction.
 - Keep the older mutation methods on `ProfileService` only as deprecated compatibility shims. New callers must use the corresponding event-aware `ProfileMutationService` methods; repository production call sites are rejected by the Forum Search mutation boundary verifier.
+- Expose `redact_profile_for_account_deactivation_in_tx` for host-owned account deletion orchestration. It hides tenant-scoped public presentation inside the caller transaction before durable `UserDeleted` publication; a missing profile is already a valid redacted state.
 - Expose a request-scoped GraphQL `ProfileSummaryLoader` for host applications that need DataLoader-based batching and caching.
 - Expose module-owned GraphQL transport for self-service and public profile lookups, including targeted profile update mutations.
 - Publish a module-owned Leptos storefront profile page with explicit native/GraphQL transport selection and follow/unfollow controls.
@@ -40,7 +41,7 @@
 - Is the canonical source for public author/member cards across host applications and module-owned UI packages.
 - Serves `rustok-blog` and `rustok-forum` through `ProfilesReader` with batched summary resolution.
 - Serves notification recipient policy through `ProfilePrivacyReadPort` and the minimal `ProfilePrivacyService` owner adapter.
-- Uses `rustok-events` + `rustok-outbox` for downstream synchronization after profile mutations.
+- Uses `rustok-events` + `rustok-outbox` for downstream synchronization after profile mutations and account deactivation redaction.
 - Publishes operational records through the stable `rustok_profiles::operations` tracing target. Per-user writes carry tenant/user correlation; CLI backfill carries tenant scope, dry-run/event flags, aggregate counters, stage, outcome, duration, stable error code, and retryability only.
 - Mounts `rustok-profiles-storefront` through the module manifest; `apps/storefront` only composes the package and does not own profile UX.
 
@@ -49,6 +50,7 @@
 - `ProfilesModule`
 - `ProfileService` for reads, normalization, planning, and deprecated mutation compatibility only
 - `ProfileMutationService` for production profile writes
+- `redact_profile_for_account_deactivation_in_tx` for caller-owned account deactivation transactions
 - `ProfilesReader`
 - `ProfilePrivacyService`
 - `ProfilePrivacyReadPort`
