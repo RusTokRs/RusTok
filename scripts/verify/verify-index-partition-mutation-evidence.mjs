@@ -106,7 +106,7 @@ requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
 
 requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition mutation/WAL evidence runner: `complete`',
-  '- [x] Add owner-operated PostgreSQL mutation/WAL evidence capture.',
+  '- [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.',
   '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',
   '10. The mutation/WAL runner validates the same manifest and catalog, requires count parity and matching generic anchors, executes rollback-only mutation samples,',
 ]);
