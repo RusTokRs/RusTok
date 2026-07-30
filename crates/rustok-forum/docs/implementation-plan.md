@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-30
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -51,6 +51,12 @@ storage and transports remain on the legacy body/format path until the
 atomic cutover; do not add new `rt_json`/Markdown aliases,
 `content_json` fields, or a Forum-local renderer.
 
+The Next admin Forum surface is module-owned under
+`apps/next-admin/packages/forum/src`. It owns Forum navigation, topic/reply
+GraphQL helpers, the reply composer, and the contained legacy reply-format
+adapter. The host only registers and mounts the package; the reusable framed
+React richtext lifecycle adapter remains neutral shared UI.
+
 ## Verification
 
 Run `cargo xtask module validate forum` for the module contract and use the
@@ -61,6 +67,10 @@ Run `npm run verify:forum:admin-boundary`
 (`scripts/verify/verify-forum-admin-boundary.mjs`) after an admin-surface or
 transport-boundary change. This is the fast guardrail for the module-owned
 admin core/transport/UI split.
+
+Run `npm run verify:blog:forum-ui-ownership`
+(`scripts/verify/verify-blog-forum-ui-ownership.mjs`) after changing the Next
+admin Forum package or its former Blog ownership boundary.
 
 Run `npm run verify:forum:storefront-boundary`
 (`scripts/verify/verify-forum-storefront-boundary.mjs`) after a storefront
