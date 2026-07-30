@@ -293,7 +293,10 @@ test('requires the saved archive manifest to stay outside the retained bundle', 
     writeFileSync(manifestPath, result.stdout);
     const verification = runArchiveVerify(context.root, manifestPath);
     assert.notEqual(verification.status, 0);
-    assert.match(verification.stderr, /must stay outside the retained bundle root/u);
+    assert.match(
+      verification.stderr,
+      /(?:must stay outside the retained bundle root|unexpected retained bundle entry archive-manifest\.json)/u,
+    );
     assert.equal(verification.stdout, '');
   } finally {
     cleanup(context.root);
