@@ -22,7 +22,7 @@ pub struct IndexSchemaSourceDescriptor {
 /// Deterministic source-owned schema catalog collected during module registration.
 ///
 /// The catalog is mutable only while `ModuleRuntimeExtensions` are being built.
-/// The server materializes one immutable [`SchemaRegistry`] from the complete
+/// The distribution materializes one immutable [`SchemaRegistry`] from the complete
 /// catalog after every compiled source module has registered its contracts.
 #[derive(Debug, Clone, Default)]
 pub struct IndexSchemaSourceCatalog {
@@ -249,12 +249,12 @@ mod tests {
 
         let shared = catalog.materialize().expect("catalog should materialize");
         assert_eq!(shared.registry().len(), 2);
-        assert!(
-            shared
-                .registry()
-                .resolve_link_path(&source_schema().reference, &[LinkName::new("author").unwrap()])
-                .is_ok()
-        );
+        let path = shared
+            .registry()
+            .resolve_path(&source_schema().reference, &target_schema().reference)
+            .expect("cross-source link should resolve");
+        assert_eq!(path.len(), 1);
+        assert_eq!(path[0].link, LinkName::new("author").unwrap());
         assert_eq!(
             catalog
                 .get(&target_schema().reference)
