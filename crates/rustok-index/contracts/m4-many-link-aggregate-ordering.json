@@ -11,8 +11,8 @@
     "aggregate_cursor_supported": false,
     "pagination": "bounded_offset"
   },
-  "supported_terminal_types": ["integer", "decimal", "string", "timestamp"],
-  "rejected_terminal_types": ["boolean", "uuid", "list"],
+  "supported_terminal_types": ["integer", "string", "timestamp"],
+  "rejected_terminal_types": ["boolean", "decimal", "uuid", "list"],
   "postgresql": {
     "strategy": "correlated_scalar_subquery",
     "aggregates": ["MIN", "MAX"],
@@ -48,6 +48,7 @@
     "ci_run": false
   },
   "remaining": [
+    "exact decimal tagged-order wire contract",
     "aggregate cursor identity and continuation",
     "independent reference materialization for aggregate values",
     "PostgreSQL/reference aggregate offset scenarios",
