@@ -36,6 +36,13 @@ cleanup, and module-disabled cleanup followed by enable-time rebuild. Source-tab
 availability resolves through the active PostgreSQL `search_path` instead of
 hard-coding `public`.
 
+Search settings have one owner boundary. Tenant-effective settings are read and
+written through `SearchSettingsService` and the `search_settings` table. The
+server-wide generic `platform_settings` service no longer admits a `search`
+category, does not serialize bootstrap `search.api_key`, filters historical generic
+Search rows from list responses, and rejects generic Search reads and writes before
+database access.
+
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`.
@@ -64,6 +71,7 @@ hard-coding `public`.
   canonical URL guardrail.
 - Transport-local `derive_search_result_url`, `derive_admin_search_result_url`,
   `enrich_search_result_urls`, and Blog route constants are forbidden.
+- Generic `platform_settings/search` is forbidden by the Search FBA guard.
 - Blog projection table discovery and reads use the active `search_path`.
 - `TenantModuleToggled(blog, false)` deletes only the current tenant Blog search
   scope; enabling the module rebuilds it from retained owner rows.
@@ -110,6 +118,9 @@ rebuild behavior through replayable event transport.
     every transport-local URL implementation and require no transport fallback.
 11. Added canonical URL ownership to the standard Search FBA gate alongside the
     provider port, fallback, runtime contract, and invocation evidence.
+12. Removed the legacy generic `platform_settings/search` execution path and added
+    a fail-closed FBA ownership guard so runtime connector secrets stay inside the
+    Search owner boundary.
 
 ## Next results
 
@@ -132,6 +143,7 @@ rebuild behavior through replayable event transport.
 
 ## Verification
 
+- `cargo test -p rustok-server settings_service`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `node scripts/verify/verify-search-canonical-url-contract.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
@@ -154,10 +166,10 @@ rebuild behavior through replayable event transport.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-07-30`
-- Scope inspected: `owner README, module docs, current implementation plan, Index/Search boundary and carried event-delivery/rebuild concerns`
-- Findings: `P0=0, P1=0, P2=0, P3=0`
-- Fixed in this pass: `none; verification entrypoint only`
-- Remaining risks or blockers: `generic settings secret projection, tenant/locale/channel isolation, event replay/rebuild, deletion, duplicate and out-of-order delivery, connector boundaries, and operational recovery require source inspection`
-- Evidence: `current owner documentation and post-Index verification cursor read from main`
-- Next action: `trace settings serialization and every ingestion/rebuild publisher-consumer path; fix P0/P1 before running targeted static and Rust checks`
-- Resume command: `cargo xtask module validate search && npm run verify:search:fba && node scripts/verify/verify-search-blog-projection.mjs`
+- Scope inspected: `Search settings ownership, generic platform settings projection, owner Search GraphQL/settings service, FBA guard and carried event-delivery/rebuild concerns`
+- Findings: `P0=0, P1=1, P2=0, P3=0`
+- Fixed in this pass: `removed the non-authoritative generic platform_settings/search category, blocked read/write/list projection of historical generic Search rows, and added an owner-boundary FBA guard`
+- Remaining risks or blockers: `tenant/locale/channel isolation, event replay/rebuild, deletion, duplicate and out-of-order delivery, connector boundaries, click analytics and operational recovery still require source and live-evidence inspection`
+- Evidence: `source inspection confirms SearchSettingsService/search_settings is the owner path; the generic service now validates category before DB access and the standard Search FBA verifier rejects any restored rs.search projection`
+- Next action: `run same-SHA Search FBA and targeted settings tests, merge the focused P1 fix, then trace every ingestion/rebuild publisher-consumer path on a fresh branch`
+- Resume command: `cargo test -p rustok-server settings_service && npm run verify:search:fba && node scripts/verify/verify-search-blog-projection.mjs`
