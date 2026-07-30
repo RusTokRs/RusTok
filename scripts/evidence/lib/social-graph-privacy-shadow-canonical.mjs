@@ -12,6 +12,7 @@ function labelString(labels) {
 }
 
 function sample(name, labels, value) {
+  if (value === undefined || value === null) throw new Error(`canonical metric value is missing for ${name}`);
   const suffix = Object.keys(labels).length === 0 ? '' : `{${labelString(labels)}}`;
   return `${name}${suffix} ${value}`;
 }
