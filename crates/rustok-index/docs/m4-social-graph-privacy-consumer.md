@@ -40,6 +40,13 @@ Index projection adapter. Every method executes the owner read first. If that re
 owner error is returned and no projection result can replace it. After owner success, the
 shadow executes the equivalent Index read and always returns the owner result.
 
+The shadow measures the original port call before entering the owner read and gives the
+projected comparison only the remaining caller deadline budget. If the owner consumes the
+budget or the projected query does not finish in the remaining time, the comparison becomes
+the existing retryable `social_graph.index_privacy_unavailable` observation. The owner result
+is still returned, so a non-authoritative Index comparison cannot extend notification policy
+past the caller's declared budget.
+
 The Social Graph crate classifies the comparison into a neutral
 `IndexPrivacyShadowObservation`. The observation contains only a fixed operation, fixed
 outcome, comparison duration, optional bounded failure code, and optional retryability. The
@@ -55,10 +62,10 @@ Follow-batch IDs are compared as sets and classified as `match_batch_empty`,
 means Index omitted at least one owner-confirmed target; `batch_extra` means Index returned
 only additional targets; `batch_mixed` contains both directions of drift.
 
-Index mismatch, missing tenant schema, storage failure, or contract error remains
-observational. It never authorizes, suppresses, widens, or otherwise changes notification
-policy. Logs contain operation, fixed outcome, booleans/counts, bounded failure code,
-retryability, and comparison duration. They contain no tenant, user, relation, entity,
+Index mismatch, missing tenant schema, storage failure, deadline exhaustion, or contract error
+remains observational. It never authorizes, suppresses, widens, or otherwise changes
+notification policy. Logs contain operation, fixed outcome, booleans/counts, bounded failure
+code, retryability, and comparison duration. They contain no tenant, user, relation, entity,
 payload, SQL, or storage details.
 
 ## Host-owned Prometheus adapter
@@ -125,7 +132,8 @@ Before enabling the shadow broadly or considering cutover, the owner must retain
 This slice does not:
 
 - make Index authoritative for notification privacy;
-- change the policy result based on Index mismatch or failure;
+- change the policy result based on Index mismatch, timeout, or failure;
+- allow the projected comparison to exceed the remaining caller deadline budget;
 - activate the shadow by default;
 - move Social Graph source authority or replay ownership into Index;
 - change commands, revision checks, event publication, projection, or DLQ handling;
