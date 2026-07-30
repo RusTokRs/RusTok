@@ -1,3 +1,4 @@
+mod native_client_error_safety;
 mod server_functions;
 
 use super::{CheckoutCompletion, CheckoutCompletionTransportError, CompleteCheckoutRequest};
