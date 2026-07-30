@@ -7,6 +7,7 @@
 - `follow_read`
 - `graphql` behind feature `graphql`
 - `index` behind feature `index`
+- `index_privacy` behind feature `index`
 - `index_consumer` behind feature `index-consumer`
 - `index_dlq_receipt` behind feature `index-consumer`
 - `maintenance`
@@ -27,7 +28,10 @@
   persists relation state, a durable command receipt, and any real state-change event
   in one owner transaction.
 - `SocialGraphPrivacyReadPort` owns block/mute/follow policy reads.
-- `SocialGraphFollowReadPort` exposes revision-bearing directional follow state.
+- `IndexSocialGraphPrivacyReadPort` is the typed Index-backed implementation used by the
+  final server notification block/mute policy when feature `index` is enabled.
+- `SocialGraphFollowReadPort` exposes revision-bearing directional follow state and is not
+  served from the current Index schema.
 - `SocialGraphReceiptMaintenancePort::cleanup_completed_receipts(...)` exposes
   service/system-only dry-run and bounded completed-receipt cleanup.
 - `SocialGraphRelationEventMaintenancePort::replay_relation_state_events(...)`
@@ -76,8 +80,8 @@
 
 ## Optional Index projection
 
-- Feature `index` enables generic Index conversion without making Index a default
-  runtime dependency.
+- Feature `index` enables generic Index conversion and typed privacy reads without making
+  Index the owner of relation state or replay.
 - `social_graph_relation_index_schema()` declares non-localized relation records keyed
   by tenant and relation id.
 - `social_graph_relation_index_mutation(tenant_id, event_id, event)` accepts only a
@@ -85,7 +89,26 @@
 - Active revisions become `IndexMutation::Upsert`; inactive revisions become
   revisioned `IndexMutation::Delete` tombstones.
 - Relation revision becomes Index `source_version`.
-- The adapter contains no database, broker, or privacy authorization logic.
+- The projection adapter contains no privacy authorization logic.
+
+## Index privacy read adapter
+
+- `IndexSocialGraphPrivacyReadPort::new(SharedIndexQueryRuntime)` stores only the neutral
+  `Arc<dyn IndexQueryPort>` capability. It receives no database connection and never
+  constructs `PostgresIndexQueryPort`.
+- Block checks preserve either-direction semantics with typed `And`/`Or` filters.
+- Mute and follow checks remain directional; follow reads retain source-actor validation.
+- Follow batches retain the existing 100-target bound, deduplicate targets, use a typed
+  `In` filter, validate projected UUIDs, and return deterministic sorted IDs.
+- Every operation preserves `PortCallPolicy::read`, tenant parsing, and self-relation
+  rejection.
+- Missing persisted tenant schema or Index storage availability maps to retryable
+  fail-closed `social_graph.index_privacy_unavailable`.
+- Plan/compiler/decoder/backend/result-contract drift maps to non-retryable
+  `social_graph.index_privacy_contract_invalid`.
+- The final server notification block/mute policy requires `SharedIndexQueryRuntime` and
+  does not fall back to owner tables. Custom notification block/mute runtimes still win.
+- The adapter does not provide revision-bearing `SocialGraphFollowReadPort` results.
 
 ## Durable Index consumer
 
@@ -246,20 +269,26 @@
 
 ## Authority boundary
 
-- Social Graph owner ports and storage remain authoritative for block/mute/follow.
-- Profiles privacy must not authorize from Index state, decoded or raw DLQ receipts,
-  broker IDs, deduplication state, or consumer lag.
-- The adapter, projector, consumer, worker, position observer, and telemetry never read
-  Social Graph relation tables for projection work.
-- Index and DLQ/lag operations are optional infrastructure and must not authorize
-  presentation.
+- Social Graph owner storage, commands, events, replay, and drift repair remain the source
+  authority for block/mute/follow.
+- Notification block/mute policy may consume the approved Index projection only through
+  `IndexSocialGraphPrivacyReadPort`; missing readiness is retryable fail-closed and never
+  becomes an implicit allow.
+- Profiles privacy, presentation visibility, and revision-bearing follow state must not
+  authorize from Index state, decoded or raw DLQ receipts, broker IDs, deduplication state,
+  or consumer lag.
+- The projector, consumer, worker, position observer, and telemetry never read Social Graph
+  relation tables for projection work.
+- Index and DLQ/lag operations remain optional infrastructure and must not independently
+  authorize presentation.
 
 ## Dependencies
 
 - `rustok-api`: port context, actor, deadlines, idempotency, replay policy, typed errors.
 - `rustok-core`: module and migration contracts.
 - `rustok-events`: sealed relation event family.
-- optional `rustok-index`: schema, conversion, registration, mutation persistence.
+- optional `rustok-index`: schema, conversion, registration, mutation persistence, and
+  typed query runtime consumption.
 - optional `rustok-iggy`: persistent typed cursor, exact payload retention, deterministic
   DLQ header publication, DLQ, ack, and read-only broker position observation.
 - server composition uses `rustok-iggy-connector` feature `migrations` for neutral raw
@@ -278,6 +307,11 @@
 - Putting idempotency keys, request context, claims, roles, locale, channel, or command
   receipt snapshots into the external event.
 - Reading relation tables from Profiles, Index, or another consumer.
+- Constructing `PostgresIndexQueryPort` in Social Graph or bypassing
+  `SharedIndexQueryRuntime`.
+- Falling back to owner-table notification block/mute reads after final host composition.
+- Treating missing Index schema readiness as no block or no mute.
+- Using Index for revision-bearing follow state or Profiles presentation authorization.
 - Registering only in memory and assuming the persisted schema foreign key exists.
 - Writing `index_schemas` directly from Social Graph.
 - Calling the compatibility `receive_next` in a worker that must handle raw decode
@@ -319,6 +353,8 @@
 - `social_graph.relation_event_replay_forbidden`
 - `social_graph.relation_event_replay_limit_invalid`
 - `social_graph.storage_unavailable`
+- `social_graph.index_privacy_unavailable`
+- `social_graph.index_privacy_contract_invalid`
 - Index consumption maps typed schema/registry/mutation failures to bounded
   `social_graph.index.*` host codes without publishing private storage causes.
 - Decoded DLQ receipts add bounded `social_graph.index.dlq_receipt_*` and
