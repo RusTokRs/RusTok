@@ -13,6 +13,7 @@ mod category_audience {
 mod category_audience_read {
     include!("category_audience_read.rs");
     include!("category_audience_read_inline.rs");
+    include!("category_audience_read_search.rs");
 }
 mod category_audience_visibility;
 #[allow(clippy::collapsible_if)]
@@ -29,7 +30,10 @@ mod category_owner;
 mod category_policy;
 mod category_reply_create_audience;
 mod category_search_audience_scope;
-mod category_search_scope;
+mod category_search_scope {
+    include!("category_search_scope.rs");
+    include!("category_search_scope_visible.rs");
+}
 mod category_topic_create_audience;
 mod category_tree {
     include!("category_tree.rs");
