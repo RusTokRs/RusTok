@@ -6,21 +6,35 @@ function fail(message) { console.error(`[verify-comments-fba] ${message}`); proc
 function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
 function hasNone(text, snippets, label) { for (const s of snippets) if (text.includes(s)) fail(`${label} contains forbidden ${s}`); }
 function sameList(actual, expected) { return JSON.stringify(actual) === JSON.stringify(expected); }
+function sameSet(actual, expected) { return [...actual].sort().join('|') === [...expected].sort().join('|'); }
 
 const registryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
 const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json';
+const portBoundaryVerifierPath = 'scripts/verify/verify-comments-port-boundary.mjs';
+const portBoundarySelfTestPath = 'scripts/verify/verify-comments-port-boundary.test.mjs';
 const threadWriteEvidencePath = 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json';
 const threadWriteVerifierPath = 'scripts/verify/verify-comments-thread-write-invariants.mjs';
 const threadWriteSelfTestPath = 'scripts/verify/verify-comments-thread-write-invariants.test.mjs';
 const entitiesModulePath = 'crates/rustok-comments/src/entities/mod.rs';
 const classifierTestPath = 'crates/rustok-comments/src/entities/thread_insert_error_tests.rs';
 const packageJsonPath = 'package.json';
+const expectedOperations = [
+  'create_comment',
+  'get_comment',
+  'list_comments_for_target',
+  'list_public_comments_for_target',
+  'update_comment',
+  'set_comment_status',
+  'delete_comment',
+];
 const expectedVerifySteps = [
   'node scripts/verify/verify-comments-fba.mjs',
+  'npm run verify:comments:port-boundary',
   'npm run verify:comments:thread-write-invariants',
   'npm run verify:owner:fba-runtime-order',
 ];
 const expectedTestSteps = [
+  'npm run test:verify:comments:port-boundary',
   'npm run test:verify:comments:thread-write-invariants',
   'npm run test:verify:owner:fba-runtime-order',
 ];
@@ -30,12 +44,12 @@ const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 const threadWriteEvidence = json(registry.evidence.thread_write_invariants);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 3) fail('registry schema_version drift');
+if (registry.schema_version !== 4) fail('registry schema_version drift');
 if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
 const port = registry.ports?.[0];
 if (!port || port.name !== 'CommentsThreadPort') fail('port name drift');
-hasAll(JSON.stringify(port), ['create_comment','get_comment','list_comments_for_target','list_public_comments_for_target','update_comment','set_comment_status','delete_comment'], 'port operations');
+hasAll(JSON.stringify(port), expectedOperations, 'port operations');
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
 
 const chain = registry.verification_chain;
@@ -43,6 +57,14 @@ if (chain?.package_script !== 'verify:comments:fba') fail('verification chain pa
 if (chain?.test_package_script !== 'test:verify:comments:fba') fail('verification chain test package script drift');
 if (!sameList(chain?.steps ?? [], expectedVerifySteps)) fail('registry verification chain steps drift');
 if (!sameList(chain?.test_steps ?? [], expectedTestSteps)) fail('registry verification chain test steps drift');
+const portBoundaryGate = chain?.source_gates?.comments_port_boundary;
+if (
+  portBoundaryGate?.package_script !== 'verify:comments:port-boundary'
+  || portBoundaryGate?.test_package_script !== 'test:verify:comments:port-boundary'
+  || portBoundaryGate?.verifier !== portBoundaryVerifierPath
+  || portBoundaryGate?.self_test !== portBoundarySelfTestPath
+  || portBoundaryGate?.evidence !== evidencePath
+) fail('comments port source gate drift');
 const threadWriteGate = chain?.source_gates?.thread_write_invariants;
 if (
   threadWriteGate?.package_script !== 'verify:comments:thread-write-invariants'
@@ -54,10 +76,21 @@ if (
 ) fail('thread write source gate drift');
 if (!sameList(packageJson.scripts?.['verify:comments:fba']?.split(' && ') ?? [], expectedVerifySteps)) fail('package Comments FBA verify chain drift');
 if (!sameList(packageJson.scripts?.['test:verify:comments:fba']?.split(' && ') ?? [], expectedTestSteps)) fail('package Comments FBA test chain drift');
+if (packageJson.scripts?.['verify:comments:port-boundary'] !== `node ${portBoundaryVerifierPath}`) fail('comments port leaf verifier command drift');
+if (packageJson.scripts?.['test:verify:comments:port-boundary'] !== `node ${portBoundarySelfTestPath}`) fail('comments port leaf self-test command drift');
 if (packageJson.scripts?.['verify:comments:thread-write-invariants'] !== `node ${threadWriteVerifierPath}`) fail('thread write leaf verifier command drift');
 if (packageJson.scripts?.['test:verify:comments:thread-write-invariants'] !== `node ${threadWriteSelfTestPath}`) fail('thread write leaf self-test command drift');
-for (const filePath of [threadWriteEvidencePath, threadWriteVerifierPath, threadWriteSelfTestPath, entitiesModulePath, classifierTestPath]) {
-  if (!fs.existsSync(filePath)) fail(`thread write source gate file is missing ${filePath}`);
+for (const filePath of [
+  evidencePath,
+  portBoundaryVerifierPath,
+  portBoundarySelfTestPath,
+  threadWriteEvidencePath,
+  threadWriteVerifierPath,
+  threadWriteSelfTestPath,
+  entitiesModulePath,
+  classifierTestPath,
+]) {
+  if (!fs.existsSync(filePath)) fail(`Comments source gate file is missing ${filePath}`);
 }
 
 const manifest = read('crates/rustok-comments/rustok-module.toml');
@@ -140,10 +173,24 @@ for (const op of port.read_operations) {
   if (!body.includes('context.require_policy(PortCallPolicy::read())?')) fail(`${op} does not require shared read policy`);
 }
 
+if (registry.evidence.static_matrix !== evidencePath) fail('static matrix registry path drift');
+if (registry.evidence.port_boundary_runner !== portBoundaryVerifierPath) fail('comments port verifier registry path drift');
+if (registry.evidence.port_boundary_self_test !== portBoundarySelfTestPath) fail('comments port self-test registry path drift');
+if (evidence.schema_version !== 2 || evidence.surface !== 'comments_thread_port_boundary' || evidence.role !== 'provider') fail('comments port matrix schema/identity drift');
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
+if (evidence.compile_policy !== 'not_run_by_request' || evidence.runtime_status !== 'pending') fail('comments port matrix execution policy drift');
+if (registry.contract_tests.status !== 'source_verified_no_compile' || registry.contract_tests.runtime_status !== 'pending' || registry.contract_tests.runner !== portBoundaryVerifierPath) fail('comments contract-test status/runner drift');
+if (!sameSet(evidence.profiles?.source_verified ?? [], registry.contract_tests.source_profiles ?? [])) fail('source-verified profile drift');
+if (!sameSet(evidence.profiles?.pending ?? [], registry.contract_tests.pending_profiles ?? [])) fail('pending profile drift');
+if (!sameSet(registry.contract_tests.source_profiles ?? [], ['in_process'])) fail('in-process source profile drift');
+if (!sameSet(registry.contract_tests.pending_profiles ?? [], ['remote_adapter_placeholder'])) fail('remote pending profile drift');
 const registryCases = registry.contract_tests.cases.map(c => c.operation).sort().join('|');
 const evidenceCases = evidence.cases.map(c => c.operation).sort().join('|');
-if (registryCases !== evidenceCases) fail('evidence case matrix drift');
+if (registryCases !== evidenceCases || !sameSet(evidence.cases.map(c => c.operation), expectedOperations)) fail('evidence case matrix drift');
+for (const entry of evidence.cases) if (entry.runtime_evidence !== 'pending') fail(`evidence runtime promotion for ${entry.operation}`);
+for (const entry of registry.contract_tests.cases) if (entry.runtime_evidence !== 'pending') fail(`registry runtime promotion for ${entry.operation}`);
+if (evidence.fallback_smoke.status !== 'planned' || evidence.fallback_smoke.runtime_evidence !== 'pending') fail('evidence fallback status drift');
+if (registry.contract_tests.fallback_smoke.status !== 'planned' || registry.contract_tests.fallback_smoke.runtime_evidence !== 'pending') fail('registry fallback status drift');
 
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeSmoke.status !== 'executable_no_compile' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
 const fallbackProfiles = registry.contract_tests.fallback_smoke.profiles.slice().sort().join('|');
@@ -303,6 +350,27 @@ hasAll(firstThreadTest, [
   'assert_eq!(threads.len(), 1)',
   'assert_eq!(threads[0].comment_count, 2)',
 ], 'thread creation concurrency test');
+const portBoundaryVerifier = read(portBoundaryVerifierPath);
+hasAll(portBoundaryVerifier, [
+  'comments_thread_port_boundary',
+  'source_verified_no_compile',
+  'remote_adapter_placeholder',
+  'PortCallPolicy::write()',
+  'PortCallPolicy::read()',
+  'CommentStatus::Approved',
+  'verify:comments:port-boundary',
+], 'comments port boundary verifier');
+const portBoundarySelfTest = read(portBoundarySelfTestPath);
+hasAll(portBoundarySelfTest, [
+  'accepts the Comments in-process provider source boundary',
+  'rejects a missing provider operation',
+  'rejects a write operation without shared policy',
+  'rejects public reads that delegate to the authenticated list',
+  'rejects public projection without approved-only filtering',
+  'rejects missing typed database error mapping',
+  'rejects source promotion of the remote placeholder',
+  'rejects runtime promotion without retained execution',
+], 'comments port boundary self-test');
 const threadWriteVerifier = read(threadWriteVerifierPath);
 hasAll(threadWriteVerifier, [
   'identity_lock::Entity::update_many()',
@@ -334,10 +402,14 @@ hasAll(threadWriteSelfTest, [
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
 hasAll(plan, [
   '- FBA status: `boundary_ready`',
-  'Comments FBA registry schema v3',
+  'Comments FBA registry schema v4',
   'comments-fba-registry.json',
   'CommentsThreadPort',
   'comments-contract-test-static-matrix.json',
+  'verify:comments:port-boundary',
+  'test:verify:comments:port-boundary',
+  'source_verified_no_compile',
+  'remote adapter remains pending',
   registry.evidence.runtime_order_smoke,
   registry.evidence.thread_write_invariants,
   registry.evidence.thread_insert_error_classifier_test,
@@ -358,4 +430,4 @@ hasAll(plan, [
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, registered strict identity classifier harness, transactional thread writes, and first-thread identity serialization are consistent');
+console.log('[verify-comments-fba] Comments FBA provider metadata, source-verified in-process port boundary, exact source-gate chain, runtime-order evidence, registered strict identity classifier harness, transactional thread writes, and first-thread identity serialization are consistent');
