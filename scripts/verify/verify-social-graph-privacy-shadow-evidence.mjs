@@ -245,6 +245,18 @@ for (const label of ['tenant_id', 'source_user_id', 'target_user_id', 'relation_
   }
 }
 
+const notificationContractPath = 'crates/rustok-social-graph/contracts/social-graph-notification-policy.json';
+const notificationContract = JSON.parse(read(notificationContractPath));
+if (notificationContract.index_privacy_shadow_evidence !== contractPath) {
+  fail(`${notificationContractPath} must bind the privacy-shadow evidence contract`);
+}
+if (notificationContract.telemetry?.collector_started_metric !== contract.metrics.collector_epoch) {
+  fail(`${notificationContractPath} must bind the collector epoch metric`);
+}
+if (notificationContract.verification?.evidence_verifier !== 'scripts/verify/verify-social-graph-privacy-shadow-evidence.mjs') {
+  fail(`${notificationContractPath} must register the evidence verifier`);
+}
+
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-social-graph-privacy-shadow-evidence.mjs'",
 ]);
@@ -253,21 +265,12 @@ requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   '`start.prom`',
   '`end.prom`',
   '`capture.json`',
-  '`policy_passed`',
-  '`authoritative_cutover_authorized: false`',
-  'Not run by the implementation agent',
-]);
-requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
-  'M4 retained privacy-shadow evidence tooling: `source_complete_owner_execution_pending`',
   '`social_graph_index_privacy_shadow_window_capture_v1`',
   '`social_graph_index_privacy_shadow_window_admission_v1`',
-  'authoritative cutover remains blocked',
-]);
-requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
-  '`rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds`',
-  '`social_graph_index_privacy_shadow_window_capture_v1`',
-  'integrity admission',
+  '`policy_passed`',
   '`authoritative_cutover_authorized: false`',
+  'Authoritative cutover remains blocked',
+  'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-telemetry/CRATE_API.md', [
   '`rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds`',
