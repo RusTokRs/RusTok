@@ -25,6 +25,14 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
+function requireAll(source, markers, label) {
+  for (const marker of markers) requireMarker(source, marker, label);
+}
+
+function rejectAll(source, markers, label) {
+  for (const marker of markers) rejectMarker(source, marker, label);
+}
+
 function requireOrder(source, first, second, label) {
   const firstIndex = source.indexOf(first);
   const secondIndex = source.indexOf(second);
@@ -46,6 +54,7 @@ const profilesContentWritePath = "crates/rustok-profiles/src/content_write.rs";
 const profilesHandleWritePath = "crates/rustok-profiles/src/handle_write.rs";
 const profilesLocaleWritePath = "crates/rustok-profiles/src/locale_write.rs";
 const profilesMediaWritePath = "crates/rustok-profiles/src/media_write.rs";
+const profilesUpsertWritePath = "crates/rustok-profiles/src/upsert_write.rs";
 const profilesVisibilityWritePath = "crates/rustok-profiles/src/visibility_write.rs";
 const profilesErrorPath = "crates/rustok-profiles/src/error.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-public-author-summary.json";
@@ -64,6 +73,7 @@ const profilesContentWrite = read(profilesContentWritePath);
 const profilesHandleWrite = read(profilesHandleWritePath);
 const profilesLocaleWrite = read(profilesLocaleWritePath);
 const profilesMediaWrite = read(profilesMediaWritePath);
+const profilesUpsertWrite = read(profilesUpsertWritePath);
 const profilesVisibilityWrite = read(profilesVisibilityWritePath);
 const profilesError = read(profilesErrorPath);
 const note = read(notePath);
@@ -74,287 +84,313 @@ try {
   failures.push(`${contractPath}: invalid JSON: ${error.message}`);
 }
 
-for (const marker of [
-  "ProfilePresentationService::new(db.clone())",
-  ".find_profile_summary(tenant_id, author_id, Some(locale), None)",
-  "public_author_payload",
-  '"user_id": summary.user_id',
-  '"handle": summary.handle',
-  '"display_name": summary.display_name',
-  '"avatar_media_id": summary.avatar_media_id',
-  "public_author_payload_exposes_only_the_safe_summary",
-  "absent_or_denied_author_is_not_serialized",
-]) {
-  requireMarker(author, marker, authorPath);
-}
-for (const forbidden of [
-  '"tags": summary.tags',
-  '"preferred_locale": summary.preferred_locale',
-  '"visibility": summary.visibility',
-]) {
-  rejectMarker(author, forbidden, authorPath);
-}
+requireAll(
+  author,
+  [
+    "ProfilePresentationService::new(db.clone())",
+    ".find_profile_summary(tenant_id, author_id, Some(locale), None)",
+    "public_author_payload",
+    '"user_id": summary.user_id',
+    '"handle": summary.handle',
+    '"display_name": summary.display_name',
+    '"avatar_media_id": summary.avatar_media_id',
+    "public_author_payload_exposes_only_the_safe_summary",
+    "absent_or_denied_author_is_not_serialized",
+  ],
+  authorPath,
+);
+rejectAll(
+  author,
+  [
+    '"tags": summary.tags',
+    '"preferred_locale": summary.preferred_locale',
+    '"visibility": summary.visibility',
+  ],
+  authorPath,
+);
 
-for (const marker of [
-  "load_public_author_summary",
-  "handle: author_handle",
-  "public_author_keywords",
-  '"author": author_payload',
-  '"author_id": author_id',
-  '"has_public_author": author_id.is_some()',
-]) {
-  requireMarker(source, marker, sourcePath);
-}
-for (const forbidden of [
-  '"author_id": topic.author_id',
-  '"author_id": reply.author_id',
-]) {
-  rejectMarker(source, forbidden, sourcePath);
-}
+requireAll(
+  source,
+  [
+    "load_public_author_summary",
+    "handle: author_handle",
+    "public_author_keywords",
+    '"author": author_payload',
+    '"author_id": author_id',
+    '"has_public_author": author_id.is_some()',
+  ],
+  sourcePath,
+);
+rejectAll(
+  source,
+  ['"author_id": topic.author_id', '"author_id": reply.author_id'],
+  sourcePath,
+);
 requireMarker(forumLib, "mod search_projection_author;", forumLibPath);
 
-for (const marker of [
-  "ProfilePrivacyService::new(self.db.clone())",
-  "ProfileAccessAudience::Anonymous",
-  "ProfilePrivacyDecision::Allow",
-]) {
-  requireMarker(profiles, marker, profilesPath);
-}
-for (const marker of [
-  "mod content_write;",
-  "mod handle_write;",
-  "mod locale_write;",
-  "mod media_write;",
-  "mod profile_updated_event;",
-  "mod visibility_write;",
-]) {
-  requireMarker(profilesLib, marker, profilesLibPath);
-}
-for (const marker of [
-  "update_profile_content_with_event(",
-  "update_profile_handle_with_event(",
-  "update_profile_locale_with_event(",
-  "update_profile_media_with_event(",
-  "update_profile_visibility_with_event(",
-  "service.upsert_profile(",
-  "publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?",
-  "DomainEvent::ProfileUpdated",
-  "ProfileError::EventPublishUnavailable",
-]) {
-  requireMarker(profilesMutation, marker, profilesMutationPath);
-}
-for (const forbidden of [
-  "service.update_profile_content(",
-  "service.update_profile_handle(",
-  "service.update_profile_locale(",
-  "service.update_profile_media(",
-  "service.update_profile_visibility(",
-]) {
-  rejectMarker(profilesMutation, forbidden, profilesMutationPath);
-}
+requireAll(
+  profiles,
+  [
+    "ProfilePrivacyService::new(self.db.clone())",
+    "ProfileAccessAudience::Anonymous",
+    "ProfilePrivacyDecision::Allow",
+  ],
+  profilesPath,
+);
 
-for (const marker of [
-  "publish_profile_updated_in_tx",
-  "profile: &entities::profile::Model",
-  ".publish_in_tx(",
-  "DomainEvent::ProfileUpdated",
-  "ProfileOperation::PublishUpdatedEvent",
-  "ProfileError::EventPublishUnavailable",
-  "Profile update event publication failed",
-]) {
-  requireMarker(profilesUpdatedEvent, marker, profilesUpdatedEventPath);
-}
+requireAll(
+  profilesLib,
+  [
+    "mod content_write;",
+    "mod handle_write;",
+    "mod locale_write;",
+    "mod media_write;",
+    "mod profile_updated_event;",
+    "mod upsert_write;",
+    "mod visibility_write;",
+  ],
+  profilesLibPath,
+);
+
+requireAll(
+  profilesMutation,
+  [
+    "upsert_profile_with_event(",
+    "update_profile_content_with_event(",
+    "update_profile_handle_with_event(",
+    "update_profile_locale_with_event(",
+    "update_profile_media_with_event(",
+    "update_profile_visibility_with_event(",
+    "validate_profile_media_references(",
+    "ProfileError::EventPublishUnavailable",
+  ],
+  profilesMutationPath,
+);
+rejectAll(
+  profilesMutation,
+  [
+    "service.upsert_profile(",
+    "service.update_profile_content(",
+    "service.update_profile_handle(",
+    "service.update_profile_locale(",
+    "service.update_profile_media(",
+    "service.update_profile_visibility(",
+    "async fn publish_profile_updated(",
+    "DomainEvent::ProfileUpdated",
+    "use rustok_events::DomainEvent;",
+  ],
+  profilesMutationPath,
+);
+requireOrder(
+  profilesMutation,
+  "validate_profile_media_references(",
+  "upsert_profile_with_event(",
+  profilesMutationPath,
+);
+
+requireAll(
+  profilesUpdatedEvent,
+  [
+    "publish_profile_updated_in_tx",
+    "profile: &entities::profile::Model",
+    ".publish_in_tx(",
+    "DomainEvent::ProfileUpdated",
+    "ProfileOperation::PublishUpdatedEvent",
+    "ProfileError::EventPublishUnavailable",
+    "Profile update event publication failed",
+  ],
+  profilesUpdatedEventPath,
+);
 rejectMarker(profilesUpdatedEvent, "profile: &ProfileRecord", profilesUpdatedEventPath);
 
-for (const marker of [
-  "ProfileService::normalize_display_name(display_name)?",
-  "db.begin().await?",
-  "Column::TenantId.eq(tenant_id)",
-  "Column::ProfileUserId.eq(user_id)",
-  "Column::Locale.eq(translation_locale.clone())",
-  "active.display_name = Set(display_name)",
-  "active.bio = Set(bio.map(str::to_string))",
+function verifyTransactionalHelper(sourceText, helperPath, markers, writeMarker, logMarker) {
+  requireAll(
+    sourceText,
+    [
+      "db.begin().await?",
+      ...markers,
+      writeMarker,
+      "publish_profile_updated_in_tx",
+      "txn.rollback().await?",
+      "txn.commit().await?",
+      logMarker,
+    ],
+    helperPath,
+  );
+  requireOrder(sourceText, writeMarker, "publish_profile_updated_in_tx", helperPath);
+  requireOrder(sourceText, "publish_profile_updated_in_tx", "txn.commit().await?", helperPath);
+}
+
+verifyTransactionalHelper(
+  profilesContentWrite,
+  profilesContentWritePath,
+  [
+    "ProfileService::normalize_display_name(display_name)?",
+    "Column::ProfileUserId.eq(user_id)",
+    "active.display_name = Set(display_name)",
+    "active.bio = Set(bio.map(str::to_string))",
+    ".insert(&txn)",
+  ],
   ".update(&txn).await?",
-  ".insert(&txn)",
-  "publish_profile_updated_in_tx",
-  "txn.rollback().await?",
-  "txn.commit().await?",
   "Profile content event publication failed; rolling back owner write",
-]) {
-  requireMarker(profilesContentWrite, marker, profilesContentWritePath);
-}
-requireOrder(
-  profilesContentWrite,
-  ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  profilesContentWritePath,
-);
-requireOrder(
-  profilesContentWrite,
-  "publish_profile_updated_in_tx",
-  "txn.commit().await?",
-  profilesContentWritePath,
 );
 
-for (const marker of [
-  "ProfileService::normalize_handle(handle)?",
-  "db.begin().await?",
-  "Column::Handle.eq(handle.clone())",
-  "ProfileError::DuplicateHandle(handle)",
+verifyTransactionalHelper(
+  profilesHandleWrite,
+  profilesHandleWritePath,
+  [
+    "ProfileService::normalize_handle(handle)?",
+    "Column::Handle.eq(handle.clone())",
+    "ProfileError::DuplicateHandle(handle)",
+  ],
   ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  "txn.rollback().await?",
-  "txn.commit().await?",
   "Profile handle event publication failed; rolling back owner write",
-]) {
-  requireMarker(profilesHandleWrite, marker, profilesHandleWritePath);
-}
-requireOrder(
-  profilesHandleWrite,
-  ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  profilesHandleWritePath,
-);
-requireOrder(
-  profilesHandleWrite,
-  "publish_profile_updated_in_tx",
-  "txn.commit().await?",
-  profilesHandleWritePath,
 );
 
-for (const marker of [
-  "ProfileService::normalize_locale(preferred_locale)?",
-  "ProfileService::normalize_locale(tenant_default_locale)?",
-  "db.begin().await?",
-  "Column::TenantId.eq(tenant_id)",
-  "active.preferred_locale = Set(preferred_locale)",
+verifyTransactionalHelper(
+  profilesLocaleWrite,
+  profilesLocaleWritePath,
+  [
+    "ProfileService::normalize_locale(preferred_locale)?",
+    "ProfileService::normalize_locale(tenant_default_locale)?",
+    "active.preferred_locale = Set(preferred_locale)",
+    "selection policy only",
+  ],
   ".update(&txn).await?",
-  "selection policy only",
-  "publish_profile_updated_in_tx",
-  "txn.rollback().await?",
-  "txn.commit().await?",
   "Profile locale event publication failed; rolling back owner write",
-]) {
-  requireMarker(profilesLocaleWrite, marker, profilesLocaleWritePath);
-}
+);
 rejectMarker(profilesLocaleWrite, "profile_translation", profilesLocaleWritePath);
-requireOrder(
-  profilesLocaleWrite,
-  ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  profilesLocaleWritePath,
-);
-requireOrder(
-  profilesLocaleWrite,
-  "publish_profile_updated_in_tx",
-  "txn.commit().await?",
-  profilesLocaleWritePath,
-);
 
-for (const marker of [
-  "db.begin().await?",
-  "active.avatar_media_id = Set(avatar_media_id)",
-  "active.banner_media_id = Set(banner_media_id)",
+verifyTransactionalHelper(
+  profilesMediaWrite,
+  profilesMediaWritePath,
+  [
+    "active.avatar_media_id = Set(avatar_media_id)",
+    "active.banner_media_id = Set(banner_media_id)",
+  ],
   ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  "txn.rollback().await?",
-  "txn.commit().await?",
   "Profile media event publication failed; rolling back owner write",
-]) {
-  requireMarker(profilesMediaWrite, marker, profilesMediaWritePath);
-}
-requireOrder(
-  profilesMediaWrite,
-  ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  profilesMediaWritePath,
-);
-requireOrder(
-  profilesMediaWrite,
-  "publish_profile_updated_in_tx",
-  "txn.commit().await?",
-  profilesMediaWritePath,
 );
 
-for (const marker of [
-  "db.begin().await?",
+verifyTransactionalHelper(
+  profilesVisibilityWrite,
+  profilesVisibilityWritePath,
+  ["active.visibility = Set(visibility)"],
   ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  "txn.rollback().await?",
-  "txn.commit().await?",
   "Profile visibility event publication failed; rolling back owner write",
-]) {
-  requireMarker(profilesVisibilityWrite, marker, profilesVisibilityWritePath);
-}
-requireOrder(
-  profilesVisibilityWrite,
-  ".update(&txn).await?",
-  "publish_profile_updated_in_tx",
-  profilesVisibilityWritePath,
+);
+
+requireAll(
+  profilesUpsertWrite,
+  [
+    "ProfileService::normalize_handle(&handle)?",
+    "ProfileService::normalize_display_name(&display_name)?",
+    "ProfileService::normalize_locale(preferred_locale.as_deref())?",
+    "db.begin().await?",
+    "Column::TenantId.eq(tenant_id)",
+    "Column::Handle.eq(handle.clone())",
+    "ProfileError::DuplicateHandle(handle)",
+    "entities::profile::ActiveModel",
+    "entities::profile_translation::Entity::find()",
+    "entities::profile_tag::Entity::delete_many()",
+    "ensure_terms_for_module_in_tx",
+    "TaxonomyTermKind::Tag",
+    ".insert(&txn)",
+    "publish_profile_updated_in_tx",
+    "txn.rollback().await?",
+    "txn.commit().await?",
+    "Profile upsert event publication failed; rolling back owner write",
+  ],
+  profilesUpsertWritePath,
 );
 requireOrder(
-  profilesVisibilityWrite,
+  profilesUpsertWrite,
+  "entities::profile::ActiveModel",
+  "publish_profile_updated_in_tx",
+  profilesUpsertWritePath,
+);
+requireOrder(
+  profilesUpsertWrite,
+  "entities::profile_translation::Entity::find()",
+  "publish_profile_updated_in_tx",
+  profilesUpsertWritePath,
+);
+requireOrder(
+  profilesUpsertWrite,
+  "entities::profile_tag::Entity::delete_many()",
+  "publish_profile_updated_in_tx",
+  profilesUpsertWritePath,
+);
+requireOrder(
+  profilesUpsertWrite,
   "publish_profile_updated_in_tx",
   "txn.commit().await?",
-  profilesVisibilityWritePath,
+  profilesUpsertWritePath,
 );
 
-for (const marker of [
-  "EventPublishUnavailable",
-  '"profiles.event_publish_unavailable"',
-  "Self::PresentationUnavailable | Self::EventPublishUnavailable | Self::Database(_)",
-]) {
-  requireMarker(profilesError, marker, profilesErrorPath);
-}
+requireAll(
+  profilesError,
+  [
+    "EventPublishUnavailable",
+    '"profiles.event_publish_unavailable"',
+    "Self::PresentationUnavailable | Self::EventPublishUnavailable | Self::Database(_)",
+  ],
+  profilesErrorPath,
+);
 
-for (const marker of [
-  "Author(Uuid)",
-  "DomainEvent::ProfileUpdated { user_id, .. }",
-  "AUTHOR_SCOPE_PREFIX",
-  "scope_key.starts_with(AUTHOR_SCOPE_PREFIX)",
-  "return Ok(None);",
-  "profile_changes_have_redaction_barrier_scope",
-]) {
-  requireMarker(inbox, marker, inboxPath);
-}
+requireAll(
+  inbox,
+  [
+    "Author(Uuid)",
+    "DomainEvent::ProfileUpdated { user_id, .. }",
+    "AUTHOR_SCOPE_PREFIX",
+    "scope_key.starts_with(AUTHOR_SCOPE_PREFIX)",
+    "profile_changes_have_redaction_barrier_scope",
+  ],
+  inboxPath,
+);
 rejectMarker(inbox, "DomainEvent::UserDeleted", inboxPath);
-for (const marker of [
-  "DomainEvent::ProfileUpdated { .. }",
-  '"rebuild_forum_author_projection"',
-  "projector.rebuild_tenant(envelope.tenant_id).await",
-]) {
-  requireMarker(ingestion, marker, ingestionPath);
-}
+requireAll(
+  ingestion,
+  [
+    "DomainEvent::ProfileUpdated { .. }",
+    '"rebuild_forum_author_projection"',
+    "projector.rebuild_tenant(envelope.tenant_id).await",
+  ],
+  ingestionPath,
+);
 rejectMarker(ingestion, "DomainEvent::UserDeleted", ingestionPath);
 
-for (const marker of [
-  "FORUM-23A5",
-  "ProfilePresentationService",
-  "forum_author:<user_id>",
-  "raw `payload.author_id`",
-  "owner-issued monotonic",
-  "same Profiles-owned database transaction",
-  "update_my_profile_handle",
-  "update_my_profile_content",
-  "update_my_profile_locale",
-  "update_my_profile_media",
-  "shared transactional publisher",
-  "actual Profiles owner model",
-  "Profile upsert still",
-  "does not treat `UserDeleted`",
-  "not run by the implementation agent",
-]) {
-  requireMarker(note, marker, notePath);
-}
+requireAll(
+  note,
+  [
+    "FORUM-23A6",
+    "ProfilePresentationService",
+    "forum_author:<user_id>",
+    "raw `payload.author_id`",
+    "owner-issued monotonic",
+    "upsert_my_profile",
+    "taxonomy-backed profile tags",
+    "post-commit event publisher",
+    "CLI/backfill",
+    "does not treat `UserDeleted`",
+    "Not run by the implementation agent",
+  ],
+  notePath,
+);
 
 if (contract) {
   if (contract.task !== "FORUM-23A") failures.push(`${contractPath}: unexpected task`);
-  if (contract.latest_slice !== "FORUM-23A5") {
+  if (contract.latest_slice !== "FORUM-23A6") {
     failures.push(`${contractPath}: unexpected latest slice`);
   }
   if (contract.status !== "source_complete_execution_pending") {
     failures.push(`${contractPath}: unexpected status`);
   }
+  if (contract.profiles_upsert_event_owner !== profilesUpsertWritePath) {
+    failures.push(`${contractPath}: unexpected upsert event owner`);
+  }
+
   for (const key of [
     "anonymous_profiles_presentation_is_authoritative",
     "forum_does_not_copy_profile_privacy_policy",
@@ -366,12 +402,14 @@ if (contract) {
     "preferred_locale_is_not_serialized",
     "profile_visibility_is_not_serialized",
     "public_handle_populates_search_handle",
+    "public_handle_and_display_name_extend_keywords",
     "author_filter_value_is_populated_only_for_public_author",
   ]) {
     if (contract.projection_boundary?.[key] !== true) {
       failures.push(`${contractPath}: projection boundary ${key} drift`);
     }
   }
+
   for (const key of [
     "profile_updated_is_durable",
     "profile_updated_is_emitted_after_owner_write",
@@ -388,6 +426,11 @@ if (contract) {
     "locale_write_does_not_create_translations",
     "profile_media_write_and_event_are_atomic",
     "media_event_failure_rolls_back_owner_write",
+    "profile_upsert_write_and_event_are_atomic",
+    "upsert_event_failure_rolls_back_owner_write",
+    "upsert_couples_profile_translation_tags_and_event",
+    "upsert_media_validation_precedes_owner_transaction",
+    "remaining_profile_summary_write_and_event_pairs_are_atomic",
     "author_scope_is_tenant_and_user_scoped",
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark",
     "author_change_rebuilds_current_forum_owner_state",
@@ -398,12 +441,10 @@ if (contract) {
       failures.push(`${contractPath}: redaction boundary ${key} drift`);
     }
   }
-  if (contract.redaction_boundary?.remaining_profile_summary_write_and_event_pairs_are_atomic !== false) {
-    failures.push(`${contractPath}: remaining profile mutations must stay a non-claim`);
-  }
   if (contract.redaction_boundary?.schema_migration_added !== false) {
     failures.push(`${contractPath}: schema migration must remain absent`);
   }
+
   for (const key of [
     "forum_graphql_changed",
     "forum_rest_changed",
@@ -417,14 +458,22 @@ if (contract) {
       failures.push(`${contractPath}: compatibility ${key} must remain false`);
     }
   }
+
   for (const nonClaim of [
     "account deletion redaction is complete",
-    "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
-    "profile upsert is transactionally coupled to ProfileUpdated publication",
+    "CLI backfill profile creation publishes ProfileUpdated",
+    "all Profiles owner writes trigger durable Forum Search invalidation",
   ]) {
     if (!contract.non_claims?.includes(nonClaim)) {
       failures.push(`${contractPath}: missing non-claim ${nonClaim}`);
     }
+  }
+  if (
+    !contract.remaining_scope?.includes(
+      "define durable Search invalidation for CLI backfill profile creation or prove rebuild coverage",
+    )
+  ) {
+    failures.push(`${contractPath}: missing backfill invalidation debt`);
   }
   if (contract.downstream_task !== "FORUM-23B") {
     failures.push(`${contractPath}: unexpected downstream task`);
