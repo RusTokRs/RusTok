@@ -109,12 +109,9 @@ fn is_invalid_checkout_request(error: &UiTransportError) -> bool {
         .into_iter()
         .flatten()
         .any(|message| {
-            matches!(
-                message,
-                CART_ID_UUID_VALIDATION
-                    | IDEMPOTENCY_KEY_VALIDATION
-                    | OWNER_INVALID_CHECKOUT_REQUEST
-            )
+            message == CART_ID_UUID_VALIDATION
+                || message == IDEMPOTENCY_KEY_VALIDATION
+                || message == OWNER_INVALID_CHECKOUT_REQUEST
         })
 }
 
