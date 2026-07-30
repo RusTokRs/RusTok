@@ -17,6 +17,14 @@ const COMMERCE_ADMIN_PROMOTION_BOUNDARY: &str =
 const PREVIEW_CART_PROMOTION_OPERATION: &str = "preview_cart_promotion";
 const APPLY_CART_PROMOTION_OPERATION: &str = "apply_cart_promotion";
 
+const COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER: &str =
+    "rustok_commerce.admin_order_change_transport";
+const COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY: &str =
+    "commerce_admin_order_change_native_transport";
+const LIST_ORDER_CHANGES_OPERATION: &str = "list_order_changes";
+const APPLY_ORDER_CHANGE_OPERATION: &str = "apply_order_change";
+const CANCEL_ORDER_CHANGE_OPERATION: &str = "cancel_order_change";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
     Graphql(String),
@@ -111,6 +119,57 @@ fn ensure_permission(
     }
 }
 
+fn transport_correlation_id(scope: &str, operation: &'static str) -> String {
+    format!("{scope}:{operation}:{}", uuid::Uuid::new_v4())
+}
+
+fn request_context_fields(
+    request_context: Option<&rustok_api::RequestContext>,
+) -> (
+    Option<uuid::Uuid>,
+    Option<uuid::Uuid>,
+    Option<uuid::Uuid>,
+    Option<&str>,
+    Option<&str>,
+) {
+    (
+        request_context.map(|context| context.tenant_id),
+        request_context.and_then(|context| context.user_id),
+        request_context.and_then(|context| context.channel_id),
+        request_context.and_then(|context| context.channel_slug.as_deref()),
+        request_context.map(|context| context.locale.as_str()),
+    )
+}
+
+fn parse_metadata_json(value: &str) -> Result<serde_json::Value, ServerFnError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Ok(serde_json::Value::Object(Default::default()))
+    } else {
+        serde_json::from_str(trimmed)
+            .map_err(|_| ServerFnError::new("Invalid JSON metadata payload"))
+    }
+}
+
+fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
+    uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("{field} must be a valid UUID")))
+}
+
+fn parse_optional_uuid(
+    value: Option<String>,
+    field: &str,
+) -> Result<Option<uuid::Uuid>, ServerFnError> {
+    value
+        .and_then(|value| optional_text(value.as_str()))
+        .map(|value| parse_uuid(value.as_str(), field))
+        .transpose()
+}
+
+// -----------------------------------------------------------------------------
+// Cart-promotion native boundary
+// -----------------------------------------------------------------------------
+
 fn parse_cart_id(value: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid cart_id"))
 }
@@ -173,16 +232,6 @@ fn ensure_unused_decimal(value: &str, field_name: &str) -> Result<(), ServerFnEr
     }
 }
 
-fn parse_metadata_json(value: &str) -> Result<serde_json::Value, ServerFnError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        Ok(serde_json::Value::Object(Default::default()))
-    } else {
-        serde_json::from_str(trimmed)
-            .map_err(|_| ServerFnError::new("Invalid JSON metadata payload"))
-    }
-}
-
 fn normalize_source_id(value: &str) -> Result<String, ServerFnError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -193,10 +242,7 @@ fn normalize_source_id(value: &str) -> Result<String, ServerFnError> {
 }
 
 fn promotion_correlation_id(operation: &'static str) -> String {
-    format!(
-        "commerce-admin-cart-promotion:{operation}:{}",
-        uuid::Uuid::new_v4()
-    )
+    transport_correlation_id("commerce-admin-cart-promotion", operation)
 }
 
 fn promotion_context_error<E: std::fmt::Debug>(
@@ -317,6 +363,8 @@ fn promotion_port_error(
     request_context: Option<&rustok_api::RequestContext>,
     cart_id: uuid::Uuid,
 ) -> ServerFnError {
+    let (request_tenant_id, request_user_id, channel_id, channel_slug, locale) =
+        request_context_fields(request_context);
     match &error.kind {
         rustok_api::PortErrorKind::Unavailable
         | rustok_api::PortErrorKind::Timeout
@@ -331,11 +379,11 @@ fn promotion_port_error(
                 tenant_id = %tenant.id,
                 actor_id = %auth.user_id,
                 cart_id = %cart_id,
-                request_tenant_id = ?request_context.map(|context| context.tenant_id),
-                request_user_id = ?request_context.and_then(|context| context.user_id),
-                channel_id = ?request_context.and_then(|context| context.channel_id),
-                channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
-                locale = ?request_context.map(|context| context.locale.as_str()),
+                request_tenant_id = ?request_tenant_id,
+                request_user_id = ?request_user_id,
+                channel_id = ?channel_id,
+                channel_slug = ?channel_slug,
+                locale = ?locale,
                 public_code = %error.code,
                 error_kind = ?error.kind,
                 retryable = error.retryable,
@@ -354,11 +402,11 @@ fn promotion_port_error(
                 tenant_id = %tenant.id,
                 actor_id = %auth.user_id,
                 cart_id = %cart_id,
-                request_tenant_id = ?request_context.map(|context| context.tenant_id),
-                request_user_id = ?request_context.and_then(|context| context.user_id),
-                channel_id = ?request_context.and_then(|context| context.channel_id),
-                channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
-                locale = ?request_context.map(|context| context.locale.as_str()),
+                request_tenant_id = ?request_tenant_id,
+                request_user_id = ?request_user_id,
+                channel_id = ?channel_id,
+                channel_slug = ?channel_slug,
+                locale = ?locale,
                 public_code = %error.code,
                 error_kind = ?error.kind,
                 retryable = error.retryable,
@@ -509,35 +557,228 @@ async fn apply_cart_promotion_native_with_context(
     Ok(map_cart_snapshot(cart))
 }
 
-fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("{field} must be a valid UUID")))
+// -----------------------------------------------------------------------------
+// Order-change native boundary
+// -----------------------------------------------------------------------------
+
+fn order_change_correlation_id(operation: &'static str) -> String {
+    transport_correlation_id("commerce-admin-order-change", operation)
 }
 
-fn parse_optional_uuid(
-    value: Option<String>,
-    field: &str,
-) -> Result<Option<uuid::Uuid>, ServerFnError> {
-    value
-        .and_then(|value| optional_text(value.as_str()))
-        .map(|value| parse_uuid(value.as_str(), field))
-        .transpose()
+fn order_change_context_error<E: std::fmt::Debug>(
+    error: E,
+    operation: &'static str,
+    context_kind: &'static str,
+    correlation_id: &str,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
+        operation,
+        context_kind,
+        correlation_id,
+        code,
+        boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
+        "commerce admin order-change request context extraction failed"
+    );
+    ServerFnError::new(public_message)
+}
+
+fn order_change_auth_context_error<E: std::fmt::Debug>(
+    error: E,
+    operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    order_change_context_error(
+        error,
+        operation,
+        "auth",
+        correlation_id,
+        "commerce.admin_order_change_auth_context_unavailable",
+        "Commerce admin authentication context is temporarily unavailable",
+    )
+}
+
+fn order_change_tenant_context_error<E: std::fmt::Debug>(
+    error: E,
+    operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    order_change_context_error(
+        error,
+        operation,
+        "tenant",
+        correlation_id,
+        "commerce.admin_order_change_tenant_context_unavailable",
+        "Commerce admin tenant context is temporarily unavailable",
+    )
+}
+
+async fn optional_order_change_request_context(
+    operation: &'static str,
+    correlation_id: &str,
+) -> Option<rustok_api::RequestContext> {
+    match leptos_axum::extract::<rustok_api::RequestContext>().await {
+        Ok(context) => Some(context),
+        Err(error) => {
+            tracing::warn!(
+                error = ?error,
+                consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
+                operation,
+                context_kind = "request",
+                correlation_id,
+                code = "commerce.admin_order_change_optional_request_context_unavailable",
+                boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
+                "commerce admin order-change optional request context extraction failed"
+            );
+            None
+        }
+    }
 }
 
 fn order_service_from_context(
     runtime_ctx: &HostRuntimeContext,
+    operation: &'static str,
+    correlation_id: &str,
+    tenant: &rustok_api::TenantContext,
+    auth: &rustok_api::AuthContext,
+    request_context: Option<&rustok_api::RequestContext>,
 ) -> Result<rustok_order::OrderService, ServerFnError> {
     let event_bus = runtime_ctx
         .shared_get::<rustok_outbox::TransactionalEventBus>()
         .ok_or_else(|| {
-            ServerFnError::new(
-                "Commerce admin requires TransactionalEventBus in host runtime context",
-            )
+            let (request_tenant_id, request_user_id, channel_id, channel_slug, locale) =
+                request_context_fields(request_context);
+            tracing::error!(
+                owner = "rustok_order",
+                consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
+                operation,
+                correlation_id,
+                tenant_id = %tenant.id,
+                actor_id = %auth.user_id,
+                request_tenant_id = ?request_tenant_id,
+                request_user_id = ?request_user_id,
+                channel_id = ?channel_id,
+                channel_slug = ?channel_slug,
+                locale = ?locale,
+                code = "commerce.admin_order_change_runtime_unavailable",
+                boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
+                "commerce admin order-change runtime composition is unavailable"
+            );
+            ServerFnError::new("Commerce order-change runtime is temporarily unavailable")
         })?;
     Ok(rustok_order::OrderService::new(
         runtime_ctx.db_clone(),
         event_bus,
     ))
+}
+
+struct OrderChangeOwnerErrorContext<'a> {
+    operation: &'static str,
+    correlation_id: &'a str,
+    tenant: &'a rustok_api::TenantContext,
+    auth: &'a rustok_api::AuthContext,
+    request_context: Option<&'a rustok_api::RequestContext>,
+    order_id: Option<uuid::Uuid>,
+    order_change_id: Option<uuid::Uuid>,
+}
+
+fn order_change_owner_error(
+    mut context: OrderChangeOwnerErrorContext<'_>,
+    error: rustok_order::error::OrderError,
+) -> ServerFnError {
+    match &error {
+        rustok_order::error::OrderError::OrderNotFound(id) => context.order_id = Some(*id),
+        rustok_order::error::OrderError::OrderChangeNotFound(id) => {
+            context.order_change_id = Some(*id)
+        }
+        _ => {}
+    }
+
+    let (public_code, public_message, error_kind, severe) = match &error {
+        rustok_order::error::OrderError::Validation(_) => (
+            "commerce.admin_order_change_invalid",
+            "Order change request is invalid",
+            "validation",
+            false,
+        ),
+        rustok_order::error::OrderError::OrderNotFound(_)
+        | rustok_order::error::OrderError::OrderReturnNotFound(_)
+        | rustok_order::error::OrderError::OrderChangeNotFound(_) => (
+            "commerce.admin_order_change_not_found",
+            "Order resource was not found",
+            "not_found",
+            false,
+        ),
+        rustok_order::error::OrderError::InvalidTransition { .. } => (
+            "commerce.admin_order_change_state_conflict",
+            "Order change conflicts with the current order state",
+            "state_conflict",
+            false,
+        ),
+        rustok_order::error::OrderError::Database(_) => (
+            "commerce.admin_order_change_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "database",
+            true,
+        ),
+        rustok_order::error::OrderError::Core(_) => (
+            "commerce.admin_order_change_failed",
+            "Order change could not be completed safely",
+            "core",
+            true,
+        ),
+    };
+
+    let (request_tenant_id, request_user_id, channel_id, channel_slug, locale) =
+        request_context_fields(context.request_context);
+    if severe {
+        tracing::error!(
+            error = ?error,
+            owner = "rustok_order",
+            consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
+            operation = context.operation,
+            correlation_id = context.correlation_id,
+            tenant_id = %context.tenant.id,
+            actor_id = %context.auth.user_id,
+            order_id = ?context.order_id,
+            order_change_id = ?context.order_change_id,
+            request_tenant_id = ?request_tenant_id,
+            request_user_id = ?request_user_id,
+            channel_id = ?channel_id,
+            channel_slug = ?channel_slug,
+            locale = ?locale,
+            error_kind,
+            public_code,
+            boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
+            "commerce admin order-change owner operation failed"
+        );
+    } else {
+        tracing::warn!(
+            error = ?error,
+            owner = "rustok_order",
+            consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
+            operation = context.operation,
+            correlation_id = context.correlation_id,
+            tenant_id = %context.tenant.id,
+            actor_id = %context.auth.user_id,
+            order_id = ?context.order_id,
+            order_change_id = ?context.order_change_id,
+            request_tenant_id = ?request_tenant_id,
+            request_user_id = ?request_user_id,
+            channel_id = ?channel_id,
+            channel_slug = ?channel_slug,
+            locale = ?locale,
+            error_kind,
+            public_code,
+            boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
+            "commerce admin order-change owner operation was rejected"
+        );
+    }
+
+    ServerFnError::new(public_message)
 }
 
 fn map_order_change(change: rustok_order::dto::OrderChangeResponse) -> CommerceOrderChange {
@@ -562,6 +803,8 @@ async fn fetch_order_changes_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    request_context: Option<&rustok_api::RequestContext>,
+    correlation_id: &str,
     tenant_id: String,
     order_id: Option<String>,
     status: Option<String>,
@@ -579,20 +822,41 @@ async fn fetch_order_changes_native_with_context(
             "tenant_id must match the effective tenant context",
         ));
     }
+    let order_id = parse_optional_uuid(order_id, "order_id")?;
 
-    let (items, total) = order_service_from_context(app_ctx)?
-        .list_order_changes(
-            tenant.id,
-            rustok_order::dto::ListOrderChangesInput {
-                page: 1,
-                per_page: 20,
-                order_id: parse_optional_uuid(order_id, "order_id")?,
-                status: status.and_then(|value| optional_text(value.as_str())),
-                change_type: None,
+    let (items, total) = order_service_from_context(
+        app_ctx,
+        LIST_ORDER_CHANGES_OPERATION,
+        correlation_id,
+        tenant,
+        auth,
+        request_context,
+    )?
+    .list_order_changes(
+        tenant.id,
+        rustok_order::dto::ListOrderChangesInput {
+            page: 1,
+            per_page: 20,
+            order_id,
+            status: status.and_then(|value| optional_text(value.as_str())),
+            change_type: None,
+        },
+    )
+    .await
+    .map_err(|error| {
+        order_change_owner_error(
+            OrderChangeOwnerErrorContext {
+                operation: LIST_ORDER_CHANGES_OPERATION,
+                correlation_id,
+                tenant,
+                auth,
+                request_context,
+                order_id,
+                order_change_id: None,
             },
+            error,
         )
-        .await
-        .map_err(ServerFnError::new)?;
+    })?;
 
     Ok(CommerceOrderChangeList {
         items: items.into_iter().map(map_order_change).collect(),
@@ -607,6 +871,8 @@ async fn apply_order_change_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    request_context: Option<&rustok_api::RequestContext>,
+    correlation_id: &str,
     tenant_id: String,
     id: String,
     draft: CommerceOrderChangeActionDraft,
@@ -624,17 +890,37 @@ async fn apply_order_change_native_with_context(
             "tenant_id must match the effective tenant context",
         ));
     }
+    let order_change_id = parse_uuid(id.as_str(), "order_change_id")?;
+    let metadata = parse_metadata_json(&draft.metadata_json)?;
 
-    let change = order_service_from_context(app_ctx)?
-        .apply_order_change(
-            tenant.id,
-            parse_uuid(id.as_str(), "order_change_id")?,
-            rustok_order::dto::ApplyOrderChangeInput {
-                metadata: parse_metadata_json(&draft.metadata_json)?,
+    let change = order_service_from_context(
+        app_ctx,
+        APPLY_ORDER_CHANGE_OPERATION,
+        correlation_id,
+        tenant,
+        auth,
+        request_context,
+    )?
+    .apply_order_change(
+        tenant.id,
+        order_change_id,
+        rustok_order::dto::ApplyOrderChangeInput { metadata },
+    )
+    .await
+    .map_err(|error| {
+        order_change_owner_error(
+            OrderChangeOwnerErrorContext {
+                operation: APPLY_ORDER_CHANGE_OPERATION,
+                correlation_id,
+                tenant,
+                auth,
+                request_context,
+                order_id: None,
+                order_change_id: Some(order_change_id),
             },
+            error,
         )
-        .await
-        .map_err(ServerFnError::new)?;
+    })?;
 
     Ok(map_order_change(change))
 }
@@ -643,6 +929,8 @@ async fn cancel_order_change_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    request_context: Option<&rustok_api::RequestContext>,
+    correlation_id: &str,
     tenant_id: String,
     id: String,
     draft: CommerceOrderChangeActionDraft,
@@ -660,21 +948,47 @@ async fn cancel_order_change_native_with_context(
             "tenant_id must match the effective tenant context",
         ));
     }
+    let order_change_id = parse_uuid(id.as_str(), "order_change_id")?;
+    let metadata = parse_metadata_json(&draft.metadata_json)?;
 
-    let change = order_service_from_context(app_ctx)?
-        .cancel_order_change(
-            tenant.id,
-            parse_uuid(id.as_str(), "order_change_id")?,
-            rustok_order::dto::CancelOrderChangeInput {
-                reason: optional_text(draft.reason.as_str()),
-                metadata: parse_metadata_json(&draft.metadata_json)?,
+    let change = order_service_from_context(
+        app_ctx,
+        CANCEL_ORDER_CHANGE_OPERATION,
+        correlation_id,
+        tenant,
+        auth,
+        request_context,
+    )?
+    .cancel_order_change(
+        tenant.id,
+        order_change_id,
+        rustok_order::dto::CancelOrderChangeInput {
+            reason: optional_text(draft.reason.as_str()),
+            metadata,
+        },
+    )
+    .await
+    .map_err(|error| {
+        order_change_owner_error(
+            OrderChangeOwnerErrorContext {
+                operation: CANCEL_ORDER_CHANGE_OPERATION,
+                correlation_id,
+                tenant,
+                auth,
+                request_context,
+                order_id: None,
+                order_change_id: Some(order_change_id),
             },
+            error,
         )
-        .await
-        .map_err(ServerFnError::new)?;
+    })?;
 
     Ok(map_order_change(change))
 }
+
+// -----------------------------------------------------------------------------
+// Shared response mapping
+// -----------------------------------------------------------------------------
 
 fn map_cart_promotion_preview(
     scope: CommerceCartPromotionScope,
@@ -726,6 +1040,10 @@ fn map_cart_snapshot(cart: rustok_cart::dto::CartResponse) -> CommerceAdminCartS
     }
 }
 
+// -----------------------------------------------------------------------------
+// Mounted native server functions
+// -----------------------------------------------------------------------------
+
 #[server(prefix = "/api/fn", endpoint = "commerce/admin/order-changes")]
 async fn commerce_admin_order_changes_native(
     tenant_id: String,
@@ -735,16 +1053,26 @@ async fn commerce_admin_order_changes_native(
     use leptos::prelude::expect_context;
     use rustok_api::{AuthContext, TenantContext};
 
+    let operation = LIST_ORDER_CHANGES_OPERATION;
+    let correlation_id = order_change_correlation_id(operation);
     let app_ctx = expect_context::<HostRuntimeContext>();
     let auth = leptos_axum::extract::<AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| order_change_auth_context_error(error, operation, &correlation_id))?;
     let tenant = leptos_axum::extract::<TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| order_change_tenant_context_error(error, operation, &correlation_id))?;
+    let request_context = optional_order_change_request_context(operation, &correlation_id).await;
 
     fetch_order_changes_native_with_context(
-        &app_ctx, &auth, &tenant, tenant_id, order_id, status,
+        &app_ctx,
+        &auth,
+        &tenant,
+        request_context.as_ref(),
+        &correlation_id,
+        tenant_id,
+        order_id,
+        status,
     )
     .await
 }
@@ -758,15 +1086,28 @@ async fn commerce_admin_apply_order_change_native(
     use leptos::prelude::expect_context;
     use rustok_api::{AuthContext, TenantContext};
 
+    let operation = APPLY_ORDER_CHANGE_OPERATION;
+    let correlation_id = order_change_correlation_id(operation);
     let app_ctx = expect_context::<HostRuntimeContext>();
     let auth = leptos_axum::extract::<AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| order_change_auth_context_error(error, operation, &correlation_id))?;
     let tenant = leptos_axum::extract::<TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| order_change_tenant_context_error(error, operation, &correlation_id))?;
+    let request_context = optional_order_change_request_context(operation, &correlation_id).await;
 
-    apply_order_change_native_with_context(&app_ctx, &auth, &tenant, tenant_id, id, draft).await
+    apply_order_change_native_with_context(
+        &app_ctx,
+        &auth,
+        &tenant,
+        request_context.as_ref(),
+        &correlation_id,
+        tenant_id,
+        id,
+        draft,
+    )
+    .await
 }
 
 #[server(prefix = "/api/fn", endpoint = "commerce/admin/cancel-order-change")]
@@ -778,15 +1119,28 @@ async fn commerce_admin_cancel_order_change_native(
     use leptos::prelude::expect_context;
     use rustok_api::{AuthContext, TenantContext};
 
+    let operation = CANCEL_ORDER_CHANGE_OPERATION;
+    let correlation_id = order_change_correlation_id(operation);
     let app_ctx = expect_context::<HostRuntimeContext>();
     let auth = leptos_axum::extract::<AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| order_change_auth_context_error(error, operation, &correlation_id))?;
     let tenant = leptos_axum::extract::<TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|error| order_change_tenant_context_error(error, operation, &correlation_id))?;
+    let request_context = optional_order_change_request_context(operation, &correlation_id).await;
 
-    cancel_order_change_native_with_context(&app_ctx, &auth, &tenant, tenant_id, id, draft).await
+    cancel_order_change_native_with_context(
+        &app_ctx,
+        &auth,
+        &tenant,
+        request_context.as_ref(),
+        &correlation_id,
+        tenant_id,
+        id,
+        draft,
+    )
+    .await
 }
 
 #[server(prefix = "/api/fn", endpoint = "commerce/admin/preview-cart-promotion")]
