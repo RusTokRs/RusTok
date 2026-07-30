@@ -168,23 +168,27 @@ try {
     "'--root'",
     "'--packet'",
     "'--admission'",
+    "'--output'",
     'inspectRetainedPartitionBundle',
     'buildRetainedPartitionArchiveManifest',
-    'JSON.stringify(manifest, null, 2)',
-    'process.stdout.write',
-    'It writes no files.',
+    'renderDerivedJson',
+    'process.stdout.write(renderDerivedJson(manifest))',
+    'publishDerivedJsonOutsideRetainedBundle',
+    'Stdout mode: It writes no files.',
   ], 'retained partition archive manifest CLI');
   requireMarkers(archiveVerifyCli, [
     "'--root'",
     "'--manifest'",
     "'--packet'",
     "'--admission'",
+    "'--output'",
     'inspectRetainedPartitionBundle',
     'verifySavedRetainedPartitionArchiveManifest',
-    'JSON.stringify(receipt, null, 2)',
-    'process.stdout.write',
+    'renderDerivedJson',
+    'process.stdout.write(renderDerivedJson(receipt))',
+    'publishDerivedJsonOutsideRetainedBundle',
     'outside the retained bundle',
-    'The command writes no files.',
+    'Stdout mode: The command writes no files.',
   ], 'retained partition archive verifier CLI');
   forbidMarkers(`${reviewCore}\n${reviewCli}\n${archiveCore}\n${archiveCli}\n${archiveVerifyCli}`, [
     'writeFileSync',
@@ -302,7 +306,6 @@ try {
     '14. The retained bundle review inspects exactly nine authoritative files,',
     '15. The archive tooling emits a deterministic admitted-only manifest outside the',
     '16. Retained verification binds every authoritative file and required directory',
-    'node scripts/verify/verify-index-partition-post-inspection-drift.mjs',
     'one retained admitted packet, query',
   ], 'Index implementation plan');
   requireExactlyOnce(
