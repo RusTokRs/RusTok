@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2C",
+  "status": "source_complete_execution_pending",
+  "canonical_contract": "crates/rustok-forum/contracts/forum-search-storefront-scope.json",
+  "purpose": "Reference the Forum-owned cross-module storefront Search composition contract without duplicating its policy",
+  "verification": "scripts/verify/verify-forum-search-storefront-scope.mjs"
+}
