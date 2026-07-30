@@ -17,12 +17,14 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-pub(crate) const PRODUCT_GRAPH_INDEX_SOURCE: &str = "product-graph-postgres-v2";
-const PRODUCT_GRAPH_INDEX_FACTORY: &str = "product-graph-postgres-v2";
-const PRODUCT_V2_EVENT_DOMAIN: &str = "rustok-product.product-replay-v2";
-const PRODUCT_VARIANT_V2_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay-v2";
+pub(crate) const PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary";
+pub(crate) const PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary";
+const PRODUCT_EVENT_DOMAIN_V1: &str = "rustok-product.product-replay-v1";
+const PRODUCT_EVENT_DOMAIN_V2: &str = "rustok-product.product-replay-v2";
+const PRODUCT_VARIANT_EVENT_DOMAIN_V1: &str = "rustok-product.product-variant-replay-v1";
+const PRODUCT_VARIANT_EVENT_DOMAIN_V2: &str = "rustok-product.product-variant-replay-v2";
 
-const PRODUCT_V2_SELECT: &str = r#"
+const PRODUCT_SELECT: &str = r#"
 SELECT
     p.tenant_id,
     p.id AS product_id,
@@ -51,7 +53,7 @@ JOIN product_translations t
  AND t.tenant_id = p.tenant_id
 "#;
 
-const PRODUCT_VARIANT_V2_SELECT: &str = r#"
+const PRODUCT_VARIANT_SELECT: &str = r#"
 SELECT
     v.tenant_id,
     v.id AS variant_id,
@@ -74,9 +76,15 @@ FROM product_variants v
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProductGraphSchema {
-    Product,
-    Variant,
+enum ProductSchemaVersion {
+    V1,
+    V2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProductVariantSchemaVersion {
+    V1,
+    V2,
 }
 
 #[derive(Debug, Error)]
@@ -89,48 +97,96 @@ enum ProductGraphIndexBridgeError {
     InvalidRow,
 }
 
-pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
+pub(crate) fn register_product(
+    extensions: &mut ModuleRuntimeExtensions,
+) -> rustok_core::Result<()> {
     if !extensions.contains::<rustok_product::ProductRuntimeSelected>() {
         return Ok(());
     }
 
-    let product_schema = product_v2_schema().map_err(|error| {
-        rustok_core::Error::Validation(format!(
-            "selected Product v2 Index schema construction failed: {error}"
-        ))
-    })?;
-    let variant_schema = product_variant_v2_schema().map_err(|error| {
-        rustok_core::Error::Validation(format!(
-            "selected ProductVariant v2 Index schema construction failed: {error}"
-        ))
-    })?;
-    register_index_schema_source(extensions, "product", product_schema).map_err(|error| {
-        rustok_core::Error::Validation(format!(
-            "selected Product v2 Index schema registration failed: {error}"
-        ))
-    })?;
-    register_index_schema_source(extensions, "product", variant_schema).map_err(|error| {
-        rustok_core::Error::Validation(format!(
-            "selected ProductVariant v2 Index schema registration failed: {error}"
-        ))
-    })?;
+    for schema in [product_v1_schema(), product_v2_schema()] {
+        let schema = schema.map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "selected Product Index schema construction failed: {error}"
+            ))
+        })?;
+        register_index_schema_source(extensions, "product", schema).map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "selected Product Index schema registration failed: {error}"
+            ))
+        })?;
+    }
     register_postgres_index_source_factory(
         extensions,
         "product",
-        PRODUCT_GRAPH_INDEX_FACTORY,
-        ProductGraphPostgresIndexSourceFactory,
+        PRODUCT_INDEX_SOURCE,
+        ProductPostgresIndexSourceFactory,
     )
     .map_err(|error| {
         rustok_core::Error::Validation(format!(
-            "selected Product graph Index source factory registration failed: {error}"
+            "selected Product Index source factory registration failed: {error}"
         ))
     })
 }
 
+pub(crate) fn register_variant(
+    extensions: &mut ModuleRuntimeExtensions,
+) -> rustok_core::Result<()> {
+    if !extensions.contains::<rustok_product::ProductRuntimeSelected>() {
+        return Ok(());
+    }
+
+    for schema in [product_variant_v1_schema(), product_variant_v2_schema()] {
+        let schema = schema.map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "selected ProductVariant Index schema construction failed: {error}"
+            ))
+        })?;
+        register_index_schema_source(extensions, "product", schema).map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "selected ProductVariant Index schema registration failed: {error}"
+            ))
+        })?;
+    }
+    register_postgres_index_source_factory(
+        extensions,
+        "product",
+        PRODUCT_VARIANT_INDEX_SOURCE,
+        ProductVariantPostgresIndexSourceFactory,
+    )
+    .map_err(|error| {
+        rustok_core::Error::Validation(format!(
+            "selected ProductVariant Index source factory registration failed: {error}"
+        ))
+    })
+}
+
+fn product_v1_schema() -> Result<IndexSchema, ProductGraphIndexBridgeError> {
+    validated_schema(IndexSchema {
+        reference: product_schema_ref(1)?,
+        locale_mode: LocaleMode::Required,
+        fields: vec![
+            scalar_field("status", IndexValueType::String, false, true, true)?,
+            scalar_field("title", IndexValueType::String, false, true, true)?,
+            scalar_field("handle", IndexValueType::String, false, true, true)?,
+            scalar_field("description", IndexValueType::String, true, false, false)?,
+            scalar_field("vendor", IndexValueType::String, true, true, true)?,
+            scalar_field("product_type", IndexValueType::String, true, true, true)?,
+            scalar_field(
+                "primary_category_id",
+                IndexValueType::Uuid,
+                true,
+                true,
+                false,
+            )?,
+        ],
+        links: Vec::new(),
+    })
+}
+
 fn product_v2_schema() -> Result<IndexSchema, ProductGraphIndexBridgeError> {
-    let schema = IndexSchema {
-        reference: product_v2_schema_ref()
-            .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+    validated_schema(IndexSchema {
+        reference: product_schema_ref(2)?,
         locale_mode: LocaleMode::Required,
         fields: vec![
             scalar_field("id", IndexValueType::Uuid, false, true, true)?,
@@ -158,94 +214,117 @@ fn product_v2_schema() -> Result<IndexSchema, ProductGraphIndexBridgeError> {
             many_field("variant_ids", IndexValueType::Uuid, true)?,
         ],
         links: vec![IndexLink {
-            name: LinkName::new("variants")
-                .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
-            source_fields: vec![
-                FieldName::new("variant_ids")
-                    .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
-            ],
-            target_schema: product_variant_v2_schema_ref()
-                .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
-            target_fields: vec![
-                FieldName::new("id")
-                    .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
-            ],
+            name: link_name("variants")?,
+            source_fields: vec![field_name("variant_ids")?],
+            target_schema: product_variant_schema_ref(2)?,
+            target_fields: vec![field_name("id")?],
             cardinality: LinkCardinality::Many,
         }],
-    };
-    schema
-        .validate()
-        .map_err(ProductGraphIndexBridgeError::InvalidContract)?;
-    Ok(schema)
-}
-
-fn product_variant_v2_schema() -> Result<IndexSchema, ProductGraphIndexBridgeError> {
-    let schema = IndexSchema {
-        reference: product_variant_v2_schema_ref()
-            .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
-        locale_mode: LocaleMode::None,
-        fields: vec![
-            scalar_field("id", IndexValueType::Uuid, false, true, true)?,
-            scalar_field("product_id", IndexValueType::Uuid, false, true, true)?,
-            scalar_field("sku", IndexValueType::String, true, true, true)?,
-            scalar_field("barcode", IndexValueType::String, true, true, false)?,
-            scalar_field(
-                "shipping_profile_slug",
-                IndexValueType::String,
-                true,
-                true,
-                false,
-            )?,
-            scalar_field("ean", IndexValueType::String, true, true, false)?,
-            scalar_field("upc", IndexValueType::String, true, true, false)?,
-            scalar_field(
-                "inventory_policy",
-                IndexValueType::String,
-                false,
-                true,
-                false,
-            )?,
-            scalar_field(
-                "inventory_management",
-                IndexValueType::String,
-                false,
-                true,
-                false,
-            )?,
-            scalar_field(
-                "inventory_quantity",
-                IndexValueType::Integer,
-                false,
-                true,
-                true,
-            )?,
-            scalar_field("weight_unit", IndexValueType::String, true, false, false)?,
-            scalar_field("option1", IndexValueType::String, true, true, false)?,
-            scalar_field("option2", IndexValueType::String, true, true, false)?,
-            scalar_field("option3", IndexValueType::String, true, true, false)?,
-            scalar_field("position", IndexValueType::Integer, false, true, true)?,
-        ],
-        links: Vec::new(),
-    };
-    schema
-        .validate()
-        .map_err(ProductGraphIndexBridgeError::InvalidContract)?;
-    Ok(schema)
-}
-
-fn product_v2_schema_ref() -> Result<SchemaRef, DomainError> {
-    Ok(SchemaRef {
-        module: ModuleName::new("rustok-product")?,
-        entity: EntityName::new("product")?,
-        version: SchemaVersion::new(2),
     })
 }
 
-fn product_variant_v2_schema_ref() -> Result<SchemaRef, DomainError> {
+fn product_variant_v1_schema() -> Result<IndexSchema, ProductGraphIndexBridgeError> {
+    validated_schema(IndexSchema {
+        reference: product_variant_schema_ref(1)?,
+        locale_mode: LocaleMode::None,
+        fields: product_variant_fields(false)?,
+        links: Vec::new(),
+    })
+}
+
+fn product_variant_v2_schema() -> Result<IndexSchema, ProductGraphIndexBridgeError> {
+    validated_schema(IndexSchema {
+        reference: product_variant_schema_ref(2)?,
+        locale_mode: LocaleMode::None,
+        fields: product_variant_fields(true)?,
+        links: Vec::new(),
+    })
+}
+
+fn product_variant_fields(
+    include_identity: bool,
+) -> Result<Vec<IndexField>, ProductGraphIndexBridgeError> {
+    let mut fields = Vec::with_capacity(if include_identity { 15 } else { 14 });
+    if include_identity {
+        fields.push(scalar_field(
+            "id",
+            IndexValueType::Uuid,
+            false,
+            true,
+            true,
+        )?);
+    }
+    fields.extend([
+        scalar_field("product_id", IndexValueType::Uuid, false, true, true)?,
+        scalar_field("sku", IndexValueType::String, true, true, true)?,
+        scalar_field("barcode", IndexValueType::String, true, true, false)?,
+        scalar_field(
+            "shipping_profile_slug",
+            IndexValueType::String,
+            true,
+            true,
+            false,
+        )?,
+        scalar_field("ean", IndexValueType::String, true, true, false)?,
+        scalar_field("upc", IndexValueType::String, true, true, false)?,
+        scalar_field(
+            "inventory_policy",
+            IndexValueType::String,
+            false,
+            true,
+            false,
+        )?,
+        scalar_field(
+            "inventory_management",
+            IndexValueType::String,
+            false,
+            true,
+            false,
+        )?,
+        scalar_field(
+            "inventory_quantity",
+            IndexValueType::Integer,
+            false,
+            true,
+            true,
+        )?,
+        scalar_field("weight_unit", IndexValueType::String, true, false, false)?,
+        scalar_field("option1", IndexValueType::String, true, true, false)?,
+        scalar_field("option2", IndexValueType::String, true, true, false)?,
+        scalar_field("option3", IndexValueType::String, true, true, false)?,
+        scalar_field("position", IndexValueType::Integer, false, true, true)?,
+    ]);
+    Ok(fields)
+}
+
+fn validated_schema(
+    schema: IndexSchema,
+) -> Result<IndexSchema, ProductGraphIndexBridgeError> {
+    schema
+        .validate()
+        .map_err(ProductGraphIndexBridgeError::InvalidContract)?;
+    Ok(schema)
+}
+
+fn product_schema_ref(version: u32) -> Result<SchemaRef, ProductGraphIndexBridgeError> {
     Ok(SchemaRef {
-        module: ModuleName::new("rustok-product")?,
-        entity: EntityName::new("product_variant")?,
-        version: SchemaVersion::new(2),
+        module: ModuleName::new("rustok-product")
+            .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+        entity: EntityName::new("product")
+            .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+        version: SchemaVersion::new(version),
+    })
+}
+
+fn product_variant_schema_ref(
+    version: u32,
+) -> Result<SchemaRef, ProductGraphIndexBridgeError> {
+    Ok(SchemaRef {
+        module: ModuleName::new("rustok-product")
+            .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+        entity: EntityName::new("product_variant")
+            .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+        version: SchemaVersion::new(version),
     })
 }
 
@@ -257,7 +336,7 @@ fn scalar_field(
     sortable: bool,
 ) -> Result<IndexField, ProductGraphIndexBridgeError> {
     Ok(IndexField {
-        name: FieldName::new(name).map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+        name: field_name(name)?,
         value_type,
         cardinality: FieldCardinality::One,
         nullable,
@@ -273,7 +352,7 @@ fn many_field(
     filterable: bool,
 ) -> Result<IndexField, ProductGraphIndexBridgeError> {
     Ok(IndexField {
-        name: FieldName::new(name).map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+        name: field_name(name)?,
         value_type,
         cardinality: FieldCardinality::Many,
         nullable: false,
@@ -284,9 +363,9 @@ fn many_field(
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ProductGraphPostgresIndexSourceFactory;
+struct ProductPostgresIndexSourceFactory;
 
-impl PostgresIndexSourceFactory for ProductGraphPostgresIndexSourceFactory {
+impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory {
     fn register_source(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
@@ -295,54 +374,73 @@ impl PostgresIndexSourceFactory for ProductGraphPostgresIndexSourceFactory {
         register_index_source(
             extensions,
             "product",
-            PRODUCT_GRAPH_INDEX_SOURCE,
+            PRODUCT_INDEX_SOURCE,
             [
-                product_v2_schema_ref().map_err(|error| error.to_string())?,
-                product_variant_v2_schema_ref().map_err(|error| error.to_string())?,
+                product_schema_ref(1).map_err(|error| error.to_string())?,
+                product_schema_ref(2).map_err(|error| error.to_string())?,
             ],
-            ProductGraphPostgresIndexSource { db },
+            ProductPostgresIndexSource { db },
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProductVariantPostgresIndexSourceFactory;
+
+impl PostgresIndexSourceFactory for ProductVariantPostgresIndexSourceFactory {
+    fn register_source(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+        db: DatabaseConnection,
+    ) -> Result<(), String> {
+        register_index_source(
+            extensions,
+            "product",
+            PRODUCT_VARIANT_INDEX_SOURCE,
+            [
+                product_variant_schema_ref(1).map_err(|error| error.to_string())?,
+                product_variant_schema_ref(2).map_err(|error| error.to_string())?,
+            ],
+            ProductVariantPostgresIndexSource { db },
         )
         .map_err(|error| error.to_string())
     }
 }
 
 #[derive(Clone, Debug)]
-struct ProductGraphPostgresIndexSource {
+struct ProductPostgresIndexSource {
     db: DatabaseConnection,
 }
 
-impl ProductGraphPostgresIndexSource {
+impl ProductPostgresIndexSource {
     fn validate_request(
         &self,
         schema: &SchemaRef,
-    ) -> Result<ProductGraphSchema, IndexSourceFailure> {
-        if self.db.get_database_backend() != DbBackend::Postgres {
-            return Err(permanent("product_graph_index_backend_unsupported"));
-        }
-        if let Ok(expected) = product_v2_schema_ref() {
-            if &expected == schema {
-                return Ok(ProductGraphSchema::Product);
+    ) -> Result<ProductSchemaVersion, IndexSourceFailure> {
+        require_postgres(&self.db)?;
+        match schema.version.get() {
+            1 if product_schema_ref(1).is_ok_and(|expected| expected == *schema) => {
+                Ok(ProductSchemaVersion::V1)
             }
-        }
-        if let Ok(expected) = product_variant_v2_schema_ref() {
-            if &expected == schema {
-                return Ok(ProductGraphSchema::Variant);
+            2 if product_schema_ref(2).is_ok_and(|expected| expected == *schema) => {
+                Ok(ProductSchemaVersion::V2)
             }
+            _ => Err(permanent("product_index_schema_mismatch")),
         }
-        Err(permanent("product_graph_index_schema_mismatch"))
     }
 
-    async fn scan_product_rows(
+    async fn scan_rows(
         &self,
         request: &IndexSourceScanRequest,
-        cursor: Option<&ProductV2Cursor>,
+        cursor: Option<&ProductCursor>,
     ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
         let fetch_limit = i64::try_from(request.limit() + 1)
             .expect("Index source page limit is bounded below i64::MAX");
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "{PRODUCT_V2_SELECT}\nWHERE p.tenant_id = $1\n  AND (p.id, t.locale) > ($2, $3)\nORDER BY p.id ASC, t.locale ASC\nLIMIT $4"
+                    "{PRODUCT_SELECT}\nWHERE p.tenant_id = $1\n  AND (p.id, t.locale) > ($2, $3)\nORDER BY p.id ASC, t.locale ASC\nLIMIT $4"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -353,7 +451,7 @@ impl ProductGraphPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "{PRODUCT_V2_SELECT}\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC\nLIMIT $2"
+                    "{PRODUCT_SELECT}\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -365,10 +463,10 @@ impl ProductGraphPostgresIndexSource {
                 values,
             ))
             .await
-            .map_err(|_| retryable("product_graph_index_storage_unavailable"))
+            .map_err(|_| retryable("product_index_storage_unavailable"))
     }
 
-    async fn load_product_rows(
+    async fn load_rows(
         &self,
         request: &IndexSourceLoadRequest,
     ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
@@ -380,14 +478,14 @@ impl ProductGraphPostgresIndexSource {
             let locale = key
                 .locale
                 .as_ref()
-                .ok_or_else(|| permanent("product_graph_index_locale_required"))?;
+                .ok_or_else(|| permanent("product_index_locale_required"))?;
             tuples.push(format!("(${parameter}::uuid, ${}::text)", parameter + 1));
             values.push(key.entity_id.into());
             values.push(locale.as_str().to_owned().into());
             parameter += 2;
         }
         let sql = format!(
-            "WITH requested(product_id, locale) AS (VALUES {})\n{PRODUCT_V2_SELECT}\nJOIN requested r ON r.product_id = p.id AND r.locale = t.locale\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC",
+            "WITH requested(product_id, locale) AS (VALUES {})\n{PRODUCT_SELECT}\nJOIN requested r ON r.product_id = p.id AND r.locale = t.locale\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC",
             tuples.join(", ")
         );
         self.db
@@ -397,20 +495,100 @@ impl ProductGraphPostgresIndexSource {
                 values,
             ))
             .await
-            .map_err(|_| retryable("product_graph_index_storage_unavailable"))
+            .map_err(|_| retryable("product_index_storage_unavailable"))
+    }
+}
+
+#[async_trait]
+impl IndexSource for ProductPostgresIndexSource {
+    async fn scan(
+        &self,
+        request: IndexSourceScanRequest,
+    ) -> Result<IndexSourcePage, IndexSourceFailure> {
+        let version = self.validate_request(request.schema())?;
+        let cursor = request
+            .cursor()
+            .map(ProductCursor::decode)
+            .transpose()
+            .map_err(|_| permanent("product_index_cursor_invalid"))?;
+        let rows = self.scan_rows(&request, cursor.as_ref()).await?;
+        let has_more = rows.len() > request.limit();
+        let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
+        let mut next_cursor = None;
+        for row in rows.into_iter().take(request.limit()) {
+            let decoded = ProductRow::decode(row, request.tenant_id())
+                .map_err(|_| permanent("product_index_record_invalid"))?;
+            if has_more {
+                next_cursor = Some(
+                    decoded
+                        .cursor()
+                        .encode()
+                        .map_err(|_| permanent("product_index_cursor_invalid"))?,
+                );
+            }
+            mutations.push(
+                decoded
+                    .into_mutation(version)
+                    .map_err(|_| permanent("product_index_record_invalid"))?,
+            );
+        }
+        IndexSourcePage::new(&request, mutations, next_cursor)
+            .map_err(|_| permanent("product_index_page_invalid"))
     }
 
-    async fn scan_variant_rows(
+    async fn load(
+        &self,
+        request: IndexSourceLoadRequest,
+    ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
+        let version = self.validate_request(request.schema())?;
+        let mutations = self
+            .load_rows(&request)
+            .await?
+            .into_iter()
+            .map(|row| {
+                ProductRow::decode(row, request.tenant_id())
+                    .and_then(|row| row.into_mutation(version))
+                    .map_err(|_| permanent("product_index_record_invalid"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        IndexSourceLoadBatch::new(&request, mutations)
+            .map_err(|_| permanent("product_index_batch_invalid"))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ProductVariantPostgresIndexSource {
+    db: DatabaseConnection,
+}
+
+impl ProductVariantPostgresIndexSource {
+    fn validate_request(
+        &self,
+        schema: &SchemaRef,
+    ) -> Result<ProductVariantSchemaVersion, IndexSourceFailure> {
+        require_postgres(&self.db)?;
+        match schema.version.get() {
+            1 if product_variant_schema_ref(1).is_ok_and(|expected| expected == *schema) => {
+                Ok(ProductVariantSchemaVersion::V1)
+            }
+            2 if product_variant_schema_ref(2).is_ok_and(|expected| expected == *schema) => {
+                Ok(ProductVariantSchemaVersion::V2)
+            }
+            _ => Err(permanent("product_variant_index_schema_mismatch")),
+        }
+    }
+
+    async fn scan_rows(
         &self,
         request: &IndexSourceScanRequest,
-        cursor: Option<&ProductVariantV2Cursor>,
+        cursor: Option<&ProductVariantCursor>,
     ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
         let fetch_limit = i64::try_from(request.limit() + 1)
             .expect("Index source page limit is bounded below i64::MAX");
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "{PRODUCT_VARIANT_V2_SELECT}\nWHERE v.tenant_id = $1\n  AND v.id > $2\nORDER BY v.id ASC\nLIMIT $3"
+                    "{PRODUCT_VARIANT_SELECT}\nWHERE v.tenant_id = $1\n  AND v.id > $2\nORDER BY v.id ASC\nLIMIT $3"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -420,7 +598,7 @@ impl ProductGraphPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "{PRODUCT_VARIANT_V2_SELECT}\nWHERE v.tenant_id = $1\nORDER BY v.id ASC\nLIMIT $2"
+                    "{PRODUCT_VARIANT_SELECT}\nWHERE v.tenant_id = $1\nORDER BY v.id ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -432,10 +610,10 @@ impl ProductGraphPostgresIndexSource {
                 values,
             ))
             .await
-            .map_err(|_| retryable("product_graph_index_storage_unavailable"))
+            .map_err(|_| retryable("product_variant_index_storage_unavailable"))
     }
 
-    async fn load_variant_rows(
+    async fn load_rows(
         &self,
         request: &IndexSourceLoadRequest,
     ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
@@ -444,14 +622,14 @@ impl ProductGraphPostgresIndexSource {
         let mut rows = Vec::with_capacity(request.keys().len());
         for (offset, key) in request.keys().iter().enumerate() {
             if key.locale.is_some() {
-                return Err(permanent("product_graph_variant_locale_forbidden"));
+                return Err(permanent("product_variant_index_locale_forbidden"));
             }
             let parameter = offset + 2;
             rows.push(format!("(${parameter}::uuid)"));
             values.push(key.entity_id.into());
         }
         let sql = format!(
-            "WITH requested(variant_id) AS (VALUES {})\n{PRODUCT_VARIANT_V2_SELECT}\nJOIN requested r ON r.variant_id = v.id\nWHERE v.tenant_id = $1\nORDER BY v.id ASC",
+            "WITH requested(variant_id) AS (VALUES {})\n{PRODUCT_VARIANT_SELECT}\nJOIN requested r ON r.variant_id = v.id\nWHERE v.tenant_id = $1\nORDER BY v.id ASC",
             rows.join(", ")
         );
         self.db
@@ -461,145 +639,75 @@ impl ProductGraphPostgresIndexSource {
                 values,
             ))
             .await
-            .map_err(|_| retryable("product_graph_index_storage_unavailable"))
-    }
-
-    async fn scan_products(
-        &self,
-        request: IndexSourceScanRequest,
-    ) -> Result<IndexSourcePage, IndexSourceFailure> {
-        let cursor = request
-            .cursor()
-            .map(ProductV2Cursor::decode)
-            .transpose()
-            .map_err(|_| permanent("product_graph_product_cursor_invalid"))?;
-        let rows = self.scan_product_rows(&request, cursor.as_ref()).await?;
-        let has_more = rows.len() > request.limit();
-        let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
-        let mut next_cursor = None;
-        for row in rows.into_iter().take(request.limit()) {
-            let decoded = ProductV2Row::decode(row, request.tenant_id())
-                .map_err(|_| permanent("product_graph_product_record_invalid"))?;
-            if has_more {
-                next_cursor = Some(
-                    decoded
-                        .cursor()
-                        .encode()
-                        .map_err(|_| permanent("product_graph_product_cursor_invalid"))?,
-                );
-            }
-            mutations.push(
-                decoded
-                    .into_mutation()
-                    .map_err(|_| permanent("product_graph_product_record_invalid"))?,
-            );
-        }
-        IndexSourcePage::new(&request, mutations, next_cursor)
-            .map_err(|_| permanent("product_graph_product_page_invalid"))
-    }
-
-    async fn scan_variants(
-        &self,
-        request: IndexSourceScanRequest,
-    ) -> Result<IndexSourcePage, IndexSourceFailure> {
-        let cursor = request
-            .cursor()
-            .map(ProductVariantV2Cursor::decode)
-            .transpose()
-            .map_err(|_| permanent("product_graph_variant_cursor_invalid"))?;
-        let rows = self.scan_variant_rows(&request, cursor.as_ref()).await?;
-        let has_more = rows.len() > request.limit();
-        let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
-        let mut next_cursor = None;
-        for row in rows.into_iter().take(request.limit()) {
-            let decoded = ProductVariantV2Row::decode(row, request.tenant_id())
-                .map_err(|_| permanent("product_graph_variant_record_invalid"))?;
-            if has_more {
-                next_cursor = Some(
-                    decoded
-                        .cursor()
-                        .encode()
-                        .map_err(|_| permanent("product_graph_variant_cursor_invalid"))?,
-                );
-            }
-            mutations.push(
-                decoded
-                    .into_mutation()
-                    .map_err(|_| permanent("product_graph_variant_record_invalid"))?,
-            );
-        }
-        IndexSourcePage::new(&request, mutations, next_cursor)
-            .map_err(|_| permanent("product_graph_variant_page_invalid"))
-    }
-
-    async fn load_products(
-        &self,
-        request: IndexSourceLoadRequest,
-    ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
-        let mutations = self
-            .load_product_rows(&request)
-            .await?
-            .into_iter()
-            .map(|row| {
-                ProductV2Row::decode(row, request.tenant_id())
-                    .and_then(ProductV2Row::into_mutation)
-                    .map_err(|_| permanent("product_graph_product_record_invalid"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        IndexSourceLoadBatch::new(&request, mutations)
-            .map_err(|_| permanent("product_graph_product_batch_invalid"))
-    }
-
-    async fn load_variants(
-        &self,
-        request: IndexSourceLoadRequest,
-    ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
-        let mutations = self
-            .load_variant_rows(&request)
-            .await?
-            .into_iter()
-            .map(|row| {
-                ProductVariantV2Row::decode(row, request.tenant_id())
-                    .and_then(ProductVariantV2Row::into_mutation)
-                    .map_err(|_| permanent("product_graph_variant_record_invalid"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        IndexSourceLoadBatch::new(&request, mutations)
-            .map_err(|_| permanent("product_graph_variant_batch_invalid"))
+            .map_err(|_| retryable("product_variant_index_storage_unavailable"))
     }
 }
 
 #[async_trait]
-impl IndexSource for ProductGraphPostgresIndexSource {
+impl IndexSource for ProductVariantPostgresIndexSource {
     async fn scan(
         &self,
         request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceFailure> {
-        match self.validate_request(request.schema())? {
-            ProductGraphSchema::Product => self.scan_products(request).await,
-            ProductGraphSchema::Variant => self.scan_variants(request).await,
+        let version = self.validate_request(request.schema())?;
+        let cursor = request
+            .cursor()
+            .map(ProductVariantCursor::decode)
+            .transpose()
+            .map_err(|_| permanent("product_variant_index_cursor_invalid"))?;
+        let rows = self.scan_rows(&request, cursor.as_ref()).await?;
+        let has_more = rows.len() > request.limit();
+        let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
+        let mut next_cursor = None;
+        for row in rows.into_iter().take(request.limit()) {
+            let decoded = ProductVariantRow::decode(row, request.tenant_id())
+                .map_err(|_| permanent("product_variant_index_record_invalid"))?;
+            if has_more {
+                next_cursor = Some(
+                    decoded
+                        .cursor()
+                        .encode()
+                        .map_err(|_| permanent("product_variant_index_cursor_invalid"))?,
+                );
+            }
+            mutations.push(
+                decoded
+                    .into_mutation(version)
+                    .map_err(|_| permanent("product_variant_index_record_invalid"))?,
+            );
         }
+        IndexSourcePage::new(&request, mutations, next_cursor)
+            .map_err(|_| permanent("product_variant_index_page_invalid"))
     }
 
     async fn load(
         &self,
         request: IndexSourceLoadRequest,
     ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
-        match self.validate_request(request.schema())? {
-            ProductGraphSchema::Product => self.load_products(request).await,
-            ProductGraphSchema::Variant => self.load_variants(request).await,
-        }
+        let version = self.validate_request(request.schema())?;
+        let mutations = self
+            .load_rows(&request)
+            .await?
+            .into_iter()
+            .map(|row| {
+                ProductVariantRow::decode(row, request.tenant_id())
+                    .and_then(|row| row.into_mutation(version))
+                    .map_err(|_| permanent("product_variant_index_record_invalid"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        IndexSourceLoadBatch::new(&request, mutations)
+            .map_err(|_| permanent("product_variant_index_batch_invalid"))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProductV2Cursor {
+struct ProductCursor {
     product_id: Uuid,
     locale: String,
 }
 
-impl ProductV2Cursor {
+impl ProductCursor {
     fn decode(cursor: &IndexSourceCursor) -> Result<Self, ProductGraphIndexBridgeError> {
         let decoded: Self = serde_json::from_value(cursor.value().clone())
             .map_err(|_| ProductGraphIndexBridgeError::InvalidCursor)?;
@@ -623,11 +731,11 @@ impl ProductV2Cursor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProductVariantV2Cursor {
+struct ProductVariantCursor {
     variant_id: Uuid,
 }
 
-impl ProductVariantV2Cursor {
+impl ProductVariantCursor {
     fn decode(cursor: &IndexSourceCursor) -> Result<Self, ProductGraphIndexBridgeError> {
         let decoded: Self = serde_json::from_value(cursor.value().clone())
             .map_err(|_| ProductGraphIndexBridgeError::InvalidCursor)?;
@@ -645,7 +753,7 @@ impl ProductVariantV2Cursor {
 }
 
 #[derive(Debug)]
-struct ProductV2Row {
+struct ProductRow {
     tenant_id: Uuid,
     product_id: Uuid,
     source_version: u64,
@@ -661,7 +769,7 @@ struct ProductV2Row {
     variant_ids: Vec<Uuid>,
 }
 
-impl ProductV2Row {
+impl ProductRow {
     fn decode(
         row: QueryResult,
         expected_tenant: Uuid,
@@ -699,7 +807,6 @@ impl ProductV2Row {
         let metadata = row
             .try_get::<JsonValue>("", "metadata")
             .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
-        let variant_ids = decode_uuid_json_list(&row, "variant_ids")?;
         Ok(Self {
             tenant_id,
             product_id,
@@ -714,29 +821,34 @@ impl ProductV2Row {
             product_type: optional_string(&row, "product_type")?,
             primary_category_id,
             allowed_channel_slugs: extract_allowed_channel_slugs(&metadata),
-            variant_ids,
+            variant_ids: decode_uuid_json_list(&row, "variant_ids")?,
         })
     }
 
-    fn cursor(&self) -> ProductV2Cursor {
-        ProductV2Cursor {
+    fn cursor(&self) -> ProductCursor {
+        ProductCursor {
             product_id: self.product_id,
             locale: self.locale.as_str().to_owned(),
         }
     }
 
-    fn into_mutation(mut self) -> Result<IndexMutation, ProductGraphIndexBridgeError> {
+    fn into_mutation(
+        mut self,
+        version: ProductSchemaVersion,
+    ) -> Result<IndexMutation, ProductGraphIndexBridgeError> {
+        let (schema_version, event_domain) = match version {
+            ProductSchemaVersion::V1 => (1, PRODUCT_EVENT_DOMAIN_V1),
+            ProductSchemaVersion::V2 => (2, PRODUCT_EVENT_DOMAIN_V2),
+        };
         let event_id = derive_index_source_event_id(
-            PRODUCT_V2_EVENT_DOMAIN,
+            event_domain,
             self.tenant_id,
             self.product_id,
             Some(&self.locale),
             self.source_version,
         )
         .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
-        let channel_restricted = !self.allowed_channel_slugs.is_empty();
-        let fields = BTreeMap::from([
-            (field_name("id")?, IndexValue::Uuid(self.product_id)),
+        let mut fields = BTreeMap::from([
             (field_name("status")?, IndexValue::String(self.status)),
             (field_name("title")?, IndexValue::String(self.title)),
             (field_name("handle")?, IndexValue::String(self.handle)),
@@ -758,11 +870,14 @@ impl ProductV2Row {
                     .map(IndexValue::Uuid)
                     .unwrap_or(IndexValue::Null),
             ),
-            (
+        ]);
+        let links = if version == ProductSchemaVersion::V2 {
+            fields.insert(field_name("id")?, IndexValue::Uuid(self.product_id));
+            fields.insert(
                 field_name("channel_restricted")?,
-                IndexValue::Boolean(channel_restricted),
-            ),
-            (
+                IndexValue::Boolean(!self.allowed_channel_slugs.is_empty()),
+            );
+            fields.insert(
                 field_name("allowed_channel_slugs")?,
                 IndexValue::List(
                     self.allowed_channel_slugs
@@ -770,8 +885,8 @@ impl ProductV2Row {
                         .map(IndexValue::String)
                         .collect(),
                 ),
-            ),
-            (
+            );
+            fields.insert(
                 field_name("variant_ids")?,
                 IndexValue::List(
                     self.variant_ids
@@ -780,30 +895,29 @@ impl ProductV2Row {
                         .map(IndexValue::Uuid)
                         .collect(),
                 ),
-            ),
-        ]);
-        let variant_schema = product_variant_v2_schema_ref()
-            .map_err(ProductGraphIndexBridgeError::InvalidContract)?;
-        let links = vec![IndexLinkValue {
-            name: LinkName::new("variants")
-                .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
-            targets: self
-                .variant_ids
-                .into_iter()
-                .map(|variant_id| LinkedEntityKey {
-                    schema: variant_schema.clone(),
-                    entity_id: variant_id,
-                    locale: None,
-                })
-                .collect(),
-        }];
+            );
+            let variant_schema = product_variant_schema_ref(2)?;
+            vec![IndexLinkValue {
+                name: link_name("variants")?,
+                targets: self
+                    .variant_ids
+                    .into_iter()
+                    .map(|variant_id| LinkedEntityKey {
+                        schema: variant_schema.clone(),
+                        entity_id: variant_id,
+                        locale: None,
+                    })
+                    .collect(),
+            }]
+        } else {
+            Vec::new()
+        };
         Ok(IndexMutation::Upsert {
             event_id,
             record: IndexRecord {
                 key: EntityKey {
                     tenant_id: self.tenant_id,
-                    schema: product_v2_schema_ref()
-                        .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+                    schema: product_schema_ref(schema_version)?,
                     entity_id: self.product_id,
                     locale: Some(self.locale),
                 },
@@ -816,7 +930,7 @@ impl ProductV2Row {
 }
 
 #[derive(Debug)]
-struct ProductVariantV2Row {
+struct ProductVariantRow {
     tenant_id: Uuid,
     variant_id: Uuid,
     product_id: Uuid,
@@ -836,7 +950,7 @@ struct ProductVariantV2Row {
     position: i64,
 }
 
-impl ProductVariantV2Row {
+impl ProductVariantRow {
     fn decode(
         row: QueryResult,
         expected_tenant: Uuid,
@@ -889,23 +1003,29 @@ impl ProductVariantV2Row {
         })
     }
 
-    fn cursor(&self) -> ProductVariantV2Cursor {
-        ProductVariantV2Cursor {
+    fn cursor(&self) -> ProductVariantCursor {
+        ProductVariantCursor {
             variant_id: self.variant_id,
         }
     }
 
-    fn into_mutation(mut self) -> Result<IndexMutation, ProductGraphIndexBridgeError> {
+    fn into_mutation(
+        mut self,
+        version: ProductVariantSchemaVersion,
+    ) -> Result<IndexMutation, ProductGraphIndexBridgeError> {
+        let (schema_version, event_domain) = match version {
+            ProductVariantSchemaVersion::V1 => (1, PRODUCT_VARIANT_EVENT_DOMAIN_V1),
+            ProductVariantSchemaVersion::V2 => (2, PRODUCT_VARIANT_EVENT_DOMAIN_V2),
+        };
         let event_id = derive_index_source_event_id(
-            PRODUCT_VARIANT_V2_EVENT_DOMAIN,
+            event_domain,
             self.tenant_id,
             self.variant_id,
             None,
             self.source_version,
         )
         .map_err(|_| ProductGraphIndexBridgeError::InvalidRow)?;
-        let fields = BTreeMap::from([
-            (field_name("id")?, IndexValue::Uuid(self.variant_id)),
+        let mut fields = BTreeMap::from([
             (
                 field_name("product_id")?,
                 IndexValue::Uuid(self.product_id),
@@ -954,13 +1074,15 @@ impl ProductVariantV2Row {
                 IndexValue::Integer(self.position),
             ),
         ]);
+        if version == ProductVariantSchemaVersion::V2 {
+            fields.insert(field_name("id")?, IndexValue::Uuid(self.variant_id));
+        }
         Ok(IndexMutation::Upsert {
             event_id,
             record: IndexRecord {
                 key: EntityKey {
                     tenant_id: self.tenant_id,
-                    schema: product_variant_v2_schema_ref()
-                        .map_err(ProductGraphIndexBridgeError::InvalidContract)?,
+                    schema: product_variant_schema_ref(schema_version)?,
                     entity_id: self.variant_id,
                     locale: None,
                 },
@@ -1020,8 +1142,20 @@ fn decode_uuid_json_list(
     Ok(unique.into_iter().collect())
 }
 
+fn require_postgres(db: &DatabaseConnection) -> Result<(), IndexSourceFailure> {
+    if db.get_database_backend() == DbBackend::Postgres {
+        Ok(())
+    } else {
+        Err(permanent("product_index_backend_unsupported"))
+    }
+}
+
 fn field_name(name: &str) -> Result<FieldName, ProductGraphIndexBridgeError> {
     FieldName::new(name).map_err(ProductGraphIndexBridgeError::InvalidContract)
+}
+
+fn link_name(name: &str) -> Result<LinkName, ProductGraphIndexBridgeError> {
+    LinkName::new(name).map_err(ProductGraphIndexBridgeError::InvalidContract)
 }
 
 fn required_string(
@@ -1051,11 +1185,11 @@ fn optional_string_value(value: Option<String>) -> IndexValue {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static Product graph retry code must be valid")
+    IndexSourceFailure::retryable(code).expect("static Product source retry code must be valid")
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static Product graph failure code must be valid")
+    IndexSourceFailure::permanent(code).expect("static Product source failure code must be valid")
 }
 
 #[cfg(test)]
@@ -1063,26 +1197,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn product_graph_schemas_are_version_two_and_link_product_to_variants() {
-        let product = product_v2_schema().unwrap();
-        let variant = product_variant_v2_schema().unwrap();
-        assert_eq!(product.reference.version, SchemaVersion::new(2));
-        assert_eq!(variant.reference.version, SchemaVersion::new(2));
-        assert_eq!(product.locale_mode, LocaleMode::Required);
-        assert_eq!(variant.locale_mode, LocaleMode::None);
-        assert_eq!(product.fields.len(), 11);
-        assert_eq!(variant.fields.len(), 15);
-        assert_eq!(product.links.len(), 1);
-        assert_eq!(product.links[0].name.as_str(), "variants");
-        assert_eq!(product.links[0].target_schema, variant.reference.clone());
-        assert_eq!(product.links[0].cardinality, LinkCardinality::Many);
-        assert!(variant.links.is_empty());
-        assert!(product.fingerprint().is_ok());
-        assert!(variant.fingerprint().is_ok());
+    fn versioned_product_graph_preserves_v1_and_adds_product_to_variant_path() {
+        let product_v1 = product_v1_schema().unwrap();
+        let product_v2 = product_v2_schema().unwrap();
+        let variant_v1 = product_variant_v1_schema().unwrap();
+        let variant_v2 = product_variant_v2_schema().unwrap();
+
+        assert_eq!(product_v1.reference.version, SchemaVersion::INITIAL);
+        assert_eq!(variant_v1.reference.version, SchemaVersion::INITIAL);
+        assert!(product_v1.links.is_empty());
+        assert!(variant_v1.links.is_empty());
+        assert_eq!(product_v1.fields.len(), 7);
+        assert_eq!(variant_v1.fields.len(), 14);
+
+        assert_eq!(product_v2.reference.version, SchemaVersion::new(2));
+        assert_eq!(variant_v2.reference.version, SchemaVersion::new(2));
+        assert_eq!(product_v2.fields.len(), 11);
+        assert_eq!(variant_v2.fields.len(), 15);
+        assert_eq!(product_v2.links.len(), 1);
+        assert_eq!(product_v2.links[0].name.as_str(), "variants");
+        assert_eq!(product_v2.links[0].target_schema, variant_v2.reference);
+        assert_eq!(product_v2.links[0].cardinality, LinkCardinality::Many);
     }
 
     #[test]
-    fn product_graph_channel_visibility_matches_storefront_normalization() {
+    fn versioned_sources_keep_one_stable_source_per_schema_identity() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(rustok_product::ProductRuntimeSelected);
+        extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
+        extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
+        register_product(&mut extensions).unwrap();
+        register_variant(&mut extensions).unwrap();
+
+        assert_eq!(
+            extensions
+                .get::<rustok_index::IndexSchemaSourceCatalog>()
+                .unwrap()
+                .len(),
+            4
+        );
+        let factories = extensions
+            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+            .unwrap();
+        assert_eq!(factories.len(), 2);
+        assert!(factories.iter().any(|factory| {
+            factory.owner_module() == "product"
+                && factory.factory_name() == PRODUCT_INDEX_SOURCE
+        }));
+        assert!(factories.iter().any(|factory| {
+            factory.owner_module() == "product"
+                && factory.factory_name() == PRODUCT_VARIANT_INDEX_SOURCE
+        }));
+    }
+
+    #[test]
+    fn channel_visibility_matches_storefront_normalization() {
         let metadata = serde_json::json!({
             "channel_visibility": {
                 "allowed_channel_slugs": [" Web ", "mobile", "web", "", null]
@@ -1096,47 +1265,21 @@ mod tests {
     }
 
     #[test]
-    fn product_graph_cursors_reject_nil_noncanonical_and_unknown_fields() {
+    fn versioned_cursors_reject_nil_noncanonical_and_unknown_fields() {
         for value in [
             serde_json::json!({"product_id": Uuid::nil(), "locale": "en-US"}),
             serde_json::json!({"product_id": Uuid::from_u128(2), "locale": "EN-us"}),
             serde_json::json!({"product_id": Uuid::from_u128(2), "locale": "en-US", "revision": 1}),
         ] {
             let cursor = IndexSourceCursor::new(value).unwrap();
-            assert!(ProductV2Cursor::decode(&cursor).is_err());
+            assert!(ProductCursor::decode(&cursor).is_err());
         }
         for value in [
             serde_json::json!({"variant_id": Uuid::nil()}),
             serde_json::json!({"variant_id": Uuid::from_u128(2), "revision": 1}),
         ] {
             let cursor = IndexSourceCursor::new(value).unwrap();
-            assert!(ProductVariantV2Cursor::decode(&cursor).is_err());
+            assert!(ProductVariantCursor::decode(&cursor).is_err());
         }
-    }
-
-    #[test]
-    fn product_graph_bridge_registers_two_schemas_and_one_factory() {
-        let mut extensions = ModuleRuntimeExtensions::default();
-        extensions.insert(rustok_product::ProductRuntimeSelected);
-        extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
-        extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
-        register(&mut extensions).unwrap();
-
-        let catalog = extensions
-            .get::<rustok_index::IndexSchemaSourceCatalog>()
-            .unwrap();
-        assert!(catalog.get(&product_v2_schema_ref().unwrap()).is_some());
-        assert!(
-            catalog
-                .get(&product_variant_v2_schema_ref().unwrap())
-                .is_some()
-        );
-        let factories = extensions
-            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
-            .unwrap();
-        assert_eq!(factories.len(), 1);
-        let factory = factories.iter().next().unwrap();
-        assert_eq!(factory.owner_module(), "product");
-        assert_eq!(factory.factory_name(), PRODUCT_GRAPH_INDEX_FACTORY);
     }
 }
