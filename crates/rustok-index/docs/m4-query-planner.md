@@ -17,9 +17,9 @@ The previous server-composition blocker is removed at the capability level. Sour
 modules publish generic schema contracts into an Index-owned catalog, the selected
 distribution materializes one non-empty immutable registry after all module registrations,
 and the server binds that registry to its database through the Index-owned PostgreSQL
-runtime materializer. Social Graph is the first source publication and notification
-block/mute policy is the first authorized consumer cutover. Additional transports,
-tenant readiness evidence, and consumer cutovers remain separate gates.
+runtime materializer. Social Graph is the first source publication. Notification block/mute
+policy is the first authorized consumer source, protected by a default-off activation gate
+until retained projection readiness, lag, and result-parity evidence exists.
 
 ## Actualized status
 
@@ -38,7 +38,8 @@ tenant readiness evidence, and consumer cutovers remain separate gates.
 - M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 source-owned immutable schema registry: `source_complete_execution_pending`.
 - M4 server-owned shared query runtime composition: `source_complete_execution_pending`.
-- M4 first authorized consumer cutover: `source_complete_execution_pending`.
+- M4 first authorized consumer cutover source: `source_complete_execution_pending`.
+- M4 first consumer activation: `open_owner_action`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -167,19 +168,24 @@ Runtime presence does not establish persisted tenant schema readiness. Every exe
 still performs the exact active fingerprint and semantic JSON preflight inside
 `PostgresIndexQueryPort`.
 
-## First authorized consumer
+## First authorized consumer source
 
 `IndexSocialGraphPrivacyReadPort` is the first owner-defined adapter consuming
 `SharedIndexQueryRuntime`. It preserves the existing `SocialGraphPrivacyReadPort`
 authorization and request bounds while translating block, mute, and follow checks into
 typed filters over the owner-published relation schema.
 
-The final server facade recomposes notification block/mute policy only after the shared
-runtime exists. Block remains symmetric, mute remains recipient-to-actor directional, and
-custom notification relation providers retain priority. Missing tenant schema or storage
-readiness is retryable fail-closed and cannot become an implicit allow. Revision-bearing
-follow reads, profile privacy, GraphQL, storefront, admin, and presentation authorization
-remain outside this cutover.
+The final server facade uses the default-off activation gate
+`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED`. While disabled, the authoritative owner
+read path remains selected. When enabled, the facade requires `SharedIndexQueryRuntime` and
+recomposes notification block/mute policy. Block remains symmetric, mute remains
+recipient-to-actor directional, and custom notification relation providers retain
+priority. Missing tenant schema or storage readiness is retryable fail-closed and cannot
+become an implicit allow; no owner-table fallback exists after activation.
+
+Revision-bearing follow reads, profile privacy, GraphQL, storefront, admin, and
+presentation authorization remain outside this cutover. The activation flag must remain
+off until the owner retains projection readiness, lag, and result-parity evidence.
 
 ## Remaining bounded M4 work
 
@@ -187,10 +193,11 @@ The canonical checklist remains open until the owner runs the fixture through ca
 admits the retained bundle, and preserves both bundle and receipt. Additional boundaries
 remain:
 
+- retain Social Graph projection readiness, lag, and result-parity evidence and decide
+  whether to activate the first consumer;
 - aggregate ordering semantics for paths traversing `many`;
 - publish schemas from additional source owners as consumers are selected;
-- additional server/storefront/admin/search authorization and consumer cutovers;
-- live execution and lag/freshness evidence for projection-backed policy reads.
+- additional server/storefront/admin/search authorization and consumer cutovers.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
