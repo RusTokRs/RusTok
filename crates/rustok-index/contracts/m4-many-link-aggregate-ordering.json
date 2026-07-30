@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "owner": "rustok-index",
+  "status": "source_complete_execution_pending",
+  "query_contract": {
+    "order_expr_shape_changed": false,
+    "legacy_directions": ["asc", "desc"],
+    "many_link_modes": ["min_asc", "min_desc", "max_asc", "max_desc"],
+    "plain_many_link_asc_desc_rejected": true,
+    "aggregate_requires_many_link": true,
+    "aggregate_cursor_supported": false,
+    "pagination": "bounded_offset"
+  },
+  "supported_terminal_types": ["integer", "decimal", "string", "timestamp"],
+  "rejected_terminal_types": ["boolean", "uuid", "list"],
+  "postgresql": {
+    "strategy": "correlated_scalar_subquery",
+    "aggregates": ["MIN", "MAX"],
+    "outer_many_join": false,
+    "empty_or_all_null_result": "null",
+    "ascending_nulls": "last",
+    "descending_nulls": "first",
+    "final_tie_break": "root_entity_id_asc",
+    "order_value_transport": "tagged_index_value_jsonb",
+    "caller_sql": false,
+    "implicit_first_row": false,
+    "implicit_link_ordinal": false
+  },
+  "compatibility": {
+    "plan_version": 4,
+    "plan_shape_changed": false,
+    "legacy_enum_discriminants_preserved": true,
+    "legacy_planner_error_mapping_preserved": true
+  },
+  "guardrails": {
+    "validator": "crates/rustok-index/src/application/aggregate_ordering.rs",
+    "compiler": "crates/rustok-index/src/application/postgres_compiler.rs",
+    "sql": "crates/rustok-index/src/application/postgres_query_sql.rs",
+    "tests": "crates/rustok-index/src/application/aggregate_ordering_tests.rs",
+    "verifier": "scripts/verify/verify-index-many-link-aggregate-ordering.mjs"
+  },
+  "validation": {
+    "cargo_run": false,
+    "tests_run": false,
+    "postgresql_run": false,
+    "node_verifiers_run": false,
+    "workflows_run": false,
+    "ci_run": false
+  },
+  "remaining": [
+    "aggregate cursor identity and continuation",
+    "independent reference materialization for aggregate values",
+    "PostgreSQL/reference aggregate offset scenarios",
+    "retained aggregate equivalence capture and admission"
+  ]
+}
