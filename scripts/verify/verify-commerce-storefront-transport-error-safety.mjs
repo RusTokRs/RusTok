@@ -45,13 +45,13 @@ for (const [value, label] of [
   ['owner_operation,', 'native owner operation log'],
   ['consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION', 'native consumer operation log'],
   ['code = "commerce.storefront_cart_id_invalid"', 'native validation stable code'],
+  ['"rustok_cart.storefront",\n                "fetch_cart",', 'native cart owner callsite'],
+  ['"rustok_payment.storefront",\n                    "fetch_payment_collection",', 'native payment owner callsite'],
   ['"commerce.storefront_cart_unavailable"', 'native cart stable code'],
   ['"commerce.storefront_payment_collection_unavailable"', 'native payment stable code'],
   ['ServerFnError::new("Invalid cart selection")', 'native validation public envelope'],
   ['"Storefront cart data is temporarily unavailable"', 'native cart public envelope'],
   ['"Storefront payment collection is temporarily unavailable"', 'native payment public envelope'],
-  ['owner = "rustok_cart.storefront"', 'native cart owner identity'],
-  ['owner = "rustok_payment.storefront"', 'native payment owner identity'],
 ]) requireText(native, value, label);
 
 for (const value of [
@@ -67,7 +67,7 @@ if (countText(native, 'ApiError::ServerFn(error.to_string())') !== 1) {
 }
 
 for (const [value, label] of [
-  ['fn is_cart_id_validation_error(', 'shared typed validation classifier'],
+  ['fn is_cart_id_validation_error(', 'shared validation classifier'],
   ['tracing::warn!(', 'shared validation diagnostics'],
   ['tracing::error!(', 'shared owner diagnostics'],
   ['failed_path = failed_path.as_str()', 'shared failed-path diagnostics'],
