@@ -37,19 +37,25 @@
 - Own positive monotonic `index_revision` storage columns for Product and
   ProductVariant. Product updates and Product-translation changes advance the
   Product revision; every ProductVariant update advances the variant revision.
-  Both values are storage-internal and are not exposed through Product DTOs or
-  SeaORM write models.
+  Variant insert/delete/move membership also advances the affected parent
+  Product revision so versioned Product graph links cannot reuse a stale source
+  version. Both values remain storage-internal and are not exposed through
+  Product DTOs or SeaORM write models.
 - Publish only a neutral `ProductRuntimeSelected` marker for selected
   cross-module composition. The Product crate does not depend on `rustok-index`
   and does not construct generic Index mutations.
-- The selected `rustok-distribution` bridge publishes two bounded current-state
-  sources. Product replay is locale-aware and enumerates stable
-  `(product_id, locale)` identities. ProductVariant replay is non-localized and
-  enumerates stable `variant_id` identities. Each source uses only its own
-  `index_revision` as generic mutation `source_version`.
+- The selected `rustok-distribution` bridge keeps two stable bounded replay
+  source identities across schema versions. Product replay is locale-aware and
+  enumerates stable `(product_id, locale)` identities. ProductVariant replay is
+  non-localized and enumerates stable `variant_id` identities. Each source uses
+  only its owner `index_revision` as generic mutation `source_version`.
+- Preserve Product/ProductVariant v1 schema fingerprints while publishing v2
+  identity-ready schemas. Product v2 exposes normalized channel visibility
+  scalars and a many-cardinality Product-to-ProductVariant link; ProductVariant
+  v2 adds its stable UUID identity field.
 - Product/ProductVariant hard-delete tombstones, incremental event ingestion,
-  localized variant titles, and versioned Product-to-variant links remain later
-  Index/reconciliation slices.
+  durable Product/ProductVariant-to-SalesChannel relations, and authoritative
+  Index consumer cutover remain later Index/reconciliation slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -147,5 +153,6 @@
 - `storefront::ProductView`
 
 See also `docs/README.md`, the Index
-[M7 Product source contract](../rustok-index/docs/m7-product-source.md), and the
-[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md).
+[M7 Product source contract](../rustok-index/docs/m7-product-source.md),
+[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md), and
+[M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md).
