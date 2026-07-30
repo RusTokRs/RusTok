@@ -41,11 +41,17 @@ const paths = {
   event: "crates/rustok-events/src/social_graph.rs",
   ports: "crates/rustok-social-graph/src/ports.rs",
   maintenance: "crates/rustok-social-graph/src/maintenance.rs",
+  maintenanceRuntime: "crates/rustok-social-graph/src/maintenance_runtime.rs",
   lib: "crates/rustok-social-graph/src/lib.rs",
   readme: "crates/rustok-social-graph/README.md",
   plan: "crates/rustok-social-graph/docs/implementation-plan.md",
   profilesPlan: "crates/rustok-profiles/docs/implementation-plan.md",
   test: "crates/rustok-social-graph/tests/relation_event_replay_sqlite.rs",
+  moduleManifest: "crates/rustok-social-graph/rustok-module.toml",
+  cliCargo: "crates/rustok-social-graph-cli/Cargo.toml",
+  cliSource: "crates/rustok-social-graph-cli/src/lib.rs",
+  cliDocs: "crates/rustok-social-graph/docs/relation-event-replay-cli.md",
+  registry: "crates/rustok-cli-registry/src/generated.rs",
 };
 
 for (const value of Object.values(paths)) assertExists(value);
@@ -53,11 +59,17 @@ for (const value of Object.values(paths)) assertExists(value);
 const event = readRepo(paths.event);
 const ports = readRepo(paths.ports);
 const maintenance = readRepo(paths.maintenance);
+const maintenanceRuntime = readRepo(paths.maintenanceRuntime);
 const lib = readRepo(paths.lib);
 const readme = readRepo(paths.readme);
 const plan = readRepo(paths.plan);
 const profilesPlan = readRepo(paths.profilesPlan);
 const test = readRepo(paths.test);
+const moduleManifest = readRepo(paths.moduleManifest);
+const cliCargo = readRepo(paths.cliCargo);
+const cliSource = readRepo(paths.cliSource);
+const cliDocs = readRepo(paths.cliDocs);
+const registry = readRepo(paths.registry);
 
 assertContains(
   event,
@@ -129,6 +141,21 @@ assertNotContains(
 );
 
 for (const marker of [
+  "impl SocialGraphRelationEventMaintenanceService",
+  "pub fn with_outbox(db: DatabaseConnection)",
+  "OutboxTransport::new(db.clone())",
+  "Arc<dyn EventTransport>",
+  "TransactionalEventBus::new(transport)",
+]) {
+  assertContains(
+    maintenanceRuntime,
+    marker,
+    `${paths.maintenanceRuntime}: owner replay runtime composition missing: ${marker}`,
+  );
+}
+
+for (const marker of [
+  "mod maintenance_runtime;",
   "SocialGraphRelationEventMaintenanceService",
   "MAX_SOCIAL_GRAPH_RELATION_EVENT_REPLAY_BATCH",
   "SocialGraphRelationEventMaintenancePort",
@@ -163,6 +190,64 @@ for (const marker of [
     marker,
     `relation replay documentation missing: ${marker}`,
   );
+}
+
+assertContains(moduleManifest, "[provides.cli]", `${paths.moduleManifest}: CLI declaration missing`);
+assertContains(
+  moduleManifest,
+  'factory = "rustok_social_graph_cli::command_provider"',
+  `${paths.moduleManifest}: CLI factory missing`,
+);
+assertContains(
+  registry,
+  "rustok_social_graph_cli::command_provider(runtime)",
+  `${paths.registry}: generated Social Graph provider wiring missing`,
+);
+assertContains(
+  cliCargo,
+  "rustok-social-graph.workspace = true",
+  `${paths.cliCargo}: owner crate dependency missing`,
+);
+
+for (const marker of [
+  '"relation-event-replay"',
+  ".with_dry_run()",
+  "DEFAULT_REPLAY_LIMIT: u32 = 100",
+  "MAX_SOCIAL_GRAPH_RELATION_EVENT_REPLAY_BATCH",
+  'optional_uuid(options, "after_relation_id")',
+  "SocialGraphRelationEventMaintenanceService::with_outbox",
+  "SocialGraphRelationEventMaintenancePort::replay_relation_state_events",
+  "PortActor::system()",
+  ".with_deadline(REPLAY_DEADLINE)",
+  ".with_idempotency_key(format!(",
+  "selected_relations",
+  "published_events",
+  "next_after_relation_id",
+  "replay_requires_tenant_and_bounds_cursor_and_limit",
+  "replay_requires_database_runtime_after_input_validation",
+]) {
+  assertContains(cliSource, marker, `${paths.cliSource}: replay CLI contract missing: ${marker}`);
+}
+
+for (const forbidden of [
+  "social_graph_relations",
+  "publish_contract_in_tx",
+  "OutboxTransport",
+  "TransactionalEventBus",
+  "tokio::spawn",
+]) {
+  assertNotContains(cliSource, forbidden, `${paths.cliSource}: owner boundary leak: ${forbidden}`);
+}
+
+for (const marker of [
+  "--tenant-id <uuid> is mandatory",
+  "--after-relation-id <uuid> is optional",
+  "--limit <1..1000>",
+  "never loops over all pages automatically",
+  "Any publication failure rolls back the whole page",
+  "does not prove projection freshness",
+]) {
+  assertContains(cliDocs, marker, `${paths.cliDocs}: operating contract missing: ${marker}`);
 }
 
 for (const forbidden of [
