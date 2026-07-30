@@ -82,6 +82,27 @@ RusTok is designed to support a **Dual-Engine Persistence Strategy**:
 
 ---
 
+## Target Applications & Use Cases
+
+### 1. Universal Data Platform Core (Startups, SaaS, ERP, CRM & Fintech)
+At its core, **RusTok Core** (`rustok-core`, `tenant`, `auth`, `rbac`, `index`, `search`, `outbox`, `cache`, `secrets`, `alloy`) is a universal, production-grade foundation for **any data-intensive application**.
+
+Rather than spending months rebuilding low-level infrastructure from scratch, RusTok Core provides pre-built Rust primitives for:
+- 🚀 **Startups & MVPs**: Launch production-ready digital products in days rather than months.
+- 🏢 **Enterprise ERP, CRM & B2B Portals**: Manage complex organizational hierarchies, RBAC policies, custom pricing, and legacy data cleansing via Alloy scripts.
+- 💳 **Fintech, Banking & Data-Sensitive Workloads**: Strict compile-time type safety, double-entry financial ledger accounting (`rustok-marketplace-ledger`), event audit trails, and non-bypassable tenant isolation.
+- ☁️ **SaaS Platforms**: Multi-tenant database isolation (Turso per-tenant micro-DBs), sub-50ms cold boots, and effortless scale-to-zero.
+
+### 2. Specialized Industry Frameworks
+For domain-specific verticals, RusTok provides pre-packaged module ecosystems:
+- 🛒 **E-Commerce & Multi-Vendor Marketplaces**: Catalog, Cart, Order State Machine, Multi-vendor Seller Payouts, Commission Rules, and Multi-region Taxes.
+- 🤖 **AI-Native & Agentic Platforms**: Built-in Model Context Protocol (`rustok-mcp`) server, Vector RAG data plane (`rustok-ai-athanor`), and automated LLM orchestration.
+- 📰 **High-Traffic Media & Headless Content Systems**: Dual Leptos SSR + Headless GraphQL/REST, SEO Engine, Media Management (`rustok-media`), Editorial Blogs, Forums, and Comment Threads.
+
+*...and much, much more — virtually any application that requires fast, reliable, and secure data processing!*
+
+---
+
 ## Feature & Engineering Comparison Matrix
 
 | Engineering Capability | WordPress / Woo | Magento 2 | Strapi (JS) | Medusa v2 (TS) | **RusTok** |
@@ -107,9 +128,11 @@ Fluid Backend Architecture (FBA) decouples domain service logic from transport b
 - **Zero Business Code Rewrite**: Switching between embedded and remote modes requires changing only a environment flag (e.g. `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc`). Client APIs and domain logic remain untouched.
 
 ### 2. Fluid Frontend Architecture (FFA)
-FFA provides a dual-path UI architecture that prevents frontend fragmentation:
-- **Integrated Leptos SSR Path**: Module UI packages (`crates/rustok-*/admin` or `storefront`) compile directly into Leptos hosts using native `#[server]` functions for maximum performance without client-side HTTP overhead.
-- **Headless & Companion Path**: Exposes identical domain capabilities via parallel **GraphQL**, **REST**, and **gRPC** interfaces for Next.js, Flutter Mobile apps, or third-party integrations.
+FFA provides a framework-agnostic UI architecture that eliminates frontend fragmentation and protects application code from UI framework lock-in:
+- **Framework-Agnostic UI Contracts (`rustok-ui-core`, `rustok-ui-i18n`)**: State machines, view-models, input validation, and i18n catalogs are written in pure Rust without UI framework dependencies (zero `leptos::*` or `dioxus::*` imports in core logic).
+- **Seamless UI Framework Swap (Leptos ↔ Dioxus Migration Track)**: Enables swapping or upgrading the frontend rendering engine (e.g. migrating from Leptos to Dioxus or adding native desktop/mobile hosts via [`docs/research/dioxus-ffa-ui-migration-plan.md`](docs/research/dioxus-ffa-ui-migration-plan.md)) without rewriting a single line of domain UI state, view-models, or validation logic. Only thin view-adapters (`ui/leptos.rs` → `ui/dioxus.rs`) are swapped.
+- **Integrated Leptos SSR Path (Default)**: Module UI packages compile directly into Leptos hosts using native `#[server]` functions for zero-overhead server rendering.
+- **Headless & Companion Path**: Exposes identical domain capabilities via parallel **GraphQL**, **REST**, and **gRPC** interfaces for Next.js, Flutter Mobile apps, or custom clients.
 
 ### 3. High-Performance Relational Index Engine (`rustok-index`)
 Cross-module read queries (e.g. searching products by categories, prices, flex fields, and inventory status) historically suffer from multi-table JOIN bottlenecks or N+1 microservice HTTP calls.
