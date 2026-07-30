@@ -57,9 +57,9 @@ redaction for arbitrary `update_user(status = inactive|banned)` operations. Thos
 explicit product policy because temporary suspension and deletion may have different presentation
 semantics.
 
-The operation remains a deactivation rather than physical account or profile erasure. `UserDeleted`
-is sufficient only because owner redaction and event persistence share one transaction; an
-ungrounded `UserDeleted` publisher would not satisfy this contract.
+The operation is deactivation, not hard erasure: account and profile rows remain for referential and
+audit continuity. `UserDeleted` is sufficient only because owner redaction and event persistence
+share one transaction; an ungrounded `UserDeleted` publisher would not satisfy this contract.
 
 ## Compatibility
 
