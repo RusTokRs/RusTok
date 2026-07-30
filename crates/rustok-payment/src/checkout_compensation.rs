@@ -438,12 +438,6 @@ impl InProcessCheckoutPaymentCompensationPort {
     }
 }
 
-pub fn in_process_checkout_payment_compensation_port(
-    db: DatabaseConnection,
-) -> Arc<dyn CheckoutPaymentCompensationPort> {
-    Arc::new(InProcessCheckoutPaymentCompensationPort::new(db))
-}
-
 #[async_trait]
 impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPort {
     async fn compensate_checkout_payment(

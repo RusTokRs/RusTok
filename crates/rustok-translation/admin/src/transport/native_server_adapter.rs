@@ -2445,6 +2445,8 @@ mod tests {
 
     #[tokio::test]
     async fn native_machine_operations_execute_authenticated_http_parity() {
+        use sea_orm::PaginatorTrait;
+
         let (runtime, tenant_id, _, auth, tenant, _) = native_fixture().await;
         let machine_port = runtime
             .shared_get::<Arc<NativeMachinePort>>()

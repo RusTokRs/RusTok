@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::domain::{
-    EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexRecord, IndexSchema,
-    IndexValue, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+    EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation, IndexRecord,
+    IndexSchema, IndexValue, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
 };
 
 use super::*;

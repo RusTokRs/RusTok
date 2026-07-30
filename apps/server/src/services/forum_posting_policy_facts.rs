@@ -44,6 +44,7 @@ impl ServerForumAccountAgeFactPort {
         }
     }
 
+    #[allow(dead_code)]
     fn with_clock(db: DatabaseConnection, now: AccountAgeClock) -> Self {
         Self { db, now }
     }
