@@ -84,11 +84,12 @@ for (const [value, label] of [
 ]) requireText(shared, value, label);
 
 for (const value of [
+  'error = ?error',
   'let message = error.to_string();',
   'ApiError::ServerFn(error.to_string())',
   'ApiError::Graphql(error.to_string())',
   'ApiError::ServerFn(message)',
-]) forbidText(shared, value, 'shared raw public transport mapping');
+]) forbidText(shared, value, 'shared raw transport cause exposure');
 
 if (evidence.status !== 'storefront_transport_error_safety_source_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
@@ -97,6 +98,7 @@ for (const [key, expected] of Object.entries({
   native_static_public_envelopes: true,
   native_context_logging: true,
   shared_static_public_envelopes: true,
+  shared_raw_cause_logging: false,
   foreign_transport_error_text_public: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -125,5 +127,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ commerce storefront cart/payment transport failures retain internal diagnostics and static public envelopes; runtime evidence remains open',
+  '✔ commerce storefront cart/payment transport failures retain SSR diagnostics and static public envelopes without client-side raw causes; runtime evidence remains open',
 );
