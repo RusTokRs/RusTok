@@ -1,15 +1,22 @@
 use std::{sync::Arc, time::Duration};
 
-use rustok_api::{PortActor, PortContext, PortError};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind, TenantLocale,
+};
+use sea_orm::DatabaseConnection;
 use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_region::dto::RegionResponse;
 use rustok_region::{RegionReadPort, RegionReadRequest, RegionReadSelector};
+use rustok_tenant::{
+    TenantLocalePolicyPort, TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService,
+};
 
 use crate::dto::{ResolveStoreContextInput, StoreContextResponse};
+
+const STORE_CONTEXT_PORT_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub type StoreContextResult<T> = Result<T, StoreContextError>;
 
@@ -27,6 +34,8 @@ pub enum StoreContextError {
         region_currency_code: String,
         region_id: Uuid,
     },
+    #[error("tenant boundary `{code}` failed: {message}")]
+    TenantBoundary { code: String, message: String },
     #[error("region boundary `{code}` failed: {message}")]
     RegionBoundary { code: String, message: String },
     #[error(transparent)]
@@ -34,14 +43,31 @@ pub enum StoreContextError {
 }
 
 pub struct StoreContextService {
-    db: DatabaseConnection,
+    tenant_read_port: Arc<dyn TenantReadPort>,
+    tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
     region_read_port: Arc<dyn RegionReadPort>,
 }
 
 impl StoreContextService {
     pub fn new(db: DatabaseConnection, region_read_port: Arc<dyn RegionReadPort>) -> Self {
+        let tenant_service = Arc::new(TenantService::new(db));
+        let tenant_read_port: Arc<dyn TenantReadPort> = tenant_service.clone();
+        let tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort> = tenant_service;
         Self {
-            db,
+            tenant_read_port,
+            tenant_locale_policy_port,
+            region_read_port,
+        }
+    }
+
+    pub fn with_ports(
+        tenant_read_port: Arc<dyn TenantReadPort>,
+        tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+        region_read_port: Arc<dyn RegionReadPort>,
+    ) -> Self {
+        Self {
+            tenant_read_port,
+            tenant_locale_policy_port,
             region_read_port,
         }
     }
@@ -52,8 +78,8 @@ impl StoreContextService {
         tenant_id: Uuid,
         input: ResolveStoreContextInput,
     ) -> StoreContextResult<StoreContextResponse> {
-        let default_locale = self.load_default_locale(tenant_id).await?;
-        let mut available_locales = self.load_enabled_locales(tenant_id).await?;
+        let (default_locale, mut available_locales) =
+            self.load_tenant_locale_context(tenant_id).await?;
         if available_locales.is_empty() {
             available_locales.push(default_locale.clone());
         }
@@ -117,13 +143,7 @@ impl StoreContextService {
             return Ok(None);
         };
         let locale = requested_locale.or(tenant_default_locale).unwrap_or("und");
-        let context = PortContext::new(
-            tenant_id.to_string(),
-            PortActor::service("commerce.store-context"),
-            locale,
-            format!("store-context:{tenant_id}"),
-        )
-        .with_deadline(Duration::from_secs(3));
+        let context = store_context_port_context(tenant_id, locale, "region");
         let projection = self
             .region_read_port
             .read_region(
@@ -140,41 +160,66 @@ impl StoreContextService {
         Ok(projection.map(|projection| projection.region))
     }
 
-    async fn load_default_locale(&self, tenant_id: Uuid) -> StoreContextResult<String> {
-        let row = self
-            .db
-            .query_one(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
-                "SELECT default_locale FROM tenants WHERE id = ?",
-                vec![tenant_id.into()],
+    async fn load_tenant_locale_context(
+        &self,
+        tenant_id: Uuid,
+    ) -> StoreContextResult<(String, Vec<String>)> {
+        let tenant = self
+            .tenant_read_port
+            .read_tenant(
+                store_context_port_context(tenant_id, PLATFORM_FALLBACK_LOCALE, "tenant"),
+                TenantReadRequest {
+                    selector: TenantReadSelector::Id(tenant_id),
+                    include_inactive: false,
+                },
+            )
+            .await
+            .map_err(|error| map_tenant_port_error(tenant_id, error))?;
+        let policy = self
+            .tenant_locale_policy_port
+            .read_locale_policy(store_context_port_context(
+                tenant_id,
+                tenant.default_locale.as_str(),
+                "locale-policy",
             ))
-            .await?;
-
-        let row = row.ok_or(StoreContextError::TenantNotFound(tenant_id))?;
-        let default_locale = row.try_get::<String>("", "default_locale")?;
-        normalize_locale(&default_locale)
-    }
-
-    async fn load_enabled_locales(&self, tenant_id: Uuid) -> StoreContextResult<Vec<String>> {
-        let rows = self
-            .db
-            .query_all(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
-                "SELECT locale FROM tenant_locales WHERE tenant_id = ? AND is_enabled = TRUE ORDER BY is_default DESC, locale ASC",
-                vec![tenant_id.into()],
-            ))
-            .await?;
-
-        let mut locales = Vec::new();
-        for row in rows {
-            let locale = row.try_get::<String>("", "locale")?;
-            let normalized = normalize_locale(&locale)?;
-            if !locales.contains(&normalized) {
-                locales.push(normalized);
-            }
+            .await
+            .map_err(|error| map_tenant_port_error(tenant_id, error))?;
+        let default_locale = policy.default_locale.into_inner();
+        if tenant.default_locale != default_locale {
+            return Err(StoreContextError::TenantBoundary {
+                code: "tenant.locale_policy_default_mismatch".to_string(),
+                message: "tenant default locale does not match the owner locale policy".to_string(),
+            });
         }
+        let available_locales = policy
+            .locales
+            .into_iter()
+            .filter(|locale| locale.is_enabled)
+            .map(|locale| locale.locale.into_inner())
+            .collect();
 
-        Ok(locales)
+        Ok((default_locale, available_locales))
+    }
+}
+
+fn store_context_port_context(tenant_id: Uuid, locale: &str, operation: &str) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("commerce.store-context"),
+        locale,
+        format!("store-context:{operation}:{tenant_id}"),
+    )
+    .with_deadline(STORE_CONTEXT_PORT_TIMEOUT)
+}
+
+fn map_tenant_port_error(tenant_id: Uuid, error: PortError) -> StoreContextError {
+    if error.kind == PortErrorKind::NotFound {
+        StoreContextError::TenantNotFound(tenant_id)
+    } else {
+        StoreContextError::TenantBoundary {
+            code: error.code,
+            message: error.message,
+        }
     }
 }
 
@@ -186,14 +231,9 @@ fn map_region_port_error(error: PortError) -> StoreContextError {
 }
 
 fn normalize_locale(value: &str) -> StoreContextResult<String> {
-    let normalized = value.trim().replace('_', "-").to_ascii_lowercase();
-    if (2..=10).contains(&normalized.len()) {
-        Ok(normalized)
-    } else {
-        Err(StoreContextError::Validation(format!(
-            "locale `{value}` is invalid"
-        )))
-    }
+    TenantLocale::new(value)
+        .map(TenantLocale::into_inner)
+        .map_err(|error| StoreContextError::Validation(error.to_string()))
 }
 
 fn normalize_currency(value: &str) -> StoreContextResult<String> {
