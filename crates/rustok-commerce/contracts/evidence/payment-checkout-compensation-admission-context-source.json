@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_compensation_admission_context_source_unvalidated",
+  "owner": "rustok_payment",
+  "consumer": "rustok_commerce.checkout_compensation",
+  "boundary": "checkout_payment_compensation_port",
+  "operation": "compensate_checkout_payment",
+  "scope": {
+    "public_root_type": "rustok_payment::InProcessCheckoutPaymentCompensationPort",
+    "public_root_factory": "rustok_payment::in_process_checkout_payment_compensation_port",
+    "public_module_type": "rustok_payment::checkout_compensation::InProcessCheckoutPaymentCompensationPort",
+    "public_module_factory": "rustok_payment::checkout_compensation::in_process_checkout_payment_compensation_port",
+    "persistent_source": "crates/rustok-payment/src/checkout_compensation.rs",
+    "context_wrapper": "crates/rustok-payment/src/checkout_compensation_context.rs",
+    "public_facade": "crates/rustok-payment/src/checkout_compensation_api.rs"
+  },
+  "admission_envelopes": [
+    {
+      "code": "port.idempotency_key_required",
+      "message": "write port calls require a non-empty idempotency key",
+      "local_operation": "admit_write_idempotency"
+    },
+    {
+      "code": "port.deadline_required",
+      "message": "port calls require deadline semantics",
+      "local_operation": "admit_deadline"
+    }
+  ],
+  "contract": {
+    "persistent_module_publicly_reachable": false,
+    "root_and_module_paths_use_context_wrapper": true,
+    "exact_code_and_message_matching": true,
+    "same_port_error_returned": true,
+    "raw_reason_logged": false,
+    "raw_metadata_logged": false,
+    "tenant_and_causation_duplicate_mapping": false
+  },
+  "validation": {
+    "focused_verifier": false,
+    "aggregate_verifier": false,
+    "cargo_check_payment": false,
+    "cargo_check_commerce": false,
+    "tests": false,
+    "provider_replay": false,
+    "restart": false,
+    "remote_profile": false,
+    "mounted_transport_parity": false,
+    "ci": false
+  },
+  "nonclaims": [
+    "No verifier, compiler, test, provider, restart, remote-profile, transport, or CI command was executed.",
+    "No payment lifecycle, provider execution, idempotency, persistence, or public PortError semantics were changed.",
+    "The broad ecommerce correlation-safe mapper cleanup remains open."
+  ]
+}

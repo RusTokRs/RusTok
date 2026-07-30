@@ -3,6 +3,9 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+#[path = "checkout_compensation.rs"]
+mod checkout_compensation_persistent;
+#[path = "checkout_compensation_api.rs"]
 pub mod checkout_compensation;
 mod checkout_compensation_context;
 #[allow(dead_code)]
@@ -27,8 +30,6 @@ pub mod stripe_provider;
 
 pub use checkout_compensation::{
     CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
-};
-pub use checkout_compensation_context::{
     InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,
 };
 pub use checkout_execution::*;
