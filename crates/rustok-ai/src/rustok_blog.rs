@@ -1,3 +1,5 @@
 pub use rustok_blog_owner::{
-    CreatePostInput, PostResponse, PostService, UpdatePostInput, migrations, richtext,
+    CreatePostInput, PostResponse, PostService, UpdatePostInput, richtext,
 };
+#[cfg(test)]
+pub use rustok_blog_owner::migrations;
