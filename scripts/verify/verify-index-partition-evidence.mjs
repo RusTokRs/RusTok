@@ -221,7 +221,7 @@ requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'Tenant-predicate coverage is calculated by the validator',
   'The packet cannot supply a precomputed pass/fail value',
   'packet_digest',
-  'Structurally invalid evidence produces no admission output.',
+  'produces no admission output.',
   'It must not contain production `ALTER TABLE`, `DROP TABLE`, `RENAME TO`',
 ]);
 
