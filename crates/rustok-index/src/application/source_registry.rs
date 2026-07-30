@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
@@ -21,7 +21,11 @@ const MAX_SCAN_BATCH_SIZE: usize = 1_000;
 const MAX_LOAD_KEYS: usize = 256;
 const MAX_FAILURE_CODE_BYTES: usize = 128;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Opaque, source-owned continuation state with a stable JSON persistence boundary.
+///
+/// Construction and deserialization both reject JSON null and encoded values above
+/// 8 KiB so a durable worker cannot bypass the bound by restoring a checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct IndexSourceCursor(JsonValue);
 
@@ -47,6 +51,16 @@ impl IndexSourceCursor {
 
     pub fn into_value(self) -> JsonValue {
         self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for IndexSourceCursor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = JsonValue::deserialize(deserializer)?;
+        Self::new(value).map_err(D::Error::custom)
     }
 }
 
@@ -241,7 +255,7 @@ impl IndexSourceFailure {
         code: impl Into<String>,
     ) -> Result<Self, IndexSourceError> {
         let code = code.into();
-        if !valid_bounded_name(&code, MAX_FAILURE_CODE_BYTES) {
+        if !valid_machine_name(&code, MAX_FAILURE_CODE_BYTES) {
             return Err(IndexSourceError::InvalidFailureCode(code));
         }
         Ok(Self { kind, code })
@@ -368,10 +382,10 @@ impl IndexSourceCatalog {
     ) -> Result<(), IndexSourceError> {
         let owner_module = owner_module.into();
         let source_name = source_name.into();
-        if !valid_bounded_name(&owner_module, MAX_SOURCE_NAME_BYTES) {
+        if !valid_owner_module(&owner_module) {
             return Err(IndexSourceError::InvalidOwnerModule(owner_module));
         }
-        if !valid_bounded_name(&source_name, MAX_SOURCE_NAME_BYTES) {
+        if !valid_machine_name(&source_name, MAX_SOURCE_NAME_BYTES) {
             return Err(IndexSourceError::InvalidSourceName(source_name));
         }
         if self.sources.contains_key(&source_name) {
@@ -725,13 +739,22 @@ fn validate_load_batch(
     Ok(())
 }
 
-fn valid_bounded_name(value: &str, max_bytes: usize) -> bool {
+fn valid_owner_module(value: &str) -> bool {
+    valid_bounded_ascii(value, MAX_SOURCE_NAME_BYTES, false)
+}
+
+fn valid_machine_name(value: &str, max_bytes: usize) -> bool {
+    valid_bounded_ascii(value, max_bytes, true)
+}
+
+fn valid_bounded_ascii(value: &str, max_bytes: usize, allow_dot: bool) -> bool {
     !value.is_empty()
         && value.len() <= max_bytes
         && value.bytes().all(|byte| {
             byte.is_ascii_lowercase()
                 || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+                || matches!(byte, b'-' | b'_')
+                || (allow_dot && byte == b'.')
         })
 }
 
@@ -828,9 +851,12 @@ mod tests {
     fn cursor_and_scan_limits_are_bounded() {
         assert!(IndexSourceCursor::new(JsonValue::Null).is_err());
         assert!(IndexSourceCursor::new(JsonValue::String("x".repeat(MAX_CURSOR_BYTES))).is_err());
-        assert!(
-            IndexSourceScanRequest::new(Uuid::new_v4(), schema_ref(1), None, 0).is_err()
-        );
+        assert!(serde_json::from_value::<IndexSourceCursor>(JsonValue::Null).is_err());
+        assert!(serde_json::from_value::<IndexSourceCursor>(JsonValue::String(
+            "x".repeat(MAX_CURSOR_BYTES)
+        ))
+        .is_err());
+        assert!(IndexSourceScanRequest::new(Uuid::new_v4(), schema_ref(1), None, 0).is_err());
         assert!(IndexSourceScanRequest::new(
             Uuid::new_v4(),
             schema_ref(1),
