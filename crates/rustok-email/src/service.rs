@@ -7,7 +7,7 @@ use lettre::{
 
 use crate::config::EmailConfig;
 use crate::error::{EmailError, Result};
-use crate::template::{EmailTemplateProvider, RenderedEmail};
+use crate::template::{EmailTemplateProvider, RenderedEmail, render_tera_html_string};
 
 /// Email to send for password reset.
 #[derive(Debug, Clone)]
@@ -84,7 +84,6 @@ impl PasswordResetEmailSender for EmailService {
         match self {
             Self::Disabled => {
                 tracing::info!(
-                    recipient = %email.to,
                     "Password reset email provider disabled; skipping outbound send"
                 );
                 Ok(())
@@ -106,7 +105,6 @@ impl TransactionalEmailSender for EmailService {
         match self {
             Self::Disabled => {
                 tracing::info!(
-                    recipient = %to,
                     template_id,
                     "Transactional email provider disabled; skipping outbound send"
                 );
@@ -200,16 +198,17 @@ impl PasswordResetEmailSender for SmtpEmailSender {
             .to
             .parse::<Mailbox>()
             .map_err(|e| EmailError::InvalidAddress(format!("Invalid recipient: {e}")))?;
+        let html = render_tera_html_string(
+            "<p>You requested a password reset.</p><p><a href=\"{{ reset_url }}\">Reset password</a></p>",
+            &serde_json::json!({ "reset_url": email.reset_url }),
+        )?;
 
         let message = Message::builder()
             .from(self.from.clone())
             .to(recipient)
             .subject("RusToK password reset")
             .header(ContentType::TEXT_HTML)
-            .body(format!(
-                "<p>You requested a password reset.</p><p><a href=\"{}\">Reset password</a></p>",
-                email.reset_url
-            ))
+            .body(html)
             .map_err(|e| EmailError::Build(e.to_string()))?;
 
         self.transport
@@ -258,7 +257,6 @@ mod tests {
         let config = config_with_reset_base_url("https://admin.example.test/reset-password");
 
         let url = EmailService::password_reset_url(&config, "abc+/=&?");
-
         assert_eq!(
             url,
             "https://admin.example.test/reset-password?token=abc%2B%2F%3D%26%3F"
@@ -271,7 +269,6 @@ mod tests {
             config_with_reset_base_url("https://admin.example.test/reset-password?tenant=demo");
 
         let url = EmailService::password_reset_url(&config, "reset-token");
-
         assert_eq!(
             url,
             "https://admin.example.test/reset-password?tenant=demo&token=reset-token"
@@ -283,7 +280,20 @@ mod tests {
         let config = config_with_reset_base_url("/reset-password?tenant=demo");
 
         let url = EmailService::password_reset_url(&config, "abc+/=&?");
-
         assert_eq!(url, "/reset-password?tenant=demo&token=abc%2B%2F%3D%26%3F");
+    }
+
+    #[test]
+    fn password_reset_html_escapes_attribute_breakout_payload() {
+        let html = render_tera_html_string(
+            "<a href=\"{{ reset_url }}\">Reset password</a>",
+            &serde_json::json!({
+                "reset_url": "https://example.test/reset\" onclick=\"alert(1)"
+            }),
+        )
+        .unwrap();
+
+        assert!(html.contains("&quot;"));
+        assert!(!html.contains("\" onclick=\""));
     }
 }
