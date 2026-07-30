@@ -4,9 +4,9 @@
 
 **High-Performance Event-Driven Platform Built in Rust & Tokio**
 
-**Project status:** RusTok is under active development and provides a production-grade architectural foundation for building modern content, commerce, and AI-native applications.
+**Project status:** RusTok is under active development and provides a production-grade architectural foundation for building any data-driven applications, enterprise backends, and AI-native systems.
 
-*Content · Commerce · Community · Workflow · Automation · AI-Native · Modular Architecture · One Runtime*
+*Universal Data Platform · Enterprise Backend · AI-Native · Modular Architecture · One Runtime*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
