@@ -120,7 +120,9 @@ impl ForumProjectionInbox {
     }
 
     /// Claims the oldest non-terminal event. A retry backoff on that event
-    /// blocks newer work, so a later projection cannot overtake it.
+    /// blocks newer work, so a later projection cannot overtake it. Claim lock
+    /// acquisition is non-blocking so competing dispatcher tasks do not occupy
+    /// the whole connection pool while one projector operation is in flight.
     pub(crate) async fn claim_next(
         &self,
         tenant_id: Uuid,
@@ -129,7 +131,10 @@ impl ForumProjectionInbox {
 
         loop {
             let transaction = self.db.begin().await.map_err(Error::Database)?;
-            acquire_tenant_lock(&transaction, tenant_id).await?;
+            if !try_acquire_tenant_lock(&transaction, tenant_id).await? {
+                transaction.commit().await.map_err(Error::Database)?;
+                return Ok(None);
+            }
             let row = transaction
                 .query_one(Statement::from_sql_and_values(
                     DbBackend::Postgres,
@@ -345,20 +350,21 @@ impl ForumProjectionInboxClaim {
     }
 }
 
-async fn acquire_tenant_lock(
+async fn try_acquire_tenant_lock(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
-) -> Result<()> {
+) -> Result<bool> {
     let lock_key = format!("search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}");
-    transaction
+    let row = transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired",
             vec![lock_key.into()],
         ))
         .await
-        .map_err(Error::Database)?;
-    Ok(())
+        .map_err(Error::Database)?
+        .ok_or_else(|| Error::External("PostgreSQL advisory lock returned no row".to_string()))?;
+    row.try_get("", "acquired").map_err(Error::Database)
 }
 
 async fn load_effective_watermark(
