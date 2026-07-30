@@ -52,16 +52,16 @@ function snapshot({ epoch = 1_700_000_000, entries = [], extra = [] } = {}) {
 
 function notificationCoverageEntries() {
   return [
-    ['blocks_between', 'match_positive', 25, 0.25, 1_775_030_050],
-    ['blocks_between', 'match_negative', 25, 0.25, 1_775_030_100],
-    ['source_mutes_target', 'match_positive', 25, 0.25, 1_775_030_150],
-    ['source_mutes_target', 'match_negative', 25, 0.25, 1_775_030_200],
+    ['blocks_between', 'match_positive', 25, 0.25, 1_785_398_450],
+    ['blocks_between', 'match_negative', 25, 0.25, 1_785_398_500],
+    ['source_mutes_target', 'match_positive', 25, 0.25, 1_785_398_550],
+    ['source_mutes_target', 'match_negative', 25, 0.25, 1_785_398_600],
   ];
 }
 
 test('canonical retained snapshot excludes unrelated process metrics', () => {
   const parsed = parseSnapshot(snapshot({
-    entries: [['blocks_between', 'match_positive', 1, 0.01, 1_775_030_050]],
+    entries: [['blocks_between', 'match_positive', 1, 0.01, 1_785_398_450]],
     extra: ['http_requests_total{path="/private/tenant"} 99'],
   }));
   const retained = canonicalizeSnapshot(parsed).toString('utf8');
@@ -74,17 +74,17 @@ test('collector epoch change rejects a restarted observation window', () => {
   const start = parseSnapshot(snapshot({ epoch: 100 }));
   const end = parseSnapshot(snapshot({
     epoch: 101,
-    entries: [['blocks_between', 'match_positive', 1, 0.01, 1_775_030_050]],
+    entries: [['blocks_between', 'match_positive', 1, 0.01, 1_785_398_450]],
   }));
   assert.throws(() => analyzeWindow(start, end, WINDOW), /collector epoch changed/);
 });
 
 test('counter decrease rejects a reset inside one collector epoch', () => {
   const start = parseSnapshot(snapshot({
-    entries: [['blocks_between', 'match_positive', 2, 0.02, 1_775_030_010]],
+    entries: [['blocks_between', 'match_positive', 2, 0.02, 1_785_398_410]],
   }));
   const end = parseSnapshot(snapshot({
-    entries: [['blocks_between', 'match_positive', 1, 0.01, 1_775_030_050]],
+    entries: [['blocks_between', 'match_positive', 1, 0.01, 1_785_398_450]],
   }));
   assert.throws(() => analyzeWindow(start, end, WINDOW), /counter reset detected/);
 });
@@ -107,7 +107,7 @@ test('false negative evidence is reviewable but cannot pass policy', () => {
   const end = parseSnapshot(snapshot({
     entries: [
       ...notificationCoverageEntries(),
-      ['blocks_between', 'false_negative', 1, 0.01, 1_775_030_250],
+      ['blocks_between', 'false_negative', 1, 0.01, 1_785_398_650],
     ],
   }));
   const metrics = analyzeWindow(start, end, WINDOW);
