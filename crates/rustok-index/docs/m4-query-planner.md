@@ -178,24 +178,29 @@ directional mute/follow semantics.
 
 `IndexShadowSocialGraphPrivacyReadPort` wraps the authoritative owner port plus the typed
 Index adapter. It executes the owner read first, compares the projection after owner success,
-records bounded diagnostics without identities, and always returns the owner result. Index
-therefore never decides notification privacy in this slice.
+and always returns the owner result. Index therefore never decides notification privacy in
+this slice.
 
-The comparison source publishes bounded Prometheus outcomes through the single telemetry
-registry. Boolean reads distinguish `match_positive`, `match_negative`, `false_negative`,
-and `false_positive`; follow batches distinguish empty/non-empty matches plus
-`batch_missing`, `batch_extra`, and `batch_mixed`. Projection failures use the outcome
-`error` and one of two known stable codes or `other`. Comparison duration and last-observed
-timestamp use the same fixed operation/outcome labels. No tenant, user, relation, entity,
-payload, SQL, or raw storage values are labels.
+The Social Graph owner emits a neutral `IndexPrivacyShadowObservation` through an injected
+observer. The record contains only fixed operation/outcome enums, comparison duration, and
+optional bounded failure classification. The owner crate has no telemetry dependency and no
+Prometheus knowledge.
+
+The host-owned Prometheus adapter lives in `rustok-server` and maps the neutral observation
+to the single `rustok-telemetry` registry. Bounded Prometheus outcomes distinguish
+`match_positive`, `match_negative`, `false_negative`, and `false_positive`; follow batches
+distinguish empty/non-empty matches plus `batch_missing`, `batch_extra`, and `batch_mixed`.
+Projection failures use `error` and one of two known stable codes or `other`. Comparison
+duration and last-observed timestamp use the same fixed operation/outcome labels. No tenant,
+user, relation, entity, payload, SQL, or raw storage values are labels.
 
 The final server facade uses the default-off shadow gate
 `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`. While disabled, the ordinary owner policy
 is unchanged. When enabled, the facade requires successful privacy-shadow collector
 registration and `SharedIndexQueryRuntime`, then recomposes notification block/mute policy
-with the non-authoritative shadow. Custom notification relation providers retain priority.
-Running an enabled shadow without the process Prometheus registry fails bootstrap instead of
-creating an unmeasured evidence mode.
+with the non-authoritative shadow and host-owned Prometheus adapter. Custom notification
+relation providers retain priority. Running an enabled shadow without the process Prometheus
+registry fails bootstrap instead of creating an unmeasured evidence mode.
 
 A direct cutover remains unsafe because a stale but successful Index query can omit a current
 block or mute without returning an error. Schema readiness is not a freshness watermark.
