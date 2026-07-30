@@ -88,14 +88,14 @@ if (fetchStart < 0 || nextFunction < 0) {
   );
 }
 
-requireText(
+forbidText(
   transport,
   "impl From<UiTransportError> for ApiError",
-  `${transportPath}: generic command-wrapper mapper remains explicit debt`,
+  `${transportPath}: generic UiTransportError display mapper`,
 );
-if (countText(transport, ".map_err(ApiError::from)") !== 1) {
+if (countText(transport, ".map_err(ApiError::from)") !== 0) {
   failures.push(
-    `${transportPath}: exactly checkout completion must remain on the generic mapper`,
+    `${transportPath}: no Commerce owner wrapper may remain on the generic mapper`,
   );
 }
 for (const marker of [
@@ -236,5 +236,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ commerce storefront aggregate fetch uses correlation-safe static public envelopes; checkout and runtime evidence remain open",
+  "✔ commerce storefront aggregate fetch uses correlation-safe static public envelopes; no generic Commerce owner wrapper remains and runtime evidence stays open",
 );

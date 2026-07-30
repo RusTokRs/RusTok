@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "status": "commerce_storefront_checkout_command_error_safety_source_unvalidated",
+  "generated_at_utc": "2026-07-30T18:08:00Z",
+  "scope": "Commerce-owned complete_storefront_checkout public transport envelope",
+  "operation": "complete_storefront_checkout",
+  "boundary": "commerce_storefront_checkout_completion_public_transport",
+  "public_messages": {
+    "invalid_checkout_request": "Invalid checkout request",
+    "checkout_completion_unavailable": "Checkout completion is temporarily unavailable"
+  },
+  "recognized_owner_validation_envelopes": [
+    "cart_id must be a valid UUID",
+    "checkout idempotency key must contain 1 to 191 bytes",
+    "Checkout request is invalid"
+  ],
+  "source_contract": {
+    "context_before_owner_call": true,
+    "unique_correlation_id": true,
+    "owner_validation_static_public_envelope": true,
+    "unavailable_static_public_envelope": true,
+    "failed_path_api_error_variant_preserved": true,
+    "ui_transport_display_public": false,
+    "generic_ui_transport_mapper_removed": true,
+    "raw_request_values_logged": false,
+    "private_transport_error_diagnostics": true,
+    "order_owner_transport_changed": false,
+    "aggregate_wrapper_changed": false,
+    "payment_wrapper_changed": false,
+    "shipping_wrapper_changed": false,
+    "fallback_added": false
+  },
+  "safe_diagnostics": [
+    "owner",
+    "owner_operation",
+    "correlation_id",
+    "tenant_slug_configured",
+    "tenant_slug_length",
+    "cart_id_length",
+    "idempotency_key_length",
+    "source_module_length",
+    "source_surface_length",
+    "command_length",
+    "owner_module_length",
+    "create_fulfillment",
+    "failed_path",
+    "fallback_attempted",
+    "stable_code",
+    "boundary",
+    "private_ui_transport_error"
+  ],
+  "forbidden_public_or_structured_request_values": [
+    "tenant_slug",
+    "cart_id",
+    "idempotency_key",
+    "source_module",
+    "source_surface",
+    "command",
+    "owner_module",
+    "native_error",
+    "graphql_error",
+    "UiTransportError display"
+  ],
+  "commerce_storefront_wrapper_state": {
+    "aggregate_fetch_generic_mapper": false,
+    "payment_collection_generic_mapper": false,
+    "shipping_selection_generic_mapper": false,
+    "checkout_completion_generic_mapper": false,
+    "generic_from_ui_transport_error_present": false
+  },
+  "remaining_scope": [
+    "finish Pricing storefront and other remaining ecommerce adapters",
+    "finish remaining non-PortError public envelopes"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "focused_verifier_run": false,
+    "aggregate_verifier_run": false,
+    "broad_ecommerce_verifier_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  },
+  "execution": []
+}

@@ -75,15 +75,20 @@ if (commandStart < 0 || commandEnd < 0) {
   forbidText(command, "error.to_string()", `${transportPath}: direct shipping display mapping`);
 }
 
-if (countText(transport, ".map_err(ApiError::from)") !== 1) {
+if (countText(transport, ".map_err(ApiError::from)") !== 0) {
   failures.push(
-    `${transportPath}: exactly checkout completion must remain on the generic mapper`,
+    `${transportPath}: no Commerce owner wrapper may remain on the generic mapper`,
   );
 }
+forbidText(
+  transport,
+  "impl From<UiTransportError> for ApiError",
+  `${transportPath}: generic UiTransportError display mapper`,
+);
 requireText(
   transport,
-  "complete_checkout(request).await.map_err(ApiError::from)",
-  `${transportPath}: remaining checkout command debt`,
+  "complete_checkout(request)",
+  `${transportPath}: preserved checkout command boundary`,
 );
 
 for (const [marker, label] of [
@@ -240,7 +245,7 @@ if (
   "commerce_storefront_shipping_command_error_safety_source_reviewed_unvalidated"
 ) failures.push(`${reviewPath}: status mismatch`);
 requireText(doc, "Status: **source-ready / unvalidated**", `${docPath}: source status`);
-requireText(doc, "checkout-completion wrapper remains open", `${docPath}: remaining wrapper scope`);
+requireText(doc, "checkout-completion wrapper remains open", `${docPath}: historical remaining wrapper scope`);
 requireText(
   plan,
   "Finish correlation-safe mapper cleanup",
@@ -254,5 +259,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ commerce storefront shipping option command uses correlation-safe static public envelopes; checkout and runtime evidence remain open",
+  "✔ commerce storefront shipping option command uses correlation-safe static public envelopes; no generic Commerce owner wrapper remains and runtime evidence stays open",
 );

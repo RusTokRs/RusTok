@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "status": "commerce_storefront_checkout_command_error_safety_source_reviewed_unvalidated",
+  "reviewed_at_utc": "2026-07-30T18:08:00Z",
+  "review_base": "b8e1d12f16a49d7f146c16d729ece001817c4681",
+  "scope": "Commerce storefront checkout completion command public transport envelope",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-commerce/storefront/src/core/requests.rs",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs",
+    "crates/rustok-commerce/storefront/src/transport/payment_collection_command_error_safety.rs",
+    "crates/rustok-commerce/storefront/src/transport/shipping_option_command_error_safety.rs",
+    "crates/rustok-order/storefront/src/transport.rs",
+    "crates/rustok-order/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "crates/rustok-commerce/storefront/Cargo.toml",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-payment-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-shipping-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-handoff.mjs"
+  ],
+  "findings": [
+    {
+      "id": "checkout-command-public-display-leak",
+      "severity": "confirmed",
+      "finding": "complete_storefront_checkout converted the Order UiTransportError through ApiError::from, exposing the full transport Display envelope and nested owner text."
+    },
+    {
+      "id": "owner-graphql-validation",
+      "severity": "confirmed",
+      "finding": "The Order GraphQL adapter emits bounded validation messages for cart UUID and idempotency-key shape before transport execution."
+    },
+    {
+      "id": "owner-native-safety",
+      "severity": "preserved",
+      "finding": "The Order native outer adapter already replaces server-function causes with Checkout transport is temporarily unavailable, while the inner native command uses Checkout request is invalid for request validation."
+    },
+    {
+      "id": "owner-graphql-safety",
+      "severity": "preserved",
+      "finding": "The Order GraphQL safety mapper already converts typed GraphqlHttpError variants to static public messages and internal correlation diagnostics."
+    },
+    {
+      "id": "validation-compatibility",
+      "severity": "selected",
+      "finding": "The Commerce mapper recognizes only the two current GraphQL validation envelopes plus the bounded native Checkout request is invalid envelope, then returns ApiError::Validation with Invalid checkout request."
+    },
+    {
+      "id": "generic-mapper-removal",
+      "severity": "selected",
+      "finding": "After the checkout wrapper adopts its own mapper, no Commerce storefront owner wrapper requires From<UiTransportError>; removing that implementation prevents later accidental public Display reuse."
+    },
+    {
+      "id": "safe-request-shape",
+      "severity": "confirmed",
+      "finding": "Diagnostics retain only correlation, tenant and request-field lengths, create_fulfillment, failed path, fallback, stable code, boundary, and private UiTransportError diagnostics."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source-review.json",
+    "crates/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source.json",
+    "crates/rustok-commerce/docs/storefront-checkout-completion-command-error-safety.md",
+    "crates/rustok-commerce/storefront/src/transport/checkout_completion_command_error_safety.rs",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-checkout-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-payment-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-shipping-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "preserved": [
+    "Commerce CheckoutCompletionCommandRequest alias and Order CompleteCheckoutRequest DTO",
+    "Order idempotency-key generation and command metadata",
+    "Order GraphQL mutation, variables, response mapping, and GraphqlHttpError policy",
+    "Order native server function, staged checkout runtime call, and completion mapping",
+    "native versus GraphQL owner transport selection",
+    "absence of native-to-GraphQL fallback",
+    "Commerce aggregate, payment collection, and shipping selection policies"
+  ],
+  "remaining_scope": [
+    "Pricing storefront and other remaining ecommerce adapters",
+    "remaining non-PortError public envelopes"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}
