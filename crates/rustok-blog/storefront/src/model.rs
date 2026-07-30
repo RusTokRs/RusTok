@@ -1,3 +1,4 @@
+use rustok_api::RichTextView;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -54,9 +55,10 @@ pub struct BlogPostDetail {
     pub title: String,
     pub slug: Option<String>,
     pub excerpt: Option<String>,
-    pub body: Option<String>,
-    #[serde(rename = "bodyFormat")]
-    pub body_format: String,
+    #[serde(default)]
+    pub content: Option<RichTextView>,
+    #[serde(default, rename = "contentPlainText")]
+    pub content_plain_text: Option<String>,
     pub status: String,
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,

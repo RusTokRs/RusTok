@@ -150,7 +150,15 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     );
     let tags = post.tags;
     let public_comments = post.public_comments;
-    let body_format = post.body_format;
+    let content = post.content;
+    let content_plain_text = core::fallback_text(
+        post.content_plain_text,
+        &t(
+            locale.as_deref(),
+            "blog.selected.noBody",
+            "No body content yet.",
+        ),
+    );
     let selected_post_status = core::selected_post_status_view(
         status,
         t(locale.as_deref(), "blog.selected.unknownStatus", "unknown"),
@@ -167,21 +175,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         ),
         published_at.as_str(),
     );
-    let body = core::summarized_body_or_fallback(
-        post.body,
-        body_format.as_str(),
-        &t(
-            locale.as_deref(),
-            "blog.selected.noBody",
-            "No body content yet.",
-        ),
-        &t(
-            locale.as_deref(),
-            "blog.body.rawFormat",
-            "Stored in `{format}` format. Raw body length: {count} characters.",
-        ),
-    );
-    let selected_post_content = core::selected_post_content_view(excerpt, body);
+    let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
     let selected_post_header =
         core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
 
@@ -202,7 +196,21 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                 />
             </div>
             <p class="mt-3 text-sm text-muted-foreground">{selected_post_content.excerpt}</p>
-            <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">{selected_post_content.body}</p>
+            {match content {
+                Some(content) => view! {
+                    <div
+                        class="mt-4 text-sm leading-7 text-foreground"
+                        inner_html=content.html
+                    ></div>
+                }
+                .into_any(),
+                None => view! {
+                    <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">
+                        {selected_post_content.body}
+                    </p>
+                }
+                .into_any(),
+            }}
             {if let Some(tags_view) = core::selected_post_tags_view(tags) {
                 view! {
                     <div class="mt-5 flex flex-wrap gap-2">
