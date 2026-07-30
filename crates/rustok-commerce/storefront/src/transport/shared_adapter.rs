@@ -120,7 +120,6 @@ fn map_cart_transport_error(
     let failed_path = error.failed_path;
     if is_cart_id_validation_error(&error) {
         tracing::warn!(
-            error = ?error,
             owner = "rustok_cart.storefront",
             owner_operation = "fetch_cart",
             failed_path = failed_path.as_str(),
@@ -133,7 +132,6 @@ fn map_cart_transport_error(
     }
 
     tracing::error!(
-        error = ?error,
         owner = "rustok_cart.storefront",
         owner_operation = "fetch_cart",
         failed_path = failed_path.as_str(),
@@ -155,7 +153,6 @@ fn map_cart_transport_error(
 fn map_payment_transport_error(error: rustok_ui_transport::UiTransportError) -> ApiError {
     let failed_path = error.failed_path;
     tracing::error!(
-        error = ?error,
         owner = "rustok_payment.storefront",
         owner_operation = "fetch_payment_collection",
         failed_path = failed_path.as_str(),
