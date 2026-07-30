@@ -1,6 +1,9 @@
 use std::{sync::Arc, time::Duration};
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SqlValue};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value as SqlValue,
+};
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 use uuid::Uuid;
@@ -88,6 +91,7 @@ pub enum IndexReplayRunStatus {
     Busy,
     AlreadyComplete,
     Complete,
+    Cancelled,
     Yielded,
 }
 
@@ -142,6 +146,21 @@ impl IndexReplayRunOutcome {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexReplayTerminalState {
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexReplayCancelOutcome {
+    Requested,
+    Cancelled,
+    AlreadyTerminal(IndexReplayTerminalState),
+    NotFound,
+}
+
 #[derive(Clone)]
 pub struct PostgresIndexReplayRunner {
     db: DatabaseConnection,
@@ -159,6 +178,31 @@ impl PostgresIndexReplayRunner {
             db,
             sources,
             schema_registry,
+        }
+    }
+
+    pub async fn request_cancel(
+        &self,
+        tenant_id: Uuid,
+        job_id: Uuid,
+    ) -> Result<IndexReplayCancelOutcome, IndexReplayRunError> {
+        if tenant_id.is_nil() {
+            return Err(IndexReplayRunError::NilCancelTenantId);
+        }
+        if job_id.is_nil() {
+            return Err(IndexReplayRunError::NilCancelJobId);
+        }
+        let transaction = self.db.begin().await.map_err(job_storage_error)?;
+        let result = request_cancel_in_transaction(&transaction, tenant_id, job_id).await;
+        match result {
+            Ok(outcome) => {
+                transaction.commit().await.map_err(job_storage_error)?;
+                Ok(outcome)
+            }
+            Err(error) => {
+                transaction.rollback().await.map_err(job_storage_error)?;
+                Err(error)
+            }
         }
     }
 
@@ -220,9 +264,18 @@ impl PostgresIndexReplayRunner {
         };
 
         for page_index in 0..request.max_pages() {
+            if cancel_if_requested(&self.db, &lease).await? {
+                aggregate.status = IndexReplayRunStatus::Cancelled;
+                return Ok(aggregate);
+            }
+
             if page_index > 0 && page_index % request.heartbeat_every_pages() == 0 {
                 heartbeat(&job_store, &lease, request.lease_duration()).await?;
                 aggregate.heartbeat_count += 1;
+                if cancel_if_requested(&self.db, &lease).await? {
+                    aggregate.status = IndexReplayRunStatus::Cancelled;
+                    return Ok(aggregate);
+                }
             }
 
             let page = match worker.run_next_page(request.page_request().clone()).await {
@@ -231,21 +284,22 @@ impl PostgresIndexReplayRunner {
                     return Err(lease_lost(&lease));
                 }
                 Err(error) => {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
                     let details = replay_failure_details(&error);
-                    match job_store
-                        .fail(&lease, REPLAY_PAGE_FAILURE_CODE, details)
-                        .await
-                    {
-                        Ok(()) => {
+                    match finish_failure(&self.db, &lease, details).await? {
+                        TerminalWriteOutcome::Written => {
                             return Err(IndexReplayRunError::PageFailed {
                                 job_id: lease.job_id(),
                                 error: Box::new(error),
                             });
                         }
-                        Err(IndexReplayJobError::LeaseLost) => {
-                            return Err(lease_lost(&lease));
+                        TerminalWriteOutcome::Cancelled => {
+                            aggregate.status = IndexReplayRunStatus::Cancelled;
+                            return Ok(aggregate);
                         }
-                        Err(job_error) => return Err(IndexReplayRunError::Job(job_error)),
                     }
                 }
             };
@@ -258,24 +312,42 @@ impl PostgresIndexReplayRunner {
             aggregate.duplicate_count += page.duplicate_count();
             aggregate.stale_count += page.stale_count();
 
+            if cancel_if_requested(&self.db, &lease).await? {
+                aggregate.status = IndexReplayRunStatus::Cancelled;
+                return Ok(aggregate);
+            }
+
             if matches!(
                 page.status(),
                 IndexReplayPageStatus::Complete | IndexReplayPageStatus::AlreadyComplete
             ) {
-                match job_store.succeed(&lease).await {
-                    Ok(()) => {
+                match finish_success(&self.db, &lease).await? {
+                    TerminalWriteOutcome::Written => {
                         aggregate.status = IndexReplayRunStatus::Complete;
                         return Ok(aggregate);
                     }
-                    Err(IndexReplayJobError::LeaseLost) => return Err(lease_lost(&lease)),
-                    Err(error) => return Err(IndexReplayRunError::Job(error)),
+                    TerminalWriteOutcome::Cancelled => {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
                 }
             }
         }
 
-        yield_for_resume(&self.db, &lease).await?;
-        Ok(aggregate)
+        match yield_for_resume(&self.db, &lease).await? {
+            TerminalWriteOutcome::Written => Ok(aggregate),
+            TerminalWriteOutcome::Cancelled => {
+                aggregate.status = IndexReplayRunStatus::Cancelled;
+                Ok(aggregate)
+            }
+        }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalWriteOutcome {
+    Written,
+    Cancelled,
 }
 
 fn empty_outcome(
@@ -308,29 +380,156 @@ async fn heartbeat(
     }
 }
 
+async fn request_cancel_in_transaction(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    job_id: Uuid,
+) -> Result<IndexReplayCancelOutcome, IndexReplayRunError> {
+    let backend = transaction.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            select_cancel_job_sql(backend),
+            vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    let Some(row) = row else {
+        return Ok(IndexReplayCancelOutcome::NotFound);
+    };
+    let state: String = row.try_get("", "state").map_err(job_storage_error)?;
+    match state.as_str() {
+        "pending" => {
+            let updated = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    cancel_pending_job_sql(backend),
+                    vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
+                ))
+                .await
+                .map_err(job_storage_error)?;
+            if updated.rows_affected() != 1 {
+                return Err(IndexReplayRunError::CancellationRace);
+            }
+            Ok(IndexReplayCancelOutcome::Cancelled)
+        }
+        "running" => {
+            let updated = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    request_running_cancel_sql(backend),
+                    vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
+                ))
+                .await
+                .map_err(job_storage_error)?;
+            if updated.rows_affected() != 1 {
+                return Err(IndexReplayRunError::CancellationRace);
+            }
+            Ok(IndexReplayCancelOutcome::Requested)
+        }
+        "succeeded" => Ok(IndexReplayCancelOutcome::AlreadyTerminal(
+            IndexReplayTerminalState::Succeeded,
+        )),
+        "failed" => Ok(IndexReplayCancelOutcome::AlreadyTerminal(
+            IndexReplayTerminalState::Failed,
+        )),
+        "cancelled" => Ok(IndexReplayCancelOutcome::AlreadyTerminal(
+            IndexReplayTerminalState::Cancelled,
+        )),
+        other => Err(IndexReplayRunError::InvalidStoredJobState(other.to_owned())),
+    }
+}
+
+async fn cancel_if_requested(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+) -> Result<bool, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            cancel_active_job_sql(backend),
+            lease_values(lease, backend),
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    Ok(updated.rows_affected() == 1)
+}
+
+async fn finish_success(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let mut values = lease_values(lease, backend);
+    values.push(lease.source_name().to_owned().into());
+    values.push(lease.schema().module.as_str().to_owned().into());
+    values.push(lease.schema().entity.as_str().to_owned().into());
+    values.push(i64::from(lease.schema().version.get()).into());
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            finish_success_sql(backend),
+            values,
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    terminal_write_outcome(db, lease, updated.rows_affected()).await
+}
+
+async fn finish_failure(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+    details: JsonValue,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    let backend = db.get_database_backend();
+    ensure_supported_backend(backend)?;
+    let mut values = lease_values(lease, backend);
+    values.push(REPLAY_PAGE_FAILURE_CODE.to_owned().into());
+    values.push(SqlValue::Json(Some(Box::new(details))));
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            backend,
+            finish_failure_sql(backend),
+            values,
+        ))
+        .await
+        .map_err(job_storage_error)?;
+    terminal_write_outcome(db, lease, updated.rows_affected()).await
+}
+
 async fn yield_for_resume(
     db: &DatabaseConnection,
     lease: &IndexReplayJobLease,
-) -> Result<(), IndexReplayRunError> {
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let updated = db
         .execute(Statement::from_sql_and_values(
             backend,
             yield_job_sql(backend),
-            vec![
-                uuid_value(lease.tenant_id(), backend),
-                uuid_value(lease.job_id(), backend),
-                lease.worker_id().to_owned().into(),
-                i64::from(lease.attempt_count()).into(),
-            ],
+            lease_values(lease, backend),
         ))
         .await
-        .map_err(|error| IndexReplayRunError::Job(IndexReplayJobError::Storage(error.to_string())))?;
-    if updated.rows_affected() != 1 {
-        return Err(lease_lost(lease));
+        .map_err(job_storage_error)?;
+    terminal_write_outcome(db, lease, updated.rows_affected()).await
+}
+
+async fn terminal_write_outcome(
+    db: &DatabaseConnection,
+    lease: &IndexReplayJobLease,
+    rows_affected: u64,
+) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
+    if rows_affected == 1 {
+        return Ok(TerminalWriteOutcome::Written);
     }
-    Ok(())
+    if cancel_if_requested(db, lease).await? {
+        return Ok(TerminalWriteOutcome::Cancelled);
+    }
+    Err(lease_lost(lease))
 }
 
 fn replay_error_is_lease_lost(error: &IndexReplayError) -> bool {
@@ -391,11 +590,76 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     }
 }
 
+fn lease_values(lease: &IndexReplayJobLease, backend: DbBackend) -> Vec<SqlValue> {
+    vec![
+        uuid_value(lease.tenant_id(), backend),
+        uuid_value(lease.job_id(), backend),
+        lease.worker_id().to_owned().into(),
+        i64::from(lease.attempt_count()).into(),
+    ]
+}
+
+fn select_cancel_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lock = match backend {
+        DbBackend::Postgres => " FOR UPDATE",
+        DbBackend::Sqlite => "",
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "SELECT state FROM index_jobs WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' LIMIT 1{lock}"
+    )
+}
+
+fn cancel_pending_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'cancelled', cancel_requested = TRUE, completed_at = CURRENT_TIMESTAMP, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'pending'"
+    )
+}
+
+fn request_running_cancel_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET cancel_requested = TRUE, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running'"
+    )
+}
+
+fn cancel_active_job_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = TRUE"
+    )
+}
+
+fn finish_success_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    let complete_cursor = match backend {
+        DbBackend::Postgres => "checkpoint.cursor = 'null'::jsonb",
+        DbBackend::Sqlite => "json_type(checkpoint.cursor) = 'null'",
+        _ => unreachable!("unsupported database backend was validated"),
+    };
+    format!(
+        "UPDATE index_jobs SET state = 'succeeded', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE AND EXISTS (SELECT 1 FROM index_checkpoints AS checkpoint WHERE checkpoint.tenant_id = {prefix}1 AND checkpoint.checkpoint_kind = 'rebuild' AND checkpoint.source_name = {prefix}5 AND checkpoint.module_name = {prefix}6 AND checkpoint.entity_name = {prefix}7 AND checkpoint.schema_version = {prefix}8 AND checkpoint.locale_key = '' AND checkpoint.partition_key = '' AND {complete_cursor})"
+    )
+}
+
+fn finish_failure_sql(backend: DbBackend) -> String {
+    let prefix = placeholder_prefix(backend);
+    format!(
+        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6 WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+    )
+}
+
 fn yield_job_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP"
+        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
     )
+}
+
+fn job_storage_error(error: impl std::fmt::Display) -> IndexReplayRunError {
+    IndexReplayRunError::Job(IndexReplayJobError::Storage(error.to_string()))
 }
 
 fn lease_lost(lease: &IndexReplayJobLease) -> IndexReplayRunError {
@@ -413,8 +677,16 @@ pub enum IndexReplayRunError {
     InvalidMaxPages { actual: usize, max: usize },
     #[error("Index replay heartbeat cadence is invalid: actual={actual}, max={max}")]
     InvalidHeartbeatCadence { actual: usize, max: usize },
+    #[error("Index replay cancellation tenant id must not be nil")]
+    NilCancelTenantId,
+    #[error("Index replay cancellation job id must not be nil")]
+    NilCancelJobId,
     #[error("No Index replay source owns schema {0}")]
     UnknownSchemaSource(SchemaRef),
+    #[error("stored Index replay job has unsupported state {0}")]
+    InvalidStoredJobState(String),
+    #[error("Index replay cancellation lost a concurrent state transition")]
+    CancellationRace,
     #[error(transparent)]
     Job(#[from] IndexReplayJobError),
     #[error("Index replay job {job_id} lost attempt {attempt_count} ownership")]
