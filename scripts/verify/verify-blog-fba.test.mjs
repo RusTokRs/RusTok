@@ -3,9 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST,
   BLOG_FBA_SELF_TEST,
-  BLOG_FBA_SELF_TEST_COMMAND,
   BLOG_FBA_SOURCE_GATES,
+  BLOG_FBA_TEST_STEPS,
   BLOG_FBA_VERIFICATION_STEPS,
   collectBlogFbaVerificationChainFailures,
 } from './blog-fba-verification-chain.mjs';
@@ -19,6 +20,8 @@ function canonicalRegistry() {
     verification_chain: {
       package_script: 'verify:blog:fba',
       self_test: BLOG_FBA_SELF_TEST,
+      test_steps: [...BLOG_FBA_TEST_STEPS],
+      consumer_runtime_self_test: clone(BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST),
       steps: [...BLOG_FBA_VERIFICATION_STEPS],
       source_gates: clone(BLOG_FBA_SOURCE_GATES),
     },
@@ -28,10 +31,13 @@ function canonicalRegistry() {
 function canonicalPackageJson() {
   const scripts = {
     'verify:blog:fba': BLOG_FBA_VERIFICATION_STEPS.join(' && '),
-    'test:verify:blog:fba': BLOG_FBA_SELF_TEST_COMMAND,
+    'test:verify:blog:fba': BLOG_FBA_TEST_STEPS.join(' && '),
+    [BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST.package_script]:
+      `node ${BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST.self_test}`,
   };
   for (const gate of Object.values(BLOG_FBA_SOURCE_GATES)) {
     scripts[gate.package_script] = `node ${gate.verifier}`;
+    scripts[gate.test_package_script] = `node ${gate.self_test}`;
   }
   return { scripts };
 }
@@ -39,11 +45,20 @@ function canonicalPackageJson() {
 function canonicalExistingPaths() {
   return new Set([
     BLOG_FBA_SELF_TEST,
-    ...Object.values(BLOG_FBA_SOURCE_GATES).flatMap((gate) => [gate.verifier, gate.evidence]),
+    BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST.self_test,
+    ...Object.values(BLOG_FBA_SOURCE_GATES).flatMap((gate) => [
+      gate.verifier,
+      gate.self_test,
+      gate.evidence,
+    ]),
   ]);
 }
 
-function failures({ registry = canonicalRegistry(), packageJson = canonicalPackageJson(), existingPaths = canonicalExistingPaths() } = {}) {
+function failures({
+  registry = canonicalRegistry(),
+  packageJson = canonicalPackageJson(),
+  existingPaths = canonicalExistingPaths(),
+} = {}) {
   return collectBlogFbaVerificationChainFailures({
     registry,
     packageJson,
@@ -51,11 +66,11 @@ function failures({ registry = canonicalRegistry(), packageJson = canonicalPacka
   });
 }
 
-test('Blog FBA verification-chain policy accepts the canonical registry and package scripts', () => {
+test('Blog FBA verification-chain policy accepts canonical verify and test chains', () => {
   assert.deepEqual(failures(), []);
 });
 
-test('Blog FBA verification-chain policy rejects removal of the storefront step', () => {
+test('Blog FBA verification-chain policy rejects removal of the storefront verify step', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.steps = registry.verification_chain.steps.filter(
     (step) => step !== 'npm run verify:blog:storefront-boundary',
@@ -63,12 +78,28 @@ test('Blog FBA verification-chain policy rejects removal of the storefront step'
   assert.ok(failures({ registry }).includes('registry verification chain steps drift'));
 });
 
-test('Blog FBA verification-chain policy rejects package and registry order drift', () => {
+test('Blog FBA verification-chain policy rejects package verify-chain drift', () => {
   const packageJson = canonicalPackageJson();
   packageJson.scripts['verify:blog:fba'] = BLOG_FBA_VERIFICATION_STEPS
     .filter((step) => step !== 'npm run verify:blog:storefront-boundary')
     .join(' && ');
   assert.ok(failures({ packageJson }).includes('package verification chain steps drift'));
+});
+
+test('Blog FBA verification-chain policy rejects removal of a leaf self-test step', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.test_steps = registry.verification_chain.test_steps.filter(
+    (step) => step !== 'npm run test:verify:blog:richtext-offline-backfill',
+  );
+  assert.ok(failures({ registry }).includes('registry test chain steps drift'));
+});
+
+test('Blog FBA verification-chain policy rejects package test-chain drift', () => {
+  const packageJson = canonicalPackageJson();
+  packageJson.scripts['test:verify:blog:fba'] = BLOG_FBA_TEST_STEPS
+    .filter((step) => step !== 'npm run test:verify:blog:forum-ui-ownership')
+    .join(' && ');
+  assert.ok(failures({ packageJson }).includes('package Blog FBA test chain steps drift'));
 });
 
 test('Blog FBA verification-chain policy rejects source-gate path drift', () => {
@@ -85,10 +116,31 @@ test('Blog FBA verification-chain policy rejects registry leaf-script drift', ()
   );
 });
 
+test('Blog FBA verification-chain policy rejects registry leaf-test-script drift', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.source_gates.forum_ui_ownership.test_package_script =
+    'test:verify:blog:wrong-forum';
+  assert.ok(
+    failures({ registry }).includes(
+      'registry source gate forum_ui_ownership test package script drift',
+    ),
+  );
+});
+
 test('Blog FBA verification-chain policy rejects a repointed leaf verifier command', () => {
   const packageJson = canonicalPackageJson();
-  packageJson.scripts['verify:blog:storefront-boundary'] = 'node scripts/verify/verify-blog-admin-boundary.mjs';
+  packageJson.scripts['verify:blog:storefront-boundary'] =
+    'node scripts/verify/verify-blog-admin-boundary.mjs';
   assert.ok(failures({ packageJson }).includes('package source gate storefront_boundary command drift'));
+});
+
+test('Blog FBA verification-chain policy rejects a repointed leaf self-test command', () => {
+  const packageJson = canonicalPackageJson();
+  packageJson.scripts['test:verify:blog:forum-ui-ownership'] =
+    'node scripts/verify/verify-blog-admin-boundary.test.mjs';
+  assert.ok(
+    failures({ packageJson }).includes('package source gate forum_ui_ownership test command drift'),
+  );
 });
 
 test('Blog FBA verification-chain policy rejects a missing leaf verifier script', () => {
@@ -99,7 +151,7 @@ test('Blog FBA verification-chain policy rejects a missing leaf verifier script'
   );
 });
 
-test('Blog FBA verification-chain policy rejects a missing registered source-gate file', () => {
+test('Blog FBA verification-chain policy rejects a missing registered verifier file', () => {
   const existingPaths = canonicalExistingPaths();
   existingPaths.delete(BLOG_FBA_SOURCE_GATES.storefront_boundary.verifier);
   assert.ok(
@@ -109,19 +161,30 @@ test('Blog FBA verification-chain policy rejects a missing registered source-gat
   );
 });
 
-test('Blog FBA verification-chain policy rejects self-test path drift', () => {
+test('Blog FBA verification-chain policy rejects a missing leaf self-test file', () => {
+  const existingPaths = canonicalExistingPaths();
+  existingPaths.delete(BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test);
+  assert.ok(
+    failures({ existingPaths }).includes(
+      `registry source gate richtext_offline_backfill missing ${BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test}`,
+    ),
+  );
+});
+
+test('Blog FBA verification-chain policy rejects aggregate self-test path drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.self_test = 'scripts/verify/wrong-blog-fba.test.mjs';
   assert.ok(failures({ registry }).includes('verification chain self-test path drift'));
 });
 
-test('Blog FBA verification-chain policy rejects package self-test script drift', () => {
+test('Blog FBA verification-chain policy rejects consumer runtime self-test drift', () => {
   const packageJson = canonicalPackageJson();
-  packageJson.scripts['test:verify:blog:fba'] = 'node scripts/verify/wrong-blog-fba.test.mjs';
-  assert.ok(failures({ packageJson }).includes('package Blog FBA self-test script drift'));
+  packageJson.scripts[BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST.package_script] =
+    'node scripts/verify/wrong-consumer-runtime-order.test.mjs';
+  assert.ok(failures({ packageJson }).includes('consumer runtime self-test command drift'));
 });
 
-test('Blog FBA verification-chain policy rejects a missing self-test file', () => {
+test('Blog FBA verification-chain policy rejects a missing aggregate self-test file', () => {
   const existingPaths = canonicalExistingPaths();
   existingPaths.delete(BLOG_FBA_SELF_TEST);
   assert.ok(

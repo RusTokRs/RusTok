@@ -144,6 +144,27 @@ if (
   fail('evidence path drift');
 }
 
+const packageJson = JSON.parse(requireFile('package.json'));
+if (
+  packageJson.scripts?.['verify:blog:forum-ui-ownership'] !==
+  'node scripts/verify/verify-blog-forum-ui-ownership.mjs'
+) {
+  fail('package verifier command drift');
+}
+if (
+  packageJson.scripts?.['test:verify:blog:forum-ui-ownership'] !==
+  'node scripts/verify/verify-blog-forum-ui-ownership.test.mjs'
+) {
+  fail('package self-test command drift');
+}
+if (!packageJson.scripts?.['verify:blog:fba']?.includes('verify:blog:forum-ui-ownership')) {
+  fail('Blog FBA aggregate does not include Forum ownership verifier');
+}
+if (!packageJson.scripts?.['test:verify:blog:fba']?.includes('test:verify:blog:forum-ui-ownership')) {
+  fail('Blog FBA self-test aggregate does not include Forum ownership fixture');
+}
+requireFile('scripts/verify/verify-blog-forum-ui-ownership.test.mjs');
+
 console.log(
   '[verify-blog-forum-ui-ownership] Forum Next admin navigation, API, reply editor, and legacy adapter are Forum-owned; Blog uses only the shared richtext lifecycle adapter'
 );

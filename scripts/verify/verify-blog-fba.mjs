@@ -27,7 +27,7 @@ const richtextInventory = json(richtextInventoryPath);
 const provider = json(providerPath);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 4) fail('registry schema_version drift');
+if (registry.schema_version !== 5) fail('registry schema_version drift');
 if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 for (const failure of collectBlogFbaVerificationChainFailures({
   registry,
