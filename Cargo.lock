@@ -14466,6 +14466,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -14555,6 +14556,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 

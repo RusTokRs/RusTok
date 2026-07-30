@@ -2,511 +2,313 @@
 
 # <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusTok
 
-**Highload platform that lets you build anything with data. Built for longevity.**
+**High-Performance Event-Driven Platform Built in Rust & Tokio**
 
-**Project status:** RusTok is in active development. It is ready for exploration, local development, and architectural review, but should not be used for production workloads yet.
+**Project status:** RusTok is under active development. It is ready for exploration, local development, and architectural review, but should not be used for production workloads yet.
 
-*Content · Commerce · Community · Workflow · Any Data · One runtime, zero compromises.*
+*Content · Commerce · Community · Workflow · Automation · AI-Native · Modular Architecture · One Runtime*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**[Русская версия](README.ru.md)**
+**[Русская версия](README.ru.md)** | **[Documentation Map](docs/index.md)**
 
 </div>
 
 ---
 
-## Why "RusTok"?
+## Executive Overview
 
-**Rust + Tokio** — the name is right there in the product.
+**RusTok** is a next-generation, high-performance platform designed to eliminate the dilemma between rigid monoliths and overly complex microservice architectures. Built from the ground up on **Rust** and **Tokio**, RusTok combines compile-time type safety with a fluid, topology-agnostic runtime model.
 
-**Rust** is the language that eliminates entire categories of bugs before the program ever runs. No null pointer crashes, no memory leaks, no silent data corruption, no "works on my machine." The compiler is the first line of defense, and it does not negotiate.
-
-**Tokio** is the async runtime that sits beneath everything and acts as the engine. While most platforms struggle to handle a few hundred simultaneous requests before reaching for extra servers, Tokio-backed services routinely handle tens of thousands of concurrent connections on a single machine — without thread pools, without GC pauses, without drama.
-
-Together they produce something that feels almost unfair: a platform that starts in 50 milliseconds, handles 450,000+ requests per second, and catches type errors, missing fields, and domain contract violations at compile time rather than at 2 AM in production.
-
----
-
-## What is RusTok?
-
-RusTok is a modular platform for building any product that has data. Not just a CMS. Not just an online store. A platform where you pick the modules you need — content, commerce, community, workflow, integrations — and they assemble into one coherent runtime.
-
-Think of it like Lego for backend systems: each module is a self-contained brick with its own data model, API surface, and UI. Modules know how to talk to each other through typed events. The entire structure is verified at compile time — not at runtime, not with plugins that might break on the next update. If it compiles, the contracts are sound.
-
-RusTok is designed for teams that are tired of duct-taping multiple platforms together, paying for SaaS services that charge per seat, or inheriting a codebase where "just add a plugin" has become an act of courage.
+Rather than forcing developers to pick between a closed monolith or an expensive distributed network of microservices, RusTok operates as a **blazing-fast in-process modular monolith by default**, while keeping its domain boundaries **ready for on-demand microservice extraction via gRPC or event streams**.
 
 ![RusTok Platform Overview](assets/rustok-platform-overview.png)
 
 ---
 
-## What can you build?
+## Why RusTok? Architectural Advantages
 
-If it has data, you can build it on RusTok. Here are some examples — and this list barely scratches the surface:
+### 1. Batteries-Included Foundation: Stop Reinventing Infrastructure
+In traditional backend projects, engineering teams spend up to 70% of their initial time writing infrastructure plumbing: authentication, OAuth2, session management, RBAC permissions, multi-tenant isolation, caching layers, event outboxes, search indexers, media processing, and localization.
 
-**Stores & Commerce**
-- An online store with product catalog, variant pricing, inventory tracking, multi-currency checkout, and fulfillment workflows — all in one platform, not five integrations stitched together.
-- A marketplace where multiple vendors sell under one roof, each with their own products, pricing zones, and order flows.
-- A B2B platform with customer-specific pricing, regional rules, and approval workflows before orders go through.
+**RusTok comes with all essential platform infrastructure built-in on pure Rust:**
+- **Core Platform Capabilities**: Authentication (`rustok-auth`), Multi-Tenancy (`rustok-tenant`), RBAC (`rustok-rbac`), Relational Indexing (`rustok-index`), Search (`rustok-search`), Transactional Outbox (`rustok-outbox`), Caching (`rustok-cache`), Media (`rustok-media`), SEO (`rustok-seo`), and Email (`rustok-email`).
+- **100% Focus on Unique Product Logic**: Developers don't spend months building low-level infrastructure from scratch. You simply declare the modules you need in `modules.toml` and write your unique domain features.
 
-**Content & Media**
-- A blog or editorial publication with authored content, rich media, categories, tags, comment threads, and a full-text search that actually works.
-- A news portal or magazine with scheduled publishing, editorial workflows, and localized content for different regions.
-- A documentation hub or knowledge base where pages, navigation, and search are first-class citizens.
-- A media asset library where images, videos, and files are stored, tagged, versioned, and served through a unified API.
+### 2. Safety by Design, Not by Discipline
+In traditional Node.js, Python, or PHP platforms, security and data isolation depend on whether developers remember to check permissions or `tenant_id` filters on every query. One missed check leads to catastrophic cross-tenant data leaks.
 
-**Community & Social**
-- A forum or discussion platform with categories, moderated topics, threaded replies, and user profiles.
-- A community around a product — where customers can ask questions, share reviews, post in forums, and earn reputation — all integrated with the same store they buy from.
-- A membership site where access to content, forums, and features is gated by subscription tier.
+In RusTok, tenant context (`tenant_id`), RBAC policies (`rustok-rbac`), and locale matching (`ICU4X`) are enforced at **compile-time and embedded in composite database keys**. The Rust compiler rejects code that violates domain boundaries or tenant isolation before the application ever builds.
 
-**SaaS & Multi-tenant Products**
-- A multi-tenant SaaS where each client gets their own isolated workspace with independent module configuration, their own users, roles, and data — without separate deployments.
-- A white-label platform where different tenants run different feature sets: one has commerce enabled, another runs content-only, a third has both plus workflow automation.
-- An internal platform where multiple teams share infrastructure but operate in isolated namespaces.
+### 3. Alloy — Self-Evolving Dynamic Runtime & Instant Integrations
+Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/alloy](file:///d:/RusTok/crates/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
 
-**Workflow & Automation**
-- A business process platform where actions trigger events, events trigger workflows, and workflows can call webhooks, send emails, update records, or notify other systems.
-- An operations tool where order status changes, inventory alerts, and fulfillment events flow through automated pipelines instead of manual processes.
-- An integration hub where external systems push data in via webhooks and pull results out via REST or GraphQL.
+- ⚡ **New Features On-the-Fly**: Add new business capabilities, domain rules, and dynamic hooks instantly without redeploying platform binaries or restarting the server.
+- 🧹 **Dirty Data Cleansing & Legacy Migrations**: Works as an in-memory ETL sanitization engine. Alloy scripts handle dirty data, unescaped encodings, corrupt dates, and broken tables from legacy platforms on the fly without crashing the core server.
+- 🔌 **Instant API & Webhook Integrations**: Connect 1C, SAP, CRM, Telegram, logistics, or custom legacy backends in minutes via sandboxed HTTP adapters.
+- 🛡 **100% Core Protection (`rustok-sandbox`)**: Scripts run in a sandboxed Rhai/WASM environment with strict execution timeouts, operation limits, and memory quotas.
+- 🚀 **Evolution to Native Rust**: Full lifecycle from AI prompt or sandbox script to immutable release, up to automatic compilation into a high-performance native Rust module.
 
-**APIs & Headless Backends**
-- A headless backend for a mobile app, where the platform handles auth, data, search, and file storage while the app team owns the UI completely.
-- A GraphQL API server for a React/Vue/Svelte frontend, with full RBAC, multi-tenancy, and event-driven writes baked in.
-- A backend for a desktop application, IoT dashboard, or any system that needs structured data, roles, and real-time updates.
+### 4. Native AI & Agentic Ecosystem (`rustok-ai`, `rustok-mcp`)
+RusTok is designed from day one for AI orchestration and automated operations:
+- **Model Context Protocol (`rustok-mcp`)**: Native MCP server allows AI agents (Claude, Cursor, custom agents) to inspect platform state, manage modules, and run operations via standard MCP tools.
+- **Provider-Neutral AI Framework (`rustok-ai`)**: LLM orchestration with a vector RAG data plane (Athanor vector engine) supporting OpenAI, Anthropic, and local models.
+- **Domain AI Adapters**: Pre-built AI adapters for products (`ai-product`), content (`ai-content`), media (`ai-media`), orders (`ai-order`), translations (`ai-translation`), and Alloy scripting (`ai-alloy`).
 
-**Enterprise & Highload Platforms**
-- A full **CRM** — leads, deals, pipelines, contacts, companies, activity logs, forecasts, and team collaboration — where every customer interaction feeds into automated follow-up workflows and the entire sales funnel is queryable in real time across tens of millions of records.
-- An **ERP core** — finance, HR, procurement, warehouse, and production management — built on the same module system, where adding a new business domain means adding a module, not spinning up a new service with a new team.
-- A **pharma or life-sciences platform** — batch records, clinical trial data, regulatory submission tracking, full audit trails, and controlled-access data rooms — where the type-safe, tenant-isolated architecture maps directly to compliance requirements.
-- A **financial services backend** — transaction ledgers, compliance reporting, multi-currency accounts, risk scoring, and customer KYC flows — where single-digit millisecond latency and tamper-evident event logs are non-negotiable.
-- A **logistics and supply chain platform** — shipment tracking, carrier integrations, warehouse operations, route feeds, and SLA monitoring — where thousands of status events per second need to be processed without queuing nightmares.
-- A **healthcare data platform** — patient records, appointment scheduling, billing, referral workflows, and access control — where multi-tenancy maps naturally to clinics or hospital networks, and data isolation is a regulatory requirement, not a feature request.
-- A **real estate management system** — listings, leads, transaction pipelines, document workflows, agent performance, and portal feeds — running across multiple brands or regions in a single deployment.
-- A **media and publishing platform at scale** — ingesting thousands of articles per day, running editorial workflows, serving content to millions of readers, with per-region localization and search that keeps pace with write velocity.
-- A **developer infrastructure platform** — feature flags, A/B experiments, deployment metadata, usage analytics, and API rate limiting — the kind of internal tooling that large technology companies build and rebuild, available as a configurable module set.
+### 5. Single-Binary Efficiency & Zero Cloud Waste
+Modern microservice setups often require complex Kubernetes clusters and gigabytes of RAM just to idle.
+- **Sub-50ms Cold Boot**: Starts instantly with a minimal memory footprint (**20–50 MB RAM** idle).
+- **Extreme Request Throughput**: Handles tens of thousands of requests per second on a single low-cost VPS.
 
-**Mission-Critical Financial Infrastructure**
-
-Somewhere in the basement of every major bank, insurance company, and clearing house, there is a COBOL program running. It was written in the 1970s or 1980s by people who are now retired. Nobody fully understands it. Nobody dares to change it. And it processes trillions of dollars every single day.
-
-COBOL earned that trust the hard way: it is explicit, it does not crash silently, and it has been running without memory leaks for decades because it has no garbage collector and no dynamic allocation surprises. It is, in its own way, a language built for correctness over developer convenience — and that correctness is exactly why no one has replaced it.
-
-Rust is the modern answer to that same design philosophy — and then some. The ownership model is stricter than anything COBOL's type discipline ever provided. The compiler catches data races that mainframe batch processing never had to worry about but modern concurrent systems face every millisecond. And unlike COBOL, Rust produces binaries that handle real-time workloads: hundreds of thousands of transactions per second, sub-millisecond authorization decisions, streaming risk calculations — without a mainframe lease, without a team of specialists who remember how to operate one, without a six-month migration project just to change a business rule.
-
-RusTok is the platform layer on top of that foundation:
-
-- **Core banking systems** — account hierarchies, transaction ledgers, multi-currency balances, interest accrual, daily reconciliation, and batch settlement — auditable by regulators, readable by developers, and fast enough for real-time balance queries at scale.
-- **Payment processing** — authorization pipelines that make accept/decline decisions in under 5 milliseconds, fraud signal aggregation across hundreds of risk factors, velocity checks, and routing logic that handles network failures gracefully rather than silently.
-- **Clearing and settlement** — netting calculations, position management, end-of-day batch processing, SWIFT message handling, and cross-border settlement workflows — the infrastructure that makes money actually move between institutions, reliably, every time.
-- **Insurance platforms** — policy lifecycle management, premium calculation engines, claims intake and assessment workflows, reinsurance treaties, actuarial data pipelines, and regulatory solvency reporting.
-- **Credit and lending** — loan origination, scoring models, disbursement workflows, repayment schedules, arrears management, and Basel-aware capital reporting — all in one domain model, not scattered across five connected services.
-- **Anti-fraud and compliance** — real-time transaction monitoring with configurable rule engines (powered by Alloy, no deployment required to update a rule), suspicious activity detection, AML/KYC pipelines, GDPR-compliant audit trails, and case management for compliance teams.
-- **Trading infrastructure** — order management systems, portfolio valuation, risk exposure calculations, P&L attribution, and position reconciliation across custodians — where a wrong number at 9:31 AM costs more than a year of engineering salaries.
-
-The arguments that kept COBOL alive — *it has to be correct, it has to be auditable, it cannot lose data, it has to run for 40 years without rebooting* — are exactly the arguments that describe Rust at the language level and RusTok at the platform level. The difference is that RusTok starts in 50 milliseconds, handles 45,000 requests per second, runs on commodity hardware, and doesn't require a conference call with a mainframe vendor to change a field name.
+### 6. Dual Database Engine Architecture (PostgreSQL + Turso / libSQL)
+RusTok is designed to support a **Dual-Engine Persistence Strategy**:
+- **PostgreSQL**: The gold standard for enterprise monoliths, complex partitioning, and centralized high-scale database clusters.
+- **Turso (libSQL) Native Edge & Multi-Tenant Track**: The next-generation serverless database engine:
+  - 🏢 **Database-per-Tenant**: True physical database isolation for every tenant with zero-cost scale-to-zero.
+  - ⚡ **Zero-Latency Embedded Replicas**: Executes reads in-process inside the Rust binary (< 1ms latency) with background async cloud replication.
+  - 🧠 **Native Vector Search**: Direct vector embeddings and semantic search for `rustok-ai` built directly into the database engine.
+  - 🌿 **Instant Database Branching**: Spawns isolated database branches in 5ms for safe Alloy script dry-runs and AI migration testing.
 
 ---
 
-The common thread: if your product has users, data, and business rules — RusTok gives you the foundation instead of forcing you to build it from scratch or stitch together cloud services.
+## Feature & Engineering Comparison Matrix
+
+| Engineering Capability | WordPress / Woo | Magento 2 | Strapi (JS) | Medusa v2 (TS) | **RusTok** |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Type Safety Guarantees** | None (PHP) | None (PHP) | Build-step (TS) | Build-step (TS) | **Compile-time enforced (Rust)** |
+| **Native Multi-Tenancy** | Multisite add-on | Store views | None | Limited | **Native composite DB keys & Turso per-tenant DBs** |
+| **Fluid Backend Topology (FBA)** | Monolith only | Monolith only | Headless only | Complex setup | **Fluid: Monolith ↔ gRPC Microservices** |
+| **Read Indexing Engine** | Direct DB queries | Heavy EAV / ES | Direct DB queries | Remote Query | **`rustok-index` (JSONB + Keyset)** |
+| **Event Streaming & Replay** | Cron / MySQL | Triggers / Mview | None | Pub/Sub | **Iggy (Event Replay in Rust)** |
+| **On-the-Fly Dynamic Logic** | Unsafe PHP plugins | Heavy DDL / Cron | JS Hooks | JS Workflows | **Alloy (`rustok-sandbox` Rhai/WASM)** |
+| **Native AI & MCP Integration** | Plugins | None | None | Limited | **Built-in `rustok-mcp` Server & RAG** |
+| **Idle RAM Footprint** | ~150–300 MB | ~500+ MB | ~200–400 MB | ~200–300 MB | **Extremely Low (20–50 MB RAM)** |
 
 ---
 
-## Alloy — Logic Without Deployments
+## Technical Pillars & Core Architecture
 
-Every platform eventually runs into the same wall: the business wants to change how something works, but making that change requires a developer, a pull request, a code review, a deployment, and a maintenance window. For a pricing rule. For an input validation. For a notification message.
+### 1. Fluid Backend Architecture (FBA)
+Fluid Backend Architecture (FBA) decouples domain service logic from transport boundaries. A module's canonical business logic (`ProductCatalogReadPort`, `OrderService`, etc.) is implemented once in pure Rust.
 
-**Alloy** is how RusTok breaks that wall — without sacrificing type safety, auditing, or platform stability.
+- **Embedded Monolith (Default)**: Modules run inside `apps/server` in a single process. Service calls execute as zero-overhead, in-process Rust trait invocations without network hops or HTTP serialization.
+- **Remote Service (Microservice Profile)**: Heavy modules can be extracted into standalone binaries (e.g. `rustok-product-catalog-service`) and called over authenticated, high-performance **gRPC** (`rustok-product-transport`).
+- **Zero Business Code Rewrite**: Switching between embedded and remote modes requires changing only a environment flag (e.g. `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc`). Client APIs and domain logic remain untouched.
 
-Alloy is a scripting runtime embedded directly in the platform. Business logic lives in scripts stored in the database, activated instantly, and executed inside a strict sandbox where they can read and modify records but cannot harm the system. No deployment. No downtime. No risk of a pricing-rule change breaking unrelated code.
+### 2. Fluid Frontend Architecture (FFA)
+FFA provides a dual-path UI architecture that prevents frontend fragmentation:
+- **Integrated Leptos SSR Path**: Module UI packages (`crates/rustok-*/admin` or `storefront`) compile directly into Leptos hosts using native `#[server]` functions for maximum performance without client-side HTTP overhead.
+- **Headless & Companion Path**: Exposes identical domain capabilities via parallel **GraphQL**, **REST**, and **gRPC** interfaces for Next.js, Flutter Mobile apps, or third-party integrations.
 
-### When scripts run
+### 3. High-Performance Relational Index Engine (`rustok-index`)
+Cross-module read queries (e.g. searching products by categories, prices, flex fields, and inventory status) historically suffer from multi-table JOIN bottlenecks or N+1 microservice HTTP calls.
 
-Scripts attach to the lifecycle of any entity in the platform and fire at precisely defined moments:
+RusTok solves this with **`rustok-index`** ([crates/rustok-index](file:///d:/RusTok/crates/rustok-index/README.md)):
+- **Schema-Agnostic PostgreSQL Persistence**: Uses a benchmarked `JSONB` entity envelope (`index_entities`) paired with an independent relational link graph (`index_links`).
+- **Dynamic Expression Indexes**: Automatically derives typed PostgreSQL partial B-Tree and GIN expression indexes for filterable/sortable fields.
+- **Checksummed Keyset Cursors**: Fast, deterministic keyset pagination (`CursorCodec`) and exact-count execution in single `REPEATABLE READ` transactions.
 
-| Trigger | When | What you can do |
-|---------|------|-----------------|
-| **Before create / update / delete** | Before the record hits the database | Validate fields, normalize data, calculate values, reject the operation |
-| **After create / update / delete** | After the record is saved | Send notifications, create follow-up records, trigger side effects |
-| **On commit** | After the transaction is confirmed | Call external APIs, sync to third-party systems, push to event queues |
-| **Cron schedule** | On a timer | Generate reports, clean up stale data, renew subscriptions, send digests |
-| **Manual trigger** | On demand | Recalculate a batch, re-send a failed sync, migrate a dataset |
+### 4. Event Streaming & Transactional Outbox (Iggy & `sys_events`)
+RusTok implements reliable event-driven delivery without forcing heavy message brokers onto lightweight deployments:
+- **Transactional Outbox (`outbox_local`)**: Events (`IndexMutation`, `OrderPaid`, etc.) are written to PostgreSQL `sys_events` in the exact same database transaction as domain entity writes. In-process Tokio background workers process events asynchronously with zero data loss.
+- **Native Rust Event Streaming (`outbox_iggy`)**: For high-throughput or distributed deployments, RusTok integrates with **[Iggy](https://iggy.rs)** (`rustok-iggy`), an ultra-fast streaming broker written in Rust. Iggy provides append-only event logs, **Event Replay**, and consumer groups with minimal RAM usage.
 
-### What a script looks like
-
-Scripts are written in **Rhai** — a sandboxed scripting language that reads like simplified Rust and is safe for non-Rust developers to write and deploy:
-
-```rhai
-// Before creating an order: validate, enrich, and protect
-if entity["total"] < 0 {
-    abort("Order total cannot be negative");
-}
-
-if entity["customer_tier"] == "vip" {
-    entity["discount"] = 15;
-    entity["priority_fulfillment"] = true;
-}
-
-validate_email(entity["contact_email"]);
-log("Order pre-processed: " + entity["customer_id"]);
-```
-
-The sandbox enforces hard limits on execution time, operation count, and memory. A runaway script cannot take down the platform. If a script calls `abort()`, the operation is rejected cleanly with the reason returned to the caller.
-
-### Integration superpowers
-
-Scripts in the `OnCommit` phase have outbound HTTP access. This is how RusTok connects to the outside world without hard-coding integrations into the platform:
-
-- **Payment processors** — confirm charges, handle refunds, record receipts
-- **CRM systems** — push deal updates to Salesforce, HubSpot, or any REST-based CRM
-- **Accounting software** — export transactions to 1C, QuickBooks, or any API-accessible ledger
-- **Warehouse and logistics** — confirm shipments, update inventory in partner systems
-- **Communication channels** — send Slack messages, trigger SMS via Twilio, post to any webhook receiver
-- **Data pipelines** — stream events to ClickHouse, BigQuery, or any analytics warehouse endpoint
-
-An integration that would take a sprint to build as a native module takes minutes as an Alloy script. When it stabilizes, it can graduate.
-
-### From script to native module
-
-When a script has proven its value and runs thousands of times a day, it can be promoted: the same logic rewritten as a native Rust module, compiled into the platform binary, with zero scripting overhead. Alloy is the prototyping and automation layer; native modules are the production layer. The path between them is intentional and explicit.
-
-### Full observability
-
-Every script execution is recorded: when it ran, how long it took, what entity it processed, what it changed, and whether it succeeded, was rejected by `abort()`, or failed with an error. Execution logs are queryable via API. Scripts have explicit statuses — `Draft`, `Active`, `Paused`, `Archived` — making the standard workflow: write in Draft, test, activate when confident.
-
-### AI-generated logic
-
-Alloy scripts are short, structured, and purpose-driven — exactly what AI tools generate well. Describe what you want, get a script, validate it in the sandbox, activate it. The feedback loop from idea to running business logic shrinks from days to minutes.
+### 5. Compile-Time Manifest Composition (`modules.toml`)
+RusTok builds platform binaries declaratively:
+- **Build Composition**: `modules.toml` defines which module crates are compiled into the binary. Unused modules are omitted at compile time, eliminating dead code and reducing attack surface.
+- **Per-Tenant Enablement**: A single compiled binary can host multiple tenants, with modules enabled or disabled per tenant at runtime.
+- **Built-in Isolation & i18n**: Multi-tenancy (`tenant_id`) is baked into composite primary keys. Locale handling uses ICU4X/CLDR normalization.
 
 ---
 
-## Why RusTok over other platforms?
+## Deployment Topologies
 
-Most platforms make a trade-off: they are easy to start with, but painful to scale, extend, or maintain as requirements grow. RusTok makes a different trade-off: the initial investment is in Rust and a compiled architecture, and the payoff is a platform that stays fast, stays correct, and stays under control.
+RusTok supports multiple deployment topographies out of the box using the same binary base:
 
-### The speed gap is real
-
-| Metric | Interpreted platforms | RusTok |
-|--------|----------------------|--------|
-| **Req/sec (hot path / cache)** | 60 – 800 | **3,000,000+** |
-| **Req/sec (DB-backed API)** | 60 – 800 | **200,000+** |
-| **P99 Latency** | 120 – 450ms | **< 1ms** |
-| **Cold Boot** | 1 – 8.5 seconds | **0.05 seconds** |
-
-The Rust HTTP stack (Hyper + Tokio) consistently places in the top tier of the TechEmpower benchmarks — above 6 million requests per second on plaintext, above 3 million on JSON. A real platform with database calls, RBAC, and multi-tenancy overhead lands in the hundreds of thousands. That is still several orders of magnitude ahead of interpreted runtimes, on the same hardware, without a caching layer in front doing the heavy lifting.
-
-What this means in practice: fewer servers, a smaller cloud bill, and a product that absorbs traffic spikes that would bring an interpreted platform to its knees — without an emergency scale-out at 2 AM.
-
-### Safety that does not require discipline
-
-Other platforms rely on developer discipline: remember to validate input, remember to handle null, remember to check permissions. In RusTok, the type system enforces these at compile time. Permission-aware contracts, tenant isolation, and domain boundaries are part of the code structure, not a convention in a wiki.
-
-### Multi-tenancy as a first-class citizen
-
-Most platforms add multi-tenancy as an afterthought — a `tenant_id` column bolted onto every table, access checks sprinkled in manually. RusTok is built around `rustok-tenant` from day one: tenant context flows through every request, module enablement is per-tenant, and isolation is a platform guarantee rather than a dev practice.
-
-### Modular, not all-or-nothing
-
-Platforms that bundle everything together make you pay for what you do not use: memory, startup time, attack surface, complexity. RusTok's modules are explicit compile-time dependencies declared in `modules.toml`. Want just content and search? Done. Want to add commerce six months later? Enable the module — the contracts are already there.
-
-### One platform, many frontends
-
-RusTok does not pick sides in the frontend war. **Leptos** — a Rust/WASM framework — is headless by default: it communicates with the server over typed APIs just like any other frontend. In the monolith deployment profile, Leptos and the server share the same process for maximum efficiency; outside of that, Leptos is a standalone client like any other. Alongside Leptos, the platform exposes the same data through GraphQL and REST for any frontend: Next.js, mobile apps, desktop clients, third-party tools. Multiple frontends can consume the same server simultaneously — an admin panel, a customer storefront, a partner portal — all sharing one runtime.
-
-### Comparison at a glance
-
-| Capability | Typical CMS | Typical e-commerce platform | Headless CMS | RusTok |
+| Topology Profile | Admin UI | Storefront UI | Transport Layer | Best For |
 |---|---|---|---|---|
-| Integrated deployment | yes | partial | no | **yes** |
-| Headless API surface | partial | limited | yes | **yes** |
-| Integrated + headless simultaneously | rarely | no | no | **yes** |
-| Native multi-tenancy | no | limited | no | **yes** |
-| Compile-time module composition | no | no | no | **yes** |
-| Content + Commerce + Community in one runtime | no | no | no | **yes** |
-| Rust performance baseline | no | no | no | **yes** |
-
----
-
-## Platform architecture
-
-### Deployment profiles
-
-RusTok supports every deployment topology — from a single-binary monolith to fully decoupled multi-frontend architectures. The server is always the same compiled binary; what changes is where the UI surfaces live and what transport connects them.
-
-Leptos apps (admin and storefront) use `#[server]` functions as their data layer. In monolith mode these become direct in-process calls — no HTTP, no serialization overhead. In any standalone deployment the same code automatically switches to HTTP. GraphQL remains the external API surface for Next.js, mobile clients, and third-party integrations.
-
-| Profile | Admin | Storefront(s) | Transport between layers | Best for |
-|---------|-------|---------------|--------------------------|----------|
-| **Monolith** | Leptos SSR (same process) | Leptos SSR (same process) | **none — in-process `#[server]` calls** | Zero infrastructure overhead, WordPress-style simplicity |
-| **Server + admin embedded, storefront external** | Leptos SSR (same process) | Any client, separate process | in-process for admin; HTTP for storefront | Admin stays fast, storefront scales independently |
-| **All separate** | Leptos standalone or Next.js | Any, separate process | HTTP `/api/fn/*` for Leptos; GraphQL for Next.js | Large teams, independent release cycles |
-| **Pure headless** | External / custom | Any consumer | GraphQL | Mobile-first, third-party integrations |
-| **Multi-frontend** | Any of the above | Multiple: web + mobile + partner portals | HTTP `/api/fn/*` or GraphQL per client type | Multi-brand, multi-channel, marketplace |
+| **Monolith (Default)** | Leptos SSR (integrated) | Leptos SSR (integrated) | In-process `#[server]` calls | Single-node deployment, maximum simplicity & speed |
+| **Embedded Admin + External Storefront** | Leptos SSR (integrated) | Next.js / Mobile / Headless | In-process for Admin; GraphQL/REST for Storefront | Fast backoffice, independent storefront scaling |
+| **All Separate / Headless** | Next.js / Custom | Next.js / Flutter Mobile | GraphQL / REST / gRPC | Large teams, decoupled release cycles |
+| **Hybrid FBA** | Leptos / Next.js | Leptos / Next.js | gRPC for heavy modules, Iggy for background streams | Enterprise scale, selective microservice extraction |
 
 ![RusTok Deployment Profiles](assets/deployment-profiles-overview.svg)
 
-![RusTok Monolith Deployment](assets/deployment-profile-monolith.svg)
+---
 
-![RusTok Embedded Admin and External Storefront Deployment](assets/deployment-profile-embedded-admin-external-storefront.svg)
+## Platform Architecture Snapshot
 
-![RusTok All Separate Deployment](assets/deployment-profile-all-separate.svg)
+### Core Applications
 
-![RusTok Pure Headless Deployment](assets/deployment-profile-pure-headless.svg)
-
-![RusTok Multi-Frontend Deployment](assets/deployment-profile-multi-frontend.svg)
-
-### How deployment flexibility compares
-
-| Deployment profile | Traditional CMS (WP, Drupal) | JS CMS (Strapi, Directus) | Headless CMS (Contentful, Sanity) | E-commerce (Shopify, Magento) | RusTok |
-|---|---|---|---|---|---|
-| Monolith — all in one process, zero HTTP between layers | yes | no | no | hosted only | **yes** |
-| Server + admin together, storefront separate | manual / plugins | partial | no | limited | **yes** |
-| Server, admin, and storefront all separate | manual | yes | yes | headless add-on | **yes** |
-| Multiple independent storefronts | manual | yes | yes | limited / paid tier | **yes** |
-| Same code, transport switches automatically per topology | no | no | no | no | **yes** |
-| Consistent typed API surface across all topologies | no | no | partial | no | **yes** |
-
-### Applications
-
-| Path | Role |
+| Application | Role |
 |---|---|
-| `apps/server` | Composition root — HTTP, GraphQL, auth, RBAC, events, manifest validation |
-| `apps/admin` | Leptos admin panel (integrated path) |
-| `apps/storefront` | Leptos customer storefront (integrated path) |
-| `apps/next-admin` | Next.js admin (headless path) |
-| `apps/next-frontend` | Next.js storefront (headless path) |
-| `rustok_mobile/apps/rustok_admin_mobile` | Flutter admin mobile host (headless/mobile path) |
-| `rustok_mobile/apps/rustok_frontend_mobile` | Flutter storefront mobile host (headless/mobile path) |
+| `apps/server` | Composition root — Axum HTTP, GraphQL, auth, RBAC, event outbox, module manifest validation |
+| `apps/admin` | Primary integrated Leptos admin host |
+| `apps/storefront` | Primary integrated Leptos storefront host |
+| `apps/next-admin` | Headless Next.js admin companion |
+| `apps/next-frontend` | Headless Next.js storefront companion |
+| `rustok_mobile/apps/*` | Flutter mobile hosts for Admin and Frontend |
 
-### Module taxonomy
+### Complete Module Taxonomy
 
-`modules.toml` is the source of truth for build-time platform modules. The
-full ownership map, FFA/FBA status and verification evidence live in
-[docs/modules/registry.md](docs/modules/registry.md).
+Platform capabilities are structured into modular crates defined in [`modules.toml`](file:///d:/RusTok/modules.toml). Detailed ownership and status maps are maintained in [docs/modules/registry.md](file:///d:/RusTok/docs/modules/registry.md).
 
-Core modules are required and always compiled into the platform:
+#### Core Foundation Modules
+- `rustok-auth` — Authentication lifecycle, credentials, OAuth2, session contracts.
+- `rustok-tenant` — Multi-tenant resolution and per-tenant module enablement.
+- `rustok-rbac` — Casbin-based permission engine, roles, and authorization policies.
+- `rustok-index` — Cross-module relational Index Engine with PostgreSQL JSONB storage.
+- `rustok-search` — Full-text relevance, autocomplete, facets, and search UI contracts.
+- `rustok-outbox` — Transactional event outbox, relay, retry, and DLQ controls.
+- `rustok-channel` — Channel context, host bindings, and locale resolution.
+- `rustok-cache` — Memory and Redis cache backend abstraction.
+- `rustok-email` — Email template rendering and provider delivery lifecycle.
+- `rustok-secrets` — Platform secrets, credential storage, and encryption boundaries.
 
-| Module | Crate | Description |
-|---|---|---|
-| `auth` | `rustok-auth` | Authentication lifecycle, credentials, OAuth, users and session-facing contracts |
-| `cache` | `rustok-cache` | Cache backend factory with Redis and in-memory runtime options |
-| `channel` | `rustok-channel` | Channel context, host bindings, locale/channel resolution and request facts |
-| `email` | `rustok-email` | Email providers, templates and delivery lifecycle contracts |
-| `index` | `rustok-index` | Indexed read-model substrate for cross-module filtering and projections |
-| `search` | `rustok-search` | Search query, suggestions, ranking, facets and storefront/admin search UI contracts |
-| `outbox` | `rustok-outbox` | Transactional event outbox, relay, retry and DLQ control surfaces |
-| `tenant` | `rustok-tenant` | Tenant lifecycle, tenant resolution and per-tenant module enablement |
-| `rbac` | `rustok-rbac` | Permission runtime, role policy and authorization decisions |
+#### E-Commerce & Multi-Vendor Marketplace Modules
+- `rustok-commerce` — Umbrella e-commerce orchestration across cart, order, pricing, inventory, payment, and fulfillment.
+- `rustok-product` — Catalog, product variants, category attributes, gRPC read transport.
+- `rustok-cart` — Cart lifecycle, adjustments, and storefront checkout boundaries.
+- `rustok-order` — Order state machine, snapshots, refunds, and fulfillment workflows.
+- `rustok-pricing` — Price lists, volume discounts, customer-tier pricing.
+- `rustok-inventory` — Stock reservation, multi-warehouse availability.
+- `rustok-payment` — Payment collections, gateway integrations.
+- `rustok-fulfillment` — Shipping methods, tracking, fulfillment processing.
+- `rustok-customer` — Customer profile boundary and customer-owned operations.
+- `rustok-region` — Regions, countries, currencies, tax baseline.
+- `rustok-tax` — Tax calculation provider track and FBA tax boundary.
+- `rustok-marketplace` — Multi-vendor marketplace orchestration core.
+- `rustok-marketplace-seller` — Vendor onboarding, seller profiles, and merchant management.
+- `rustok-marketplace-listing` — Vendor product listing management and approval workflows.
+- `rustok-marketplace-commission` — Tiered commission calculation rules per vendor/category.
+- `rustok-marketplace-payout` — Vendor payout processing and distribution scheduling.
+- `rustok-marketplace-ledger` — Double-entry marketplace financial accounting ledger.
+- `rustok-marketplace-allocation` — Order line allocation to multi-vendor fulfillment nodes.
 
-Optional modules are compiled by manifest composition and enabled per tenant:
+#### Content, Community & Social Modules
+- `rustok-content` — Shared rich-text orchestration and localized content helpers.
+- `rustok-blog` — Editorial posts, categories, tags, and comment threads.
+- `rustok-forum` — Forum categories, topics, moderation, and page builder widgets.
+- `rustok-comments` — Reusable comment threads for custom entities.
+- `rustok-pages` — Static & dynamic page hierarchy, navigation menus.
+- `rustok-page-builder` — Visual page builder contract, tree state, property controls.
+- `rustok-navigation` — Hierarchical navigation trees, menus, breadcrumbs.
+- `rustok-taxonomy` — Shared vocabulary, tags, and dictionary layer.
+- `rustok-media` — Media upload, storage adapters, WebP/AVIF processing.
+- `rustok-seo` — Meta tags, XML sitemaps, automated redirects, robots.txt management.
+- `rustok-moderation` — Content moderation, flag queues, and reporting boundaries.
+- `rustok-groups` — User groups, organizations, and team workspaces.
+- `rustok-social-graph` — Social relationships, follow/subscribers, activity feeds.
+- `rustok-profiles` — Public profiles over users, authors, and member summaries.
+- `rustok-notifications` — Multi-channel notification dispatch (Push, Email, SMS, In-app).
 
-| Module | Crate | Description |
-|---|---|---|
-| `content` | `rustok-content` | Shared content orchestration, rich-text and localized content helpers |
-| `cart` | `rustok-cart` | Cart lifecycle, line items, adjustments and storefront cart UI boundary |
-| `customer` | `rustok-customer` | Customer profile boundary and customer-owned admin operations |
-| `product` | `rustok-product` | Catalog, variants, category-bound attributes, product admin and storefront catalog UI |
-| `profiles` | `rustok-profiles` | Public profile layer over users, authors and member summaries |
-| `region` | `rustok-region` | Regions, countries, currencies, tax baseline and region UI surfaces |
-| `pricing` | `rustok-pricing` | Price lists, pricing visibility and storefront pricing presentation |
-| `inventory` | `rustok-inventory` | Inventory, stock availability and inventory-owned admin read models |
-| `order` | `rustok-order` | Order lifecycle, snapshots, returns, refunds and order operations UI |
-| `payment` | `rustok-payment` | Payment collections, payments and storefront payment presentation |
-| `fulfillment` | `rustok-fulfillment` | Shipping options, fulfillments and checkout shipping handoff |
-| `commerce` | `rustok-commerce` | Umbrella ecommerce orchestration across cart, customer, product, pricing, inventory, order, payment and fulfillment |
-| `blog` | `rustok-blog` | Blog posts, categories, tags, comments integration and admin/storefront surfaces |
-| `forum` | `rustok-forum` | Forum topics, replies, moderation and page-builder widget consumption |
-| `comments` | `rustok-comments` | Generic comments domain and reusable comment-thread boundary |
-| `pages` | `rustok-pages` | Pages, menus, storefront pages and page-builder consumer surfaces |
-| `page_builder` | `rustok-page-builder` | Visual builder capability contracts for preview, tree, properties and publish flows |
-| `taxonomy` | `rustok-taxonomy` | Shared vocabulary, taxonomy and dictionary layer |
-| `media` | `rustok-media` | Media upload, storage-facing APIs and typed image descriptor contracts |
-| `seo` | `rustok-seo` | SEO metadata, templates, redirects, sitemap, robots and remediation workflows |
-| `workflow` | `rustok-workflow` | Workflow execution, templates, schedules and webhook ingress |
-| `alloy` | `alloy` | Sandboxed scripting, scheduler, hook runtime and automation capabilities |
-| `flex` | `flex` | Custom fields and attached/standalone extension contracts |
+#### Translation & Localization Engine
+- `rustok-translation` — Translation Memory (TM), glossaries, multi-target localization lifecycle.
+- `rustok-translation-targets` — Typed translation target contracts for domain modules.
+- `rustok-ai-translation` — AI-powered machine translation bridge and automated localization.
+- `rustok-ui-i18n` — Framework-agnostic UI message catalog and locale resolution.
 
-Shared libraries and capability crates are not all platform modules, but they
-carry common contracts, adapters or vertical capabilities:
+#### AI & Automation Ecosystem
+- `rustok-mcp` — Model Context Protocol server for AI agent operations.
+- `rustok-ai` — AI orchestration, RAG data ingestion, content/product enrichment.
+- `rustok-ai-athanor` — Vector RAG data plane and embeddings engine.
+- `rustok-ai-product` — AI support adapter for catalog generation and attribute extraction.
+- `rustok-ai-content` — AI support adapter for article generation, summary, and translation.
+- `rustok-ai-media` — AI support adapter for image tagging, visual search, and alt-text.
+- `rustok-ai-order` — AI support adapter for order analytics and fraud detection.
+- `rustok-ai-alloy` — AI support adapter for Alloy scripting execution policies.
+- `alloy` — Rhai sandboxed scripting, hook triggers, dynamic business rules.
+- `rustok-sandbox` — Neutral execution engine for sandboxed Rhai/WASM components.
+- `rustok-workflow` — Webhook triggers, workflow execution, scheduled jobs.
+- `flex` — Custom fields and runtime entity extension contracts.
 
-| Crate | Description |
-|---|---|
-| `rustok-core` | Shared foundation contracts, primitives, validation and security helpers |
-| `rustok-api` | Shared host/API layer used by transport adapters and boundary contracts |
-| `rustok-runtime` | Host runtime helpers for typed shared handles, neutral DB access and module adapters |
-| `rustok-web` | Axum HTTP response/error helpers used by server and module transport boundaries |
-| `rustok-fba` | Shared FBA provider/consumer registry metadata and transport-profile descriptors |
-| `rustok-cli-core` | Platform CLI command/provider contracts for future module-local CLI adapters |
-| `rustok-events` | Canonical event contracts and import surface |
-| `rustok-storage` | Storage backend abstraction |
-| `rustok-commerce-foundation` | Shared commerce DTOs, entities, errors and search helpers |
-| `rustok-content-orchestration` | Cross-module content orchestration bridge outside `apps/server` |
-| `rustok-installer` | Installer-core support contracts for the hybrid installer flow |
-| `rustok-test-utils` | Shared test fixtures, mocks and helpers |
-| `rustok-telemetry` | Observability bootstrap and telemetry helpers |
-| `rustok-ui-core` | Framework-agnostic UI route/query/input/busy contracts for FFA packages |
-| `rustok-ui-transport` | Framework-agnostic UI transport path/result/evidence contracts |
-| `rustok-ui-i18n` | Framework-agnostic UI message catalog and key-resolution core |
-| `rustok-ui-i18n-leptos` | Leptos adapter for shared UI message catalogs |
-| `rustok-graphql` | Framework-agnostic GraphQL HTTP client contracts |
-| `rustok-graphql-leptos` | Leptos reactive hooks adapter for `rustok-graphql` |
-| `leptos-ui` | RusToK Leptos UI primitives and reusable host/module components |
-| `leptos-ui-routing` | Leptos route/query helpers over `rustok-ui-core` |
-| `leptos-shadcn-pagination` | Leptos pagination component support |
-| `leptos-auth` | Leptos auth helpers for integrated UI hosts |
-| `leptos-forms` | Leptos form helpers |
-| `leptos-hook-form` | Hook-style Leptos form helpers |
-| `leptos-table` | Leptos table helpers |
-| `leptos-zod` | Zod-style validation helpers for Leptos UI flows |
-| `leptos-zustand` | Zustand-style state helpers for Leptos UI flows |
-| `rustok-mcp` | Model Context Protocol server and management surfaces |
-| `rustok-ai` | AI orchestration capability and admin/operator surfaces |
-| `rustok-ai-content` | Content and blog AI support adapter |
-| `rustok-ai-product` | Product catalog AI support adapter |
-| `rustok-ai-order` | Order analytics and operations AI support adapter |
-| `rustok-ai-media` | Media/image AI support adapter |
-| `rustok-ai-alloy` | Alloy scripting AI policy and adapter layer |
-| `rustok-seo-admin-support` | Reusable owner-module SEO admin panels and GraphQL transport helpers |
-| `rustok-seo-targets` | Typed SEO target descriptors used by owner modules and SEO templates |
-| `rustok-tax` | Tax calculation provider track and FBA tax boundary contracts |
-| `alloy-scripting` | Scripting support layer used by Alloy runtime flows |
-| `rustok-iggy` | Event streaming transport runtime |
-| `rustok-iggy-connector` | Embedded/remote connector layer for Iggy |
-
-FFA/FBA status is tracked centrally because it changes per module and must be
-backed by evidence:
-
-| Term | Meaning | Where to check current status |
-|---|---|---|
-| FFA | Fluid Frontend Architecture: module-owned UI split into framework-agnostic `core`, transport facade and explicit host UI adapters such as Leptos or Dioxus. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
-| FBA | Fluid Backend Architecture: module-owned backend boundary with typed ports, request context, errors, fallback/degraded modes and verification evidence. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
-
----
-
-## How the module system works
-
-Every module in `modules.toml` flows through the same pipeline:
-
-```text
-modules.toml
-  → build.rs generates host wiring
-  → apps/server validates the manifest at startup
-  → ModuleRegistry bootstraps the runtime
-  → per-tenant enablement activates optional modules
-```
-
-This means:
-- **Build composition** decides what code is compiled into the binary. Unused modules are not there — no dead code, no extra attack surface.
-- **Tenant enablement** decides which optional modules are active for a given customer at runtime. One binary, many configurations.
-
----
-
-## AI-ready by design
-
-RusTok ships with a built-in **Model Context Protocol (MCP)** server via `rustok-mcp`. This means AI agents and LLM tools can interact with the platform directly — query data, trigger workflows, inspect module state — through a typed protocol rather than raw API calls.
-
-Beyond MCP, the platform is structured for agent-assisted development: explicit module contracts, a documentation map at `docs/index.md`, typed event schemas, and `AGENTS.md` rules that make the codebase readable and navigable for automated tools.
-
----
-
-## Built on solid foundations
-
-RusTok is assembled from well-maintained open-source crates:
-
-- **[Axum](https://github.com/tokio-rs/axum)** — HTTP routing and server runtime
-- **[Leptos](https://leptos.dev)** — Rust/WASM frontend framework
-- **[SeaORM](https://www.sea-ql.org/SeaORM/)** — async database ORM for PostgreSQL
-- **[async-graphql](https://async-graphql.github.io/async-graphql/)** — type-safe GraphQL server
-- **[Tokio](https://tokio.rs)** — async runtime (the second half of the name)
-- **[Casbin](https://casbin.org)** — flexible RBAC authorization
-- **[Iggy](https://iggy.rs)** — event streaming infrastructure
+#### Platform Build, Distribution & Worker Infrastructure
+- `rustok-modules` — Control plane, manifest resolution, per-tenant module lifecycle.
+- `rustok-installer` — Installer core support for browser/CLI setup wizards.
+- `rustok-iggy` — Native Rust event streaming transport runtime.
+- `rustok-iggy-connector` — Connector layer for Iggy message broker.
+- `rustok-fba` — Shared FBA provider/consumer registry metadata.
+- `rustok-build` — Module build infrastructure and manifest compilation.
+- `rustok-build-source` — Immutable Content-Addressable Storage (CAS) archive materialization.
+- `rustok-build-publication` — Build artifact credential signing and publication foundation.
+- `rustok-module-build-worker` — Standalone worker for module compilation and assembly.
+- `rustok-module-build-dispatcher` — Build dispatching and dispatch orchestration.
+- `rustok-module-build-transport` — gRPC framing for build worker dispatching.
+- `rustok-verification-worker` — Isolated verification worker for artifact validation.
+- `rustok-verification-transport` — gRPC framing for verification workers.
+- `rustok-static-distribution-worker` — Static asset distribution worker.
+- `rustok-registry-validation-worker` — Registry validation worker.
 
 ---
 
 ## Quick Start
 
-The full local-dev guide lives in [docs/guides/quickstart.md](docs/guides/quickstart.md).
+### Prerequisites
+- **Rust Toolchain** (specified in `rust-toolchain.toml`)
+- **PostgreSQL 16+**
+- **Node.js** or **Bun** (for Next.js hosts)
+- **Trunk** (for Leptos hosts)
+
+### Local Stack Launch
 
 ```bash
 ./scripts/dev-start.sh
 ```
 
-This starts the full local stack:
+Default local endpoints:
 
-| Service | URL |
-|---------|-----|
-| Backend API | `http://localhost:5150` |
-| Leptos Admin | `http://localhost:3001` |
-| Leptos Storefront | `http://localhost:3101` |
-| Next.js Admin | `http://localhost:3000` |
-| Next.js Storefront | `http://localhost:3100` |
+| Surface | URL |
+|---|---|
+| **Backend API (Axum / GraphQL / REST)** | `http://localhost:5150` |
+| **Leptos Admin** | `http://localhost:3001` |
+| **Leptos Storefront** | `http://localhost:3101` |
+| **Next.js Admin** | `http://localhost:3000` |
+| **Next.js Storefront** | `http://localhost:3100` |
 
----
-
-## Development
-
-Prerequisites:
-
-- Rust toolchain (version from repository `rust-toolchain.toml`)
-- PostgreSQL for local runtime
-- Node.js or Bun for Next.js hosts
-- `trunk` for Leptos hosts
+### Verification & Testing Commands
 
 ```bash
-# run all Rust tests
+# Run workspace Rust tests
 cargo nextest run --workspace --all-targets --all-features
 
-# doc tests
+# Run documentation tests
 cargo test --workspace --doc --all-features
 
-# format and lint
-cargo fmt --all
+# Format and lint check
+cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# dependency and license checks
+# Check dependencies and policies
 cargo deny check
 cargo machete
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for contributor and agent rules.
-
 ---
 
-## Documentation
+## Documentation Links
 
-| Resource | Link |
-|----------|------|
-| Documentation map | [docs/index.md](docs/index.md) |
-| Architecture overview | [docs/architecture/overview.md](docs/architecture/overview.md) |
-| Module registry | [docs/modules/registry.md](docs/modules/registry.md) |
-| Module docs index | [docs/modules/_index.md](docs/modules/_index.md) |
-| Module authoring guide | [docs/modules/module-authoring.md](docs/modules/module-authoring.md) |
-| Platform verification plan | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
-| Testing guide | [docs/guides/testing.md](docs/guides/testing.md) |
-| MCP reference | [docs/references/mcp/README.md](docs/references/mcp/README.md) |
-| Agent rules | [AGENTS.md](AGENTS.md) |
+| Resource | Path |
+|---|---|
+| **Documentation Map** | [docs/index.md](file:///d:/RusTok/docs/index.md) |
+| **Platform Architecture Overview** | [docs/architecture/overview.md](file:///d:/RusTok/docs/architecture/overview.md) |
+| **Module Registry** | [docs/modules/registry.md](file:///d:/RusTok/docs/modules/registry.md) |
+| **Fluid Backend Architecture Guide** | [docs/backend/module-backend-architecture.md](file:///d:/RusTok/docs/backend/module-backend-architecture.md) |
+| **Fluid Frontend Architecture Guide** | [docs/UI/module-package-architecture.md](file:///d:/RusTok/docs/UI/module-package-architecture.md) |
+| **Index Engine Architecture** | [crates/rustok-index/docs/README.md](file:///d:/RusTok/crates/rustok-index/docs/README.md) |
+| **Verification Plan** | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](file:///d:/RusTok/docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
+| **AI Agent Rules** | [AGENTS.md](file:///d:/RusTok/AGENTS.md) |
 
 ---
 
 ## License
 
-RusTok is licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+RusTok is licensed under the **Business Source License 1.1** with the **RusTok Additional Use Grant**.
 
-RusTok is source-available. Non-production use is permitted under BSL 1.1, and production use is permitted under the RusTok Additional Use Grant when Total Finances do not exceed USD $3,000,000 during the most recent 12-month period.
+- **Free / Open Access**: Free for community use, individual developers, open-source projects, and organizations with Total Finances up to **USD $3,000,000** over the preceding 12-month period.
+- **Commercial Exemption**: Production, SaaS, hosted, white-label, or resale use by organizations above the threshold requires a separate RusTok Commercial License.
+- **Automatic AGPL Conversion**: Each version of RusTok automatically converts to GNU Affero General Public License v3.0 (AGPLv3) two years after its release date.
 
-The grant covers internal, commercial, SaaS, hosted, managed service, cloud service, white-label, resale, competing platform, customer project, module, and extension use, including use of extracted modules, packages, components, and substantial portions of RusTok.
-
-Organizations above the threshold require a separate RusTok Commercial License for production use. Their non-production rights remain governed by BSL 1.1.
-
-Applications, modules, plugins, themes, integrations, and services are not derivative works solely because they use RusTok public APIs without copying or embedding RusTok code.
-
-One-click installs, Docker images, Helm charts, VPS images, marketplace images, and similar deployment packages are permitted if the customer controls and administers their own RusTok instance and all LICENSE, NOTICE, copyright notices, and license headers are preserved.
-
-Each version of RusTok automatically converts to the GNU Affero General Public License v3.0 or later two years after its first public release date.
-
-No frontend “Powered by RusTok” attribution, logo, footer link, or login-screen attribution is required. Copyright notices, license notices, and source code attribution notices must be preserved.
-
-See LICENSE, NOTICE, and COMMERCIAL-LICENSE.md for details.
+See [LICENSE](LICENSE), [NOTICE](NOTICE), and [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for complete details.
