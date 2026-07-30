@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-07-30",
+  "status": "fulfillment_storefront_graphql_error_safety_source_reviewed_unvalidated",
+  "base_main_sha": "83e3f7254bc30d46142c09259f80dc23d6aad0c4",
+  "scope": "fulfillment storefront shipping-selection GraphQL error boundary",
+  "reviewed_files": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-fulfillment/storefront/Cargo.toml",
+    "crates/rustok-fulfillment/storefront/src/transport.rs",
+    "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "scripts/verify/verify-fulfillment-storefront-boundary.mjs"
+  ],
+  "findings": [
+    {
+      "id": "fulfillment-storefront-graphql-raw-public-envelope",
+      "severity": "public_error_safety",
+      "finding": "The private GraphQL adapter converted GraphqlHttpError into ShippingSelectionTransportError::Graphql(error.to_string()), and the public facade passed that value directly into UiTransportError.graphql_error. GraphQL resolver text and HTTP detail could therefore reach the storefront caller."
+    },
+    {
+      "id": "fulfillment-storefront-native-already-sanitized",
+      "severity": "context",
+      "finding": "The native server-function path already retains internal diagnostics and static public messages under fulfillment_storefront_native_transport, so this slice is limited to the GraphQL path."
+    },
+    {
+      "id": "fulfillment-storefront-explicit-transport-selection",
+      "severity": "preservation",
+      "finding": "The facade intentionally selects one transport by feature profile and does not perform native-to-GraphQL fallback; that behavior must remain unchanged."
+    },
+    {
+      "id": "fulfillment-storefront-validation-pass-through",
+      "severity": "preservation",
+      "finding": "Local shipping-selection validation errors are user-actionable and are not GraphqlHttpError envelopes, so they remain unchanged."
+    }
+  ],
+  "implementation_review": {
+    "typed_graphql_variant_policy": true,
+    "static_public_graphql_messages": true,
+    "raw_graphql_detail_internal_only": true,
+    "per_call_correlation_id": true,
+    "safe_shape_only_request_facts": true,
+    "native_path_changed": false,
+    "validation_path_changed": false,
+    "graphql_adapter_changed": false,
+    "graphql_document_changed": false,
+    "transport_selection_changed": false,
+    "request_response_dto_changed": false
+  },
+  "execution": {
+    "commands_run": [],
+    "tests_run": [],
+    "verifiers_run": [],
+    "workflows_observed": [],
+    "ci_observed": []
+  },
+  "remaining_scope": [
+    "remaining ecommerce storefront and admin GraphQL adapters",
+    "remaining customer and non-PortError public envelopes",
+    "browser and mounted GraphQL runtime evidence",
+    "broad ecommerce correlation-safe mapper cleanup"
+  ]
+}
