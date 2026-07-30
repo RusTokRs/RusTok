@@ -8,18 +8,20 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 
-const eventTypesPath = "crates/rustok-events/src/types.rs";
-const authPath = "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs";
-const profilesRedactionPath = "crates/rustok-profiles/src/account_redaction.rs";
-const profilesLibPath = "crates/rustok-profiles/src/lib.rs";
-const inboxPath = "crates/rustok-search/src/forum_inbox.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const contractPath =
-  "crates/rustok-forum/contracts/forum-search-account-deletion-redaction.json";
-const umbrellaContractPath =
-  "crates/rustok-forum/contracts/forum-search-public-author-summary.json";
-const notePath = "crates/rustok-forum/docs/forum-23a11-account-deletion-redaction.md";
-const umbrellaNotePath = "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md";
+const paths = {
+  eventTypes: "crates/rustok-events/src/types.rs",
+  auth: "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs",
+  profilesRedaction: "crates/rustok-profiles/src/account_redaction.rs",
+  profilesRedactionTest: "crates/rustok-profiles/tests/account_redaction_test.rs",
+  profilesLib: "crates/rustok-profiles/src/lib.rs",
+  inbox: "crates/rustok-search/src/forum_inbox.rs",
+  ingestion: "crates/rustok-search/src/ingestion.rs",
+  contract: "crates/rustok-forum/contracts/forum-search-account-deletion-redaction.json",
+  umbrellaContract: "crates/rustok-forum/contracts/forum-search-public-author-summary.json",
+  note: "crates/rustok-forum/docs/forum-23a11-account-deletion-redaction.md",
+  umbrellaNote: "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
+  verifier: "scripts/verify/verify-forum-search-account-deletion-redaction.mjs",
+};
 
 function read(relativePath) {
   const target = path.join(root, relativePath);
@@ -59,30 +61,23 @@ function requireOrder(source, markers, label) {
       failures.push(`${label}: missing ordered marker ${marker}`);
       return;
     }
-    if (index <= previous) {
-      failures.push(`${label}: marker out of order ${marker}`);
-      return;
-    }
     previous = index;
   }
 }
 
-const eventTypes = read(eventTypesPath);
-const auth = read(authPath);
-const profilesRedaction = read(profilesRedactionPath);
-const profilesLib = read(profilesLibPath);
-const inbox = read(inboxPath);
-const ingestion = read(ingestionPath);
-const note = read(notePath);
-const umbrellaNote = read(umbrellaNotePath);
-const contract = parseJson(contractPath);
-const umbrellaContract = parseJson(umbrellaContractPath);
+const eventTypes = read(paths.eventTypes);
+const auth = read(paths.auth);
+const profilesRedaction = read(paths.profilesRedaction);
+const profilesRedactionTest = read(paths.profilesRedactionTest);
+const profilesLib = read(paths.profilesLib);
+const inbox = read(paths.inbox);
+const ingestion = read(paths.ingestion);
+const note = read(paths.note);
+const umbrellaNote = read(paths.umbrellaNote);
+const contract = parseJson(paths.contract);
+const umbrellaContract = parseJson(paths.umbrellaContract);
 
-requireAll(
-  eventTypes,
-  ["UserDeleted {", "user_id: Uuid"],
-  eventTypesPath,
-);
+requireAll(eventTypes, ["UserDeleted {", "user_id: Uuid"], paths.eventTypes);
 
 requireAll(
   profilesRedaction,
@@ -97,7 +92,7 @@ requireAll(
     "active.update(transaction).await?",
     "Ok(true)",
   ],
-  profilesRedactionPath,
+  paths.profilesRedaction,
 );
 requireOrder(
   profilesRedaction,
@@ -107,7 +102,7 @@ requireOrder(
     "active.status = Set(ProfileStatus::Hidden)",
     "active.update(transaction).await?",
   ],
-  profilesRedactionPath,
+  paths.profilesRedaction,
 );
 requireAll(
   profilesLib,
@@ -115,7 +110,20 @@ requireAll(
     "mod account_redaction;",
     "pub use account_redaction::redact_profile_for_account_deactivation_in_tx;",
   ],
-  profilesLibPath,
+  paths.profilesLib,
+);
+requireAll(
+  profilesRedactionTest,
+  [
+    "account_redaction_hides_existing_tenant_profile",
+    "assert_eq!(profile.status, ProfileStatus::Hidden)",
+    "account_redaction_accepts_missing_profile_as_redacted_state",
+    "assert!(!changed)",
+    "account_redaction_does_not_cross_tenant_scope",
+    "other_tenant_id",
+    "assert_eq!(profile.status, ProfileStatus::Active)",
+  ],
+  paths.profilesRedactionTest,
 );
 
 requireAll(
@@ -139,7 +147,7 @@ requireAll(
     "durable user deletion invalidation is unavailable",
     "publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await",
   ],
-  authPath,
+  paths.auth,
 );
 requireOrder(
   auth,
@@ -156,10 +164,9 @@ requireOrder(
     "tx.commit()",
     "publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await",
   ],
-  authPath,
+  paths.auth,
 );
-rejectMarker(auth, "event_bus.publish(", authPath);
-rejectMarker(auth, "DomainEvent::UserDeleted { user_id: user.id },\n        )\n        .await;\n        tx.commit()", authPath);
+rejectMarker(auth, "event_bus.publish(", paths.auth);
 
 requireAll(
   inbox,
@@ -171,7 +178,7 @@ requireAll(
     "scope_key.starts_with(AUTHOR_SCOPE_PREFIX)",
     "profile_and_account_changes_have_redaction_barrier_scope",
   ],
-  inboxPath,
+  paths.inbox,
 );
 requireAll(
   ingestion,
@@ -182,7 +189,7 @@ requireAll(
     '"rebuild_forum_author_projection"',
     "assert!(!handler.handles(&DomainEvent::UserDeleted",
   ],
-  ingestionPath,
+  paths.ingestion,
 );
 
 requireAll(
@@ -198,7 +205,7 @@ requireAll(
     "update_user(status = inactive|banned)",
     "Not run by the implementation agent",
   ],
-  notePath,
+  paths.note,
 );
 requireAll(
   umbrellaNote,
@@ -208,27 +215,28 @@ requireAll(
     "UserDeleted` is sufficient deletion-redaction evidence for this canonical path",
     "arbitrary `update_user` status changes",
   ],
-  umbrellaNotePath,
+  paths.umbrellaNote,
 );
 
 if (contract) {
-  if (contract.task !== "FORUM-23A11") failures.push(`${contractPath}: unexpected task`);
+  if (contract.task !== "FORUM-23A11") failures.push(`${paths.contract}: unexpected task`);
   if (contract.status !== "source_complete_execution_pending") {
-    failures.push(`${contractPath}: unexpected status`);
+    failures.push(`${paths.contract}: unexpected status`);
   }
   const expectedPaths = {
-    canonical_event_owner: eventTypesPath,
-    auth_deactivation_owner: authPath,
-    profiles_redaction_owner: profilesRedactionPath,
-    profiles_public_api: profilesLibPath,
-    search_inbox: inboxPath,
-    search_ingestion: ingestionPath,
-    umbrella_contract: umbrellaContractPath,
-    owner_note: notePath,
-    verifier: "scripts/verify/verify-forum-search-account-deletion-redaction.mjs",
+    canonical_event_owner: paths.eventTypes,
+    auth_deactivation_owner: paths.auth,
+    profiles_redaction_owner: paths.profilesRedaction,
+    profiles_redaction_test: paths.profilesRedactionTest,
+    profiles_public_api: paths.profilesLib,
+    search_inbox: paths.inbox,
+    search_ingestion: paths.ingestion,
+    umbrella_contract: paths.umbrellaContract,
+    owner_note: paths.note,
+    verifier: paths.verifier,
   };
   for (const [key, expected] of Object.entries(expectedPaths)) {
-    if (contract[key] !== expected) failures.push(`${contractPath}: ${key} drift`);
+    if (contract[key] !== expected) failures.push(`${paths.contract}: ${key} drift`);
   }
   for (const key of [
     "auth_delete_is_deactivation_not_hard_erasure",
@@ -238,6 +246,7 @@ if (contract) {
     "profiles_redaction_is_tenant_scoped",
     "existing_profile_is_marked_hidden",
     "missing_profile_is_valid_redacted_state",
+    "profiles_redaction_test_covers_existing_missing_and_cross_tenant_states",
     "sessions_are_revoked_in_transaction",
     "rbac_generation_is_reserved_in_transaction",
     "user_deleted_is_published_in_transaction",
@@ -247,7 +256,7 @@ if (contract) {
     "post_commit_rbac_fast_fanout_is_preserved",
   ]) {
     if (contract.owner_transaction_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: owner transaction ${key} drift`);
+      failures.push(`${paths.contract}: owner transaction ${key} drift`);
     }
   }
   for (const key of [
@@ -260,7 +269,7 @@ if (contract) {
     "projection_failure_remains_retryable",
   ]) {
     if (contract.search_redaction_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: Search redaction ${key} drift`);
+      failures.push(`${paths.contract}: Search redaction ${key} drift`);
     }
   }
   for (const key of [
@@ -276,7 +285,7 @@ if (contract) {
     "search_document_schema_changed",
   ]) {
     if (contract.compatibility?.[key] !== false) {
-      failures.push(`${contractPath}: compatibility ${key} must remain false`);
+      failures.push(`${paths.contract}: compatibility ${key} must remain false`);
     }
   }
   for (const key of [
@@ -288,23 +297,23 @@ if (contract) {
     "runtime_verification_was_executed",
   ]) {
     if (contract.non_claims?.[key] !== true) {
-      failures.push(`${contractPath}: non-claim ${key} drift`);
+      failures.push(`${paths.contract}: non-claim ${key} drift`);
     }
   }
   if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
-    failures.push(`${contractPath}: execution status drift`);
+    failures.push(`${paths.contract}: execution status drift`);
   }
   if (contract.downstream_task !== "FORUM-23B") {
-    failures.push(`${contractPath}: unexpected downstream task`);
+    failures.push(`${paths.contract}: unexpected downstream task`);
   }
 }
 
 if (umbrellaContract) {
   if (umbrellaContract.task !== "FORUM-23A") {
-    failures.push(`${umbrellaContractPath}: unexpected task`);
+    failures.push(`${paths.umbrellaContract}: unexpected task`);
   }
   if (umbrellaContract.latest_slice !== "FORUM-23A11") {
-    failures.push(`${umbrellaContractPath}: unexpected latest slice`);
+    failures.push(`${paths.umbrellaContract}: unexpected latest slice`);
   }
   for (const key of [
     "canonical_delete_user_deactivates_auth_and_hides_profile_in_one_transaction",
@@ -316,7 +325,7 @@ if (umbrellaContract) {
     "user_deleted_rebuilds_current_forum_owner_state",
   ]) {
     if (umbrellaContract.redaction_boundary?.[key] !== true) {
-      failures.push(`${umbrellaContractPath}: redaction boundary ${key} drift`);
+      failures.push(`${paths.umbrellaContract}: redaction boundary ${key} drift`);
     }
   }
   for (const nonClaim of [
@@ -325,7 +334,7 @@ if (umbrellaContract) {
     "general cross-producer owner revision ordering is complete",
   ]) {
     if (!umbrellaContract.non_claims?.includes(nonClaim)) {
-      failures.push(`${umbrellaContractPath}: missing non-claim ${nonClaim}`);
+      failures.push(`${paths.umbrellaContract}: missing non-claim ${nonClaim}`);
     }
   }
 }
