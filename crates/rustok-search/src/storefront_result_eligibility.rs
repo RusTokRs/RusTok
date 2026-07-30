@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn explicit_scope_requires_owner_port() {
+    async fn non_empty_scope_requires_owner_port() {
         let error = resolve_storefront_search_result_candidates(
             None,
             request(vec![candidate(
