@@ -52,9 +52,7 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
                 "Forum Search category scope requires a tenant",
             ));
         }
-        if request.source_modules.len() != 1
-            || request.source_modules[0] != FORUM_SEARCH_SOURCE_MODULE
-        {
+        if !is_explicit_forum_only_source_scope(&request.source_modules) {
             return Err(PortError::validation(
                 "forum.search_category_scope.forum_only_required",
                 "Forum category expansion requires an explicit Forum-only source scope",
@@ -147,6 +145,10 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
     }
 }
 
+fn is_explicit_forum_only_source_scope(source_modules: &[String]) -> bool {
+    source_modules.len() == 1 && source_modules[0] == FORUM_SEARCH_SOURCE_MODULE
+}
+
 fn map_forum_error(error: ForumError) -> PortError {
     let stable_code = error.stable_code().to_ascii_lowercase();
     let retryable = error.is_retryable();
@@ -176,5 +178,23 @@ fn map_forum_error(error: ForumError) -> PortError {
             stable_code,
             "Forum category scope could not be resolved safely",
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_explicit_forum_only_source_scope;
+
+    #[test]
+    fn only_exact_forum_source_scope_is_admitted() {
+        assert!(is_explicit_forum_only_source_scope(&["forum".to_string()]));
+        assert!(!is_explicit_forum_only_source_scope(&[]));
+        assert!(!is_explicit_forum_only_source_scope(&[
+            "forum".to_string(),
+            "product".to_string(),
+        ]));
+        assert!(!is_explicit_forum_only_source_scope(&[
+            "product".to_string(),
+        ]));
     }
 }
