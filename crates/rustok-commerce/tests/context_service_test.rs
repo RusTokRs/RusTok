@@ -207,15 +207,7 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
         ("en", "English", "English", true),
         ("de", "German", "Deutsch", false),
     ] {
-        insert_tenant_locale(
-            db,
-            tenant_id,
-            locale,
-            name,
-            native_name,
-            is_default,
-        )
-        .await;
+        insert_tenant_locale(db, tenant_id, locale, name, native_name, is_default).await;
     }
 }
 
