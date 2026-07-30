@@ -8,6 +8,7 @@
   "forum_author_adapter": "crates/rustok-forum/src/search_projection_author.rs",
   "profiles_owner": "crates/rustok-profiles/src/presentation.rs",
   "profiles_event_owner": "crates/rustok-profiles/src/graphql/mutation.rs",
+  "profiles_visibility_event_owner": "crates/rustok-profiles/src/visibility_write.rs",
   "search_inbox": "crates/rustok-search/src/forum_inbox.rs",
   "search_ingestion": "crates/rustok-search/src/ingestion.rs",
   "owner_note": "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
@@ -35,6 +36,9 @@
   "redaction_boundary": {
     "profile_updated_is_durable": true,
     "profile_updated_is_emitted_after_owner_write": true,
+    "profile_visibility_write_and_event_are_atomic": true,
+    "other_profile_update_write_and_event_pairs_are_atomic": false,
+    "visibility_event_failure_rolls_back_owner_write": true,
     "author_scope_is_tenant_and_user_scoped": true,
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark": true,
     "author_change_rebuilds_current_forum_owner_state": true,
@@ -54,6 +58,7 @@
   "remaining_scope": [
     "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
     "define an owner-ordered profile or account deletion projection invalidation contract",
+    "make non-visibility profile summary update events atomic with their owner writes",
     "add bounded category-subtree tag locale date solved kind channel/group and attachment filters",
     "add member index projections",
     "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
@@ -61,17 +66,20 @@
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
+      "cargo test -p rustok-profiles error -- --nocapture",
       "cargo test -p rustok-forum search_projection_author -- --nocapture",
       "cargo test -p rustok-search forum_inbox -- --nocapture",
       "cargo test -p rustok-search ingestion -- --nocapture",
       "node scripts/verify/verify-forum-search-public-author-summary.mjs",
       "node scripts/verify/verify-forum-search-projection.mjs",
+      "cargo xtask module validate profiles",
       "cargo xtask module validate forum"
     ]
   },
   "non_claims": [
     "UserDeleted is sufficient to prove Profiles state has already been removed",
     "account deletion redaction is complete",
+    "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
     "general cross-producer owner revision ordering is complete"
   ],
   "downstream_task": "FORUM-23B"

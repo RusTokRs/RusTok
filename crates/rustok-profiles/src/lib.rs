@@ -15,6 +15,7 @@ pub mod presentation;
 pub mod privacy;
 pub mod reader;
 pub mod services;
+mod visibility_write;
 
 pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInput};
 pub use entities::ProfileRecord;
