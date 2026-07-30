@@ -29,10 +29,13 @@ const forbidText = (content, value, label) => {
 };
 const countText = (content, value) => content.split(value).length - 1;
 
-for (const [value, label] of [
-  ['"dep:tracing"', "Pricing storefront SSR tracing feature"],
-  ["tracing = { workspace = true, optional = true }", "Pricing storefront tracing dependency"],
-]) requireText(cargo, value, label);
+requireText(cargo, "tracing.workspace = true", "Pricing storefront tracing dependency");
+forbidText(cargo, '"dep:tracing"', "Pricing storefront stale SSR-only tracing feature");
+forbidText(
+  cargo,
+  "tracing = { workspace = true, optional = true }",
+  "Pricing storefront stale optional tracing dependency",
+);
 
 for (const [value, label] of [
   ["const PRICING_STOREFRONT_NATIVE_OWNER", "native owner constant"],
