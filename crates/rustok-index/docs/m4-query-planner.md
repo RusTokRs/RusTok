@@ -19,7 +19,8 @@ distribution materializes one non-empty immutable registry after all module regi
 and the server binds that registry to its database through the Index-owned PostgreSQL
 runtime materializer. Social Graph is the first source publication. Notification block/mute
 policy is the first consumer-shaped parity shadow, protected by a default-off shadow gate,
-explicitly non-authoritative, and instrumented with bounded Prometheus outcomes.
+explicitly non-authoritative, instrumented with bounded Prometheus outcomes, and backed by
+source-complete offline retained-window capture/admission tooling.
 
 ## Actualized status
 
@@ -38,8 +39,10 @@ explicitly non-authoritative, and instrumented with bounded Prometheus outcomes.
 - M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 source-owned immutable schema registry: `source_complete_execution_pending`.
 - M4 server-owned shared query runtime composition: `source_complete_execution_pending`.
-- M4 first consumer parity shadow: `source_complete_metrics_execution_pending`.
-- M4 authoritative consumer cutover: `blocked_by_freshness_contract`.
+- M4 first consumer parity shadow: `source_complete_metrics_evidence_tooling_execution_pending`.
+- Previous M4 first consumer parity shadow: `source_complete_metrics_execution_pending`.
+- M4 retained privacy-shadow evidence tooling: `source_complete_owner_execution_pending`.
+- M4 authoritative consumer cutover: `blocked_by_retained_freshness_and_policy_evidence`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -194,6 +197,11 @@ Projection failures use `error` and one of two known stable codes or `other`. Co
 duration and last-observed timestamp use the same fixed operation/outcome labels. No tenant,
 user, relation, entity, payload, SQL, or raw storage values are labels.
 
+A fifth no-label metric,
+`rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds`, binds a
+retained start/end window to one collector epoch. It is restart detection only; it is not a
+projection watermark or freshness signal.
+
 The final server facade uses the default-off shadow gate
 `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`. While disabled, the ordinary owner policy
 is unchanged. When enabled, the facade requires successful privacy-shadow collector
@@ -202,26 +210,41 @@ with the non-authoritative shadow and host-owned Prometheus adapter. Custom noti
 relation providers retain priority. Running an enabled shadow without the process Prometheus
 registry fails bootstrap instead of creating an unmeasured evidence mode.
 
-A direct cutover remains unsafe because a stale but successful Index query can omit a current
-block or mute without returning an error. Schema readiness is not a freshness watermark.
-Authoritative use therefore remains blocked until retained per-tenant watermark/lag,
-positive and negative parity, outage/recovery, repair, latency, and negative-result
-fail-closed evidence exists.
+## Retained privacy-shadow evidence
+
+The owner saves two local Prometheus text snapshots around an explicit UTC window. The
+offline capture command parses the approved shadow metric families, rejects restart/reset,
+unknown labels, unknown shadow metrics, histogram/error inconsistency, and an empty window,
+then publishes only a canonical whitelist subset. The full process scrape is never retained.
+
+The fresh descriptor-last bundle contains exactly `start.prom`, `end.prom`, and
+`capture.json`. Capture contract is
+`social_graph_index_privacy_shadow_window_capture_v1`.
+
+The independent admission command requires expected repository/commit/run key and reviewer
+thresholds. It verifies exact inventory and stable bytes, requires both `.prom` files to be
+exact canonical exports, recomputes every delta from the retained samples, and writes a
+no-clobber receipt outside the bundle. Admission contract is
+`social_graph_index_privacy_shadow_window_admission_v1`.
+
+The receipt separates `admitted` integrity from `policy_passed` and always records
+`authoritative_cutover_authorized: false`. A policy-passing window is only bounded
+parity/latency evidence. It does not establish per-tenant watermark, lag, outage recovery,
+repair, or negative-result freshness safety; authoritative cutover remains blocked.
 
 Revision-bearing follow reads, profile privacy, GraphQL, storefront, admin, and
-presentation authorization remain outside this shadow. The metrics source does not define a
-scrape window, minimum sample size, threshold, retained bundle, review report, or admission
-receipt.
+presentation authorization remain outside this shadow.
 
 ## Remaining bounded M4 work
 
-The canonical checklist remains open until the owner runs the fixture through capture,
-admits the retained bundle, and preserves both bundle and receipt. Additional boundaries
-remain:
+The canonical checklist remains open until the owner runs the PostgreSQL/reference fixture
+through capture, admits the retained bundle, and preserves both bundle and receipt. Additional
+boundaries remain:
 
-- execute and retain Social Graph privacy shadow parity, freshness, lag, repair, and latency
-  evidence before reconsidering authoritative cutover;
-- define retained privacy-shadow metric capture, review policy, and non-authorizing admission;
+- execute one live Social Graph privacy-shadow window from the merged commit, publish its
+  canonical bundle, and complete independent admission with explicit reviewer thresholds;
+- retain per-tenant projection watermark/lag, outage/recovery, repair, and negative-result
+  freshness evidence before reconsidering authoritative cutover;
 - aggregate ordering semantics for paths traversing `many`;
 - publish schemas from additional source owners as consumers are selected;
 - additional non-authoritative shadows and safely freshness-gated consumer cutovers.
@@ -268,6 +291,7 @@ cargo check -p rustok-distribution --all-targets
 cargo check -p rustok-server --all-targets
 cargo check -p rustok-benchmarks --bin index-query-equivalence-capture
 cargo check -p rustok-benchmarks --bin index-query-equivalence-admission
+node --test scripts/evidence/social-graph-privacy-shadow-evidence.test.mjs
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
@@ -280,5 +304,6 @@ node scripts/verify/verify-index-query-equivalence-admission.mjs
 node scripts/verify/verify-index-source-schema-registry.mjs
 node scripts/verify/verify-index-query-runtime-composition.mjs
 node scripts/verify/verify-index-social-graph-privacy-consumer.mjs
+node scripts/verify/verify-social-graph-privacy-shadow-evidence.mjs
 cargo xtask module validate index
 ```

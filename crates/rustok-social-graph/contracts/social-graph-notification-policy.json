@@ -13,6 +13,7 @@
   "index_privacy_shadow": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
   "index_privacy_shadow_metrics": "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
   "index_privacy_shadow_metrics_adapter": "apps/server/src/services/notification_recipient_policy.rs",
+  "index_privacy_shadow_evidence": "crates/rustok-social-graph/contracts/social-graph-index-privacy-shadow-evidence.json",
   "relation_state": {
     "table": "social_graph_relations",
     "kinds": ["block", "mute"],
@@ -52,10 +53,12 @@
     "single_registry": true,
     "owner_observation_contract": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
     "prometheus_adapter_owner": "rustok-server",
+    "collector_started_metric": "rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds",
     "observations_metric": "rustok_social_graph_index_privacy_shadow_observations_total",
     "failures_metric": "rustok_social_graph_index_privacy_shadow_failures_total",
     "duration_metric": "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
     "last_observation_metric": "rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds",
+    "collector_started_labels": [],
     "operations": [
       "blocks_between",
       "source_mutes_target",
@@ -101,17 +104,20 @@
     "crates/rustok-social-graph/tests/privacy_sqlite.rs",
     "crates/rustok-social-graph/src/index_privacy.rs",
     "crates/rustok-social-graph/src/index_privacy_shadow.rs",
-    "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs"
+    "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
+    "scripts/evidence/social-graph-privacy-shadow-evidence.test.mjs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
     "index_consumer_verifier": "scripts/verify/verify-index-social-graph-privacy-consumer.mjs",
+    "evidence_verifier": "scripts/verify/verify-social-graph-privacy-shadow-evidence.mjs",
     "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "retained shadow metric capture and review",
-    "bounded shadow latency and resource overhead evidence",
+    "owner execution and independent admission of one retained privacy-shadow metric window",
+    "projection watermark and bounded lag evidence",
+    "outage recovery and repair evidence",
     "authoritative cutover after retained freshness, lag, negative-result safety, and result-parity evidence",
     "default candidate worker enablement after health and lag metrics",
     "friend and follow presentation cutover",
