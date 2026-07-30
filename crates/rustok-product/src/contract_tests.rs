@@ -26,6 +26,7 @@ fn product_declares_owner_local_dto_and_entity_sources() {
     assert!(!cargo.contains("rustok-commerce-foundation"));
     assert!(cargo.contains("rustok-pricing-persistence.workspace = true"));
     assert!(!cargo.contains("rustok-commerce-foundation.workspace = true"));
+    assert!(!cargo.contains("rustok-index"));
 }
 
 #[test]
@@ -42,31 +43,14 @@ fn product_owner_boundaries_do_not_depend_on_foundation() {
     assert!(!entities.contains("stock_location"));
 }
 
-#[cfg(feature = "index")]
 #[test]
-fn product_publishes_index_schema_and_postgres_source_factory() {
+fn product_module_publishes_only_a_typed_selection_marker_for_cross_module_bridges() {
     use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
 
     let mut extensions = ModuleRuntimeExtensions::default();
     crate::ProductModule
         .register_runtime_extensions(&mut extensions)
-        .expect("Product Index contracts should register");
-
-    let schema = crate::product_index_schema().expect("Product Index schema");
-    let schemas = extensions
-        .get::<rustok_index::IndexSchemaSourceCatalog>()
-        .expect("schema source catalog");
-    let descriptor = schemas
-        .get(&schema.reference)
-        .expect("Product schema descriptor");
-    assert_eq!(descriptor.owner_module, "product");
-    assert_eq!(descriptor.schema, schema);
-
-    let factories = extensions
-        .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
-        .expect("PostgreSQL source factory catalog");
-    assert_eq!(factories.len(), 1);
-    let factory = factories.iter().next().expect("Product source factory");
-    assert_eq!(factory.owner_module(), "product");
-    assert_eq!(factory.factory_name(), crate::PRODUCT_INDEX_SOURCE_FACTORY);
+        .expect("Product runtime extensions should register");
+    assert!(extensions.contains::<crate::ProductRuntimeSelected>());
+    assert!(!include_str!("lib.rs").contains("rustok_index"));
 }
