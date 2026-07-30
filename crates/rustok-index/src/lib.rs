@@ -22,15 +22,16 @@ pub mod migrations;
 pub use application::*;
 pub use domain::*;
 pub use infrastructure::postgres::{
-    evaluate_partition_admission, MutationApplyOutcome, MutationDelivery, MutationStorageError,
-    PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
-    PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
-    PartitionMeasurementCoverage, PartitionRelationPlan, PartitionShadowEvidence,
-    PartitionShadowPlan, PartitionStrategy, PersistedSchemaRegistrationOutcome,
-    PostgresIndexQueryPort, PostgresMutationStore, PostgresSchemaLeaseStore,
-    PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager, SchemaApplicationLease,
-    SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome, SchemaLeaseError,
-    SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
+    evaluate_partition_admission, materialize_postgres_index_query_runtime,
+    IndexQueryRuntimeCompositionError, MutationApplyOutcome, MutationDelivery,
+    MutationStorageError, PartitionAdmissionError, PartitionAdmissionOutcome,
+    PartitionAdmissionPolicy, PartitionAdmissionReason, PartitionBaselineEvidence,
+    PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
+    PartitionShadowEvidence, PartitionShadowPlan, PartitionStrategy,
+    PersistedSchemaRegistrationOutcome, PostgresIndexQueryPort, PostgresMutationStore,
+    PostgresSchemaLeaseStore, PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager,
+    SchemaApplicationLease, SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome,
+    SchemaLeaseError, SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
 };
