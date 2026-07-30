@@ -6,6 +6,8 @@
 
 mod generated_promotions;
 mod generation;
+#[cfg(feature = "mod-product")]
+mod product_index;
 
 use rustok_auth::AuthModule;
 use rustok_cache::CacheModule;
@@ -39,6 +41,7 @@ pub fn build_runtime_extensions(
 ) -> rustok_core::Result<ModuleRuntimeExtensions> {
     let mut extensions = registry.build_runtime_extensions()?;
     register_runtime_bridges(&mut extensions)?;
+    register_selected_index_bridges(&mut extensions)?;
     materialize_index_schema_sources(&mut extensions)?;
     Ok(extensions)
 }
@@ -56,6 +59,16 @@ fn register_runtime_bridges(extensions: &mut ModuleRuntimeExtensions) -> rustok_
         ));
     }
     #[cfg(not(feature = "ai-translation"))]
+    let _ = extensions;
+    Ok(())
+}
+
+fn register_selected_index_bridges(
+    extensions: &mut ModuleRuntimeExtensions,
+) -> rustok_core::Result<()> {
+    #[cfg(feature = "mod-product")]
+    product_index::register(extensions)?;
+    #[cfg(not(feature = "mod-product"))]
     let _ = extensions;
     Ok(())
 }
@@ -425,6 +438,30 @@ mod tests {
             .expect("empty source catalog should remain a valid module composition");
         assert!(extensions.contains::<IndexSchemaSourceCatalog>());
         assert!(!extensions.contains::<SharedIndexSchemaRegistry>());
+    }
+
+    #[cfg(feature = "mod-product")]
+    #[test]
+    fn selected_product_bridge_publishes_schema_and_source_factory() {
+        let registry = super::build_registry();
+        let extensions = super::build_runtime_extensions(&registry)
+            .expect("selected Product Index bridge should compose");
+        let schema = SchemaRef {
+            module: ModuleName::new("rustok-product").unwrap(),
+            entity: EntityName::new("product").unwrap(),
+            version: SchemaVersion::INITIAL,
+        };
+        let shared = extensions
+            .get::<SharedIndexSchemaRegistry>()
+            .expect("selected Product schema should materialize");
+        assert!(shared.registry().get(&schema).is_some());
+        let factories = extensions
+            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+            .expect("selected Product source factory should remain available to the host");
+        assert!(factories.iter().any(|factory| {
+            factory.owner_module() == "product"
+                && factory.factory_name() == super::product_index::PRODUCT_INDEX_SOURCE
+        }));
     }
 
     #[cfg(feature = "ai-translation")]

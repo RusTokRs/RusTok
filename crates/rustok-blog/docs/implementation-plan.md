@@ -40,6 +40,33 @@ plain-text policy in the same transaction; invalid content fails closed.
 Navigation is owned by `canonical_search_result_url` across GraphQL, storefront
 native Search, Search admin preview, and admin global search.
 
+Canonical navigation is a Search-owned provider boundary, not a Blog-owned gate.
+Blog consumes the projected canonical URL and must not reconstruct routes. The
+owner evidence is
+`crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`,
+verified by `scripts/verify/verify-search-canonical-url-contract.mjs` and focused
+fixture `scripts/verify/verify-search-canonical-url-contract.test.mjs`. Exact
+leaf commands `verify:search:canonical-url` and `test:verify:search:canonical-url`
+are locked into the Search FBA verify/test chains.
+
+Blog lifecycle projection is also Search-owned. Its retained executable harness
+is `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
+guarded by `scripts/verify/verify-search-blog-projection.mjs` and focused fixture
+`scripts/verify/verify-search-blog-projection.test.mjs`. Exact commands
+`verify:search:blog-projection` and `test:verify:search:blog-projection` are locked
+into the Search FBA verify/test chains after canonical navigation. This source
+registration does not record routing or PostgreSQL execution.
+
+Comments thread positioning, active counters, first-thread identity, and repair
+migrations are Comments-owned provider invariants. Their retained evidence is
+`crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`,
+guarded by `scripts/verify/verify-comments-thread-write-invariants.mjs` and focused
+self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`. Exact
+commands `verify:comments:thread-write-invariants` and
+`test:verify:comments:thread-write-invariants` are registered in Comments registry
+schema v2 and the Comments FBA verify/test chains. Blog consumes the owner result;
+it does not duplicate thread locking or counter policy.
+
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
 mutation and Blog reindex publication share one transaction; authorization
@@ -103,6 +130,26 @@ named npm leaf commands and were absent from the registry-owned Blog FBA chain.
 Slice 37 registers that source gate while preserving mounted Redis execution as
 a separate maintainer-owned result.
 
+The continuation audit at `d0e2a1cea5f0cba6102ca857a881f357c1cbd40e`
+confirmed that canonical navigation is already Search-owned and therefore must
+not be duplicated in the Blog FBA registry. It also found the canonical positive
+fixture stale after the verifier gained Forum reply and admin permission checks.
+Slice 38 repairs the owner fixture, adds exact Search leaf commands, and locks
+their order into the Search FBA package chains without promoting runtime status.
+
+The continuation audit at `9dcbcf31e527a406cb9556bdc2e20165c141e6bf`
+found the remaining Search-owned Blog projection harness, verifier, and focused
+fixture outside the Search FBA package chains and without named npm leaf commands.
+Slice 39 registers that owner evidence and exact order while leaving routing and
+PostgreSQL execution in maintainer-owned `Next results`.
+
+The continuation audit at `8db76d1ae6e1bd5dce2314b9a5c11829373fa93d`
+found the same source-chain omission at the Comments owner boundary. Thread write
+evidence, verifier, negative fixture, and both Rust concurrency targets existed,
+but the JS self-test was absent from the registry and no named leaf or Comments
+FBA test chain existed. Slice 40 registers registry schema v2 and exact package
+order without recording PostgreSQL execution.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -116,8 +163,9 @@ a separate maintainer-owned result.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
   maintainer-owned.
-- Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
-  maintainer-owned.
+- Search Blog projection harness: Search-owned `executable_no_run`; evidence,
+  verifier, focused fixture, exact npm leaf commands, test targets, and Search FBA
+  ordering are locked. Routing and PostgreSQL execution remain maintainer-owned.
 - Blog article richtext cutover: `implemented_source_verified_no_compile`.
 - Blog article offline backfill: `executable_no_run`.
 - Next admin Forum UI ownership: `source_verified_no_compile`.
@@ -125,10 +173,15 @@ a separate maintainer-owned result.
 - Blog GraphQL richtext boundary: `implemented_source_verified_no_compile`.
 - Blog storefront richtext boundary: `source_verified_no_compile`.
 - AI Blog draft owner writes and shim: `source_verified_no_compile`.
-- Comments thread write invariants: `executable_no_run`.
+- Comments thread write invariants: Comments-owned `executable_no_run`; registry
+  schema v2, evidence, verifier, focused self-test, exact npm leaf commands, Rust
+  targets, and Comments FBA ordering are locked. PostgreSQL execution remains
+  maintainer-owned.
 - Category search reindex: `source_verified_no_compile`; evidence, verifier,
   self-test, npm leaf commands, and aggregate FBA registration are locked.
-- Canonical Search URL: `source_verified_no_compile`.
+- Canonical Search URL: Search-owned `source_verified_no_compile`; evidence,
+  verifier, synchronized fixture, exact npm leaf commands, and Search FBA package
+  ordering are locked. Runtime navigation evidence remains pending.
 
 ## Evidence and guardrails
 
@@ -136,6 +189,7 @@ a separate maintainer-owned result.
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
+- `crates/rustok-comments/contracts/comments-fba-registry.json`
 - `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
 - `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
 - `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
@@ -166,9 +220,13 @@ a separate maintainer-owned result.
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-fba.test.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
+- `scripts/verify/verify-comments-fba.mjs`
 - `scripts/verify/verify-comments-thread-write-invariants.mjs`
+- `scripts/verify/verify-comments-thread-write-invariants.test.mjs`
 - `scripts/verify/verify-search-blog-projection.mjs`
+- `scripts/verify/verify-search-blog-projection.test.mjs`
 - `scripts/verify/verify-search-canonical-url-contract.mjs`
+- `scripts/verify/verify-search-canonical-url-contract.test.mjs`
 
 ## Completed implementation slices
 
@@ -227,6 +285,16 @@ a separate maintainer-owned result.
 37. Registered the existing GraphQL rate-limit harness as a first-class Blog FBA
     leaf gate, added exact verify/test npm commands, bound its evidence path in
     registry schema v8, and kept mounted Redis execution explicitly pending.
+38. Kept canonical navigation with the Search owner, repaired its stale positive
+    fixture for Forum/admin expansion, added exact Search verify/test leaf commands,
+    and locked both commands into the Search FBA package chains.
+39. Registered the existing Search-owned Blog projection harness as a first-class
+    Search FBA leaf, bound evidence/verifier/fixture/test targets and exact package
+    order, and kept routing plus PostgreSQL execution explicitly pending.
+40. Registered the existing Comments-owned thread invariant evidence as a
+    first-class Comments FBA leaf, retained the focused JS self-test in registry
+    schema v2, added exact verify/test package commands, and kept both PostgreSQL
+    concurrency targets explicitly pending.
 
 ## Next results
 
@@ -243,10 +311,10 @@ a separate maintainer-owned result.
 4. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
-5. **Close comments runtime evidence.** Run the invariant test and concurrent
-   PostgreSQL create/delete transactions; cover approved-only reads, moderation,
-   pagination, duplicate delivery, counters, missing-post retry, rollback, and
-   outbox publication.
+5. **Close comments runtime evidence.** Run both thread invariant concurrency
+   targets and concurrent PostgreSQL create/delete transactions; cover approved-only
+   reads, moderation, pagination, duplicate delivery, counters, first-thread
+   identity, missing-post retry, rollback, and outbox publication.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -276,11 +344,22 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:admin-boundary`
 - `npm run verify:blog:fba`
 - `npm run test:verify:blog:fba`
+- `npm run verify:search:canonical-url`
+- `npm run test:verify:search:canonical-url`
+- `npm run verify:search:blog-projection`
+- `npm run test:verify:search:blog-projection`
+- `npm run verify:search:fba`
+- `npm run test:verify:search:fba`
+- `npm run verify:comments:thread-write-invariants`
+- `npm run test:verify:comments:thread-write-invariants`
+- `npm run verify:comments:fba`
+- `npm run test:verify:comments:fba`
 - `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
 - `cargo test -p rustok-comments --test thread_write_invariants`
+- `cargo test -p rustok-comments --test thread_creation_concurrency`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
@@ -290,12 +369,7 @@ should run the relevant subset, including:
 - `cargo check -p rustok-blog-admin --target wasm32-unknown-unknown --features hydrate`
 - `npm run verify --prefix packages/richtext`
 - `node packages/richtext/test/browser-spike.mjs`
-- `npm run verify:comments:fba`
 - `npm run verify:consumer:fba-runtime-order`
-- `node scripts/verify/verify-search-blog-projection.mjs`
-- `node scripts/verify/verify-search-blog-projection.test.mjs`
-- `node scripts/verify/verify-search-canonical-url-contract.mjs`
-- `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `cargo xtask module validate blog`
 
 ## References

@@ -1,7 +1,9 @@
+mod error_safety;
 mod native_server_adapter;
 
-use leptos::prelude::*;
-use std::fmt::{Display, Formatter};
+pub use error_safety::InventoryTransportError;
+
+use error_safety::InventoryTransportErrorContext;
 
 use crate::core::{
     InventoryAdjustQuantityRequest, InventoryAvailabilityCheckRequest, InventoryProductRequest,
@@ -15,27 +17,6 @@ use crate::model::{
     InventoryProductList, InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
     InventoryReservationWriteResult,
 };
-
-#[derive(Debug, Clone)]
-pub enum InventoryTransportError {
-    ServerFn(String),
-}
-
-impl Display for InventoryTransportError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ServerFn(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for InventoryTransportError {}
-
-impl From<ServerFnError> for InventoryTransportError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
 
 fn products_request(
     tenant_id: String,
@@ -129,9 +110,10 @@ fn release_reservation_request(
 }
 
 pub async fn fetch_bootstrap() -> Result<InventoryAdminBootstrap, InventoryTransportError> {
+    let context = InventoryTransportErrorContext::for_bootstrap();
     native_server_adapter::fetch_bootstrap()
         .await
-        .map_err(Into::into)
+        .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn fetch_products(
@@ -141,6 +123,12 @@ pub async fn fetch_products(
     status: Option<String>,
 ) -> Result<InventoryProductList, InventoryTransportError> {
     let request = products_request(tenant_id, locale, search, status);
+    let context = InventoryTransportErrorContext::for_products(
+        request.tenant_id.as_str(),
+        request.locale.as_deref(),
+        request.search.as_deref(),
+        request.status.as_deref(),
+    );
     native_server_adapter::fetch_products(
         request.tenant_id,
         request.locale,
@@ -148,7 +136,7 @@ pub async fn fetch_products(
         request.status,
     )
     .await
-    .map_err(Into::into)
+    .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn fetch_product(
@@ -157,9 +145,14 @@ pub async fn fetch_product(
     locale: Option<String>,
 ) -> Result<Option<InventoryProductDetail>, InventoryTransportError> {
     let request = product_request(tenant_id, id, locale);
+    let context = InventoryTransportErrorContext::for_product(
+        request.tenant_id.as_str(),
+        request.id.as_str(),
+        request.locale.as_deref(),
+    );
     native_server_adapter::fetch_product(request.tenant_id, request.id, request.locale)
         .await
-        .map_err(Into::into)
+        .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn set_variant_quantity(
@@ -168,13 +161,17 @@ pub async fn set_variant_quantity(
     quantity: i32,
 ) -> Result<InventoryQuantityWriteResult, InventoryTransportError> {
     let request = set_quantity_request(tenant_id, variant_id, quantity);
+    let context = InventoryTransportErrorContext::for_set_variant_quantity(
+        request.tenant_id.as_str(),
+        request.variant_id.as_str(),
+    );
     native_server_adapter::set_variant_quantity(
         request.tenant_id,
         request.variant_id,
         request.quantity,
     )
     .await
-    .map_err(Into::into)
+    .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn adjust_variant_quantity(
@@ -183,13 +180,17 @@ pub async fn adjust_variant_quantity(
     adjustment: i32,
 ) -> Result<InventoryQuantityWriteResult, InventoryTransportError> {
     let request = adjust_quantity_request(tenant_id, variant_id, adjustment);
+    let context = InventoryTransportErrorContext::for_adjust_variant_quantity(
+        request.tenant_id.as_str(),
+        request.variant_id.as_str(),
+    );
     native_server_adapter::adjust_variant_quantity(
         request.tenant_id,
         request.variant_id,
         request.adjustment,
     )
     .await
-    .map_err(Into::into)
+    .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn reserve_variant_quantity(
@@ -198,13 +199,17 @@ pub async fn reserve_variant_quantity(
     quantity: i32,
 ) -> Result<InventoryReservationWriteResult, InventoryTransportError> {
     let request = reserve_quantity_request(tenant_id, variant_id, quantity);
+    let context = InventoryTransportErrorContext::for_reserve_variant_quantity(
+        request.tenant_id.as_str(),
+        request.variant_id.as_str(),
+    );
     native_server_adapter::reserve_variant_quantity(
         request.tenant_id,
         request.variant_id,
         request.quantity,
     )
     .await
-    .map_err(Into::into)
+    .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn check_variant_availability(
@@ -213,13 +218,17 @@ pub async fn check_variant_availability(
     requested_quantity: i32,
 ) -> Result<InventoryAvailabilityCheckResult, InventoryTransportError> {
     let request = availability_check_request(tenant_id, variant_id, requested_quantity);
+    let context = InventoryTransportErrorContext::for_check_variant_availability(
+        request.tenant_id.as_str(),
+        request.variant_id.as_str(),
+    );
     native_server_adapter::check_variant_availability(
         request.tenant_id,
         request.variant_id,
         request.requested_quantity,
     )
     .await
-    .map_err(Into::into)
+    .map_err(|server_error| context.map_error(server_error))
 }
 
 pub async fn release_reservation_quantity(
@@ -228,13 +237,17 @@ pub async fn release_reservation_quantity(
     quantity: i32,
 ) -> Result<InventoryReservationReleaseWriteResult, InventoryTransportError> {
     let request = release_reservation_request(tenant_id, variant_id, quantity);
+    let context = InventoryTransportErrorContext::for_release_reservation_quantity(
+        request.tenant_id.as_str(),
+        request.variant_id.as_str(),
+    );
     native_server_adapter::release_reservation_quantity(
         request.tenant_id,
         request.variant_id,
         request.quantity,
     )
     .await
-    .map_err(Into::into)
+    .map_err(|server_error| context.map_error(server_error))
 }
 
 #[cfg(test)]

@@ -63,6 +63,7 @@ const serverRuntime = requireMarkers(serverRuntimePath, [
   'requested_tenant != self.tenant_id',
   'pub async fn run(',
   'pub async fn request_cancel(',
+  'materialize_postgres_index_sources(extensions, db.clone())',
   'materialize_index_source_registry(extensions)',
   'materialize_postgres_index_replay_runtime(extensions, db)',
   'extensions.insert(IndexReplayOperatorRuntime::new(runtime))',
@@ -87,7 +88,13 @@ for (const forbidden of [
   }
 }
 
-const sourceMaterialization = serverRuntime.indexOf('materialize_index_source_registry(extensions)');
+const adapterMaterialization = serverRuntime.indexOf(
+  'materialize_postgres_index_sources(extensions, db.clone())',
+);
+const sourceMaterialization = serverRuntime.indexOf(
+  'materialize_index_source_registry(extensions)',
+  adapterMaterialization,
+);
 const replayMaterialization = serverRuntime.indexOf(
   'materialize_postgres_index_replay_runtime(extensions, db)',
   sourceMaterialization,
@@ -97,11 +104,12 @@ const operatorPublication = serverRuntime.indexOf(
   replayMaterialization,
 );
 if (
-  sourceMaterialization < 0
+  adapterMaterialization < 0
+  || sourceMaterialization <= adapterMaterialization
   || replayMaterialization <= sourceMaterialization
   || operatorPublication <= replayMaterialization
 ) {
-  fail('server must freeze source registry before replay runtime and guarded operator publication');
+  fail('server must construct source adapters before registry, replay runtime, and operator publication');
 }
 
 const servicesPath = 'apps/server/src/services/mod.rs';

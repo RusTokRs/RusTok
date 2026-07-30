@@ -5,6 +5,7 @@ function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-search-fba] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
 function hasNone(text, snippets, label) { for (const s of snippets) if (text.includes(s)) fail(`${label} contains forbidden ${s}`); }
+function sameList(actual, expected) { return JSON.stringify(actual) === JSON.stringify(expected); }
 
 const registryPath = 'crates/rustok-search/contracts/search-fba-registry.json';
 const evidencePath = 'crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json';
@@ -13,13 +14,35 @@ const runtimeContractPath = 'crates/rustok-search/contracts/evidence/search-runt
 const runtimeInvocationPath = 'crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json';
 const canonicalUrlEvidencePath = 'crates/rustok-search/contracts/evidence/search-canonical-url-contract.json';
 const canonicalUrlVerifierPath = 'scripts/verify/verify-search-canonical-url-contract.mjs';
+const canonicalUrlSelfTestPath = 'scripts/verify/verify-search-canonical-url-contract.test.mjs';
+const blogProjectionEvidencePath = 'crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json';
+const blogProjectionVerifierPath = 'scripts/verify/verify-search-blog-projection.mjs';
+const blogProjectionSelfTestPath = 'scripts/verify/verify-search-blog-projection.test.mjs';
 const removedNavigationPath = 'crates/rustok-search/storefront/src/transport/navigation.rs';
+const packageJsonPath = 'package.json';
+const expectedVerifySteps = [
+  'node scripts/verify/verify-search-fba.mjs',
+  'npm run verify:search:canonical-url',
+  'npm run verify:search:blog-projection',
+  'npm run verify:search:fba:runtime-smoke',
+  'npm run verify:search:fba:runtime-contract',
+  'npm run verify:search:fba:runtime-invocation',
+];
+const expectedTestSteps = [
+  'npm run test:verify:search:canonical-url',
+  'npm run test:verify:search:blog-projection',
+  'npm run test:verify:search:fba:runtime-smoke',
+  'npm run test:verify:search:fba:runtime-contract',
+  'npm run test:verify:search:fba:runtime-invocation',
+];
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
 const runtimeContract = json(runtimeContractPath);
 const runtimeInvocation = json(runtimeInvocationPath);
 const canonicalUrlEvidence = json(canonicalUrlEvidencePath);
+const blogProjectionEvidence = json(blogProjectionEvidencePath);
+const packageJson = json(packageJsonPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'search' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
@@ -36,6 +59,16 @@ for (const port of ports) {
   if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail(`${port.name} context/error drift`);
   if (!Array.isArray(port.read_operations) || port.read_operations.length === 0) fail(`${port.name} lacks read operations`);
   if ((port.write_operations ?? []).length !== 0) fail(`${port.name} unexpectedly declares write operations`);
+}
+
+if (!sameList(packageJson.scripts?.['verify:search:fba']?.split(' && ') ?? [], expectedVerifySteps)) fail('package Search FBA verify chain drift');
+if (!sameList(packageJson.scripts?.['test:verify:search:fba']?.split(' && ') ?? [], expectedTestSteps)) fail('package Search FBA test chain drift');
+if (packageJson.scripts?.['verify:search:canonical-url'] !== `node ${canonicalUrlVerifierPath}`) fail('canonical URL leaf verifier command drift');
+if (packageJson.scripts?.['test:verify:search:canonical-url'] !== `node ${canonicalUrlSelfTestPath}`) fail('canonical URL leaf self-test command drift');
+if (packageJson.scripts?.['verify:search:blog-projection'] !== `node ${blogProjectionVerifierPath}`) fail('Blog projection leaf verifier command drift');
+if (packageJson.scripts?.['test:verify:search:blog-projection'] !== `node ${blogProjectionSelfTestPath}`) fail('Blog projection leaf self-test command drift');
+for (const filePath of [canonicalUrlSelfTestPath, blogProjectionVerifierPath, blogProjectionSelfTestPath, blogProjectionEvidencePath]) {
+  if (!fs.existsSync(filePath)) fail(`Search FBA leaf file is missing ${filePath}`);
 }
 
 const manifest = read('crates/rustok-search/rustok-module.toml');
@@ -128,6 +161,8 @@ for (const [key, expected] of Object.entries({
 if ('compatibility_fallback' in canonicalContract) fail('canonical URL compatibility fallback must not exist');
 const canonicalVerifier = read(canonicalUrlVerifierPath);
 hasAll(canonicalVerifier, ['compatibility implementation must be deleted', 'canonical_search_result_url(&item)', 'no_transport_fallback'], 'canonical URL verifier');
+const canonicalSelfTest = read(canonicalUrlSelfTestPath);
+hasAll(canonicalSelfTest, ['accepts one Search-owned canonical URL policy', 'forum_reply_canonical_route', 'admin_forum_permission_gate'], 'canonical URL self-test');
 if (fs.existsSync(removedNavigationPath)) fail('storefront navigation compatibility file must not exist');
 const storefrontFacade = read(canonicalContract.storefront_transport_facade);
 hasNone(storefrontFacade, ['mod navigation', 'enrich_search_result_urls', 'blog_result_url'], 'storefront transport facade');
@@ -138,9 +173,23 @@ const adminShell = read(canonicalContract.admin_shell_projection);
 hasAll(adminShell, ['rustok_search::canonical_search_result_url(&item)', '("blog_post", "blog" | "rustok-blog")'], 'admin global Search mapping');
 hasNone(adminShell, ['fn derive_admin_search_result_url', '"/modules/blog"'], 'admin global Search mapping');
 
+if (blogProjectionEvidence.module !== 'search' || blogProjectionEvidence.surface !== 'blog_post_projection') fail('Blog projection evidence identity drift');
+if (blogProjectionEvidence.status !== 'executable_no_run' || blogProjectionEvidence.compile_policy !== 'not_run_by_request') fail('Blog projection evidence status drift');
+if (blogProjectionEvidence.production_contract?.source_guardrail !== blogProjectionVerifierPath) fail('Blog projection source guardrail path drift');
+for (const target of [
+  'crates/rustok-search/tests/blog_ingestion_contract_test.rs',
+  'crates/rustok-search/tests/blog_projection_postgres_test.rs',
+]) {
+  if (!(blogProjectionEvidence.test_targets ?? []).includes(target)) fail(`Blog projection evidence missing test target ${target}`);
+}
+const blogProjectionVerifier = read(blogProjectionVerifierPath);
+hasAll(blogProjectionVerifier, ['search-blog-projection-postgres-harness.json', 'targeted_missing_post_cleanup', 'module_toggle_cleanup_rebuild'], 'Blog projection verifier');
+const blogProjectionSelfTest = read(blogProjectionSelfTestPath);
+hasAll(blogProjectionSelfTest, ['passes canonical fixture', 'rejects hardcoded public source tables', 'rejects missing PostgreSQL harness'], 'Blog projection self-test');
+
 const plan = read('crates/rustok-search/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md', 'search-canonical-url-contract.json', 'single owner policy', 'no transport fallback'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md', 'search-canonical-url-contract.json', 'single owner policy', 'no transport fallback', 'verify:search:canonical-url', 'test:verify:search:canonical-url', 'verify:search:blog-projection', 'test:verify:search:blog-projection'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-search-fba] Search provider metadata, port semantics, owner-only settings, current-only canonical URL ownership, static evidence, and executable no-compile runtime contracts are consistent');
+console.log('[verify-search-fba] Search provider metadata, exact canonical URL and Blog projection leaf commands, port semantics, owner-only settings, current-only navigation ownership, static evidence, and executable no-compile runtime contracts are consistent');
