@@ -65,7 +65,9 @@ const shadowPath = 'crates/rustok-social-graph/src/index_privacy_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'pub struct IndexShadowSocialGraphPrivacyReadPort',
   'authoritative: Arc<dyn SocialGraphPrivacyReadPort>',
-  'projected: IndexSocialGraphPrivacyReadPort',
+  'projected: Arc<dyn SocialGraphPrivacyReadPort>',
+  'projected: Arc::new(IndexSocialGraphPrivacyReadPort::new(runtime))',
+  'fn from_ports(',
   'impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort',
   '.blocks_between(context.clone(), request)',
   '.source_mutes_target(context.clone(), request)',
@@ -76,6 +78,8 @@ const shadow = requireMarkers(shadowPath, [
   'Ok(authoritative)',
   'Social Graph Index privacy shadow mismatch',
   'Social Graph Index privacy shadow read failed',
+  'mismatch_returns_authoritative_boolean',
+  'projected_error_returns_authoritative_batch',
 ]);
 const authoritativeReturns = shadow.match(/Ok\(authoritative\)/g) ?? [];
 if (authoritativeReturns.length !== 4) {
