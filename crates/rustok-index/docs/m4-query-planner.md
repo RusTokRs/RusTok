@@ -13,11 +13,12 @@ detection. The repository owner still needs to execute and admit one fresh real
 PostgreSQL partition packet. That owner gate blocks production partition lifecycle
 design but does not block M4 query source work.
 
-The previous server-composition blocker is now narrowed. Source modules can publish
-generic schema contracts into an Index-owned catalog, and the selected distribution
-materializes one non-empty immutable registry after all module registrations. Social
-Graph is the first source publication. The server still does not construct an
-`IndexQueryPort`, authorize callers, or cut any consumer over.
+The previous server-composition blocker is now removed at the capability level. Source
+modules publish generic schema contracts into an Index-owned catalog, the selected
+distribution materializes one non-empty immutable registry after all module registrations,
+and the server binds that registry to its database through the Index-owned PostgreSQL
+runtime materializer. Social Graph is the first source publication. Authorization,
+transport endpoints, tenant schema readiness, and consumer cutover remain separate gates.
 
 ## Actualized status
 
@@ -35,6 +36,7 @@ Graph is the first source publication. The server still does not construct an
 - M4 retained PostgreSQL/reference capture source: `source_complete_owner_execution_pending`.
 - M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 source-owned immutable schema registry: `source_complete_execution_pending`.
+- M4 server-owned shared query runtime composition: `source_complete_execution_pending`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -135,21 +137,33 @@ the bundle. The receipt records `production_lifecycle_authorized: false`.
 Both tools are source complete but have not been run. A capture exit alone does not admit
 the bundle; an admission receipt alone does not authorize deployment or partition work.
 
-## Source-owned schema registry
+## Source-owned schema registry and runtime
 
 `IndexModule` seeds `IndexSchemaSourceCatalog` in `ModuleRuntimeExtensions`. Source
 modules publish exact generic contracts with `register_index_schema_source`; duplicate
-ownership for one `SchemaRef` fails even when fingerprints match.
+ownership for one `SchemaRef` and owner drift across versions of one schema identity fail
+closed.
 
 After all modules and selected bridges register, `rustok-distribution` materializes the
 complete catalog through one `SchemaRegistry::register_batch`. This permits cross-source
 links, preserves deterministic `BTreeMap` order, and publishes one
 `SharedIndexSchemaRegistry` wrapping an immutable `Arc<SchemaRegistry>`. Missing or empty
-catalogs do not publish a false query runtime.
+catalogs do not publish a false registry or query runtime.
 
 With its `index` feature enabled, `SocialGraphModule` is the first source owner. It
 publishes the existing relation schema under owner slug `social_graph`; distribution and
 server code do not import the schema builder or Social Graph DTOs.
+
+`SharedIndexQueryRuntime` is a neutral cloneable `IndexQueryPort` capability. The
+Index-owned `materialize_postgres_index_query_runtime` is the only production constructor:
+it combines the final shared registry with the host database, rejects duplicate runtime
+publication, performs no SQL, and inserts the capability into module extensions. The
+server facade invokes it after all existing host-provider composition, and those
+extensions transfer unchanged into `HostRuntimeContext`.
+
+Runtime presence does not establish persisted tenant schema readiness. Every execution
+still performs the exact active fingerprint and semantic JSON preflight inside
+`PostgresIndexQueryPort`.
 
 ## Remaining bounded M4 work
 
@@ -158,9 +172,9 @@ admits the retained bundle, and preserves both bundle and receipt. Additional bo
 remain:
 
 - aggregate ordering semantics for paths traversing `many`;
-- construct an Index-owned query runtime from `SharedIndexSchemaRegistry` and host DB;
-- publish schemas from additional source owners as their consumers are selected;
-- server/storefront/admin/search authorization and consumer cutover.
+- publish schemas from additional source owners as consumers are selected;
+- server/storefront/admin/search authorization and first consumer cutover;
+- transport-specific error mapping that preserves bounded query-port failures.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
@@ -174,12 +188,14 @@ Suggested commands:
 ```bash
 cargo test -p rustok-index planner_tests -- --nocapture
 cargo test -p rustok-index source_schema_registry -- --nocapture
+cargo test -p rustok-index query_runtime -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo test -p rustok-index query_snapshot_tests -- --nocapture
 cargo test -p rustok-social-graph --features index module_publishes_its_index_schema_through_runtime_extensions -- --nocapture
 cargo test -p rustok-distribution source_schema_catalog_materializes_after_all_modules_register -- --nocapture
+cargo test -p rustok-server host_materializes_index_query_runtime_after_source_registry -- --nocapture
 RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-index postgres_query_port_matches_reference_fixture -- --nocapture
 INDEX_QUERY_EQUIVALENCE_ALLOW_CAPTURE=1 \
@@ -196,6 +212,7 @@ INDEX_QUERY_EQUIVALENCE_ADMISSION_OUTPUT=<existing-parent>/equivalence-admission
 cargo check -p rustok-index --all-targets
 cargo check -p rustok-social-graph --features index --all-targets
 cargo check -p rustok-distribution --all-targets
+cargo check -p rustok-server --all-targets
 cargo check -p rustok-benchmarks --bin index-query-equivalence-capture
 cargo check -p rustok-benchmarks --bin index-query-equivalence-admission
 node scripts/verify/verify-index-query-contract.mjs
@@ -208,5 +225,6 @@ node scripts/verify/verify-index-postgres-reference-equivalence.mjs
 node scripts/verify/verify-index-query-equivalence-capture.mjs
 node scripts/verify/verify-index-query-equivalence-admission.mjs
 node scripts/verify/verify-index-source-schema-registry.mjs
+node scripts/verify/verify-index-query-runtime-composition.mjs
 cargo xtask module validate index
 ```
