@@ -10,6 +10,7 @@
   "search_graphql_normalization": "crates/rustok-search/src/graphql/query.rs",
   "postgres_filter_owner": "crates/rustok-search/src/pg_engine.rs",
   "search_readme": "crates/rustok-search/README.md",
+  "search_plan": "crates/rustok-search/docs/implementation-plan.md",
   "owner_note": "crates/rustok-forum/docs/forum-23b1-exact-category-filter.md",
   "verifier": "scripts/verify/verify-forum-search-exact-category-filter.mjs",
   "query_boundary": {
