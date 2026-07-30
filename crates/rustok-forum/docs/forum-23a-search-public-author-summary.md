@@ -4,7 +4,7 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-Latest slice: `FORUM-23A5`
+Latest slice: `FORUM-23A6`
 
 This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
 and approved-reply documents obtain author presentation from the Profiles owner instead of
@@ -37,8 +37,9 @@ empty author: it fails projection so the durable Search inbox can retry.
 ## Durable redaction
 
 Embedded summaries require invalidation when profile presentation changes. Profiles publishes
-`ProfileUpdated` for handle, display content, locale, visibility, and media changes. Search treats
-that owner event as a Forum projection event whenever the Forum source is composed.
+`ProfileUpdated` for handle, display content, locale, visibility, media, and self-service upsert
+changes. Search treats that owner event as a Forum projection event whenever the Forum source is
+composed.
 
 The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
 `ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
@@ -65,19 +66,26 @@ Banner remains owner data and is never serialized into Forum Search.
 before the owner transaction. The tenant-scoped profile row, revision timestamp, and durable
 `ProfileUpdated` envelope then commit together. If publication fails, the locale write is rolled
 back. The path preserves the existing selection-only rule: changing preferred locale does not copy,
-insert, or update localized display content. A locale change can therefore switch the public
-fallback `display_name` without leaving Forum Search on the previous owner presentation because its
-invalidation was lost.
+insert, or update localized display content.
 
-Visibility, handle, content, locale, and media paths use the shared transactional publisher in
+`FORUM-23A6` applies the owner rule to `upsert_my_profile`. Media ownership is validated before the
+transaction. Inside one Profiles-owned transaction the path checks tenant-scoped handle ownership,
+creates or updates the profile row, upserts the selected localized display-name/biography row,
+replaces taxonomy-backed profile tags, and writes the durable `ProfileUpdated` envelope. Event
+failure rolls back every owner row, including newly created profiles, translations, and tag
+relations. The GraphQL mutation no longer has a post-commit event publisher.
+
+All self-service mutations that emit `ProfileUpdated` now use the shared transactional publisher in
 `crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
-classification cannot drift independently. Profile upsert still publishes after its owner writes
-and is not claimed to be transactionally coupled.
+classification cannot drift independently. This does not claim full owner-write coverage: the
+Profiles CLI/backfill path still calls the service upsert without publishing `ProfileUpdated` and
+requires a separate invalidation or rebuild proof.
 
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
 consumer rebuilds the Forum tenant projection from current owner state, so committed visibility,
-handle, public display-name, locale-selection, and avatar changes replace stale Search presentation.
+handle, public display-name, locale selection, avatar, and self-service upsert changes replace stale
+Search presentation.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
@@ -107,7 +115,8 @@ Existing Search document rows are replaced by the next Forum rebuild or relevant
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
-- transactionally couple profile upsert to its owner event;
+- durable Search invalidation for CLI/backfill profile creation, or retained evidence that the
+  responsible rebuild always follows it;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
