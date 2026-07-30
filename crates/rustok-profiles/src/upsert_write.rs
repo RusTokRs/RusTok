@@ -8,11 +8,25 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::{
-    ProfileError, ProfileRecord, ProfileResult, ProfileService, ProfileStatus, UpsertProfileInput,
-    entities, profile_updated_event::publish_profile_updated_in_tx,
+    ProfileBackfillResult, ProfileError, ProfileRecord, ProfileResult, ProfileService,
+    ProfileStatus, ProfileVisibility, UpsertProfileInput, entities,
+    profile_updated_event::{
+        publish_profile_updated_in_tx, publish_profile_updated_with_actor_in_tx,
+    },
 };
 
 const PROFILE_SCOPE_VALUE: &str = "profiles";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingProfilePolicy {
+    Update,
+    Skip,
+}
+
+struct ProfileWriteOutcome {
+    profile: ProfileRecord,
+    created: bool,
+}
 
 pub(crate) async fn upsert_profile_with_event(
     db: &DatabaseConnection,
@@ -23,6 +37,91 @@ pub(crate) async fn upsert_profile_with_event(
     input: UpsertProfileInput,
     tenant_default_locale: Option<&str>,
 ) -> ProfileResult<ProfileRecord> {
+    let outcome = write_profile_with_event(
+        db,
+        event_bus,
+        tenant_id,
+        Some(actor_id),
+        user_id,
+        input,
+        tenant_default_locale,
+        ExistingProfilePolicy::Update,
+    )
+    .await?;
+    Ok(outcome.profile)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn backfill_profile_with_event(
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    email: &str,
+    display_name: Option<&str>,
+    preferred_locale: Option<&str>,
+    visibility: ProfileVisibility,
+    tenant_default_locale: Option<&str>,
+) -> ProfileResult<ProfileBackfillResult> {
+    let service = ProfileService::new(db.clone());
+    match service
+        .get_profile(
+            tenant_id,
+            user_id,
+            preferred_locale,
+            tenant_default_locale,
+        )
+        .await
+    {
+        Ok(profile) => {
+            return Ok(ProfileBackfillResult {
+                profile,
+                created: false,
+            });
+        }
+        Err(ProfileError::ProfileNotFound(_)) => {}
+        Err(error) => return Err(error),
+    }
+
+    let input = service
+        .plan_backfill_profile(
+            tenant_id,
+            user_id,
+            email,
+            display_name,
+            preferred_locale,
+            visibility,
+        )
+        .await?;
+    let outcome = write_profile_with_event(
+        db,
+        event_bus,
+        tenant_id,
+        None,
+        user_id,
+        input,
+        tenant_default_locale,
+        ExistingProfilePolicy::Skip,
+    )
+    .await?;
+
+    Ok(ProfileBackfillResult {
+        profile: outcome.profile,
+        created: outcome.created,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_profile_with_event(
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    user_id: Uuid,
+    input: UpsertProfileInput,
+    tenant_default_locale: Option<&str>,
+    existing_policy: ExistingProfilePolicy,
+) -> ProfileResult<ProfileWriteOutcome> {
     let UpsertProfileInput {
         handle,
         display_name,
@@ -44,6 +143,21 @@ pub(crate) async fn upsert_profile_with_event(
         })?;
 
     let txn = db.begin().await?;
+    let existing = entities::profile::Entity::find_by_id(user_id)
+        .filter(entities::profile::Column::TenantId.eq(tenant_id))
+        .one(&txn)
+        .await?;
+    if existing_policy == ExistingProfilePolicy::Skip && existing.is_some() {
+        txn.rollback().await?;
+        let profile = ProfileService::new(db.clone())
+            .get_profile(tenant_id, user_id, None, tenant_default_locale)
+            .await?;
+        return Ok(ProfileWriteOutcome {
+            profile,
+            created: false,
+        });
+    }
+
     let handle_owner = entities::profile::Entity::find()
         .filter(entities::profile::Column::TenantId.eq(tenant_id))
         .filter(entities::profile::Column::Handle.eq(handle.clone()))
@@ -55,10 +169,7 @@ pub(crate) async fn upsert_profile_with_event(
         return Err(ProfileError::DuplicateHandle(handle));
     }
 
-    let existing = entities::profile::Entity::find_by_id(user_id)
-        .filter(entities::profile::Column::TenantId.eq(tenant_id))
-        .one(&txn)
-        .await?;
+    let created = existing.is_none();
     let now = Utc::now();
     let profile = match existing {
         Some(profile) => {
@@ -146,9 +257,16 @@ pub(crate) async fn upsert_profile_with_event(
         }
     }
 
-    if let Err(error) =
-        publish_profile_updated_in_tx(event_bus, &txn, tenant_id, actor_id, &profile).await
-    {
+    let publish_result = match actor_id {
+        Some(actor_id) => {
+            publish_profile_updated_in_tx(event_bus, &txn, tenant_id, actor_id, &profile).await
+        }
+        None => {
+            publish_profile_updated_with_actor_in_tx(event_bus, &txn, tenant_id, None, &profile)
+                .await
+        }
+    };
+    if let Err(error) = publish_result {
         tracing::error!(
             tenant_id = %tenant_id,
             user_id = %profile.user_id,
@@ -159,9 +277,10 @@ pub(crate) async fn upsert_profile_with_event(
     }
     txn.commit().await?;
 
-    ProfileService::new(db.clone())
+    let profile = ProfileService::new(db.clone())
         .get_profile(tenant_id, user_id, None, tenant_default_locale)
-        .await
+        .await?;
+    Ok(ProfileWriteOutcome { profile, created })
 }
 
 fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {

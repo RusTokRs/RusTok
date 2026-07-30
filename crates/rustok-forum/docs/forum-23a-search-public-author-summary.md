@@ -4,7 +4,7 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-Latest slice: `FORUM-23A6`
+Latest slice: `FORUM-23A7`
 
 This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
 and approved-reply documents obtain author presentation from the Profiles owner instead of
@@ -37,9 +37,9 @@ empty author: it fails projection so the durable Search inbox can retry.
 ## Durable redaction
 
 Embedded summaries require invalidation when profile presentation changes. Profiles publishes
-`ProfileUpdated` for handle, display content, locale, visibility, media, and self-service upsert
-changes. Search treats that owner event as a Forum projection event whenever the Forum source is
-composed.
+`ProfileUpdated` for handle, display content, locale, visibility, media, self-service upsert, and
+CLI backfill creation. Search treats that owner event as a Forum projection event whenever the
+Forum source is composed.
 
 The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
 `ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
@@ -75,17 +75,26 @@ replaces taxonomy-backed profile tags, and writes the durable `ProfileUpdated` e
 failure rolls back every owner row, including newly created profiles, translations, and tag
 relations. The GraphQL mutation no longer has a post-commit event publisher.
 
-All self-service mutations that emit `ProfileUpdated` now use the shared transactional publisher in
+`FORUM-23A7` applies the create-only variant of the same owner transaction to the Profiles CLI
+backfill. Non-dry-run backfill always constructs the outbox transport and cannot opt out of durable
+invalidation. The create-if-missing transaction rechecks profile absence, checks handle ownership,
+creates the profile and localized content, writes the `ProfileUpdated` envelope with a system actor,
+and commits last. Event failure rolls back the new profile. If a profile appears concurrently, the
+transaction is rolled back and the CLI reports the item as skipped without overwriting user-owned
+state. Dry-run still plans only and emits no event. The historical `--emit-events` option remains an
+accepted compatibility input, but it no longer disables events for writes.
+
+All self-service mutations and CLI backfill creation now use the shared transactional publisher in
 `crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
-classification cannot drift independently. This does not claim full owner-write coverage: the
-Profiles CLI/backfill path still calls the service upsert without publishing `ProfileUpdated` and
-requires a separate invalidation or rebuild proof.
+classification cannot drift independently. This does not claim every callable Profiles mutation API
+is event-coupled: direct non-event `ProfileService` mutation methods remain and require a separate
+restriction, consolidation, or production reachability proof.
 
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
 consumer rebuilds the Forum tenant projection from current owner state, so committed visibility,
-handle, public display-name, locale selection, avatar, and self-service upsert changes replace stale
-Search presentation.
+handle, public display-name, locale selection, avatar, self-service upsert, and CLI backfill changes
+replace stale Search presentation.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
@@ -109,14 +118,15 @@ discovery contract are unchanged.
 
 No database migration, Search query API change, Forum GraphQL/REST change, Forum owner-storage
 change, Profiles owner-storage change, dependency change, or `Cargo.lock` change is introduced.
-Existing Search document rows are replaced by the next Forum rebuild or relevant durable event.
+The operational CLI safety rule is tightened: every non-dry-run profile creation now includes the
+durable event in the owner transaction. Existing Search document rows are replaced by the next
+Forum rebuild or relevant durable event.
 
 ## Remaining FORUM-23 scope
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
-- durable Search invalidation for CLI/backfill profile creation, or retained evidence that the
-  responsible rebuild always follows it;
+- consolidate or restrict direct non-event `ProfileService` mutation APIs;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
@@ -130,6 +140,7 @@ Suggested commands:
 
 ```bash
 cargo check -p rustok-profiles --all-targets
+cargo check -p rustok-profiles-cli --all-targets
 cargo test -p rustok-profiles error -- --nocapture
 cargo test -p rustok-forum search_projection_author -- --nocapture
 cargo test -p rustok-search forum_inbox -- --nocapture

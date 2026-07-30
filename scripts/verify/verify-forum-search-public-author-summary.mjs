@@ -57,6 +57,7 @@ const profilesMediaWritePath = "crates/rustok-profiles/src/media_write.rs";
 const profilesUpsertWritePath = "crates/rustok-profiles/src/upsert_write.rs";
 const profilesVisibilityWritePath = "crates/rustok-profiles/src/visibility_write.rs";
 const profilesErrorPath = "crates/rustok-profiles/src/error.rs";
+const profilesCliBackfillPath = "crates/rustok-profiles/cli/src/lib.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-public-author-summary.json";
 const notePath = "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md";
 
@@ -76,6 +77,7 @@ const profilesMediaWrite = read(profilesMediaWritePath);
 const profilesUpsertWrite = read(profilesUpsertWritePath);
 const profilesVisibilityWrite = read(profilesVisibilityWritePath);
 const profilesError = read(profilesErrorPath);
+const profilesCliBackfill = read(profilesCliBackfillPath);
 const note = read(notePath);
 let contract = null;
 try {
@@ -148,6 +150,7 @@ requireAll(
     "mod profile_updated_event;",
     "mod upsert_write;",
     "mod visibility_write;",
+    "pub use upsert_write::backfill_profile_with_event;",
   ],
   profilesLibPath,
 );
@@ -192,6 +195,8 @@ requireAll(
   profilesUpdatedEvent,
   [
     "publish_profile_updated_in_tx",
+    "publish_profile_updated_with_actor_in_tx",
+    "actor_id: Option<Uuid>",
     "profile: &entities::profile::Model",
     ".publish_in_tx(",
     "DomainEvent::ProfileUpdated",
@@ -202,6 +207,12 @@ requireAll(
   profilesUpdatedEventPath,
 );
 rejectMarker(profilesUpdatedEvent, "profile: &ProfileRecord", profilesUpdatedEventPath);
+requireOrder(
+  profilesUpdatedEvent,
+  "publish_profile_updated_in_tx",
+  "publish_profile_updated_with_actor_in_tx",
+  profilesUpdatedEventPath,
+);
 
 function verifyTransactionalHelper(sourceText, helperPath, markers, writeMarker, logMarker) {
   requireAll(
@@ -283,6 +294,10 @@ verifyTransactionalHelper(
 requireAll(
   profilesUpsertWrite,
   [
+    "pub async fn backfill_profile_with_event(",
+    "ExistingProfilePolicy::Update",
+    "ExistingProfilePolicy::Skip",
+    "existing_policy == ExistingProfilePolicy::Skip && existing.is_some()",
     "ProfileService::normalize_handle(&handle)?",
     "ProfileService::normalize_display_name(&display_name)?",
     "ProfileService::normalize_locale(preferred_locale.as_deref())?",
@@ -297,10 +312,17 @@ requireAll(
     "TaxonomyTermKind::Tag",
     ".insert(&txn)",
     "publish_profile_updated_in_tx",
+    "publish_profile_updated_with_actor_in_tx",
     "txn.rollback().await?",
     "txn.commit().await?",
     "Profile upsert event publication failed; rolling back owner write",
   ],
+  profilesUpsertWritePath,
+);
+requireOrder(
+  profilesUpsertWrite,
+  "existing_policy == ExistingProfilePolicy::Skip && existing.is_some()",
+  "let handle_owner = entities::profile::Entity::find()",
   profilesUpsertWritePath,
 );
 requireOrder(
@@ -323,9 +345,43 @@ requireOrder(
 );
 requireOrder(
   profilesUpsertWrite,
-  "publish_profile_updated_in_tx",
+  "publish_profile_updated_with_actor_in_tx",
   "txn.commit().await?",
   profilesUpsertWritePath,
+);
+
+requireAll(
+  profilesCliBackfill,
+  [
+    "let emit_events = !dry_run;",
+    "TransactionalEventBus::new(",
+    "OutboxTransport::new(db.clone())",
+    "backfill_profile_with_event(",
+    "let event_published = result.created;",
+    "published_events += 1;",
+    '"event_published": false',
+    '"emit_events": emit_events',
+  ],
+  profilesCliBackfillPath,
+);
+rejectAll(
+  profilesCliBackfill,
+  [
+    'flag(options, "emit_events")',
+    "DomainEvent::ProfileUpdated",
+    "use rustok_events::DomainEvent;",
+    "BACKFILL_EVENT_PUBLISH_ERROR",
+    "if let Some(bus)",
+    "bus.publish(",
+    ".backfill_profile(",
+  ],
+  profilesCliBackfillPath,
+);
+requireOrder(
+  profilesCliBackfill,
+  "if dry_run",
+  "backfill_profile_with_event(",
+  profilesCliBackfillPath,
 );
 
 requireAll(
@@ -364,15 +420,16 @@ rejectMarker(ingestion, "DomainEvent::UserDeleted", ingestionPath);
 requireAll(
   note,
   [
-    "FORUM-23A6",
+    "FORUM-23A7",
     "ProfilePresentationService",
     "forum_author:<user_id>",
     "raw `payload.author_id`",
     "owner-issued monotonic",
     "upsert_my_profile",
-    "taxonomy-backed profile tags",
-    "post-commit event publisher",
-    "CLI/backfill",
+    "CLI backfill",
+    "system actor",
+    "--emit-events",
+    "direct non-event",
     "does not treat `UserDeleted`",
     "Not run by the implementation agent",
   ],
@@ -381,7 +438,7 @@ requireAll(
 
 if (contract) {
   if (contract.task !== "FORUM-23A") failures.push(`${contractPath}: unexpected task`);
-  if (contract.latest_slice !== "FORUM-23A6") {
+  if (contract.latest_slice !== "FORUM-23A7") {
     failures.push(`${contractPath}: unexpected latest slice`);
   }
   if (contract.status !== "source_complete_execution_pending") {
@@ -389,6 +446,9 @@ if (contract) {
   }
   if (contract.profiles_upsert_event_owner !== profilesUpsertWritePath) {
     failures.push(`${contractPath}: unexpected upsert event owner`);
+  }
+  if (contract.profiles_cli_backfill_owner !== profilesCliBackfillPath) {
+    failures.push(`${contractPath}: unexpected CLI backfill owner`);
   }
 
   for (const key of [
@@ -415,6 +475,7 @@ if (contract) {
     "profile_updated_is_emitted_after_owner_write",
     "transactional_profile_event_publisher_is_shared",
     "transactional_profile_event_publisher_accepts_owner_model",
+    "transactional_profile_event_publisher_accepts_system_actor",
     "profile_visibility_write_and_event_are_atomic",
     "visibility_event_failure_rolls_back_owner_write",
     "profile_handle_write_and_event_are_atomic",
@@ -430,6 +491,11 @@ if (contract) {
     "upsert_event_failure_rolls_back_owner_write",
     "upsert_couples_profile_translation_tags_and_event",
     "upsert_media_validation_precedes_owner_transaction",
+    "profiles_cli_backfill_creation_and_event_are_atomic",
+    "profiles_cli_backfill_event_failure_rolls_back_owner_write",
+    "profiles_cli_backfill_requires_event_for_non_dry_run",
+    "profiles_cli_backfill_dry_run_emits_no_event",
+    "profiles_cli_backfill_skips_concurrent_existing_profile",
     "remaining_profile_summary_write_and_event_pairs_are_atomic",
     "author_scope_is_tenant_and_user_scoped",
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark",
@@ -461,8 +527,8 @@ if (contract) {
 
   for (const nonClaim of [
     "account deletion redaction is complete",
-    "CLI backfill profile creation publishes ProfileUpdated",
     "all Profiles owner writes trigger durable Forum Search invalidation",
+    "direct non-event ProfileService mutation APIs are production-inaccessible",
   ]) {
     if (!contract.non_claims?.includes(nonClaim)) {
       failures.push(`${contractPath}: missing non-claim ${nonClaim}`);
@@ -470,10 +536,10 @@ if (contract) {
   }
   if (
     !contract.remaining_scope?.includes(
-      "define durable Search invalidation for CLI backfill profile creation or prove rebuild coverage",
+      "consolidate or restrict direct non-event ProfileService mutation APIs",
     )
   ) {
-    failures.push(`${contractPath}: missing backfill invalidation debt`);
+    failures.push(`${contractPath}: missing direct service mutation debt`);
   }
   if (contract.downstream_task !== "FORUM-23B") {
     failures.push(`${contractPath}: unexpected downstream task`);
