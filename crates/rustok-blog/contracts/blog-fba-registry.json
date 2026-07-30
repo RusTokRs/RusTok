@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -38,6 +38,7 @@
     "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
     "richtext_cutover_inventory": "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json",
     "richtext_cutover_inventory_doc": "crates/rustok-blog/docs/richtext-cutover-inventory.md",
+    "category_search_reindex": "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json",
     "ai_richtext_boundary": "crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-blog-fba.mjs",
@@ -53,6 +54,7 @@
       "node scripts/verify/verify-blog-fba.test.mjs",
       "npm run test:verify:blog:admin-boundary",
       "npm run test:verify:blog:storefront-boundary",
+      "npm run test:verify:blog:category-search-reindex",
       "npm run test:verify:blog:graphql-richtext-boundary",
       "npm run test:verify:blog:ai-richtext-boundary",
       "npm run test:verify:blog:richtext-offline-backfill",
@@ -67,6 +69,7 @@
       "node scripts/verify/verify-blog-fba.mjs",
       "npm run verify:blog:admin-boundary",
       "npm run verify:blog:storefront-boundary",
+      "npm run verify:blog:category-search-reindex",
       "npm run verify:blog:graphql-richtext-boundary",
       "npm run verify:blog:ai-richtext-boundary",
       "npm run verify:blog:richtext-offline-backfill",
@@ -87,6 +90,13 @@
         "verifier": "scripts/verify/verify-blog-storefront-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
+      },
+      "category_search_reindex": {
+        "package_script": "verify:blog:category-search-reindex",
+        "test_package_script": "test:verify:blog:category-search-reindex",
+        "verifier": "scripts/verify/verify-blog-category-search-reindex.mjs",
+        "self_test": "scripts/verify/verify-blog-category-search-reindex.test.mjs",
+        "evidence": "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json"
       },
       "graphql_richtext_boundary": {
         "package_script": "verify:blog:graphql-richtext-boundary",
