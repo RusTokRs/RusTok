@@ -85,7 +85,8 @@ requireMarkers('ops/benches/README.md', [
   'INDEX_PARTITION_ALLOW_QUERY_EVIDENCE=1',
   'INDEX_PARTITION_QUERY_SAMPLES=7',
   'index-partition-query-evidence',
-  'read-only repeatable-read transaction',
+  'executes every comparison inside one read-only',
+  'repeatable-read transaction.',
   'retains full JSON',
   '`EXPLAIN (ANALYZE, BUFFERS, WAL)` samples',
 ]);
