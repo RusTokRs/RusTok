@@ -102,6 +102,13 @@ tenant ids only in structured diagnostics. A focused source guard requires the
 comparison in exactly those two routed read endpoints and a unit regression
 covers matching and mismatched tenant ids.
 
+RBAC Admin bootstrap now binds authenticated permissions to the middleware-resolved
+tenant before `SETTINGS_READ` admission or returning the tenant slug. Mismatched
+tenant ids fail closed with a static public response and structured diagnostics.
+Authentication and tenant-context extraction failures also return fixed public
+messages rather than serializing extractor internals. A focused source guard and
+unit regression retain the ordering and matching/mismatched cases.
+
 The Tenant Admin native boundary no longer serializes storage, composition,
 manifest-decoding, or effective-policy errors as raw `ServerFnError` text.
 Authentication and tenant-context extraction, access denial, tenant owner reads,
@@ -165,6 +172,9 @@ Source evidence now covers:
 - mandatory equality between authenticated and resolved Auth Admin tenant ids in
   user list/detail reads, checked before RBAC admission and retained by source and
   executable unit regressions;
+- mandatory equality between authenticated and resolved RBAC Admin tenant ids
+  before `SETTINGS_READ`, with static public context errors and source/executable
+  regressions;
 - static public Tenant Admin native failures with correlation-aware private
   diagnostics, and a source guard forbidding raw `ServerFnError` conversion;
 - physical removal of the public low-level module writer, DTO/export and legacy
@@ -176,11 +186,11 @@ Source evidence now covers:
 The lifecycle outbox, tenant provisioning replay, locale-policy
 idempotency/concurrency, legacy-locale backfill, cross-backend default uniqueness,
 explicit OAuth tenant-selection, trusted storefront and commerce locale scope,
-Tenant Admin and Auth Admin tenant isolation, effective-policy and error-safety
-boundaries, and lifecycle-bypass removal regressions are staged for same-SHA
-execution. Multi-replica cache evidence remains source-complete but is not
-compiled or live verified on the current revision. The retained PostgreSQL races
-and a real MySQL migration run must pass on the same revision before this
+Tenant Admin, Auth Admin and RBAC Admin tenant isolation, effective-policy and
+error-safety boundaries, and lifecycle-bypass removal regressions are staged for
+same-SHA execution. Multi-replica cache evidence remains source-complete but is
+not compiled or live verified on the current revision. The retained PostgreSQL
+races and a real MySQL migration run must pass on the same revision before this
 component can be completed.
 
 ## FFA/FBA boundary
@@ -234,10 +244,10 @@ component can be completed.
    default for the same tenant.
 
 5. **Collect deployed/native transport parity evidence.** Confirm host locale,
-   authenticated/resolved tenant equality in Tenant Admin and Auth Admin,
-   tenant-scoped RBAC, disabled/not-found behavior, native storefront module-state
-   scope, commerce store-context owner policy, static public error envelopes, and
-   typed error mapping in a composed runtime.
+   authenticated/resolved tenant equality in Tenant Admin, Auth Admin and RBAC
+   Admin, tenant-scoped RBAC, disabled/not-found behavior, native storefront
+   module-state scope, commerce store-context owner policy, static public error
+   envelopes, and typed error mapping in a composed runtime.
    **Depends on:** a deployed host with representative tenant identities.
 
 6. **Keep lifecycle and cache behavior synchronized.** Any create, update,
@@ -257,6 +267,7 @@ component can be completed.
 - `npm run verify:tenant:fba`
 - `npm run verify:tenant:admin-boundary`
 - `node scripts/verify/verify-auth-admin-tenant-scope.mjs`
+- `node scripts/verify/verify-rbac-admin-tenant-scope.mjs`
 - `node scripts/verify/verify-commerce-tenant-locale-boundary.mjs`
 - `node scripts/verify/verify-tenant-admin-native-error-safety.mjs`
 - `node scripts/verify/verify-tenant-locale-policy-migration.mjs`
@@ -268,6 +279,7 @@ component can be completed.
 - `cargo xtask module validate commerce`
 - `cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture`
 - `cargo test -p rustok-auth-admin --features ssr auth_admin_scope_requires_matching_tenant -- --nocapture`
+- `cargo test -p rustok-rbac-admin --features ssr rbac_admin_scope_requires_matching_tenant -- --nocapture`
 - `cargo test -p rustok-commerce --test context_service_test -- --nocapture`
 - `cargo test -p rustok-auth-cli oauth_create_app -- --nocapture`
 - `cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture`
@@ -278,6 +290,7 @@ component can be completed.
 - `cargo test -p rustok-server --test lifecycle_bypass_guard`
 - `cargo check -p rustok-tenant-admin --features ssr`
 - `cargo check -p rustok-auth-admin --features ssr`
+- `cargo check -p rustok-rbac-admin --features ssr`
 - `cargo check -p rustok-storefront`
 - `cargo test -p rustok-server --test tenant_locale_generation_guard`
 - `cargo test -p rustok-server tenant_locale_generation --lib`
@@ -302,10 +315,10 @@ component can be completed.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-07-31`
-- Scope inspected: `tenant owner CRUD and provisioning concurrency, locale-policy CAS/idempotency concurrency, incremental and cross-backend locale-policy migration invariants, lifecycle outbox publication, installer orchestration, module control-plane exclusivity, native storefront module-state trust, commerce store-context locale ownership, Tenant Admin and Auth Admin authenticated/resolved tenant isolation, effective-policy and native error-safety boundaries, read ports, FBA guard, native admin RBAC and operational OAuth tenant selection; resolver/cache generation and remaining RBAC parity stay under audit`
-- Findings: `P0=2, P1=10, P2=1, P3=0`
-- Fixed in this pass: `bound Tenant Admin AuthContext.tenant_id to middleware-resolved TenantContext.id before permission admission; bound Auth Admin user-list/detail AuthContext.tenant_id to routed TenantContext.id before USERS_LIST/USERS_READ admission; made every remaining TenantService mutation publish through TransactionalEventBus::publish_root_in_tx; made ensure_tenant replay a concurrent unique-slug winner and retained an advisory-lock PostgreSQL race; added one bounded locale-policy conflict retry and deterministic PostgreSQL receipt race; backfilled legacy tenants missing locale policy; required explicit tenant UUID before OAuth CLI credential writes; made storefront native enabled-module reads use resolved TenantContext instead of a client slug; cut commerce StoreContextService from direct tenants/tenant_locales SQL and a package-local normalizer to TenantReadPort/TenantLocalePolicyPort plus canonical TenantLocale, with declared module topology and focused runtime evidence; made Tenant Admin render ModuleControlPlane effective policy instead of raw tenant overrides; made Tenant Admin return static native error envelopes while retaining typed causes only in structured diagnostics; added MySQL generated nullable tenant UUID uniqueness; removed TenantService::toggle_module, ToggleModuleInput, the crate export and legacy tests so runtime module writes can only use the lifecycle control plane`
-- Remaining risks or blockers: `final-SHA focused static checks, targeted Rust compilation including Tenant Admin, Auth Admin and commerce context, Redis recovery, PostgreSQL backfill fixture and real MySQL migration evidence are pending; both retained PostgreSQL races passed on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 but must rerun after the final evidence commits; resolver invalidation and remaining RBAC parity require continued inspection`
-- Evidence: `verify-auth-admin-tenant-scope requires exactly two Auth Admin routed read guards before RBAC admission and the workflow executes auth_admin_scope_requires_matching_tenant; verify-commerce-tenant-locale-boundary forbids commerce tenant SQL/local normalization, requires declared tenant dependency topology and retains the pt_br -> pt-BR context test plus source_ready_unvalidated cutover document; Tenant Admin rejects auth/resolved tenant mismatches before permission admission and the workflow executes tenant_admin_scope_requires_matching_tenant; storefront native adapter has no tenant argument and extracts rustok_api::TenantContext before list_tenant_modules(tenant.id); Tenant Admin resolves the active composition through ModuleControlPlane and uses resolve_enabled(tenant.id) for badges; Tenant Admin maps auth/tenant extraction, owner reads, composition, manifest and effective-policy errors to static public messages with correlation-aware private tracing; verify-tenant-admin-native-error-safety requires tenant equality and forbids raw ServerFnError conversion; enabled_modules.rs passes configured slug only in the GraphQL branch; Tenant FBA forbids native tenant_slug/get_tenant_by_slug and binds the transport split; provisioning and locale PostgreSQL races retain independent connections and explicit lock barriers; completed broad workflow failures inspected so far remain outside tenant scope`
-- Next action: `run final-SHA read-only Tenant hardening jobs: focused rustfmt/static/compile/lifecycle including Tenant Admin and Auth Admin tenant-scope regressions, commerce context, both PostgreSQL races and live Redis recovery; execute PostgreSQL backfill fixture and real MySQL duplicate-default probe; then continue cache/RBAC inspection`
-- Resume command: `node scripts/verify/verify-auth-admin-tenant-scope.mjs && node scripts/verify/verify-commerce-tenant-locale-boundary.mjs && node scripts/verify/verify-tenant-admin-native-error-safety.mjs && node scripts/verify/verify-tenant-locale-policy-migration.mjs && npm run verify:tenant:fba && cargo check -p rustok-tenant-admin --features ssr && cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture && cargo check -p rustok-auth-admin --features ssr && cargo test -p rustok-auth-admin --features ssr auth_admin_scope_requires_matching_tenant -- --nocapture && cargo check -p rustok-commerce --test context_service_test && cargo test -p rustok-commerce --test context_service_test -- --nocapture && cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant tenant_locale_policy --test integration -- --nocapture && cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture && cargo test -p rustok-server --test lifecycle_bypass_guard && cargo check -p rustok-storefront && cargo xtask module validate tenant && cargo xtask module validate commerce`
+- Scope inspected: `tenant owner CRUD and provisioning concurrency, locale-policy CAS/idempotency concurrency, incremental and cross-backend locale-policy migration invariants, lifecycle outbox publication, installer orchestration, module control-plane exclusivity, native storefront module-state trust, commerce store-context locale ownership, Tenant Admin, Auth Admin and RBAC Admin authenticated/resolved tenant isolation, effective-policy and native error-safety boundaries, read ports, FBA guard, native admin RBAC and operational OAuth tenant selection; resolver/cache generation and remaining module-admin RBAC parity stay under audit`
+- Findings: `P0=3, P1=11, P2=1, P3=0`
+- Fixed in this pass: `bound Tenant Admin AuthContext.tenant_id to middleware-resolved TenantContext.id before permission admission; bound Auth Admin user-list/detail AuthContext.tenant_id to routed TenantContext.id before USERS_LIST/USERS_READ admission; bound RBAC Admin AuthContext.tenant_id to routed TenantContext.id before SETTINGS_READ admission and replaced raw extractor errors with static public messages plus structured diagnostics; made every remaining TenantService mutation publish through TransactionalEventBus::publish_root_in_tx; made ensure_tenant replay a concurrent unique-slug winner and retained an advisory-lock PostgreSQL race; added one bounded locale-policy conflict retry and deterministic PostgreSQL receipt race; backfilled legacy tenants missing locale policy; required explicit tenant UUID before OAuth CLI credential writes; made storefront native enabled-module reads use resolved TenantContext instead of a client slug; cut commerce StoreContextService from direct tenants/tenant_locales SQL and a package-local normalizer to TenantReadPort/TenantLocalePolicyPort plus canonical TenantLocale, with declared module topology and focused runtime evidence; made Tenant Admin render ModuleControlPlane effective policy instead of raw tenant overrides; made Tenant Admin return static native error envelopes while retaining typed causes only in structured diagnostics; added MySQL generated nullable tenant UUID uniqueness; removed TenantService::toggle_module, ToggleModuleInput, the crate export and legacy tests so runtime module writes can only use the lifecycle control plane`
+- Remaining risks or blockers: `final-SHA focused static checks, targeted Rust compilation including Tenant Admin, Auth Admin, RBAC Admin and commerce context, Redis recovery, PostgreSQL backfill fixture and real MySQL migration evidence are pending; both retained PostgreSQL races passed on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 but must rerun after the final evidence commits; resolver invalidation and remaining module-admin RBAC parity require continued inspection`
+- Evidence: `verify-auth-admin-tenant-scope requires exactly two Auth Admin routed read guards before RBAC admission; verify-rbac-admin-tenant-scope requires RBAC Admin tenant equality before SETTINGS_READ and fixed public context errors; the workflow executes both focused unit regressions; verify-commerce-tenant-locale-boundary forbids commerce tenant SQL/local normalization, requires declared tenant dependency topology and retains the pt_br -> pt-BR context test plus source_ready_unvalidated cutover document; Tenant Admin rejects auth/resolved tenant mismatches before permission admission and the workflow executes tenant_admin_scope_requires_matching_tenant; storefront native adapter has no tenant argument and extracts rustok_api::TenantContext before list_tenant_modules(tenant.id); Tenant Admin resolves the active composition through ModuleControlPlane and uses resolve_enabled(tenant.id) for badges; Tenant Admin maps auth/tenant extraction, owner reads, composition, manifest and effective-policy errors to static public messages with correlation-aware private tracing; verify-tenant-admin-native-error-safety requires tenant equality and forbids raw ServerFnError conversion; enabled_modules.rs passes configured slug only in the GraphQL branch; Tenant FBA forbids native tenant_slug/get_tenant_by_slug and binds the transport split; provisioning and locale PostgreSQL races retain independent connections and explicit lock barriers; completed broad workflow failures inspected so far remain outside tenant scope`
+- Next action: `run final-SHA read-only Tenant hardening jobs: focused rustfmt/static/compile/lifecycle including Tenant Admin, Auth Admin and RBAC Admin tenant-scope regressions, commerce context, both PostgreSQL races and live Redis recovery; execute PostgreSQL backfill fixture and real MySQL duplicate-default probe; then continue cache/RBAC interaction inspection`
+- Resume command: `node scripts/verify/verify-auth-admin-tenant-scope.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && node scripts/verify/verify-commerce-tenant-locale-boundary.mjs && node scripts/verify/verify-tenant-admin-native-error-safety.mjs && node scripts/verify/verify-tenant-locale-policy-migration.mjs && npm run verify:tenant:fba && cargo check -p rustok-tenant-admin --features ssr && cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture && cargo check -p rustok-auth-admin --features ssr && cargo test -p rustok-auth-admin --features ssr auth_admin_scope_requires_matching_tenant -- --nocapture && cargo check -p rustok-rbac-admin --features ssr && cargo test -p rustok-rbac-admin --features ssr rbac_admin_scope_requires_matching_tenant -- --nocapture && cargo check -p rustok-commerce --test context_service_test && cargo test -p rustok-commerce --test context_service_test -- --nocapture && cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant tenant_locale_policy --test integration -- --nocapture && cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture && cargo test -p rustok-server --test lifecycle_bypass_guard && cargo check -p rustok-storefront && cargo xtask module validate tenant && cargo xtask module validate commerce`
