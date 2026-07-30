@@ -28,6 +28,7 @@ mod projector_legacy;
 pub mod projector;
 pub mod ranking;
 pub mod search_settings;
+pub mod storefront_category_scope;
 pub mod suggestions;
 
 pub use analytics::{
@@ -65,6 +66,11 @@ pub use projection_source::{
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;
 pub use search_settings::SearchSettingsService;
+pub use storefront_category_scope::{
+    FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchTransport, resolve_storefront_search_category_ids,
+};
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
 };
