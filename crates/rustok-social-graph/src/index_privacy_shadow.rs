@@ -1,18 +1,22 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use rustok_index::SharedIndexQueryRuntime;
+use rustok_telemetry::social_graph_index_privacy_shadow_metrics::{
+    SocialGraphIndexPrivacyShadowOperation as ShadowOperation,
+    SocialGraphIndexPrivacyShadowOutcome as ShadowOutcome, record_failure, record_observation,
+};
 
 use crate::{
     IndexSocialGraphPrivacyReadPort, SocialGraphFollowBatchRequest, SocialGraphFollowBatchResult,
     SocialGraphPairRequest, SocialGraphPrivacyReadPort,
 };
 
-const OPERATION_BLOCKS_BETWEEN: &str = "blocks_between";
-const OPERATION_SOURCE_MUTES_TARGET: &str = "source_mutes_target";
-const OPERATION_SOURCE_FOLLOWS_TARGET: &str = "source_follows_target";
-const OPERATION_SOURCE_FOLLOWS_TARGETS: &str = "source_follows_targets";
+pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET: &str =
+    "rustok_social_graph::index_privacy_shadow";
 
 /// Non-authoritative parity observer for Social Graph privacy reads.
 ///
@@ -58,10 +62,13 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
             .authoritative
             .blocks_between(context.clone(), request)
             .await?;
+        let started_at = Instant::now();
+        let projected = self.projected.blocks_between(context, request).await;
         observe_bool(
-            OPERATION_BLOCKS_BETWEEN,
+            ShadowOperation::BlocksBetween,
             authoritative,
-            self.projected.blocks_between(context, request).await,
+            projected,
+            started_at.elapsed(),
         );
         Ok(authoritative)
     }
@@ -75,10 +82,13 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
             .authoritative
             .source_mutes_target(context.clone(), request)
             .await?;
+        let started_at = Instant::now();
+        let projected = self.projected.source_mutes_target(context, request).await;
         observe_bool(
-            OPERATION_SOURCE_MUTES_TARGET,
+            ShadowOperation::SourceMutesTarget,
             authoritative,
-            self.projected.source_mutes_target(context, request).await,
+            projected,
+            started_at.elapsed(),
         );
         Ok(authoritative)
     }
@@ -92,10 +102,13 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
             .authoritative
             .source_follows_target(context.clone(), request)
             .await?;
+        let started_at = Instant::now();
+        let projected = self.projected.source_follows_target(context, request).await;
         observe_bool(
-            OPERATION_SOURCE_FOLLOWS_TARGET,
+            ShadowOperation::SourceFollowsTarget,
             authoritative,
-            self.projected.source_follows_target(context, request).await,
+            projected,
+            started_at.elapsed(),
         );
         Ok(authoritative)
     }
@@ -109,71 +122,167 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
             .authoritative
             .source_follows_targets(context.clone(), request.clone())
             .await?;
+        let started_at = Instant::now();
+        let projected = self.projected.source_follows_targets(context, request).await;
         observe_batch(
-            OPERATION_SOURCE_FOLLOWS_TARGETS,
+            ShadowOperation::SourceFollowsTargets,
             &authoritative,
-            self.projected.source_follows_targets(context, request).await,
+            projected,
+            started_at.elapsed(),
         );
         Ok(authoritative)
     }
 }
 
-fn observe_bool(operation: &'static str, authoritative: bool, projected: Result<bool, PortError>) {
+fn observe_bool(
+    operation: ShadowOperation,
+    authoritative: bool,
+    projected: Result<bool, PortError>,
+    comparison_duration: Duration,
+) {
     match projected {
-        Ok(projected) if projected == authoritative => {
-            tracing::debug!(
-                operation,
-                "Social Graph Index privacy shadow matched authoritative owner result"
-            );
-        }
         Ok(projected) => {
-            tracing::warn!(
-                operation,
-                authoritative,
-                projected,
-                "Social Graph Index privacy shadow mismatch"
-            );
+            let outcome = classify_bool(authoritative, projected);
+            record_observation(operation, outcome, comparison_duration);
+            match outcome {
+                ShadowOutcome::MatchPositive | ShadowOutcome::MatchNegative => {
+                    tracing::debug!(
+                        target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+                        operation = operation.as_str(),
+                        outcome = outcome.as_str(),
+                        authoritative,
+                        projected,
+                        comparison_duration_ms = comparison_duration.as_millis() as u64,
+                        "Social Graph Index privacy shadow matched authoritative owner result"
+                    );
+                }
+                _ => {
+                    tracing::warn!(
+                        target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+                        operation = operation.as_str(),
+                        outcome = outcome.as_str(),
+                        authoritative,
+                        projected,
+                        comparison_duration_ms = comparison_duration.as_millis() as u64,
+                        "Social Graph Index privacy shadow mismatch"
+                    );
+                }
+            }
         }
         Err(error) => {
-            tracing::warn!(
+            record_failure(
                 operation,
-                code = %error.code,
+                &error.code,
+                error.retryable,
+                comparison_duration,
+            );
+            tracing::warn!(
+                target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+                operation = operation.as_str(),
+                outcome = ShadowOutcome::Error.as_str(),
+                error_code = %error.code,
                 retryable = error.retryable,
+                comparison_duration_ms = comparison_duration.as_millis() as u64,
                 "Social Graph Index privacy shadow read failed"
             );
         }
     }
 }
 
+fn classify_bool(authoritative: bool, projected: bool) -> ShadowOutcome {
+    match (authoritative, projected) {
+        (true, true) => ShadowOutcome::MatchPositive,
+        (false, false) => ShadowOutcome::MatchNegative,
+        (true, false) => ShadowOutcome::FalseNegative,
+        (false, true) => ShadowOutcome::FalsePositive,
+    }
+}
+
 fn observe_batch(
-    operation: &'static str,
+    operation: ShadowOperation,
     authoritative: &SocialGraphFollowBatchResult,
     projected: Result<SocialGraphFollowBatchResult, PortError>,
+    comparison_duration: Duration,
 ) {
     match projected {
-        Ok(projected) if projected == *authoritative => {
-            tracing::debug!(
-                operation,
-                authoritative_count = authoritative.followed_target_user_ids.len(),
-                "Social Graph Index privacy shadow matched authoritative owner result"
-            );
-        }
         Ok(projected) => {
-            tracing::warn!(
-                operation,
-                authoritative_count = authoritative.followed_target_user_ids.len(),
-                projected_count = projected.followed_target_user_ids.len(),
-                "Social Graph Index privacy shadow mismatch"
-            );
+            let outcome = classify_batch(authoritative, &projected);
+            record_observation(operation, outcome, comparison_duration);
+            match outcome {
+                ShadowOutcome::MatchBatchEmpty | ShadowOutcome::MatchBatchNonempty => {
+                    tracing::debug!(
+                        target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+                        operation = operation.as_str(),
+                        outcome = outcome.as_str(),
+                        authoritative_count = authoritative.followed_target_user_ids.len(),
+                        projected_count = projected.followed_target_user_ids.len(),
+                        comparison_duration_ms = comparison_duration.as_millis() as u64,
+                        "Social Graph Index privacy shadow matched authoritative owner result"
+                    );
+                }
+                _ => {
+                    tracing::warn!(
+                        target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+                        operation = operation.as_str(),
+                        outcome = outcome.as_str(),
+                        authoritative_count = authoritative.followed_target_user_ids.len(),
+                        projected_count = projected.followed_target_user_ids.len(),
+                        comparison_duration_ms = comparison_duration.as_millis() as u64,
+                        "Social Graph Index privacy shadow mismatch"
+                    );
+                }
+            }
         }
         Err(error) => {
-            tracing::warn!(
+            record_failure(
                 operation,
-                code = %error.code,
+                &error.code,
+                error.retryable,
+                comparison_duration,
+            );
+            tracing::warn!(
+                target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
+                operation = operation.as_str(),
+                outcome = ShadowOutcome::Error.as_str(),
+                error_code = %error.code,
                 retryable = error.retryable,
+                comparison_duration_ms = comparison_duration.as_millis() as u64,
                 "Social Graph Index privacy shadow read failed"
             );
         }
+    }
+}
+
+fn classify_batch(
+    authoritative: &SocialGraphFollowBatchResult,
+    projected: &SocialGraphFollowBatchResult,
+) -> ShadowOutcome {
+    let authoritative = authoritative
+        .followed_target_user_ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let projected = projected
+        .followed_target_user_ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    if authoritative == projected {
+        return if authoritative.is_empty() {
+            ShadowOutcome::MatchBatchEmpty
+        } else {
+            ShadowOutcome::MatchBatchNonempty
+        };
+    }
+
+    let has_missing = authoritative.difference(&projected).next().is_some();
+    let has_extra = projected.difference(&authoritative).next().is_some();
+    match (has_missing, has_extra) {
+        (true, false) => ShadowOutcome::BatchMissing,
+        (false, true) => ShadowOutcome::BatchExtra,
+        (true, true) => ShadowOutcome::BatchMixed,
+        (false, false) => unreachable!("unequal sets must have a missing or extra value"),
     }
 }
 
@@ -262,11 +371,49 @@ mod tests {
         }
     }
 
+    fn batch(values: &[u128]) -> SocialGraphFollowBatchResult {
+        SocialGraphFollowBatchResult {
+            followed_target_user_ids: values.iter().copied().map(Uuid::from_u128).collect(),
+        }
+    }
+
     fn projected_failure() -> PortError {
         PortError::unavailable(
             "social_graph.index_privacy_unavailable",
             "projected privacy state is unavailable",
         )
+    }
+
+    #[test]
+    fn boolean_outcomes_distinguish_negative_safety() {
+        assert_eq!(classify_bool(true, true), ShadowOutcome::MatchPositive);
+        assert_eq!(classify_bool(false, false), ShadowOutcome::MatchNegative);
+        assert_eq!(classify_bool(true, false), ShadowOutcome::FalseNegative);
+        assert_eq!(classify_bool(false, true), ShadowOutcome::FalsePositive);
+    }
+
+    #[test]
+    fn batch_outcomes_distinguish_missing_extra_and_mixed() {
+        assert_eq!(
+            classify_batch(&batch(&[]), &batch(&[])),
+            ShadowOutcome::MatchBatchEmpty
+        );
+        assert_eq!(
+            classify_batch(&batch(&[1]), &batch(&[1])),
+            ShadowOutcome::MatchBatchNonempty
+        );
+        assert_eq!(
+            classify_batch(&batch(&[1, 2]), &batch(&[1])),
+            ShadowOutcome::BatchMissing
+        );
+        assert_eq!(
+            classify_batch(&batch(&[1]), &batch(&[1, 2])),
+            ShadowOutcome::BatchExtra
+        );
+        assert_eq!(
+            classify_batch(&batch(&[1, 2]), &batch(&[2, 3])),
+            ShadowOutcome::BatchMixed
+        );
     }
 
     #[tokio::test]
