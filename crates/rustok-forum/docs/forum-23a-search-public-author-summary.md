@@ -4,11 +4,11 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-Latest slice: `FORUM-23A7`
+Latest slice: `FORUM-23A11`
 
-This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
-and approved-reply documents obtain author presentation from the Profiles owner instead of
-serializing the raw Forum author identifier.
+This track projects privacy-aware public author presentation into Forum topic and approved-reply
+Search documents. Profiles remains the presentation authority; Forum never serializes a raw author
+identifier merely because Forum owns a topic or reply row.
 
 The machine-readable contract is
 `crates/rustok-forum/contracts/forum-search-public-author-summary.json`.
@@ -16,117 +16,109 @@ The machine-readable contract is
 ## Owner boundary
 
 `ForumSearchProjectionSource` calls `ProfilePresentationService` with its anonymous audience.
-Profiles remains the authority for profile privacy and localized presentation; Forum does not
-copy visibility rules or read profile tables directly.
+Profiles owns visibility, status, locale selection, and public presentation decisions. Forum does not
+copy those rules or read Profiles tables directly.
 
-When Profiles permits anonymous presentation, the Search document may contain only:
+When anonymous presentation is allowed, Search may contain only:
 
 - `user_id`;
 - `handle`;
 - `display_name`;
 - `avatar_media_id`.
 
-The public handle also populates the Search `handle` column, and the public handle/display name
-extend the document keywords. Profile tags, preferred locale, visibility state, biography,
-banner, and other owner data are not copied into Forum Search payloads.
+The public handle also populates the Search `handle` column, and the handle/display name extend
+keywords. Profile tags, preferred locale, visibility, biography, banner, and other owner data are not
+serialized.
 
-When the profile is absent or denied, the projected author is `null`, the Search handle remains
-empty, and no author identifier is exposed. A Profiles owner failure is not converted into an
-empty author: it fails projection so the durable Search inbox can retry.
+When the profile is absent, hidden, private, or otherwise denied, `payload.author` is `null`, the
+Search handle is empty, `facets.author_id` is absent, and `facets.has_public_author` is false. A
+Profiles owner failure is not converted into an empty author; projection fails so the durable inbox
+can retry.
 
-## Durable redaction
+## Durable Profiles mutation redaction
 
-Embedded summaries require invalidation when profile presentation changes. Profiles publishes
-`ProfileUpdated` for handle, display content, locale, visibility, media, self-service upsert, and
-CLI backfill creation. Search treats that owner event as a Forum projection event whenever the
-Forum source is composed.
+The A1–A7 slices made public-summary changes durable and atomic:
 
-The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
-`ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
-publication fails, the visibility write is explicitly rolled back and the mutation returns a
-retryable owner error.
+- visibility, handle, localized content, preferred locale, and media updates persist the owner write
+  and `ProfileUpdated` in one Profiles transaction;
+- self-service upsert couples profile, translation, taxonomy-backed tags, and the outbox envelope;
+- CLI backfill creation always emits the event for non-dry-run writes, uses a system actor, and
+  preserves create-if-missing behavior;
+- `--emit-events` remains accepted as compatibility input but can no longer disable invalidation.
 
-`FORUM-23A2` applies the same owner rule to `update_my_profile_handle`. Handle normalization,
-duplicate-owner validation, the profile row update, and the `ProfileUpdated` outbox envelope share
-one transaction. If event publication fails, the handle write is rolled back.
+A8 introduced a production source gate for direct non-event `ProfileService` mutation calls. A9
+published `ProfileMutationService` as the preferred event-aware facade and routed GraphQL
+self-service plus CLI backfill through it. A10 added compiler deprecation diagnostics to the seven
+legacy mutation methods while retaining their signatures for compatibility.
 
-`FORUM-23A3` applies the same rule to `update_my_profile_content`. Display-name normalization, the
-profile revision timestamp, the selected localized display-name/biography row, and the durable
-`ProfileUpdated` envelope commit together. The shared publisher accepts the actual Profiles owner
-model returned by SeaORM, matching the handle and visibility helpers.
+Those slices do not make every externally callable legacy method intrinsically event-aware or
+compile-time private.
 
-`FORUM-23A4` applies the owner rule to `update_my_profile_media`. Media ownership and access are
-validated before opening the Profiles transaction. The avatar/banner identifiers, profile revision
-timestamp, and durable `ProfileUpdated` envelope then commit in one transaction. If outbox
-publication fails, the media owner write is rolled back. A new public avatar therefore cannot
-commit while Forum Search retains the previous `avatar_media_id` because its invalidation was lost.
-Banner remains owner data and is never serialized into Forum Search.
+## FORUM-23A11: canonical account deletion redaction
 
-`FORUM-23A5` applies the same rule to `update_my_profile_locale`. The preferred locale is normalized
-before the owner transaction. The tenant-scoped profile row, revision timestamp, and durable
-`ProfileUpdated` envelope then commit together. If publication fails, the locale write is rolled
-back. The path preserves the existing selection-only rule: changing preferred locale does not copy,
-insert, or update localized display content.
+The canonical Auth admin `delete_user` operation is a deactivation, not hard erasure. A11 makes its
+Search redaction evidence owner-ordered inside one database transaction:
 
-`FORUM-23A6` applies the owner rule to `upsert_my_profile`. Media ownership is validated before the
-transaction. Inside one Profiles-owned transaction the path checks tenant-scoped handle ownership,
-creates or updates the profile row, upserts the selected localized display-name/biography row,
-replaces taxonomy-backed profile tags, and writes the durable `ProfileUpdated` envelope. Event
-failure rolls back every owner row, including newly created profiles, translations, and tag
-relations. The GraphQL mutation no longer has a post-commit event publisher.
+1. Auth locks and deactivates the tenant-scoped user.
+2. Profiles hides the tenant-scoped profile with
+   `redact_profile_for_account_deactivation_in_tx`; a missing profile is already a valid redacted
+   owner state.
+3. Active sessions are revoked and the durable RBAC generation is reserved.
+4. Auth persists `DomainEvent::UserDeleted` through `TransactionalEventBus::publish_in_tx` with the
+   authenticated administrator as actor.
+5. The transaction commits only after the outbox envelope is stored.
 
-`FORUM-23A7` applies the create-only variant of the same owner transaction to the Profiles CLI
-backfill. Non-dry-run backfill always constructs the outbox transport and cannot opt out of durable
-invalidation. The create-if-missing transaction rechecks profile absence, checks handle ownership,
-creates the profile and localized content, writes the `ProfileUpdated` envelope with a system actor,
-and commits last. Event failure rolls back the new profile. If a profile appears concurrently, the
-transaction is rolled back and the CLI reports the item as skipped without overwriting user-owned
-state. Dry-run still plans only and emits no event. The historical `--emit-events` option remains an
-accepted compatibility input, but it no longer disables events for writes.
+If Profiles redaction or durable event publication fails, the account deactivation transaction does
+not commit. Event publication failure explicitly rolls back the Auth status change, profile hiding,
+session revocation, and RBAC generation reservation.
 
-All self-service mutations and CLI backfill creation now use the shared transactional publisher in
-`crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
-classification cannot drift independently. This does not claim every callable Profiles mutation API
-is event-coupled: direct non-event `ProfileService` mutation methods remain and require a separate
-restriction, consolidation, or production reachability proof.
+`UserDeleted` is sufficient deletion-redaction evidence for this canonical path because the same
+transaction has already hidden the Profiles owner row or proved it absent before storing the event.
+It is not treated as an ungrounded post-commit notification.
 
-The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
-barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
-consumer rebuilds the Forum tenant projection from current owner state, so committed visibility,
-handle, public display-name, locale selection, avatar, self-service upsert, and CLI backfill changes
-replace stale Search presentation.
+Search maps both `ProfileUpdated` and `UserDeleted` to `forum_author:<user_id>`. Author scope remains
+a redaction barrier and is not stale-skipped against an unrelated full-Forum wall-clock watermark.
+The consumer rebuilds from current owner state; the hidden or absent profile therefore produces a
+null public author in all surviving Forum topic and approved-reply documents.
 
-The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
-inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
-ordering is solved; owner-issued monotonic revisions remain an ordering-hardening task. It also
-does not treat `UserDeleted` as sufficient deletion evidence because that event does not prove
-that the Profiles owner has already removed or hidden its state.
+This slice intentionally does not cover arbitrary `update_user` status changes to inactive or banned.
+Those paths revoke sessions and invalidate authorization, but need a separate explicit Profiles
+redaction policy before they can claim the same author-redaction guarantee.
 
 ## Search shape
 
 Topic and approved-reply documents use:
 
 - `payload.author` for the bounded public summary or `null`;
-- `facets.author_id` with a non-null value only when the Profiles owner returned a public summary;
-- `facets.has_public_author` as an explicit filterable boolean;
+- `facets.author_id` only when Profiles returned a public summary;
+- `facets.has_public_author` as an explicit boolean;
 - the Search `handle` column for the permitted public handle.
 
-The previous raw `payload.author_id` value is removed. Category documents and the public Forum
-discovery contract are unchanged.
+The raw `payload.author_id` value is not serialized. Category documents and the public Forum query
+contract remain unchanged.
+
+## Ordering boundary
+
+The durable Forum inbox preserves tenant serialization, retry/backoff, dead-letter limits,
+opportunistic reconciliation, and advisory locking. Author events are redaction barriers, but the
+broader Forum projection still uses envelope timestamps and event identity. General owner-issued
+monotonic ordering across every producer remains future work.
 
 ## Compatibility
 
-No database migration, Search query API change, Forum GraphQL/REST change, Forum owner-storage
-change, Profiles owner-storage change, dependency change, or `Cargo.lock` change is introduced.
-The operational CLI safety rule is tightened: every non-dry-run profile creation now includes the
-durable event in the owner transaction. Existing Search document rows are replaced by the next
-Forum rebuild or relevant durable event.
+A11 adds no event schema variant, database migration, dependency, or `Cargo.lock` change.
+`UserDeleted` already existed in the canonical event registry. No Forum GraphQL/REST contract,
+Search query API, Search document schema, or public Profiles read API changes.
+
+The externally visible Auth delete operation remains a deactivation returning the same result; its
+internal safety guarantee is stronger because deactivation cannot commit without Profiles redaction
+and durable invalidation.
 
 ## Remaining FORUM-23 scope
 
 - owner-issued monotonic projection revisions across Forum producers;
-- an owner-ordered profile or account deletion invalidation contract;
-- consolidate or restrict direct non-event `ProfileService` mutation APIs;
+- explicit policy for non-delete user status disabling paths;
+- removal or compile-time restriction of deprecated `ProfileService` mutation APIs;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
@@ -139,14 +131,15 @@ Not run by the implementation agent, per maintainer instruction.
 Suggested commands:
 
 ```bash
-cargo check -p rustok-profiles --all-targets
-cargo check -p rustok-profiles-cli --all-targets
-cargo test -p rustok-profiles error -- --nocapture
-cargo test -p rustok-forum search_projection_author -- --nocapture
-cargo test -p rustok-search forum_inbox -- --nocapture
-cargo test -p rustok-search ingestion -- --nocapture
+node scripts/verify/verify-forum-search-account-deletion-redaction.mjs
 node scripts/verify/verify-forum-search-public-author-summary.mjs
 node scripts/verify/verify-forum-search-projection.mjs
+cargo check -p rustok-profiles --all-targets
+cargo check -p rustok-search --all-targets
+cargo check -p rustok-server --all-targets
+cargo test -p rustok-profiles account_redaction -- --nocapture
+cargo test -p rustok-search forum_inbox -- --nocapture
+cargo test -p rustok-search ingestion -- --nocapture
 cargo xtask module validate profiles
 cargo xtask module validate forum
 ```

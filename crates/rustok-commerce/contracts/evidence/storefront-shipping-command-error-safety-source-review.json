@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "status": "commerce_storefront_shipping_command_error_safety_source_reviewed_unvalidated",
+  "reviewed_at_utc": "2026-07-30T17:50:00Z",
+  "review_base": "928d829b28fd3316cd0fc8297f59e454f17fc63c",
+  "scope": "Commerce storefront shipping option command public transport envelope",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-commerce/storefront/src/core/requests.rs",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs",
+    "crates/rustok-commerce/storefront/src/transport/payment_collection_command_error_safety.rs",
+    "crates/rustok-fulfillment/storefront/src/transport.rs",
+    "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-fulfillment/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "crates/rustok-commerce/storefront/Cargo.toml",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-payment-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "findings": [
+    {
+      "id": "shipping-command-public-display-leak",
+      "severity": "confirmed",
+      "finding": "select_storefront_shipping_option converted the Fulfillment UiTransportError through ApiError::from, exposing the complete transport Display envelope and nested owner error text."
+    },
+    {
+      "id": "owner-technical-failure-safety",
+      "severity": "preserved",
+      "finding": "Fulfillment GraphQL and native technical failures already use bounded public messages before the Commerce wrapper."
+    },
+    {
+      "id": "owner-validation-identifiers",
+      "severity": "confirmed",
+      "finding": "Fulfillment validation can include cart id, selected option id, shipping profile slug, seller id, or unavailable option id text and therefore requires a Commerce-owned static validation envelope."
+    },
+    {
+      "id": "validation-compatibility",
+      "severity": "selected",
+      "finding": "The final mapper recognizes the two UUID messages plus the existing missing-delivery-group and unavailable-option message shapes, then returns ApiError::Validation with Invalid shipping selection."
+    },
+    {
+      "id": "minimal-boundary-fix",
+      "severity": "selected",
+      "finding": "A Commerce-owned context around the existing Fulfillment call is the smallest compatible fix; the owner request, selection planner, adapters, mutation, server function, DTOs, transport selection, and fallback behavior do not need changes."
+    },
+    {
+      "id": "safe-request-shape",
+      "severity": "confirmed",
+      "finding": "Diagnostics retain only correlation, tenant and request field lengths, counts, presence flags, failed path, fallback, stable code, and private UiTransportError diagnostics."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-commerce/contracts/evidence/storefront-shipping-command-error-safety-source-review.json",
+    "crates/rustok-commerce/contracts/evidence/storefront-shipping-command-error-safety-source.json",
+    "crates/rustok-commerce/docs/storefront-shipping-option-command-error-safety.md",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/rustok-commerce/storefront/src/transport/shipping_option_command_error_safety.rs",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-payment-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-shipping-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "preserved": [
+    "Commerce SelectShippingOptionRequest wrapper and Fulfillment owner request DTO",
+    "Fulfillment selection planner and validation message production",
+    "Fulfillment GraphQL mutation, variables, and response mapping",
+    "Fulfillment native server function and owner runtime call",
+    "native versus GraphQL owner transport selection",
+    "absence of native-to-GraphQL fallback",
+    "Commerce payment collection and checkout completion wrappers"
+  ],
+  "remaining_scope": [
+    "Commerce storefront checkout completion public envelope",
+    "remaining ecommerce adapters and non-PortError public envelopes"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}

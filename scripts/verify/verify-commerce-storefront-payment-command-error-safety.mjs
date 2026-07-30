@@ -76,15 +76,15 @@ if (commandStart < 0 || commandEnd < 0) {
   forbidText(command, "error.to_string()", `${transportPath}: direct payment display mapping`);
 }
 
-if (countText(transport, ".map_err(ApiError::from)") !== 2) {
+if (countText(transport, ".map_err(ApiError::from)") !== 1) {
   failures.push(
-    `${transportPath}: exactly shipping selection and checkout completion must remain on the generic mapper`,
+    `${transportPath}: exactly checkout completion must remain on the generic mapper`,
   );
 }
 for (const marker of [
   "select_shipping_option(request.owner_request)",
   "complete_checkout(request).await.map_err(ApiError::from)",
-]) requireText(transport, marker, `${transportPath}: remaining command debt`);
+]) requireText(transport, marker, `${transportPath}: preserved later command boundary`);
 
 for (const [marker, label] of [
   ["pub(super) struct PaymentCollectionCommandErrorContext", "private context"],
@@ -208,7 +208,7 @@ if (review.status !== "commerce_storefront_payment_command_error_safety_source_r
   failures.push(`${reviewPath}: status mismatch`);
 }
 requireText(doc, "Status: **source-ready / unvalidated**", `${docPath}: source status`);
-requireText(doc, "shipping-selection and checkout-completion wrappers remain open", `${docPath}: remaining wrapper scope`);
+requireText(doc, "shipping-selection and checkout-completion wrappers remain open", `${docPath}: historical remaining wrapper scope`);
 requireText(
   plan,
   "Finish correlation-safe mapper cleanup",
@@ -222,5 +222,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ commerce storefront payment collection command uses correlation-safe static public envelopes; shipping, checkout, and runtime evidence remain open",
+  "✔ commerce storefront payment collection command uses correlation-safe static public envelopes; checkout and runtime evidence remain open",
 );

@@ -38,7 +38,8 @@ impl ForumProjectionScope {
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
             | DomainEvent::TenantUpdated { .. } => Some(Self::Full),
-            DomainEvent::ProfileUpdated { user_id, .. } => Some(Self::Author(*user_id)),
+            DomainEvent::ProfileUpdated { user_id, .. }
+            | DomainEvent::UserDeleted { user_id } => Some(Self::Author(*user_id)),
             DomainEvent::TenantModuleToggled { module_slug, .. } if module_slug == "forum" => {
                 Some(Self::Full)
             }
@@ -547,16 +548,21 @@ mod tests {
     }
 
     #[test]
-    fn profile_changes_have_redaction_barrier_scope() {
+    fn profile_and_account_changes_have_redaction_barrier_scope() {
         let user_id = Uuid::new_v4();
-        assert_eq!(
-            ForumProjectionScope::for_event(&DomainEvent::ProfileUpdated {
+        for event in [
+            DomainEvent::ProfileUpdated {
                 user_id,
                 handle: "safe-author".to_string(),
                 locale: Some("en".to_string()),
-            }),
-            Some(ForumProjectionScope::Author(user_id))
-        );
+            },
+            DomainEvent::UserDeleted { user_id },
+        ] {
+            assert_eq!(
+                ForumProjectionScope::for_event(&event),
+                Some(ForumProjectionScope::Author(user_id))
+            );
+        }
         assert!(ForumProjectionScope::Author(user_id)
             .key()
             .starts_with(AUTHOR_SCOPE_PREFIX));

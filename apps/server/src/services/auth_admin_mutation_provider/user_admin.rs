@@ -5,12 +5,15 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationPort, UserMutationRecord,
 };
+use rustok_core::events::EventTransport;
 use rustok_core::{UserRole, UserStatus, infer_user_role_from_permissions};
+use rustok_events::DomainEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
     QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 use crate::auth::hash_password;
@@ -472,6 +475,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
+        );
         let tx = self
             .db
             .begin()
@@ -494,10 +500,39 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         AuthLifecycleService::deactivate_user_in_tx(&tx, context.tenant_id, user.id)
             .await
             .map_err(map_lifecycle_error)?;
+        #[cfg(feature = "mod-profiles")]
+        rustok_profiles::redact_profile_for_account_deactivation_in_tx(
+            &tx,
+            context.tenant_id,
+            user.id,
+        )
+        .await
+        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
         let durable_generation = reserve_rbac_invalidation_generation(&tx)
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        if let Err(error) = event_bus
+            .publish_in_tx(
+                &tx,
+                context.tenant_id,
+                Some(context.actor_id),
+                DomainEvent::UserDeleted { user_id: user.id },
+            )
+            .await
+        {
+            let rollback_error = tx.rollback().await.err();
+            tracing::error!(
+                %error,
+                ?rollback_error,
+                tenant_id = %context.tenant_id,
+                user_id = %user.id,
+                "Durable UserDeleted publication failed; account deactivation rolled back"
+            );
+            return Err(AuthAdminMutationError::Internal(
+                "durable user deletion invalidation is unavailable".to_string(),
+            ));
+        }
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
