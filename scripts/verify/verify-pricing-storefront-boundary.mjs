@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import "./verify-pricing-storefront-native-error-safety.mjs";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
