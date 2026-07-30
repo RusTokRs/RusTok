@@ -19,7 +19,13 @@ pub(crate) fn is_thread_identity_conflict(
     let expected_prefix = format!(
         "{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:"
     );
-    matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix))
+    let DbErr::Custom(message) = error else {
+        return false;
+    };
+    let Some(existing_thread_id) = message.strip_prefix(&expected_prefix) else {
+        return false;
+    };
+    Uuid::parse_str(existing_thread_id).is_ok()
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
