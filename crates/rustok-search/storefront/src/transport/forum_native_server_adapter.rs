@@ -32,6 +32,7 @@ async fn forum_storefront_search_native(
             ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest,
             SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
             StorefrontSearchTransport, execute_forum_storefront_search,
+            resolve_trusted_storefront_channel_input,
         };
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -42,6 +43,12 @@ async fn forum_storefront_search_native(
         let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let trusted_channel = resolve_trusted_storefront_channel_input(
+            &request_context,
+            tenant.id,
+            filters.channel_id.as_deref(),
+        )
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
         let auth = leptos_axum::extract::<OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?
@@ -54,7 +61,7 @@ async fn forum_storefront_search_native(
             query,
             locale,
             fallback_locale: tenant.default_locale,
-            channel_id: filters.channel_id,
+            channel_id: trusted_channel.channel_id.map(|value| value.to_string()),
             limit: Some(12),
             offset: Some(0),
             ranking_profile: None,
