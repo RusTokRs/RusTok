@@ -46,7 +46,6 @@ for (const [value, label] of [
   ["fn map_owner_runtime_error<E: std::fmt::Display>(", "owner runtime mapper"],
   ["owner = PRICING_STOREFRONT_NATIVE_OWNER", "owner diagnostics"],
   ["owner_operation = operation", "owner operation diagnostics"],
-  ["correlation_id = %request_context.correlation_id", "correlation diagnostics"],
   ["tenant_id = %tenant_id", "tenant diagnostics"],
   ["channel_id = ?request_context.channel_id", "channel id diagnostics"],
   ["channel_slug = ?request_context.channel_slug", "channel slug diagnostics"],
@@ -54,6 +53,11 @@ for (const [value, label] of [
   ["boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY", "boundary diagnostics"],
   ["error = %error", "internal cause diagnostics"],
 ]) requireText(source, value, label);
+forbidText(
+  source,
+  "request_context.correlation_id",
+  "removed RequestContext correlation field",
+);
 
 for (const [value, label] of [
   ['endpoint = "pricing/storefront-data"', "pricing endpoint"],
@@ -126,6 +130,7 @@ for (const [key, expected] of Object.entries({
   optional_request_context_failure_logged: true,
   owner_runtime_static_public_envelope: true,
   internal_variant_id_failure_static_public_envelope: true,
+  correlation_logging_when_available: true,
   transport_validation_messages_preserved: true,
   query_contract_changed: false,
   resolution_context_changed: false,
