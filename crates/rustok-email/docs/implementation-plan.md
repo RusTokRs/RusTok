@@ -64,3 +64,16 @@ validation behavior. The module has no module-owned UI.
    delivery contract change.
 3. Update this status block and `docs/modules/registry.md` with an FBA boundary
    change.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `email ownership and documentation; delivery port, provider behavior, rendering, retry/idempotency, host integration, secrets and PII audit pending`
+- Findings: `P0=0, P1=0, P2=0, P3=1`
+- Fixed in this pass: `added the missing current-cycle handoff before source inspection`
+- Remaining risks or blockers: `source and host integration audit is in progress; no compiled verification is claimed`
+- Evidence: `root README, local docs and implementation plan were read on the branch`
+- Next action: `inspect EmailDeliveryPort, SMTP implementation, typed templates and every host caller for P0/P1 delivery, idempotency, privacy and ownership failures`
+- Resume command: `cargo xtask module validate email && cargo xtask module test email && cargo test -p rustok-email ports::tests`
