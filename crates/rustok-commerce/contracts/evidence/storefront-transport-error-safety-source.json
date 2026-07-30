@@ -32,6 +32,7 @@
   },
   "recheck": {
     "regression_source_pr": 2528,
+    "documentation": "crates/rustok-commerce/docs/storefront-request-context-regression.md",
     "removed_request_context_field": "correlation_id",
     "actual_request_context_fields_retained": [
       "tenant_id",
@@ -40,7 +41,8 @@
       "channel_slug",
       "locale"
     ],
-    "guard_forbids_removed_field": true
+    "guard_forbids_removed_field": true,
+    "master_plan_item_10_complete": false
   },
   "suggested_execution": [
     "node scripts/verify/verify-commerce-storefront-transport-error-safety.mjs",
