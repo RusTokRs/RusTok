@@ -4,6 +4,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_core::ModuleRuntimeExtensions;
+#[cfg(feature = "mod-social_graph")]
+use rustok_index::SharedIndexQueryRuntime;
 use rustok_notifications::{
     NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
     NotificationMuteReadRuntime, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
@@ -15,6 +17,8 @@ use rustok_profiles::{
     ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest,
     ProfilePrivacyRuntime, ProfilePrivacyService,
 };
+#[cfg(feature = "mod-social_graph")]
+use rustok_social_graph::IndexSocialGraphPrivacyReadPort;
 use rustok_social_graph::{
     SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
     SocialGraphService,
@@ -90,10 +94,37 @@ impl ServerNotificationRecipientPolicy {
         db: DatabaseConnection,
         extensions: &ModuleRuntimeExtensions,
     ) -> NotificationRecipientPolicyRuntime {
+        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> =
+            Arc::new(SocialGraphService::new(db.clone()));
+        Self::compose_with_graph(
+            db,
+            extensions,
+            SocialGraphPrivacyRuntime::new(graph_port),
+        )
+    }
+
+    #[cfg(feature = "mod-social_graph")]
+    pub fn compose_with_index_runtime(
+        db: DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+        runtime: SharedIndexQueryRuntime,
+    ) -> NotificationRecipientPolicyRuntime {
+        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> =
+            Arc::new(IndexSocialGraphPrivacyReadPort::new(runtime));
+        Self::compose_with_graph(
+            db,
+            extensions,
+            SocialGraphPrivacyRuntime::new(graph_port),
+        )
+    }
+
+    fn compose_with_graph(
+        db: DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+        graph: SocialGraphPrivacyRuntime,
+    ) -> NotificationRecipientPolicyRuntime {
         let profile_port: Arc<dyn ProfilePrivacyReadPort> =
-            Arc::new(ProfilePrivacyService::new(db.clone()));
-        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(SocialGraphService::new(db));
-        let graph = SocialGraphPrivacyRuntime::new(graph_port);
+            Arc::new(ProfilePrivacyService::new(db));
         let blocks = extensions
             .get::<NotificationBlockReadRuntime>()
             .cloned()
