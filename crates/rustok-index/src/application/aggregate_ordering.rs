@@ -15,7 +15,7 @@ pub enum AggregateOrderValidationError {
     Registry(#[from] SchemaRegistryError),
     #[error("aggregate ordering requires a path that traverses a many-cardinality link: {0:?}")]
     AggregateRequiresManyLink(FieldPath),
-    #[error("many-link aggregate ordering requires an ordered scalar field: {0:?}")]
+    #[error("many-link aggregate ordering requires a supported ordered scalar field: {0:?}")]
     AggregateRequiresOrderedScalar(FieldPath),
     #[error("many-link aggregate ordering currently requires bounded offset pagination")]
     AggregateRequiresOffsetPagination,
@@ -146,10 +146,7 @@ fn resolve_order_field(
 fn is_aggregate_ordered_type(value_type: IndexValueType) -> bool {
     matches!(
         value_type,
-        IndexValueType::Integer
-            | IndexValueType::Decimal
-            | IndexValueType::String
-            | IndexValueType::Timestamp
+        IndexValueType::Integer | IndexValueType::String | IndexValueType::Timestamp
     )
 }
 
@@ -271,11 +268,16 @@ mod tests {
 
     #[test]
     fn aggregate_requires_supported_sortable_scalar() {
-        let uuid = registry(IndexValueType::Uuid, true);
-        assert!(matches!(
-            uuid.validate_query_with_aggregate_ordering(&query(OrderDirection::MaxAsc, true)),
-            Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
-        ));
+        for unsupported in [IndexValueType::Decimal, IndexValueType::Uuid] {
+            let registry = registry(unsupported, true);
+            assert!(matches!(
+                registry.validate_query_with_aggregate_ordering(&query(
+                    OrderDirection::MaxAsc,
+                    true
+                )),
+                Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
+            ));
+        }
 
         let unsortable = registry(IndexValueType::Integer, false);
         assert!(matches!(
