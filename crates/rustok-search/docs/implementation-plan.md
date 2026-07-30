@@ -79,15 +79,15 @@ category, does not serialize bootstrap `search.api_key`, filters historical gene
 Search rows from list responses, and rejects generic Search reads and writes before
 database access.
 
-Periodic release verification found two unresolved runtime boundaries. Public
-GraphQL and native storefront Search accept `channel_id` from caller input rather
-than deriving it from trusted `RequestContext`, while `PgSearchEngine` applies the
-channel only to attribute filters, facets, and sorting—not to the ranked product
-result set. Product search documents also omit the canonical
-`metadata.channel_visibility.allowed_channel_slugs` projection, so an active
-product can remain searchable in a channel where the Commerce storefront would
-hide it. The Forum-only eligibility adapter now reuses the trusted route-channel
-slug for Forum decisions, but one cross-result channel predicate is still open.
+`FORUM-23B2E1` closes the transport half of storefront channel authority.
+GraphQL and native storefront Search now derive channel ID and slug from trusted
+`RequestContext`; caller-provided `channel_id` is now only a compatibility assertion
+and a mismatched value fails closed. The same owner is used by ordinary and
+Forum-only Search, and the shared Forum execution path revalidates tenant and
+channel context. Product channel visibility remains blocked: `PgSearchEngine`
+still applies channel only to attribute filters, facets, and sorting, while product
+Search documents omit the canonical
+`metadata.channel_visibility.allowed_channel_slugs` projection.
 
 The durable projection contract is also incomplete. The generic
 `search_projection_inbox` and watermark schema exists, but only Forum events use
@@ -149,6 +149,11 @@ projection can remain stale after recovery.
 - Forum result eligibility contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-result-eligibility.json` and
   `scripts/verify/verify-forum-search-result-eligibility.mjs`.
+- Trusted storefront channel authority status:
+  `source_complete_execution_pending` under `FORUM-23B2E1`.
+- Trusted channel contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-trusted-channel-authority.json` and
+  `scripts/verify/verify-forum-search-trusted-channel-authority.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -160,7 +165,9 @@ projection can remain stale after recovery.
   scope; enabling the module rebuilds it from retained owner rows.
 - Targeted Blog reindex deletes stale documents before source lookup, so a missing
   owner post cannot leave obsolete search data behind.
-- Storefront channel authority and product visibility remain `blocked`.
+- Trusted storefront channel authority is `source_complete_execution_pending`
+  under `FORUM-23B2E1`.
+- Product channel visibility remains blocked.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -222,17 +229,19 @@ rebuild behavior through replayable event transport.
 17. Added the neutral Forum result-eligibility port, Forum exact topic/reply owner,
     host adapter, bounded 100-row candidate scan, and post-authorization totals,
     facets, offset, and limit under `FORUM-23B2D`.
+18. Added the Search-owned trusted storefront channel authority and bound ordinary
+    plus Forum-only GraphQL/native Search to middleware `RequestContext`; the
+    legacy public `channel_id` is assertion-only under `FORUM-23B2E1`.
 
 ## Next results
 
-1. **Close storefront channel authority and visibility.** Derive channel identity
-   from trusted `RequestContext` for GraphQL and native storefront surfaces,
-   denormalize canonical product channel visibility into Search-owned documents,
-   backfill existing documents safely, and make base results, totals, facets,
-   typo fallback, and attribute operations use one fail-closed channel predicate.
-   **Done when:** caller-supplied channel IDs cannot select another channel and a
-   restricted product is absent from every Search response outside its allowed
-   channel.
+1. **Close Product channel visibility projection and predicate.** Reuse the
+   trusted `RequestContext` authority delivered by `FORUM-23B2E1`, denormalize
+   canonical product channel visibility into Search-owned documents, backfill
+   existing documents safely, and make base results, totals, facets, typo fallback,
+   suggestions, query rules, and attribute operations use one fail-closed channel
+   predicate. **Done when:** a restricted product is absent from every Search
+   response outside its allowed channel.
 2. **Generalize durable Search projection recovery.** Use the existing generic
    inbox/watermark schema for Content, Product, Blog, locale, tenant, and reindex
    events; add bounded retry, dead-letter diagnostics, ordered replay, restart and

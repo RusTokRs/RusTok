@@ -16,6 +16,7 @@ use crate::{
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
     StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
     resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
+    resolve_trusted_storefront_channel,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -434,6 +435,18 @@ fn normalize_request(
     let query = normalize_query(&request.query)?;
     let locale = normalize_locale(request.locale.as_deref())?;
     let fallback_locale = normalize_required_locale(&request.fallback_locale)?;
+    let requested_channel_id = parse_optional_uuid("channel_id", request.channel_id.as_deref())?;
+    let request_context = request.request_context.ok_or_else(|| {
+        ForumStorefrontSearchExecutionError::Validation(
+            "Forum storefront Search requires trusted request context".to_string(),
+        )
+    })?;
+    let trusted_channel = resolve_trusted_storefront_channel(
+        &request_context,
+        request.tenant_id,
+        requested_channel_id,
+    )
+    .map_err(|error| ForumStorefrontSearchExecutionError::Validation(error.to_string()))?;
     let source_modules = normalize_filter_values("source_modules", request.source_modules)?;
     if source_modules.as_slice() != [FORUM_SEARCH_SOURCE_MODULE] {
         return validation("Forum storefront Search requires source_modules: [forum]");
@@ -457,7 +470,7 @@ fn normalize_request(
         query,
         locale,
         fallback_locale,
-        channel_id: parse_optional_uuid("channel_id", request.channel_id.as_deref())?,
+        channel_id: trusted_channel.channel_id,
         limit: request.limit.unwrap_or(12).clamp(1, 50) as usize,
         offset: request.offset.unwrap_or(0).max(0) as usize,
         ranking_profile,
@@ -470,7 +483,7 @@ fn normalize_request(
         sort_attribute_code: normalize_attribute_code(request.sort_attribute_code)?,
         sort_desc: request.sort_desc,
         auth: request.auth,
-        request_context: request.request_context,
+        request_context: Some(request_context),
         transport: request.transport,
     })
 }
