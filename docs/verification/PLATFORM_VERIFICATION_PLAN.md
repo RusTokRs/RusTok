@@ -60,6 +60,7 @@ be `in_progress` at a time.
 3. If the cycle is already `active`, resume `Current item`. If the cursor and queue
    disagree, use the first unchecked item, but first reconcile its local handoff block.
 4. A local `completed` result counts only when its `Cycle` equals the current cycle.
+   A result from an earlier cycle is evidence, not completion for the current cycle.
 5. Before inspecting or editing a component, set its local handoff to `in_progress`.
    After verification, update the component's actual implementation plan and the
    handoff, then update this cursor and queue in the same work unit.
