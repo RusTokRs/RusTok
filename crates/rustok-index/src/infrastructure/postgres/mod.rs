@@ -6,6 +6,7 @@ mod replay_runtime;
 mod schema_lease;
 mod schema_registration;
 mod secondary_index;
+mod source_factory;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_runner;
@@ -55,6 +56,11 @@ pub use secondary_index::{
     PostgresSecondaryIndexManager, SecondaryIndexClaimOutcome, SecondaryIndexError,
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
+};
+pub use source_factory::{
+    PostgresIndexSourceFactory, PostgresIndexSourceFactoryCatalog,
+    PostgresIndexSourceFactoryDescriptor, PostgresIndexSourceFactoryError,
+    materialize_postgres_index_sources, register_postgres_index_source_factory,
 };
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
