@@ -5,9 +5,7 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use uuid::Uuid;
 
 const DEVELOPMENT_APP_LOCALE: &str = "en";
@@ -112,9 +110,15 @@ async fn create_development_app(
     let transaction = db.begin().await.map_err(command_failed)?;
 
     let app_sql = match backend {
-        DbBackend::Postgres => "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
-        DbBackend::MySql => "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        DbBackend::Sqlite => "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        DbBackend::Postgres => {
+            "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+        }
+        DbBackend::MySql => {
+            "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        }
+        DbBackend::Sqlite => {
+            "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+        }
     };
     transaction
         .execute(Statement::from_sql_and_values(
@@ -144,9 +148,15 @@ async fn create_development_app(
         .map_err(command_failed)?;
 
     let translation_sql = match backend {
-        DbBackend::Postgres => "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES ($1, $2, $3, $4, $5, $6)",
-        DbBackend::MySql => "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?, ?, ?, ?, ?, ?)",
-        DbBackend::Sqlite => "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        DbBackend::Postgres => {
+            "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES ($1, $2, $3, $4, $5, $6)"
+        }
+        DbBackend::MySql => {
+            "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?, ?, ?, ?, ?, ?)"
+        }
+        DbBackend::Sqlite => {
+            "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+        }
     };
     transaction
         .execute(Statement::from_sql_and_values(
@@ -172,9 +182,7 @@ async fn create_development_app(
     })
 }
 
-fn required_tenant_id(
-    options: &serde_json::Map<String, serde_json::Value>,
-) -> CliCoreResult<Uuid> {
+fn required_tenant_id(options: &serde_json::Map<String, serde_json::Value>) -> CliCoreResult<Uuid> {
     let raw = option(options, "tenant_id").ok_or_else(|| CliCoreError::InvalidInput {
         message: "--tenant-id is required for oauth create-app".to_string(),
     })?;

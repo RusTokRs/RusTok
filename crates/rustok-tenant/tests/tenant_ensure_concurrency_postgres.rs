@@ -2,14 +2,14 @@ use std::{error::Error, io, time::Duration};
 
 use rustok_outbox::SysEvents;
 use rustok_tenant::{
-    entities::{tenant, tenant_locale},
     CreateTenantInput, TenantService,
+    entities::{tenant, tenant_locale},
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
     EntityTrait, PaginatorTrait, QueryFilter, Statement, TransactionTrait,
 };
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
 const TENANT_TEST_DATABASE_ENV: &str = "RUSTOK_TENANT_TEST_DATABASE_URL";
@@ -37,11 +37,7 @@ impl PostgresTenantTestDb {
 
         let control = connect(&database_url).await?;
         let nonce = Uuid::new_v4().simple().to_string();
-        let schema_name = format!(
-            "rustok_tenant_{}_{}",
-            sanitize_identifier(prefix),
-            nonce
-        );
+        let schema_name = format!("rustok_tenant_{}_{}", sanitize_identifier(prefix), nonce);
         let application_name_a = format!("rustok_tenant_ensure_a_{}", &nonce[..12]);
         let application_name_b = format!("rustok_tenant_ensure_b_{}", &nonce[..12]);
 
@@ -153,7 +149,13 @@ async fn postgres_concurrent_ensure_tenant_replays_unique_winner() -> TestResult
         assert_eq!(first.0.slug, slug);
         assert_eq!(second.0.slug, slug);
         assert_ne!(first.1, second.1);
-        assert_eq!([first.1, second.1].into_iter().filter(|created| *created).count(), 1);
+        assert_eq!(
+            [first.1, second.1]
+                .into_iter()
+                .filter(|created| *created)
+                .count(),
+            1
+        );
 
         let tenant_count = tenant::Entity::find()
             .filter(tenant::Column::Slug.eq(slug.clone()))

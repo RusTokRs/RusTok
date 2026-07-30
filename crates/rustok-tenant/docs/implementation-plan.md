@@ -71,6 +71,12 @@ only for `tenant.id`. The configured slug remains isolated to the GraphQL
 transport as a host-routing hint. The tenant FBA verifier forbids slug arguments
 and `get_tenant_by_slug` in the native adapter.
 
+The Tenant Admin bootstrap no longer reconstructs effective module availability
+from raw `tenant_modules` rows. It resolves the active composition snapshot and
+uses `ModuleControlPlane::effective_policy(...).resolve_enabled(tenant.id)`, while
+raw overrides remain explanatory metadata only. Manifest defaults and dependency
+closure therefore match the server and storefront control-plane contract.
+
 The public low-level tenant-module writer has been removed. `ToggleModuleInput`,
 `TenantService::toggle_module`, its crate-root export, and legacy-only tests no
 longer exist. Runtime module enable/disable must use `ModuleLifecycleService` or
@@ -116,6 +122,8 @@ Source evidence now covers:
   `read_default_active_tenant` in that write path;
 - trusted storefront native module-state reads through resolved `TenantContext`,
   with configured slug use restricted to the GraphQL transport branch;
+- effective Tenant Admin module badges from the active composition and
+  `ModuleControlPlane`, never raw tenant override rows as policy authority;
 - physical removal of the public low-level module writer, DTO/export and legacy
   integration evidence, with the FBA verifier forbidding every removed symbol;
 - exact UUID, wildcard, deterministic lag, durable-ahead, missed-publication,
@@ -239,9 +247,9 @@ completed.
 - Status: `in_progress`
 - Last verified at (UTC): `2026-07-30`
 - Scope inspected: `tenant owner CRUD and provisioning concurrency, locale-policy CAS/idempotency concurrency, incremental and cross-backend locale-policy migration invariants, lifecycle outbox publication, installer orchestration, module control-plane exclusivity, native storefront module-state trust, read ports, FBA guard, native admin RBAC and operational OAuth tenant selection; resolver/cache generation and remaining RBAC parity stay under audit`
-- Findings: `P0=0, P1=7, P2=1, P3=0`
-- Fixed in this pass: `made every remaining TenantService mutation publish through TransactionalEventBus::publish_root_in_tx; made ensure_tenant replay a concurrent unique-slug winner and retained an advisory-lock PostgreSQL race; added one bounded locale-policy conflict retry and deterministic PostgreSQL receipt race; backfilled legacy tenants missing locale policy; required explicit tenant UUID before OAuth CLI credential writes; made storefront native enabled-module reads use resolved TenantContext instead of a client slug; added MySQL generated nullable tenant UUID uniqueness; removed TenantService::toggle_module, ToggleModuleInput, the crate export and legacy tests so runtime module writes can only use the lifecycle control plane`
-- Remaining risks or blockers: `same-SHA targeted Rust, both PostgreSQL races, PostgreSQL backfill fixture, lifecycle/storefront compilation and real MySQL migration evidence is pending; multi-replica Redis evidence is source-complete but unexecuted; resolver invalidation and remaining RBAC parity require continued inspection`
-- Evidence: `storefront native adapter has no tenant argument and extracts rustok_api::TenantContext before list_tenant_modules(tenant.id); enabled_modules.rs passes configured slug only in the GraphQL branch; Tenant FBA forbids native tenant_slug/get_tenant_by_slug and binds the transport split; service/integration diffs contain only ensure replay plus physical removal of the low-level writer; provisioning and locale PostgreSQL races retain independent connections and explicit lock barriers; completed broad workflow failures inspected so far remain outside tenant scope`
+- Findings: `P0=0, P1=8, P2=1, P3=0`
+- Fixed in this pass: `made every remaining TenantService mutation publish through TransactionalEventBus::publish_root_in_tx; made ensure_tenant replay a concurrent unique-slug winner and retained an advisory-lock PostgreSQL race; added one bounded locale-policy conflict retry and deterministic PostgreSQL receipt race; backfilled legacy tenants missing locale policy; required explicit tenant UUID before OAuth CLI credential writes; made storefront native enabled-module reads use resolved TenantContext instead of a client slug; made Tenant Admin render ModuleControlPlane effective policy instead of raw tenant overrides; added MySQL generated nullable tenant UUID uniqueness; removed TenantService::toggle_module, ToggleModuleInput, the crate export and legacy tests so runtime module writes can only use the lifecycle control plane`
+- Remaining risks or blockers: `same-SHA targeted Rust, both PostgreSQL races, PostgreSQL backfill fixture, lifecycle/tenant-admin/storefront compilation and real MySQL migration evidence is pending; multi-replica Redis evidence is source-complete but unexecuted; resolver invalidation and remaining RBAC parity require continued inspection`
+- Evidence: `storefront native adapter has no tenant argument and extracts rustok_api::TenantContext before list_tenant_modules(tenant.id); Tenant Admin resolves the active composition through ModuleControlPlane and uses resolve_enabled(tenant.id) for badges; enabled_modules.rs passes configured slug only in the GraphQL branch; Tenant FBA forbids native tenant_slug/get_tenant_by_slug and binds the transport split; service/integration diffs contain only ensure replay plus physical removal of the low-level writer; provisioning and locale PostgreSQL races retain independent connections and explicit lock barriers; completed broad workflow failures inspected so far remain outside tenant scope`
 - Next action: `run same-SHA Tenant FBA, lifecycle bypass guard, rustok-storefront check, auth CLI tests, tenant_ensure_concurrency_postgres, locale_policy_concurrency_postgres, focused migration guard, PostgreSQL fixture and real MySQL duplicate-default probe; then continue cache/RBAC inspection`
 - Resume command: `node scripts/verify/verify-tenant-locale-policy-migration.mjs && npm run verify:tenant:fba && cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant tenant_locale_policy --test integration -- --nocapture && cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture && cargo test -p rustok-server --test lifecycle_bypass_guard && cargo check -p rustok-storefront && cargo xtask module validate tenant`

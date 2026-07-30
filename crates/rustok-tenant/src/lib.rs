@@ -7,9 +7,7 @@ pub mod services;
 
 mod settings_schema;
 
-pub use dto::{
-    CreateTenantInput, TenantModuleResponse, TenantResponse, UpdateTenantInput,
-};
+pub use dto::{CreateTenantInput, TenantModuleResponse, TenantResponse, UpdateTenantInput};
 pub use error::TenantError;
 pub use ports::*;
 pub use services::TenantService;

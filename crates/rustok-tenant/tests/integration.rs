@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::SysEvents;
+use rustok_outbox::entity as outbox_entity;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, PortErrorKind, ReplaceTenantLocalePolicyRequest,
     TenantError, TenantLocale, TenantLocalePolicyEntry, TenantLocalePolicyPort, TenantReadPort,

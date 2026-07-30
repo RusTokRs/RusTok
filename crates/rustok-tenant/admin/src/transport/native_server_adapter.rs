@@ -106,8 +106,10 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             .active_snapshot()
             .await
             .map_err(ServerFnError::new)?;
-        let manifest: RuntimeModulesManifest = serde_json::from_value(snapshot.manifest)
-            .map_err(|error| ServerFnError::new(format!("invalid active module manifest: {error}")))?;
+        let manifest: RuntimeModulesManifest =
+            serde_json::from_value(snapshot.manifest).map_err(|error| {
+                ServerFnError::new(format!("invalid active module manifest: {error}"))
+            })?;
         let manifest_defaults = manifest
             .settings
             .default_enabled

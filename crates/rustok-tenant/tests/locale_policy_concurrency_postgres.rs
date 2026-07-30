@@ -2,17 +2,15 @@ use std::{error::Error, io, time::Duration};
 
 use rustok_outbox::SysEvents;
 use rustok_tenant::{
+    CreateTenantInput, PortActor, PortContext, PortErrorKind, ReplaceTenantLocalePolicyRequest,
+    TenantLocale, TenantLocalePolicyEntry, TenantLocalePolicyPort, TenantService,
     entities::{tenant_locale, tenant_locale_policy_receipt},
-    CreateTenantInput, PortActor, PortContext, PortErrorKind,
-    ReplaceTenantLocalePolicyRequest, TenantLocale, TenantLocalePolicyEntry,
-    TenantLocalePolicyPort, TenantService,
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, Statement,
-    TransactionTrait,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, Statement, TransactionTrait,
 };
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 use uuid::Uuid;
 
 const TENANT_TEST_DATABASE_ENV: &str = "RUSTOK_TENANT_TEST_DATABASE_URL";
@@ -39,11 +37,7 @@ impl PostgresTenantTestDb {
 
         let control = connect(&database_url).await?;
         let nonce = Uuid::new_v4().simple().to_string();
-        let schema_name = format!(
-            "rustok_tenant_{}_{}",
-            sanitize_identifier(prefix),
-            nonce
-        );
+        let schema_name = format!("rustok_tenant_{}_{}", sanitize_identifier(prefix), nonce);
         let application_name_a = format!("rustok_tenant_locale_a_{}", &nonce[..12]);
         let application_name_b = format!("rustok_tenant_locale_b_{}", &nonce[..12]);
 
@@ -139,16 +133,14 @@ async fn postgres_concurrent_locale_policy_requests_replay_one_durable_receipt()
         let context_a = locale_port_context(tenant.id, &idempotency_key, "locale-writer-a");
         let context_b = locale_port_context(tenant.id, &idempotency_key, "locale-writer-b");
 
-        let task_a = tokio::spawn(async move {
-            service_a
-                .replace_locale_policy(context_a, request_a)
-                .await
-        });
-        let task_b = tokio::spawn(async move {
-            service_b
-                .replace_locale_policy(context_b, request_b)
-                .await
-        });
+        let task_a =
+            tokio::spawn(
+                async move { service_a.replace_locale_policy(context_a, request_a).await },
+            );
+        let task_b =
+            tokio::spawn(
+                async move { service_b.replace_locale_policy(context_b, request_b).await },
+            );
 
         let wait_result = wait_for_lock_waiters(
             &test_db.control,
@@ -251,10 +243,7 @@ async fn postgres_concurrent_locale_policy_requests_replay_one_durable_receipt()
             .await
             .expect_err("reusing the key for a different request must conflict");
         assert_eq!(conflict.kind, PortErrorKind::Conflict);
-        assert_eq!(
-            conflict.code,
-            "tenant.locale_policy_idempotency_conflict"
-        );
+        assert_eq!(conflict.code, "tenant.locale_policy_idempotency_conflict");
 
         let events_after_conflict = SysEvents::find().all(&test_db.db_a).await?;
         assert_eq!(events_after_conflict.len(), events.len());
