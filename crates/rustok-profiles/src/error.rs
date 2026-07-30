@@ -34,6 +34,8 @@ pub enum ProfileError {
     Validation(String),
     #[error("profile presentation is temporarily unavailable")]
     PresentationUnavailable,
+    #[error("profile event publication is temporarily unavailable")]
+    EventPublishUnavailable,
     #[error(transparent)]
     Database(#[from] DbErr),
 }
@@ -55,12 +57,16 @@ impl ProfileError {
             Self::DuplicateHandle(_) => "profiles.handle_duplicate",
             Self::Validation(_) => "profiles.validation_failed",
             Self::PresentationUnavailable => "profiles.presentation_unavailable",
+            Self::EventPublishUnavailable => "profiles.event_publish_unavailable",
             Self::Database(_) => "profiles.storage_unavailable",
         }
     }
 
     pub const fn is_retryable(&self) -> bool {
-        matches!(self, Self::PresentationUnavailable | Self::Database(_))
+        matches!(
+            self,
+            Self::PresentationUnavailable | Self::EventPublishUnavailable | Self::Database(_)
+        )
     }
 }
 
@@ -99,6 +105,7 @@ mod tests {
     #[test]
     fn only_availability_failures_are_retryable() {
         assert!(ProfileError::PresentationUnavailable.is_retryable());
+        assert!(ProfileError::EventPublishUnavailable.is_retryable());
         assert!(!ProfileError::InvalidHandle.is_retryable());
     }
 }
