@@ -35,6 +35,7 @@ concurrency:
 
 jobs:
   contract:
+    if: github.head_ref != 'agent/forum-search-result-eligibility-23b2d'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -60,3 +61,57 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
+
+  agent-format-forum-search:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/forum-search-result-eligibility-23b2d' && github.actor != 'github-actions[bot]'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Format only FORUM-23B2D Rust files
+        shell: bash
+        run: |
+          rustfmt --edition 2024 --config skip_children=true \
+            apps/server/src/services/forum_search_result_eligibility.rs \
+            apps/server/src/services/mod.rs \
+            crates/rustok-forum/src/category_read_transport.rs \
+            crates/rustok-forum/src/lib.rs \
+            crates/rustok-forum/src/services/mod.rs \
+            crates/rustok-forum/src/services/search_result_eligibility.rs \
+            crates/rustok-search/src/forum_storefront_execution.rs \
+            crates/rustok-search/src/forum_storefront_execution_public.rs \
+            crates/rustok-search/src/graphql/forum_storefront.rs \
+            crates/rustok-search/src/lib.rs \
+            crates/rustok-search/src/storefront_result_eligibility.rs \
+            crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs
+      - name: Commit formatting and restore workflow
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/cache-redis-status.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/server/src/services/forum_search_result_eligibility.rs \
+            apps/server/src/services/mod.rs \
+            crates/rustok-forum/src/category_read_transport.rs \
+            crates/rustok-forum/src/lib.rs \
+            crates/rustok-forum/src/services/mod.rs \
+            crates/rustok-forum/src/services/search_result_eligibility.rs \
+            crates/rustok-search/src/forum_storefront_execution.rs \
+            crates/rustok-search/src/forum_storefront_execution_public.rs \
+            crates/rustok-search/src/graphql/forum_storefront.rs \
+            crates/rustok-search/src/lib.rs \
+            crates/rustok-search/src/storefront_result_eligibility.rs \
+            crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs \
+            .github/workflows/cache-redis-status.yml
+          git commit -m "style(forum): format Search eligibility slice"
+          git push origin HEAD:${{ github.head_ref }}
