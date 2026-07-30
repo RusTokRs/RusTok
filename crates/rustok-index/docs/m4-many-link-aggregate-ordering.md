@@ -16,6 +16,9 @@ ambiguous and continue to fail closed. Callers must select one of four serialize
 The `OrderExpr` shape is unchanged. Existing `asc` / `desc` payloads, source literals, and
 legacy plan/cursor discriminants therefore retain their old representation.
 
+The machine-readable contract is
+`crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json`.
+
 ## Validation policy
 
 Aggregate ordering is accepted only when all of the following are true:
@@ -49,6 +52,7 @@ The compiler independently rejects:
 - a many-path order without an explicit aggregate;
 - an aggregate on a singular path;
 - a forged aggregate plan with an unsupported value type;
+- a forged aggregate cursor plan;
 - aggregate metadata that does not match the registry-derived field contract.
 
 ## PostgreSQL semantics
