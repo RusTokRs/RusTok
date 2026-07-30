@@ -26,7 +26,8 @@ pub struct StorefrontSearchCategoryScopeRequest {
 
 impl StorefrontSearchCategoryScopeRequest {
     pub fn is_explicit_forum_only(&self) -> bool {
-        self.source_modules.as_slice() == [FORUM_SEARCH_SOURCE_MODULE]
+        self.source_modules.len() == 1
+            && self.source_modules[0] == FORUM_SEARCH_SOURCE_MODULE
     }
 }
 
@@ -41,9 +42,10 @@ pub trait StorefrontSearchCategoryScopePort: Send + Sync {
 pub type SharedStorefrontSearchCategoryScopePort =
     Arc<dyn StorefrontSearchCategoryScopePort>;
 
-/// Applies an optional owner category-scope capability only to an explicit
-/// Forum-only Search request. Mixed, unspecified, and non-Forum source scopes
-/// retain the existing exact-category semantics.
+/// Applies the owner category-scope capability only to an explicit Forum-only
+/// Search request. Mixed, unspecified, and non-Forum source scopes retain the
+/// existing exact-category semantics. An explicit owner path fails closed when
+/// its capability is not composed.
 pub async fn resolve_storefront_search_category_ids(
     port: Option<SharedStorefrontSearchCategoryScopePort>,
     request: StorefrontSearchCategoryScopeRequest,
@@ -52,11 +54,12 @@ pub async fn resolve_storefront_search_category_ids(
         return Ok(request.category_ids);
     }
 
-    let Some(port) = port else {
-        // Compatibility profile: exact category filtering remains available
-        // when the optional Forum owner capability is not composed.
-        return Ok(request.category_ids);
-    };
+    let port = port.ok_or_else(|| {
+        PortError::unavailable(
+            "forum.search_category_scope.owner_unavailable",
+            "Forum Search category scope is temporarily unavailable",
+        )
+    })?;
 
     port.expand_forum_category_scope(request).await
 }
@@ -110,6 +113,15 @@ mod tests {
             .expect("Forum-only scope should resolve");
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn explicit_forum_only_scope_requires_owner_port() {
+        let error = resolve_storefront_search_category_ids(None, request(vec!["forum"]))
+            .await
+            .expect_err("explicit Forum scope must fail closed without its owner");
+
+        assert_eq!(error.kind, rustok_api::PortErrorKind::Unavailable);
     }
 
     #[tokio::test]
