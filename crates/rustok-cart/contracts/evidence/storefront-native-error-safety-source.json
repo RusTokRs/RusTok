@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "storefront_native_error_safety_source_unvalidated",
+  "scope": "mounted cart storefront native read, decrement, remove, customer lookup, repricing, and context extraction",
+  "source_contract": {
+    "ssr_safe_adapter_selected": true,
+    "client_server_function_contract_preserved": true,
+    "tenant_context_static_public_envelope": true,
+    "auth_context_static_public_envelope": true,
+    "runtime_dependency_static_public_envelope": true,
+    "cart_input_static_public_envelopes": true,
+    "customer_raw_error_public": false,
+    "cart_raw_error_public": false,
+    "pricing_port_message_remains_domain_sanitized": true,
+    "owner_context_logging": true,
+    "cart_dto_changed": false,
+    "transport_selection_changed": false,
+    "graphql_transport_changed": false
+  },
+  "stable_public_messages": {
+    "tenant_context_unavailable": "Storefront tenant context is temporarily unavailable",
+    "auth_context_unavailable": "Storefront authentication context is temporarily unavailable",
+    "runtime_unavailable": "Cart runtime is temporarily unavailable",
+    "invalid_cart_selection": "Invalid cart selection",
+    "invalid_line_item_selection": "Invalid cart line item selection",
+    "customer_unavailable": "Customer information is temporarily unavailable",
+    "cart_unavailable": "Cart is temporarily unavailable",
+    "cart_not_found": "Cart was not found",
+    "line_item_not_found": "Cart line item was not found"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-cart-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-cart-storefront-boundary.mjs",
+    "cargo check -p rustok-cart-storefront --all-features"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false
+  }
+}

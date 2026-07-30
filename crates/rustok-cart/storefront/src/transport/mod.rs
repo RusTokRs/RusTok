@@ -1,5 +1,11 @@
 mod graphql_adapter;
+#[cfg(not(feature = "ssr"))]
 mod native_server_adapter;
+#[cfg(feature = "ssr")]
+#[path = "native_server_adapter_ssr.rs"]
+mod native_server_adapter;
+#[cfg(feature = "ssr")]
+mod native_server_mapping;
 
 use crate::core::{CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMutationRequest};
 use crate::model::StorefrontCartData;
