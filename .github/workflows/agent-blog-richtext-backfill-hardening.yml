@@ -1,0 +1,276 @@
+name: Agent Blog richtext backfill hardening
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  harden-source:
+    if: github.head_ref == 'agent/blog-richtext-offline-backfill-20260730'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/blog-richtext-offline-backfill-20260730
+          fetch-depth: 0
+      - name: Harden owner-row scanning and optimistic writes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          source_path = Path('crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs')
+          source = source_path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f'expected one source replacement, found {count}: {old[:100]!r}')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              'use anyhow::{Context, Result, bail};\n',
+              'use anyhow::{Context, Result, bail};\nuse chrono::{DateTime, Utc};\n',
+          )
+          replace_once(
+              '''struct LegacyRow {
+              id: Uuid,
+              post_id: Uuid,
+              tenant_id: Uuid,
+              locale: String,
+              body: String,
+              body_format: String,
+          }
+          ''',
+              '''struct LegacyRow {
+              id: Uuid,
+              post_id: Uuid,
+              tenant_id: Option<Uuid>,
+              locale: String,
+              body: String,
+              body_format: String,
+              updated_at: DateTime<Utc>,
+          }
+
+          #[derive(Debug, Clone, Copy)]
+          struct Cursor {
+              updated_at: DateTime<Utc>,
+              id: Uuid,
+          }
+          ''',
+          )
+          replace_once(
+              'self.body != row.body || row.body_format.trim() != TARGET_FORMAT',
+              'self.body != row.body || row.body_format != TARGET_FORMAT',
+          )
+          replace_once(
+              '''    tenant_id: Uuid,
+              locale: String,
+              source_format: String,
+          ''',
+              '''    tenant_id: Option<Uuid>,
+              locale: String,
+              source_format: String,
+          ''',
+          )
+
+          old_cursor = 'cursor = rows.last().map(|row| row.id);'
+          if source.count(old_cursor) != 2:
+              raise RuntimeError('expected two cursor assignments')
+          source = source.replace(
+              old_cursor,
+              'cursor = rows.last().map(|row| Cursor { updated_at: row.updated_at, id: row.id });',
+          )
+
+          replace_once(
+              '''                        "[invalid] translation_id={} post_id={} tenant_id={} locale={} format={} error={:#}",
+                          row.id,
+                          row.post_id,
+                          row.tenant_id,
+          ''',
+              '''                        "[invalid] translation_id={} post_id={} tenant_id={:?} locale={} format={} error={:#}",
+                          row.id,
+                          row.post_id,
+                          row.tenant_id,
+          ''',
+          )
+          replace_once(
+              '''    cursor: Option<Uuid>,
+              batch_size: u64,
+          ''',
+              '''    cursor: Option<Cursor>,
+              batch_size: u64,
+          ''',
+          )
+          replace_once(
+              '''        "SELECT bt.id, bt.post_id, p.tenant_id, bt.locale, bt.body, bt.body_format \\
+                   FROM blog_post_translations bt \\
+                   JOIN blog_posts p ON p.id = bt.post_id \\
+                   WHERE 1 = 1",
+          ''',
+              '''        "SELECT bt.id, bt.post_id, p.tenant_id, bt.locale, bt.body, bt.body_format, bt.updated_at \\
+                   FROM blog_post_translations bt \\
+                   LEFT JOIN blog_posts p ON p.id = bt.post_id \\
+                   WHERE 1 = 1",
+          ''',
+          )
+          replace_once(
+              '''            if let Some(cursor) = cursor {
+                          values.push(cursor.into());
+                          sql.push_str(&format!(" AND bt.id > ${}", values.len()));
+                      }
+                      values.push((batch_size as i64).into());
+                      sql.push_str(&format!(" ORDER BY bt.id ASC LIMIT ${}", values.len()));
+          ''',
+              '''            if let Some(cursor) = cursor {
+                          values.push(cursor.updated_at.into());
+                          let updated_at_parameter = values.len();
+                          values.push(cursor.id.into());
+                          let id_parameter = values.len();
+                          sql.push_str(&format!(
+                              " AND (bt.updated_at > ${updated_at_parameter} OR (bt.updated_at = ${updated_at_parameter} AND bt.id > ${id_parameter}))"
+                          ));
+                      }
+                      values.push((batch_size as i64).into());
+                      sql.push_str(&format!(
+                          " ORDER BY bt.updated_at ASC, bt.id ASC LIMIT ${}",
+                          values.len()
+                      ));
+          ''',
+          )
+          replace_once(
+              '''            if let Some(cursor) = cursor {
+                          values.push(cursor.into());
+                          sql.push_str(" AND bt.id > ?");
+                      }
+                      values.push((batch_size as i64).into());
+                      sql.push_str(" ORDER BY bt.id ASC LIMIT ?");
+          ''',
+              '''            if let Some(cursor) = cursor {
+                          values.push(cursor.updated_at.into());
+                          values.push(cursor.updated_at.into());
+                          values.push(cursor.id.into());
+                          sql.push_str(
+                              " AND (bt.updated_at > ? OR (bt.updated_at = ? AND bt.id > ?))",
+                          );
+                      }
+                      values.push((batch_size as i64).into());
+                      sql.push_str(" ORDER BY bt.updated_at ASC, bt.id ASC LIMIT ?");
+          ''',
+          )
+          replace_once(
+              '''                body_format: row.try_get("", "body_format")?,
+                      })
+          ''',
+              '''                body_format: row.try_get("", "body_format")?,
+                          updated_at: row.try_get("", "updated_at")?,
+                      })
+          ''',
+          )
+          replace_once(
+              '''             SET body = $1, body_format = $2 \\
+                       WHERE id = $3 AND body = $4 AND body_format = $5",
+          ''',
+              '''             SET body = $1, body_format = $2 \\
+                       WHERE id = $3 AND body = $4 AND body_format = $5 AND updated_at = $6",
+          ''',
+          )
+          replace_once(
+              '''                row.body_format.clone().into(),
+                      ],
+                  ),
+                  DbBackend::Sqlite => (
+          ''',
+              '''                row.body_format.clone().into(),
+                          row.updated_at.into(),
+                      ],
+                  ),
+                  DbBackend::Sqlite => (
+          ''',
+          )
+          replace_once(
+              '''             SET body = ?, body_format = ? \\
+                       WHERE id = ? AND body = ? AND body_format = ?",
+          ''',
+              '''             SET body = ?, body_format = ? \\
+                       WHERE id = ? AND body = ? AND body_format = ? AND updated_at = ?",
+          ''',
+          )
+          replace_once(
+              '''                row.body_format.clone().into(),
+                      ],
+                  ),
+                  other => bail!("unsupported database backend for Blog backfill: {other:?}"),
+          ''',
+              '''                row.body_format.clone().into(),
+                          row.updated_at.into(),
+                      ],
+                  ),
+                  other => bail!("unsupported database backend for Blog backfill: {other:?}"),
+          ''',
+          )
+          replace_once(
+              '''fn convert_row(row: &LegacyRow, allow_markdown_plain_text: bool) -> Result<Conversion> {
+              let source_format = row.body_format.trim().to_ascii_lowercase();
+          ''',
+              '''fn convert_row(row: &LegacyRow, allow_markdown_plain_text: bool) -> Result<Conversion> {
+              if row.tenant_id.is_none() {
+                  bail!(
+                      "Blog translation {} references missing post {}; repair the owner relation before backfill",
+                      row.id,
+                      row.post_id
+                  );
+              }
+              let source_format = row.body_format.trim().to_ascii_lowercase();
+          ''',
+          )
+          replace_once(
+              '''            tenant_id: Uuid::new_v4(),
+                      locale: locale.to_string(),
+                      body: body.to_string(),
+                      body_format: format.to_string(),
+          ''',
+              '''            tenant_id: Some(Uuid::new_v4()),
+                      locale: locale.to_string(),
+                      body: body.to_string(),
+                      body_format: format.to_string(),
+                      updated_at: Utc::now(),
+          ''',
+          )
+
+          source_path.write_text(source)
+
+          verifier_path = Path('scripts/verify/verify-blog-richtext-offline-backfill.mjs')
+          verifier = verifier_path.read_text()
+          marker = '''  "async fn optimistic_update(",
+            "--apply",
+          '''
+          replacement = '''  "async fn optimistic_update(",
+            "LEFT JOIN blog_posts",
+            "struct Cursor",
+            "updated_at = $6",
+            "--apply",
+          '''
+          if verifier.count(marker) != 1:
+              raise RuntimeError('verifier marker drift')
+          verifier_path.write_text(verifier.replace(marker, replacement, 1))
+          PY
+          rm .github/workflows/agent-blog-richtext-backfill-hardening.yml
+          node --check scripts/verify/verify-blog-richtext-offline-backfill.mjs
+          grep -q 'LEFT JOIN blog_posts' crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs
+          grep -q 'struct Cursor' crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs
+          grep -q 'updated_at = $6' crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs
+          git diff --check
+      - name: Commit hardening
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(blog): harden richtext backfill scanning"
+          git push origin HEAD:agent/blog-richtext-offline-backfill-20260730
