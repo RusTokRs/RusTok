@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use serde_json::{json, Value as JsonValue};
