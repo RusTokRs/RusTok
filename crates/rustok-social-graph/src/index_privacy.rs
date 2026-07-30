@@ -116,13 +116,13 @@ impl IndexSocialGraphPrivacyReadPort {
                 .iter()
                 .find(|projected| projected.path == contract.target)
                 .ok_or_else(contract_invariant)?;
-            let IndexValue::Uuid(target_user_id) = projected.value else {
+            let IndexValue::Uuid(target_user_id) = &projected.value else {
                 return Err(contract_invariant());
             };
-            if !target_user_ids.contains(&target_user_id) {
+            if !target_user_ids.contains(target_user_id) {
                 return Err(contract_invariant());
             }
-            followed.insert(target_user_id);
+            followed.insert(*target_user_id);
         }
         Ok(followed.into_iter().collect())
     }
@@ -347,6 +347,7 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
+    use async_trait::async_trait;
     use rustok_api::{PortActor, PortErrorKind};
     use rustok_index::{
         IndexProjectedValue, IndexQueryItem, IndexQueryPage, PersistedSchemaReadinessFailure,
