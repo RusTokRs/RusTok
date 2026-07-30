@@ -18,7 +18,7 @@ Search.
    richer Forum category-audience owner.
 2. Search executes the existing dictionary, preset, ranking, PostgreSQL FTS or
    typo-fallback query from offset zero in bounded pages.
-3. A raw result set larger than 512 rows is rejected and asks the caller to
+3. A raw result set larger than 100 rows is rejected and asks the caller to
    narrow the query or category scope.
 4. Category rows remain authorized by the previously resolved Forum category
    scope. Topic and reply rows become typed neutral candidates.
@@ -52,10 +52,11 @@ trusts a projected `topic_id` payload as owner authorization.
 
 ## Bounds and degraded mode
 
-The raw Search candidate set and owner request are capped at 512 rows. Search
-reads raw candidates in pages of 50 and requires the total to remain unchanged
-and every continuation page to advance. A wider or unstable set returns a typed
-failure instead of a partial visible page.
+The raw Search candidate set and owner request are capped at 100 rows, matching
+the existing exact-topic visibility contract. Search reads raw candidates in
+pages of 50 and requires the total to remain unchanged and every continuation
+page to advance. A wider or unstable set returns a typed failure instead of a
+partial visible page or an unbounded chain of owner calls.
 
 No migration, backfill, dependency, projection-shape, public DTO, or
 `Cargo.lock` change is introduced. The ordinary mixed, unspecified, Product,
