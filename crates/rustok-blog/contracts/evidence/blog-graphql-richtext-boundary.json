@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "owner": "rustok-blog",
   "boundary": "graphql-post-richtext",
   "status": "implemented_source_verified_no_compile",
@@ -7,7 +7,7 @@
     "write": "rustok_api::RichTextDocument",
     "read": "rustok_api::RichTextView",
     "plain_text": "server-derived",
-    "resolver_conversion": "typed input.into() delegation"
+    "resolver_conversion": "typed input.into() delegation with direct content mapping"
   },
   "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [],
@@ -20,10 +20,26 @@
     ],
     "reason": "target-only typed GraphQL-to-owner conversion"
   },
-  "conversion_tests": [
-    "crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
-    "crates/rustok-blog/src/graphql/types.rs #[cfg(test)] update conversion module"
-  ],
+  "conversion_tests": {
+    "create": {
+      "file": "crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
+      "markers": [
+        "create_post_input_conversion_preserves_canonical_content",
+        "RichTextDocument::single_paragraph",
+        "let domain: DomainCreatePostInput = input.into();",
+        "assert_eq!(domain.content, canonical)"
+      ]
+    },
+    "update": {
+      "file": "crates/rustok-blog/src/graphql/types.rs",
+      "markers": [
+        "update_post_input_conversion_preserves_canonical_content",
+        "RichTextDocument::single_paragraph",
+        "let domain: DomainUpdatePostInput = input.into();",
+        "assert_eq!(domain.content, Some(canonical))"
+      ]
+    }
+  },
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "exit_condition": "Source cutover complete; compile, migration, and runtime execution remain maintainer-owned."

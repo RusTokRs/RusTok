@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +23,6 @@ concurrency:
 
 jobs:
   memory-only:
-    if: github.head_ref != 'agent/blog-graphql-conversion-evidence-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -42,64 +41,3 @@ jobs:
         run: cargo test -p rustok-cache --no-default-features
       - name: Clippy all targets without Redis
         run: cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings
-
-  blog-graphql-conversion-evidence:
-    if: github.head_ref == 'agent/blog-graphql-conversion-evidence-20260730'
-    name: Bind Blog GraphQL conversion evidence
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - name: Apply fail-closed source transform
-        run: |
-          python3 .github/agent/blog-graphql-conversion-evidence-transform.py
-          sed -i 's/[[:space:]]\+$//' scripts/verify/verify-blog-graphql-richtext-boundary.mjs
-      - name: Validate source contracts
-        run: |
-          node --check scripts/verify/verify-blog-graphql-richtext-boundary.mjs
-          node --check scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          evidence = json.loads(Path('crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json').read_text())
-          assert evidence['schema_version'] == 3
-          assert set(evidence['conversion_tests']) == {'create', 'update'}
-          assert evidence['conversion_tests']['update']['file'] == 'crates/rustok-blog/src/graphql/types.rs'
-          verifier = Path('scripts/verify/verify-blog-graphql-richtext-boundary.mjs').read_text()
-          assert 'create conversion must map canonical content directly' in verifier
-          assert 'update conversion must map canonical content directly' in verifier
-          assert 'GraphQL create/update conversion-test evidence drift' in verifier
-          fixture = Path('scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs').read_text()
-          for marker in [
-              'update conversion must map canonical content directly',
-              'update conversion coverage',
-              'delete driftedEvidence.conversion_tests.update',
-          ]:
-              assert marker in fixture
-          plan = Path('crates/rustok-blog/docs/implementation-plan.md').read_text()
-          assert '33. Bound the GraphQL target-only richtext verifier' in plan
-          PY
-          git diff --check
-      - name: Commit Blog GraphQL conversion evidence guard
-        env:
-          BRANCH: ${{ github.head_ref }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
-          rm .github/agent/blog-graphql-conversion-evidence-transform.py
-          git add \
-            crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json \
-            crates/rustok-blog/docs/implementation-plan.md \
-            scripts/verify/verify-blog-graphql-richtext-boundary.mjs \
-            scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs \
-            .github/workflows/cache-feature-matrix.yml \
-            .github/agent/blog-graphql-conversion-evidence-transform.py
-          git diff --cached --check
-          git commit -m "test(blog): bind GraphQL conversion evidence"
-          git push origin "HEAD:${BRANCH}"
