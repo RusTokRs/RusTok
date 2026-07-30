@@ -33,7 +33,7 @@ source-complete offline retained-window capture/admission tooling.
 - M4 many-link `EXISTS` filtering: `source_complete_execution_pending`.
 - M4 nested many-link projection aggregation: `source_complete_execution_pending`.
 - M4 explicit many-link `min` / `max` bounded-offset ordering: `source_complete_execution_pending`.
-- M4 Decimal aggregate tagged-wire contract: `open_source_work`.
+- M4 Decimal aggregate tagged-wire contract: `source_complete_execution_pending`.
 - M4 aggregate cursor continuation: `open_source_work`.
 - M4 PostgreSQL query port and strict row adapter: `source_complete_execution_pending`.
 - M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
@@ -86,13 +86,15 @@ lookahead, and exact count remain duplicate free.
 
 Explicit many-link order modes are `min_asc`, `min_desc`, `max_asc`, and `max_desc`.
 Plain `asc` / `desc` over a many path remains rejected. The aggregate path must end at a
-sortable scalar integer, string, or timestamp field and must use bounded offset pagination.
-Boolean, Decimal, UUID, list-valued, singular-path, cursor-paginated, and unsortable aggregate
-requests fail closed.
+sortable scalar integer, Decimal, string, or timestamp field and must use bounded offset
+pagination. Boolean, UUID, list-valued, singular-path, cursor-paginated, and unsortable
+aggregate requests fail closed.
 
-Decimal remains excluded from aggregate ordering until its hidden `__order_N` value has an
-exact tagged `IndexValue` JSON wire contract. Ordinary Decimal filters and root/one-link
-ordering remain supported; only the many-link aggregate handoff is deferred.
+Decimal ordering uses an exact split contract. PostgreSQL reads the stored tagged JSON string
+and evaluates `MIN` / `MAX` plus `ORDER BY` as `numeric`. The hidden `__order_N` value converts
+the typed aggregate through `numeric::text` and stores it as a JSON string, matching the exact
+`IndexValue::Decimal` Serde wire without JSON-number or float conversion. Ordinary Decimal
+filters and root/one-link ordering are unchanged.
 
 The compiler emits a correlated typed `MIN` / `MAX` scalar subquery outside the outer rowset.
 Null terminal values do not participate; an empty or all-null relation set yields SQL `NULL`.
@@ -148,8 +150,8 @@ stores, executes through `PostgresIndexQueryPort`, and compares the complete
 The source scenarios cover scoped cursor continuation, exact count, bounded offset,
 one-link filtering/projection, many-link `Gte`/`Contains`/`Ne`/`IsNull`, and nested
 identity/value alignment. The fixture is env-gated and has not been run by the
-implementation agent. Aggregate offset scenarios are not yet part of the retained equivalence
-contract and remain an explicit follow-up.
+implementation agent. Aggregate offset scenarios, including Decimal scale/precision, are not
+yet part of the retained equivalence contract and remain an explicit follow-up.
 
 ## Retained equivalence capture and admission
 
@@ -266,12 +268,10 @@ The canonical checklist remains open until the owner runs the PostgreSQL/referen
 through capture, admits the retained bundle, and preserves both bundle and receipt. Additional
 boundaries remain:
 
-- define and verify the exact Decimal tagged-order wire contract before Decimal many-link
-  aggregation can be enabled;
 - extend explicit aggregate ordering to query-scoped cursor continuation with a stable cursor
   identity and strict null/value semantics;
-- add aggregate offset scenarios to the independent PostgreSQL/reference fixture and retained
-  capture/admission contract;
+- add aggregate offset scenarios, including Decimal scale and precision, to the independent
+  PostgreSQL/reference fixture and retained capture/admission contract;
 - execute one live Social Graph privacy-shadow window from the merged commit, publish its
   canonical bundle, and complete independent admission with explicit reviewer thresholds;
 - retain per-tenant projection watermark/lag, outage/recovery, repair, and negative-result
@@ -289,6 +289,8 @@ Not run by the implementation agent, per maintainer instruction.
 Suggested commands:
 
 ```bash
+cargo test -p rustok-index decimal_tagged_json_uses_exact_string_wire -- --nocapture
+cargo test -p rustok-index decimal_aggregate_uses_numeric_order_and_exact_string_wire -- --nocapture
 cargo test -p rustok-index planner_tests -- --nocapture
 cargo test -p rustok-index aggregate_ordering -- --nocapture
 cargo test -p rustok-index aggregate_ordering_tests -- --nocapture
@@ -330,6 +332,7 @@ node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
 node scripts/verify/verify-index-many-link-filtering.mjs
 node scripts/verify/verify-index-many-link-aggregate-ordering.mjs
+node scripts/verify/verify-index-decimal-aggregate-wire.mjs
 node scripts/verify/verify-index-query-snapshots.mjs
 node scripts/verify/verify-index-postgres-reference-equivalence.mjs
 node scripts/verify/verify-index-query-equivalence-capture.mjs
