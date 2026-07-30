@@ -23,7 +23,7 @@ The SSR-native server function now maps invalid cart selection, cart transport f
 
 The shared transport mapper no longer exposes `UiTransportError::to_string()` through `ApiError::ServerFn` or `ApiError::Graphql`. It records only safe failed-path, fallback, owner, operation, and stable-code fields, never the raw transport cause, then returns a static cart or payment-collection message.
 
-The existing cart UUID validation compatibility remains explicit and static.
+The existing cart UUID validation compatibility and the prior non-validation cart `ApiError::ServerFn` variant remain unchanged. Payment failures continue to preserve their native/GraphQL variant selection.
 
 ## Preserved behavior
 
@@ -47,6 +47,7 @@ This slice does not change:
 - stable codes and static public messages;
 - removal of foreign adapter `to_string()` public mapping;
 - absence of raw causes from shared/client-side tracing;
+- preserved cart error variant behavior;
 - unchanged source-only validation flags.
 
 ## Remaining gaps
