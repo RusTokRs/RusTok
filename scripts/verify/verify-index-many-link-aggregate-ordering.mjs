@@ -77,9 +77,11 @@ const compilerPath = 'crates/rustok-index/src/application/postgres_compiler.rs';
 requireMarkers(compilerPath, [
   'AggregateOrderingWithoutManyLink',
   'AggregateOrderingUnsupportedType',
+  'AggregateOrderingRequiresOffsetPagination',
   'ManyLinkOrderingPending',
   'expected.nullable = true;',
   'aggregate_type_supported(order.field.value_type)',
+  'has_aggregate_order && !matches!(&self.pagination, Pagination::Offset { .. })',
 ]);
 
 const sqlPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
@@ -105,7 +107,9 @@ requireMarkers('crates/rustok-index/src/application/aggregate_ordering_tests.rs'
   'max_desc_compiles_explicit_null_policy',
   'aggregate_cursor_and_uuid_modes_fail_closed',
   'forged_plans_cannot_bypass_explicit_aggregate_policy',
-  'assert!(!compiled.sql.contains(" LEFT JOIN index_links AS \\"l1\\""))',
+  'AggregateOrderingRequiresOffsetPagination',
+  'assert!(!compiled',
+  '.contains(" LEFT JOIN index_links AS \\"l1\\""));',
 ]);
 for (const referencePath of [
   'crates/rustok-index/src/application/reference.rs',
