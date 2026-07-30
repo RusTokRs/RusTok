@@ -350,8 +350,12 @@ where
         let mut applied_count = 0;
         let mut duplicate_count = 0;
         let mut stale_count = 0;
-        let mut max_source_version = None;
-        let mut last_delivery_id = None;
+        let mut max_source_version = current
+            .as_ref()
+            .and_then(IndexReplayCheckpoint::source_version);
+        let mut last_delivery_id = current
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.last_delivery_id().map(str::to_owned));
         let mut event_ids = BTreeSet::new();
 
         for (position, mutation) in page.mutations().iter().enumerate() {
@@ -379,7 +383,7 @@ where
             }
             max_source_version = Some(max_source_version.map_or(
                 mutation.source_version(),
-                |current: u64| current.max(mutation.source_version()),
+                |current| current.max(mutation.source_version()),
             ));
             last_delivery_id = Some(event_id.to_string());
         }
