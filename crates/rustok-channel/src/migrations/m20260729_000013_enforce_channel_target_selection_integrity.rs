@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 const HOST_TARGET_TYPE: &str = "web_domain";
 const PRIMARY_TARGET_INDEX: &str = "uq_channel_targets_one_primary";
-const MYSQL_PRIMARY_GUARD_COLUMN: &str = "primary_target_guard";
+const HOST_CLAIM_INDEX: &str = "uq_channel_host_target_claims_tenant_value";
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -15,12 +15,17 @@ impl MigrationTrait for Migration {
         reject_existing_duplicate_host_claims(manager).await?;
         reject_existing_duplicate_primary_targets(manager).await?;
         create_claim_table(manager).await?;
-        backfill_claims(manager).await?;
+        rebuild_claims(manager).await?;
 
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
-            DatabaseBackend::MySql => install_mysql(manager).await?,
+            DatabaseBackend::MySql => {
+                return Err(DbErr::Custom(
+                    "channel target integrity migration does not support MySQL; channel durable generation already requires PostgreSQL or SQLite"
+                        .to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -35,19 +40,19 @@ impl MigrationTrait for Migration {
 async fn reject_existing_duplicate_host_claims(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let duplicate = manager
         .get_connection()
-        .query_one(Statement::from_sql_and_values(
+        .query_one(Statement::from_string(
             manager.get_database_backend(),
-            r#"
-            SELECT channel.tenant_id, target.value
-            FROM channel_targets target
-            JOIN channels channel ON channel.id = target.channel_id
-            WHERE target.target_type = $1
-            GROUP BY channel.tenant_id, target.value
-            HAVING COUNT(*) > 1
-            LIMIT 1
-            "#
-            .replace("$1", placeholder(manager.get_database_backend(), 1)),
-            vec![HOST_TARGET_TYPE.into()],
+            format!(
+                r#"
+                SELECT channel.tenant_id, target.value
+                FROM channel_targets target
+                JOIN channels channel ON channel.id = target.channel_id
+                WHERE target.target_type = '{HOST_TARGET_TYPE}'
+                GROUP BY channel.tenant_id, target.value
+                HAVING COUNT(*) > 1
+                LIMIT 1
+                "#
+            ),
         ))
         .await?;
 
@@ -130,37 +135,38 @@ async fn create_claim_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 .to_owned(),
         )
         .await?;
-    manager
-        .create_index(
-            Index::create()
-                .name("uq_channel_host_target_claims_tenant_value")
-                .table(ChannelHostTargetClaims::Table)
-                .col(ChannelHostTargetClaims::TenantId)
-                .col(ChannelHostTargetClaims::TargetType)
-                .col(ChannelHostTargetClaims::Value)
-                .unique()
-                .to_owned(),
-        )
-        .await
+
+    let sql = match manager.get_database_backend() {
+        DatabaseBackend::Postgres => format!(
+            "CREATE UNIQUE INDEX IF NOT EXISTS {HOST_CLAIM_INDEX} ON channel_host_target_claims (tenant_id, target_type, value)"
+        ),
+        DatabaseBackend::Sqlite => format!(
+            "CREATE UNIQUE INDEX IF NOT EXISTS {HOST_CLAIM_INDEX} ON channel_host_target_claims (tenant_id, target_type, value)"
+        ),
+        DatabaseBackend::MySql => {
+            return Err(DbErr::Custom(
+                "channel target claims do not support MySQL".to_string(),
+            ));
+        }
+    };
+    manager.get_connection().execute_unprepared(&sql).await?;
+    Ok(())
 }
 
-async fn backfill_claims(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    let backend = manager.get_database_backend();
-    manager
-        .get_connection()
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                r#"
-                INSERT INTO channel_host_target_claims (target_id, tenant_id, target_type, value)
-                SELECT target.id, channel.tenant_id, target.target_type, target.value
-                FROM channel_targets target
-                JOIN channels channel ON channel.id = target.channel_id
-                WHERE target.target_type = {}
-                "#,
-                placeholder(backend, 1)
-            ),
-            vec![HOST_TARGET_TYPE.into()],
+async fn rebuild_claims(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let connection = manager.get_connection();
+    connection
+        .execute_unprepared("DELETE FROM channel_host_target_claims")
+        .await?;
+    connection
+        .execute_unprepared(&format!(
+            r#"
+            INSERT INTO channel_host_target_claims (target_id, tenant_id, target_type, value)
+            SELECT target.id, channel.tenant_id, target.target_type, target.value
+            FROM channel_targets target
+            JOIN channels channel ON channel.id = target.channel_id
+            WHERE target.target_type = '{HOST_TARGET_TYPE}'
+            "#
         ))
         .await?;
     Ok(())
@@ -171,7 +177,27 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(&format!(
             r#"
-            CREATE UNIQUE INDEX {PRIMARY_TARGET_INDEX}
+            CREATE OR REPLACE FUNCTION channel_promote_single_primary_target()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.is_primary THEN
+                    UPDATE channel_targets
+                       SET is_primary = FALSE,
+                           updated_at = CURRENT_TIMESTAMP
+                     WHERE channel_id = NEW.channel_id
+                       AND id <> NEW.id
+                       AND is_primary;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS channel_targets_promote_single_primary ON channel_targets;
+            CREATE TRIGGER channel_targets_promote_single_primary
+            BEFORE INSERT OR UPDATE OF is_primary, channel_id ON channel_targets
+            FOR EACH ROW EXECUTE FUNCTION channel_promote_single_primary_target();
+
+            CREATE UNIQUE INDEX IF NOT EXISTS {PRIMARY_TARGET_INDEX}
                 ON channel_targets (channel_id)
                 WHERE is_primary;
 
@@ -238,11 +264,36 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(&format!(
             r#"
+            CREATE TRIGGER IF NOT EXISTS channel_targets_promote_single_primary_insert
+            BEFORE INSERT ON channel_targets
+            WHEN NEW.is_primary = 1
+            BEGIN
+                UPDATE channel_targets
+                   SET is_primary = 0,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE channel_id = NEW.channel_id
+                   AND id <> NEW.id
+                   AND is_primary = 1;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS channel_targets_promote_single_primary_update
+            BEFORE UPDATE OF is_primary, channel_id ON channel_targets
+            WHEN NEW.is_primary = 1
+            BEGIN
+                UPDATE channel_targets
+                   SET is_primary = 0,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE channel_id = NEW.channel_id
+                   AND id <> NEW.id
+                   AND is_primary = 1;
+            END;
+
             CREATE UNIQUE INDEX IF NOT EXISTS {PRIMARY_TARGET_INDEX}
                 ON channel_targets (channel_id)
                 WHERE is_primary = 1;
 
-            CREATE TRIGGER IF NOT EXISTS channel_targets_host_claim_guard_insert
+            DROP TRIGGER IF EXISTS channel_targets_host_claim_guard_insert;
+            CREATE TRIGGER channel_targets_host_claim_guard_insert
             AFTER INSERT ON channel_targets
             WHEN NEW.target_type = '{HOST_TARGET_TYPE}'
             BEGIN
@@ -256,7 +307,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 );
             END;
 
-            CREATE TRIGGER IF NOT EXISTS channel_targets_host_claim_guard_update
+            DROP TRIGGER IF EXISTS channel_targets_host_claim_guard_update;
+            CREATE TRIGGER channel_targets_host_claim_guard_update
             AFTER UPDATE OF channel_id, target_type, value ON channel_targets
             BEGIN
                 DELETE FROM channel_host_target_claims WHERE target_id = NEW.id;
@@ -272,13 +324,15 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                   AND NEW.target_type = '{HOST_TARGET_TYPE}';
             END;
 
-            CREATE TRIGGER IF NOT EXISTS channel_targets_host_claim_delete
+            DROP TRIGGER IF EXISTS channel_targets_host_claim_delete;
+            CREATE TRIGGER channel_targets_host_claim_delete
             AFTER DELETE ON channel_targets
             BEGIN
                 DELETE FROM channel_host_target_claims WHERE target_id = OLD.id;
             END;
 
-            CREATE TRIGGER IF NOT EXISTS channels_host_claim_tenant_move
+            DROP TRIGGER IF EXISTS channels_host_claim_tenant_move;
+            CREATE TRIGGER channels_host_claim_tenant_move
             AFTER UPDATE OF tenant_id ON channels
             WHEN NEW.tenant_id IS NOT OLD.tenant_id
             BEGIN
@@ -292,92 +346,6 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         ))
         .await?;
     Ok(())
-}
-
-async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute_unprepared(&format!(
-            r#"
-            ALTER TABLE channel_targets
-                ADD COLUMN {MYSQL_PRIMARY_GUARD_COLUMN} TINYINT
-                    GENERATED ALWAYS AS (
-                        CASE WHEN is_primary THEN 1 ELSE NULL END
-                    ) STORED,
-                ADD UNIQUE INDEX {PRIMARY_TARGET_INDEX} (
-                    channel_id,
-                    {MYSQL_PRIMARY_GUARD_COLUMN}
-                );
-
-            CREATE TRIGGER channel_targets_host_claim_guard_insert
-            AFTER INSERT ON channel_targets
-            FOR EACH ROW
-            BEGIN
-                IF NEW.target_type = '{HOST_TARGET_TYPE}' THEN
-                    INSERT INTO channel_host_target_claims
-                        (target_id, tenant_id, target_type, value)
-                    VALUES (
-                        NEW.id,
-                        (SELECT tenant_id FROM channels WHERE id = NEW.channel_id),
-                        NEW.target_type,
-                        NEW.value
-                    );
-                END IF;
-            END;
-
-            CREATE TRIGGER channel_targets_host_claim_guard_update
-            AFTER UPDATE ON channel_targets
-            FOR EACH ROW
-            BEGIN
-                DELETE FROM channel_host_target_claims WHERE target_id = NEW.id;
-                IF NEW.target_type = '{HOST_TARGET_TYPE}' THEN
-                    INSERT INTO channel_host_target_claims
-                        (target_id, tenant_id, target_type, value)
-                    VALUES (
-                        NEW.id,
-                        (SELECT tenant_id FROM channels WHERE id = NEW.channel_id),
-                        NEW.target_type,
-                        NEW.value
-                    );
-                END IF;
-            END;
-
-            CREATE TRIGGER channel_targets_host_claim_delete
-            AFTER DELETE ON channel_targets
-            FOR EACH ROW
-            BEGIN
-                DELETE FROM channel_host_target_claims WHERE target_id = OLD.id;
-            END;
-
-            CREATE TRIGGER channels_host_claim_tenant_move
-            AFTER UPDATE ON channels
-            FOR EACH ROW
-            BEGIN
-                IF NOT (NEW.tenant_id <=> OLD.tenant_id) THEN
-                    UPDATE channel_host_target_claims claim
-                    JOIN channel_targets target ON target.id = claim.target_id
-                       SET claim.tenant_id = NEW.tenant_id
-                     WHERE target.channel_id = OLD.id;
-                END IF;
-            END;
-            "#
-        ))
-        .await?;
-    Ok(())
-}
-
-fn placeholder(backend: DatabaseBackend, position: usize) -> &'static str {
-    match backend {
-        DatabaseBackend::Postgres => match position {
-            1 => "$1",
-            _ => unreachable!("unsupported PostgreSQL placeholder position"),
-        },
-        DatabaseBackend::MySql => "?",
-        DatabaseBackend::Sqlite => match position {
-            1 => "?1",
-            _ => unreachable!("unsupported SQLite placeholder position"),
-        },
-    }
 }
 
 #[derive(Iden)]
@@ -401,9 +369,7 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     async fn sqlite_target_schema() -> sea_orm::DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("SQLite database");
+        let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared(
             r#"
             PRAGMA foreign_keys = ON;
@@ -414,19 +380,17 @@ mod tests {
                 target_type TEXT NOT NULL,
                 value TEXT NOT NULL,
                 is_primary INTEGER NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
             );
             "#,
         )
         .await
-        .expect("target schema");
+        .unwrap();
         db
     }
 
-    async fn insert_channel(
-        db: &sea_orm::DatabaseConnection,
-        tenant_id: Uuid,
-    ) -> Uuid {
+    async fn insert_channel(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) -> Uuid {
         let id = Uuid::new_v4();
         db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
@@ -434,7 +398,7 @@ mod tests {
             vec![id.into(), tenant_id.into()],
         ))
         .await
-        .expect("channel");
+        .unwrap();
         id
     }
 
@@ -444,12 +408,13 @@ mod tests {
         target_type: &str,
         value: &str,
         is_primary: bool,
-    ) -> Result<(), sea_orm::DbErr> {
+    ) -> Result<Uuid, sea_orm::DbErr> {
+        let id = Uuid::new_v4();
         db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO channel_targets (id, channel_id, target_type, value, is_primary) VALUES (?1, ?2, ?3, ?4, ?5)",
             vec![
-                Uuid::new_v4().into(),
+                id.into(),
                 channel_id.into(),
                 target_type.into(),
                 value.into(),
@@ -457,16 +422,30 @@ mod tests {
             ],
         ))
         .await?;
-        Ok(())
+        Ok(id)
+    }
+
+    async fn count(
+        db: &sea_orm::DatabaseConnection,
+        sql: &str,
+        id: Uuid,
+    ) -> i64 {
+        db.query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            sql,
+            vec![id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "count")
+        .unwrap()
     }
 
     #[tokio::test]
-    async fn sqlite_serializes_host_claims_per_tenant_and_primary_target() {
+    async fn sqlite_serializes_host_claims_and_primary_promotion() {
         let db = sqlite_target_schema().await;
-        Migration
-            .up(&SchemaManager::new(&db))
-            .await
-            .expect("target integrity migration");
+        Migration.up(&SchemaManager::new(&db)).await.unwrap();
 
         let tenant_a = Uuid::new_v4();
         let channel_a1 = insert_channel(&db, tenant_a).await;
@@ -475,7 +454,7 @@ mod tests {
 
         insert_target(&db, channel_a1, HOST_TARGET_TYPE, "shop.example", true)
             .await
-            .expect("first host claim");
+            .unwrap();
         assert!(
             insert_target(&db, channel_a2, HOST_TARGET_TYPE, "shop.example", false)
                 .await
@@ -483,15 +462,43 @@ mod tests {
         );
         insert_target(&db, channel_b, HOST_TARGET_TYPE, "shop.example", true)
             .await
-            .expect("other tenant host claim");
-        assert!(
-            insert_target(&db, channel_a1, "mobile_app", "ios", true)
-                .await
-                .is_err()
-        );
-        insert_target(&db, channel_a2, "mobile_app", "ios", false)
+            .unwrap();
+
+        insert_target(&db, channel_a1, "mobile_app", "ios", true)
             .await
-            .expect("non-host duplicate value");
+            .unwrap();
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) AS count FROM channel_targets WHERE channel_id = ?1 AND is_primary = 1",
+                channel_a1,
+            )
+            .await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_replay_rebuilds_claims_without_duplicates() {
+        let db = sqlite_target_schema().await;
+        let manager = SchemaManager::new(&db);
+        Migration.up(&manager).await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let channel_id = insert_channel(&db, tenant_id).await;
+        insert_target(&db, channel_id, HOST_TARGET_TYPE, "replay.example", false)
+            .await
+            .unwrap();
+
+        Migration.up(&manager).await.unwrap();
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) AS count FROM channel_host_target_claims WHERE tenant_id = ?1",
+                tenant_id,
+            )
+            .await,
+            1
+        );
     }
 
     #[tokio::test]
@@ -502,10 +509,10 @@ mod tests {
         let channel_b = insert_channel(&db, tenant_id).await;
         insert_target(&db, channel_a, HOST_TARGET_TYPE, "duplicate.example", false)
             .await
-            .expect("first historical target");
+            .unwrap();
         insert_target(&db, channel_b, HOST_TARGET_TYPE, "duplicate.example", false)
             .await
-            .expect("second historical target");
+            .unwrap();
 
         let error = Migration
             .up(&SchemaManager::new(&db))
