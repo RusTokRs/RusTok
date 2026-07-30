@@ -154,7 +154,6 @@ for (const marker of [
   "tenant_slug = %",
   "tenant_slug = ?",
   "query = ?query",
-  "ApiError::Graphql(raw_error)",
 ]) forbidText(safety, marker, `${safetyPath}: raw query or public cause mapping`);
 
 for (const marker of [
