@@ -15,7 +15,6 @@ rustok-events.workspace = true
 rustok-iggy = { workspace = true, optional = true }
 rustok-index = { workspace = true, optional = true }
 rustok-outbox.workspace = true
-rustok-telemetry = { workspace = true, optional = true }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
@@ -28,7 +27,7 @@ uuid.workspace = true
 [features]
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
-index = ["dep:rustok-index", "dep:rustok-telemetry"]
+index = ["dep:rustok-index"]
 index-consumer = ["index", "dep:rustok-iggy"]
 
 [dev-dependencies]
