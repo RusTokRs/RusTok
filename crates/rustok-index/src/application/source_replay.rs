@@ -158,12 +158,22 @@ impl IndexReplayCheckpoint {
         source_version: Option<u64>,
         last_delivery_id: Option<String>,
     ) -> Result<Self, IndexReplayError> {
+        if source_version == Some(0) {
+            return Err(IndexReplayError::ZeroCheckpointSourceVersion);
+        }
         if let Some(delivery_id) = &last_delivery_id {
             validate_required_storage_key(
                 "last delivery id",
                 delivery_id,
                 MAX_DELIVERY_ID_BYTES,
             )?;
+            let parsed = Uuid::parse_str(delivery_id)
+                .map_err(|_| IndexReplayError::InvalidCheckpointDeliveryId(delivery_id.clone()))?;
+            if parsed.is_nil() {
+                return Err(IndexReplayError::InvalidCheckpointDeliveryId(
+                    delivery_id.clone(),
+                ));
+            }
         }
         Ok(Self {
             key,
@@ -321,15 +331,23 @@ where
             .await
             .map_err(IndexReplayError::CheckpointReadFailed)?;
 
-        if let Some(checkpoint) = current.as_ref().filter(|checkpoint| checkpoint.is_complete()) {
-            return Ok(IndexReplayPageOutcome {
-                status: IndexReplayPageStatus::AlreadyComplete,
-                checkpoint: checkpoint.clone(),
-                mutation_count: 0,
-                applied_count: 0,
-                duplicate_count: 0,
-                stale_count: 0,
-            });
+        if let Some(checkpoint) = &current {
+            if checkpoint.key() != &checkpoint_key {
+                return Err(IndexReplayError::CheckpointIdentityMismatch {
+                    expected: checkpoint_key,
+                    actual: checkpoint.key().clone(),
+                });
+            }
+            if checkpoint.is_complete() {
+                return Ok(IndexReplayPageOutcome {
+                    status: IndexReplayPageStatus::AlreadyComplete,
+                    checkpoint: checkpoint.clone(),
+                    mutation_count: 0,
+                    applied_count: 0,
+                    duplicate_count: 0,
+                    stale_count: 0,
+                });
+            }
         }
 
         let scan_request = IndexSourceScanRequest::new(
@@ -347,6 +365,17 @@ where
             .await
             .map_err(IndexReplayError::SourceContract)?;
 
+        let mut event_ids = BTreeSet::new();
+        for (position, mutation) in page.mutations().iter().enumerate() {
+            let event_id = mutation.event_id();
+            if event_id.is_nil() {
+                return Err(IndexReplayError::NilReplayEventId { position });
+            }
+            if !event_ids.insert(event_id) {
+                return Err(IndexReplayError::DuplicateReplayEventId { position, event_id });
+            }
+        }
+
         let mut applied_count = 0;
         let mut duplicate_count = 0;
         let mut stale_count = 0;
@@ -356,17 +385,8 @@ where
         let mut last_delivery_id = current
             .as_ref()
             .and_then(|checkpoint| checkpoint.last_delivery_id().map(str::to_owned));
-        let mut event_ids = BTreeSet::new();
 
         for (position, mutation) in page.mutations().iter().enumerate() {
-            let event_id = mutation.event_id();
-            if event_id.is_nil() {
-                return Err(IndexReplayError::NilReplayEventId { position });
-            }
-            if !event_ids.insert(event_id) {
-                return Err(IndexReplayError::DuplicateReplayEventId { position, event_id });
-            }
-
             let outcome = self
                 .mutation_sink
                 .apply_replay_mutation(
@@ -385,7 +405,7 @@ where
                 mutation.source_version(),
                 |current| current.max(mutation.source_version()),
             ));
-            last_delivery_id = Some(event_id.to_string());
+            last_delivery_id = Some(mutation.event_id().to_string());
         }
 
         let (mutations, next_cursor) = page.into_parts();
@@ -428,10 +448,19 @@ pub enum IndexReplayError {
         field: &'static str,
         reason: &'static str,
     },
+    #[error("Index replay checkpoint source version must be greater than zero")]
+    ZeroCheckpointSourceVersion,
+    #[error("Index replay checkpoint delivery id is not a non-nil UUID: {0}")]
+    InvalidCheckpointDeliveryId(String),
     #[error("No Index replay source owns schema {0}")]
     UnknownSchemaSource(SchemaRef),
     #[error(transparent)]
     SourceContract(IndexSourceError),
+    #[error("Index replay checkpoint identity does not match the requested replay scope")]
+    CheckpointIdentityMismatch {
+        expected: IndexReplayCheckpointKey,
+        actual: IndexReplayCheckpointKey,
+    },
     #[error("Index replay mutation at position {position} has a nil event id")]
     NilReplayEventId { position: usize },
     #[error("Index replay mutation at position {position} duplicates event id {event_id}")]
