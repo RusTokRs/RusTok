@@ -12,6 +12,8 @@ const workflow = read('.github/workflows/tenant-hardening.yml');
 for (const marker of [
   'name: Tenant hardening',
   'contents: read',
+  '"modules.toml"',
+  '"modules.toml.example"',
   '"crates/rustok-tenant/**"',
   '"crates/rustok-auth/cli/**"',
   '"crates/rustok-commerce/Cargo.toml"',
