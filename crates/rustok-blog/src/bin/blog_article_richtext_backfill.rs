@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
+use chrono::{DateTime, Utc};
 use rustok_api::RichTextDocument;
 use rustok_blog::richtext::{
     article_document_from_plain_text, canonical_article_body, normalize_article,
@@ -46,10 +47,17 @@ struct Metrics {
 struct LegacyRow {
     id: Uuid,
     post_id: Uuid,
-    tenant_id: Uuid,
+    tenant_id: Option<Uuid>,
     locale: String,
     body: String,
     body_format: String,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+struct Cursor {
+    updated_at: DateTime<Utc>,
+    id: Uuid,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -79,7 +87,7 @@ struct Conversion {
 
 impl Conversion {
     fn needs_update(&self, row: &LegacyRow) -> bool {
-        self.body != row.body || row.body_format.trim() != TARGET_FORMAT
+        self.body != row.body || row.body_format != TARGET_FORMAT
     }
 }
 
@@ -87,7 +95,7 @@ impl Conversion {
 struct ReportRecord {
     translation_id: Uuid,
     post_id: Uuid,
-    tenant_id: Uuid,
+    tenant_id: Option<Uuid>,
     locale: String,
     source_format: String,
     action: String,
@@ -221,7 +229,7 @@ async fn preflight_pass(
         if rows.is_empty() {
             break;
         }
-        cursor = rows.last().map(|row| row.id);
+        cursor = rows.last().map(|row| Cursor { updated_at: row.updated_at.clone(), id: row.id });
 
         for row in rows {
             metrics.scanned += 1;
@@ -246,7 +254,7 @@ async fn preflight_pass(
                 Err(error) => {
                     metrics.invalid += 1;
                     eprintln!(
-                        "[invalid] translation_id={} post_id={} tenant_id={} locale={} format={} error={:#}",
+                        "[invalid] translation_id={} post_id={} tenant_id={:?} locale={} format={} error={:#}",
                         row.id,
                         row.post_id,
                         row.tenant_id,
@@ -280,7 +288,7 @@ async fn apply_pass(db: &DatabaseConnection, cli: &Cli) -> Result<Metrics> {
         if rows.is_empty() {
             break;
         }
-        cursor = rows.last().map(|row| row.id);
+        cursor = rows.last().map(|row| Cursor { updated_at: row.updated_at.clone(), id: row.id });
 
         let mut updates = Vec::new();
         for row in rows {
@@ -320,7 +328,7 @@ async fn apply_pass(db: &DatabaseConnection, cli: &Cli) -> Result<Metrics> {
 async fn fetch_batch<C>(
     db: &C,
     tenant_id: Option<Uuid>,
-    cursor: Option<Uuid>,
+    cursor: Option<Cursor>,
     batch_size: u64,
 ) -> Result<Vec<LegacyRow>>
 where
@@ -328,9 +336,9 @@ where
 {
     let backend = db.get_database_backend();
     let mut sql = String::from(
-        "SELECT bt.id, bt.post_id, p.tenant_id, bt.locale, bt.body, bt.body_format \
+        "SELECT bt.id, bt.post_id, p.tenant_id, bt.locale, bt.body, bt.body_format, bt.updated_at \
          FROM blog_post_translations bt \
-         JOIN blog_posts p ON p.id = bt.post_id \
+         LEFT JOIN blog_posts p ON p.id = bt.post_id \
          WHERE 1 = 1",
     );
     let mut values = Vec::<sea_orm::Value>::new();
@@ -342,11 +350,19 @@ where
                 sql.push_str(&format!(" AND p.tenant_id = ${}", values.len()));
             }
             if let Some(cursor) = cursor {
-                values.push(cursor.into());
-                sql.push_str(&format!(" AND bt.id > ${}", values.len()));
+                values.push(cursor.updated_at.clone().into());
+                let updated_at_parameter = values.len();
+                values.push(cursor.id.into());
+                let id_parameter = values.len();
+                sql.push_str(&format!(
+                    " AND (bt.updated_at > ${updated_at_parameter} OR (bt.updated_at = ${updated_at_parameter} AND bt.id > ${id_parameter}))"
+                ));
             }
             values.push((batch_size as i64).into());
-            sql.push_str(&format!(" ORDER BY bt.id ASC LIMIT ${}", values.len()));
+            sql.push_str(&format!(
+                " ORDER BY bt.updated_at ASC, bt.id ASC LIMIT ${}",
+                values.len()
+            ));
         }
         DbBackend::Sqlite => {
             if let Some(tenant_id) = tenant_id {
@@ -354,11 +370,15 @@ where
                 sql.push_str(" AND p.tenant_id = ?");
             }
             if let Some(cursor) = cursor {
-                values.push(cursor.into());
-                sql.push_str(" AND bt.id > ?");
+                values.push(cursor.updated_at.clone().into());
+                values.push(cursor.updated_at.into());
+                values.push(cursor.id.into());
+                sql.push_str(
+                    " AND (bt.updated_at > ? OR (bt.updated_at = ? AND bt.id > ?))",
+                );
             }
             values.push((batch_size as i64).into());
-            sql.push_str(" ORDER BY bt.id ASC LIMIT ?");
+            sql.push_str(" ORDER BY bt.updated_at ASC, bt.id ASC LIMIT ?");
         }
         other => bail!("unsupported database backend for Blog backfill: {other:?}"),
     }
@@ -374,6 +394,7 @@ where
                 locale: row.try_get("", "locale")?,
                 body: row.try_get("", "body")?,
                 body_format: row.try_get("", "body_format")?,
+                updated_at: row.try_get("", "updated_at")?,
             })
         })
         .collect()
@@ -389,25 +410,27 @@ async fn optimistic_update(
         DbBackend::Postgres => (
             "UPDATE blog_post_translations \
              SET body = $1, body_format = $2 \
-             WHERE id = $3 AND body = $4 AND body_format = $5",
+             WHERE id = $3 AND body = $4 AND body_format = $5 AND updated_at = $6",
             vec![
                 converted_body.to_string().into(),
                 TARGET_FORMAT.to_string().into(),
                 row.id.into(),
                 row.body.clone().into(),
                 row.body_format.clone().into(),
+                row.updated_at.clone().into(),
             ],
         ),
         DbBackend::Sqlite => (
             "UPDATE blog_post_translations \
              SET body = ?, body_format = ? \
-             WHERE id = ? AND body = ? AND body_format = ?",
+             WHERE id = ? AND body = ? AND body_format = ? AND updated_at = ?",
             vec![
                 converted_body.to_string().into(),
                 TARGET_FORMAT.to_string().into(),
                 row.id.into(),
                 row.body.clone().into(),
                 row.body_format.clone().into(),
+                row.updated_at.clone().into(),
             ],
         ),
         other => bail!("unsupported database backend for Blog backfill: {other:?}"),
@@ -420,6 +443,13 @@ async fn optimistic_update(
 }
 
 fn convert_row(row: &LegacyRow, allow_markdown_plain_text: bool) -> Result<Conversion> {
+    if row.tenant_id.is_none() {
+        bail!(
+            "Blog translation {} references missing post {}; repair the owner relation before backfill",
+            row.id,
+            row.post_id
+        );
+    }
     let source_format = row.body_format.trim().to_ascii_lowercase();
     let (document, kind) = match source_format.as_str() {
         TARGET_FORMAT => (
@@ -574,10 +604,11 @@ mod tests {
         LegacyRow {
             id: Uuid::new_v4(),
             post_id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
+            tenant_id: Some(Uuid::new_v4()),
             locale: locale.to_string(),
             body: body.to_string(),
             body_format: format.to_string(),
+            updated_at: Utc::now(),
         }
     }
 

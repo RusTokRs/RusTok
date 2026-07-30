@@ -40,6 +40,9 @@ if (evidence.safety?.default_mode !== "dry_run"
   || evidence.safety?.markdown_plain_text_flag !== "--allow-markdown-plain-text"
   || evidence.safety?.preflight_before_apply !== true
   || evidence.safety?.optimistic_updates !== true
+  || evidence.safety?.orphan_rows_fail_closed !== true
+  || evidence.safety?.stable_cursor !== "updated_at_id"
+  || evidence.safety?.optimistic_updated_at_predicate !== true
   || evidence.safety?.checkpoint_mutation !== false) {
   fail("safety contract drift");
 }
@@ -49,6 +52,10 @@ hasAll(source, [
   "async fn preflight_pass(",
   "async fn apply_pass(",
   "async fn optimistic_update(",
+  "LEFT JOIN blog_posts",
+  "struct Cursor",
+  "updated_at = $6",
+  "repair the owner relation before backfill",
   "--apply",
   "--allow-markdown-plain-text",
   "article_document_from_plain_text",

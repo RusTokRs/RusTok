@@ -25,7 +25,10 @@
     "unsupported_formats_fail_closed": true,
     "target_format": "richtext",
     "executes_schema_migration": false,
-    "executes_search_reindex": false
+    "executes_search_reindex": false,
+    "orphan_rows_fail_closed": true,
+    "stable_cursor": "updated_at_id",
+    "optimistic_updated_at_predicate": true
   },
   "validation": {
     "tests_run": false,

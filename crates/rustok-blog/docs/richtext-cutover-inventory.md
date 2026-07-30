@@ -31,9 +31,10 @@ Writes require `--apply` after a complete successful preflight. Historical
 Markdown remains an offline input only and requires the separate
 `--allow-markdown-plain-text` acknowledgement; it is preserved as literal
 paragraph text rather than interpreted as a platform Markdown contract. Apply
-uses optimistic body/format predicates per batch and performs a final
-post-apply scan. The NDJSON report contains identifiers and outcomes, not
-content bodies.
+uses a stable `(updated_at, id)` cursor, reports orphan translations as
+invalid, applies optimistic body/format/updated-at predicates per batch, and
+performs a final post-apply scan. The NDJSON report contains identifiers and
+outcomes, not content bodies.
 
 Evidence: `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`.
 Guardrail: `scripts/verify/verify-blog-richtext-offline-backfill.mjs`.

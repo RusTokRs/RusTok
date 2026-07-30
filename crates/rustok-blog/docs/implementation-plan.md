@@ -115,8 +115,9 @@ outbox publication.
   target-only owner/storage/GraphQL/Search/AI/storefront source is implemented,
   the irreversible migration is fail-closed, and execution is user-owned.
 - Blog article offline backfill: `executable_no_run`; dry-run preflight,
-  content-free reporting, explicit apply/Markdown acknowledgement, optimistic
-  writes, and post-apply verification are implemented.
+  content-free reporting, explicit apply/Markdown acknowledgement, orphan
+  detection, stable cursoring, optimistic writes, and post-apply verification
+  are implemented.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.

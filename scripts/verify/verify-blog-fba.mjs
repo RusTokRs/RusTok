@@ -53,8 +53,6 @@ if (richtextInventory.owner_contract?.write !== 'rustok_api::RichTextDocument'
 const allowedRichtextStatuses = new Set([
   'implemented_source_verified_no_compile',
   'executable_no_run',
-  'contained_compatibility',
-  'legacy_blocker',
 ]);
 for (const check of richtextInventory.checks ?? []) {
   if (!check.name || !check.path || !allowedRichtextStatuses.has(check.status)) {

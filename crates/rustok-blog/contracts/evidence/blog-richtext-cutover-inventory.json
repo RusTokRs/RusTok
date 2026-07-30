@@ -59,7 +59,11 @@
         "async fn apply_pass(",
         "async fn optimistic_update(",
         "--allow-markdown-plain-text",
-        "post-apply verification failed"
+        "post-apply verification failed",
+        "LEFT JOIN blog_posts",
+        "struct Cursor",
+        "updated_at = $6",
+        "repair the owner relation before backfill"
       ],
       "forbidden_markers": [
         "rustok_content::entities",
