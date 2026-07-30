@@ -4,10 +4,10 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-Latest slice: `FORUM-23A2`
+Latest slice: `FORUM-23A3`
 
 This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
-and approved-reply documents now obtain author presentation from the Profiles owner instead of
+and approved-reply documents obtain author presentation from the Profiles owner instead of
 serializing the raw Forum author identifier.
 
 The machine-readable contract is
@@ -43,32 +43,34 @@ that owner event as a Forum projection event whenever the Forum source is compos
 The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
 `ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
 publication fails, the visibility write is explicitly rolled back and the mutation returns a
-retryable owner error. A successful private visibility change therefore cannot commit without the
-durable invalidation consumed by Forum Search.
+retryable owner error.
 
 `FORUM-23A2` applies the same owner rule to `update_my_profile_handle`. Handle normalization,
-duplicate-owner validation, the profile row update, and the `ProfileUpdated` outbox envelope now
-share one Profiles-owned transaction. If event publication fails, the handle write is rolled back;
-a successful public-handle change cannot commit while Forum Search retains only the previous
-handle because the invalidation event was lost.
+duplicate-owner validation, the profile row update, and the `ProfileUpdated` outbox envelope share
+one transaction. If event publication fails, the handle write is rolled back.
 
-Both paths use the shared transactional publisher in
+`FORUM-23A3` applies the same rule to `update_my_profile_content`. Display-name normalization, the
+profile revision timestamp, the selected localized display-name/biography row, and the durable
+`ProfileUpdated` envelope now commit together. A public display-name change therefore cannot
+commit while Forum Search retains the previous name because its invalidation was lost. The shared
+publisher now accepts the actual Profiles owner model returned by SeaORM, correcting the type
+boundary used by the earlier handle and visibility helpers.
+
+Visibility, handle, and content paths use the shared transactional publisher in
 `crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
-classification cannot drift independently. Profile upsert, display-content, locale, and media
-mutations still publish after their owner write and are not claimed to be transactionally coupled
-in this slice.
+classification cannot drift independently. Profile upsert, locale, and media mutations still
+publish after their owner writes and are not claimed to be transactionally coupled.
 
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
-consumer rebuilds the Forum tenant projection from current owner state, so a profile changed to
-private removes the previously stored public summary and a committed handle change replaces the
-old Search presentation.
+consumer rebuilds the Forum tenant projection from current owner state, so committed visibility,
+handle, and public display-name changes replace stale Search presentation.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
-ordering is solved; owner-issued monotonic revisions remain the next ordering hardening task.
-It also does not treat `UserDeleted` as sufficient deletion evidence because that event does not
-prove that the Profiles owner has already removed or hidden its state.
+ordering is solved; owner-issued monotonic revisions remain an ordering-hardening task. It also
+does not treat `UserDeleted` as sufficient deletion evidence because that event does not prove
+that the Profiles owner has already removed or hidden its state.
 
 ## Search shape
 
@@ -92,8 +94,7 @@ Existing Search document rows are replaced by the next Forum rebuild or relevant
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
-- transactionally couple profile upsert, display-content, locale, and media summary updates to
-  their owner events;
+- transactionally couple profile upsert, locale, and media summary updates to their owner events;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;

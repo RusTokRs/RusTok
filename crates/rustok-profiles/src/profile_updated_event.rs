@@ -4,7 +4,7 @@ use sea_orm::DatabaseTransaction;
 use uuid::Uuid;
 
 use crate::{
-    ProfileError, ProfileOperation, ProfileOperationTimer, ProfileRecord, ProfileResult,
+    ProfileError, ProfileOperation, ProfileOperationTimer, ProfileResult, entities,
 };
 
 pub(crate) async fn publish_profile_updated_in_tx(
@@ -12,7 +12,7 @@ pub(crate) async fn publish_profile_updated_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     actor_id: Uuid,
-    profile: &ProfileRecord,
+    profile: &entities::profile::Model,
 ) -> ProfileResult<()> {
     let timer = ProfileOperationTimer::start(
         ProfileOperation::PublishUpdatedEvent,

@@ -42,6 +42,7 @@ const profilesPath = "crates/rustok-profiles/src/presentation.rs";
 const profilesLibPath = "crates/rustok-profiles/src/lib.rs";
 const profilesMutationPath = "crates/rustok-profiles/src/graphql/mutation.rs";
 const profilesUpdatedEventPath = "crates/rustok-profiles/src/profile_updated_event.rs";
+const profilesContentWritePath = "crates/rustok-profiles/src/content_write.rs";
 const profilesHandleWritePath = "crates/rustok-profiles/src/handle_write.rs";
 const profilesVisibilityWritePath = "crates/rustok-profiles/src/visibility_write.rs";
 const profilesErrorPath = "crates/rustok-profiles/src/error.rs";
@@ -57,6 +58,7 @@ const profiles = read(profilesPath);
 const profilesLib = read(profilesLibPath);
 const profilesMutation = read(profilesMutationPath);
 const profilesUpdatedEvent = read(profilesUpdatedEventPath);
+const profilesContentWrite = read(profilesContentWritePath);
 const profilesHandleWrite = read(profilesHandleWritePath);
 const profilesVisibilityWrite = read(profilesVisibilityWritePath);
 const profilesError = read(profilesErrorPath);
@@ -115,6 +117,7 @@ for (const marker of [
   requireMarker(profiles, marker, profilesPath);
 }
 for (const marker of [
+  "mod content_write;",
   "mod handle_write;",
   "mod profile_updated_event;",
   "mod visibility_write;",
@@ -122,10 +125,10 @@ for (const marker of [
   requireMarker(profilesLib, marker, profilesLibPath);
 }
 for (const marker of [
+  "update_profile_content_with_event(",
   "update_profile_handle_with_event(",
   "update_profile_visibility_with_event(",
   "service.upsert_profile(",
-  "service.update_profile_content(",
   "service.update_profile_locale(",
   "service.update_profile_media(",
   "publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?",
@@ -135,6 +138,7 @@ for (const marker of [
   requireMarker(profilesMutation, marker, profilesMutationPath);
 }
 for (const forbidden of [
+  "service.update_profile_content(",
   "service.update_profile_handle(",
   "service.update_profile_visibility(",
 ]) {
@@ -143,6 +147,7 @@ for (const forbidden of [
 
 for (const marker of [
   "publish_profile_updated_in_tx",
+  "profile: &entities::profile::Model",
   ".publish_in_tx(",
   "DomainEvent::ProfileUpdated",
   "ProfileOperation::PublishUpdatedEvent",
@@ -151,6 +156,37 @@ for (const marker of [
 ]) {
   requireMarker(profilesUpdatedEvent, marker, profilesUpdatedEventPath);
 }
+rejectMarker(profilesUpdatedEvent, "profile: &ProfileRecord", profilesUpdatedEventPath);
+
+for (const marker of [
+  "ProfileService::normalize_display_name(display_name)?",
+  "db.begin().await?",
+  "Column::TenantId.eq(tenant_id)",
+  "Column::ProfileUserId.eq(user_id)",
+  "Column::Locale.eq(translation_locale.clone())",
+  "active.display_name = Set(display_name)",
+  "active.bio = Set(bio.map(str::to_string))",
+  ".update(&txn).await?",
+  ".insert(&txn)",
+  "publish_profile_updated_in_tx",
+  "txn.rollback().await?",
+  "txn.commit().await?",
+  "Profile content event publication failed; rolling back owner write",
+]) {
+  requireMarker(profilesContentWrite, marker, profilesContentWritePath);
+}
+requireOrder(
+  profilesContentWrite,
+  ".update(&txn).await?",
+  "publish_profile_updated_in_tx",
+  profilesContentWritePath,
+);
+requireOrder(
+  profilesContentWrite,
+  "publish_profile_updated_in_tx",
+  "txn.commit().await?",
+  profilesContentWritePath,
+);
 
 for (const marker of [
   "ProfileService::normalize_handle(handle)?",
@@ -230,15 +266,17 @@ for (const marker of [
 rejectMarker(ingestion, "DomainEvent::UserDeleted", ingestionPath);
 
 for (const marker of [
-  "FORUM-23A2",
+  "FORUM-23A3",
   "ProfilePresentationService",
   "forum_author:<user_id>",
   "raw `payload.author_id`",
   "owner-issued monotonic",
   "same Profiles-owned database transaction",
   "update_my_profile_handle",
+  "update_my_profile_content",
   "shared transactional publisher",
-  "Profile upsert, display-content, locale, and media",
+  "actual Profiles owner model",
+  "Profile upsert, locale, and media",
   "does not treat `UserDeleted`",
   "not run by the implementation agent",
 ]) {
@@ -247,7 +285,7 @@ for (const marker of [
 
 if (contract) {
   if (contract.task !== "FORUM-23A") failures.push(`${contractPath}: unexpected task`);
-  if (contract.latest_slice !== "FORUM-23A2") {
+  if (contract.latest_slice !== "FORUM-23A3") {
     failures.push(`${contractPath}: unexpected latest slice`);
   }
   if (contract.status !== "source_complete_execution_pending") {
@@ -274,10 +312,13 @@ if (contract) {
     "profile_updated_is_durable",
     "profile_updated_is_emitted_after_owner_write",
     "transactional_profile_event_publisher_is_shared",
+    "transactional_profile_event_publisher_accepts_owner_model",
     "profile_visibility_write_and_event_are_atomic",
     "visibility_event_failure_rolls_back_owner_write",
     "profile_handle_write_and_event_are_atomic",
     "handle_event_failure_rolls_back_owner_write",
+    "profile_content_write_and_event_are_atomic",
+    "content_event_failure_rolls_back_owner_write",
     "author_scope_is_tenant_and_user_scoped",
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark",
     "author_change_rebuilds_current_forum_owner_state",
@@ -310,7 +351,7 @@ if (contract) {
   for (const nonClaim of [
     "account deletion redaction is complete",
     "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
-    "profile upsert content locale and media updates are transactionally coupled to ProfileUpdated publication",
+    "profile upsert locale and media updates are transactionally coupled to ProfileUpdated publication",
   ]) {
     if (!contract.non_claims?.includes(nonClaim)) {
       failures.push(`${contractPath}: missing non-claim ${nonClaim}`);
