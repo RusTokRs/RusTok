@@ -12,6 +12,7 @@
     "native_locale_logging": true,
     "shared_static_public_envelopes": true,
     "shared_transport_path_logging": true,
+    "shared_raw_cause_logging": false,
     "cart_validation_compatibility_preserved": true,
     "foreign_transport_error_text_public": false,
     "checkout_dto_changed": false,
