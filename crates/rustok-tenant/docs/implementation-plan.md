@@ -138,3 +138,16 @@ jobs.
    a public/runtime contract change.
 3. Update this status block and `docs/modules/registry.md` with a UI or
    transport boundary change.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `pending owner/runtime audit; tenant domain, locale-policy CAS, read ports, lifecycle events, resolver/cache generation, installer provisioning, module toggles and tenant-scoped RBAC consumers`
+- Findings: `P0=0, P1=0, P2=0, P3=0`
+- Fixed in this pass: `none; verification start marker only`
+- Remaining risks or blockers: `multi-replica Redis evidence is source-complete but unexecuted; ownership, lifecycle transactionality, cache generation, resolver trust, multilingual storage and cross-module consumers require current source inspection`
+- Evidence: `local owner plan and published TenantReadPort/TenantLocalePolicyPort boundaries reviewed before source work`
+- Next action: `inspect tenant migrations, command transactions/events, read and locale-policy ports, server resolution/cache invalidation, installer and module lifecycle consumers, then fix reproducible P0/P1 defects`
+- Resume command: `npm run verify:tenant:fba && npm run verify:tenant:admin-boundary && cargo xtask module validate tenant && cargo xtask module test tenant`
