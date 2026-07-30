@@ -17,6 +17,8 @@ use sea_orm_migration::MigrationTrait;
 pub mod dto;
 pub mod entities;
 pub mod error;
+#[cfg(feature = "index")]
+pub mod index;
 pub mod migrations;
 pub mod ports;
 mod public_error;
@@ -25,6 +27,12 @@ mod seo_targets;
 pub mod services;
 
 pub use error::{CommerceError, CommerceResult};
+#[cfg(feature = "index")]
+pub use index::{
+    PRODUCT_INDEX_ENTITY, PRODUCT_INDEX_MODULE, PRODUCT_INDEX_SOURCE,
+    PRODUCT_INDEX_SOURCE_FACTORY, ProductIndexError, ProductPostgresIndexSource,
+    ProductPostgresIndexSourceFactory, product_index_schema,
+};
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
@@ -56,7 +64,14 @@ impl RusToKModule for ProductModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["taxonomy"]
+        #[cfg(feature = "index")]
+        {
+            &["taxonomy", "index"]
+        }
+        #[cfg(not(feature = "index"))]
+        {
+            &["taxonomy"]
+        }
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -80,7 +95,36 @@ impl RusToKModule for ProductModule {
                     "product SEO target registration failed: {error}"
                 ))
             },
-        )
+        )?;
+
+        #[cfg(feature = "index")]
+        {
+            let schema = index::product_index_schema().map_err(|error| {
+                rustok_core::Error::Validation(format!(
+                    "Product Index schema construction failed: {error}"
+                ))
+            })?;
+            rustok_index::register_index_schema_source(extensions, self.slug(), schema).map_err(
+                |error| {
+                    rustok_core::Error::Validation(format!(
+                        "Product Index schema source registration failed: {error}"
+                    ))
+                },
+            )?;
+            rustok_index::register_postgres_index_source_factory(
+                extensions,
+                self.slug(),
+                index::PRODUCT_INDEX_SOURCE_FACTORY,
+                index::ProductPostgresIndexSourceFactory,
+            )
+            .map_err(|error| {
+                rustok_core::Error::Validation(format!(
+                    "Product Index source factory registration failed: {error}"
+                ))
+            })?;
+        }
+
+        Ok(())
     }
 }
 
