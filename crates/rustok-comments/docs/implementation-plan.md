@@ -22,10 +22,11 @@ a counter write.
 First-thread creation has a separate owner identity lock. Before a transactional
 thread insert, `comment_thread::ActiveModelBehavior` upserts a persistent
 `comment_thread_identity_locks` row with `ON CONFLICT DO NOTHING`, locks that row,
-and checks for the canonical thread. A concurrent creator receives an intentional
-application `DbErr` before its SQL INSERT, leaving the PostgreSQL transaction
-usable by the existing `find_or_create_thread_in_tx` fallback. This prevents the
-old unique-violation/aborted-transaction failure mode without transport retries.
+and checks for the canonical thread. A concurrent creator receives an owner-
+classified application `DbErr` before its SQL INSERT, leaving the PostgreSQL
+transaction usable. `find_or_create_thread_in_tx` performs canonical lookup only
+for the exact tenant/target identity marker; unrelated storage errors propagate
+through `CommentsError::Database` instead of becoming `CommentThreadNotFound`.
 
 Append-only migrations repair historical counters, deterministically renumber
 historical positions, enforce `UNIQUE(thread_id, position)`, and create the unique
@@ -54,12 +55,14 @@ before the schema column is dropped.
 - Static and runtime-order evidence:
   `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
   and `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
-- Thread write invariant evidence:
+- Thread write invariant evidence schema v2:
   `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
   with status `executable_no_run`.
 - Thread invariant source gate:
   `scripts/verify/verify-comments-thread-write-invariants.mjs` with focused
   self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`.
+  It locks the identity-conflict-only fallback and verifies that unrelated
+  storage errors propagate; broad `Err(_)` fallback is forbidden.
 - Exact leaf commands: `verify:comments:thread-write-invariants` and
   `test:verify:comments:thread-write-invariants`; both are registered in
   `verify:comments:fba` / `test:verify:comments:fba` before the shared owner
@@ -84,6 +87,13 @@ evidence and Rust targets, but did not retain the JS self-test or an exact
 verification-chain contract; the root package had no named leaf commands and no
 Comments FBA test chain. Slice 11 registers those source assets without changing
 the owner behavior or promoting `executable_no_run` to executed evidence.
+
+The continuation audit at `6b5cd3f94265ff7ba382ca89916a73065806a0b5`
+found that `find_or_create_thread_in_tx` still reloaded the canonical thread after
+every insert `DbErr`. Slice 12 adds a tenant/target-scoped owner marker and
+classifier, narrows fallback to that exact identity conflict, propagates unrelated
+storage errors, upgrades retained evidence to schema v2, and adds focused negative
+guards without recording Rust or PostgreSQL execution.
 
 No verifier, Rust test, PostgreSQL target, compile, workflow, or CI execution is
 recorded by this source-only slice.
@@ -116,6 +126,10 @@ recorded by this source-only slice.
     Comments FBA source gate, added exact verify/test npm commands, and locked
     registry schema v2 plus aggregate order while preserving runtime execution as
     maintainer-owned.
+12. Added an owner-classified first-thread identity marker, narrowed the service
+    fallback to that exact tenant/target conflict, propagated every unrelated
+    insert `DbErr`, upgraded thread evidence to schema v2, and added focused
+    regression guards for the classifier, broad catch, and propagation branch.
 
 ## Open results
 
@@ -125,11 +139,13 @@ recorded by this source-only slice.
    **Done when:** runtime evidence confirms the owner locks under real concurrent
    PostgreSQL transactions.
 
-2. **Narrow the service fallback error class.** `find_or_create_thread_in_tx`
-   currently retries canonical lookup for every thread insert error. Preserve the
-   identity-conflict fallback while propagating unrelated infrastructure errors.
-   **Done when:** typed storage errors cannot be converted into a misleading
-   `CommentThreadNotFound`.
+2. **Execute fallback-class runtime evidence.** The source-level
+   identity-conflict-only fallback is complete. Inject or reproduce an unrelated
+   thread insert `DbErr` and retain evidence that it propagates as a database
+   failure rather than becoming `CommentThreadNotFound`; also retain the canonical
+   concurrent identity-conflict lookup path.
+   **Done when:** runtime evidence proves unrelated storage errors propagate and
+   the expected first-thread race still returns one canonical thread.
 
 3. **Implement and execute the Blog reply-count event projection.** Consume
    `comment.created` and `comment.deleted` idempotently, publish the Blog-owned
@@ -177,6 +193,7 @@ should run the relevant subset, including:
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_write_invariants postgres_concurrent_creates_and_delete_preserve_thread_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_creation_concurrency`
+- Targeted injected storage-error coverage for `find_or_create_thread_in_tx`
 - `npm run verify:comments:admin-boundary`
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
@@ -193,5 +210,7 @@ should run the relevant subset, including:
 3. Status-only and metadata-only thread updates must not set `comment_count`.
 4. Preserve the identity-lock before first-thread insert and keep its unique
    `(tenant_id, target_type, target_id)` key.
-5. Keep migrations append-only and preserve both database uniqueness invariants.
-6. Update local/central contracts when the Comments boundary changes.
+5. Keep the owner-classified identity marker scoped to tenant and target, and never
+   restore a broad insert-error fallback.
+6. Keep migrations append-only and preserve both database uniqueness invariants.
+7. Update local/central contracts when the Comments boundary changes.
