@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BN",
+  "upstream_task": "FORUM-20BM",
+  "scope": "Delete the uncompiled Forum GraphQL query snapshot after moving every source verifier and diagnostic workflow to the canonical compiled query_runtime.rs owner",
+  "canonical_graphql_runtime": "crates/rustok-forum/src/graphql/query_runtime.rs",
+  "graphql_module_selector": "crates/rustok-forum/src/graphql/mod.rs",
+  "removed_snapshot": "crates/rustok-forum/src/graphql/query.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md",
+  "source_verifier": "scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
+  "approved_reply_search_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
+  "migrated_consumers": [
+    "scripts/verify/verify-channel-proof-points.mjs",
+    "scripts/verify/verify-forum-reply-audience-read.mjs",
+    "scripts/verify/verify-forum-reply-legacy-cutover.mjs",
+    "scripts/verify/verify-forum-category-audience-read.mjs",
+    ".github/workflows/forum11-diagnostics.yml"
+  ],
+  "upstream_contracts": [
+    "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json",
+    "crates/rustok-forum/contracts/forum-category-audience-read.json",
+    "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
+    "crates/rustok-forum/contracts/forum-search-projection.json",
+    "crates/rustok-forum/contracts/forum-projection-invalidation.json",
+    "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
+    "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
+  ],
+  "cleanup_boundary": {
+    "legacy_query_snapshot_removed": true,
+    "canonical_runtime_file_preserved": true,
+    "module_selector_still_targets_query_runtime": true,
+    "source_verifiers_read_only_canonical_runtime": true,
+    "channel_proof_points_read_only_canonical_runtime": true,
+    "forum11_diagnostics_patches_legacy_snapshot": false,
+    "forum11_diagnostics_formats_canonical_runtime": true,
+    "removed_snapshot_may_be_recreated_by_workflow": false,
+    "reply_exact_owner_assertions_preserved": true,
+    "category_exact_owner_assertions_preserved": true,
+    "public_channel_reply_assertions_preserved": true
+  },
+  "downstream_handoff": {
+    "approved_public_reply_documents_completed": true,
+    "completion_task": "FORUM-20BO",
+    "completion_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json"
+  },
+  "compatibility": {
+    "existing_graphql_field_names_changed": false,
+    "graphql_schema_composition_changed": false,
+    "graphql_runtime_owner_changed": false,
+    "forum_rest_routes_changed": false,
+    "public_response_dto_changed": false,
+    "workspace_dependency_changed": false,
+    "cargo_lock_changed": false,
+    "migration_added": false,
+    "ffa_status_changed": false,
+    "fba_status_changed": false
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "historical_reply_category_and_discovery_contracts_updated": true,
+    "search_visibility_handoff_contracts_updated": true,
+    "canonical_plan_updated": false,
+    "crate_api_updated": false,
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BO with conflict-safe repository-local edits after maintainer validation."
+  },
+  "remaining_scope": [
+    "add owner revision ordering and durable inbox reconciliation for category topic reply and future member projections under FORUM-23",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation Forum projection cleanup and approved-reply evidence",
+    "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
+    "add an explicit Forum translation target invalidation adapter if Forum categories topics or replies are later registered with the translation control plane"
+  ],
+  "downstream_task": "FORUM-20BP",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "node scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
+      "node scripts/verify/verify-forum-approved-reply-search.mjs",
+      "node scripts/verify/verify-forum-reply-audience-read.mjs",
+      "node scripts/verify/verify-forum-reply-legacy-cutover.mjs",
+      "node scripts/verify/verify-forum-category-audience-read.mjs",
+      "node scripts/verify/verify-channel-proof-points.mjs",
+      "cargo test -p rustok-forum graphql -- --nocapture",
+      "cargo xtask module validate forum"
+    ]
+  }
+}

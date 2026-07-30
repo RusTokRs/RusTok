@@ -10,6 +10,8 @@ mod partition_maintenance;
 mod partition_mutation;
 mod partition_query;
 mod partition_snapshot;
+mod query_equivalence_admission;
+mod query_equivalence_capture;
 mod report_provenance;
 mod runner;
 mod sql;
@@ -41,6 +43,12 @@ pub use partition_query::{
 pub use partition_snapshot::{
     BaselineSnapshot, PartitionSnapshotCapture, PartitionSnapshotConfig, RelationEvidence,
     ShadowRelationEvidence, ShadowSnapshot, TenantPredicateAudit, capture_partition_snapshot,
+};
+pub use query_equivalence_admission::{
+    QueryEquivalenceAdmission, QueryEquivalenceAdmissionConfig, admit_query_equivalence_bundle,
+};
+pub use query_equivalence_capture::{
+    QueryEquivalenceCapture, QueryEquivalenceCaptureConfig, capture_query_equivalence,
 };
 pub use report_provenance::write_provenance_bound_report;
 pub use runner::{BenchmarkReport, run, write_report};

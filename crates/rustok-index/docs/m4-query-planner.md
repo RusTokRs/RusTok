@@ -1,6 +1,6 @@
 # M4 query planner actualization
 
-Date: 2026-07-29
+Date: 2026-07-30
 
 This note actualizes the live `rustok-index` implementation plan after rechecking the
 M3 storage boundary and the M4 query slices merged into `main`.
@@ -12,6 +12,12 @@ manifest generation, saved-manifest verification, and recursive filesystem drift
 detection. The repository owner still needs to execute and admit one fresh real
 PostgreSQL partition packet. That owner gate blocks production partition lifecycle
 design but does not block M4 query source work.
+
+The previous server-composition blocker is now narrowed. Source modules can publish
+generic schema contracts into an Index-owned catalog, and the selected distribution
+materializes one non-empty immutable registry after all module registrations. Social
+Graph is the first source publication. The server still does not construct an
+`IndexQueryPort`, authorize callers, or cut any consumer over.
 
 ## Actualized status
 
@@ -26,6 +32,9 @@ design but does not block M4 query source work.
 - M4 PostgreSQL query port and strict row adapter: `source_complete_execution_pending`.
 - M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
 - M4 PostgreSQL/reference fixture source: `source_complete_owner_execution_pending`.
+- M4 retained PostgreSQL/reference capture source: `source_complete_owner_execution_pending`.
+- M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
+- M4 source-owned immutable schema registry: `source_complete_execution_pending`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -109,14 +118,49 @@ one-link filtering/projection, many-link `Gte`/`Contains`/`Ne`/`IsNull`, and nes
 identity/value alignment. The fixture is env-gated and has not been run by the
 implementation agent.
 
+## Retained equivalence capture and admission
+
+`index-query-equivalence-capture` requires explicit opt-in, an exact clean checkout
+commit, stable run key, and PostgreSQL 16. It runs only the merged fixture, rejects
+skipped-test success, rechecks source and database identity, and publishes a fresh
+three-file descriptor-last bundle containing exact stdout/stderr plus hashes and
+provenance. The PostgreSQL URL and credentials are not serialized.
+
+`index-query-equivalence-admission` performs no Cargo or database execution. It reads the
+immutable bundle, requires independent expected source identity, rejects unknown
+descriptor fields, aliases, symlinks, extras, hash drift, command/scenario drift,
+skipped output, and mid-review byte changes, then creates one no-clobber receipt outside
+the bundle. The receipt records `production_lifecycle_authorized: false`.
+
+Both tools are source complete but have not been run. A capture exit alone does not admit
+the bundle; an admission receipt alone does not authorize deployment or partition work.
+
+## Source-owned schema registry
+
+`IndexModule` seeds `IndexSchemaSourceCatalog` in `ModuleRuntimeExtensions`. Source
+modules publish exact generic contracts with `register_index_schema_source`; duplicate
+ownership for one `SchemaRef` fails even when fingerprints match.
+
+After all modules and selected bridges register, `rustok-distribution` materializes the
+complete catalog through one `SchemaRegistry::register_batch`. This permits cross-source
+links, preserves deterministic `BTreeMap` order, and publishes one
+`SharedIndexSchemaRegistry` wrapping an immutable `Arc<SchemaRegistry>`. Missing or empty
+catalogs do not publish a false query runtime.
+
+With its `index` feature enabled, `SocialGraphModule` is the first source owner. It
+publishes the existing relation schema under owner slug `social_graph`; distribution and
+server code do not import the schema builder or Social Graph DTOs.
+
 ## Remaining bounded M4 work
 
-The canonical checklist remains open until the owner runs the fixture and retains live
-PostgreSQL/reference evidence. Additional boundaries remain:
+The canonical checklist remains open until the owner runs the fixture through capture,
+admits the retained bundle, and preserves both bundle and receipt. Additional boundaries
+remain:
 
 - aggregate ordering semantics for paths traversing `many`;
-- server/storefront/admin/search query-port composition and consumer cutover;
-- retained live equivalence evidence with database identity and result provenance.
+- construct an Index-owned query runtime from `SharedIndexSchemaRegistry` and host DB;
+- publish schemas from additional source owners as their consumers are selected;
+- server/storefront/admin/search authorization and consumer cutover.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
@@ -129,13 +173,31 @@ Suggested commands:
 
 ```bash
 cargo test -p rustok-index planner_tests -- --nocapture
+cargo test -p rustok-index source_schema_registry -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo test -p rustok-index query_snapshot_tests -- --nocapture
+cargo test -p rustok-social-graph --features index module_publishes_its_index_schema_through_runtime_extensions -- --nocapture
+cargo test -p rustok-distribution source_schema_catalog_materializes_after_all_modules_register -- --nocapture
 RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-index postgres_query_port_matches_reference_fixture -- --nocapture
+INDEX_QUERY_EQUIVALENCE_ALLOW_CAPTURE=1 \
+RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... \
+INDEX_QUERY_EQUIVALENCE_COMMIT=<40-char-head-commit> \
+INDEX_QUERY_EQUIVALENCE_RUN_KEY=<stable-run-key> \
+  cargo run -p rustok-benchmarks --bin index-query-equivalence-capture
+INDEX_QUERY_EQUIVALENCE_ALLOW_ADMISSION=1 \
+INDEX_QUERY_EQUIVALENCE_BUNDLE=<fresh-capture-root> \
+INDEX_QUERY_EQUIVALENCE_EXPECTED_COMMIT=<40-char-head-commit> \
+INDEX_QUERY_EQUIVALENCE_EXPECTED_RUN_KEY=<stable-run-key> \
+INDEX_QUERY_EQUIVALENCE_ADMISSION_OUTPUT=<existing-parent>/equivalence-admission.json \
+  cargo run -p rustok-benchmarks --bin index-query-equivalence-admission
 cargo check -p rustok-index --all-targets
+cargo check -p rustok-social-graph --features index --all-targets
+cargo check -p rustok-distribution --all-targets
+cargo check -p rustok-benchmarks --bin index-query-equivalence-capture
+cargo check -p rustok-benchmarks --bin index-query-equivalence-admission
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
@@ -143,5 +205,8 @@ node scripts/verify/verify-index-query-result-decoder.mjs
 node scripts/verify/verify-index-many-link-filtering.mjs
 node scripts/verify/verify-index-query-snapshots.mjs
 node scripts/verify/verify-index-postgres-reference-equivalence.mjs
+node scripts/verify/verify-index-query-equivalence-capture.mjs
+node scripts/verify/verify-index-query-equivalence-admission.mjs
+node scripts/verify/verify-index-source-schema-registry.mjs
 cargo xtask module validate index
 ```

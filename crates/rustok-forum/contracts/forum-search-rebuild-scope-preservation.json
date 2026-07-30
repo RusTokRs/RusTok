@@ -2,7 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20BM",
   "upstream_task": "FORUM-20BL",
-  "scope": "Preserve the previous committed value of each external Search projection scope during sequential tenant rebuilds by preventing the direct Search projector from deleting Blog, Forum or future provider-owned documents",
+  "scope": "Preserve the previous committed value of each external Search projection scope during sequential tenant rebuilds by preventing the direct Search projector from deleting Blog Forum or future provider-owned documents",
   "active_search_projector": "crates/rustok-search/src/projector.rs",
   "private_legacy_projector": "crates/rustok-search/src/projector_legacy.rs",
   "search_module_wiring": "crates/rustok-search/src/lib.rs",
@@ -12,6 +12,8 @@
   "source_contract_test": "crates/rustok-search/tests/search_scope_preservation_contract.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",
   "source_verifier": "scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+  "approved_reply_search_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
   "upstream_contracts": [
     "crates/rustok-forum/contracts/forum-search-projection.json",
     "crates/rustok-forum/contracts/forum-projection-invalidation.json",
@@ -44,6 +46,13 @@
     "blog_scope_replacement_transactional": true,
     "forum_scope_replacement_uses_temporary_stage": true,
     "forum_scope_replacement_transactional": true,
+    "forum_scope_entity_types": [
+      "forum_category",
+      "forum_topic",
+      "forum_reply"
+    ],
+    "forum_scope_delete_includes_approved_reply_documents": true,
+    "forum_scope_stage_includes_approved_reply_documents": true,
     "failed_blog_rebuild_keeps_previous_blog_scope": true,
     "failed_forum_rebuild_keeps_previous_forum_scope": true,
     "later_source_failure_cannot_remove_untouched_external_scope": true,
@@ -56,12 +65,20 @@
     "blog_documents_count_as_core_bootstrap": false,
     "forum_documents_count_as_core_bootstrap": false
   },
+  "downstream_handoff": {
+    "legacy_graphql_snapshot_cleanup_completed": true,
+    "snapshot_completion_task": "FORUM-20BN",
+    "snapshot_completion_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+    "approved_public_reply_documents_completed": true,
+    "completion_task": "FORUM-20BO",
+    "completion_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json"
+  },
   "compatibility": {
     "search_projector_public_type_changed": false,
     "search_projector_public_method_names_changed": false,
-    "search_ingestion_event_contract_changed": false,
+    "search_ingestion_event_match_contract_changed": false,
     "search_query_contract_changed": false,
-    "forum_projection_source_contract_changed": false,
+    "forum_projection_source_contract_extended_with_reply_kind": true,
     "forum_rest_routes_changed": false,
     "forum_graphql_fields_changed": false,
     "public_response_dto_changed": false,
@@ -70,7 +87,7 @@
     "migration_added": false,
     "ffa_status_changed": false,
     "fba_status_changed": false,
-    "legacy_graphql_snapshot_changed": false
+    "legacy_graphql_snapshot_removed": true
   },
   "documentation": {
     "owner_note_added": true,
@@ -80,26 +97,26 @@
     "crate_api_updated": false,
     "search_plan_updated": false,
     "canonical_forum_plan_updated": false,
-    "synchronization_debt": "Advance Search CRATE_API/local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BM with conflict-safe repository-local edits after maintainer validation."
+    "synchronization_debt": "Advance Search CRATE_API/local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BO with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
-    "decide whether approved public replies become separate Search documents under FORUM-23",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
-    "capture maintainer-executed PostgreSQL full-rebuild failure preservation and Forum projection cleanup evidence",
+    "add owner revision ordering and durable inbox reconciliation for category topic reply and future member projections under FORUM-23",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation Forum projection cleanup and approved-reply evidence",
     "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
-    "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
+    "add an explicit Forum translation target invalidation adapter if Forum categories topics or replies are later registered with the translation control plane"
   ],
-  "downstream_task": "FORUM-20BN",
+  "downstream_task": "FORUM-20BP",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
       "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
+      "cargo test -p rustok-search --test forum_approved_reply_projection_contract -- --nocapture",
       "cargo test -p rustok-search --test blog_projection_postgres_test -- --nocapture",
       "cargo test -p rustok-search forum_projector -- --nocapture",
+      "node scripts/verify/verify-forum-approved-reply-search.mjs",
       "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
       "node scripts/verify/verify-forum-search-projection.mjs",
       "node scripts/verify/verify-forum-projection-invalidation.mjs",
-      "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
       "cargo xtask module validate forum"
     ]
   }

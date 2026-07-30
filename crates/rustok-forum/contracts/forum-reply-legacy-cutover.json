@@ -6,7 +6,7 @@
   "reply_owner": "crates/rustok-forum/src/services/reply_audience_read.rs",
   "transport_context": "crates/rustok-forum/src/reply_read_transport.rs",
   "legacy_graphql_query": "crates/rustok-forum/src/graphql/query_runtime.rs",
-  "legacy_graphql_snapshot": "crates/rustok-forum/src/graphql/query.rs",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
   "graphql_runtime": "crates/rustok-forum/src/graphql/runtime_data.rs",
   "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
   "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter.rs",
@@ -50,7 +50,7 @@
     "profile_enrichment_preserved": true,
     "approved_reply_filter_preserved": true,
     "canonical_graphql_runtime_moved": true,
-    "legacy_graphql_snapshot_is_compiled": false
+    "legacy_graphql_snapshot_removed": true
   },
   "documentation": {
     "owner_note_added": true,
@@ -58,12 +58,11 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BH through a conflict-safe repository-local edit; remove the uncompiled query.rs snapshot after downstream source verifiers are migrated."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BN through a conflict-safe repository-local edit after maintainer validation."
   },
   "remaining_scope": [
     "migrate search index SEO and deep-link authorization",
     "add visibility-scoped category and all-read commands",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed SQLite PostgreSQL REST native and GraphQL runtime evidence"
   ],
   "downstream_task": "FORUM-20BH",
@@ -74,6 +73,7 @@
       "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-reply-legacy-cutover.mjs",
       "node scripts/verify/verify-forum-category-audience-read.mjs",
+      "node scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
       "cargo xtask module validate forum"
     ]
   }

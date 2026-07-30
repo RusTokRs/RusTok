@@ -10,6 +10,9 @@ const requireText = (source, needle, label) => {
   }
 };
 
+const snapshotPath = 'crates/rustok-forum/src/graphql/query.rs';
+const cleanupPath =
+  'crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json';
 const query = read('crates/rustok-forum/src/graphql/query_runtime.rs');
 const graphqlModule = read('crates/rustok-forum/src/graphql/mod.rs');
 const graphqlAdapter = read(
@@ -25,6 +28,7 @@ const contract = JSON.parse(
 const categoryContract = JSON.parse(
   read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
 );
+const cleanup = JSON.parse(read(cleanupPath));
 
 requireText(query, 'async fn forum_replies(', 'legacy forumReplies field');
 requireText(
@@ -114,6 +118,9 @@ if (
 ) {
   throw new Error('temporary native reply adapter must be removed');
 }
+if (exists(snapshotPath)) {
+  throw new Error('legacy GraphQL query snapshot must be removed');
+}
 
 if (contract.task !== 'FORUM-20BG') throw new Error('unexpected task');
 for (const key of [
@@ -139,8 +146,11 @@ for (const key of [
 if (!contract.compatibility.canonical_graphql_runtime_moved) {
   throw new Error('reply handoff must record the canonical GraphQL runtime move');
 }
-if (contract.compatibility.legacy_graphql_snapshot_is_compiled) {
-  throw new Error('legacy GraphQL snapshot must remain uncompiled');
+if (!contract.compatibility.legacy_graphql_snapshot_removed) {
+  throw new Error('reply handoff must record legacy snapshot removal');
+}
+if (contract.graphql_snapshot_cleanup_contract !== cleanupPath) {
+  throw new Error('reply handoff must point to snapshot cleanup completion');
 }
 if (
   contract.downstream_completion !==
@@ -150,6 +160,9 @@ if (
 }
 if (categoryContract.task !== 'FORUM-20BH') {
   throw new Error('unexpected category-read completion task');
+}
+if (cleanup.task !== 'FORUM-20BN') {
+  throw new Error('unexpected snapshot cleanup task');
 }
 if (contract.downstream_task !== 'FORUM-20BH') {
   throw new Error('unexpected downstream task');

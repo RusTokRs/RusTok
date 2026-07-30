@@ -13,7 +13,7 @@
   "graphql_tree_query": "crates/rustok-forum/src/graphql/category_tree_query.rs",
   "graphql_runtime_data": "crates/rustok-forum/src/graphql/runtime_data.rs",
   "graphql_module_selector": "crates/rustok-forum/src/graphql/mod.rs",
-  "graphql_legacy_snapshot": "crates/rustok-forum/src/graphql/query.rs",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
   "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
   "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bh-category-audience-read.md",
@@ -58,7 +58,7 @@
     "topic_reply_read_paths_changed": false,
     "mark_read_paths_changed": false,
     "canonical_graphql_runtime_uses_query_runtime": true,
-    "legacy_query_snapshot_is_uncompiled": true,
+    "legacy_query_snapshot_removed": true,
     "search_change_is_route_contract_only": true,
     "forum_search_projection_consumer_wired": false
   },
@@ -68,13 +68,12 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BI through a conflict-safe repository-local edit; delete the legacy query.rs snapshot only after source verifiers no longer depend on it."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BN through a conflict-safe repository-local edit after maintainer validation."
   },
   "remaining_scope": [
     "wire a Search-owned Forum projection consumer through exact public discovery without copying audience policy into Search SQL",
     "reauthorize or remove projected Forum documents after current visibility policy changes",
     "add visibility-scoped category and all-read commands",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed PostgreSQL SQLite SEO Search and route runtime evidence"
   ],
   "downstream_task": "FORUM-20BI",
@@ -86,6 +85,7 @@
       "cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-category-audience-read.mjs",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
+      "node scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
       "cargo xtask module validate forum"
     ]
   }

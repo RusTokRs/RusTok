@@ -39,6 +39,7 @@ pub fn build_runtime_extensions(
 ) -> rustok_core::Result<ModuleRuntimeExtensions> {
     let mut extensions = registry.build_runtime_extensions()?;
     register_runtime_bridges(&mut extensions)?;
+    materialize_index_schema_sources(&mut extensions)?;
     Ok(extensions)
 }
 
@@ -56,6 +57,26 @@ fn register_runtime_bridges(extensions: &mut ModuleRuntimeExtensions) -> rustok_
     }
     #[cfg(not(feature = "ai-translation"))]
     let _ = extensions;
+    Ok(())
+}
+
+fn materialize_index_schema_sources(
+    extensions: &mut ModuleRuntimeExtensions,
+) -> rustok_core::Result<()> {
+    if extensions.contains::<rustok_index::SharedIndexSchemaRegistry>() {
+        return Err(rustok_core::Error::Validation(
+            "shared Index schema registry is already materialized".to_string(),
+        ));
+    }
+
+    let shared = rustok_index::materialize_index_schema_registry(extensions).map_err(|error| {
+        rustok_core::Error::Validation(format!(
+            "Index source schema registry materialization failed: {error}"
+        ))
+    })?;
+    if let Some(shared) = shared {
+        extensions.insert(shared);
+    }
     Ok(())
 }
 
@@ -287,7 +308,73 @@ pub fn composition_identity() -> CompositionIdentity {
 
 #[cfg(test)]
 mod tests {
-    use super::composition_identity;
+    use async_trait::async_trait;
+    use rustok_core::{MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule};
+    use rustok_index::{
+        EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema,
+        IndexSchemaSourceCatalog, IndexValueType, LocaleMode, ModuleName, SchemaRef,
+        SchemaVersion, SharedIndexSchemaRegistry, register_index_schema_source,
+    };
+    use sea_orm_migration::MigrationTrait;
+
+    use super::{build_runtime_extensions, composition_identity};
+
+    struct DemoIndexSourceModule;
+
+    impl MigrationSource for DemoIndexSourceModule {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            Vec::new()
+        }
+    }
+
+    #[async_trait]
+    impl RusToKModule for DemoIndexSourceModule {
+        fn slug(&self) -> &'static str {
+            "demo_source"
+        }
+
+        fn name(&self) -> &'static str {
+            "Demo source"
+        }
+
+        fn description(&self) -> &'static str {
+            "Test source-owned Index schema publisher"
+        }
+
+        fn version(&self) -> &'static str {
+            "0.1.0"
+        }
+
+        fn register_runtime_extensions(
+            &self,
+            extensions: &mut ModuleRuntimeExtensions,
+        ) -> rustok_core::Result<()> {
+            register_index_schema_source(extensions, self.slug(), demo_schema()).map_err(|error| {
+                rustok_core::Error::Validation(format!("demo source registration failed: {error}"))
+            })
+        }
+    }
+
+    fn demo_schema() -> IndexSchema {
+        IndexSchema {
+            reference: SchemaRef {
+                module: ModuleName::new("demo-source").unwrap(),
+                entity: EntityName::new("item").unwrap(),
+                version: SchemaVersion::INITIAL,
+            },
+            locale_mode: LocaleMode::None,
+            fields: vec![IndexField {
+                name: FieldName::new("id").unwrap(),
+                value_type: IndexValueType::Uuid,
+                cardinality: FieldCardinality::One,
+                nullable: false,
+                selectable: true,
+                filterable: true,
+                sortable: true,
+            }],
+            links: Vec::new(),
+        }
+    }
 
     #[test]
     fn selected_composition_identity_is_stable_and_contains_modules() {
@@ -311,6 +398,33 @@ mod tests {
         );
         #[cfg(feature = "mod-ai")]
         assert!(first.modules.iter().any(|module| module.slug == "ai"));
+    }
+
+    #[test]
+    fn source_schema_catalog_materializes_after_all_modules_register() {
+        let registry = ModuleRegistry::new()
+            .register(IndexModule)
+            .register(DemoIndexSourceModule);
+        let extensions = build_runtime_extensions(&registry)
+            .expect("source-owned schema registry should materialize");
+
+        let catalog = extensions
+            .get::<IndexSchemaSourceCatalog>()
+            .expect("Index module should seed the source catalog");
+        assert_eq!(catalog.len(), 1);
+        let shared = extensions
+            .get::<SharedIndexSchemaRegistry>()
+            .expect("non-empty source catalog should publish a shared registry");
+        assert!(shared.registry().get(&demo_schema().reference).is_some());
+    }
+
+    #[test]
+    fn empty_source_catalog_does_not_publish_false_query_registry() {
+        let registry = ModuleRegistry::new().register(IndexModule);
+        let extensions = build_runtime_extensions(&registry)
+            .expect("empty source catalog should remain a valid module composition");
+        assert!(extensions.contains::<IndexSchemaSourceCatalog>());
+        assert!(!extensions.contains::<SharedIndexSchemaRegistry>());
     }
 
     #[cfg(feature = "ai-translation")]

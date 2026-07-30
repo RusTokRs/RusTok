@@ -104,5 +104,7 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
 sea-orm.workspace = true
+sea-orm-migration.workspace = true
 tokio.workspace = true

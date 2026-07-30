@@ -8,7 +8,10 @@
 //! PostgreSQL execution adapter for structured Index queries.
 
 use async_trait::async_trait;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{
+    MigrationDependencyDescriptor, MigrationSource, ModuleKind, ModuleRuntimeExtensions,
+    RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod application;
@@ -54,6 +57,14 @@ impl RusToKModule for IndexModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        extensions.get_or_insert_with::<IndexSchemaSourceCatalog, _>(IndexSchemaSourceCatalog::new);
+        Ok(())
     }
 }
 

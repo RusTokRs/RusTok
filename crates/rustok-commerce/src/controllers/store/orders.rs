@@ -3,11 +3,15 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::{PortContext, PortErrorKind};
-use rustok_api::{PortError, RequestContext, TenantContext};
+use rustok_api::{
+    PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
+};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
-use rustok_order::{OrderService, error::OrderError};
+use rustok_order::{
+    ListOrderChangeProjectionsRequest, ListOrderReturnProjectionsRequest, OrderService,
+    ReadOrderProjectionRequest, error::OrderError,
+};
 use rustok_payment::{PaymentService, error::PaymentError};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use uuid::Uuid;
@@ -20,13 +24,17 @@ use super::{
     StoreOrderChangesParams, StoreOrderRefundsParams, StoreOrderReturnsParams,
 };
 use crate::dto::{
-    CreateOrderReturnInput, ListOrderChangesInput, ListOrderReturnsInput, ListRefundsInput,
-    OrderChangeResponse, OrderResponse, OrderReturnResponse, RefundResponse,
+    CreateOrderReturnInput, ListRefundsInput, OrderChangeResponse, OrderResponse,
+    OrderReturnResponse, RefundResponse,
 };
 
 const STOREFRONT_ORDER_CUSTOMER_OWNER: &str = "rustok_customer";
 const STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION: &str = "read_customer_projection_by_user";
 const STOREFRONT_ORDER_CUSTOMER_BOUNDARY: &str = "commerce_storefront_order_http";
+const STOREFRONT_ORDER_OWNER: &str = "rustok_order.storefront_orders";
+const STOREFRONT_ORDER_DETAIL_OPERATION: &str = "read_order_projection";
+const STOREFRONT_ORDER_RETURN_LIST_OPERATION: &str = "list_order_return_projections";
+const STOREFRONT_ORDER_CHANGE_LIST_OPERATION: &str = "list_order_change_projections";
 const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";
 const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";
 
@@ -132,6 +140,99 @@ fn map_storefront_customer_port_error(
         }
     }
     public
+}
+
+fn storefront_order_read_port_context(
+    tenant_id: Uuid,
+    auth: &rustok_api::AuthContext,
+    request_context: &RequestContext,
+    order_id: Uuid,
+    operation: &'static str,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-storefront-order:{operation}:{order_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_storefront_order_port_error(
+    error: PortError,
+    context: &PortContext,
+    owner_operation: &'static str,
+    consumer_operation: &'static str,
+    actor_id: Uuid,
+    customer_id: Uuid,
+    order_id: Uuid,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_order_not_found",
+            "Order resource was not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_store_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_store_order_access_denied",
+            "Order does not belong to the current customer",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_order_unavailable",
+            "Order service is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_order_failed",
+            "Order operation could not be completed safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = STOREFRONT_ORDER_OWNER,
+        owner_operation,
+        consumer_operation,
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        actor_id = %actor_id,
+        customer_id = %customer_id,
+        order_id = %order_id,
+        actor = ?context.actor,
+        channel = ?context.channel,
+        locale = %context.locale,
+        deadline_ms = ?context.deadline_ms,
+        internal_code = %error.code,
+        internal_message = %error.message,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "storefront order owner read failed"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn map_storefront_order_error(
@@ -326,9 +427,46 @@ async fn current_storefront_customer_id(
     }
 }
 
+async fn read_storefront_order_projection(
+    runtime: &CommerceHttpRuntime,
+    tenant_id: Uuid,
+    tenant_default_locale: &str,
+    request_context: &RequestContext,
+    auth: &rustok_api::AuthContext,
+    customer_id: Uuid,
+    order_id: Uuid,
+    operation: &'static str,
+) -> HttpResult<OrderResponse> {
+    let read_context =
+        storefront_order_read_port_context(tenant_id, auth, request_context, order_id, operation);
+    runtime
+        .order_read_port()
+        .read_order_projection(
+            read_context.clone(),
+            ReadOrderProjectionRequest {
+                order_id,
+                tenant_default_locale: Some(tenant_default_locale.to_string()),
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_storefront_order_port_error(
+                error,
+                &read_context,
+                STOREFRONT_ORDER_DETAIL_OPERATION,
+                operation,
+                auth.user_id,
+                customer_id,
+                order_id,
+            )
+        })
+}
+
 async fn ensure_customer_owns_order(
     runtime: &CommerceHttpRuntime,
     tenant_id: Uuid,
+    tenant_default_locale: &str,
+    request_context: &RequestContext,
     auth: &rustok_api::AuthContext,
     order_id: Uuid,
     operation: &'static str,
@@ -341,10 +479,17 @@ async fn ensure_customer_owns_order(
                 "Customer account required",
             )
         })?;
-    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .get_order(tenant_id, order_id)
-        .await
-        .map_err(|error| map_storefront_order_error(error, operation, tenant_id, order_id))?;
+    let order = read_storefront_order_projection(
+        runtime,
+        tenant_id,
+        tenant_default_locale,
+        request_context,
+        auth,
+        customer_id,
+        order_id,
+        operation,
+    )
+    .await?;
 
     if order.customer_id != Some(customer_id) {
         return Err(HttpError::unauthorized(
@@ -418,16 +563,17 @@ pub async fn get_order(
                 "Customer account required",
             )
         })?;
-    let service = OrderService::new(runtime.db_clone(), runtime.event_bus());
-    let order = service
-        .get_order_with_locale_fallback(
-            tenant.id,
-            id,
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(|error| map_storefront_order_error(error, "get_order", tenant.id, id))?;
+    let order = read_storefront_order_projection(
+        &runtime,
+        tenant.id,
+        tenant.default_locale.as_str(),
+        &request_context,
+        &auth,
+        customer_id,
+        id,
+        "get_order",
+    )
+    .await?;
 
     if order.customer_id != Some(customer_id) {
         return Err(HttpError::unauthorized(
@@ -462,8 +608,16 @@ pub async fn create_order_return(
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "create_order_return_access")
-        .await?;
+    ensure_customer_owns_order(
+        &runtime,
+        tenant.id,
+        tenant.default_locale.as_str(),
+        &request_context,
+        &auth,
+        id,
+        "create_order_return_access",
+    )
+    .await?;
 
     let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
@@ -499,12 +653,29 @@ pub async fn list_order_returns(
 ) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_returns_access").await?;
+    let customer_id = ensure_customer_owns_order(
+        &runtime,
+        tenant.id,
+        tenant.default_locale.as_str(),
+        &request_context,
+        &auth,
+        id,
+        "list_order_returns_access",
+    )
+    .await?;
 
-    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .list_returns(
-            tenant.id,
-            ListOrderReturnsInput {
+    let read_context = storefront_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        id,
+        "list_order_returns",
+    );
+    let page = runtime
+        .order_read_port()
+        .list_order_return_projections(
+            read_context.clone(),
+            ListOrderReturnProjectionsRequest {
                 page: params.pagination.page,
                 per_page: params.pagination.per_page,
                 order_id: Some(id),
@@ -512,11 +683,21 @@ pub async fn list_order_returns(
             },
         )
         .await
-        .map_err(|error| map_storefront_order_error(error, "list_order_returns", tenant.id, id))?;
+        .map_err(|error| {
+            map_storefront_order_port_error(
+                error,
+                &read_context,
+                STOREFRONT_ORDER_RETURN_LIST_OPERATION,
+                "list_order_returns",
+                auth.user_id,
+                customer_id,
+                id,
+            )
+        })?;
 
     Ok(Json(PaginatedResponse {
-        data: items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), total),
+        data: page.items,
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }
 
@@ -546,9 +727,16 @@ pub async fn list_order_refunds(
 ) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id =
-        ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_refunds_access")
-            .await?;
+    let customer_id = ensure_customer_owns_order(
+        &runtime,
+        tenant.id,
+        tenant.default_locale.as_str(),
+        &request_context,
+        &auth,
+        id,
+        "list_order_refunds_access",
+    )
+    .await?;
 
     let payment_service = PaymentService::new(runtime.db_clone());
     let (items, total) = payment_service
@@ -610,12 +798,29 @@ pub async fn list_order_changes(
 ) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_changes_access").await?;
+    let customer_id = ensure_customer_owns_order(
+        &runtime,
+        tenant.id,
+        tenant.default_locale.as_str(),
+        &request_context,
+        &auth,
+        id,
+        "list_order_changes_access",
+    )
+    .await?;
 
-    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .list_order_changes(
-            tenant.id,
-            ListOrderChangesInput {
+    let read_context = storefront_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        id,
+        "list_order_changes",
+    );
+    let page = runtime
+        .order_read_port()
+        .list_order_change_projections(
+            read_context.clone(),
+            ListOrderChangeProjectionsRequest {
                 page: params.pagination.page,
                 per_page: params.pagination.per_page,
                 order_id: Some(id),
@@ -624,10 +829,20 @@ pub async fn list_order_changes(
             },
         )
         .await
-        .map_err(|error| map_storefront_order_error(error, "list_order_changes", tenant.id, id))?;
+        .map_err(|error| {
+            map_storefront_order_port_error(
+                error,
+                &read_context,
+                STOREFRONT_ORDER_CHANGE_LIST_OPERATION,
+                "list_order_changes",
+                auth.user_id,
+                customer_id,
+                id,
+            )
+        })?;
 
     Ok(Json(PaginatedResponse {
-        data: items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), total),
+        data: page.items,
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }

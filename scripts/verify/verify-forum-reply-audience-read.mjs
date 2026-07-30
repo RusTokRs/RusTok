@@ -20,7 +20,9 @@ const rest = read('crates/rustok-forum/src/controllers/replies.rs');
 const additiveGraphql = read(
   'crates/rustok-forum/src/graphql/reply_audience_query.rs',
 );
-const legacyGraphql = read('crates/rustok-forum/src/graphql/query.rs');
+const canonicalGraphql = read(
+  'crates/rustok-forum/src/graphql/query_runtime.rs',
+);
 const graphqlRuntime = read('crates/rustok-forum/src/graphql/runtime_data.rs');
 const nativeAdapter = read(
   'crates/rustok-forum/storefront/src/transport/native_server_adapter.rs',
@@ -89,14 +91,14 @@ requireText(
   'storefront additive exact GraphQL field',
 );
 requireText(
-  legacyGraphql,
+  canonicalGraphql,
   'list_response_authenticated_owner_visible_with_audience_context',
-  'legacy authenticated exact GraphQL field',
+  'canonical authenticated exact GraphQL field',
 );
 requireText(
-  legacyGraphql,
+  canonicalGraphql,
   'list_authenticated_storefront_visible_with_audience_context',
-  'legacy authenticated storefront exact field',
+  'canonical authenticated storefront exact field',
 );
 requireText(
   graphqlRuntime,

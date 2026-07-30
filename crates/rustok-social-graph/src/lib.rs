@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod entities;
@@ -65,7 +65,38 @@ impl RusToKModule for SocialGraphModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["outbox"]
+        #[cfg(feature = "index")]
+        {
+            &["index", "outbox"]
+        }
+        #[cfg(not(feature = "index"))]
+        {
+            &["outbox"]
+        }
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        #[cfg(feature = "index")]
+        {
+            let schema = index::social_graph_relation_index_schema().map_err(|error| {
+                rustok_core::Error::Validation(format!(
+                    "Social Graph Index schema construction failed: {error}"
+                ))
+            })?;
+            rustok_index::register_index_schema_source(extensions, self.slug(), schema).map_err(
+                |error| {
+                    rustok_core::Error::Validation(format!(
+                        "Social Graph Index schema source registration failed: {error}"
+                    ))
+                },
+            )?;
+        }
+        #[cfg(not(feature = "index"))]
+        let _ = extensions;
+        Ok(())
     }
 }
 
@@ -81,7 +112,7 @@ impl MigrationSource for SocialGraphModule {
 
 #[cfg(test)]
 mod tests {
-    use rustok_core::{MigrationSource, RusToKModule};
+    use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 
     use super::SocialGraphModule;
 
@@ -89,8 +120,30 @@ mod tests {
     fn module_metadata_and_migrations_are_stable() {
         let module = SocialGraphModule;
         assert_eq!(module.slug(), "social_graph");
+        #[cfg(feature = "index")]
+        assert_eq!(module.dependencies(), &["index", "outbox"]);
+        #[cfg(not(feature = "index"))]
         assert_eq!(module.dependencies(), &["outbox"]);
         assert_eq!(module.migrations().len(), 4);
         assert_eq!(module.migration_dependencies().len(), 4);
+    }
+
+    #[cfg(feature = "index")]
+    #[test]
+    fn module_publishes_its_index_schema_through_runtime_extensions() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        SocialGraphModule
+            .register_runtime_extensions(&mut extensions)
+            .expect("Social Graph schema source should register");
+
+        let catalog = extensions
+            .get::<rustok_index::IndexSchemaSourceCatalog>()
+            .expect("Index schema source catalog should be present");
+        let schema = crate::index::social_graph_relation_index_schema().unwrap();
+        let descriptor = catalog
+            .get(&schema.reference)
+            .expect("Social Graph schema should be source-published");
+        assert_eq!(descriptor.owner_module, "social_graph");
+        assert_eq!(descriptor.schema, schema);
     }
 }

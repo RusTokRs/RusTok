@@ -17,6 +17,8 @@
   "source_verifier": "scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-projection-invalidation.json",
   "rebuild_scope_preservation_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+  "approved_reply_search_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
   "owner_boundary": {
     "authenticated_human_user_required": true,
     "forum_topics_read_scope_required": true,
@@ -80,8 +82,14 @@
   },
   "downstream_handoff": {
     "full_rebuild_external_scope_preservation_completed": true,
-    "completion_task": "FORUM-20BM",
-    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
+    "rebuild_completion_task": "FORUM-20BM",
+    "rebuild_completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+    "legacy_graphql_snapshot_cleanup_completed": true,
+    "snapshot_cleanup_task": "FORUM-20BN",
+    "snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+    "approved_public_reply_documents_completed": true,
+    "completion_task": "FORUM-20BO",
+    "completion_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json"
   },
   "compatibility": {
     "legacy_br1_trusted_owner_methods_removed": false,
@@ -96,7 +104,7 @@
     "migration_added": false,
     "ffa_status_changed": false,
     "fba_status_changed": false,
-    "legacy_graphql_snapshot_changed": false
+    "legacy_graphql_snapshot_removed": true
   },
   "documentation": {
     "owner_note_added": true,
@@ -106,16 +114,15 @@
     "crate_api_updated": false,
     "canonical_plan_updated": false,
     "central_readiness_status_updated": false,
-    "synchronization_debt": "Advance the canonical FORUM-16/FORUM-20/FORUM-23 ledger, Search plan and CRATE_API through FORUM-20BM with conflict-safe repository-local edits after maintainer validation; no FFA/FBA readiness status changes."
+    "synchronization_debt": "Advance the canonical FORUM-16/FORUM-20/FORUM-23 ledger Search plan and CRATE_API through FORUM-20BO with conflict-safe repository-local edits after maintainer validation; no FFA/FBA readiness status changes."
   },
   "remaining_scope": [
-    "decide whether approved public replies become separate Search documents under FORUM-23",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
+    "add owner revision ordering and durable inbox reconciliation for category topic reply and future member projections under FORUM-23",
     "capture maintainer-executed SQLite exact-visible bulk read and PostgreSQL cursor concurrency query-plan evidence",
-    "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup and Search query runtime evidence",
-    "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup approved-reply and Search query runtime evidence",
+    "add an explicit Forum translation target invalidation adapter if Forum categories topics or replies are later registered with the translation control plane"
   ],
-  "downstream_task": "FORUM-20BN",
+  "downstream_task": "FORUM-20BP",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
@@ -123,9 +130,8 @@
       "cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture",
       "cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture",
-      "cargo test -p rustok-forum topic_read_transport -- --nocapture",
-      "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
-      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+      "cargo test -p rustok-search --test forum_approved_reply_projection_contract -- --nocapture",
+      "node scripts/verify/verify-forum-approved-reply-search.mjs",
       "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
       "npm run verify:forum:storefront-boundary",
       "cargo xtask module validate forum"

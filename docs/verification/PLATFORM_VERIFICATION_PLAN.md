@@ -38,13 +38,13 @@ This block is the first place an agent reads after `docs/index.md`.
 
 - Cycle: `cycle-001`
 - Cycle status: `active`
-- Current item: `core/auth`
-- Next item: `core/auth`
+- Current item: `core/channel`
+- Next item: `core/channel`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-07-20`
-- Carried release blockers: `none recorded`
+- Last handoff at (UTC): `2026-07-29`
+- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery`
 - Release readiness: `not_assessed`
-- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; one-job no-default-features retry is recorded in the auth handoff and is not classified as a product defect`
+- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only follow-up could not execute local targeted regressions because repository cloning failed DNS resolution; these conditions are not classified as product defects`
 
 Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
 `in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may
@@ -177,8 +177,8 @@ These are Core modules because the current `modules.toml` declares them with
 `required = true`; `rustok-core` is intentionally absent from this list.
 
 - [x] `core/modules` — `crates/rustok-modules`
-- [ ] `core/auth` — `crates/rustok-auth` — in_progress
-- [ ] `core/cache` — `crates/rustok-cache`
+- [x] `core/auth` — `crates/rustok-auth` — blocked
+- [x] `core/cache` — `crates/rustok-cache` — blocked
 - [ ] `core/channel` — `crates/rustok-channel`
 - [ ] `core/email` — `crates/rustok-email`
 - [ ] `core/index` — `crates/rustok-index`
@@ -333,8 +333,8 @@ When the closing gate finishes:
    exempts a component from the new cycle.
 
 If the previous cycle left release blockers, Wave 0 attempts them first, but the normal
-queue still begins with the Core modules. Old local handoffs remain as evidence and do
-not count because their cycle identifier differs.
+queue still begins with the Core modules. Old local handoffs remain as evidence and
+do not count because their cycle identifier differs.
 
 ## Cycle Summary
 

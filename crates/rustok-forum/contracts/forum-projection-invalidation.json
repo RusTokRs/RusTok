@@ -2,7 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20BK",
   "upstream_task": "FORUM-20BJ",
-  "scope": "Publish durable owner-transactional invalidations on the supported PostgreSQL Forum Search runtime for every canonical Forum mutation that can change exact public category or topic projections",
+  "scope": "Publish durable owner-transactional invalidations on the supported PostgreSQL Forum Search runtime for every canonical Forum mutation that can change exact public category topic or approved reply projections",
   "root_event": "rustok_events::DomainEvent::ReindexRequested",
   "event_type": "search.reindex_requested",
   "outbox_transaction_api": "crates/rustok-outbox/src/transactional.rs",
@@ -14,21 +14,23 @@
   "source_verifier": "scripts/verify/verify-forum-projection-invalidation.mjs",
   "visibility_scoped_bulk_read_contract": "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
   "rebuild_scope_preservation_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+  "approved_reply_search_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
   "targets": {
     "forum_scope": {
       "target_type": "forum",
       "target_id": null,
-      "reason": "Category copy, hierarchy, lifecycle and inherited category policy can change category documents and any descendant topic visibility or subtitle."
+      "reason": "Category copy hierarchy lifecycle and inherited category policy can change category documents plus descendant topic and reply visibility or context."
     },
     "category": {
       "target_type": "forum_category",
       "target_id": "category_id",
-      "reason": "Topic and approved-reply count changes update only the owning category document."
+      "reason": "Topic and approved-reply count changes update the owning category document."
     },
     "topic": {
       "target_type": "forum_topic",
       "target_id": "topic_id",
-      "reason": "Topic-local copy, tags, channels, lock, solution and topic-local audience changes update one topic's locale documents."
+      "reason": "Topic-local copy tags channels lock solution audience and reply lifecycle or body changes rebuild the atomic Forum scope so topic and child reply documents remain aligned."
     }
   },
   "outbox_boundary": {
@@ -41,6 +43,7 @@
     "canonical_sys_events_outbox_reused": true,
     "new_root_domain_event_added": false,
     "new_event_schema_added": false,
+    "new_reindex_target_string_added": false,
     "sql_trigger_event_envelope_copy_added": false,
     "second_database_connection_required": false,
     "dispatch_reliability": "at_least_once",
@@ -77,7 +80,9 @@
     "topic_create_already_refreshed_by_existing_lifecycle_event": true,
     "topic_status_already_refreshed_by_existing_lifecycle_event": true,
     "topic_pin_already_refreshed_by_existing_lifecycle_event": true,
-    "reply_lifecycle_already_refreshes_topic_document": true
+    "reply_lifecycle_refreshes_topic_and_child_reply_scope": true,
+    "reply_body_or_quote_edit_publishes_topic_target_in_owner_transaction": true,
+    "topic_target_refresh_rebuilds_atomic_forum_scope": true
   },
   "owner_sealing": {
     "public_category_owner_routes_content_placement_and_lifecycle_writes": true,
@@ -95,11 +100,17 @@
     "visibility_completion_contract": "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
     "full_rebuild_external_scope_preservation_completed": true,
     "completion_task": "FORUM-20BM",
-    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
+    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+    "legacy_graphql_snapshot_cleanup_completed": true,
+    "snapshot_cleanup_task": "FORUM-20BN",
+    "snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+    "approved_public_reply_documents_completed": true,
+    "reply_completion_task": "FORUM-20BO",
+    "reply_completion_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json"
   },
   "compatibility": {
     "existing_reindex_target_strings_changed": false,
-    "search_ingestion_contract_changed": false,
+    "search_ingestion_event_match_contract_changed": false,
     "forum_rest_routes_changed": false,
     "forum_graphql_fields_changed": false,
     "forum_public_response_dto_changed": false,
@@ -107,7 +118,7 @@
     "cargo_lock_changed": false,
     "migration_added": false,
     "sqlite_forum_domain_fixtures_require_outbox_migration": false,
-    "legacy_graphql_snapshot_changed": false
+    "legacy_graphql_snapshot_removed": true
   },
   "documentation": {
     "owner_note_added": true,
@@ -115,27 +126,25 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API, the Search owner plan and canonical FORUM-16/FORUM-20/FORUM-23 ledgers through FORUM-20BM with conflict-safe repository-local edits after maintainer validation."
+    "synchronization_debt": "Advance CRATE_API, the Search owner plan and canonical FORUM-16/FORUM-20/FORUM-23 ledgers through FORUM-20BO with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
-    "decide whether approved public replies become separate Search documents under FORUM-23",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
-    "capture maintainer-executed PostgreSQL full-rebuild failure preservation and projection cleanup evidence",
+    "add owner revision ordering and durable inbox reconciliation for category topic reply and future member projections under FORUM-23",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup and approved-reply runtime evidence",
     "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
-    "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
+    "add an explicit Forum translation target invalidation adapter if Forum categories topics or replies are later registered with the translation control plane"
   ],
-  "downstream_task": "FORUM-20BN",
+  "downstream_task": "FORUM-20BP",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
       "cargo test -p rustok-outbox transactional -- --nocapture",
       "cargo test -p rustok-forum projection_invalidation -- --nocapture",
-      "cargo test -p rustok-forum --test topic_visibility_bulk_read_state_sqlite -- --nocapture",
-      "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
+      "cargo test -p rustok-search --test forum_approved_reply_projection_contract -- --nocapture",
       "cargo test -p rustok-search forum_projector -- --nocapture",
-      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+      "node scripts/verify/verify-forum-approved-reply-search.mjs",
       "node scripts/verify/verify-forum-projection-invalidation.mjs",
-      "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
+      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
       "cargo xtask module validate forum"
     ]
   }

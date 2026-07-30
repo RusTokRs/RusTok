@@ -1,11 +1,12 @@
 # Order read port
 
-Status: owner port and host runtime published; admin REST list/detail cut over, unvalidated.
+Status: owner port and host runtime published; all mounted complete/post-order reads cut over, unvalidated.
 
 ## Scope
 
-`OrderReadPort` is the order-owned boundary for complete order projection reads
-needed by mounted Commerce REST and GraphQL query consumers. It is separate from:
+`OrderReadPort` is the order-owned boundary for complete order, return, and
+order-change projection reads needed by mounted Commerce REST and GraphQL query
+consumers. It is separate from:
 
 - `CheckoutCompletionPort`, which owns checkout create/place/replay;
 - `CheckoutOrderIdentityPort`, which owns checkout/order identity;
@@ -14,22 +15,31 @@ needed by mounted Commerce REST and GraphQL query consumers. It is separate from
 - order lifecycle, return, and order-change mutations, which remain on existing
   order-owner commands and services.
 
-The owner boundary and host-selected runtime are now published. Mounted admin REST
-order list/detail reads use the port. GraphQL and storefront order reads remain
-explicit later cutovers.
+The owner boundary and host-selected runtime are published. Mounted admin REST,
+mounted GraphQL, and storefront HTTP complete-order and post-order query consumers
+use the port. Runtime evidence remains unvalidated. The superseded admin GET
+functions remain as explicitly unmounted compatibility source until compile and
+mounted-parity validation permits their removal.
 
 ## Operations
 
-The owner publishes two read-only operations:
+The owner publishes six read-only operations:
 
 - `read_order_projection` returns one complete `OrderResponse` by order id;
 - `list_order_projections` preserves page, per-page, status, customer filtering,
-  descending creation ordering, and the owner pagination total through
-  `OrderProjectionPage`.
+  descending creation ordering, and owner pagination total;
+- `read_order_return_projection` returns one `OrderReturnResponse` by return id;
+- `list_order_return_projections` preserves page, per-page, order-id/status filters,
+  descending creation ordering, return items, and owner pagination total;
+- `read_order_change_projection` returns one `OrderChangeResponse` by change id;
+- `list_order_change_projections` preserves page, per-page, order-id/status/type
+  filters, descending creation ordering, and owner pagination total.
 
-Both operations use `PortContext.locale` as the requested locale and accept an
-optional tenant-default fallback locale in the typed request. The existing owner
-DTO is returned unchanged; Commerce does not define a partial order projection.
+Complete order operations use `PortContext.locale` as requested locale and accept
+an optional tenant-default fallback locale. Return and order-change DTOs are not
+localized in the current owner model, so their typed requests do not invent locale
+fields. All operations preserve existing owner DTOs rather than defining partial
+Commerce projections.
 
 ## In-process adapter
 
@@ -44,9 +54,9 @@ Every operation:
 
 1. requires `PortCallPolicy::read()`;
 2. parses tenant identity from `PortContext`;
-3. delegates to the existing locale-aware owner service operation;
+3. delegates to the existing owner service operation;
 4. maps every current `OrderError` variant to stable `PortError` policy;
-5. preserves complete owner projections and list totals.
+5. preserves complete owner projections, filters, ordering, and list totals.
 
 The adapter does not inspect owner error messages for control flow. Validation
 maps to `Validation`; missing order/return/change maps to `NotFound`; invalid
@@ -70,79 +80,107 @@ The default application host:
 3. caches the runtime in `ServerRuntimeContext`;
 4. attaches the same value to `HostRuntimeContext`.
 
-`CommerceHttpRuntime` now requires this value. Commerce GraphQL schema-data
-composition also requires it, preventing a later resolver cutover from silently
-constructing a different adapter. This wave does not add a GraphQL resolver scope
-or change any GraphQL order resolver.
+`CommerceHttpRuntime` requires this value. Commerce GraphQL schema-data composition
+also requires it. The mounted resolver extension scopes the same runtime into the
+safe-query compatibility facade.
 
-## Admin REST cutover
+The resolver extension separately scopes request-owned order context:
 
-`GET /admin/orders` now calls `list_order_projections` and preserves:
+- authenticated actors come only from validated `AuthContext` data;
+- unauthenticated reads use the stable `rustok-commerce.graphql-order-query`
+  service actor;
+- channel and effective locale come from the host-resolved `RequestContext`;
+- complete-order methods preserve their explicit requested/fallback locale;
+- directly embedded schemas without the mounted extension use the service actor,
+  no channel, and the truthful `und` locale marker for non-localized post-order
+  calls rather than inventing attribution.
 
-- `orders:list` authorization;
-- page and per-page values;
-- status and customer filters;
-- requested locale and tenant-default fallback;
-- descending owner ordering and owner pagination total;
-- the existing `PaginatedResponse<OrderResponse>` envelope.
+## Complete order consumer cutover
 
-`GET /admin/orders/{id}` now calls `read_order_projection` and preserves:
+Admin REST order list/detail, mounted GraphQL order list/detail, storefront order
+detail, and the shared storefront customer-ownership check use the host-selected
+port. Existing authorization, locale fallback, filters, pagination, detail
+aggregation, public envelopes, authenticated actor, resolved channel, correlation,
+and two-second deadline behavior are preserved.
 
-- `orders:read` authorization;
-- requested locale and tenant-default fallback;
-- the complete `OrderResponse` projection;
-- the existing `AdminOrderDetailResponse` envelope;
-- the existing payment-collection and fulfillment aggregation lookups.
+## Storefront post-order read cutover
 
-Both handlers create a two-second read `PortContext` with tenant identity,
-authenticated user actor, request locale, optional request channel, and a
-resource-scoped correlation id.
+`GET /store/orders/{id}/returns` calls `list_order_return_projections` after the
+shared typed ownership check. It preserves customer resolution, exact order
+ownership, filters, descending ordering, complete items, owner total, and the
+existing `PaginatedResponse<OrderReturnResponse>` envelope.
 
-`PortErrorKind` is mapped back to the established admin HTTP policy:
+`GET /store/orders/{id}/changes` calls `list_order_change_projections` after the
+same ownership check. It preserves page/per-page, order/status/type filters,
+descending ordering, owner total, and the existing
+`PaginatedResponse<OrderChangeResponse>` envelope.
 
-- validation -> `400 commerce_admin_order_invalid`;
-- not found -> `404 commerce_admin_not_found`;
-- conflict -> `409 commerce_admin_order_state_conflict`;
-- forbidden -> `401 commerce_permission_denied`;
-- unavailable/timeout -> `503 commerce_admin_order_storage_unavailable`;
-- invariant violation -> `500 commerce_admin_order_failed`.
+Both handlers use the validated user actor, resolved channel, request locale,
+resource-scoped correlation id, two-second deadline, and stable storefront public
+error policy.
 
-The mapper logs stable internal code, retryability, owner operation, correlation,
-actor/channel/locale/deadline context, and route identities without copying owner
-messages into public envelopes.
+## GraphQL post-order read cutover
+
+The Commerce safe-query compatibility facade calls all six typed operations.
+Return/order-change detail and list methods use the scoped host-selected runtime
+instead of constructing `OrderService`. Existing DTOs, filters, totals, and query
+method signatures are unchanged.
+
+The facade stores only `Arc<dyn OrderReadPort>`. It retains the resolved actor,
+channel, effective locale, correlation id, and two-second deadline. Typed
+`NotFound` results map back to `OrderReturnNotFound` or
+`OrderChangeNotFound`, preserving the existing GraphQL error boundary.
+
+## Admin post-order read cutover
+
+The mounted admin router now directs these four GET endpoints to the dedicated
+`post_order_reads` module:
+
+- `GET /admin/returns` -> `list_order_return_projections`;
+- `GET /admin/returns/{id}` -> `read_order_return_projection`;
+- `GET /admin/order-changes` -> `list_order_change_projections`;
+- `GET /admin/order-changes/{id}` -> `read_order_change_projection`.
+
+The handlers preserve the existing `ORDERS_READ` authorization contract, request
+and response DTOs, optional filters, descending owner ordering, clamped pagination,
+owner totals, public HTTP codes/messages, validated user actor, resolved channel,
+effective request locale, resource-scoped correlation id, and two-second deadline.
+All POST routes remain mounted to their existing mutation/orchestration services.
+
+The old GET functions in `admin/returns.rs` and `admin/changes.rs` remain compiled
+but are no longer referenced by the mounted router. They are compatibility source,
+not active consumers, and should be removed only after maintainer-executed compile
+and mounted-parity validation.
 
 ## Unchanged behavior
 
 This source wave deliberately leaves these paths unchanged:
 
-- admin order mark-paid, ship, deliver, and cancel mutations still construct
-  `OrderService`;
-- admin order detail payment lookup still constructs `PaymentService`;
-- admin order detail fulfillment lookup still constructs `FulfillmentService`;
-- storefront order detail and ownership checks still construct `OrderService`;
-- GraphQL order detail and list still construct their current concrete service;
-- return and order-change paths still require wider owner contracts.
+- storefront return creation still constructs `OrderService` after typed ownership
+  validation;
+- storefront refund listing still constructs `PaymentService` after typed ownership
+  validation;
+- admin order, return, and order-change mutations remain on their current owner or
+  orchestration services;
+- admin order detail payment and fulfillment aggregation remain unchanged.
 
-Keeping payment/fulfillment aggregation and mutations out of this cutover avoids
-claiming ownership changes beyond the two order projection reads.
+No mutation, payment, or fulfillment policy moved into the read port.
 
 ## Context and diagnostics
 
 The owner boundary retains operation, correlation id, tenant, actor, channel
 length, requested/fallback locale lengths, causation/trace presence, deadline,
-order/customer/filter facts, stable owner code, error kind, and retryability.
-Only database and core failures retain the typed internal cause in technical
-logs. Public `PortError.message` values are stable and do not contain raw storage
-or owner-invariant details.
+order/return/change/customer/filter facts, stable owner code, error kind, and
+retryability. Only database and core failures retain the typed internal cause in
+technical logs. Public `PortError.message` values are stable and do not contain raw
+storage or owner-invariant details.
 
 ## Remaining source work
 
-1. cut mounted GraphQL order detail/list reads to the host-selected runtime;
-2. cut storefront order detail and ownership checks in a separate atomic change;
-3. publish wider owner contracts before moving return/order-change reads or order
-   mutations;
-4. retain compile, mounted parity, deadline/failure, restart, and remote-adapter
-   evidence before any status promotion.
+1. execute compile and mounted transport parity for all six operations;
+2. remove the unmounted admin compatibility GET handlers after that validation;
+3. retain deadline/failure, restart, and remote-adapter evidence before status
+   promotion.
 
 ## Evidence
 
@@ -150,15 +188,20 @@ Source evidence is retained at:
 
 `crates/rustok-order/contracts/evidence/order-read-port-source.json`
 
-Its status is `admin_rest_cutover_unvalidated`. Host composition and admin REST
-source cutover are recorded as complete. GraphQL/storefront consumer cutover,
-compile evidence, mounted parity, deadline/failure execution, restart, and
-remote-adapter evidence remain false or open.
+Its status is `mounted_consumer_cutover_unvalidated`. Six owner read operations,
+host composition, and all mounted admin REST, GraphQL, and storefront complete and
+post-order query consumers are recorded as source complete. Compile evidence,
+mounted parity, deadline/failure execution, restart, remote-adapter evidence, and
+compatibility-handler removal remain false or open.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-order-read-port.mjs
+node scripts/verify/verify-commerce-graphql-order-read-shim.mjs
+node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs
+node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs
+node scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs
 node scripts/verify/verify-commerce-admin-order-route-error-context.mjs
 cargo check -p rustok-order --lib
 cargo check -p rustok-commerce --lib
