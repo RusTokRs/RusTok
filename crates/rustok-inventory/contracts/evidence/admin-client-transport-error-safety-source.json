@@ -1,0 +1,56 @@
+{
+  "status": "inventory_admin_client_transport_error_safety_source_unvalidated",
+  "reviewed_at": "2026-07-30",
+  "boundary": "inventory_admin_client_transport",
+  "public_error_type": "InventoryTransportError",
+  "public_message": "Inventory admin request could not be completed",
+  "covered_operations": [
+    "fetch_bootstrap",
+    "fetch_products",
+    "fetch_product",
+    "set_variant_quantity",
+    "adjust_variant_quantity",
+    "reserve_variant_quantity",
+    "check_variant_availability",
+    "release_reservation_quantity"
+  ],
+  "confirmed_gap": {
+    "raw_server_fn_string_public": true,
+    "source_pattern": "InventoryTransportError::ServerFn(value.to_string())",
+    "context_free_mapping": ".map_err(Into::into)"
+  },
+  "source_contract": {
+    "server_functions_changed": false,
+    "request_normalization_changed": false,
+    "dto_changed": false,
+    "operation_count": 8,
+    "context_created_before_native_call": true,
+    "raw_server_fn_string_public": false,
+    "public_error_payload_constructible": false,
+    "static_public_message": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "tenant_values_logged": false,
+    "subject_values_logged": false,
+    "filter_values_logged": false,
+    "numeric_values_logged": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "remaining": [
+    "Run the focused source verifier",
+    "Compile the inventory admin package for default, hydrate, and ssr profiles",
+    "Retain mounted browser and server-function failure evidence",
+    "Continue the broad ecommerce mapper cleanup in other owners"
+  ]
+}

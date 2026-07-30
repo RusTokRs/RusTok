@@ -21,6 +21,15 @@ source contract is guarded by
 `scripts/verify/verify-inventory-admin-native-error-safety.mjs`; runtime evidence
 has not been executed or promoted.
 
+The Inventory admin client transport facade independently fails closed after the
+native call. All eight read/write operations create a per-call correlation
+context, retain the original `ServerFnError` only in structured diagnostics, and
+return one static `InventoryTransportError` message. Tenant, product, variant,
+locale, filter, and numeric request values are represented only by safe
+presence/length shape facts. This source contract is guarded by
+`scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs` and
+remains unvalidated.
+
 `BootstrapService` owns default-location creation, initial item/level creation,
 variant-record cleanup, and batched available-quantity reads when product
 creates or deletes variants. This is a native transaction-sharing bootstrap
@@ -33,6 +42,7 @@ and reservation contracts remain inventory-owned.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Admin native error safety: `source_ready_unvalidated`
+- Admin client transport error safety: `source_ready_unvalidated`
 - FBA provider contract: `InventoryReservationPort` /
   `inventory.reservation.v1` in
   `crates/rustok-inventory/contracts/inventory-fba-registry.json`.
@@ -41,8 +51,12 @@ and reservation contracts remain inventory-owned.
   and `crates/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json`.
 - `scripts/verify/verify-inventory-admin-boundary.mjs` locks the native
   core/transport/UI split and absence of pre-FFA/GraphQL admin paths.
-- `scripts/verify/verify-inventory-admin-native-error-safety.mjs` locks static
-  public envelopes and private owner-cause diagnostics without claiming a
+- `scripts/verify/verify-inventory-admin-native-error-safety.mjs` locks mounted
+  static public envelopes and private owner-cause diagnostics without claiming a
+  runtime pass.
+- `scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs` locks
+  the final facade mapping, per-operation correlation context, safe request-shape
+  diagnostics, and static `InventoryTransportError` text without claiming a
   runtime pass.
 
 ## Open results
@@ -63,21 +77,23 @@ and reservation contracts remain inventory-owned.
    read models cannot diverge from `InventoryService` policy.
 
 3. **Run the verification/CI evidence slice for `InventoryReservationPort` and
-   admin native error safety.** Execute the remote-adapter contract and fallback
-   profiles before a `boundary_ready` promotion; retain native-only admin
-   transport unless a public parity contract is introduced. Execute the focused
-   admin error-safety guard, compile the SSR package, and retain mounted failure
-   evidence before promoting its source-only status.
+   admin native/client error safety.** Execute the remote-adapter contract and
+   fallback profiles before a `boundary_ready` promotion; retain native-only
+   admin transport unless a public parity contract is introduced. Execute both
+   focused admin error-safety guards, compile the default/hydrate/SSR package,
+   and retain mounted browser plus server-function failure evidence before
+   promoting either source-only status.
    **Depends on:** a runtime-composed commerce consumer and remote adapter
    environment.
    **Done when:** deadline, idempotency, typed-error, degraded-mode, owner
-   invocation, and mounted public-envelope evidence covers every published port
-   operation and native admin endpoint.
+   invocation, client-facade sanitization, and mounted public-envelope evidence
+   covers every published port operation and native admin endpoint.
 
 ## Verification
 
 - `npm run verify:inventory:admin-boundary`
 - `node scripts/verify/verify-inventory-admin-native-error-safety.mjs`
+- `node scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo xtask module validate inventory`
 - `cargo xtask module test inventory`
