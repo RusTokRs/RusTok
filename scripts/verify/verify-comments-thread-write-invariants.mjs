@@ -31,6 +31,7 @@ function requireNoMarker(source, marker, label) {
 
 const commentPath = "crates/rustok-comments/src/entities/comment.rs";
 const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
+const entitiesModulePath = "crates/rustok-comments/src/entities/mod.rs";
 const classifierTestPath =
   "crates/rustok-comments/src/entities/thread_insert_error_tests.rs";
 const identityEntityPath =
@@ -50,6 +51,7 @@ const planPath = "crates/rustok-comments/docs/implementation-plan.md";
 
 const comment = read(commentPath);
 const thread = read(threadPath);
+const entitiesModule = read(entitiesModulePath);
 const classifierTest = read(classifierTestPath);
 const identityEntity = read(identityEntityPath);
 const services = read(servicesPath);
@@ -105,6 +107,13 @@ requireNoMarker(
   "message.starts_with(&expected_prefix)",
   `${threadPath}: identity classifier`,
 );
+
+for (const marker of [
+  "#[cfg(test)]",
+  "mod thread_insert_error_tests;",
+]) {
+  requireMarker(entitiesModule, marker, entitiesModulePath);
+}
 
 for (const marker of [
   "thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid",
@@ -245,6 +254,7 @@ if (evidence) {
     position_owner: commentPath,
     counter_and_identity_owner: threadPath,
     thread_service: servicesPath,
+    entities_module: entitiesModulePath,
     classifier_unit_test: classifierTestPath,
     identity_lock_entity: identityEntityPath,
     counter_repair_migration: counterMigrationPath,
