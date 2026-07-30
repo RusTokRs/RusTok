@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "task": "FORUM-23A",
-  "latest_slice": "FORUM-23A6",
+  "latest_slice": "FORUM-23A7",
   "upstream_task": "FORUM-20BQ",
   "status": "source_complete_execution_pending",
   "scope": "Project privacy-aware public author summaries into Forum topic and approved-reply Search documents and durably redact them after Profiles owner changes",
@@ -16,6 +16,7 @@
   "profiles_locale_event_owner": "crates/rustok-profiles/src/locale_write.rs",
   "profiles_media_event_owner": "crates/rustok-profiles/src/media_write.rs",
   "profiles_upsert_event_owner": "crates/rustok-profiles/src/upsert_write.rs",
+  "profiles_cli_backfill_owner": "crates/rustok-profiles/cli/src/lib.rs",
   "search_inbox": "crates/rustok-search/src/forum_inbox.rs",
   "search_ingestion": "crates/rustok-search/src/ingestion.rs",
   "owner_note": "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
@@ -45,6 +46,7 @@
     "profile_updated_is_emitted_after_owner_write": true,
     "transactional_profile_event_publisher_is_shared": true,
     "transactional_profile_event_publisher_accepts_owner_model": true,
+    "transactional_profile_event_publisher_accepts_system_actor": true,
     "profile_visibility_write_and_event_are_atomic": true,
     "visibility_event_failure_rolls_back_owner_write": true,
     "profile_handle_write_and_event_are_atomic": true,
@@ -60,6 +62,11 @@
     "upsert_event_failure_rolls_back_owner_write": true,
     "upsert_couples_profile_translation_tags_and_event": true,
     "upsert_media_validation_precedes_owner_transaction": true,
+    "profiles_cli_backfill_creation_and_event_are_atomic": true,
+    "profiles_cli_backfill_event_failure_rolls_back_owner_write": true,
+    "profiles_cli_backfill_requires_event_for_non_dry_run": true,
+    "profiles_cli_backfill_dry_run_emits_no_event": true,
+    "profiles_cli_backfill_skips_concurrent_existing_profile": true,
     "remaining_profile_summary_write_and_event_pairs_are_atomic": true,
     "author_scope_is_tenant_and_user_scoped": true,
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark": true,
@@ -80,7 +87,7 @@
   "remaining_scope": [
     "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
     "define an owner-ordered profile or account deletion projection invalidation contract",
-    "define durable Search invalidation for CLI backfill profile creation or prove rebuild coverage",
+    "consolidate or restrict direct non-event ProfileService mutation APIs",
     "add bounded category-subtree tag locale date solved kind channel/group and attachment filters",
     "add member index projections",
     "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
@@ -89,6 +96,7 @@
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
       "cargo check -p rustok-profiles --all-targets",
+      "cargo check -p rustok-profiles-cli --all-targets",
       "cargo test -p rustok-profiles error -- --nocapture",
       "cargo test -p rustok-forum search_projection_author -- --nocapture",
       "cargo test -p rustok-search forum_inbox -- --nocapture",
@@ -102,8 +110,8 @@
   "non_claims": [
     "UserDeleted is sufficient to prove Profiles state has already been removed",
     "account deletion redaction is complete",
-    "CLI backfill profile creation publishes ProfileUpdated",
     "all Profiles owner writes trigger durable Forum Search invalidation",
+    "direct non-event ProfileService mutation APIs are production-inaccessible",
     "general cross-producer owner revision ordering is complete"
   ],
   "downstream_task": "FORUM-23B"
