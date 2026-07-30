@@ -9,6 +9,9 @@ use crate::model::{
     StorefrontCheckoutShippingOption, StorefrontCheckoutWorkspace, StorefrontCommerceData,
 };
 
+const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str =
+    "commerce_storefront_aggregate_transport";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
     Graphql(String),
@@ -100,21 +103,74 @@ fn fallback_storefront_commerce(
     }
 }
 
+fn is_cart_id_validation_error(error: &rustok_ui_transport::UiTransportError) -> bool {
+    error
+        .native_error
+        .as_deref()
+        .is_some_and(|message| message.contains("cart_id must be a valid UUID"))
+        || error
+            .graphql_error
+            .as_deref()
+            .is_some_and(|message| message.contains("cart_id must be a valid UUID"))
+}
+
 fn map_cart_transport_error(
     error: rustok_cart_storefront::transport::CartTransportError,
 ) -> ApiError {
-    let message = error.to_string();
-    if message.contains("cart_id must be a valid UUID") {
-        ApiError::Validation("cart_id must be a valid UUID".to_string())
-    } else {
-        ApiError::ServerFn(message)
+    let failed_path = error.failed_path;
+    if is_cart_id_validation_error(&error) {
+        tracing::warn!(
+            error = ?error,
+            owner = "rustok_cart.storefront",
+            owner_operation = "fetch_cart",
+            failed_path = failed_path.as_str(),
+            fallback_attempted = error.fallback_attempted,
+            code = "commerce.storefront_cart_id_invalid",
+            boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+            "storefront commerce cart transport validation failed"
+        );
+        return ApiError::Validation("cart_id must be a valid UUID".to_string());
+    }
+
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_cart.storefront",
+        owner_operation = "fetch_cart",
+        failed_path = failed_path.as_str(),
+        fallback_attempted = error.fallback_attempted,
+        code = "commerce.storefront_cart_unavailable",
+        boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+        "storefront commerce cart transport failed"
+    );
+    match failed_path {
+        rustok_ui_transport::UiTransportPath::NativeServer => {
+            ApiError::ServerFn("Storefront cart data is temporarily unavailable".to_string())
+        }
+        rustok_ui_transport::UiTransportPath::Graphql => {
+            ApiError::Graphql("Storefront cart data is temporarily unavailable".to_string())
+        }
     }
 }
 
 fn map_payment_transport_error(error: rustok_ui_transport::UiTransportError) -> ApiError {
-    match error.failed_path {
-        rustok_ui_transport::UiTransportPath::NativeServer => ApiError::ServerFn(error.to_string()),
-        rustok_ui_transport::UiTransportPath::Graphql => ApiError::Graphql(error.to_string()),
+    let failed_path = error.failed_path;
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_payment.storefront",
+        owner_operation = "fetch_payment_collection",
+        failed_path = failed_path.as_str(),
+        fallback_attempted = error.fallback_attempted,
+        code = "commerce.storefront_payment_collection_unavailable",
+        boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+        "storefront commerce payment transport failed"
+    );
+    match failed_path {
+        rustok_ui_transport::UiTransportPath::NativeServer => ApiError::ServerFn(
+            "Storefront payment collection is temporarily unavailable".to_string(),
+        ),
+        rustok_ui_transport::UiTransportPath::Graphql => ApiError::Graphql(
+            "Storefront payment collection is temporarily unavailable".to_string(),
+        ),
     }
 }
 
