@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - .github/workflows/agent-blog-plan-actualize.yml
+      - crates/rustok-blog/docs/implementation-plan.md
 
 permissions:
   contents: write
