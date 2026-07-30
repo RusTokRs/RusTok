@@ -54,7 +54,11 @@ execution, package/registry order drift, source-gate path drift, missing files, 
 self-test binding drift without requiring product compilation or database access.
 Every registered leaf gate also binds its npm script to the exact verifier command;
 renaming, removing, or repointing a `verify:blog:*` script now fails the aggregate
-policy instead of leaving a no-op behind the correct aggregate step name.
+policy instead of leaving a no-op behind the correct aggregate step name. The test
+side is equally locked: aggregate, admin, storefront, GraphQL richtext, offline
+backfill, Forum ownership, and consumer runtime-order self-tests execute in one
+registry-owned order. Offline backfill and Forum ownership now retain focused
+temporary-repository negative fixtures instead of source assertions without proof.
 
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
@@ -138,10 +142,10 @@ outbox publication.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v4
-  locks the exact package order, leaf npm-script-to-verifier commands, source-gate
-  paths, and aggregate self-test binding for admin, storefront, GraphQL richtext,
-  offline backfill, Forum ownership, and consumer runtime-order gates.
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v5
+  locks exact verify/test order, leaf npm-script-to-verifier and self-test commands,
+  source-gate paths, and aggregate/consumer self-test bindings for admin, storefront,
+  GraphQL richtext, offline backfill, Forum ownership, and runtime-order gates.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
@@ -309,6 +313,9 @@ outbox publication.
 30. Bound every registered Blog FBA leaf npm script to its exact verifier command
     and extended the aggregate policy fixture to reject missing, repointed, or
     registry-renamed source-gate scripts.
+31. Locked the complete Blog FBA self-test chain in registry schema v5 and added
+    focused negative fixtures for offline-backfill safety and Forum Next admin
+    ownership, including exact leaf-test and consumer-runtime bindings.
 
 ## Next results
 

@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const scriptPath = path.resolve('scripts/verify/verify-blog-forum-ui-ownership.mjs');
+
+function writeFixtureFile(root, relativePath, content) {
+  const target = path.join(root, relativePath);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, content);
+}
+
+function fixture(options = {}) {
+  const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-forum-ui-ownership-'));
+  writeFixtureFile(root, 'apps/next-admin/packages/blog/src/index.ts',
+    options.blogOwnsForum
+      ? "id: 'blog'\nid: 'forum'\nforumNavItems\nForumReplyEditor\nexport { blogNavItems } from './nav'"
+      : "id: 'blog'\nexport { blogNavItems } from './nav'");
+  writeFixtureFile(root, 'apps/next-admin/packages/blog/src/nav.ts', 'export const blogNavItems = [];');
+  writeFixtureFile(root, 'apps/next-admin/packages/blog/src/components/post-form.tsx',
+    "@/shared/ui/rich-text-editor\nprofile='article'");
+  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/index.ts',
+    "id: 'forum'\nforumNavItems\nForumReplyEditor\nexport * from './api/forum'");
+  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/nav.ts',
+    "title: 'Forum'\n/dashboard/forum/reply");
+  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/api/forum.ts',
+    'export interface GqlOpts\nlistForumTopics\ncreateForumReply');
+  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/forum-reply-editor.tsx',
+    `@/shared/ui/rich-text-editor
+profile='${options.articleProfile ? 'article' : 'discussion'}'
+from '../api/forum'
+from './rt-json-format'`);
+  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/rt-json-format.ts',
+    "normalizeRtJsonPayload\nstringifyRtDoc\nversion: 'rt_json_v1'");
+  writeFixtureFile(root, 'apps/next-admin/src/shared/ui/rich-text-editor.tsx',
+    "from '@rustok/richtext/react'\nprofile: RichTextProfileId;\nframeUrl='/richtext/frame'");
+  writeFixtureFile(root, 'apps/next-admin/src/modules/index.ts',
+    "import '../../packages/blog/src';\nimport '../../packages/forum/src';");
+  writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/reply/page.tsx',
+    options.blogRoute
+      ? "../../../../../packages/forum/src\n../../../../../packages/blog/src\nForumReplyEditor\nlistForumTopics"
+      : "../../../../../packages/forum/src\nForumReplyEditor\nlistForumTopics");
+  if (options.blogOwnsForum) {
+    writeFixtureFile(root, 'apps/next-admin/packages/blog/src/api/forum.ts', 'legacy owner');
+  }
+  writeFixtureFile(root, 'crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json',
+    JSON.stringify({
+      schema_version: 1,
+      module: 'blog',
+      surface: 'next_admin_forum_ui_ownership',
+      status: 'source_verified_no_compile',
+      compile_policy: 'not_run_by_request',
+      owner_package: options.evidenceDrift
+        ? 'apps/next-admin/packages/blog/src'
+        : 'apps/next-admin/packages/forum/src',
+      former_owner_package: 'apps/next-admin/packages/blog/src',
+      shared_richtext_adapter: 'apps/next-admin/src/shared/ui/rich-text-editor.tsx',
+      verifier: 'scripts/verify/verify-blog-forum-ui-ownership.mjs',
+    }));
+  writeFixtureFile(root, 'scripts/verify/verify-blog-forum-ui-ownership.test.mjs', 'fixture marker');
+  writeFixtureFile(root, 'package.json', JSON.stringify({
+    scripts: {
+      'verify:blog:forum-ui-ownership': 'node scripts/verify/verify-blog-forum-ui-ownership.mjs',
+      'test:verify:blog:forum-ui-ownership': 'node scripts/verify/verify-blog-forum-ui-ownership.test.mjs',
+      'verify:blog:fba': 'node scripts/verify/verify-blog-fba.mjs && npm run verify:blog:forum-ui-ownership',
+      'test:verify:blog:fba': options.omitTestAggregate
+        ? 'node scripts/verify/verify-blog-fba.test.mjs'
+        : 'node scripts/verify/verify-blog-fba.test.mjs && npm run test:verify:blog:forum-ui-ownership',
+    },
+  }));
+  return root;
+}
+
+function run(root) {
+  return spawnSync(process.execPath, [scriptPath], { cwd: root, encoding: 'utf8' });
+}
+
+test('Blog Forum UI ownership verifier accepts the canonical owner split', () => {
+  const result = run(fixture());
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Forum Next admin navigation/);
+});
+
+test('Blog Forum UI ownership verifier rejects Forum files returning to Blog', () => {
+  const result = run(fixture({ blogOwnsForum: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must be removed from the Blog package|Blog index contains forbidden/);
+});
+
+test('Blog Forum UI ownership verifier rejects the Article profile in Forum editor', () => {
+  const result = run(fixture({ articleProfile: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Forum reply editor missing profile='discussion'/);
+});
+
+test('Blog Forum UI ownership verifier rejects a Forum route importing Blog', () => {
+  const result = run(fixture({ blogRoute: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Forum route contains forbidden packages\/blog\/src/);
+});
+
+test('Blog Forum UI ownership verifier rejects evidence ownership drift', () => {
+  const result = run(fixture({ evidenceDrift: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /evidence path drift/);
+});
+
+test('Blog Forum UI ownership verifier rejects missing aggregate self-test wiring', () => {
+  const result = run(fixture({ omitTestAggregate: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /self-test aggregate does not include Forum ownership fixture/);
+});

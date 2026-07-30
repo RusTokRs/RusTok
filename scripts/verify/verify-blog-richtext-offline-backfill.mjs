@@ -15,6 +15,7 @@ const evidencePath = "crates/rustok-blog/contracts/evidence/blog-richtext-offlin
 const inventoryPath = "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json";
 const planPath = "crates/rustok-blog/docs/implementation-plan.md";
 const inventoryDocPath = "crates/rustok-blog/docs/richtext-cutover-inventory.md";
+const selfTestPath = "scripts/verify/verify-blog-richtext-offline-backfill.test.mjs";
 
 const source = read(sourcePath);
 const evidence = json(evidencePath);
@@ -90,8 +91,17 @@ hasAll(inventoryDoc, [sourcePath, evidencePath, "Dry-run is the default", "optim
 if (packageJson.scripts?.["verify:blog:richtext-offline-backfill"] !== "node scripts/verify/verify-blog-richtext-offline-backfill.mjs") {
   fail("package verifier command drift");
 }
+if (packageJson.scripts?.["test:verify:blog:richtext-offline-backfill"] !== `node ${selfTestPath}`) {
+  fail("package self-test command drift");
+}
 if (!packageJson.scripts?.["verify:blog:fba"]?.includes("verify:blog:richtext-offline-backfill")) {
   fail("Blog FBA aggregate does not include offline backfill verifier");
+}
+if (!packageJson.scripts?.["test:verify:blog:fba"]?.includes("test:verify:blog:richtext-offline-backfill")) {
+  fail("Blog FBA self-test aggregate does not include offline backfill fixture");
+}
+if (!fs.existsSync(selfTestPath)) {
+  fail(`self-test file missing ${selfTestPath}`);
 }
 
 console.log("[verify-blog-richtext-offline-backfill] owner-specific dry-run/apply safety contract is consistent");

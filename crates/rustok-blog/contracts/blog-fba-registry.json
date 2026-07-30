@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -48,6 +48,19 @@
   "verification_chain": {
     "package_script": "verify:blog:fba",
     "self_test": "scripts/verify/verify-blog-fba.test.mjs",
+    "test_steps": [
+      "node scripts/verify/verify-blog-fba.test.mjs",
+      "npm run test:verify:blog:admin-boundary",
+      "npm run test:verify:blog:storefront-boundary",
+      "npm run test:verify:blog:graphql-richtext-boundary",
+      "npm run test:verify:blog:richtext-offline-backfill",
+      "npm run test:verify:blog:forum-ui-ownership",
+      "npm run test:verify:consumer:fba-runtime-order"
+    ],
+    "consumer_runtime_self_test": {
+      "package_script": "test:verify:consumer:fba-runtime-order",
+      "self_test": "scripts/verify/verify-consumer-fba-runtime-order.test.mjs"
+    },
     "steps": [
       "node scripts/verify/verify-blog-fba.mjs",
       "npm run verify:blog:admin-boundary",
@@ -60,27 +73,37 @@
     "source_gates": {
       "admin_boundary": {
         "package_script": "verify:blog:admin-boundary",
+        "test_package_script": "test:verify:blog:admin-boundary",
         "verifier": "scripts/verify/verify-blog-admin-boundary.mjs",
+        "self_test": "scripts/verify/verify-blog-admin-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json"
       },
       "storefront_boundary": {
         "package_script": "verify:blog:storefront-boundary",
+        "test_package_script": "test:verify:blog:storefront-boundary",
         "verifier": "scripts/verify/verify-blog-storefront-boundary.mjs",
+        "self_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
       },
       "graphql_richtext_boundary": {
         "package_script": "verify:blog:graphql-richtext-boundary",
+        "test_package_script": "test:verify:blog:graphql-richtext-boundary",
         "verifier": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
+        "self_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json"
       },
       "richtext_offline_backfill": {
         "package_script": "verify:blog:richtext-offline-backfill",
+        "test_package_script": "test:verify:blog:richtext-offline-backfill",
         "verifier": "scripts/verify/verify-blog-richtext-offline-backfill.mjs",
+        "self_test": "scripts/verify/verify-blog-richtext-offline-backfill.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json"
       },
       "forum_ui_ownership": {
         "package_script": "verify:blog:forum-ui-ownership",
+        "test_package_script": "test:verify:blog:forum-ui-ownership",
         "verifier": "scripts/verify/verify-blog-forum-ui-ownership.mjs",
+        "self_test": "scripts/verify/verify-blog-forum-ui-ownership.test.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json"
       }
     }

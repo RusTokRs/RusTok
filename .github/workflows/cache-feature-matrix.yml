@@ -15,84 +15,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  blog-fba-self-test-chain:
-    if: github.head_ref == 'agent/blog-fba-self-test-chain-20260730'
-    name: Lock Blog FBA self-test chain
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: agent/blog-fba-self-test-chain-20260730
-          fetch-depth: 0
-      - name: Apply fail-closed source transform
-        run: python3 scripts/verify/.blog-fba-self-test-chain-transform.py
-      - name: Validate source contracts
-        shell: bash
-        run: |
-          node --check scripts/verify/blog-fba-verification-chain.mjs
-          node --check scripts/verify/verify-blog-fba.mjs
-          node --check scripts/verify/verify-blog-fba.test.mjs
-          node --check scripts/verify/verify-blog-forum-ui-ownership.mjs
-          node --check scripts/verify/verify-blog-forum-ui-ownership.test.mjs
-          node --check scripts/verify/verify-blog-richtext-offline-backfill.mjs
-          node --check scripts/verify/verify-blog-richtext-offline-backfill.test.mjs
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          registry = json.loads(Path('crates/rustok-blog/contracts/blog-fba-registry.json').read_text())
-          package = json.loads(Path('package.json').read_text())
-          chain = registry['verification_chain']
-          expected_tests = [
-              'node scripts/verify/verify-blog-fba.test.mjs',
-              'npm run test:verify:blog:admin-boundary',
-              'npm run test:verify:blog:storefront-boundary',
-              'npm run test:verify:blog:graphql-richtext-boundary',
-              'npm run test:verify:blog:richtext-offline-backfill',
-              'npm run test:verify:blog:forum-ui-ownership',
-              'npm run test:verify:consumer:fba-runtime-order',
-          ]
-          if registry['schema_version'] != 5:
-              raise RuntimeError('Blog FBA registry schema is not v5')
-          if chain['test_steps'] != expected_tests:
-              raise RuntimeError(f"registry test chain mismatch: {chain['test_steps']!r}")
-          if package['scripts']['test:verify:blog:fba'].split(' && ') != expected_tests:
-              raise RuntimeError('package Blog FBA test chain mismatch')
-          for gate in chain['source_gates'].values():
-              if package['scripts'][gate['package_script']] != f"node {gate['verifier']}":
-                  raise RuntimeError(f"leaf verifier command drift: {gate!r}")
-              if package['scripts'][gate['test_package_script']] != f"node {gate['self_test']}":
-                  raise RuntimeError(f"leaf self-test command drift: {gate!r}")
-              for file_path in (gate['verifier'], gate['self_test'], gate['evidence']):
-                  if not Path(file_path).is_file():
-                      raise RuntimeError(f'missing registered file {file_path}')
-          runtime = chain['consumer_runtime_self_test']
-          if package['scripts'][runtime['package_script']] != f"node {runtime['self_test']}":
-              raise RuntimeError('consumer runtime self-test command drift')
-          if not Path(runtime['self_test']).is_file():
-              raise RuntimeError('consumer runtime self-test file missing')
-          PY
-          git diff --check
-      - name: Commit Blog FBA self-test-chain closure
-        shell: bash
-        run: |
-          git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
-          rm scripts/verify/.blog-fba-self-test-chain-transform.py
-          git add -A
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(blog): lock complete FBA self-test chain"
-          git push origin HEAD:agent/blog-fba-self-test-chain-20260730
-
   memory-only:
-    if: github.head_ref != 'agent/blog-fba-self-test-chain-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
