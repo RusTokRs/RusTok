@@ -34,18 +34,22 @@
   `group_code` bindings are available over native server functions plus
   parallel GraphQL, and the module-owned admin renders grouped typed editors
   with dirty-field patch semantics.
-- Own a positive monotonic `index_revision` storage column. Every Product update
-  advances it exactly once, and Product-translation insert/update/delete advances
-  the affected Product revision. The value is storage-internal and is not exposed
-  through Product DTOs or the SeaORM write model.
+- Own positive monotonic `index_revision` storage columns for Product and
+  ProductVariant. Product updates and Product-translation changes advance the
+  Product revision; every ProductVariant update advances the variant revision.
+  Both values are storage-internal and are not exposed through Product DTOs or
+  SeaORM write models.
 - Publish only a neutral `ProductRuntimeSelected` marker for selected
   cross-module composition. The Product crate does not depend on `rustok-index`
   and does not construct generic Index mutations.
-- The selected `rustok-distribution` bridge reads Product-owned storage through a
-  bounded locale-aware source. Replay enumeration uses stable
-  `(product_id, locale)` identity, while `index_revision` is used only as generic
-  mutation `source_version`. Hard-delete and translation-delete tombstones remain
-  later Index/reconciliation slices.
+- The selected `rustok-distribution` bridge publishes two bounded current-state
+  sources. Product replay is locale-aware and enumerates stable
+  `(product_id, locale)` identities. ProductVariant replay is non-localized and
+  enumerates stable `variant_id` identities. Each source uses only its own
+  `index_revision` as generic mutation `source_version`.
+- Product/ProductVariant hard-delete tombstones, incremental event ingestion,
+  localized variant titles, and versioned Product-to-variant links remain later
+  Index/reconciliation slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -142,5 +146,6 @@
 - `admin::ProductAdmin`
 - `storefront::ProductView`
 
-See also `docs/README.md` and the Index
-[M7 Product source contract](../rustok-index/docs/m7-product-source.md).
+See also `docs/README.md`, the Index
+[M7 Product source contract](../rustok-index/docs/m7-product-source.md), and the
+[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md).

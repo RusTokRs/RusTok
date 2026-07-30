@@ -116,7 +116,16 @@ if (bridgeRegistration < 0 || schemaMaterialization <= bridgeRegistration) {
   fail('selected Index bridges must register before immutable schema materialization');
 }
 
-const sourcePath = 'crates/rustok-distribution/src/product_index.rs';
+if (fs.existsSync(resolve('crates/rustok-distribution/src/product_index.rs'))) {
+  fail('selected Product adapters must remain under the product_index module directory');
+}
+requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+  'mod product;',
+  'mod variant;',
+  'product::register(extensions)?;',
+  'variant::register(extensions)',
+]);
+const sourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay-v1"',
