@@ -63,8 +63,8 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostSettingsSnapshot, Permission, TenantContext};
         use rustok_api::has_effective_permission;
+        use rustok_api::{AuthContext, HostSettingsSnapshot, Permission, TenantContext};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
         use serde_json::Value;
 
@@ -100,8 +100,10 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
             Some(row) => row
                 .try_get::<Value>("", "settings")
                 .or_else(|_| {
-                    row.try_get::<String>("", "settings")
-                        .and_then(|raw| serde_json::from_str(&raw).map_err(sea_orm::DbErr::Json))
+                    row.try_get::<String>("", "settings").and_then(|raw| {
+                        serde_json::from_str(&raw)
+                            .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))
+                    })
                 })
                 .map_err(|err| server_error(err.to_string()))?,
             None => {
