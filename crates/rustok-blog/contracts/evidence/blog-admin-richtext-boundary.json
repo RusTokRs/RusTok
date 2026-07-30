@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "leptos_admin_article_richtext_boundary",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "sources": {
+    "core": "crates/rustok-blog/admin/src/core.rs",
+    "ui": "crates/rustok-blog/admin/src/ui/leptos.rs"
+  },
+  "required_markers": {
+    "core": [
+      "RichTextDocument",
+      "content: &'a RichTextDocument",
+      "content: RichTextDocument",
+      "has_required_draft_fields"
+    ],
+    "ui": [
+      "use super::richtext::BlogRichTextEditor;",
+      "let (content, set_content) = signal(RichTextDocument::empty());",
+      "<BlogRichTextEditor",
+      "document=content",
+      "set_document=set_content"
+    ]
+  },
+  "forbidden_markers": [
+    "BlogPostAdminBodyFormatSelectViewModel",
+    "BlogPostAdminBodyFormatOptionViewModel",
+    "blog_post_admin_body_format_select_view",
+    "BlogPostAdminBodyFormatChangeViewModel",
+    "blog_post_admin_body_format_change_view",
+    "normalize_blog_post_body_format",
+    "BlogPostAdminRawBodyWarningViewModel",
+    "raw_body_warning_class",
+    "blog_post_admin_raw_body_warning_view"
+  ],
+  "verifier": "scripts/verify/verify-blog-admin-boundary.mjs",
+  "self_test": "scripts/verify/verify-blog-admin-boundary.test.mjs",
+  "validation": {
+    "tests_run": false,
+    "node_execution": false,
+    "syntax_checked": true
+  }
+}

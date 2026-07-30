@@ -35,6 +35,12 @@ that package independently. Blog and Forum consume the same thin shared React
 lifecycle adapter at `apps/next-admin/src/shared/ui/rich-text-editor.tsx`, while
 profile selection remains owner-specific (`article` versus `discussion`).
 
+The Blog admin FFA guardrail now matches the canonical article editor. It
+requires typed `RichTextDocument` state and the owner `BlogRichTextEditor`,
+rejects reintroduction of body-format selectors and raw-body warnings in both
+core and Leptos UI, and validates machine evidence plus self-regression
+fixtures. The guardrail is part of the Blog FBA command chain.
+
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
 `contentPlainText`; native SSR maps `PostResponse.content` and
@@ -128,6 +134,9 @@ outbox publication.
 - Next admin Forum UI ownership: `source_verified_no_compile`; Blog no longer
   registers or exports Forum navigation, GraphQL helpers, reply UI, or legacy
   format adapters, and both owners use the shared richtext lifecycle adapter.
+- Blog admin canonical richtext guardrail: `source_verified_no_compile`; the
+  FFA verifier requires typed document/editor state, rejects removed selector
+  and raw-body helpers, validates machine evidence, and has negative fixtures.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -172,6 +181,7 @@ outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`
 - `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`
 - `crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json`
+- `crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json`
 - `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
@@ -260,6 +270,9 @@ outbox publication.
 25. Removed Forum Next admin ownership from the Blog package, introduced the
     Forum-owned package registration/navigation/API/editor boundary, and moved
     the reusable React richtext lifecycle adapter to the host shared UI layer.
+26. Reconciled the Blog admin FFA guardrail with the canonical article editor:
+    removed stale required legacy helpers, added typed editor/document evidence,
+    negative regression fixtures, and FBA-chain execution.
 
 ## Next results
 
@@ -320,6 +333,7 @@ outbox publication.
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
 - `cargo check -p rustok-server --features mod-blog`
 - `npm run verify:blog:admin-boundary`
+- `npm run test:verify:blog:admin-boundary`
 - `npm run verify:blog:storefront-boundary`
 - `npm run verify:blog:fba`
 - `npm run verify:comments:fba`
