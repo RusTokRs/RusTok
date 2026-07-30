@@ -76,7 +76,9 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
             .map_err(|error| checkpoint_contract_failure("checkpoint_cursor_invalid", error))?;
         let source_version_text: Option<String> = row
             .try_get("", "source_version_text")
-            .map_err(|error| checkpoint_contract_failure("checkpoint_source_version_invalid", error))?;
+            .map_err(|error| {
+                checkpoint_contract_failure("checkpoint_source_version_invalid", error)
+            })?;
         let source_version = source_version_text
             .map(|value| {
                 value.parse::<u64>().map_err(|error| {
@@ -170,7 +172,11 @@ fn checkpoint_storage_failure(
     code: &'static str,
     error: impl std::fmt::Display,
 ) -> IndexReplayFailure {
-    tracing::error!(error = %error, replay_failure_code = code, "Index replay checkpoint storage failed");
+    tracing::error!(
+        error = %error,
+        replay_failure_code = code,
+        "Index replay checkpoint storage failed"
+    );
     IndexReplayFailure::retryable_static(code)
 }
 
@@ -178,7 +184,11 @@ fn checkpoint_contract_failure(
     code: &'static str,
     error: impl std::fmt::Display,
 ) -> IndexReplayFailure {
-    tracing::error!(error = %error, replay_failure_code = code, "Index replay checkpoint contract failed");
+    tracing::error!(
+        error = %error,
+        replay_failure_code = code,
+        "Index replay checkpoint contract failed"
+    );
     IndexReplayFailure::permanent_static(code)
 }
 
@@ -228,7 +238,7 @@ fn checkpoint_key_values(
         key.schema().entity.as_str().to_owned().into(),
         i64::from(key.schema().version.get()).into(),
         "".into(),
-        key.partition_key().to_owned().into(),
+        "".into(),
     ]
 }
 
