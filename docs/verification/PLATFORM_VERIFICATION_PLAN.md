@@ -44,7 +44,7 @@ This block is the first place an agent reads after `docs/index.md`.
 - Last handoff at (UTC): `2026-07-31`
 - Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued; core/email P1: settings:read exposed runtime smtp.password and native admin returned raw email settings, with secret-safe fixes staged only in draft PR #2490; core/email P1: delivery lacks a durable receipt/outbox, auth uses a detached server-owned bypass, saved tenant settings do not drive runtime SMTP, and historical secret-bearing rows lack an owned scrub migration; core/index P1: one retained admitted real PostgreSQL partition packet and live PostgreSQL/reference query equivalence are absent, and no retained per-tenant freshness, outage/restart, backlog catch-up or replay-repair evidence authorizes consumer or partition cutover; core/search P1: public GraphQL/native storefront Search trust caller channel_id while PgSearchEngine does not enforce canonical product channel visibility on the base result set; core/search P1: Content/Product/Blog and shared Search projection events lack the durable inbox, retry/DLQ and automatic replay/rebuild contract currently implemented only for Forum; core/outbox P1: sys_events dispatched state proves transport acceptance only, while terminal local handler failure or broadcast lag lacks a durable consumer receipt, consumer DLQ, or automatic replay/rebuild contract and can leave Search or other projections stale`
 - Release readiness: `not_assessed`
-- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only local targeted regressions for cache/channel/email/index/search could not run because outbound github.com access is unavailable; Index same-SHA Scale Run Contract and full Scale Evidence repository/fixture contracts passed on PR #2544; Search PR #2557 merged a conflict-free secret-boundary fix while broad Cargo gates stopped on unrelated repository failures; Tenant review staged fixes for a Tenant Admin auth/resolved-tenant mismatch that could apply one tenant's permissions to another routed tenant, mandatory owner outbox publication, concurrent-idempotent ensure_tenant provisioning, a cross-replica locale-policy idempotency/CAS race, legacy tenants missing locale-policy rows, an auth CLI wrong-tenant credential path, a storefront native module-state reader that trusted a client slug instead of resolved TenantContext, a commerce StoreContext path that queried tenant owner tables and normalized locale tags independently instead of using TenantReadPort/TenantLocalePolicyPort, a Tenant Admin projection that treated raw tenant overrides as effective policy, Tenant Admin native storage/composition errors exposed as raw ServerFnError text, missing MySQL one-default-locale enforcement, and the public low-level tenant-module lifecycle bypass; retained PostgreSQL tests use explicit row/advisory-lock barriers for locale-policy and tenant-provisioning races, while the lifecycle bypass fix physically removes the writer, DTO/export and legacy tests; PR #2572 now retains a read-only targeted workflow with focused formatting/static/compile checks, Tenant Admin and commerce context regressions, Commerce module topology validation, PostgreSQL races and live Redis recovery; GitHub-hosted jobs remain queued; broad failures inspected on 2026-07-30 remained outside tenant scope: advisory exceptions expired on 2026-07-24, Rust-hosted migration smoke could not use Cargo.lock because the Athanor graph wanted an update under --locked, and next-admin Playwright fixtures accessed sessionStorage before a permitted document origin; these conditions are tracked separately from tenant product defects`
+- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only local targeted regressions for cache/channel/email/index/search could not run because outbound github.com access is unavailable; Index same-SHA Scale Run Contract and full Scale Evidence repository/fixture contracts passed on PR #2544; Search PR #2557 merged a conflict-free secret-boundary fix while broad Cargo gates stopped on unrelated repository failures; Tenant review staged fixes for Tenant Admin and Auth Admin auth/resolved-tenant mismatches that could apply one tenant's permissions to another routed tenant, mandatory owner outbox publication, concurrent-idempotent ensure_tenant provisioning, a cross-replica locale-policy idempotency/CAS race, legacy tenants missing locale-policy rows, an auth CLI wrong-tenant credential path, a storefront native module-state reader that trusted a client slug instead of resolved TenantContext, a commerce StoreContext path that queried tenant owner tables and normalized locale tags independently instead of using TenantReadPort/TenantLocalePolicyPort, a Tenant Admin projection that treated raw tenant overrides as effective policy, Tenant Admin native storage/composition errors exposed as raw ServerFnError text, missing MySQL one-default-locale enforcement, and the public low-level tenant-module lifecycle bypass; retained PostgreSQL tests use explicit row/advisory-lock barriers for locale-policy and tenant-provisioning races, while the lifecycle bypass fix physically removes the writer, DTO/export and legacy tests; PR #2572 now retains a read-only targeted workflow with focused formatting/static/compile checks, Tenant Admin, Auth Admin and commerce context regressions, Commerce module topology validation, PostgreSQL races and live Redis recovery; both PostgreSQL races and focused formatting passed on b88e41d92815f9085467bfed4e0d62f6fc29f5c6, while a stale verifier marker was corrected before final-SHA execution; broad failures inspected on 2026-07-30 remained outside tenant scope: advisory exceptions expired on 2026-07-24, Rust-hosted migration smoke could not use Cargo.lock because the Athanor graph wanted an update under --locked, and next-admin Playwright fixtures accessed sessionStorage before a permitted document origin; these conditions are tracked separately from tenant product defects`
 
 Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
 `in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may
@@ -195,27 +195,27 @@ isolation defect. Outbox, Index, and Search must be revisited at the closing gat
 their consumer-durability, channel-visibility, freshness, replay, and retained-evidence
 blockers.
 
-`core/tenant` remains in progress after one fixed P0, ten fixed P1 findings and one
-fixed P2. The fixed P0 binds Tenant Admin `AuthContext.tenant_id` to the
-middleware-resolved `TenantContext.id` before permission admission, preventing one
-tenant's authority from being applied to another routed tenant. Fixed P1 findings cover
-mandatory owner-transaction lifecycle publication; concurrent-idempotent
-`ensure_tenant` loser replay; bounded durable-receipt replay for concurrent locale-policy
-CAS; incremental backfill for legacy tenants with no locale-policy rows; explicit tenant
-selection before auth CLI OAuth credential creation; trusted `TenantContext` scope for
-native storefront module-state reads; commerce store-context cutover from direct tenant
-tables and package-local locale normalization to `TenantReadPort`,
-`TenantLocalePolicyPort`, canonical `TenantLocale`, and declared module ordering;
-control-plane effective module policy for Tenant Admin badges; static public Tenant
-Admin native error envelopes with correlation-aware private diagnostics; equivalent
-one-default-locale enforcement on MySQL; and removal of the public low-level module-state
-writer, DTO/export and legacy tests. Retained PostgreSQL tests use an advisory-lock
-insert trigger for provisioning and a row-lock barrier for locale policy. Final-SHA
-focused formatting/static/compile, Tenant Admin and commerce context regressions,
-Commerce module validation, both PostgreSQL races, PostgreSQL fixture, real MySQL,
-tenant-admin/storefront/native parity, Redis recovery, lifecycle and RBAC evidence still
-gate completion. GitHub Actions jobs remain queued; source inspection is supporting
-evidence only.
+`core/tenant` remains in progress after two fixed P0, ten fixed P1 findings and one
+fixed P2. The fixed P0 findings bind both Tenant Admin and the Auth Admin user-list and
+user-detail native reads from `AuthContext.tenant_id` to the middleware-resolved
+`TenantContext.id` before permission admission, preventing one tenant's authority from
+being applied to another routed tenant. Fixed P1 findings cover mandatory
+owner-transaction lifecycle publication; concurrent-idempotent `ensure_tenant` loser
+replay; bounded durable-receipt replay for concurrent locale-policy CAS; incremental
+backfill for legacy tenants with no locale-policy rows; explicit tenant selection before
+auth CLI OAuth credential creation; trusted `TenantContext` scope for native storefront
+module-state reads; commerce store-context cutover from direct tenant tables and
+package-local locale normalization to `TenantReadPort`, `TenantLocalePolicyPort`,
+canonical `TenantLocale`, and declared module ordering; control-plane effective module
+policy for Tenant Admin badges; static public Tenant Admin native error envelopes with
+correlation-aware private diagnostics; equivalent one-default-locale enforcement on
+MySQL; and removal of the public low-level module-state writer, DTO/export and legacy
+tests. Retained PostgreSQL tests use an advisory-lock insert trigger for provisioning
+and a row-lock barrier for locale policy. Final-SHA focused formatting/static/compile,
+Tenant Admin, Auth Admin and commerce context regressions, Commerce module validation,
+both PostgreSQL races, PostgreSQL fixture, real MySQL, tenant-admin/storefront/native
+parity, Redis recovery, lifecycle and RBAC evidence still gate completion. Source
+inspection is supporting evidence only.
 
 For each manifest module, run at minimum:
 
