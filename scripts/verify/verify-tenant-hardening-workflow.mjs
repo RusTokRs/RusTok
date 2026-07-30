@@ -31,6 +31,7 @@ for (const marker of [
   'node scripts/verify/verify-tenant-hardening-workflow.mjs',
   'cargo check -p rustok-tenant --tests',
   'cargo check -p rustok-tenant-admin --features ssr',
+  'cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture',
   'cargo check -p rustok-storefront',
   'cargo test -p rustok-auth-cli oauth_create_app -- --nocapture',
   'cargo test -p rustok-server --test lifecycle_bypass_guard',
