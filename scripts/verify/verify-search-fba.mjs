@@ -60,6 +60,26 @@ hasAll(pgEngine, ['pub(crate) fn connection(&self) -> &DatabaseConnection', '&se
 const engine = read('crates/rustok-search/src/engine.rs');
 hasAll(engine, ['pub trait SearchEngine', 'Self::Postgres', 'Self::Meilisearch', 'Self::Typesense', 'Self::Algolia', 'pub fn canonical_search_result_url', 'BLOG_ENTITY_TYPE', 'valid_blog_slug'], 'engine connector and navigation boundary');
 
+const genericSettings = read('apps/server/src/services/settings_service.rs');
+hasAll(genericSettings, [
+  'ensure_supported_category(cat)?;',
+  '.filter(|row| category::ALL.contains(&row.category.as_str()))',
+  'generic_category_allowlist_excludes_search_owner_settings',
+  '`rustok-search` owns its settings',
+], 'generic platform settings boundary');
+hasNone(genericSettings, [
+  'pub const SEARCH',
+  'category::SEARCH',
+  'serde_json::to_value(&rs.search)',
+], 'generic platform settings boundary');
+const ownerSettings = read('crates/rustok-search/src/search_settings.rs');
+hasAll(ownerSettings, [
+  'pub struct SearchSettingsService',
+  'pub async fn load_effective',
+  'pub async fn save',
+  'table_name = "search_settings"',
+], 'Search-owned settings boundary');
+
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 const registryCases = registry.contract_tests.cases.map((c) => c.operation).sort().join('|');
 const evidenceCases = evidence.cases.map((c) => c.operation).sort().join('|');
@@ -123,4 +143,4 @@ hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'Sea
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-search-fba] Search provider metadata, port semantics, current-only canonical URL ownership, static evidence, and executable no-compile runtime contracts are consistent');
+console.log('[verify-search-fba] Search provider metadata, port semantics, owner-only settings, current-only canonical URL ownership, static evidence, and executable no-compile runtime contracts are consistent');

@@ -5,17 +5,20 @@ use uuid::Uuid;
 use crate::models::platform_settings::{self, ActiveModel, Entity};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Known setting categories.
+/// Known generic platform-setting categories.
+///
+/// Search settings are intentionally absent. `rustok-search` owns its settings
+/// through `SearchSettingsService`; the generic platform table must not expose or
+/// persist runtime connector credentials such as `search.api_key`.
 pub mod category {
     pub const GENERAL: &str = "general";
     pub const EMAIL: &str = "email";
-    pub const SEARCH: &str = "search";
     pub const RATE_LIMIT: &str = "rate_limit";
     pub const FEATURES: &str = "features";
     pub const I18N: &str = "i18n";
     pub const OAUTH: &str = "oauth";
 
-    pub const ALL: &[&str] = &[GENERAL, EMAIL, SEARCH, RATE_LIMIT, FEATURES, I18N, OAUTH];
+    pub const ALL: &[&str] = &[GENERAL, EMAIL, RATE_LIMIT, FEATURES, I18N, OAUTH];
 }
 
 #[derive(Debug)]
@@ -168,12 +171,14 @@ impl ValidatorRegistry {
 pub struct SettingsService;
 
 impl SettingsService {
-    /// Get settings for a single category with fallback.
+    /// Get settings for a single supported generic category with fallback.
     pub async fn get(
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
         cat: &str,
     ) -> Result<Value, SettingsError> {
+        ensure_supported_category(cat)?;
+
         // 1. DB row
         if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
             return Ok(row.settings);
@@ -189,7 +194,9 @@ impl SettingsService {
         Ok(serde_json::json!({}))
     }
 
-    /// List all categories for a tenant, filling gaps with fallbacks.
+    /// List all supported generic categories for a tenant, filling gaps with fallbacks.
+    ///
+    /// Historical rows for owner-specific categories are ignored rather than exposed.
     pub async fn get_all(
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
@@ -197,7 +204,8 @@ impl SettingsService {
         let db_rows = Entity::find_all_for_tenant(ctx.db(), tenant_id).await?;
         let mut result: Vec<(String, Value)> = db_rows
             .into_iter()
-            .map(|r| (r.category, r.settings))
+            .filter(|row| category::ALL.contains(&row.category.as_str()))
+            .map(|row| (row.category, row.settings))
             .collect();
 
         // Fill in categories that are not yet in the DB
@@ -222,7 +230,7 @@ impl SettingsService {
         Ok(result)
     }
 
-    /// Upsert settings for a category.
+    /// Upsert settings for a supported generic category.
     ///
     /// Returns the stored `Value`.
     pub async fn update(
@@ -233,9 +241,7 @@ impl SettingsService {
         actor_id: Option<Uuid>,
         validators: &ValidatorRegistry,
     ) -> Result<Value, SettingsError> {
-        if !category::ALL.contains(&cat) {
-            return Err(SettingsError::InvalidCategory(cat.to_string()));
-        }
+        ensure_supported_category(cat)?;
 
         validators
             .validate(cat, &settings)
@@ -265,7 +271,6 @@ impl SettingsService {
         let rs = ctx.settings();
         match cat {
             category::EMAIL => serde_json::to_value(&rs.email).unwrap_or(Value::Null),
-            category::SEARCH => serde_json::to_value(&rs.search).unwrap_or(Value::Null),
             category::RATE_LIMIT => serde_json::to_value(&rs.rate_limit).unwrap_or(Value::Null),
             category::FEATURES => serde_json::to_value(&rs.features).unwrap_or(Value::Null),
             _ => Value::Null,
@@ -273,10 +278,27 @@ impl SettingsService {
     }
 }
 
+fn ensure_supported_category(cat: &str) -> Result<(), SettingsError> {
+    if category::ALL.contains(&cat) {
+        Ok(())
+    } else {
+        Err(SettingsError::InvalidCategory(cat.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn generic_category_allowlist_excludes_search_owner_settings() {
+        assert!(!category::ALL.contains(&"search"));
+        assert!(matches!(
+            ensure_supported_category("search"),
+            Err(SettingsError::InvalidCategory(category)) if category == "search"
+        ));
+    }
 
     #[test]
     fn rate_limit_validator_rejects_non_positive_rps() {
