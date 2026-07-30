@@ -88,7 +88,8 @@ requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', 
   'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
-  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
+  '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
+  '- [ ] Add PostgreSQL/reference-engine equivalence tests and retained live evidence.',
 ]);
 
 console.log('[verify-index-query-equivalence-admission] OK');
