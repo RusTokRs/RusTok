@@ -60,12 +60,14 @@ semantics without widening the requested scope.
 
 1. Resolve the registered source for the exact schema.
 2. Read the durable rebuild checkpoint identified by tenant, source, and exact schema.
-3. Return `AlreadyComplete` without calling the source when the stored cursor is complete.
-4. Scan from the stored opaque cursor.
-5. Reject nil or duplicate event UUIDs before persistence.
-6. Apply mutations sequentially through `PostgresMutationStore`, using each mutation
+3. Fail closed if the checkpoint store returns another replay identity.
+4. Return `AlreadyComplete` without calling the source when the stored cursor is complete.
+5. Scan from the stored opaque cursor.
+6. Validate every page event UUID before the first mutation write; nil or duplicate IDs
+   reject the whole page.
+7. Apply mutations sequentially through `PostgresMutationStore`, using each mutation
    event UUID as the stable delivery ID.
-7. Commit the next cursor only after every mutation result is durable.
+8. Commit the next cursor only after every mutation result is durable.
 
 A source adapter must return the same non-nil event UUID for the same logical entity
 mutation and source version whenever a page is retried. This makes the replay delivery
@@ -75,6 +77,10 @@ Applied, duplicate, and stale mutation outcomes are counted separately. A failur
 one or more mutation commits but before checkpoint commit does not lose progress safety:
 the page is retried from the previous cursor and the existing inbox identity makes the
 same stable event deliveries idempotent.
+
+The checkpoint source-version watermark is inherited from the stored row and advanced
+with the maximum observed page version; a lower-version or empty final page cannot
+regress it. The last delivery ID is likewise retained for an empty final page.
 
 `PostgresIndexReplayCheckpointStore` writes the existing `index_checkpoints` rebuild
 row. JSON `null` represents a completed cursor. Empty final pages preserve the last
