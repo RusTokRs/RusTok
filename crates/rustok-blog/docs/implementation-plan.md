@@ -22,8 +22,8 @@ trigger Search reindex.
 
 The Blog storefront selected-post path consumes the owner projection through
 both transports. It renders server-rendered `RichTextView` HTML with exactly one
-`content.html` sink and uses server-derived plain text as fallback. Public
-comments are Comments-owned approved-only projections, and storefront comment
+`content.html` sink and uses server-derived plain text as fallback. The public
+comments projection is Comments-owned and approved-only, and storefront comment
 pagination is route-owned and bounded consistently across GraphQL and native
 SSR. The active DTO/UI path has no legacy body or format field.
 
