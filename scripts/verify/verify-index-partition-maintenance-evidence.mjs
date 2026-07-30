@@ -17,6 +17,13 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
+const requireNormalizedMarkers = (relative, markers) => {
+  const source = read(relative).replace(/\s+/gu, ' ');
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
 
 const runner = requireMarkers('ops/benches/src/index_storage/partition_maintenance.rs', [
   'INDEX_PARTITION_ALLOW_MAINTENANCE_EVIDENCE',
@@ -80,7 +87,7 @@ requireMarkers('ops/benches/Cargo.toml', [
   'path = "src/bin/index_partition_maintenance_evidence.rs"',
 ]);
 
-requireMarkers('ops/benches/README.md', [
+requireNormalizedMarkers('ops/benches/README.md', [
   'Index partition maintenance evidence',
   'INDEX_PARTITION_ALLOW_MAINTENANCE_EVIDENCE=1',
   'INDEX_PARTITION_MAINTENANCE_CYCLES=3',
@@ -89,7 +96,7 @@ requireMarkers('ops/benches/README.md', [
   'ordinary `VACUUM (ANALYZE)`',
 ]);
 
-requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'index-partition-maintenance-evidence',
   'maintenance.json',
   'evidence-only maintenance schema',
@@ -97,17 +104,16 @@ requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'canonical and retained snapshot-shadow relations remain unchanged',
 ]);
 
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
   'M3 partition maintenance evidence runner: `complete`',
   'cutover evidence remains open',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition maintenance evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow ordinary-VACUUM maintenance evidence capture.',
   '- [ ] Execute retained PostgreSQL cutover evidence.',
-  '11. The maintenance runner revalidates the manifest and retained shadow catalog,',
-  'creates isolated ordinary and tenant-hash clone pairs, applies identical committed',
+  '11. The maintenance runner revalidates the manifest and retained shadow catalog, creates isolated ordinary and tenant-hash clone pairs, applies identical committed',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [
