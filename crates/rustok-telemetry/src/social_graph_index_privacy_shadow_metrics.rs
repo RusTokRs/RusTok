@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use lazy_static::lazy_static;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts};
+use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SocialGraphIndexPrivacyShadowOperation {
@@ -58,6 +58,7 @@ impl SocialGraphIndexPrivacyShadowOutcome {
 
 #[derive(Clone)]
 struct SocialGraphIndexPrivacyShadowMetrics {
+    collector_started_timestamp_seconds: IntGauge,
     observations_total: IntCounterVec,
     failures_total: IntCounterVec,
     comparison_duration_seconds: HistogramVec,
@@ -66,7 +67,15 @@ struct SocialGraphIndexPrivacyShadowMetrics {
 
 impl SocialGraphIndexPrivacyShadowMetrics {
     fn new() -> Self {
+        let collector_started_timestamp_seconds = IntGauge::new(
+            "rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds",
+            "Unix timestamp when the Social Graph Index privacy shadow collector was initialized",
+        )
+        .expect("Failed to create Social Graph Index privacy shadow collector epoch gauge");
+        collector_started_timestamp_seconds.set(unix_timestamp_seconds());
+
         Self {
+            collector_started_timestamp_seconds,
             observations_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_social_graph_index_privacy_shadow_observations_total",
@@ -110,6 +119,7 @@ impl SocialGraphIndexPrivacyShadowMetrics {
 impl Collector for SocialGraphIndexPrivacyShadowMetrics {
     fn desc(&self) -> Vec<&Desc> {
         let mut descriptions = Vec::new();
+        descriptions.extend(self.collector_started_timestamp_seconds.desc());
         descriptions.extend(self.observations_total.desc());
         descriptions.extend(self.failures_total.desc());
         descriptions.extend(self.comparison_duration_seconds.desc());
@@ -119,6 +129,7 @@ impl Collector for SocialGraphIndexPrivacyShadowMetrics {
 
     fn collect(&self) -> Vec<MetricFamily> {
         let mut families = Vec::new();
+        families.extend(self.collector_started_timestamp_seconds.collect());
         families.extend(self.observations_total.collect());
         families.extend(self.failures_total.collect());
         families.extend(self.comparison_duration_seconds.collect());
