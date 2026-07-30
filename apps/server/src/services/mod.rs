@@ -89,8 +89,8 @@ pub mod module_event_dispatcher {
         spawn_module_event_dispatcher,
     };
 
-    /// Adds host-owned adapters after module/distribution registration and finally
-    /// materializes the canonical Index query runtime from the complete source registry.
+    /// Adds host-owned adapters after module/distribution registration, materializes the
+    /// canonical Index query runtime, and then activates selected non-authoritative shadows.
     pub fn build_shared_runtime_extensions_with_host_providers(
         registry: &ModuleRegistry,
         settings: &RustokSettings,
@@ -105,9 +105,35 @@ pub mod module_event_dispatcher {
             auth_config,
         )?;
         let mut extensions = base.as_ref().clone();
-        rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db).map_err(
+        rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone()).map_err(
             |error| Error::Message(format!("Index query runtime composition failed: {error}")),
         )?;
+
+        #[cfg(all(
+            feature = "mod-notifications",
+            feature = "mod-profiles",
+            feature = "mod-social_graph"
+        ))]
+        if crate::services::notification_recipient_policy::social_graph_index_privacy_shadow_enabled()
+            .map_err(Error::Message)?
+        {
+            let index_runtime = extensions
+                .get::<rustok_index::SharedIndexQueryRuntime>()
+                .cloned()
+                .ok_or_else(|| {
+                    Error::Message(
+                        "Index query runtime is required when Social Graph Index privacy shadow is enabled"
+                            .to_string(),
+                    )
+                })?;
+            let policy = crate::services::notification_recipient_policy::ServerNotificationRecipientPolicy::compose_with_index_shadow_runtime(
+                db,
+                &extensions,
+                index_runtime,
+            );
+            extensions.insert(policy);
+        }
+
         Ok(Arc::new(extensions))
     }
 
@@ -143,6 +169,8 @@ pub mod module_event_dispatcher {
 
             assert!(extensions.contains::<SharedIndexSchemaRegistry>());
             assert!(extensions.contains::<SharedIndexQueryRuntime>());
+            #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+            assert!(extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>());
             let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
             assert!(host.shared_get::<SharedIndexQueryRuntime>().is_some());
         }
