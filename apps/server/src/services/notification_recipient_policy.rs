@@ -27,6 +27,8 @@ use sea_orm::DatabaseConnection;
 
 pub const NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED";
+pub const SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED_ENV: &str =
+    "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED";
 const RECIPIENT_POLICY_DEADLINE: Duration = Duration::from_secs(2);
 const RECIPIENT_POLICY_ACTOR: &str = "notifications-recipient-policy";
 
@@ -165,6 +167,16 @@ impl ServerNotificationRecipientPolicy {
     }
 }
 
+pub(crate) fn social_graph_index_privacy_reads_enabled() -> Result<bool, String> {
+    match std::env::var(SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED_ENV) {
+        Ok(value) => parse_bool(SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED_ENV, &value),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(error) => Err(format!(
+            "failed to read {SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED_ENV}: {error}"
+        )),
+    }
+}
+
 #[async_trait]
 impl NotificationRecipientPolicy for ServerNotificationRecipientPolicy {
     async fn evaluate(
@@ -266,6 +278,16 @@ fn candidate_worker_enabled_from_environment() -> bool {
             );
             false
         }
+    }
+}
+
+fn parse_bool(variable: &str, value: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "" | "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(format!(
+            "{variable} must be one of true/false, 1/0, yes/no, or on/off"
+        )),
     }
 }
 
