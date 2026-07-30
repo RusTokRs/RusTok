@@ -193,7 +193,7 @@ mod tests {
         let root = IndexSchema {
             reference: reference("root"),
             locale_mode: LocaleMode::Required,
-            fields: vec![field("id", IndexValueType::Uuid, true)],
+            fields: vec![field("id", child_type, true)],
             links: vec![IndexLink {
                 name: LinkName::new("children").unwrap(),
                 source_fields: vec![FieldName::new("id").unwrap()],
