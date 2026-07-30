@@ -5,7 +5,9 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{FieldPath, IndexQuery, LinkCardinality, LinkName, Pagination};
+use crate::domain::{
+    FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName, Pagination,
+};
 
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
@@ -82,6 +84,12 @@ pub enum PostgresQueryCompileError {
     CursorContextMismatch,
     #[error("many-cardinality ordering requires an explicit aggregate policy: {0:?}")]
     ManyLinkOrderingPending(FieldPath),
+    #[error("aggregate ordering requires a many-cardinality path: {0:?}")]
+    AggregateOrderingWithoutManyLink(FieldPath),
+    #[error("aggregate ordering uses an unsupported PostgreSQL MIN/MAX type: {0:?}")]
+    AggregateOrderingUnsupportedType(FieldPath),
+    #[error("aggregate ordering currently requires bounded offset pagination")]
+    AggregateOrderingRequiresOffsetPagination,
     #[error("query plan has no join contract for path {0:?}")]
     MissingJoinPlan(Vec<LinkName>),
     #[error("query plan many-link traversal metadata is inconsistent for path {0:?}")]
@@ -225,17 +233,47 @@ impl ExecutableQueryPlan {
             }
         }
         validate_many_projection_contract(self)?;
+        let mut has_aggregate_order = false;
         for order in &self.order_by {
-            if self.referenced_fields.get(&order.field.path) != Some(&order.field) {
+            let Some(referenced) = self.referenced_fields.get(&order.field.path) else {
+                return Err(PostgresQueryCompileError::MissingFieldPlan(
+                    order.field.path.clone(),
+                ));
+            };
+            let aggregate = order.direction.aggregate();
+            has_aggregate_order |= aggregate.is_some();
+            let mut expected = referenced.clone();
+            if aggregate.is_some() {
+                expected.nullable = true;
+            }
+            if order.field != expected {
                 return Err(PostgresQueryCompileError::MissingFieldPlan(
                     order.field.path.clone(),
                 ));
             }
-            if order.field.traverses_many {
-                return Err(PostgresQueryCompileError::ManyLinkOrderingPending(
-                    order.field.path.clone(),
-                ));
+            match (order.field.traverses_many, aggregate) {
+                (true, None) => {
+                    return Err(PostgresQueryCompileError::ManyLinkOrderingPending(
+                        order.field.path.clone(),
+                    ));
+                }
+                (false, Some(_)) => {
+                    return Err(
+                        PostgresQueryCompileError::AggregateOrderingWithoutManyLink(
+                            order.field.path.clone(),
+                        ),
+                    );
+                }
+                (true, Some(_)) if !aggregate_type_supported(order.field.value_type) => {
+                    return Err(PostgresQueryCompileError::AggregateOrderingUnsupportedType(
+                        order.field.path.clone(),
+                    ));
+                }
+                _ => {}
             }
+        }
+        if has_aggregate_order && !matches!(&self.pagination, Pagination::Offset { .. }) {
+            return Err(PostgresQueryCompileError::AggregateOrderingRequiresOffsetPagination);
         }
         if let Some(filter) = &self.filter {
             let mut paths = Vec::new();
@@ -295,6 +333,13 @@ fn validate_many_projection_contract(
         }
     }
     Ok(())
+}
+
+fn aggregate_type_supported(value_type: IndexValueType) -> bool {
+    matches!(
+        value_type,
+        IndexValueType::Integer | IndexValueType::String | IndexValueType::Timestamp
+    )
 }
 
 fn validate_alias(alias: &str) -> Result<(), PostgresQueryCompileError> {

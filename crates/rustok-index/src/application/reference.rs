@@ -319,9 +319,10 @@ impl<'a> ReferenceIndex<'a> {
 }
 
 fn apply_direction(ordering: Ordering, direction: OrderDirection) -> Ordering {
-    match direction {
+    match direction.base_direction() {
         OrderDirection::Asc => ordering,
         OrderDirection::Desc => ordering.reverse(),
+        _ => unreachable!("base_direction returns a physical direction"),
     }
 }
 

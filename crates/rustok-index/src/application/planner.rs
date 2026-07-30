@@ -12,7 +12,9 @@ use crate::domain::{
     IndexValueType, LinkCardinality, LinkName, OrderDirection, Pagination, SchemaRef,
 };
 
-use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
+use super::{
+    AggregateOrderValidationError, QueryValidationError, SchemaRegistry, SchemaRegistryError,
+};
 
 const ROOT_ALIAS: &str = "t0";
 
@@ -129,6 +131,8 @@ pub enum QueryPlanError {
     #[error(transparent)]
     Validation(#[from] QueryValidationError),
     #[error(transparent)]
+    AggregateValidation(AggregateOrderValidationError),
+    #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
     #[error("validated query path has no relation alias: {0:?}")]
     ValidatedAliasMissing(FieldPath),
@@ -138,7 +142,16 @@ pub enum QueryPlanError {
 
 impl SchemaRegistry {
     pub fn plan_query(&self, query: &IndexQuery) -> Result<ExecutableQueryPlan, QueryPlanError> {
-        self.validate_query(query)?;
+        match self.validate_query_with_aggregate_ordering(query) {
+            Ok(()) => {}
+            Err(AggregateOrderValidationError::Query(error)) => {
+                return Err(QueryPlanError::Validation(error));
+            }
+            Err(AggregateOrderValidationError::Registry(error)) => {
+                return Err(QueryPlanError::Registry(error));
+            }
+            Err(error) => return Err(QueryPlanError::AggregateValidation(error)),
+        }
 
         let paths = collect_link_prefixes(query);
         let mut aliases = BTreeMap::from([(Vec::new(), ROOT_ALIAS.to_owned())]);
@@ -246,8 +259,12 @@ impl SchemaRegistry {
             .order_by
             .iter()
             .map(|order| {
+                let mut field = planned_field(&referenced_fields, &order.field)?;
+                if order.direction.aggregate().is_some() {
+                    field.nullable = true;
+                }
                 Ok(PlannedOrder {
-                    field: planned_field(&referenced_fields, &order.field)?,
+                    field,
                     direction: order.direction,
                 })
             })
