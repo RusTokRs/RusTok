@@ -1,0 +1,151 @@
+name: Agent Blog plan actualization
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/agent-blog-plan-actualize.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-blog-plan-actualize
+  cancel-in-progress: true
+
+jobs:
+  actualize-plan:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/blog-richtext-plan-actualization-20260730
+          fetch-depth: 0
+      - name: Remove containment-era plan text
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/rustok-blog/docs/implementation-plan.md')
+          source = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''The neutral `rustok-api::richtext` contract and executable
+`rustok-content::richtext` profiles are now available. Blog comments are
+already a typed consumer of the Comments owner: comment writes use
+`RichTextDocument`, and moderation responses return `RichTextView` plus the
+server-derived plain text. Blog posts remain on their separate article
+cutover. The owner now has a fixed `article` profile boundary, canonical
+write/read projections, and a format-free plain-text import adapter. The Blog
+GraphQL adapter already exposes canonical `RichTextDocument` writes and
+`RichTextView` reads. Temporary `body`, `body_format`, and `content_json`
+transport declarations, projections, and compatibility conversions are now
+confined to `graphql/types.rs`. Both create/update conversions are guarded
+exactly beside the GraphQL input types; create has an integration regression test
+for explicit fields, canonical content, and temporary legacy defaults, while
+update retains its colocated unit regression test. `graphql/mutation.rs` only
+delegates typed `input.into()` values to the owner service and contains no legacy
+richtext field access or conversion implementation. The executable guardrail
+scans every other GraphQL file, rejects new aliases, and is registered with its
+regression test in `verify:blog:fba`.
+''',
+                  '''The neutral `rustok-api::richtext` contract and executable
+`rustok-content::richtext` profiles are available. Blog comments are a typed
+consumer of the Comments owner, and the Blog article target-only source cutover
+is now implemented. The owner fixes the `article` profile, accepts only
+`RichTextDocument`, returns `RichTextView` plus server-derived plain text, and
+retains a format-free plain-text import adapter for trusted text producers.
+GraphQL create/update inputs expose only canonical content; their conversions
+remain colocated with the input types, resolvers delegate through `input.into()`,
+and the recursive guard rejects legacy fields, format aliases, raw JSON writes,
+or manual resolver mapping.
+'''
+              ),
+              (
+                  '''The Blog storefront selected-post path now consumes the owner read projection
+across both transports. GraphQL requests `content { document html }` plus
+`contentPlainText`; native SSR maps `PostResponse.content` and
+`content_plain_text`; Leptos renders only server-rendered `RichTextView` HTML and
+uses server-derived plain text when the projection is absent. The storefront DTO
+and active UI path no longer expose or interpret `body` / `bodyFormat`. Blog SEO
+also consumes `content_plain_text`. Search canonical richtext rows are parsed as
+`RichTextDocument` and projected with `rustok-content::plain_text` under the fixed
+`Article` profile in the same projector transaction; legacy storage rows retain a
+owner-derived plain text. The target-only source cutover is implemented:
+`blog_post_translations.body` stores canonical Article documents, the migration
+validates every row before dropping `body_format`, GraphQL exposes only typed
+content, Search has no raw-body fallback, AI constructs owner documents directly,
+and storefront summarizers are removed. Forum-to-Blog orchestration fails closed
+unless the source is canonical Article-compatible richtext. Compilation,
+migration execution, PostgreSQL evidence, and browser parity remain user-owned.
+Do not add format aliases, raw JSON fields, selectors, or local renderers.
+''',
+                  '''The Blog storefront selected-post path consumes the owner read projection across
+both transports. GraphQL requests `content { document html }` plus
+`contentPlainText`; native SSR wraps the mandatory owner projection for the
+optional UI model; Leptos renders only server-rendered HTML and uses
+server-derived plain text as fallback. SEO consumes the same plain text. Search
+parses every canonical Article document and derives text with the shared policy;
+there is no raw-body fallback. AI draft create/update commands construct owner
+documents directly. `blog_post_translations.body` stores canonical document JSON,
+and the irreversible migration validates every retained row before dropping
+`body_format`. Storefront summarizers are physically removed, and Forum-to-Blog
+orchestration fails closed unless source content is canonical Article-compatible
+richtext. Compilation, migration execution, PostgreSQL evidence, and browser
+parity remain user-owned. Do not add format aliases, raw JSON fields, selectors,
+or local renderers.
+'''
+              ),
+              (
+                  '''- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
+  the single temporary `types.rs` adapter/conversion owner, symmetric create/update
+  conversion regression coverage, resolver delegation, verifier, self-test, and
+  npm/FBA registration are implemented; execution is user-owned.
+- AI Blog draft owner writes: `source_verified_no_compile`; generated create/update
+  text is converted to `RichTextDocument` before the Blog service call, existing
+  source content prefers server-derived plain text, and the remaining direct-task
+  Markdown-shaped fields are contained behind the adapter.
+''',
+                  '''- Blog GraphQL richtext boundary: `source_verified_no_compile`; only canonical
+  fields remain, create/update conversion coverage is symmetric, resolvers
+  delegate without manual mapping, and verifier/self-test/FBA registration are
+  implemented; execution is user-owned.
+- AI Blog draft owner writes: `source_verified_no_compile`; generated create/update
+  text is converted directly to `RichTextDocument`, and existing source content
+  uses server-derived plain text without a Markdown compatibility adapter.
+'''
+              ),
+          ]
+
+          for index, (old, new) in enumerate(replacements, start=1):
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f'plan replacement {index}: expected once, got {count}')
+              source = source.replace(old, new, 1)
+
+          for forbidden in [
+              'Blog posts remain on their separate article cutover',
+              'Temporary `body`, `body_format`, and `content_json`',
+              'single temporary `types.rs` adapter',
+              'remaining direct-task\n  Markdown-shaped fields',
+              'legacy storage rows retain a\nowner-derived plain text',
+          ]:
+              if forbidden in source:
+                  raise RuntimeError(f'stale plan marker remains: {forbidden}')
+
+          path.write_text(source, encoding='utf-8')
+          PY
+          rm .github/workflows/agent-blog-plan-actualize.yml
+          git diff --check
+      - name: Commit plan actualization
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs(blog): actualize article cutover plan"
+          git push origin HEAD:agent/blog-richtext-plan-actualization-20260730
