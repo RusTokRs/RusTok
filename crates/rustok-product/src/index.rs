@@ -33,6 +33,7 @@ const UPDATED_AT_FIELD: &str = "updated_at";
 
 const PRODUCT_INDEX_SELECT: &str = r#"
 SELECT
+    p.tenant_id,
     p.id AS product_id,
     p.index_revision,
     p.status::text AS status,
@@ -367,6 +368,9 @@ struct ProductSourceRow {
 
 impl ProductSourceRow {
     fn decode(row: QueryResult) -> Result<Self, ProductIndexError> {
+        let tenant_id = row
+            .try_get::<Uuid>("", "tenant_id")
+            .map_err(|_| ProductIndexError::InvalidRow)?;
         let product_id = row
             .try_get::<Uuid>("", "product_id")
             .map_err(|_| ProductIndexError::InvalidRow)?;
@@ -376,7 +380,7 @@ impl ProductSourceRow {
         let locale = row
             .try_get::<String>("", "locale")
             .map_err(|_| ProductIndexError::InvalidRow)?;
-        if product_id.is_nil() || revision <= 0 {
+        if tenant_id.is_nil() || product_id.is_nil() || revision <= 0 {
             return Err(ProductIndexError::InvalidRow);
         }
         let locale_key = LocaleKey::new(&locale)?;
@@ -399,9 +403,7 @@ impl ProductSourceRow {
             .with_timezone(&Utc);
 
         Ok(Self {
-            tenant_id: row
-                .try_get::<Uuid>("", "tenant_id")
-                .unwrap_or_else(|_| Uuid::nil()),
+            tenant_id,
             product_id,
             source_version: u64::try_from(revision).map_err(|_| ProductIndexError::InvalidRow)?,
             locale: locale_key,
@@ -426,9 +428,6 @@ impl ProductSourceRow {
     }
 
     fn into_mutation(mut self) -> Result<IndexMutation, ProductIndexError> {
-        if self.tenant_id.is_nil() {
-            return Err(ProductIndexError::InvalidRow);
-        }
         let event_id = product_replay_event_id(
             self.tenant_id,
             self.product_id,
