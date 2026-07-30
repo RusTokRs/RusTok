@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-29",
-  "status": "graphql_post_order_reads_cutover_unvalidated",
-  "source_base_revision": "246dde3e152a4f56f446d577e11108305a679fde",
+  "generated_at": "2026-07-30",
+  "status": "mounted_consumer_cutover_unvalidated",
+  "source_base_revision": "89c7cde43e994df08b7764fe31861b41a0022ddd",
   "scope": "complete order, return, and order-change projections for mounted Commerce query consumers",
   "owner": {
     "crate": "rustok-order",
@@ -80,6 +80,9 @@
     "locale_retained": true,
     "correlation_retained": true,
     "deadline_required": true,
+    "admin_actor_source": "validated_auth_context_user",
+    "admin_channel_source": "resolved_request_context_channel_slug",
+    "admin_locale_source": "resolved_request_context_locale",
     "admin_deadline_seconds": 2,
     "graphql_actor_source": "validated_auth_context_or_service_actor",
     "graphql_channel_source": "resolved_request_context_channel_slug",
@@ -118,6 +121,8 @@
   "consumer_inventory": {
     "commerce_admin_rest_list_detail": "order_read_port",
     "commerce_admin_rest_cutover_completed": true,
+    "commerce_admin_return_and_order_change_reads": "order_read_port_host_runtime_with_request_context",
+    "commerce_admin_return_and_order_change_reads_cutover_completed": true,
     "commerce_storefront_detail_and_ownership": "order_read_port_host_runtime",
     "commerce_storefront_detail_and_ownership_cutover_completed": true,
     "commerce_storefront_return_list": "order_read_port_host_runtime",
@@ -128,13 +133,14 @@
     "commerce_graphql_order_list_detail_cutover_completed": true,
     "commerce_graphql_return_and_order_change_reads": "order_read_port_host_runtime_with_request_context",
     "commerce_graphql_return_and_order_change_reads_cutover_completed": true,
-    "commerce_admin_return_and_order_change_reads": "concrete_order_service",
     "complete_order_projection_consumer_cutover_completed": true,
     "graphql_post_order_consumer_cutover_completed": true,
-    "post_order_consumer_cutover_completed": false,
+    "admin_post_order_consumer_cutover_completed": true,
+    "post_order_consumer_cutover_completed": true,
     "runtime_composition_published": true,
-    "all_consumer_cutover_completed": false,
-    "cutover_required": true
+    "all_mounted_consumer_cutover_completed": true,
+    "all_consumer_cutover_completed": true,
+    "cutover_required": false
   },
   "unchanged_scope": {
     "admin_order_mutations": "concrete_order_service",
@@ -142,10 +148,10 @@
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service",
     "storefront_return_mutation": "concrete_order_service",
     "storefront_refund_reads": "concrete_payment_service",
-    "admin_return_and_order_change_reads": "concrete_order_service"
+    "unmounted_admin_compatibility_handlers": "concrete_order_service_source_only_not_routed"
   },
   "decision": {
-    "next_slice": "audit and cut admin post-order reads to the host-selected OrderReadPort without moving mutations or payment and fulfillment policy; execute compile and mounted parity evidence before status promotion",
+    "next_slice": "execute compile, mounted parity, deadline and failure, restart, and remote-adapter evidence; remove unmounted compatibility GET handlers only after validation",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },
