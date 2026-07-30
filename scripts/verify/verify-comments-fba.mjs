@@ -12,6 +12,7 @@ const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contrac
 const threadWriteEvidencePath = 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json';
 const threadWriteVerifierPath = 'scripts/verify/verify-comments-thread-write-invariants.mjs';
 const threadWriteSelfTestPath = 'scripts/verify/verify-comments-thread-write-invariants.test.mjs';
+const entitiesModulePath = 'crates/rustok-comments/src/entities/mod.rs';
 const classifierTestPath = 'crates/rustok-comments/src/entities/thread_insert_error_tests.rs';
 const packageJsonPath = 'package.json';
 const expectedVerifySteps = [
@@ -55,7 +56,7 @@ if (!sameList(packageJson.scripts?.['verify:comments:fba']?.split(' && ') ?? [],
 if (!sameList(packageJson.scripts?.['test:verify:comments:fba']?.split(' && ') ?? [], expectedTestSteps)) fail('package Comments FBA test chain drift');
 if (packageJson.scripts?.['verify:comments:thread-write-invariants'] !== `node ${threadWriteVerifierPath}`) fail('thread write leaf verifier command drift');
 if (packageJson.scripts?.['test:verify:comments:thread-write-invariants'] !== `node ${threadWriteSelfTestPath}`) fail('thread write leaf self-test command drift');
-for (const filePath of [threadWriteEvidencePath, threadWriteVerifierPath, threadWriteSelfTestPath, classifierTestPath]) {
+for (const filePath of [threadWriteEvidencePath, threadWriteVerifierPath, threadWriteSelfTestPath, entitiesModulePath, classifierTestPath]) {
   if (!fs.existsSync(filePath)) fail(`thread write source gate file is missing ${filePath}`);
 }
 
@@ -186,6 +187,7 @@ for (const [key, expected] of Object.entries({
   position_owner: 'crates/rustok-comments/src/entities/comment.rs',
   counter_and_identity_owner: 'crates/rustok-comments/src/entities/comment_thread.rs',
   thread_service: 'crates/rustok-comments/src/services.rs',
+  entities_module: entitiesModulePath,
   classifier_unit_test: classifierTestPath,
   identity_lock_entity: 'crates/rustok-comments/src/entities/comment_thread_identity_lock.rs',
   counter_repair_migration: 'crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
@@ -235,6 +237,11 @@ hasAll(threadService, [
   'Err(error) => Err(error.into())',
 ], 'comment thread service fallback');
 hasNone(threadService, ['Err(_) => comment_thread::Entity::find()'], 'comment thread service fallback');
+const entitiesModule = read(threadContract.entities_module);
+hasAll(entitiesModule, [
+  '#[cfg(test)]',
+  'mod thread_insert_error_tests;',
+], 'thread insert error classifier module');
 const classifierTest = read(threadContract.classifier_unit_test);
 hasAll(classifierTest, [
   'thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid',
@@ -299,6 +306,7 @@ hasAll(firstThreadTest, [
 const threadWriteVerifier = read(threadWriteVerifierPath);
 hasAll(threadWriteVerifier, [
   'identity_lock::Entity::update_many()',
+  'mod thread_insert_error_tests;',
   'message.strip_prefix(&expected_prefix)',
   'Uuid::parse_str(existing_thread_id).is_ok()',
   'thread_identity_conflict_classifier_rejects_malformed_owner_uuid',
@@ -319,6 +327,7 @@ hasAll(threadWriteSelfTest, [
   'rejects a missing identity-conflict classifier',
   'rejects a prefix-only identity-conflict classifier',
   'rejects a missing identity classifier unit harness',
+  'rejects an unregistered identity classifier unit harness',
   'rejects missing unrelated storage error propagation',
 ], 'thread write invariant self-test');
 
@@ -349,4 +358,4 @@ hasAll(plan, [
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, strict identity classifier harness, transactional thread writes, and first-thread identity serialization are consistent');
+console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, registered strict identity classifier harness, transactional thread writes, and first-thread identity serialization are consistent');
