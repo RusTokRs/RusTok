@@ -7,7 +7,7 @@ queries without runtime fan-out.
 
 ## Purpose
 
-- publish canonical schema, mutation, query, source, replay, and rebuild contracts;
+- publish canonical schema, mutation, query, source, replay, rebuild, and operator contracts;
 - keep ingestion, storage, planning, rebuild, checkpoint, and consistency semantics
   inside the module;
 - provide server, storefront, admin, and `rustok-search` with a stable substrate for
@@ -25,8 +25,9 @@ queries without runtime fan-out.
 - versioned keyset cursors;
 - incremental ingestion and inbox deduplication;
 - bounded source scans and targeted loads;
-- one-page replay mutation/checkpoint progression;
-- durable schema-scoped replay jobs, lease/heartbeat, and attempt fencing;
+- one-page and bounded multi-page replay progression;
+- durable schema-scoped replay jobs, lease/heartbeat, attempt fencing, and cancellation;
+- host-published replay runtime and request-bound operator guard;
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
 - measured partition admission and shadow planning;
@@ -44,7 +45,9 @@ queries without runtime fan-out.
 - source-module table reads from Index core;
 - source-owned writes to Index storage, job, or checkpoint tables;
 - source-specific Product, Content, or Flex logic in the engine;
-- a production scheduler or unbounded replay loop in the current M6 slice;
+- a production scheduler, automatic retry/dead-letter loop, or unbounded replay loop
+  in the current M6 slice;
+- transport command authorization beyond the server-owned operator capability;
 - destructive partition cutover without retained PostgreSQL evidence.
 
 ## Integration
@@ -55,6 +58,9 @@ queries without runtime fan-out.
   identities;
 - `IndexModule` contributes canonical production migrations through platform migration
   composition;
+- `rustok-distribution` materializes the immutable shared schema registry;
+- the server freezes the complete source registry, publishes query/replay capabilities,
+  and wraps replay invocation in an exact request-bound operator guard;
 - server, storefront, admin, and `rustok-search` consume stable Index ports rather than
   reading Index tables directly;
 - benchmark DDL and evidence remain isolated under `ops/benches` and never become
@@ -197,7 +203,7 @@ completed cursor.
 - returns `Busy` for an active owner;
 - heartbeats only the exact unexpired worker/attempt;
 - reclaims an expired running attempt with incremented `attempt_count`;
-- rejects stale heartbeat, failure, and success;
+- rejects stale heartbeat, failure, success, and cancellation publication;
 - requires an exact durable null-cursor checkpoint before terminal success.
 
 `PostgresIndexReplayCheckpointStore` is constructed from an acquired
@@ -206,22 +212,31 @@ completed cursor.
 the database transaction. After reclaim, the old worker cannot advance the durable
 cursor.
 
-Still open:
+`PostgresIndexReplayRunner` executes a validated page budget of at most 1024 pages,
+resolves the exact source from `SharedIndexSourceRegistry`, heartbeats only between
+pages, returns unfinished work to immediately claimable pending state, and aggregates
+mutation outcomes. Durable cancellation terminalizes pending jobs immediately, marks
+running jobs for observation before/after pages, survives reclaim, and wins over
+success/failure/yield when committed first.
 
-- direct server-composition binding between job requests and the materialized replay
-  source registry;
-- bounded multi-page execution with heartbeat cadence and graceful lease loss;
-- cancellation, resume commands, dry-run, targeted/full/shadow modes;
-- retry/backoff/dead-letter scheduling and global scheduler ownership;
-- locale/partition replay dimensions;
-- Product and later source adapters;
-- retained crash/reclaim/restart and multi-instance PostgreSQL evidence;
-- reconciliation and drift repair.
+The server materializes `SharedIndexSourceRegistry` only after all selected modules
+finish registration. `materialize_postgres_index_replay_runtime` then requires both
+immutable source and schema registries and publishes `SharedIndexReplayRuntime`.
+`IndexReplayOperatorRuntime` is the server-owned invocation boundary: it requires an
+exact request-bound tenant/actor permission snapshot, requires `modules:manage`, rejects
+cross-tenant run requests, and derives cancellation tenant only from the authorized
+context.
+
+Composition performs no SQL and starts no task. Transport adapters must not call the raw
+shared replay runtime directly. Host scheduling, graceful task shutdown, authorized
+GraphQL/HTTP/CLI commands, retry/backoff/dead-letter policy, in-page interruption,
+locale/partition replay dimensions, Product and later source adapters, retained
+crash/reclaim/restart evidence, reconciliation, and drift repair remain open.
 
 ## Status
 
 - Rewrite: `in_progress`
-- Current milestone: `M6 - fenced replay job ownership`
+- Current milestone: `M6 - replay runtime host composition and operator guard`
 - FFA: `in_progress`
 - FBA: `in_progress`
 - M0 code reset: `complete`
@@ -240,7 +255,9 @@ Still open:
 - M5/M6 bounded source replay contract: `source_complete`
 - M6 one-page replay/checkpoint progression: `source_complete`
 - M6 job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`
-- M6 multi-page runner/cancellation/retry scheduling: `open`
+- M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`
+- M6 replay runtime host composition and operator guard: `source_complete_owner_execution_pending`
+- M6 scheduler, graceful shutdown, retry/DLQ, commands, and source adapters: `open`
 - Production consumer and partition lifecycle cutover: `forbidden_pending_evidence`
 
 ## Verification
@@ -255,9 +272,14 @@ The repository owner runs checks and database evidence during this rewrite:
 - `cargo test -p rustok-index source_registry --lib -- --nocapture`
 - `cargo test -p rustok-index source_replay --lib -- --nocapture`
 - `cargo test -p rustok-index source_replay_job --lib -- --nocapture`
+- `cargo test -p rustok-index source_replay_runner --lib -- --nocapture`
+- `cargo test -p rustok-index replay_runtime --lib -- --nocapture`
+- `cargo test -p rustok-server index_replay_runtime_composition -- --nocapture`
 - `node scripts/verify/verify-index-query-contract.mjs`
 - `node scripts/verify/verify-index-source-replay-contract.mjs`
 - `node scripts/verify/verify-index-replay-job-leases.mjs`
+- `node scripts/verify/verify-index-replay-multipage-runner.mjs`
+- `node scripts/verify/verify-index-replay-runtime-composition.mjs`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/index-storage-tooling.mjs fixtures`
 - `npm run verify:index:fba`
@@ -269,6 +291,8 @@ The repository owner runs checks and database evidence during this rewrite:
 - [Live implementation plan](./implementation-plan.md)
 - [M5/M6 bounded source replay contract](./m5-m6-source-replay-contract.md)
 - [M6 replay job lease and fencing boundary](./m6-replay-job-leases.md)
+- [M6 bounded multi-page replay runner](./m6-bounded-multipage-runner.md)
+- [M6 replay runtime host composition](./m6-replay-runtime-composition.md)
 - [M4 source-owned schema registry](./m4-source-schema-registry.md)
 - [M4 query runtime composition](./m4-query-runtime-composition.md)
 - [M4 PostgreSQL query port](./m4-postgres-query-port.md)
@@ -276,6 +300,7 @@ The repository owner runs checks and database evidence during this rewrite:
 - [M2 storage benchmark contract](./storage-benchmark.md)
 - [M2 storage evidence comparison](./storage-comparison.md)
 - [M2 storage operational review](./storage-operational-review.md)
+- [M2 replacement evidence runbook](./storage-evidence-runbook.md)
 - [M3 partition evidence runbook](./partition-evidence-runbook.md)
 - [Index Engine rewrite ADR](../../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Accepted storage ADR](../../../DECISIONS/2026-07-24-index-storage-layout.md)
