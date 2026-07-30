@@ -9,6 +9,7 @@ use rustok_api::{
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 use crate::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecutionError,
@@ -42,16 +43,19 @@ impl ForumStorefrontSearchQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        if input
+        if let Some(value) = input
             .tenant_id
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .is_some_and(|value| value != tenant.id.to_string())
         {
-            return Err(FieldError::new(
-                "tenantId does not match the authenticated request tenant",
-            ));
+            let requested_tenant = Uuid::parse_str(value)
+                .map_err(|_| FieldError::new("tenantId contains an invalid UUID"))?;
+            if requested_tenant != tenant.id {
+                return Err(FieldError::new(
+                    "tenantId does not match the authenticated request tenant",
+                ));
+            }
         }
         let request_context = ctx.data::<RequestContext>()?.clone();
         let auth = ctx.data_opt::<AuthContext>().cloned();
