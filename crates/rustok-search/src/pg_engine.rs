@@ -120,16 +120,39 @@ fn build_filter_clause(query: &SearchQuery, starting_param: usize) -> FilterClau
         ));
     }
     if !query.category_ids.is_empty() {
+        let category_params =
+            bind_uuid_list(&query.category_ids, &mut values, &mut next_param);
+        let category_facet_values = query
+            .category_ids
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let category_facet_params =
+            bind_list(&category_facet_values, &mut values, &mut next_param);
         clauses.push(format!(
-            "entity_type = 'product' AND EXISTS (
-                SELECT 1
-                FROM index_product_categories ipc
-                WHERE ipc.tenant_id = $1
-                  AND ipc.product_id = id
-                  AND ($2 = '' OR ipc.locale = $2)
-                  AND ipc.category_id IN ({})
-            )",
-            bind_uuid_list(&query.category_ids, &mut values, &mut next_param)
+            "(
+                (
+                    entity_type = 'product'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM index_product_categories ipc
+                        WHERE ipc.tenant_id = $1
+                          AND ipc.product_id = id
+                          AND ($2 = '' OR ipc.locale = $2)
+                          AND ipc.category_id IN ({category_params})
+                    )
+                )
+                OR (
+                    source_module = 'forum'
+                    AND (
+                        (entity_type = 'forum_category' AND id IN ({category_params}))
+                        OR (
+                            entity_type IN ('forum_topic', 'forum_reply')
+                            AND facets ->> 'category_id' IN ({category_facet_params})
+                        )
+                    )
+                )
+            )"
         ));
     }
     for filter in &query.attribute_filters {
@@ -426,6 +449,7 @@ fn build_fts_cte(profile: SearchRankingProfile) -> String {
                 ts_headline('simple', sd.body, q.ts_query) AS snippet,
                 __SCORE_SQL__ AS score,
                 sd.payload AS payload,
+                sd.facets AS facets,
                 sd.is_public AS is_public,
                 sd.updated_at AS updated_at
             FROM search_documents sd
@@ -480,6 +504,7 @@ fn build_typo_cte(profile: SearchRankingProfile) -> String {
                 ) AS snippet,
                 __SCORE_SQL__ AS score,
                 sd.payload AS payload,
+                sd.facets AS facets,
                 sd.is_public AS is_public,
                 sd.updated_at AS updated_at
             FROM search_documents sd
@@ -741,6 +766,29 @@ fn empty_facets() -> Vec<SearchFacetGroup> {
 mod tests {
     use super::{build_filter_clause, should_run_typo_fallback};
     use crate::{SearchRankingProfile, engine::SearchQuery};
+    use uuid::Uuid;
+
+    fn query_with_categories(category_ids: Vec<Uuid>) -> SearchQuery {
+        SearchQuery {
+            tenant_id: None,
+            locale: None,
+            channel_id: None,
+            original_query: "phone".to_string(),
+            query: "phone".to_string(),
+            ranking_profile: SearchRankingProfile::Balanced,
+            preset_key: None,
+            limit: 10,
+            offset: 0,
+            published_only: false,
+            entity_types: Vec::new(),
+            source_modules: Vec::new(),
+            statuses: Vec::new(),
+            category_ids,
+            attribute_filters: Vec::new(),
+            sort_attribute_code: None,
+            sort_desc: false,
+        }
+    }
 
     #[test]
     fn filter_clause_uses_bound_parameters() {
@@ -772,6 +820,23 @@ mod tests {
             "is_public = TRUE AND entity_type IN ($4) AND source_module IN ($5) AND status IN ($6)"
         );
         assert_eq!(filters.values.len(), 3);
+    }
+
+    #[test]
+    fn category_filter_preserves_product_and_adds_exact_forum_scope() {
+        let filters = build_filter_clause(&query_with_categories(vec![Uuid::from_u128(7)]), 4);
+
+        for marker in [
+            "entity_type = 'product'",
+            "ipc.category_id IN ($4)",
+            "source_module = 'forum'",
+            "entity_type = 'forum_category' AND id IN ($4)",
+            "entity_type IN ('forum_topic', 'forum_reply')",
+            "facets ->> 'category_id' IN ($5)",
+        ] {
+            assert!(filters.clause.contains(marker), "missing {marker}");
+        }
+        assert_eq!(filters.values.len(), 2);
     }
 
     #[test]

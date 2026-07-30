@@ -2,30 +2,31 @@
 
 ## Current state
 
-`rustok-search` owns normalized search documents, PostgreSQL FTS, catalog and Blog
-projection ingestion, analytics, dictionaries, query rules, rebuild/diagnostics,
-and module-owned admin/storefront surfaces. It remains separate from
-`rustok-index`; consumers depend on published Search contracts rather than index
-runtime types. The FFA split is `phase_b_ready` with focused core, transport, and
-UI packages.
+`rustok-search` owns normalized search documents, PostgreSQL FTS, catalog, Blog,
+and Forum projection ingestion, analytics, dictionaries, query rules,
+rebuild/diagnostics, and module-owned admin/storefront surfaces. It remains
+separate from `rustok-index`; consumers depend on published Search contracts
+rather than index runtime types. The FFA split is `phase_b_ready` with focused
+core, transport, and UI packages.
 
 Canonical result navigation has a single owner policy:
 `canonical_search_result_url` in `crates/rustok-search/src/engine.rs`. It derives
-product, content, and Blog URLs from normalized `SearchResultItem` values before
-transport serialization. Blog navigation requires the canonical
+product, content, Blog, and Forum URLs from normalized `SearchResultItem` values
+before transport serialization. Blog navigation requires the canonical
 `source_module=blog` / `entity_type=blog_post` pair and a bounded ASCII slug from
-the owner-projected payload. Missing, malformed, spoofed, traversal, whitespace,
-and overlong values fail closed. Content source-module values are bounded before
-they enter a query string.
+the owner-projected payload. Forum navigation requires canonical Forum
+source/entity pairs and validates reply payload identity. Missing, malformed,
+spoofed, traversal, whitespace, and overlong values fail closed. Content
+source-module values are bounded before they enter a query string.
 
 GraphQL Search, storefront native Search, Search admin preview, and admin global
 search all delegate to this single owner policy. The storefront transport facade
 returns the selected transport payload unchanged: there is no transport fallback,
-no post-processing navigation module, and no local Blog route builder. The Search
-admin native adapter is split into focused include-parts for API facade, read
-handlers, write handlers, normalization, execution pipeline, mapping, and support.
-Only the mapping part converts normalized results to admin DTOs, and it delegates
-URL resolution to `canonical_search_result_url`.
+no post-processing navigation module, and no local Blog or Forum route builder.
+The Search admin native adapter is split into focused include-parts for API
+facade, read handlers, write handlers, normalization, execution pipeline,
+mapping, and support. Only the mapping part converts normalized results to admin
+DTOs, and it delegates URL resolution to `canonical_search_result_url`.
 
 Blog ingestion has two executable, unrun harness layers. A routing target locks
 Blog lifecycle, module-toggle, and targeted/full reindex events. An env-gated
@@ -35,6 +36,14 @@ payload replacement, checks tenant-scoped full rebuild, targeted missing-post
 cleanup, and module-disabled cleanup followed by enable-time rebuild. Source-table
 availability resolves through the active PostgreSQL `search_path` instead of
 hard-coding `public`.
+
+Forum public category, topic, and approved-reply projections now support an exact
+category filter through the existing bounded `category_ids` query field. Product
+queries retain normalized `index_product_categories` matching. Forum category
+documents match their document identifier, while topic and reply documents match
+the owner-projected `facets.category_id`. Search does not resolve descendants or
+copy Forum category-tree policy; bounded subtree expansion remains Forum-owned
+follow-up work.
 
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
@@ -83,6 +92,11 @@ projection can remain stale after recovery.
   `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
 - Blog projection harness status: `executable_no_run`; execution remains user-owned
   and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
+- Exact Forum category filter status: `source_complete_execution_pending`.
+- Exact Forum category filter contract:
+  `crates/rustok-forum/contracts/forum-search-exact-category-filter.json`.
+- Exact Forum category filter guardrail:
+  `scripts/verify/verify-forum-search-exact-category-filter.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -122,8 +136,9 @@ rebuild behavior through replayable event transport.
    handling, stale cleanup, and tenant isolation.
 2. Added isolated-schema PostgreSQL Blog projection harnesses and active
    `search_path` discovery.
-3. Added `canonical_search_result_url` with product, content, and Blog routing,
-   bounded slug validation, source/entity ownership, and query-injection guards.
+3. Added `canonical_search_result_url` with product, content, Blog, and Forum
+   routing, bounded payload validation, source/entity ownership, and
+   query-injection guards.
 4. Exported the owner policy and migrated GraphQL result projection.
 5. Migrated storefront native result projection to the owner policy.
 6. Removed storefront post-transport navigation enrichment and deleted its source
@@ -137,9 +152,12 @@ rebuild behavior through replayable event transport.
     every transport-local URL implementation and require no transport fallback.
 11. Added canonical URL ownership to the standard Search FBA gate alongside the
     provider port, fallback, runtime contract, and invocation evidence.
-12. Removed the legacy generic `platform_settings/search` execution path and added
-    a fail-closed FBA ownership guard so runtime connector secrets stay inside the
+12. Removed the generic `platform_settings/search` execution path and added a
+    fail-closed FBA ownership guard so runtime connector secrets stay inside the
     Search owner boundary.
+13. Reused bounded `category_ids` for exact Forum category, topic, and approved-reply
+    filtering while preserving product category relations, parameterized SQL, and
+    the shared FTS/typo filter path.
 
 ## Next results
 
@@ -158,18 +176,22 @@ rebuild behavior through replayable event transport.
    **Done when:** terminal handler failure, transport lag, duplicate/out-of-order
    delivery, and process restart cannot leave a stale projection without an
    observable durable recovery action.
-3. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
+3. **Complete Forum category-subtree filtering.** Accept a bounded owner-authorized
+   category scope from Forum rather than reading its tree in Search. Preserve exact
+   matching as the fallback foundation and keep descendant count, visibility, and
+   request cost bounded.
+4. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
    storefront Search, native storefront Search, Search admin preview, and admin
-   global search against projected product, content, and Blog documents. Retain
-   proof that malformed Blog payloads remain non-navigable everywhere.
-4. **Verify click analytics.** Confirm every Search surface records the canonical
+   global search against projected product, content, Blog, and Forum documents.
+   Retain proof that malformed owner payloads remain non-navigable everywhere.
+5. **Verify click analytics.** Confirm every Search surface records the canonical
    href without reconstructing routes in analytics code.
-5. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
+6. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
    and retain migration/`pg_trgm`, event-delivery, targeted missing-post cleanup,
    module-disable cleanup, and category reindex results.
-6. **Execute live provider evidence.** Run query and suggestion providers under
+7. **Execute live provider evidence.** Run query and suggestion providers under
    deadline, error, locale, tenant, channel, ranking, and catalog-filter conditions.
-7. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
+8. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
    connectors must not bypass Search ports, owner URL mapping, or PostgreSQL
    baseline selection.
 
@@ -177,6 +199,8 @@ rebuild behavior through replayable event transport.
 
 - `cargo test -p rustok-server settings_service`
 - `cargo test -p rustok-search engine::tests::canonical_url`
+- `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
+- `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
@@ -192,6 +216,7 @@ rebuild behavior through replayable event transport.
 - [Crate README](../README.md)
 - [Search documentation](./README.md)
 - [Search FBA registry](../contracts/search-fba-registry.json)
+- [Forum exact-category contract](../../rustok-forum/contracts/forum-search-exact-category-filter.json)
 
 ## Periodic release verification handoff
 
