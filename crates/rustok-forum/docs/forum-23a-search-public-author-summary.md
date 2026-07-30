@@ -34,18 +34,21 @@ empty author: it fails projection so the durable Search inbox can retry.
 
 ## Durable redaction
 
-Embedded summaries require invalidation when profile presentation changes. Search now treats
-`ProfileUpdated` and `UserDeleted` as Forum projection events whenever the Forum source is
-composed.
+Embedded summaries require invalidation when profile presentation changes. Profiles publishes
+`ProfileUpdated` after a successful owner write for handle, display content, locale, visibility,
+and media changes. Search now treats that owner event as a Forum projection event whenever the
+Forum source is composed.
 
-Each event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
+The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
 consumer rebuilds the Forum tenant projection from current owner state, so a profile changed to
-private or a deleted user removes the previously stored public summary.
+private removes the previously stored public summary.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
 ordering is solved; owner-issued monotonic revisions remain the next ordering hardening task.
+It also does not treat `UserDeleted` as sufficient deletion evidence because that event does not
+prove that the Profiles owner has already removed or hidden its state.
 
 ## Search shape
 
@@ -68,6 +71,7 @@ document rows are replaced by the next Forum rebuild or relevant durable event.
 ## Remaining FORUM-23 scope
 
 - owner-issued monotonic projection revisions across Forum producers;
+- an owner-ordered profile or account deletion invalidation contract;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
