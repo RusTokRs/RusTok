@@ -18,7 +18,7 @@ pub enum IndexQueryRuntimeCompositionError {
 ///
 /// Absence of a source registry is represented as `Ok(None)` and never produces an empty or
 /// partially useful runtime. The function performs no database I/O and makes no tenant schema
-/// readiness claim; those checks remain inside [`PostgresIndexQueryPort::execute_query`].
+/// readiness claim; those checks remain inside the query port when a request executes.
 pub fn materialize_postgres_index_query_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -106,7 +106,7 @@ mod tests {
             .expect("registry should produce a runtime");
 
         assert!(extensions.contains::<SharedIndexQueryRuntime>());
-        assert!(Arc::ptr_eq(
+        assert!(std::sync::Arc::ptr_eq(
             &runtime.shared_port(),
             &extensions
                 .get::<SharedIndexQueryRuntime>()
