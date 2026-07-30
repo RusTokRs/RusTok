@@ -28,13 +28,13 @@ materializer. It:
 
 Backend support and exact tenant-scoped persisted schema readiness remain execution-time
 responsibilities of `PostgresIndexQueryPort`. Runtime presence therefore means the adapter is
-composed, not that a specific tenant query will succeed.
+composed, not that a specific tenant query will succeed or is current.
 
 ## Server composition
 
 The public server `module_event_dispatcher` facade delegates existing provider setup to
 the retained base implementation. It then invokes the Index-owned materializer before any
-selected projection-backed consumer composition. This ordering guarantees that:
+selected projection-backed shadow composition. This ordering guarantees that:
 
 1. every compiled module has published its schema contribution;
 2. `rustok-distribution` has atomically materialized the complete source registry;
@@ -48,30 +48,31 @@ source schema builder or owner DTO. A consumer must resolve `SharedIndexQueryRun
 its owner/transport authorization, construct only typed `IndexQuery` values, and map bounded
 query-port errors without exposing database details.
 
-The first approved consumer source is Social Graph notification block/mute policy. Its
-activation is separately default-off through
-`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED`. While disabled, the authoritative owner
-policy remains selected. When enabled, the final host requires the shared runtime and
-recomposes the policy without an owner-table fallback. The owner adapter is documented in
-`m4-social-graph-privacy-consumer.md`.
+The first production-shaped runtime consumer is a default-off Social Graph notification
+privacy parity shadow. `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED=true` requires the
+shared runtime and recomposes the policy with an owner-first comparison wrapper. The owner
+result remains authoritative; Index mismatch or failure never changes policy. The contract is
+documented in `m4-social-graph-privacy-consumer.md`.
 
 ## Boundary
 
 Runtime composition itself does not:
 
 - authorize arbitrary callers or tenant scopes;
-- activate any projection-backed consumer by default;
+- make a projection authoritative for privacy or presentation;
+- activate any projection-backed shadow by default;
 - add GraphQL, storefront, admin, search, or native-server query endpoints;
 - publish Product, Content, Flex, or other source schemas;
-- persist tenant schema readiness;
+- persist tenant schema readiness or a freshness watermark;
 - execute a query during startup;
 - add ordering through a `many` relation;
 - execute PostgreSQL/reference capture or admission;
 - authorize production partition lifecycle work.
 
-Consumer activation remains owner-operated and evidence-gated. The Social Graph source does
-not make profile privacy, revision-bearing follow reads, presentation visibility, or other
-consumers Index-backed.
+Consumer cutover remains blocked until the owner defines and proves freshness, negative-result
+safety, lag, repair, and fail-closed policy. The Social Graph shadow does not make profile
+privacy, revision-bearing follow reads, presentation visibility, or other consumers
+Index-backed.
 
 ## Owner validation
 
