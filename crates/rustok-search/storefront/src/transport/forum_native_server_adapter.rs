@@ -35,6 +35,7 @@ async fn forum_storefront_search_native(
         };
 
         let runtime = expect_context::<HostRuntimeContext>();
+        let db = runtime.db_clone();
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -78,7 +79,7 @@ async fn forum_storefront_search_native(
             transport: StorefrontSearchTransport::NativeServer,
         };
         let execution = execute_forum_storefront_search(
-            &runtime.db_clone(),
+            &db,
             category_scope_port,
             request,
         )
