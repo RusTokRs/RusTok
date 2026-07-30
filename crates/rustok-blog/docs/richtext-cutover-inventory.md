@@ -6,6 +6,8 @@ The Blog article source cutover is target-only. Writes accept
 `rustok_api::RichTextDocument`; reads return `rustok_api::RichTextView` and
 server-derived plain text under the fixed `article` profile.
 
+Machine inventory: `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`.
+
 ## Implemented source boundary
 
 - `blog_post_translations.body` stores canonical article document JSON.
@@ -18,6 +20,28 @@ server-derived plain text under the fixed `article` profile.
 - Storefront format summarizers are physically removed.
 - Forum-to-Blog orchestration fails closed unless source content is canonical
   and Article-compatible.
+
+## Audited source matrix
+
+- **Storage schema.** `blog_post_translations.body` retains only the canonical
+  Article document JSON, while the irreversible migration validates retained
+  rows before removing `body_format`.
+- **Search projection.** `crates/rustok-search/src/blog_projector.rs` parses the
+  owner document and derives indexed text through the shared Article profile;
+  invalid documents fail the projector transaction instead of falling back to
+  raw body text.
+- **SEO projection.** `crates/rustok-blog/src/seo_targets.rs` summarizes only
+  server-derived `content_plain_text`.
+- **AI Blog draft writer.** `crates/rustok-ai/src/direct.rs` reads existing
+  source material through `content_plain_text`, converts generated create and
+  update bodies with `article_document_from_plain_text`, and persists drafts
+  with `publish: false`.
+- **AI Blog owner shim.** `crates/rustok-ai/src/rustok_blog.rs` re-exports only
+  the Blog DTOs, service, and richtext adapter required by the draft writer.
+  Owner migrations, entities, GraphQL, HTTP, and SEO internals must not cross
+  that private shim. Evidence:
+  `crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json`.
+  Guardrail: `scripts/verify/verify-blog-ai-richtext-boundary.mjs`.
 
 ## Offline conversion utility
 
@@ -60,7 +84,9 @@ migration or Search reindex.
 
 ## Guardrail
 
-The machine inventory, dedicated offline-backfill verifier, and Blog
-FBA/GraphQL/storefront verifiers reject reintroduction of legacy transport
-fields, raw JSON aliases, Search fallback, AI Markdown writes, removed
-summarizers, unsafe default writes, or checkpoint mutation during dry-run.
+The machine inventory, dedicated offline-backfill and AI-boundary verifiers,
+and Blog FBA/GraphQL/storefront verifiers reject reintroduction of legacy
+transport fields, raw JSON aliases, Search fallback, AI Markdown writes,
+expanded AI owner internals, removed summarizers, unsafe default writes, or
+checkpoint mutation during dry-run. The aggregate entry point remains
+`scripts/verify/verify-blog-fba.mjs`.

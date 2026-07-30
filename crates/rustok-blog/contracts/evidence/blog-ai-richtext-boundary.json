@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "ai_blog_draft_richtext_boundary",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "shim": {
+    "path": "crates/rustok-ai/src/rustok_blog.rs",
+    "owner": "rustok_blog_owner",
+    "allowed_reexports": [
+      "CreatePostInput",
+      "PostResponse",
+      "PostService",
+      "UpdatePostInput",
+      "richtext"
+    ],
+    "forbidden_reexports": [
+      "migrations",
+      "entities",
+      "graphql",
+      "http",
+      "seo_targets"
+    ]
+  },
+  "writer": {
+    "path": "crates/rustok-ai/src/direct.rs",
+    "required_markers": [
+      "use crate::rustok_blog::{CreatePostInput, PostService, UpdatePostInput};",
+      "impl DirectTaskHandler for BlogDraftHandler",
+      "PostService::new(runtime.db_clone(), runtime.event_bus())",
+      "crate::rustok_blog::richtext::article_document_from_plain_text(&body)",
+      "crate::rustok_blog::richtext::article_document_from_plain_text(body)",
+      "existing_post.map(|post| post.content_plain_text.clone())",
+      "blog_draft_must_remain_unpublished()",
+      "publish: false"
+    ],
+    "forbidden_markers": [
+      "crate::rustok_blog::migrations",
+      "CONTENT_FORMAT_MARKDOWN",
+      "body_format:",
+      "content_json:"
+    ]
+  },
+  "inventory": {
+    "path": "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json",
+    "check": "ai_blog_draft_writer",
+    "completion_condition": "ai_blog_drafts_write_richtext_document"
+  },
+  "guardrail": "scripts/verify/verify-blog-ai-richtext-boundary.mjs",
+  "guardrail_test": "scripts/verify/verify-blog-ai-richtext-boundary.test.mjs",
+  "validation": {
+    "tests_run": false,
+    "verifier_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  },
+  "remaining": [
+    "execute verifier, Cargo checks, AI Blog draft persistence, and browser evidence"
+  ]
+}
