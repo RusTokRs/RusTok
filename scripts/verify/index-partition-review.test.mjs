@@ -306,12 +306,23 @@ test('requires the saved archive manifest to stay outside the retained bundle', 
 test('refuses an archive manifest for a non-admitted retained bundle', () => {
   const context = buildBundle();
   try {
+    const queryPath = path.join(context.root, 'query.json');
+    const query = JSON.parse(readFileSync(queryPath, 'utf8'));
+    query[0].shadow_p95_ms = 20;
+    writeJson(queryPath, query);
+
+    const capturePath = path.join(context.root, 'capture.json');
+    const capture = JSON.parse(readFileSync(capturePath, 'utf8'));
     const packetPath = path.join(context.root, 'partition-packet.json');
-    const admissionPath = path.join(context.root, 'admission.json');
-    const packet = JSON.parse(readFileSync(packetPath, 'utf8'));
-    packet.manifest.thresholds.maximum_query_p95_regression_bps = 0;
+    const currentPacket = JSON.parse(readFileSync(packetPath, 'utf8'));
+    const { packet } = assemblePartitionPacket({
+      manifest: currentPacket.manifest,
+      capturePath,
+      capture,
+    });
     writeJson(packetPath, packet);
-    writeJson(admissionPath, validatePartitionPacket(packet));
+    writeJson(path.join(context.root, 'admission.json'), validatePartitionPacket(packet));
+
     const result = runArchiveManifest(context.root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /requires admission outcome admitted/u);
