@@ -82,7 +82,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             FOR EACH ROW
             EXECUTE FUNCTION channel_promote_single_default();
 
-            CREATE UNIQUE INDEX {UNIQUE_DEFAULT_INDEX}
+            CREATE UNIQUE INDEX IF NOT EXISTS {UNIQUE_DEFAULT_INDEX}
                 ON channels (tenant_id)
                 WHERE is_default;
             "#
@@ -239,6 +239,23 @@ mod tests {
         insert_channel(&db, Uuid::new_v4(), Uuid::new_v4(), true)
             .await
             .expect("other tenant default");
+    }
+
+    #[tokio::test]
+    async fn sqlite_replay_preserves_the_single_default_invariant() {
+        let db = sqlite_channels_schema().await;
+        let manager = SchemaManager::new(&db);
+        Migration.up(&manager).await.expect("first migration pass");
+        Migration.up(&manager).await.expect("replayed migration pass");
+
+        let tenant_id = Uuid::new_v4();
+        insert_channel(&db, Uuid::new_v4(), tenant_id, true)
+            .await
+            .expect("first default");
+        insert_channel(&db, Uuid::new_v4(), tenant_id, true)
+            .await
+            .expect("promoted default");
+        assert_eq!(default_count(&db, tenant_id).await, 1);
     }
 
     #[tokio::test]
