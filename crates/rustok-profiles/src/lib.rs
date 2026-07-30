@@ -20,6 +20,7 @@ mod profile_updated_event;
 pub mod privacy;
 pub mod reader;
 pub mod services;
+mod upsert_write;
 mod visibility_write;
 
 pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInput};
