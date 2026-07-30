@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-07-30T18:30:00Z",
+  "review_base": "fc21cef64ffac3f1c724b223e7d729675b95380b",
+  "status": "pricing_storefront_graphql_error_safety_source_reviewed_unvalidated",
+  "scope": "Pricing storefront GraphQL public error boundary",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-pricing/docs/implementation-plan.md",
+    "crates/rustok-pricing/storefront/Cargo.toml",
+    "crates/rustok-pricing/storefront/src/core.rs",
+    "crates/rustok-pricing/storefront/src/transport/mod.rs",
+    "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "scripts/verify/verify-pricing-storefront-boundary.mjs",
+    "scripts/verify/verify-pricing-storefront-native-error-safety.mjs",
+    "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs"
+  ],
+  "findings": [
+    {
+      "id": "pricing-graphql-display-public",
+      "severity": "confirmed",
+      "finding": "Pricing GraphQL transport converted GraphqlHttpError through ApiError::Graphql(value.to_string()), and the selected transport facade returned that display inside the public UiTransportError envelope. GraphQL server messages and HTTP status text could therefore cross the storefront boundary."
+    },
+    {
+      "id": "native-policy-already-bounded",
+      "severity": "preserved",
+      "finding": "The Pricing native server-function adapter already maps runtime, tenant-context, and owner failures to bounded public messages. This slice does not alter that adapter or its query/result composition."
+    },
+    {
+      "id": "pricing-validation-contract",
+      "severity": "preserved",
+      "finding": "The two existing StorefrontPricingQuery validation mappings remain user-facing and unchanged. They are bounded owner validation messages rather than transport or backend causes."
+    },
+    {
+      "id": "final-facade-boundary",
+      "severity": "selected",
+      "finding": "The smallest compatible fix is a Pricing-owned GraphqlCallContext in the selected transport facade. It sanitizes only ApiError::Graphql before execute_selected_transport constructs UiTransportError, while leaving ServerFn validation and native behavior unchanged."
+    },
+    {
+      "id": "correlation-safe-shape",
+      "severity": "confirmed",
+      "finding": "The new context records a unique correlation id, tenant and query field presence/length facts, error kind, stable code, and private raw/parsed GraphQL diagnostics without structured query values."
+    },
+    {
+      "id": "all-profile-tracing",
+      "severity": "selected",
+      "finding": "Pricing storefront tracing is made non-optional so the GraphQL-selected profile can compile the same diagnostics policy; the SSR feature no longer owns tracing activation."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+    "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/rustok-pricing/docs/storefront-graphql-error-safety.md",
+    "crates/rustok-pricing/storefront/Cargo.toml",
+    "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-pricing/storefront/src/transport/mod.rs",
+    "scripts/verify/verify-pricing-storefront-boundary.mjs",
+    "scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs",
+    "scripts/verify/verify-pricing-storefront-native-error-safety.mjs"
+  ],
+  "preserved": [
+    "Pricing GraphQL adapter query documents, variables, list/detail fetches, and result mappers",
+    "StorefrontPricingQuery fields and validation messages",
+    "Pricing native server-function endpoint and owner operations",
+    "selected native versus GraphQL transport policy",
+    "absence of broad fallback",
+    "Pricing FFA/FBA and production status"
+  ],
+  "remaining_scope": [
+    "remaining ecommerce adapters and non-PortError public envelopes",
+    "Pricing storefront focused verifier execution",
+    "Pricing storefront Cargo compilation across default, hydrate, and SSR profiles",
+    "GraphQL/browser runtime and mounted parity evidence"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}

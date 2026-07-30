@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import "./verify-pricing-storefront-graphql-error-safety.mjs";
 import "./verify-pricing-storefront-native-error-safety.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -88,6 +89,7 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "Prici
 
 assertContains(transport, "fetch_storefront_pricing", `${files.transport}: transport facade must expose fetch_storefront_pricing`);
 assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport must wire GraphQL adapter`);
+assertContains(transport, "mod graphql_error_safety;", `${files.transport}: transport must wire GraphQL error policy`);
 assertContains(transport, "mod native_server_adapter;", `${files.transport}: transport must wire native server adapter`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not import legacy api module`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: GraphQL adapter must delegate to the parallel GraphQL path`);
