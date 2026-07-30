@@ -14,6 +14,7 @@ mod locale_write;
 pub mod media;
 mod media_write;
 pub mod migrations;
+pub mod mutations;
 pub mod observability;
 pub mod presentation;
 mod profile_updated_event;
@@ -31,6 +32,7 @@ pub use media::{
     ProfileImagePresentation, ProfileMediaPublicImageProvider, ProfileMediaSlot,
     profile_image_presentation, validate_profile_media_asset,
 };
+pub use mutations::ProfileMutationService;
 pub use observability::{
     PROFILE_BACKFILL_OPERATION, PROFILE_OPERATION_TARGET, ProfileBackfillTimer, ProfileOperation,
     ProfileOperationTimer,
