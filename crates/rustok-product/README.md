@@ -34,16 +34,18 @@
   `group_code` bindings are available over native server functions plus
   parallel GraphQL, and the module-owned admin renders grouped typed editors
   with dirty-field patch semantics.
-- Under the optional `index` feature, publish one owner-generic locale-required
-  Product schema plus a bounded PostgreSQL scan/load source through the generic
-  Index source-factory boundary. The adapter reads Product-owned storage only,
-  emits generic mutations, and does not own Index persistence or scheduling.
-- Product storage owns a positive monotonic `index_revision`; Product and
-  translation changes advance it. Replay enumeration uses the stable
-  `(product_id, locale)` identity through existing tenant/product and translation
-  uniqueness, while `index_revision` is used only as mutation `source_version`.
-  Hard-delete tombstones and incremental event acknowledgement remain later
-  Index slices.
+- Own a positive monotonic `index_revision` storage column. Every Product update
+  advances it exactly once, and Product-translation insert/update/delete advances
+  the affected Product revision. The value is storage-internal and is not exposed
+  through Product DTOs or the SeaORM write model.
+- Publish only a neutral `ProductRuntimeSelected` marker for selected
+  cross-module composition. The Product crate does not depend on `rustok-index`
+  and does not construct generic Index mutations.
+- The selected `rustok-distribution` bridge reads Product-owned storage through a
+  bounded locale-aware source. Replay enumeration uses stable
+  `(product_id, locale)` identity, while `index_revision` is used only as generic
+  mutation `source_version`. Hard-delete and translation-delete tombstones remain
+  later Index/reconciliation slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -106,8 +108,8 @@
 
 ## Interactions
 
-- Owns Product DTOs, ORM entities, and errors without a
-  `rustok-commerce-foundation` dependency.
+- Owns Product DTOs, ORM entities, errors, tables, and migration history without
+  a `rustok-commerce-foundation` or `rustok-index` dependency.
 - Depends on `rustok-pricing-persistence` for pricing-owned ORM projections and
   atomic initial-price lifecycle operations.
 - Depends on `rustok-inventory` for inventory-owned bootstrap and availability
@@ -117,9 +119,8 @@
 - Depends on `rustok-taxonomy` for shared scope-aware tag dictionary while keeping `product_tags`
   module-owned.
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.
-- Optionally depends on `rustok-index` only to publish generic schema/source
-  contracts; the Index core does not depend on Product and never reads Product
-  tables directly.
+- Is consumed by the selected distribution bridge for generic Index schema/source
+  composition; Index core and server replay composition remain Product-agnostic.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - Consumed by `apps/admin` through manifest-driven module UI composition.
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
@@ -133,9 +134,9 @@
 ## Entry points
 
 - `ProductModule`
+- `ProductRuntimeSelected`
 - `CatalogService`
 - `ProductCatalogReadPort`
-- `product_index_schema` and `ProductPostgresIndexSourceFactory` with feature `index`
 - `services::catalog_schema::resolve_effective_product_form`
 - `ProductCatalogSchemaService`
 - `admin::ProductAdmin`
