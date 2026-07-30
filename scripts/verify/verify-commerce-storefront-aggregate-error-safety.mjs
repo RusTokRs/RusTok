@@ -16,6 +16,7 @@ const requireText = (source, value, label) => {
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+const countText = (source, value) => source.split(value).length - 1;
 
 const cargoPath = "crates/rustok-commerce/storefront/Cargo.toml";
 const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
@@ -86,6 +87,22 @@ if (fetchStart < 0 || nextFunction < 0) {
     `${transportPath}: aggregate fetch direct error display mapping`,
   );
 }
+
+requireText(
+  transport,
+  "impl From<UiTransportError> for ApiError",
+  `${transportPath}: generic command-wrapper mapper remains explicit debt`,
+);
+if (countText(transport, ".map_err(ApiError::from)") !== 3) {
+  failures.push(
+    `${transportPath}: exactly three owner command wrappers must remain on the generic mapper`,
+  );
+}
+for (const marker of [
+  "create_storefront_payment_collection",
+  "select_storefront_shipping_option",
+  "complete_storefront_checkout",
+]) requireText(transport, marker, `${transportPath}: preserved owner command wrapper`);
 
 for (const [value, label] of [
   ["pub(super) struct AggregateFetchErrorContext", "private context"],
