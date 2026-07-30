@@ -38,8 +38,8 @@ jobs:
               lambda match: f'crate::richtext::article_document_from_plain_text("{match.group(1)}")',
               source,
           )
-          if count < 1:
-              raise RuntimeError('expected at least one owner-local test richtext path')
+          if count != 5:
+              raise RuntimeError(f'expected five owner-local test richtext paths, got {count}')
           if 'rustok_blog::richtext::' in updated:
               raise RuntimeError('owner service still contains external self-crate richtext paths')
           path.write_text(updated, encoding='utf-8')
