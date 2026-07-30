@@ -65,7 +65,7 @@ payload, SQL, or storage details.
 
 `rustok-server` owns the adapter from `IndexPrivacyShadowObservation` to
 `rustok-telemetry`. This keeps the Social Graph owner contract telemetry-neutral while using
-the single process Prometheus registry.
+the single Prometheus registry for the process.
 
 The collector publishes four metric families:
 
