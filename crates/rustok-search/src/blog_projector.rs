@@ -5,6 +5,8 @@ use sea_orm::{
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use rustok_api::RichTextDocument;
+use rustok_content::{RichTextProfile, plain_text};
 use rustok_core::{Error, Result};
 use rustok_telemetry::metrics;
 
@@ -210,7 +212,14 @@ impl BlogSearchProjector {
                 bct.name AS subtitle,
                 p.slug,
                 NULL::text AS handle,
-                CONCAT_WS(E'\n\n', COALESCE(bt.excerpt, ''), COALESCE(bt.body, '')) AS body,
+                CONCAT_WS(
+                    E'\n\n',
+                    COALESCE(bt.excerpt, ''),
+                    CASE
+                        WHEN bt.body_format = 'richtext' THEN ''
+                        ELSE COALESCE(bt.body, '')
+                    END
+                ) AS body,
                 CONCAT_WS(
                     ' ',
                     COALESCE(bct.name, ''),
@@ -304,8 +313,92 @@ impl BlogSearchProjector {
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
         conn.execute(stmt).await.map_err(Error::Database)?;
+        self.refresh_canonical_richtext_bodies_in(conn, tenant_id, post_id)
+            .await?;
         Ok(())
     }
+
+    async fn refresh_canonical_richtext_bodies_in<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        post_id: Option<Uuid>,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        let mut values = vec![tenant_id.into()];
+        let mut where_clause =
+            String::from("WHERE p.tenant_id = $1 AND bt.body_format = 'richtext'");
+        if let Some(post_id) = post_id {
+            where_clause.push_str(" AND p.id = $2");
+            values.push(post_id.into());
+        }
+
+        let sql = format!(
+            r#"
+            SELECT
+                CONCAT('blog_post:', p.id::text, ':', bt.locale) AS document_key,
+                bt.excerpt,
+                bt.body
+            FROM blog_posts p
+            JOIN blog_post_translations bt
+                ON bt.post_id = p.id
+            {where_clause}
+            "#
+        );
+        let rows = conn
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                values,
+            ))
+            .await
+            .map_err(Error::Database)?;
+
+        for row in rows {
+            let document_key = row
+                .try_get::<String>("", "document_key")
+                .map_err(Error::Database)?;
+            let excerpt = row
+                .try_get::<Option<String>>("", "excerpt")
+                .map_err(Error::Database)?;
+            let body = row
+                .try_get::<String>("", "body")
+                .map_err(Error::Database)?;
+            let article_text = project_canonical_article_plain_text(&body)?;
+            let search_body = compose_search_body(excerpt.as_deref(), &article_text);
+
+            conn.execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "UPDATE search_documents SET body = $1 WHERE tenant_id = $2 AND document_key = $3 AND source_module = 'blog' AND entity_type = 'blog_post'",
+                vec![search_body.into(), tenant_id.into(), document_key.into()],
+            ))
+            .await
+            .map_err(Error::Database)?;
+        }
+
+        Ok(())
+    }
+}
+
+fn project_canonical_article_plain_text(body: &str) -> Result<String> {
+    let document: RichTextDocument = serde_json::from_str(body).map_err(|error| {
+        Error::Validation(format!(
+            "Stored Blog article content is not a RichTextDocument: {error}"
+        ))
+    })?;
+    plain_text(&document, RichTextProfile::Article)
+        .map_err(|error| Error::Validation(error.to_string()))
+}
+
+fn compose_search_body(excerpt: Option<&str>, article_text: &str) -> String {
+    [excerpt.unwrap_or_default(), article_text]
+        .into_iter()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn record_projector_operation(
@@ -355,5 +448,33 @@ fn classify_error(error: &Error) -> &'static str {
         Error::Serialization(_) => "serialization",
         Error::Scripting(_) => "scripting",
         Error::InvalidIdFormat(_) => "invalid_id",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::RichTextDocument;
+
+    use super::{compose_search_body, project_canonical_article_plain_text};
+
+    #[test]
+    fn canonical_article_search_text_uses_article_policy() {
+        let body = serde_json::to_string(&RichTextDocument::single_paragraph("Indexed article"))
+            .expect("serialize canonical article");
+
+        assert_eq!(
+            project_canonical_article_plain_text(&body).expect("article plain text"),
+            "Indexed article"
+        );
+    }
+
+    #[test]
+    fn search_body_composition_omits_blank_sections() {
+        assert_eq!(
+            compose_search_body(Some("  Summary  "), "  Article body  "),
+            "Summary\n\nArticle body"
+        );
+        assert_eq!(compose_search_body(None, "  Article body  "), "Article body");
+        assert_eq!(compose_search_body(Some("  "), "  "), "");
     }
 }

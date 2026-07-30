@@ -17,6 +17,7 @@ const scripts = [
   'verify-index-source-schema-registry.mjs',
   'verify-index-query-runtime-composition.mjs',
   'verify-index-social-graph-privacy-consumer.mjs',
+  'verify-social-graph-privacy-shadow-evidence.mjs',
 ];
 
 for (const script of scripts) {

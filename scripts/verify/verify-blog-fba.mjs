@@ -65,7 +65,7 @@ for (const check of richtextInventory.checks ?? []) {
 }
 sameSet(
   richtextInventory.blocking_surfaces ?? [],
-  ['storage_schema', 'search_projection', 'ai_blog_draft_writer'],
+  ['storage_schema', 'ai_blog_draft_writer'],
   'richtext cutover blockers',
 );
 const richtextCheckNames = new Set((richtextInventory.checks ?? []).map((check) => check.name));

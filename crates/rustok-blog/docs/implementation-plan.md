@@ -13,8 +13,8 @@ The neutral `rustok-api::richtext` contract and executable
 already a typed consumer of the Comments owner: comment writes use
 `RichTextDocument`, and moderation responses return `RichTextView` plus the
 server-derived plain text. Blog posts remain on their separate article
-cutover. The owner now has a fixed `article` profile boundary and a
-canonical-document write/read projection for the Next admin contract. The Blog
+cutover. The owner now has a fixed `article` profile boundary, canonical
+write/read projections, and a format-free plain-text import adapter. The Blog
 GraphQL adapter already exposes canonical `RichTextDocument` writes and
 `RichTextView` reads. Temporary `body`, `body_format`, and `content_json`
 transport declarations, projections, and compatibility conversions are now
@@ -32,11 +32,14 @@ across both transports. GraphQL requests `content { document html }` plus
 `contentPlainText`; native SSR maps `PostResponse.content` and
 `content_plain_text`; Leptos renders only server-rendered `RichTextView` HTML and
 uses server-derived plain text when the projection is absent. The storefront DTO
-and active UI path no longer expose or interpret `body` / `bodyFormat`. The
-now-unused pure-core body-format summarizer remains to be removed, and the
-storage, remaining Leptos, Search, AI, and SEO cutover must still finish
-atomically. Do not add new `rt_json`/Markdown aliases, `content_json` fields, or
-local renderers.
+and active UI path no longer expose or interpret `body` / `bodyFormat`. Blog SEO
+also consumes `content_plain_text`. Search canonical richtext rows are parsed as
+`RichTextDocument` and projected with `rustok-content::plain_text` under the fixed
+`Article` profile in the same projector transaction; legacy storage rows retain a
+contained raw-body fallback. The now-unused pure-core body-format summarizer
+remains to be removed, and storage, the AI Blog draft writer, remaining Leptos
+cleanup, and final compatibility removal must still finish atomically. Do not add
+new `rt_json`/Markdown aliases, `content_json` fields, or local renderers.
 
 The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
 the current request audience. Existing Blog post/list author batches therefore
@@ -58,7 +61,9 @@ the Blog crate. The projector denormalizes `category_name`, `category_slug`, and
 the canonical post slug into Blog documents. Category update/delete therefore
 publish `ReindexRequested { target_type: "blog", target_id: None }` in the same
 owner transaction. Search table discovery follows the active PostgreSQL
-`search_path`.
+`search_path`. Canonical article bodies are never indexed as raw JSON: their
+search text is derived by the shared richtext policy, while invalid canonical
+content fails the transaction instead of committing a partial projection.
 
 Search owns result navigation through `canonical_search_result_url`. Blog results
 are navigable only for the canonical `source_module=blog` /
@@ -101,6 +106,9 @@ outbox publication.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
   user-owned.
+- Search Blog richtext projection: `source_verified_no_compile`; canonical rows
+  use the shared `Article` plain-text policy, legacy storage fallback is contained,
+  and execution is user-owned.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -122,6 +130,8 @@ outbox publication.
 - Blog storefront selected posts consume the same server-rendered `RichTextView`
   HTML and server-derived plain text through GraphQL and native SSR;
   `source_verified_no_compile`, execution is user-owned.
+- Blog SEO projection consumes server-derived plain text and no longer reads the
+  legacy post body.
 - Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
   the single temporary `types.rs` adapter/conversion owner, symmetric create/update
   conversion regression coverage, resolver delegation, verifier, self-test, and
@@ -138,6 +148,8 @@ outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
 - `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
 - `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
+- `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`
+- `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
@@ -203,6 +215,12 @@ outbox publication.
     GraphQL and native SSR now return `RichTextView` plus server-derived plain
     text, Leptos renders owner HTML with a plain-text fallback, and the active
     storefront DTO/UI path no longer accepts `body` or `bodyFormat`.
+20. Added the Blog owner plain-text article import adapter with canonical paragraph
+    semantics and regression coverage, without accepting Markdown aliases, raw
+    JSON, HTML, or caller-selected profiles.
+21. Migrated canonical Blog Search rows to the shared `Article` plain-text policy
+    in the same projector transaction, retained a contained legacy storage
+    fallback, and made invalid canonical documents fail closed before commit.
 
 ## Next results
 
@@ -212,7 +230,8 @@ outbox publication.
    authorization-order, and outbox rollback evidence.
 2. **Execute Search refresh evidence.** Consume category-triggered Blog reindex
    and retain changed `category_name` / `category_slug` documents for related
-   posts.
+   posts. Include canonical richtext body projection and invalid-document rollback
+   in the retained PostgreSQL evidence.
 3. **Execute canonical navigation evidence.** Verify Blog results through GraphQL,
    storefront native Search, Search admin preview, and admin global search; retain
    fail-closed malformed-slug and canonical click-href evidence.
@@ -225,21 +244,22 @@ outbox publication.
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
 6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
-   boundary, Next admin slice, and Blog storefront read slice implemented;
-   storage, remaining Leptos, Search, AI, and SEO parity remains.** The registered
-   GraphQL/storefront guardrails are containment measures, not the completed
-   cutover. Replace the string body plus `content_json` transport everywhere with
-   `RichTextDocument`, assign the `article` profile in the owner service, migrate
-   `blog_post_translations` and relevant revision/audit data, remove the unused
-   storefront format summarizer, and use the canonical server HTML/plain-text
-   projections for every remaining consumer and the already-typed Comments
-   integration. The Blog package must not own Forum editor/API code.
+   boundary, Next admin, Blog storefront reads, SEO, and canonical Search
+   projection are implemented; storage, AI draft writes, remaining Leptos cleanup,
+   and compatibility removal remain.** The registered GraphQL/storefront/FBA
+   guardrails are containment measures, not the completed cutover. Replace the
+   string body plus `content_json` transport everywhere with `RichTextDocument`,
+   migrate `blog_post_translations` and relevant revision/audit data, switch the AI
+   Blog draft writer to the owner text-import adapter, remove the unused storefront
+   format summarizer, and remove Search's legacy raw-body fallback with the storage
+   transition. The Blog package must not own Forum editor/API code.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and target `rustok-api`/`rustok-content` contracts.
    **Done when:** Next and Leptos save/reload/SSR match on the target-only
    contract, public comments rendering parity uses the same server projection,
-   and no Blog path accepts Markdown, format aliases, or raw JSON.
+   Search indexes only owner-derived plain text, and no Blog path accepts Markdown,
+   format aliases, or raw JSON.
 
 ## Verification
 

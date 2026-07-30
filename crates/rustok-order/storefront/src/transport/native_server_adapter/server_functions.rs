@@ -8,6 +8,11 @@ use uuid::Uuid;
 use super::super::CheckoutAdjustment;
 use super::super::{CheckoutCompletion, CheckoutCompletionTransportError, CompleteCheckoutRequest};
 
+#[cfg(feature = "ssr")]
+const ORDER_STOREFRONT_NATIVE_OWNER: &str = "rustok_order.storefront";
+#[cfg(feature = "ssr")]
+const ORDER_STOREFRONT_NATIVE_BOUNDARY: &str = "order_storefront_native_transport";
+
 pub async fn complete_checkout_server(
     request: CompleteCheckoutRequest,
 ) -> Result<CheckoutCompletion, CheckoutCompletionTransportError> {
@@ -105,7 +110,7 @@ async fn storefront_order_complete_checkout_native(
             },
         )
         .await
-        .map_err(native_checkout_runtime_error)?;
+        .map_err(|error| native_checkout_runtime_error(&request_context, tenant.id, error))?;
 
         Ok(map_checkout_completion(completion))
     }
@@ -128,13 +133,28 @@ fn native_context_error(operation: &'static str, error: impl std::fmt::Display) 
 
 #[cfg(feature = "ssr")]
 fn native_checkout_runtime_error(
+    request_context: &rustok_api::RequestContext,
+    tenant_id: Uuid,
     error: rustok_commerce::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
 ) -> ServerFnError {
-    ServerFnError::new(format!(
-        "{}: {}",
-        error.public_code(),
-        error.public_message()
-    ))
+    let public_code = error.public_code();
+    let public_message = error.public_message();
+    tracing::error!(
+        error = ?error,
+        owner = ORDER_STOREFRONT_NATIVE_OWNER,
+        owner_operation = "complete_storefront_checkout",
+        correlation_id = %request_context.correlation_id,
+        tenant_id = %tenant_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        public_code = %public_code,
+        public_retryable = error.retryable(),
+        code = "order.storefront_checkout_runtime_failed",
+        boundary = ORDER_STOREFRONT_NATIVE_BOUNDARY,
+        "order storefront checkout runtime failed"
+    );
+    ServerFnError::new(format!("{public_code}: {public_message}"))
 }
 
 #[cfg(feature = "ssr")]

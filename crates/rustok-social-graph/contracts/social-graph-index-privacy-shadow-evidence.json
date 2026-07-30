@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "owner": "rustok-social-graph",
+  "status": "source_complete_owner_execution_pending",
+  "authority": {
+    "owner_result_remains_authoritative": true,
+    "measurement_only": true,
+    "integrity_admission_is_not_policy_pass": true,
+    "policy_pass_is_not_cutover_authorization": true,
+    "authoritative_cutover_authorized": false
+  },
+  "source": {
+    "telemetry_collector": "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
+    "capture": "scripts/evidence/capture-social-graph-privacy-shadow.mjs",
+    "admission": "scripts/evidence/admit-social-graph-privacy-shadow.mjs",
+    "shared_library": "scripts/evidence/lib/social-graph-privacy-shadow-evidence.mjs",
+    "canonical_snapshot": "scripts/evidence/lib/social-graph-privacy-shadow-canonical.mjs",
+    "tests": "scripts/evidence/social-graph-privacy-shadow-evidence.test.mjs"
+  },
+  "contracts": {
+    "capture": "social_graph_index_privacy_shadow_window_capture_v1",
+    "admission": "social_graph_index_privacy_shadow_window_admission_v1"
+  },
+  "bundle": {
+    "inventory": [
+      "capture.json",
+      "end.prom",
+      "start.prom"
+    ],
+    "descriptor_last": true,
+    "fresh_output_required": true,
+    "regular_non_symlink_files_only": true,
+    "snapshots_are_canonical_shadow_metric_subset": true,
+    "full_process_scrape_is_not_retained": true,
+    "snapshot_max_bytes": 4194304,
+    "descriptor_max_bytes": 524288
+  },
+  "capture": {
+    "explicit_opt_in_env": "SOCIAL_GRAPH_PRIVACY_SHADOW_ALLOW_CAPTURE",
+    "offline_only": true,
+    "executes_runtime": false,
+    "executes_cargo": false,
+    "connects_database": false,
+    "performs_http_scrape": false,
+    "requires_clean_exact_commit": true,
+    "window_max_seconds": 604800,
+    "requires_distinct_start_and_end_snapshots": true,
+    "requires_stable_collector_epoch": true,
+    "rejects_counter_reset": true,
+    "rejects_unknown_shadow_metric": true,
+    "rejects_unknown_label": true,
+    "rejects_empty_observation_window": true,
+    "input_env": {
+      "start": "SOCIAL_GRAPH_PRIVACY_SHADOW_START_PROM",
+      "end": "SOCIAL_GRAPH_PRIVACY_SHADOW_END_PROM",
+      "window_started_at": "SOCIAL_GRAPH_PRIVACY_SHADOW_WINDOW_STARTED_AT",
+      "window_ended_at": "SOCIAL_GRAPH_PRIVACY_SHADOW_WINDOW_ENDED_AT",
+      "commit": "SOCIAL_GRAPH_PRIVACY_SHADOW_COMMIT",
+      "run_key": "SOCIAL_GRAPH_PRIVACY_SHADOW_RUN_KEY"
+    }
+  },
+  "metrics": {
+    "collector_epoch": "rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds",
+    "observations": "rustok_social_graph_index_privacy_shadow_observations_total",
+    "failures": "rustok_social_graph_index_privacy_shadow_failures_total",
+    "duration": "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
+    "last_observation": "rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds",
+    "collector_epoch_labels": [],
+    "observation_labels": [
+      "operation",
+      "outcome"
+    ],
+    "failure_labels": [
+      "operation",
+      "error_code",
+      "retryable"
+    ],
+    "identity_labels_forbidden": [
+      "tenant_id",
+      "source_user_id",
+      "target_user_id",
+      "relation_id",
+      "entity_id",
+      "payload",
+      "sql",
+      "storage_error"
+    ],
+    "histogram_consistency_required": true,
+    "failure_error_count_consistency_required": true,
+    "last_observation_must_be_inside_window": true,
+    "p95_is_retained_as_histogram_bucket_upper_bound": true
+  },
+  "admission": {
+    "explicit_opt_in_env": "SOCIAL_GRAPH_PRIVACY_SHADOW_ALLOW_ADMISSION",
+    "read_only_bundle_review": true,
+    "requires_independent_expected_repository": true,
+    "requires_independent_expected_commit": true,
+    "requires_independent_expected_run_key": true,
+    "recomputes_metrics_from_retained_snapshots": true,
+    "rejects_unknown_descriptor_fields": true,
+    "rejects_inventory_drift": true,
+    "rejects_byte_drift": true,
+    "receipt_is_outside_bundle": true,
+    "receipt_is_no_clobber": true,
+    "integrity_admitted_field": "admitted",
+    "policy_result_field": "policy_passed",
+    "authoritative_cutover_authorized": false
+  },
+  "reviewer_policy": {
+    "minimum_observations_env": "SOCIAL_GRAPH_PRIVACY_SHADOW_MIN_OBSERVATIONS",
+    "maximum_error_rate_basis_points_env": "SOCIAL_GRAPH_PRIVACY_SHADOW_MAX_ERROR_RATE_BPS",
+    "maximum_p95_seconds_env": "SOCIAL_GRAPH_PRIVACY_SHADOW_MAX_P95_SECONDS",
+    "requires_notification_block_and_mute_positive_and_negative_coverage": true,
+    "requires_zero_negative_safety_misses": true,
+    "requires_zero_mismatches": true,
+    "thresholds_are_not_capture_controlled": true
+  },
+  "verification": {
+    "source_verifier": "scripts/verify/verify-social-graph-privacy-shadow-evidence.mjs",
+    "unified_verifier": "scripts/verify/verify-index-query-contract.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "remaining": [
+    "owner captures one live window from the merged commit",
+    "independent reviewer admits the retained bundle with explicit thresholds",
+    "retain projection watermark and lag evidence",
+    "retain outage recovery and repair evidence",
+    "define fail-closed negative-result freshness policy",
+    "authoritative cutover remains blocked"
+  ]
+}

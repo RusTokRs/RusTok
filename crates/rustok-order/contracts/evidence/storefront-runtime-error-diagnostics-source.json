@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "order_storefront_runtime_error_diagnostics_source_unvalidated",
+  "scope": "order storefront native checkout runtime error mapper",
+  "source_contract": {
+    "runtime_cause_logged_server_side": true,
+    "owner_operation_logged": true,
+    "correlation_logged": true,
+    "tenant_logged": true,
+    "channel_logged": true,
+    "locale_logged": true,
+    "stable_code_logged": true,
+    "boundary_logged": true,
+    "public_code_message_envelope_preserved": true,
+    "endpoint_changed": false,
+    "command_payload_changed": false,
+    "dependency_composition_changed": false,
+    "context_extraction_changed": false,
+    "validation_messages_changed": false,
+    "outer_transport_envelope_changed": false
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-order-storefront-runtime-error-diagnostics.mjs",
+    "node scripts/verify/verify-order-storefront-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-order-storefront --all-features"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}
