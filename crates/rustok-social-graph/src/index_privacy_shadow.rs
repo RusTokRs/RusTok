@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
@@ -13,13 +13,11 @@ const OPERATION_BLOCKS_BETWEEN: &str = "blocks_between";
 const OPERATION_SOURCE_MUTES_TARGET: &str = "source_mutes_target";
 const OPERATION_SOURCE_FOLLOWS_TARGET: &str = "source_follows_target";
 const OPERATION_SOURCE_FOLLOWS_TARGETS: &str = "source_follows_targets";
-const INDEX_PRIVACY_SHADOW_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Non-authoritative parity observer for Social Graph privacy reads.
 ///
 /// The owner port always determines the returned result. Index is queried only after the
-/// owner succeeds, and projection errors, timeouts, or mismatches are recorded without
-/// changing policy.
+/// owner succeeds, and projection errors or mismatches are recorded without changing policy.
 #[derive(Clone)]
 pub struct IndexShadowSocialGraphPrivacyReadPort {
     authoritative: Arc<dyn SocialGraphPrivacyReadPort>,
@@ -63,11 +61,7 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         observe_bool(
             OPERATION_BLOCKS_BETWEEN,
             authoritative,
-            tokio::time::timeout(
-                INDEX_PRIVACY_SHADOW_TIMEOUT,
-                self.projected.blocks_between(context, request),
-            )
-            .await,
+            self.projected.blocks_between(context, request).await,
         );
         Ok(authoritative)
     }
@@ -84,11 +78,7 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         observe_bool(
             OPERATION_SOURCE_MUTES_TARGET,
             authoritative,
-            tokio::time::timeout(
-                INDEX_PRIVACY_SHADOW_TIMEOUT,
-                self.projected.source_mutes_target(context, request),
-            )
-            .await,
+            self.projected.source_mutes_target(context, request).await,
         );
         Ok(authoritative)
     }
@@ -105,11 +95,7 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         observe_bool(
             OPERATION_SOURCE_FOLLOWS_TARGET,
             authoritative,
-            tokio::time::timeout(
-                INDEX_PRIVACY_SHADOW_TIMEOUT,
-                self.projected.source_follows_target(context, request),
-            )
-            .await,
+            self.projected.source_follows_target(context, request).await,
         );
         Ok(authoritative)
     }
@@ -126,29 +112,21 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         observe_batch(
             OPERATION_SOURCE_FOLLOWS_TARGETS,
             &authoritative,
-            tokio::time::timeout(
-                INDEX_PRIVACY_SHADOW_TIMEOUT,
-                self.projected.source_follows_targets(context, request),
-            )
-            .await,
+            self.projected.source_follows_targets(context, request).await,
         );
         Ok(authoritative)
     }
 }
 
-fn observe_bool(
-    operation: &'static str,
-    authoritative: bool,
-    projected: Result<Result<bool, PortError>, tokio::time::error::Elapsed>,
-) {
+fn observe_bool(operation: &'static str, authoritative: bool, projected: Result<bool, PortError>) {
     match projected {
-        Ok(Ok(projected)) if projected == authoritative => {
+        Ok(projected) if projected == authoritative => {
             tracing::debug!(
                 operation,
                 "Social Graph Index privacy shadow matched authoritative owner result"
             );
         }
-        Ok(Ok(projected)) => {
+        Ok(projected) => {
             tracing::warn!(
                 operation,
                 authoritative,
@@ -156,19 +134,12 @@ fn observe_bool(
                 "Social Graph Index privacy shadow mismatch"
             );
         }
-        Ok(Err(error)) => {
+        Err(error) => {
             tracing::warn!(
                 operation,
                 code = %error.code,
                 retryable = error.retryable,
                 "Social Graph Index privacy shadow read failed"
-            );
-        }
-        Err(_) => {
-            tracing::warn!(
-                operation,
-                timeout_ms = INDEX_PRIVACY_SHADOW_TIMEOUT.as_millis(),
-                "Social Graph Index privacy shadow timed out"
             );
         }
     }
@@ -177,20 +148,17 @@ fn observe_bool(
 fn observe_batch(
     operation: &'static str,
     authoritative: &SocialGraphFollowBatchResult,
-    projected: Result<
-        Result<SocialGraphFollowBatchResult, PortError>,
-        tokio::time::error::Elapsed,
-    >,
+    projected: Result<SocialGraphFollowBatchResult, PortError>,
 ) {
     match projected {
-        Ok(Ok(projected)) if projected == *authoritative => {
+        Ok(projected) if projected == *authoritative => {
             tracing::debug!(
                 operation,
                 authoritative_count = authoritative.followed_target_user_ids.len(),
                 "Social Graph Index privacy shadow matched authoritative owner result"
             );
         }
-        Ok(Ok(projected)) => {
+        Ok(projected) => {
             tracing::warn!(
                 operation,
                 authoritative_count = authoritative.followed_target_user_ids.len(),
@@ -198,19 +166,12 @@ fn observe_batch(
                 "Social Graph Index privacy shadow mismatch"
             );
         }
-        Ok(Err(error)) => {
+        Err(error) => {
             tracing::warn!(
                 operation,
                 code = %error.code,
                 retryable = error.retryable,
                 "Social Graph Index privacy shadow read failed"
-            );
-        }
-        Err(_) => {
-            tracing::warn!(
-                operation,
-                timeout_ms = INDEX_PRIVACY_SHADOW_TIMEOUT.as_millis(),
-                "Social Graph Index privacy shadow timed out"
             );
         }
     }
