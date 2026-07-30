@@ -24,8 +24,9 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<OptionalTenant>()
             .await
-            .ok()
-            .and_then(|value| value.0);
+            .map_err(ServerFnError::new)?
+            .0
+            .ok_or_else(|| ServerFnError::new("tenant context is required for outbox inspection"))?;
 
         if !has_effective_permission(&auth.permissions, &Permission::LOGS_READ) {
             return Err(ServerFnError::new(
@@ -38,7 +39,7 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
 
         let module = rustok_outbox::OutboxModule;
         Ok(OutboxAdminBootstrap {
-            tenant_slug: tenant.map(|tenant| tenant.slug),
+            tenant_slug: Some(tenant.slug),
             health: match module.health().await {
                 HealthStatus::Healthy => "healthy",
                 HealthStatus::Degraded => "degraded",
@@ -49,34 +50,30 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
                 OutboxCounterSnapshot {
                     key: "pending".to_string(),
                     label: "Pending events".to_string(),
-                    value: query_status_count(&db, backend, "pending")
+                    value: query_status_count(&db, backend, tenant.id, "pending")
                         .await
                         .map_err(ServerFnError::new)?,
                 },
                 OutboxCounterSnapshot {
                     key: "dispatched".to_string(),
                     label: "Dispatched events".to_string(),
-                    value: query_status_count(&db, backend, "dispatched")
+                    value: query_status_count(&db, backend, tenant.id, "dispatched")
                         .await
                         .map_err(ServerFnError::new)?,
                 },
                 OutboxCounterSnapshot {
                     key: "failed".to_string(),
                     label: "Failed events".to_string(),
-                    value: query_status_count(&db, backend, "failed")
+                    value: query_status_count(&db, backend, tenant.id, "failed")
                         .await
                         .map_err(ServerFnError::new)?,
                 },
                 OutboxCounterSnapshot {
                     key: "retries".to_string(),
                     label: "Max retry count".to_string(),
-                    value: query_scalar_i64(
-                        &db,
-                        backend,
-                        "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events",
-                    )
-                    .await
-                    .map_err(ServerFnError::new)? as u64,
+                    value: query_max_retry_count(&db, backend, tenant.id)
+                        .await
+                        .map_err(ServerFnError::new)?,
                 },
             ],
             relay_notes: vec![
@@ -98,15 +95,17 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
 async fn query_status_count(
     db: &sea_orm::DatabaseConnection,
     backend: sea_orm::DbBackend,
+    tenant_id: uuid::Uuid,
     status: &str,
 ) -> Result<u64, sea_orm::DbErr> {
     use sea_orm::{ConnectionTrait, QueryResult, Statement};
 
+    let sql = tenant_scoped_status_sql(backend);
     let row = db
         .query_one(Statement::from_sql_and_values(
             backend,
-            "SELECT COUNT(*) AS value FROM sys_events WHERE status = $1",
-            [status.into()],
+            sql,
+            [status.into(), tenant_id.to_string().into()],
         ))
         .await?;
     Ok(row
@@ -115,17 +114,65 @@ async fn query_status_count(
 }
 
 #[cfg(feature = "ssr")]
-async fn query_scalar_i64(
+async fn query_max_retry_count(
     db: &sea_orm::DatabaseConnection,
     backend: sea_orm::DbBackend,
-    sql: &str,
-) -> Result<i64, sea_orm::DbErr> {
+    tenant_id: uuid::Uuid,
+) -> Result<u64, sea_orm::DbErr> {
     use sea_orm::{ConnectionTrait, QueryResult, Statement};
 
+    let sql = tenant_scoped_max_retry_sql(backend);
     let row = db
-        .query_one(Statement::from_string(backend, sql.to_string()))
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [tenant_id.to_string().into()],
+        ))
         .await?;
     Ok(row
         .and_then(|row: QueryResult| row.try_get::<i64>("", "value").ok())
-        .unwrap_or_default())
+        .unwrap_or_default() as u64)
+}
+
+#[cfg(feature = "ssr")]
+fn tenant_scoped_status_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT COUNT(*) AS value FROM sys_events WHERE status = ?1 AND (json_extract(payload, '$.tenant_id') = ?2 OR json_extract(payload, '$.event.tenant_id') = ?2)"
+        }
+        _ => {
+            "SELECT COUNT(*) AS value FROM sys_events WHERE status = $1 AND (payload->>'tenant_id' = $2 OR payload->'event'->>'tenant_id' = $2)"
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn tenant_scoped_max_retry_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1"
+        }
+        _ => {
+            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1"
+        }
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use sea_orm::DbBackend;
+
+    use super::{tenant_scoped_max_retry_sql, tenant_scoped_status_sql};
+
+    #[test]
+    fn operational_queries_are_tenant_scoped_for_supported_backends() {
+        for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
+            let status = tenant_scoped_status_sql(backend);
+            let retries = tenant_scoped_max_retry_sql(backend);
+            assert!(status.contains("tenant_id"));
+            assert!(status.contains("event"));
+            assert!(retries.contains("tenant_id"));
+            assert!(retries.contains("event"));
+        }
+    }
 }
