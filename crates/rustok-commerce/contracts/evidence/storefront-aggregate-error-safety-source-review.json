@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "commerce_storefront_aggregate_error_safety_source_reviewed_unvalidated",
   "reviewed_at_utc": "2026-07-30T16:42:00Z",
-  "review_base": "31df77f3cd7b6294af04af81bf73eadb1a0c9e72",
+  "review_base": "9d725de7bac2039c86d5b5dffdf5d6be1b4812a8",
   "scope": "Commerce storefront aggregate fetch public transport envelope",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
