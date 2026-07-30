@@ -3,16 +3,16 @@
 ## Purpose
 
 `rustok-index` is RusToK's cross-module relational Index Engine. Source modules
-publish generic schemas, records, mutations, and links; Index materializes them
-into optimized storage and executes filtering, projection, sorting, counting,
-and pagination without runtime fan-out to source modules.
+publish generic schemas, records, mutations, links, and bounded replay sources;
+Index materializes them into optimized storage and executes filtering, projection,
+sorting, counting, and pagination without runtime fan-out to source modules.
 
 Backward compatibility with the rejected source-specific implementation is not
 a rewrite goal.
 
 ## Responsibilities
 
-- Own the generic schema and link registry.
+- Own the generic schema, link, and replay-source registries.
 - Own incremental ingestion, deduplication, rebuild, reconciliation, and drift
   control.
 - Own PostgreSQL index storage and distributed coordination.
@@ -27,9 +27,10 @@ a rewrite goal.
 
 - Index core must not depend on Product, Content, Flex, Pricing, Inventory, or
   other source-domain crates.
-- Source modules own conversion from domain state/events into generic records and
-  mutations.
+- Source modules own conversion from domain state/events into generic records,
+  mutations, and bounded replay/load adapters.
 - Index must not read source-module tables directly.
+- Source modules do not write Index storage, job, or checkpoint tables.
 - `rustok-search` owns ranking, typo tolerance, autocomplete, synonyms, search
   UX, and external search-engine connectors.
 - The selected JSONB regression DDL lives under `ops/benches`; it is not a
@@ -38,7 +39,7 @@ a rewrite goal.
 
 ## Rewrite status
 
-- Current milestone: `M4 - Query engine v1`
+- Current milestone: `M6 - fenced replay job ownership`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: complete
@@ -59,7 +60,11 @@ a rewrite goal.
 - M4 explicit many-link aggregate ordering and Decimal tagged wire: source complete
 - M4 PostgreSQL query port and row adapter: source complete
 - M4 source-owned registry and server query-runtime composition: source complete
+- M5/M6 bounded source registry and replay/load contracts: source complete
+- M6 one-page replay and durable checkpoint progression: source complete
+- M6 replay job leases and checkpoint attempt fencing: source complete, owner execution pending
 - Real retained PostgreSQL packet execution: open
+- Bounded multi-page replay, cancellation, retry scheduling, and Product adapters: open
 - Query-port authorization/consumer cutover and live equivalence evidence: open
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
@@ -72,7 +77,7 @@ and validates the nine-file retained bundle, renders a read-only review, emits a
 admitted-only archive manifest outside the bundle, and verifies the saved manifest
 against an exact recursive filesystem snapshot.
 
-M4 now provides deterministic typed planning, controlled PostgreSQL compilation,
+M4 provides deterministic typed planning, controlled PostgreSQL compilation,
 correlated many-link filtering, nested many-link projection aggregation, explicit bounded
 `MIN` / `MAX` many-link ordering for integer, Decimal, string, and timestamp, strict result
 decoding, lookahead pagination, exact count, scoped cursors for ordinary order expressions,
@@ -81,6 +86,26 @@ server-owned neutral query runtime. Decimal aggregate ordering remains numeric w
 hidden tagged value uses an exact JSON string. Aggregate cursor continuation,
 PostgreSQL/reference aggregate evidence, storefront/admin/search authorization and consumer
 cutover, and production partition cutover remain open.
+
+M5/M6 adds a neutral `IndexSource` boundary with bounded opaque cursor scans and targeted
+loads, exact schema/source ownership, page and key limits, continuation progress checks,
+and bounded retryable/permanent source failures. `IndexReplayWorker::run_next_page`
+validates the complete page event-identity set before any write, applies mutations through
+`PostgresMutationStore`, and advances the durable rebuild checkpoint only after every
+mutation result is committed. Stable event UUID delivery IDs make retry after checkpoint
+failure idempotent through the existing inbox contract.
+
+`PostgresIndexReplayJobStore` owns one schema-scoped `rebuild` job per tenant/source/schema.
+It validates the exact `index_replay_job_v1` request and active persisted schema, serializes
+claims with a PostgreSQL advisory lock, heartbeats an unexpired lease, reclaims expired
+work with an incremented attempt fence, and rejects stale terminal updates.
+`PostgresIndexReplayCheckpointStore` is constructed from the acquired
+`IndexReplayJobLease`; every checkpoint read or write locks and validates the exact
+`(job_id, worker_id, attempt_count)` first. A stale worker may finish an already-started
+idempotent mutation transaction, but it cannot advance the durable cursor. Successful
+job completion requires an active lease and the exact durable rebuild checkpoint with a
+JSON null cursor. A scheduler, bounded multi-page loop, cancellation, backoff/dead-letter
+policy, locale/partition replay dimensions, and production source adapters remain open.
 
 The module-owned migration source creates:
 
@@ -165,6 +190,12 @@ registry to the host database and publishes `SharedIndexQueryRuntime` through
 `ModuleRuntimeExtensions`. Composition performs no SQL and does not claim tenant schema
 readiness; execution still fails closed through the query-port preflight.
 
+`IndexSourceCatalog` separately fixes one replay source for each exact schema and the
+complete schema identity across versions. Materialization requires the corresponding
+owner-published schema and exact owner match. The application replay boundary remains
+database independent; PostgreSQL mutation, job, and checkpoint adapters are composed
+outside it.
+
 ## Current entry points
 
 - `IndexModule`
@@ -174,6 +205,12 @@ readiness; execution still fails closed through the query-port preflight.
 - `PostgresMutationStore`, `MutationDelivery`, and `MutationApplyOutcome`
 - `PostgresSchemaLeaseStore`, `SchemaApplicationLeaseRequest`,
   `SchemaApplicationLease`, and `SchemaLeaseAcquireOutcome`
+- `PostgresIndexReplayJobStore`, `IndexReplayJobLeaseRequest`,
+  `IndexReplayJobLease`, and `IndexReplayJobAcquireOutcome`
+- `PostgresIndexReplayCheckpointStore`, `IndexReplayWorker`,
+  `IndexReplayCheckpoint`, and `IndexReplayPageOutcome`
+- `IndexSource`, `IndexSourceCatalog`, `SharedIndexSourceRegistry`,
+  `IndexSourceScanRequest`, and `IndexSourceLoadRequest`
 - `SecondaryIndexPlan`, `SecondaryIndexSpec`, `SecondaryIndexRequest`,
   `SecondaryIndexLease`, and `PostgresSecondaryIndexManager`
 - `PartitionAdmissionPolicy`, `PartitionEvidence`, `PartitionAdmissionOutcome`,
@@ -224,9 +261,15 @@ readiness; execution still fails closed through the query-port preflight.
 - PostgreSQL-only query execution with exact persisted schema preflight, one
   read-only repeatable-read page/count snapshot, exhaustive bind conversion, and
   compiler-metadata-driven row mapping;
-- deterministic source ownership, atomic cross-source registry materialization,
-  no false empty runtime, one Index-owned PostgreSQL runtime constructor, and neutral
-  capability transfer into `HostRuntimeContext`.
+- deterministic source-schema and replay-source ownership, atomic registry
+  materialization, bounded cursor/page/key contracts, and no false empty runtime;
+- full-page event UUID validation before mutation persistence, stable replay delivery
+  identity, mutation-before-checkpoint ordering, monotonic checkpoint watermarks, and
+  duplicate-safe replay after checkpoint failure;
+- durable schema-scoped rebuild exclusion, lease heartbeat, expired-attempt reclaim,
+  attempt fencing, stale checkpoint-writer rejection, and null-cursor-gated success;
+- one Index-owned PostgreSQL query-runtime constructor and neutral capability transfer
+  into `HostRuntimeContext`.
 
 ## M2 benchmark
 
@@ -245,6 +288,8 @@ DDL remains benchmark-only and must not be copied into production migrations.
 
 - [Module documentation](./docs/README.md)
 - [Live implementation plan](./docs/implementation-plan.md)
+- [M5/M6 bounded source replay contract](./docs/m5-m6-source-replay-contract.md)
+- [M6 replay job lease and fencing boundary](./docs/m6-replay-job-leases.md)
 - [M4 source-owned schema registry](./docs/m4-source-schema-registry.md)
 - [M4 query runtime composition](./docs/m4-query-runtime-composition.md)
 - [M4 PostgreSQL query port contract](./docs/m4-postgres-query-port.md)
