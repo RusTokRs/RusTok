@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+pub mod forum_storefront_execution;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
@@ -52,6 +53,11 @@ pub use engine::{SearchResult, SearchResultItem};
 pub use forum_reconciliation::{
     DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
     ForumProjectionReconciler, ForumProjectionSweepReport,
+};
+pub use forum_storefront_execution::{
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,
+    ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
+    execute_forum_storefront_search,
 };
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
