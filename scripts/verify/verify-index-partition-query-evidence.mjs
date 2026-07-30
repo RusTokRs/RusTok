@@ -17,6 +17,13 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
+const requireNormalizedMarkers = (relative, markers) => {
+  const source = read(relative).replace(/\s+/gu, ' ');
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
 
 const runner = requireMarkers('ops/benches/src/index_storage/partition_query.rs', [
   'INDEX_PARTITION_ALLOW_QUERY_EVIDENCE',
@@ -80,18 +87,16 @@ requireMarkers('ops/benches/Cargo.toml', [
   'path = "src/bin/index_partition_query_evidence.rs"',
 ]);
 
-requireMarkers('ops/benches/README.md', [
+requireNormalizedMarkers('ops/benches/README.md', [
   'Index partition query evidence',
   'INDEX_PARTITION_ALLOW_QUERY_EVIDENCE=1',
   'INDEX_PARTITION_QUERY_SAMPLES=7',
   'index-partition-query-evidence',
-  'executes every comparison inside one read-only',
-  'repeatable-read transaction.',
-  'retains full JSON',
-  '`EXPLAIN (ANALYZE, BUFFERS, WAL)` samples',
+  'executes every comparison inside one read-only repeatable-read transaction.',
+  'retains full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` samples',
 ]);
 
-requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'index-partition-query-evidence',
   'normalized_partition_plan_v1',
   'query.json',
@@ -99,17 +104,16 @@ requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'result digest parity',
 ]);
 
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
   'M3 partition query evidence runner: `complete`',
   'Real mutation, maintenance, and cutover evidence remain',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition query evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.',
   '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',
-  '9. The query runner validates the shadow catalog, executes exact tenant-scoped runs',
-  'read-only, proves semantic parity and one-child pruning, retains full EXPLAIN JSON,',
+  '9. The query runner validates the shadow catalog, executes exact tenant-scoped runs read-only, proves semantic parity and one-child pruning, retains full EXPLAIN JSON,',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [
