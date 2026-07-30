@@ -20,6 +20,7 @@ for (const marker of [
   '"crates/rustok-commerce/src/services/context.rs"',
   '"crates/rustok-commerce/tests/context_service_test.rs"',
   '"crates/rustok-commerce/tests/support/mod.rs"',
+  '"crates/rustok-commerce/docs/tenant-locale-owner-cutover.md"',
   '"apps/storefront/src/shared/context/enabled_modules.rs"',
   '"apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"',
   '"scripts/verify/verify-commerce-tenant-locale-boundary.mjs"',
