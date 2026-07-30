@@ -48,26 +48,45 @@ before the schema column is dropped.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CommentsThreadPort` / `comments.thread.v1` in
   `crates/rustok-comments/contracts/comments-fba-registry.json`.
+- Comments FBA registry schema v2 locks the exact verify/test package order,
+  thread-invariant leaf commands, verifier, focused self-test, evidence path,
+  and the shared owner runtime-order gate.
 - Static and runtime-order evidence:
   `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
   and `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
 - Thread write invariant evidence:
   `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
   with status `executable_no_run`.
+- Thread invariant source gate:
+  `scripts/verify/verify-comments-thread-write-invariants.mjs` with focused
+  self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`.
+- Exact leaf commands: `verify:comments:thread-write-invariants` and
+  `test:verify:comments:thread-write-invariants`; both are registered in
+  `verify:comments:fba` / `test:verify:comments:fba` before the shared owner
+  runtime-order gate.
 - Executable targets:
   `crates/rustok-comments/tests/thread_write_invariants.rs` and
   `crates/rustok-comments/tests/thread_creation_concurrency.rs`.
 - Both PostgreSQL targets use two independent one-connection pools, an isolated
   schema, and `RUSTOK_COMMENTS_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
-- `scripts/verify/verify-comments-thread-write-invariants.mjs`, its negative
-  fixtures, and `npm run verify:comments:fba` lock transactional position/count
-  behavior, status-only preservation, repair migrations, identity-lock storage,
-  service fallback, and both concurrency harnesses.
 - Public-port create/delete publish `comment.created` and `comment.deleted`
   through `TransactionalEventBus::publish_in_tx`. Blog's idempotent reply-count
   projection is implemented statically under
   `DECISIONS/2026-07-16-comments-blog-event-projection.md`; runtime delivery,
   retry, and recovery evidence remain open.
+
+## 2026-07-30 source continuation audit
+
+The continuation audit at `8db76d1ae6e1bd5dce2314b9a5c11829373fa93d`
+confirmed that the owner evidence, current-only verifier, focused negative fixture,
+and both Rust concurrency targets already existed. The registry referenced the
+evidence and Rust targets, but did not retain the JS self-test or an exact
+verification-chain contract; the root package had no named leaf commands and no
+Comments FBA test chain. Slice 11 registers those source assets without changing
+the owner behavior or promoting `executable_no_run` to executed evidence.
+
+No verifier, Rust test, PostgreSQL target, compile, workflow, or CI execution is
+recorded by this source-only slice.
 
 ## Completed implementation slices
 
@@ -93,6 +112,10 @@ before the schema column is dropped.
 10. Added machine-readable evidence, current-only source/negative verifiers, and
     integrated all thread invariants into the main Comments FBA gate. These
     targets are written but not executed.
+11. Registered the thread invariant verifier and focused self-test as a first-class
+    Comments FBA source gate, added exact verify/test npm commands, and locked
+    registry schema v2 plus aggregate order while preserving runtime execution as
+    maintainer-owned.
 
 ## Open results
 
@@ -115,21 +138,21 @@ before the schema column is dropped.
 4. **Execute CommentsThreadPort runtime and consumer evidence.** Cover read/write
    policy, idempotency, typed errors, fallback profiles, and Blog compatibility.
 
-3. **Extend moderation and opt-in integrations through comment ownership.**
+5. **Extend moderation and opt-in integrations through comment ownership.**
    Add a new commentable surface only with explicit target binding, moderation,
    rich-text, tenant, and observability contracts; do not reuse forum storage.
    **Depends on:** the consuming module's product requirement and public API.
    **Done when:** the new surface has owner-owned storage and transport tests,
    and its opt-in decision is documented.
 
-4. **Keep operational guidance synchronized with thread semantics.** Update
+6. **Keep operational guidance synchronized with thread semantics.** Update
    status alerts, moderation playbook, metrics, and local docs with a change to
    thread lifecycle or comment delivery.
    **Depends on:** the changed comments runtime contract.
    **Done when:** closed/spam/trash behavior and recovery are observable and
    documented for operators.
 
-5. **Close the direct-write richtext bypass and join the atomic cutover.**
+7. **Close the direct-write richtext bypass and join the atomic cutover.**
    **Implemented for Comments.** A direct `CommentsThreadPort` or service
    write accepts the typed `RichTextDocument`, selects the `comment` profile
    server-side, and passes the strict validator. `comment_bodies` no longer
@@ -144,13 +167,17 @@ before the schema column is dropped.
 
 ## Verification
 
+Execution is intentionally not recorded by this source-only update. Maintainers
+should run the relevant subset, including:
+
+- `npm run verify:comments:thread-write-invariants`
+- `npm run test:verify:comments:thread-write-invariants`
+- `npm run verify:comments:fba`
+- `npm run test:verify:comments:fba`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_write_invariants postgres_concurrent_creates_and_delete_preserve_thread_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_creation_concurrency`
-- `node scripts/verify/verify-comments-thread-write-invariants.mjs`
-- `node scripts/verify/verify-comments-thread-write-invariants.test.mjs`
 - `npm run verify:comments:admin-boundary`
-- `npm run verify:comments:fba`
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
 - Targeted moderation/status, blog integration, comment-port, and admin runtime
