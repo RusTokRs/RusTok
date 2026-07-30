@@ -12,7 +12,9 @@ use crate::domain::{
     IndexValueType, LinkCardinality, LinkName, OrderDirection, Pagination, SchemaRef,
 };
 
-use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
+use super::{
+    AggregateOrderValidationError, QueryValidationError, SchemaRegistry, SchemaRegistryError,
+};
 
 const ROOT_ALIAS: &str = "t0";
 
@@ -129,6 +131,8 @@ pub enum QueryPlanError {
     #[error(transparent)]
     Validation(#[from] QueryValidationError),
     #[error(transparent)]
+    AggregateValidation(#[from] AggregateOrderValidationError),
+    #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
     #[error("validated query path has no relation alias: {0:?}")]
     ValidatedAliasMissing(FieldPath),
@@ -138,7 +142,7 @@ pub enum QueryPlanError {
 
 impl SchemaRegistry {
     pub fn plan_query(&self, query: &IndexQuery) -> Result<ExecutableQueryPlan, QueryPlanError> {
-        self.validate_query(query)?;
+        self.validate_query_with_aggregate_ordering(query)?;
 
         let paths = collect_link_prefixes(query);
         let mut aliases = BTreeMap::from([(Vec::new(), ROOT_ALIAS.to_owned())]);
