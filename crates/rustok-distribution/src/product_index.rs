@@ -162,10 +162,7 @@ impl ProductPostgresIndexSource {
         match product_schema_ref() {
             Ok(expected) if &expected == schema => Ok(()),
             Ok(_) => Err(permanent("product_index_schema_mismatch")),
-            Err(error) => {
-                tracing::error!(error = %error, "selected Product Index identity is invalid");
-                Err(permanent("product_index_contract_invalid"))
-            }
+            Err(_) => Err(permanent("product_index_contract_invalid")),
         }
     }
 
@@ -198,14 +195,7 @@ impl ProductPostgresIndexSource {
         self.db
             .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
             .await
-            .map_err(|error| {
-                tracing::error!(
-                    error = ?error,
-                    tenant_id = %request.tenant_id(),
-                    "selected Product Index scan failed"
-                );
-                retryable("product_index_storage_unavailable")
-            })
+            .map_err(|_| retryable("product_index_storage_unavailable"))
     }
 
     async fn load_rows(
@@ -233,15 +223,7 @@ impl ProductPostgresIndexSource {
         self.db
             .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
             .await
-            .map_err(|error| {
-                tracing::error!(
-                    error = ?error,
-                    tenant_id = %request.tenant_id(),
-                    key_count = request.keys().len(),
-                    "selected Product Index targeted load failed"
-                );
-                retryable("product_index_storage_unavailable")
-            })
+            .map_err(|_| retryable("product_index_storage_unavailable"))
     }
 }
 
@@ -256,34 +238,30 @@ impl IndexSource for ProductPostgresIndexSource {
             .cursor()
             .map(ProductCursor::decode)
             .transpose()
-            .map_err(|error| {
-                tracing::warn!(error = %error, "selected Product Index cursor was rejected");
-                permanent("product_index_cursor_invalid")
-            })?;
+            .map_err(|_| permanent("product_index_cursor_invalid"))?;
         let rows = self.scan_rows(&request, cursor.as_ref()).await?;
         let has_more = rows.len() > request.limit();
         let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
         let mut next_cursor = None;
         for row in rows.into_iter().take(request.limit()) {
-            let decoded = ProductRow::decode(row, request.tenant_id()).map_err(|error| {
-                tracing::error!(error = %error, "selected Product Index row was rejected");
-                permanent("product_index_record_invalid")
-            })?;
+            let decoded = ProductRow::decode(row, request.tenant_id())
+                .map_err(|_| permanent("product_index_record_invalid"))?;
             if has_more {
-                next_cursor = Some(decoded.cursor().encode().map_err(|error| {
-                    tracing::error!(error = %error, "selected Product Index cursor encoding failed");
-                    permanent("product_index_cursor_invalid")
-                })?);
+                next_cursor = Some(
+                    decoded
+                        .cursor()
+                        .encode()
+                        .map_err(|_| permanent("product_index_cursor_invalid"))?,
+                );
             }
-            mutations.push(decoded.into_mutation().map_err(|error| {
-                tracing::error!(error = %error, "selected Product Index mutation construction failed");
-                permanent("product_index_record_invalid")
-            })?);
+            mutations.push(
+                decoded
+                    .into_mutation()
+                    .map_err(|_| permanent("product_index_record_invalid"))?,
+            );
         }
-        IndexSourcePage::new(&request, mutations, next_cursor).map_err(|error| {
-            tracing::error!(error = %error, "selected Product Index page validation failed");
-            permanent("product_index_page_invalid")
-        })
+        IndexSourcePage::new(&request, mutations, next_cursor)
+            .map_err(|_| permanent("product_index_page_invalid"))
     }
 
     async fn load(
@@ -298,16 +276,11 @@ impl IndexSource for ProductPostgresIndexSource {
             .map(|row| {
                 ProductRow::decode(row, request.tenant_id())
                     .and_then(ProductRow::into_mutation)
-                    .map_err(|error| {
-                        tracing::error!(error = %error, "selected Product Index targeted row was rejected");
-                        permanent("product_index_record_invalid")
-                    })
+                    .map_err(|_| permanent("product_index_record_invalid"))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        IndexSourceLoadBatch::new(&request, mutations).map_err(|error| {
-            tracing::error!(error = %error, "selected Product Index targeted batch validation failed");
-            permanent("product_index_batch_invalid")
-        })
+        IndexSourceLoadBatch::new(&request, mutations)
+            .map_err(|_| permanent("product_index_batch_invalid"))
     }
 }
 
@@ -334,7 +307,8 @@ impl ProductCursor {
     }
 
     fn encode(&self) -> Result<IndexSourceCursor, ProductIndexBridgeError> {
-        let value = serde_json::to_value(self).map_err(|_| ProductIndexBridgeError::InvalidCursor)?;
+        let value =
+            serde_json::to_value(self).map_err(|_| ProductIndexBridgeError::InvalidCursor)?;
         IndexSourceCursor::new(value).map_err(|_| ProductIndexBridgeError::InvalidCursor)
     }
 }
@@ -455,7 +429,8 @@ impl ProductRow {
             record: IndexRecord {
                 key: EntityKey {
                     tenant_id: self.tenant_id,
-                    schema: product_schema_ref().map_err(ProductIndexBridgeError::InvalidContract)?,
+                    schema: product_schema_ref()
+                        .map_err(ProductIndexBridgeError::InvalidContract)?,
                     entity_id: self.product_id,
                     locale: Some(self.locale),
                 },
@@ -530,14 +505,18 @@ mod tests {
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
         extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
         register(&mut extensions).unwrap();
-        assert!(extensions
-            .get::<rustok_index::IndexSchemaSourceCatalog>()
-            .unwrap()
-            .is_empty());
-        assert!(extensions
-            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
-            .unwrap()
-            .is_empty());
+        assert!(
+            extensions
+                .get::<rustok_index::IndexSchemaSourceCatalog>()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            extensions
+                .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
