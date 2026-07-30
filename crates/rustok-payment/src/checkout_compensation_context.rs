@@ -6,7 +6,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::checkout_compensation::{
+use crate::checkout_compensation_persistent::{
     CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
     InProcessCheckoutPaymentCompensationPort as PersistentCheckoutPaymentCompensationPort,
 };
@@ -111,6 +111,13 @@ fn map_checkout_payment_compensation_local_port_error(
     error: PortError,
 ) -> PortError {
     let local_operation = match (error.code.as_str(), error.message.as_str()) {
+        (
+            "port.idempotency_key_required",
+            "write port calls require a non-empty idempotency key",
+        ) => "admit_write_idempotency",
+        ("port.deadline_required", "port calls require deadline semantics") => {
+            "admit_deadline"
+        }
         (
             "payment.checkout_compensation_identity_invalid",
             "checkout operation and payment collection identity must be non-nil UUIDs",
