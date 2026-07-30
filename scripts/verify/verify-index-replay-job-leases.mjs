@@ -117,4 +117,17 @@ requireMarkers('crates/rustok-index/docs/m6-replay-job-leases.md', [
   'maintainer-run',
 ]);
 
+requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+  '- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
+  '- [x] Add durable schema-scoped rebuild jobs, lease/heartbeat, reclaim, attempt fencing,',
+  '- [x] Bind checkpoint reads and writes to the active `(job_id, worker_id, attempt_count)`',
+  '- [ ] Add cancellation, bounded multi-page resume, dry-run, targeted/full/shadow rebuild.',
+  'node scripts/verify/verify-index-replay-job-leases.mjs',
+]);
+
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-source-replay-contract.mjs'",
+  "'verify-index-replay-job-leases.mjs'",
+]);
+
 console.log('[verify-index-replay-job-leases] OK');
