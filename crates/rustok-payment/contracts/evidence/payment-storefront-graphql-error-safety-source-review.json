@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-07-30",
+  "status": "payment_storefront_graphql_error_safety_source_reviewed_unvalidated",
+  "base_main": "3b11116c73b93894ee5e7228ac0b119b57eedf52",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-payment/storefront/Cargo.toml",
+    "crates/rustok-payment/storefront/src/transport.rs",
+    "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "scripts/verify/verify-payment-storefront-native-error-safety.mjs"
+  ],
+  "findings": {
+    "master_mapper_cleanup_open": true,
+    "graphql_adapter_private": true,
+    "raw_graphql_display_handoffs": 3,
+    "ui_transport_preserves_graphql_display": true,
+    "native_transport_has_static_owner_envelopes": true,
+    "graphql_http_error_variants_reviewed": [
+      "Network",
+      "Http",
+      "Unauthorized",
+      "Graphql"
+    ],
+    "graphql_http_error_display_round_trip_available": true,
+    "covered_public_operations": [
+      "create_payment_collection",
+      "fetch_payment_collection",
+      "fetch_refund_summary"
+    ],
+    "native_calls_preserved": true,
+    "transport_selection_preserved": true,
+    "graphql_queries_preserved": true,
+    "request_response_dtos_preserved": true,
+    "validation_errors_pass_through": true,
+    "raw_tenant_slug_excluded_from_diagnostics": true,
+    "graphql_variables_excluded_from_diagnostics": true
+  },
+  "execution": {
+    "commands": [],
+    "tests": [],
+    "verifiers": [],
+    "cargo": [],
+    "format": [],
+    "workflows": [],
+    "ci": []
+  },
+  "nonclaims": [
+    "No focused verifier was executed.",
+    "No Cargo command or test was executed.",
+    "No browser, GraphQL server, mounted transport, workflow, or CI behavior was proven.",
+    "The generic rustok-graphql client and rustok-ui-transport envelope were not changed.",
+    "The broad ecommerce correlation-safe mapper cleanup remains open."
+  ]
+}

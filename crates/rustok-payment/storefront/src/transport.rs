@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod graphql_error_safety;
 mod native_server_adapter;
 
 use std::fmt::{Display, Formatter};
@@ -108,7 +109,14 @@ pub async fn create_payment_collection(
         "payment",
         selected_transport_path(),
         move || native_server_adapter::create_payment_collection(native_request),
-        move || graphql_adapter::create_payment_collection(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::new(
+                "create_storefront_payment_collection",
+            );
+            graphql_adapter::create_payment_collection(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
@@ -121,7 +129,14 @@ pub async fn fetch_payment_collection(
         "payment",
         selected_transport_path(),
         move || native_server_adapter::fetch_payment_collection(native_request),
-        move || graphql_adapter::fetch_payment_collection(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::new(
+                "read_storefront_payment_collection",
+            );
+            graphql_adapter::fetch_payment_collection(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
@@ -134,7 +149,14 @@ pub async fn fetch_refund_summary(
         "payment",
         selected_transport_path(),
         move || native_server_adapter::fetch_refund_summary(native_request),
-        move || graphql_adapter::fetch_refund_summary(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::new(
+                "read_storefront_order_refunds",
+            );
+            graphql_adapter::fetch_refund_summary(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }

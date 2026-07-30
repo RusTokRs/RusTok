@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import "./verify-payment-storefront-native-error-safety.mjs";
+import "./verify-payment-storefront-graphql-error-safety.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -47,6 +48,7 @@ const libPath = "crates/rustok-payment/storefront/src/lib.rs";
 const corePath = "crates/rustok-payment/storefront/src/core.rs";
 const transportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const graphqlPath = "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs";
+const graphqlSafetyPath = "crates/rustok-payment/storefront/src/transport/graphql_error_safety.rs";
 const nativeServerFunctionsPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs";
 const cargoPath = "crates/rustok-payment/storefront/Cargo.toml";
 const uiPath = "crates/rustok-payment/storefront/src/ui/leptos.rs";
@@ -69,6 +71,7 @@ for (const filePath of [
   corePath,
   transportPath,
   graphqlPath,
+  graphqlSafetyPath,
   nativeServerFunctionsPath,
   cargoPath,
   uiPath,
@@ -93,6 +96,7 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const transport = readRepo(transportPath);
 const graphql = readRepo(graphqlPath);
+const graphqlSafety = readRepo(graphqlSafetyPath);
 const nativeServerFunctions = readRepo(nativeServerFunctionsPath);
 const cargo = readRepo(cargoPath);
 const ui = readRepo(uiPath);
@@ -140,6 +144,7 @@ for (const marker of [
   "fetch_refund_summary",
   "create_payment_collection",
   "mod graphql_adapter;",
+  "mod graphql_error_safety;",
   "mod native_server_adapter;",
   "normalize_required",
 ]) {
@@ -152,6 +157,19 @@ for (const marker of ["STOREFRONT_REFUNDS_QUERY", "STOREFRONT_PAYMENT_COLLECTION
   assertContains(graphql, marker, `${graphqlPath}: payment must own GraphQL create/reuse marker ${marker}`);
 }
 assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: payment GraphQL adapter must not depend on commerce storefront internals`);
+for (const marker of [
+  "GraphqlHttpError::from_str",
+  "payment.storefront_graphql_network_unavailable",
+  "payment.storefront_graphql_http_unavailable",
+  "payment.storefront_graphql_authentication_required",
+  "payment.storefront_graphql_request_rejected",
+  "payment.storefront_graphql_unknown_failure",
+  "PaymentTransportError::Graphql(public_message.to_string())",
+]) {
+  assertContains(graphqlSafety, marker, `${graphqlSafetyPath}: expected GraphQL safety marker ${marker}`);
+}
+assertNotContains(graphqlSafety, "tenant_slug =", `${graphqlSafetyPath}: GraphQL diagnostics must not expose tenant slug values`);
+assertNotContains(graphqlSafety, "variables =", `${graphqlSafetyPath}: GraphQL diagnostics must not expose variables`);
 assertContains(nativeServerFunctions, "#[server", `${nativeServerFunctionsPath}: payment native server-functions adapter must own a server-function endpoint shell`);
 assertContains(nativeServerFunctions, "endpoint = \"payment/create-payment-collection\"", `${nativeServerFunctionsPath}: payment native server-functions adapter must expose the owner endpoint path`);
 assertContains(nativeServerFunctions, "endpoint = \"payment/payment-collection\"", `${nativeServerFunctionsPath}: payment native server-functions adapter must expose the owner read endpoint path`);
