@@ -30,6 +30,7 @@ function packageSource({ omitAggregate = false } = {}) {
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-storefront-boundary-"));
   const pagination = !options.missingPagination;
+  const canonicalRichtext = !options.legacyRichtext;
   writeFixtureFile(root, "crates/rustok-blog/storefront/src/lib.rs", `${options.legacyApi ? "mod api;" : ""}\n${pagination ? "mod comments_pagination;" : ""}\nmod transport;\npub use ui::BlogView;\n`);
   writeFixtureFile(root, "crates/rustok-blog/storefront/src/core.rs", options.leptosCore ? "use leptos::prelude::*;" : "pub struct BlogStorefrontFetchRequest;");
   writeFixtureFile(
@@ -51,7 +52,9 @@ fn comments_page_query_intent() { UiRouteQueryIntent::clear(COMMENTS_PAGE_QUERY_
     "crates/rustok-blog/storefront/src/model.rs",
     options.missingComments
       ? "pub struct StorefrontBlogData;"
-      : "pub struct BlogCommentList; pub struct BlogPostDetail { pub public_comments: BlogCommentList }",
+      : canonicalRichtext
+        ? "use rustok_api::RichTextView; pub struct BlogCommentList; pub struct BlogPostDetail { pub content: Option<RichTextView>, pub content_plain_text: Option<String>, pub public_comments: BlogCommentList }"
+        : "pub struct BlogCommentList; pub struct BlogPostDetail { pub body: Option<String>, pub body_format: String, pub public_comments: BlogCommentList }",
   );
   writeFixtureFile(
     root,
@@ -63,7 +66,8 @@ fn comments_page_query_intent() { UiRouteQueryIntent::clear(COMMENTS_PAGE_QUERY_
 use_route_query_writer();
 transport::fetch_blog(request, comments_page);
 <PublicCommentsList comments=public_comments comments_page />;
-comments_pagination::comments_page_query_intent;`
+comments_pagination::comments_page_query_intent;
+${canonicalRichtext ? "let content = post.content; post.content_plain_text; inner_html=content.html;" : "post.body; body_format; summarized_body_or_fallback;"}`
         : "transport::fetch_blog(request); <PublicCommentsList comments=public_comments />;",
   );
   writeFixtureFile(
@@ -90,13 +94,14 @@ ${options.missingComments ? "" : `CommentService::new
 .list_for_post_with_locale_fallback(
 SecurityContext::public_read()
 ${pagination ? "page: comments_page.max(1)\nper_page: COMMENTS_PAGE_SIZE\n" : ""}map_comment_list_item
-`}`,
+`}
+${canonicalRichtext ? "content: post.content\ncontent_plain_text: post.content_plain_text" : "body: Some(post.body)\nbody_format: post.body_format"}`,
   );
   writeFixtureFile(
     root,
     "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
     `use rustok_graphql::GraphqlRequest;
-const STOREFRONT_BLOG_QUERY: &str = "${options.missingComments ? "" : pagination ? "$commentsPage: Int! $commentsPerPage: Int! publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage)" : "publicComments(locale: $locale"}";
+const STOREFRONT_BLOG_QUERY: &str = "${canonicalRichtext ? "content { document html } contentPlainText" : " excerpt body bodyFormat "} ${options.missingComments ? "" : pagination ? "$commentsPage: Int! $commentsPerPage: Int! publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage)" : "publicComments(locale: $locale"}";
 ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page: COMMENTS_PAGE_SIZE;" : ""}`,
   );
   writeFixtureFile(
@@ -104,13 +109,27 @@ ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page:
     "crates/rustok-blog/src/graphql/types.rs",
     options.missingComments
       ? "pub struct GqlPost;"
-      : "#[graphql(complex)] pub struct GqlPost; async fn public_comments() { CommentService::new; SecurityContext::public_read(); GqlPublicCommentList; }",
+      : "pub content: Option<RichTextView>; pub content_plain_text: Option<String>; #[graphql(complex)] pub struct GqlPost; async fn public_comments() { CommentService::new; SecurityContext::public_read(); GqlPublicCommentList; }",
   );
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-blog/storefront/src/api.rs", "legacy api");
   writeFixtureFile(root, "crates/rustok-blog/storefront/Cargo.toml", "[package]\nname = \"rustok-blog-storefront-fixture\"\nversion = \"0.1.0\"\n");
-  writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-storefront-boundary.mjs public comments ${pagination ? "storefront comment pagination" : ""}`);
+  writeFixtureFile(
+    root,
+    "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json",
+    JSON.stringify({
+      status: "source_verified_no_compile",
+      contract: {
+        graphql_owner_view: true,
+        native_owner_view: true,
+        server_html_render: true,
+        plain_text_fallback: true,
+      },
+      validation: { tests_run: false, verifier_run: false, cargo_run: false },
+    }),
+  );
+  writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-storefront-boundary.mjs public comments ${pagination ? "storefront comment pagination" : ""} server-rendered \`RichTextView\` HTML`);
   writeFixtureFile(root, "docs/modules/registry.md", "verify-blog-storefront-boundary.mjs");
-  writeFixtureFile(root, "scripts/verify/verify-blog-storefront-boundary.test.mjs", "passes canonical fixture\nrejects legacy api module\nrejects missing public comments parity\nrejects missing comment pagination parity\n");
+  writeFixtureFile(root, "scripts/verify/verify-blog-storefront-boundary.test.mjs", "passes canonical fixture\nrejects legacy api module\nrejects missing public comments parity\nrejects missing comment pagination parity\nrejects legacy richtext transport\n");
   writeFixtureFile(root, "package.json", packageSource(options));
   return root;
 }
@@ -153,4 +172,10 @@ test("blog storefront boundary verifier rejects missing comment pagination parit
   const result = run(fixture({ missingPagination: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /pagination|comments page|commentsPage/);
+});
+
+test("blog storefront boundary verifier rejects legacy richtext transport", () => {
+  const result = run(fixture({ legacyRichtext: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /legacy body|owner RichTextView|canonical richtext|owner-generated HTML/);
 });
