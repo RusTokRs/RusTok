@@ -1,4 +1,8 @@
-use std::{fmt, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    fmt,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -10,7 +14,7 @@ use super::{
     IndexSourceCursor, IndexSourceError, IndexSourceScanRequest, SharedIndexSourceRegistry,
 };
 
-const MAX_PARTITION_KEY_BYTES: usize = 191;
+const MAX_SOURCE_NAME_BYTES: usize = 128;
 const MAX_DELIVERY_ID_BYTES: usize = 191;
 const MAX_FAILURE_CODE_BYTES: usize = 128;
 
@@ -68,7 +72,6 @@ impl IndexReplayFailure {
 pub struct IndexReplayPageRequest {
     tenant_id: Uuid,
     schema: SchemaRef,
-    partition_key: String,
     limit: usize,
 }
 
@@ -76,22 +79,13 @@ impl IndexReplayPageRequest {
     pub fn new(
         tenant_id: Uuid,
         schema: SchemaRef,
-        partition_key: impl Into<String>,
         limit: usize,
     ) -> Result<Self, IndexReplayError> {
-        if tenant_id.is_nil() {
-            return Err(IndexReplayError::NilTenantId);
-        }
-        let partition_key = partition_key.into();
-        validate_optional_storage_key(
-            "partition key",
-            &partition_key,
-            MAX_PARTITION_KEY_BYTES,
-        )?;
+        IndexSourceScanRequest::new(tenant_id, schema.clone(), None, limit)
+            .map_err(IndexReplayError::SourceContract)?;
         Ok(Self {
             tenant_id,
             schema,
-            partition_key,
             limit,
         })
     }
@@ -104,10 +98,6 @@ impl IndexReplayPageRequest {
         &self.schema
     }
 
-    pub fn partition_key(&self) -> &str {
-        &self.partition_key
-    }
-
     pub fn limit(&self) -> usize {
         self.limit
     }
@@ -118,7 +108,6 @@ pub struct IndexReplayCheckpointKey {
     tenant_id: Uuid,
     source_name: String,
     schema: SchemaRef,
-    partition_key: String,
 }
 
 impl IndexReplayCheckpointKey {
@@ -126,26 +115,18 @@ impl IndexReplayCheckpointKey {
         tenant_id: Uuid,
         source_name: impl Into<String>,
         schema: SchemaRef,
-        partition_key: impl Into<String>,
     ) -> Result<Self, IndexReplayError> {
         if tenant_id.is_nil() {
             return Err(IndexReplayError::NilTenantId);
         }
         let source_name = source_name.into();
-        if !valid_machine_name(&source_name, MAX_FAILURE_CODE_BYTES) {
+        if !valid_machine_name(&source_name, MAX_SOURCE_NAME_BYTES) {
             return Err(IndexReplayError::InvalidSourceName(source_name));
         }
-        let partition_key = partition_key.into();
-        validate_optional_storage_key(
-            "partition key",
-            &partition_key,
-            MAX_PARTITION_KEY_BYTES,
-        )?;
         Ok(Self {
             tenant_id,
             source_name,
             schema,
-            partition_key,
         })
     }
 
@@ -159,10 +140,6 @@ impl IndexReplayCheckpointKey {
 
     pub fn schema(&self) -> &SchemaRef {
         &self.schema
-    }
-
-    pub fn partition_key(&self) -> &str {
-        &self.partition_key
     }
 }
 
@@ -337,7 +314,6 @@ where
             request.tenant_id(),
             descriptor.source_name(),
             request.schema().clone(),
-            request.partition_key(),
         )?;
         let current = self
             .checkpoint_store
@@ -376,8 +352,17 @@ where
         let mut stale_count = 0;
         let mut max_source_version = None;
         let mut last_delivery_id = None;
+        let mut event_ids = BTreeSet::new();
 
         for (position, mutation) in page.mutations().iter().enumerate() {
+            let event_id = mutation.event_id();
+            if event_id.is_nil() {
+                return Err(IndexReplayError::NilReplayEventId { position });
+            }
+            if !event_ids.insert(event_id) {
+                return Err(IndexReplayError::DuplicateReplayEventId { position, event_id });
+            }
+
             let outcome = self
                 .mutation_sink
                 .apply_replay_mutation(
@@ -392,11 +377,11 @@ where
                 IndexReplayMutationOutcome::Duplicate => duplicate_count += 1,
                 IndexReplayMutationOutcome::StaleIgnored => stale_count += 1,
             }
-            max_source_version = Some(
-                max_source_version
-                    .map_or(mutation.source_version(), |current: u64| current.max(mutation.source_version())),
-            );
-            last_delivery_id = Some(mutation.event_id().to_string());
+            max_source_version = Some(max_source_version.map_or(
+                mutation.source_version(),
+                |current: u64| current.max(mutation.source_version()),
+            ));
+            last_delivery_id = Some(event_id.to_string());
         }
 
         let (mutations, next_cursor) = page.into_parts();
@@ -443,6 +428,10 @@ pub enum IndexReplayError {
     UnknownSchemaSource(SchemaRef),
     #[error(transparent)]
     SourceContract(IndexSourceError),
+    #[error("Index replay mutation at position {position} has a nil event id")]
+    NilReplayEventId { position: usize },
+    #[error("Index replay mutation at position {position} duplicates event id {event_id}")]
+    DuplicateReplayEventId { position: usize, event_id: Uuid },
     #[error("Index replay mutation at position {position} failed")]
     MutationFailed {
         position: usize,
@@ -466,14 +455,6 @@ fn validate_required_storage_key(
             reason: "must not be empty",
         });
     }
-    validate_optional_storage_key(field, value, max_bytes)
-}
-
-fn validate_optional_storage_key(
-    field: &'static str,
-    value: &str,
-    max_bytes: usize,
-) -> Result<(), IndexReplayError> {
     if value.len() > max_bytes {
         return Err(IndexReplayError::InvalidStorageKey {
             field,
