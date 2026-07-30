@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "marketplace_listing_admin_native_request_error_safety_source_unvalidated",
+  "scope": "marketplace-listing admin shared native request boundary",
+  "source_contract": {
+    "host_runtime_static_public_envelope": true,
+    "owner_runtime_static_public_envelope": true,
+    "auth_context_static_public_envelope": true,
+    "tenant_context_static_public_envelope": true,
+    "request_context_static_public_envelope": true,
+    "module_availability_failure_static_public_envelope": true,
+    "correlation_logging_for_module_check_failure": true,
+    "tenant_logging_when_available": true,
+    "channel_logging_when_available": true,
+    "locale_logging_when_available": true,
+    "permission_messages_changed": false,
+    "identity_mismatch_message_changed": false,
+    "module_disabled_message_changed": false,
+    "port_error_mapper_changed": false,
+    "port_context_contract_changed": false,
+    "endpoint_contract_changed": false,
+    "command_payload_changed": false,
+    "raw_request_boundary_error_public": false
+  },
+  "stable_public_messages": {
+    "runtime_unavailable": "Marketplace listing service is temporarily unavailable",
+    "request_context_unavailable": "Marketplace listing request context is unavailable"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-marketplace-listing-admin-native-request-error-safety.mjs",
+    "node scripts/verify/verify-marketplace-listing-admin-ffa.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-marketplace-listing-admin --all-features"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}
