@@ -57,7 +57,7 @@ const sql = requireMarkers(sqlPath, [
   'compile_keyset(plan, cursor, &mut bindings)?',
   'ASC NULLS LAST',
   'DESC NULLS FIRST',
-  'SELECT COUNT(*)::bigint AS \"__exact_count\"',
+  'SELECT COUNT(*)::bigint AS "__exact_count"',
   'format!("${}", self.values.len())',
 ]);
 
@@ -119,7 +119,8 @@ requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   'M4 controlled PostgreSQL query compilation: `complete`',
   'M4 nested many-link projection aggregation: `complete`',
-  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
+  '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
+  '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
 ]);
 
 console.log('[verify-index-postgres-query-compiler] OK');

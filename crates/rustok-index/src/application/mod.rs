@@ -7,6 +7,8 @@ mod postgres_query_sql;
 mod query_port;
 mod query_runtime;
 mod registry;
+mod source_registry;
+mod source_replay;
 mod source_schema_registry;
 mod validation;
 
@@ -24,6 +26,8 @@ mod postgres_query_result_tests;
 mod query_snapshot_tests;
 #[cfg(test)]
 mod reference;
+#[cfg(test)]
+mod source_replay_tests;
 
 pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
@@ -48,6 +52,18 @@ pub use query_port::{
 pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
+};
+pub use source_registry::{
+    IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
+    IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
+    IndexSourcePage, IndexSourceScanRequest, SharedIndexSourceRegistry,
+    materialize_index_source_registry, register_index_source,
+};
+pub use source_replay::{
+    IndexReplayCheckpoint, IndexReplayCheckpointKey, IndexReplayCheckpointStore, IndexReplayError,
+    IndexReplayFailure, IndexReplayFailureKind, IndexReplayMutationOutcome,
+    IndexReplayMutationSink, IndexReplayPageOutcome, IndexReplayPageRequest,
+    IndexReplayPageStatus, IndexReplayWorker,
 };
 pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,

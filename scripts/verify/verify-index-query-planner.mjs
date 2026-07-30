@@ -85,7 +85,8 @@ requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '### M4 - Query engine v1',
   '- [x] Add nested many-link projection aggregation.',
-  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
+  '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
+  '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
   'Partition cutover remains forbidden until one retained real',
 ]);
 
