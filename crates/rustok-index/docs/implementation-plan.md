@@ -208,7 +208,7 @@ unpartitioned until separate shadow evidence is retained and admitted.
 - [x] Add exact-byte raw-artifact assembly with confinement and no-clobber output.
 - [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.
 - [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.
-- [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.
+- [x] Add owner-operated PostgreSQL mutation/WAL evidence capture.
 - [x] Add owner-operated PostgreSQL ordinary-VACUUM maintenance evidence capture.
 - [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.
 - [x] Add owner-operated full retained packet orchestration and capture finalization.
@@ -513,3 +513,16 @@ node scripts/verify/verify-index-many-link-filtering.mjs
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
   lifecycle work begins.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `index ownership and roadmap documentation; mutation storage, query port, migrations, replay/delete/version ordering, tenant/locale isolation, publishers, rebuild and search-consumer integration audit pending`
+- Findings: `P0=0, P1=0, P2=0, P3=1`
+- Fixed in this pass: `added the missing current-cycle handoff without changing guard-bound roadmap wording`
+- Remaining risks or blockers: `source and cross-module audit is in progress; PostgreSQL and retained-evidence execution remains open; no compiled verification is claimed`
+- Evidence: `root README, local docs and the complete implementation roadmap were read on the branch`
+- Next action: `inspect mutation_store, query_port, migrations and all source/search/server integrations for tenant/locale isolation, delete replay, monotonic versions, crash recovery and rebuild correctness`
+- Resume command: `cargo xtask module validate index && cargo xtask module test index && cargo test -p rustok-index planner_tests -- --nocapture`

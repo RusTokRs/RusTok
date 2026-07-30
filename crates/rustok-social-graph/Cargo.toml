@@ -21,6 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
@@ -33,4 +34,3 @@ index-consumer = ["index", "dep:rustok-iggy"]
 [dev-dependencies]
 iggy.workspace = true
 rustok-iggy-connector = { workspace = true, features = ["migrations"] }
-tokio.workspace = true

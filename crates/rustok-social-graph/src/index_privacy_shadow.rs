@@ -112,7 +112,8 @@ impl IndexPrivacyShadowObserver for NoopIndexPrivacyShadowObserver {
 /// Non-authoritative parity observer for Social Graph privacy reads.
 ///
 /// The owner port always determines the returned result. Index is queried only after the
-/// owner succeeds, and projection errors or mismatches are recorded without changing policy.
+/// owner succeeds, and projection errors, timeouts, or mismatches are recorded without
+/// changing policy or extending the caller's deadline budget.
 #[derive(Clone)]
 pub struct IndexShadowSocialGraphPrivacyReadPort {
     authoritative: Arc<dyn SocialGraphPrivacyReadPort>,
@@ -165,18 +166,25 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         context: PortContext,
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
+        let operation_started_at = Instant::now();
+        let budget = shadow_budget(&context);
         let authoritative = self
             .authoritative
             .blocks_between(context.clone(), request)
             .await?;
-        let started_at = Instant::now();
-        let projected = self.projected.blocks_between(context, request).await;
+        let comparison_started_at = Instant::now();
+        let projected = projected_within_remaining_budget(
+            operation_started_at,
+            budget,
+            self.projected.blocks_between(context, request),
+        )
+        .await;
         observe_bool(
             self.observer.as_ref(),
             IndexPrivacyShadowOperation::BlocksBetween,
             authoritative,
             projected,
-            started_at.elapsed(),
+            comparison_started_at.elapsed(),
         );
         Ok(authoritative)
     }
@@ -186,18 +194,25 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         context: PortContext,
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
+        let operation_started_at = Instant::now();
+        let budget = shadow_budget(&context);
         let authoritative = self
             .authoritative
             .source_mutes_target(context.clone(), request)
             .await?;
-        let started_at = Instant::now();
-        let projected = self.projected.source_mutes_target(context, request).await;
+        let comparison_started_at = Instant::now();
+        let projected = projected_within_remaining_budget(
+            operation_started_at,
+            budget,
+            self.projected.source_mutes_target(context, request),
+        )
+        .await;
         observe_bool(
             self.observer.as_ref(),
             IndexPrivacyShadowOperation::SourceMutesTarget,
             authoritative,
             projected,
-            started_at.elapsed(),
+            comparison_started_at.elapsed(),
         );
         Ok(authoritative)
     }
@@ -207,18 +222,25 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         context: PortContext,
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
+        let operation_started_at = Instant::now();
+        let budget = shadow_budget(&context);
         let authoritative = self
             .authoritative
             .source_follows_target(context.clone(), request)
             .await?;
-        let started_at = Instant::now();
-        let projected = self.projected.source_follows_target(context, request).await;
+        let comparison_started_at = Instant::now();
+        let projected = projected_within_remaining_budget(
+            operation_started_at,
+            budget,
+            self.projected.source_follows_target(context, request),
+        )
+        .await;
         observe_bool(
             self.observer.as_ref(),
             IndexPrivacyShadowOperation::SourceFollowsTarget,
             authoritative,
             projected,
-            started_at.elapsed(),
+            comparison_started_at.elapsed(),
         );
         Ok(authoritative)
     }
@@ -228,21 +250,55 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         context: PortContext,
         request: SocialGraphFollowBatchRequest,
     ) -> Result<SocialGraphFollowBatchResult, PortError> {
+        let operation_started_at = Instant::now();
+        let budget = shadow_budget(&context);
         let authoritative = self
             .authoritative
             .source_follows_targets(context.clone(), request.clone())
             .await?;
-        let started_at = Instant::now();
-        let projected = self.projected.source_follows_targets(context, request).await;
+        let comparison_started_at = Instant::now();
+        let projected = projected_within_remaining_budget(
+            operation_started_at,
+            budget,
+            self.projected.source_follows_targets(context, request),
+        )
+        .await;
         observe_batch(
             self.observer.as_ref(),
             IndexPrivacyShadowOperation::SourceFollowsTargets,
             &authoritative,
             projected,
-            started_at.elapsed(),
+            comparison_started_at.elapsed(),
         );
         Ok(authoritative)
     }
+}
+
+fn shadow_budget(context: &PortContext) -> Duration {
+    Duration::from_millis(context.deadline_ms.unwrap_or_default())
+}
+
+async fn projected_within_remaining_budget<T>(
+    operation_started_at: Instant,
+    budget: Duration,
+    future: impl std::future::Future<Output = Result<T, PortError>>,
+) -> Result<T, PortError> {
+    let remaining = budget
+        .checked_sub(operation_started_at.elapsed())
+        .unwrap_or_default();
+    if remaining.is_zero() {
+        return Err(shadow_timeout());
+    }
+    tokio::time::timeout(remaining, future)
+        .await
+        .map_err(|_| shadow_timeout())?
+}
+
+fn shadow_timeout() -> PortError {
+    PortError::timeout(
+        "social_graph.index_privacy_unavailable",
+        "social graph Index privacy shadow exceeded the caller deadline budget",
+    )
 }
 
 fn observe_bool(
@@ -486,6 +542,52 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct SlowPrivacyPort;
+
+    #[async_trait]
+    impl SocialGraphPrivacyReadPort for SlowPrivacyPort {
+        async fn blocks_between(
+            &self,
+            _context: PortContext,
+            _request: SocialGraphPairRequest,
+        ) -> Result<bool, PortError> {
+            slow_boolean().await
+        }
+
+        async fn source_mutes_target(
+            &self,
+            _context: PortContext,
+            _request: SocialGraphPairRequest,
+        ) -> Result<bool, PortError> {
+            slow_boolean().await
+        }
+
+        async fn source_follows_target(
+            &self,
+            _context: PortContext,
+            _request: SocialGraphPairRequest,
+        ) -> Result<bool, PortError> {
+            slow_boolean().await
+        }
+
+        async fn source_follows_targets(
+            &self,
+            _context: PortContext,
+            _request: SocialGraphFollowBatchRequest,
+        ) -> Result<SocialGraphFollowBatchResult, PortError> {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            Ok(SocialGraphFollowBatchResult {
+                followed_target_user_ids: Vec::new(),
+            })
+        }
+    }
+
+    async fn slow_boolean() -> Result<bool, PortError> {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        Ok(false)
+    }
+
     #[derive(Default)]
     struct RecordingObserver {
         observations: Mutex<Vec<IndexPrivacyShadowObservation>>,
@@ -501,13 +603,17 @@ mod tests {
     }
 
     fn context() -> PortContext {
+        context_with_deadline(Duration::from_secs(1))
+    }
+
+    fn context_with_deadline(deadline: Duration) -> PortContext {
         PortContext::new(
             Uuid::from_u128(1).to_string(),
             PortActor::service("privacy-shadow-test"),
             "und",
             "privacy-shadow-test-correlation",
         )
-        .with_deadline(Duration::from_secs(1))
+        .with_deadline(deadline)
     }
 
     fn pair() -> SocialGraphPairRequest {
@@ -631,6 +737,41 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.followed_target_user_ids, expected);
+        let observations = observer.observations.lock().expect("observation lock");
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].outcome, IndexPrivacyShadowOutcome::Error);
+        assert_eq!(
+            observations[0].failure_code,
+            Some(IndexPrivacyShadowFailureCode::Unavailable)
+        );
+        assert_eq!(observations[0].retryable, Some(true));
+    }
+
+    #[tokio::test]
+    async fn projected_timeout_returns_authoritative_result_within_caller_budget() {
+        let observer = Arc::new(RecordingObserver::default());
+        let shadow = IndexShadowSocialGraphPrivacyReadPort::from_ports(
+            Arc::new(FixedPrivacyPort {
+                boolean: true,
+                batch: Vec::new(),
+                fail: false,
+            }),
+            Arc::new(SlowPrivacyPort),
+            observer.clone(),
+        );
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            shadow.blocks_between(
+                context_with_deadline(Duration::from_millis(10)),
+                pair(),
+            ),
+        )
+        .await
+        .expect("shadow observation must not outlive the caller budget")
+        .unwrap();
+
+        assert!(result);
         let observations = observer.observations.lock().expect("observation lock");
         assert_eq!(observations.len(), 1);
         assert_eq!(observations[0].outcome, IndexPrivacyShadowOutcome::Error);
