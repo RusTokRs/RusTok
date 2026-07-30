@@ -30,7 +30,7 @@
     "profile_visibility_is_not_serialized": true,
     "public_handle_populates_search_handle": true,
     "public_handle_and_display_name_extend_keywords": true,
-    "author_filter_facet_is_present_only_for_public_author": true
+    "author_filter_value_is_populated_only_for_public_author": true
   },
   "redaction_boundary": {
     "profile_updated_is_durable": true,
