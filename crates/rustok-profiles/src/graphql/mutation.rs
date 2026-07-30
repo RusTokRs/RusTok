@@ -12,11 +12,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ProfileError, ProfileMediaSlot, ProfileOperation, ProfileOperationTimer, ProfileRecord,
-    ProfileResult, content_write::update_profile_content_with_event,
-    handle_write::update_profile_handle_with_event, locale_write::update_profile_locale_with_event,
-    media_write::update_profile_media_with_event, upsert_write::upsert_profile_with_event,
-    validate_profile_media_asset, visibility_write::update_profile_visibility_with_event,
+    ProfileError, ProfileMediaSlot, ProfileMutationService, ProfileOperation,
+    ProfileOperationTimer, ProfileRecord, ProfileResult, validate_profile_media_asset,
 };
 
 use super::{MODULE_SLUG, types::*};
@@ -37,6 +34,7 @@ impl ProfilesMutation {
         let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let mutations = ProfileMutationService::new(db, event_bus);
         let tenant = ctx.data::<TenantContext>()?;
 
         validate_profile_media_references(
@@ -52,9 +50,7 @@ impl ProfilesMutation {
             ProfileOperation::Upsert,
             tenant.id,
             auth.user_id,
-            upsert_profile_with_event(
-                db,
-                event_bus,
+            mutations.upsert_profile_with_event(
                 tenant.id,
                 auth.user_id,
                 auth.user_id,
@@ -76,15 +72,14 @@ impl ProfilesMutation {
         let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let mutations = ProfileMutationService::new(db, event_bus);
         let tenant = ctx.data::<TenantContext>()?;
 
         let profile = observe_profile_write(
             ProfileOperation::UpdateHandle,
             tenant.id,
             auth.user_id,
-            update_profile_handle_with_event(
-                db,
-                event_bus,
+            mutations.update_profile_handle_with_event(
                 tenant.id,
                 auth.user_id,
                 auth.user_id,
@@ -106,15 +101,14 @@ impl ProfilesMutation {
         let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let mutations = ProfileMutationService::new(db, event_bus);
         let tenant = ctx.data::<TenantContext>()?;
 
         let profile = observe_profile_write(
             ProfileOperation::UpdateContent,
             tenant.id,
             auth.user_id,
-            update_profile_content_with_event(
-                db,
-                event_bus,
+            mutations.update_profile_content_with_event(
                 tenant.id,
                 auth.user_id,
                 auth.user_id,
@@ -137,15 +131,14 @@ impl ProfilesMutation {
         let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let mutations = ProfileMutationService::new(db, event_bus);
         let tenant = ctx.data::<TenantContext>()?;
 
         let profile = observe_profile_write(
             ProfileOperation::UpdateLocale,
             tenant.id,
             auth.user_id,
-            update_profile_locale_with_event(
-                db,
-                event_bus,
+            mutations.update_profile_locale_with_event(
                 tenant.id,
                 auth.user_id,
                 auth.user_id,
@@ -167,15 +160,14 @@ impl ProfilesMutation {
         let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let mutations = ProfileMutationService::new(db, event_bus);
         let tenant = ctx.data::<TenantContext>()?;
 
         let profile = observe_profile_write(
             ProfileOperation::UpdateVisibility,
             tenant.id,
             auth.user_id,
-            update_profile_visibility_with_event(
-                db,
-                event_bus,
+            mutations.update_profile_visibility_with_event(
                 tenant.id,
                 auth.user_id,
                 auth.user_id,
@@ -197,6 +189,7 @@ impl ProfilesMutation {
         let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let mutations = ProfileMutationService::new(db, event_bus);
         let tenant = ctx.data::<TenantContext>()?;
 
         validate_profile_media_references(
@@ -212,9 +205,7 @@ impl ProfilesMutation {
             ProfileOperation::UpdateMedia,
             tenant.id,
             auth.user_id,
-            update_profile_media_with_event(
-                db,
-                event_bus,
+            mutations.update_profile_media_with_event(
                 tenant.id,
                 auth.user_id,
                 auth.user_id,

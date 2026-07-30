@@ -17,10 +17,11 @@
 - Consume Media-selected direct or immutable capability image descriptors without inventing storage or proxy URLs.
 - Publish `ProfileMediaPublicImageProvider` as the transport-neutral runtime seam for embedded or extracted Media presentation providers.
 - Provide explicit backfill helpers for provisioning missing profiles from existing user/customer data.
+- Expose `ProfileMutationService` as the preferred production mutation boundary; its constructor requires a database connection and transactional event bus, and every mutation delegates to an owner-write/outbox transaction.
 - Expose a request-scoped GraphQL `ProfileSummaryLoader` for host applications that need DataLoader-based batching and caching.
 - Expose module-owned GraphQL transport for self-service and public profile lookups, including targeted profile update mutations.
 - Publish a module-owned Leptos storefront profile page with explicit native/GraphQL transport selection and follow/unfollow controls.
-- Publish `profile.updated` through the transactional outbox after successful profile writes.
+- Publish `ProfileUpdated` through the transactional outbox as part of active production profile-write transactions.
 - Emit stable owner-operation telemetry for self-service writes, event publication, and CLI backfill without logging profile copy, source email, generated handles, locale values, Media references, URLs, or provider/storage details.
 - Define reusable profile DTOs and reader contracts that groups, forum, blog, social, and commerce surfaces can consume.
 
@@ -46,6 +47,7 @@
 
 - `ProfilesModule`
 - `ProfileService`
+- `ProfileMutationService`
 - `ProfilesReader`
 - `ProfilePrivacyService`
 - `ProfilePrivacyReadPort`

@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23A9",
+  "status": "source_complete_execution_pending",
+  "scope": "Provide a public Profiles mutation API whose construction requires the durable event bus and route repository production profile writes through it",
+  "mutation_facade": "crates/rustok-profiles/src/mutations.rs",
+  "profiles_public_api": "crates/rustok-profiles/src/lib.rs",
+  "profiles_readme": "crates/rustok-profiles/README.md",
+  "graphql_runtime": "crates/rustok-profiles/src/graphql/mutation.rs",
+  "cli_backfill_runtime": "crates/rustok-profiles/cli/src/lib.rs",
+  "legacy_source_gate_contract": "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json",
+  "owner_note": "crates/rustok-forum/docs/forum-23a9-profile-event-aware-mutation-api.md",
+  "verifier": "scripts/verify/verify-forum-search-profile-event-aware-mutation-api.mjs",
+  "public_event_aware_methods": [
+    "upsert_profile_with_event",
+    "update_profile_handle_with_event",
+    "update_profile_content_with_event",
+    "update_profile_locale_with_event",
+    "update_profile_visibility_with_event",
+    "update_profile_media_with_event",
+    "backfill_profile_with_event"
+  ],
+  "mutation_api_boundary": {
+    "facade_is_publicly_exported": true,
+    "facade_constructor_requires_database_connection": true,
+    "facade_constructor_requires_transactional_event_bus": true,
+    "all_facade_mutations_are_event_named": true,
+    "facade_delegates_to_profiles_owned_atomic_helpers": true,
+    "graphql_self_service_uses_facade": true,
+    "graphql_self_service_actor_is_preserved": true,
+    "graphql_media_validation_precedes_facade_write": true,
+    "cli_backfill_uses_facade": true,
+    "cli_backfill_system_actor_semantics_are_preserved": true,
+    "profiles_readme_documents_preferred_facade": true,
+    "legacy_repository_production_calls_remain_source_gated": true,
+    "compatible_free_backfill_helper_remains_event_aware": true
+  },
+  "compatibility": {
+    "legacy_profile_service_signatures_removed": false,
+    "public_backfill_helper_removed": false,
+    "graphql_schema_changed": false,
+    "forum_rest_changed": false,
+    "search_query_api_changed": false,
+    "search_document_schema_changed": false,
+    "database_migration_added": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "deprecate remove or compile-time restrict legacy direct ProfileService mutation methods",
+    "define an owner-ordered profile or account deletion projection invalidation contract",
+    "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
+    "add bounded category-subtree tag locale date solved kind channel group and attachment filters",
+    "add member index projections",
+    "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
+  ],
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "node scripts/verify/verify-forum-search-profile-event-aware-mutation-api.mjs",
+      "node scripts/verify/verify-forum-search-profile-service-mutation-boundary.mjs",
+      "node scripts/verify/verify-forum-search-public-author-summary.mjs",
+      "cargo check -p rustok-profiles --all-targets",
+      "cargo check -p rustok-profiles-cli --all-targets",
+      "cargo xtask module validate profiles",
+      "cargo xtask module validate forum"
+    ]
+  },
+  "non_claims": {
+    "legacy_profile_service_mutations_are_compile_time_private": true,
+    "external_downstream_crates_cannot_call_legacy_methods": true,
+    "all_profiles_owner_write_surfaces_are_event_intrinsic": true,
+    "runtime_verification_was_executed": true,
+    "account_deletion_redaction_is_complete": true,
+    "general_cross_producer_owner_revision_ordering_is_complete": true
+  },
+  "downstream_task": "FORUM-23A10"
+}
