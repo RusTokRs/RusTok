@@ -104,6 +104,7 @@ for (const relative of [
   'crates/rustok-social-graph/src/lib.rs',
   'crates/rustok-social-graph/src/index_consumer.rs',
   'crates/rustok-social-graph/src/index_privacy.rs',
+  'crates/rustok-social-graph/src/index_privacy_shadow.rs',
 ]) {
   const source = read(relative);
   if (source.includes('PostgresIndexQueryPort::new')) {
