@@ -17,7 +17,7 @@ jobs:
         with:
           ref: agent/blog-richtext-offline-backfill-20260730
           fetch-depth: 0
-      - name: Tighten operator and plan wording
+      - name: Reconcile final plan wording
         shell: bash
         run: |
           python3 <<'PY'
@@ -48,51 +48,6 @@ jobs:
           evidence remain maintainer-owned.''',
           )
 
-          source_path = 'crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs'
-          replace_once(
-              source_path,
-              '''    if !cli.apply {
-                  println!(
-                      "dry-run complete; rerun with --apply only after reviewing the report and database backup"
-                  );
-                  return Ok(());
-              }''',
-              '''    if !cli.apply {
-                  if cli.tenant_id.is_some() {
-                      println!(
-                          "tenant-scoped dry-run complete; omit --tenant-id for the final unscoped dry-run before global migration"
-                      );
-                  } else {
-                      println!(
-                          "dry-run complete; rerun with --apply only after reviewing the report and database backup"
-                      );
-                  }
-                  return Ok(());
-              }''',
-          )
-          replace_once(
-              source_path,
-              '''    println!(
-                  "backfill complete; run the Blog richtext cutover migration and then retain Search/browser evidence"
-              );''',
-              '''    if cli.tenant_id.is_some() {
-                  println!(
-                      "tenant-scoped backfill complete; run a final unscoped dry-run before global migration"
-                  );
-              } else {
-                  println!(
-                      "backfill complete; run the Blog richtext cutover migration and then retain Search/browser evidence"
-                  );
-              }''',
-          )
-          replace_once(
-              source_path,
-              '''           --tenant-id=<uuid>              restrict the scan to one tenant\n\\
-          ''',
-              '''           --tenant-id=<uuid>              rehearsal/incremental scope; omit for final global preflight\n\\
-          ''',
-          )
-
           replace_once(
               'crates/rustok-blog/docs/richtext-cutover-inventory.md',
               '''After reviewing the report and backup, rerun with `--apply`. Add
@@ -105,6 +60,7 @@ jobs:
           and cross-tenant rows cannot be missed. The utility does not execute the schema
           migration or Search reindex.''',
           )
+
           replace_once(
               'crates/rustok-blog/docs/implementation-plan.md',
               '''   only after accepting literal-text conversion, then rerun with `--apply`.
@@ -113,18 +69,8 @@ jobs:
              Complete a final unscoped dry-run before the global migration. Execute the
              irreversible migration, perform Blog Search reindex/rollback, and''',
           )
-          replace_once(
-              'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
-              '''  "repair the owner relation before backfill",
-            "--apply",''',
-              '''  "repair the owner relation before backfill",
-            "final unscoped dry-run before global migration",
-            "--apply",''',
-          )
           PY
           rm .github/workflows/agent-blog-backfill-final-review.yml
-          node --check scripts/verify/verify-blog-richtext-offline-backfill.mjs
-          grep -q 'final unscoped dry-run before global migration' crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs
           git diff --check
       - name: Commit final review
         shell: bash
