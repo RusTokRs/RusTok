@@ -13,8 +13,9 @@ pub(crate) use legacy::*;
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
-    ProductAdminBootstrap, ProductCatalogSearchOptions, ProductDetail, ProductList,
-    ProductPricingDetail, ShippingProfileList,
+    CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
+    ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductEffectiveForm,
+    ProductList, ProductPricingDetail, ShippingProfileList,
 };
 use rustok_graphql::GraphqlHttpError;
 
@@ -206,4 +207,102 @@ pub(crate) async fn fetch_shipping_profiles(
     legacy::fetch_shipping_profiles(token, tenant_slug, tenant_id)
         .await
         .map_err(|error| context.map_error(error))
+}
+
+pub(crate) async fn fetch_product_attributes(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: String,
+) -> Result<ProductAttributeList, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_product_attributes(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        locale.as_str(),
+    );
+    legacy::fetch_product_attributes(token, tenant_slug, tenant_id, locale)
+        .await
+        .map_err(|failure| context.map_error(failure))
+}
+
+pub(crate) async fn fetch_catalog_categories(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: String,
+) -> Result<CatalogCategoryList, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_catalog_categories(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        locale.as_str(),
+    );
+    legacy::fetch_catalog_categories(token, tenant_slug, tenant_id, locale)
+        .await
+        .map_err(|failure| context.map_error(failure))
+}
+
+pub(crate) async fn fetch_attribute_schemas(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: String,
+) -> Result<ProductAttributeSchemaList, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_attribute_schemas(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        locale.as_str(),
+    );
+    legacy::fetch_attribute_schemas(token, tenant_slug, tenant_id, locale)
+        .await
+        .map_err(|failure| context.map_error(failure))
+}
+
+pub(crate) async fn fetch_effective_product_form(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    product_id: Option<String>,
+    category_id: Option<String>,
+    locale: String,
+) -> Result<Option<ProductEffectiveForm>, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_effective_product_form(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        product_id.as_deref(),
+        category_id.as_deref(),
+        locale.as_str(),
+    );
+    legacy::fetch_effective_product_form(
+        token,
+        tenant_slug,
+        tenant_id,
+        product_id,
+        category_id,
+        locale,
+    )
+    .await
+    .map_err(|failure| context.map_error(failure))
+}
+
+pub(crate) async fn fetch_product_attribute_values(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    product_id: String,
+    locale: String,
+) -> Result<Vec<ProductAttributeValueItem>, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_product_attribute_values(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        product_id.as_str(),
+        locale.as_str(),
+    );
+    legacy::fetch_product_attribute_values(token, tenant_slug, tenant_id, product_id, locale)
+        .await
+        .map_err(|failure| context.map_error(failure))
 }
