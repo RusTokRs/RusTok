@@ -239,7 +239,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [x] Add immutable partition evidence manifest, measured packet validator, and',
   '- [x] Add exact-byte raw-artifact capture assembly with bundle confinement and',
   '- [ ] Execute retained PostgreSQL partition baseline/shadow evidence.',
-  'The seventh M3 slice adds fail-closed raw-artifact packet assembly.',
+  '7. `index_partition_capture_v1` assembly reads six unique confined raw files once,',
+  'calculates exact-byte hashes, validates the packet, and refuses overwrite/aliases.',
   'node --test scripts/verify/index-partition-evidence-assembly.test.mjs',
   'node scripts/verify/verify-index-partition-evidence.mjs',
 ]);
