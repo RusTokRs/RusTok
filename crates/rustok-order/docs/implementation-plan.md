@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-order`
 
-Last reviewed: 2026-07-29
+Last reviewed: 2026-07-30
 
 ## Current state
 
@@ -56,12 +56,13 @@ typed identity exclusively.
 Complete order, return, and order-change projection reads are published through
 `OrderReadPort`. `CommerceOrderReadRuntime` carries one host-selected owner port
 through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
-GraphQL schema data. Mounted GraphQL complete-order and post-order reads,
-storefront HTTP order detail/ownership and post-order lists, plus admin REST
-complete-order reads use the same port with authenticated actor, resolved channel,
-effective locale context, deadline, public error policy, filters, ordering,
-pagination total, locale fallback where applicable, and ownership behavior
-preserved. Admin post-order reads plus runtime evidence remain open and unvalidated.
+GraphQL schema data. Mounted GraphQL, storefront HTTP, and admin REST complete-order
+and post-order query consumers use the same port with authenticated actor, resolved
+channel, effective locale context, deadline, public error policy, filters,
+ordering, pagination total, locale fallback where applicable, and ownership
+behavior preserved. Runtime evidence remains open and unvalidated. The superseded
+admin post-order GET functions remain compiled but unmounted until maintainer
+compile and mounted-parity validation permits their removal.
 
 ## FFA/FBA boundary
 
@@ -90,6 +91,7 @@ preserved. Admin post-order reads plus runtime evidence remain open and unvalida
   `scripts/verify/verify-commerce-graphql-order-read-shim.mjs`,
   `scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`,
   `scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs`,
+  `scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs`,
   `scripts/verify/verify-commerce-admin-order-route-error-context.mjs`,
   `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`,
   `scripts/verify/verify-commerce-order-identity-boundary.mjs`,
@@ -187,10 +189,14 @@ preserved. Admin post-order reads plus runtime evidence remain open and unvalida
 - [x] Cut GraphQL return/order-change detail and list reads over to the scoped
   host-selected runtime while preserving typed not-found error shapes and without
   changing mutations.
-- [ ] Audit and cut admin post-order reads separately without moving mutations or
-  payment/fulfillment policy.
-- [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
-  evidence before status promotion.
+- [x] Cut mounted admin return/order-change detail and list reads over to the
+  host-selected runtime while preserving `ORDERS_READ`, filters, clamped
+  pagination, totals, public envelopes, actor/channel/locale/deadline context, and
+  all mutation/payment/fulfillment ownership.
+- [ ] Execute compile and mounted parity for the four admin post-order GET routes,
+  then remove their unmounted compatibility handlers.
+- [ ] Execute deadline/failure, restart, and remote-adapter evidence before status
+  promotion.
 
 ## Open results
 
@@ -243,23 +249,22 @@ preserved. Admin post-order reads plus runtime evidence remain open and unvalida
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-7. **Prove mounted order projection read parity.** Mounted GraphQL complete-order
-   and post-order reads, storefront order/return/change reads, and admin REST
-   complete-order reads now use the host-selected `CommerceOrderReadRuntime`
-   without concrete `OrderService` projection reads on those paths.
+7. **Prove mounted order projection read parity.** Mounted GraphQL, storefront,
+   and admin REST complete-order and post-order reads use the host-selected
+   `CommerceOrderReadRuntime` without concrete `OrderService` projection reads on
+   active routes.
    **Depends on:** compiled order/commerce/server crates and mounted local plus
    remote adapter profiles.
    **Done when:** locale/filter/pagination/authorization/ownership behavior,
    deadlines, stable failure policy, restart, and remote adapter parity are
    retained as execution evidence.
 
-8. **Finish admin post-order consumer cutover.** Admin return/order-change reads
-   still use concrete owner services even though all six typed operations are
-   published and GraphQL/storefront consumers are cut over.
-   **Depends on:** the host-selected runtime and current admin transport envelope
-   inventory.
-   **Done when:** mounted admin post-order reads no longer construct foreign owner
-   services, while mutations and payment/fulfillment policy remain unchanged.
+8. **Remove unmounted admin post-order compatibility handlers.** The active admin
+   GET routes are cut over, but the superseded functions in `admin/returns.rs` and
+   `admin/changes.rs` remain compiled as rollback-compatible source.
+   **Depends on:** successful compile plus mounted route parity evidence.
+   **Done when:** those four unmounted GET functions are deleted, OpenAPI remains
+   unchanged, and no admin mutation or orchestration route moves ownership.
 
 9. **Keep order and commerce documentation synchronized.** Update local docs,
    manifests, registries, central status, and the umbrella commerce plan whenever
@@ -274,6 +279,7 @@ preserved. Admin post-order reads plus runtime evidence remain open and unvalida
 - `node scripts/verify/verify-commerce-graphql-order-read-shim.mjs`
 - `node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`
 - `node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs`
+- `node scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs`
 - `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`

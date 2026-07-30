@@ -58,7 +58,7 @@ for (const [source, value, label] of [
   [storefront, 'ListOrderChangeProjectionsRequest {', 'storefront change request'],
   [storefront, 'data: page.items,', 'typed page items'],
   [storefront, 'page.total', 'typed page total'],
-  [note, 'storefront return/order-change lists use the port', 'owner note status'],
+  [note, '## Storefront post-order read cutover', 'owner note section'],
 ]) requireText(source, value, label);
 
 const returnRoute = between(
@@ -88,7 +88,7 @@ for (const [value, label] of [
   ['PaymentService::new(runtime.db_clone())', 'refund list remains payment service'],
 ]) requireText(storefront, value, label);
 
-if (evidence.status !== 'graphql_post_order_reads_cutover_unvalidated') {
+if (evidence.status !== 'mounted_consumer_cutover_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 if (evidence.operations?.map((operation) => operation.name).join(',') !==
@@ -103,17 +103,17 @@ if (evidence.consumer_inventory?.commerce_storefront_order_change_list !==
     'order_read_port_host_runtime') {
   failures.push('storefront order-change list must use the host-selected owner port');
 }
-if (evidence.consumer_inventory?.commerce_graphql_return_and_order_change_reads_cutover_completed !== true) {
-  failures.push('GraphQL post-order consumer cutover must be complete');
-}
-if (evidence.consumer_inventory?.post_order_consumer_cutover_completed !== false) {
-  failures.push('admin post-order consumer cutover must remain incomplete');
-}
-if (evidence.consumer_inventory?.all_consumer_cutover_completed !== false) {
-  failures.push('all consumer cutover must remain incomplete');
-}
-if (evidence.consumer_inventory?.cutover_required !== true) {
-  failures.push('remaining admin post-order cutover must stay open');
+for (const [key, expected] of [
+  ['commerce_graphql_return_and_order_change_reads_cutover_completed', true],
+  ['commerce_admin_return_and_order_change_reads_cutover_completed', true],
+  ['post_order_consumer_cutover_completed', true],
+  ['all_mounted_consumer_cutover_completed', true],
+  ['all_consumer_cutover_completed', true],
+  ['cutover_required', false],
+]) {
+  if (evidence.consumer_inventory?.[key] !== expected) {
+    failures.push(`evidence consumer_inventory.${key} must be ${expected}`);
+  }
 }
 if (evidence.decision?.status_promotion !== false) {
   failures.push('source cutover must not promote status');
@@ -139,5 +139,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Storefront return and order-change lists use typed owner projections while return mutation, refunds, and admin post-order reads remain unchanged',
+  '✔ Storefront return and order-change lists use typed owner projections while return mutation and refunds remain unchanged; all mounted post-order read consumers are cut over and execution evidence remains open',
 );

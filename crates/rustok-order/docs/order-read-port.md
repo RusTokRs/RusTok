@@ -1,6 +1,6 @@
 # Order read port
 
-Status: owner port and host runtime published; storefront and GraphQL complete/post-order reads cut over, unvalidated.
+Status: owner port and host runtime published; all mounted complete/post-order reads cut over, unvalidated.
 
 ## Scope
 
@@ -15,11 +15,11 @@ consumers. It is separate from:
 - order lifecycle, return, and order-change mutations, which remain on existing
   order-owner commands and services.
 
-The owner boundary and host-selected runtime are published. Mounted admin REST
-complete-order reads, mounted GraphQL complete-order and post-order reads,
-storefront HTTP order detail/ownership, and storefront return/order-change lists
-use the port. Admin post-order reads remain open; runtime evidence remains
-unvalidated.
+The owner boundary and host-selected runtime are published. Mounted admin REST,
+mounted GraphQL, and storefront HTTP complete-order and post-order query consumers
+use the port. Runtime evidence remains unvalidated. The superseded admin GET
+functions remain as explicitly unmounted compatibility source until compile and
+mounted-parity validation permits their removal.
 
 ## Operations
 
@@ -121,7 +121,7 @@ error policy.
 
 ## GraphQL post-order read cutover
 
-The Commerce safe-query compatibility facade now calls all six typed operations.
+The Commerce safe-query compatibility facade calls all six typed operations.
 Return/order-change detail and list methods use the scoped host-selected runtime
 instead of constructing `OrderService`. Existing DTOs, filters, totals, and query
 method signatures are unchanged.
@@ -131,6 +131,27 @@ channel, effective locale, correlation id, and two-second deadline. Typed
 `NotFound` results map back to `OrderReturnNotFound` or
 `OrderChangeNotFound`, preserving the existing GraphQL error boundary.
 
+## Admin post-order read cutover
+
+The mounted admin router now directs these four GET endpoints to the dedicated
+`post_order_reads` module:
+
+- `GET /admin/returns` -> `list_order_return_projections`;
+- `GET /admin/returns/{id}` -> `read_order_return_projection`;
+- `GET /admin/order-changes` -> `list_order_change_projections`;
+- `GET /admin/order-changes/{id}` -> `read_order_change_projection`.
+
+The handlers preserve the existing `ORDERS_READ` authorization contract, request
+and response DTOs, optional filters, descending owner ordering, clamped pagination,
+owner totals, public HTTP codes/messages, validated user actor, resolved channel,
+effective request locale, resource-scoped correlation id, and two-second deadline.
+All POST routes remain mounted to their existing mutation/orchestration services.
+
+The old GET functions in `admin/returns.rs` and `admin/changes.rs` remain compiled
+but are no longer referenced by the mounted router. They are compatibility source,
+not active consumers, and should be removed only after maintainer-executed compile
+and mounted-parity validation.
+
 ## Unchanged behavior
 
 This source wave deliberately leaves these paths unchanged:
@@ -139,8 +160,8 @@ This source wave deliberately leaves these paths unchanged:
   validation;
 - storefront refund listing still constructs `PaymentService` after typed ownership
   validation;
-- admin return/order-change reads and all order/return/change mutations remain on
-  their current owner services;
+- admin order, return, and order-change mutations remain on their current owner or
+  orchestration services;
 - admin order detail payment and fulfillment aggregation remain unchanged.
 
 No mutation, payment, or fulfillment policy moved into the read port.
@@ -156,9 +177,10 @@ storage or owner-invariant details.
 
 ## Remaining source work
 
-1. audit and cut admin post-order reads separately without moving mutations;
-2. retain compile, mounted parity, deadline/failure, restart, and remote-adapter
-   evidence before status promotion.
+1. execute compile and mounted transport parity for all six operations;
+2. remove the unmounted admin compatibility GET handlers after that validation;
+3. retain deadline/failure, restart, and remote-adapter evidence before status
+   promotion.
 
 ## Evidence
 
@@ -166,11 +188,11 @@ Source evidence is retained at:
 
 `crates/rustok-order/contracts/evidence/order-read-port-source.json`
 
-Its status is `graphql_post_order_reads_cutover_unvalidated`. Six owner read
-operations, host composition, complete order consumers, storefront post-order
-lists, and mounted GraphQL post-order reads are recorded as source complete. Admin
-post-order consumer cutover, compile evidence, mounted parity, deadline/failure
-execution, restart, and remote-adapter evidence remain false or open.
+Its status is `mounted_consumer_cutover_unvalidated`. Six owner read operations,
+host composition, and all mounted admin REST, GraphQL, and storefront complete and
+post-order query consumers are recorded as source complete. Compile evidence,
+mounted parity, deadline/failure execution, restart, remote-adapter evidence, and
+compatibility-handler removal remain false or open.
 
 ## Intended checks
 
@@ -179,6 +201,7 @@ node scripts/verify/verify-order-read-port.mjs
 node scripts/verify/verify-commerce-graphql-order-read-shim.mjs
 node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs
 node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs
+node scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs
 node scripts/verify/verify-commerce-admin-order-route-error-context.mjs
 cargo check -p rustok-order --lib
 cargo check -p rustok-commerce --lib
