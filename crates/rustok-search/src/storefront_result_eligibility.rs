@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::storefront_category_scope::StorefrontSearchTransport;
 
-pub const MAX_FORUM_SEARCH_RESULT_CANDIDATES: usize = 512;
+pub const MAX_FORUM_SEARCH_RESULT_CANDIDATES: usize = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StorefrontSearchResultCandidateKind {
