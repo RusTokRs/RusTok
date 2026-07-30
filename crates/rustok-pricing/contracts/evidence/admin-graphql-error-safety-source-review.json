@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-07-30T18:45:00Z",
+  "status": "pricing_admin_graphql_error_safety_source_reviewed_unvalidated",
+  "scope": "Pricing admin GraphQL public error boundary",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-pricing/docs/implementation-plan.md",
+    "crates/rustok-pricing/admin/Cargo.toml",
+    "crates/rustok-pricing/admin/src/transport.rs",
+    "crates/rustok-pricing/admin/src/transport/graphql_adapter.rs",
+    "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs",
+    "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "scripts/verify/verify-pricing-admin-boundary.mjs"
+  ],
+  "findings": [
+    {
+      "id": "pricing-admin-graphql-display-public",
+      "severity": "confirmed",
+      "finding": "All four Pricing admin GraphQL reads converted GraphqlHttpError through ApiError::Graphql(value.to_string()) and returned that display directly from the selected transport facade. GraphQL server messages and HTTP status text could therefore reach the admin UI error envelope."
+    },
+    {
+      "id": "pricing-admin-final-facade-boundary",
+      "severity": "selected",
+      "finding": "The smallest compatible fix is a Pricing-owned per-call context in transport.rs. It sanitizes only ApiError::Graphql after the adapter call while preserving request validation and native behavior."
+    },
+    {
+      "id": "pricing-admin-safe-shape",
+      "severity": "confirmed",
+      "finding": "The new diagnostics retain a unique correlation id and only request-field presence or character lengths. Identifier, locale, search, status, money-context, channel, and quantity values are not recorded as structured fields."
+    },
+    {
+      "id": "pricing-admin-mutations-native-only",
+      "severity": "preserved",
+      "finding": "Variant price, discount, rule, and price-list scope mutations remain native-only and are outside this GraphQL read slice."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-pricing/admin/Cargo.toml",
+    "crates/rustok-pricing/admin/src/transport.rs",
+    "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json",
+    "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json",
+    "crates/rustok-pricing/docs/admin-graphql-error-safety.md",
+    "crates/rustok-pricing/docs/implementation-plan.md",
+    "scripts/verify/verify-pricing-admin-boundary.mjs",
+    "scripts/verify/verify-pricing-admin-graphql-error-safety.mjs"
+  ],
+  "remaining_scope": [
+    "remaining ecommerce adapters and non-PortError public envelopes",
+    "Pricing admin verifier and Cargo execution",
+    "GraphQL/browser runtime and mounted parity evidence"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  },
+  "execution": []
+}
