@@ -33,7 +33,7 @@ server composition. The selected distribution enables the Product `index` featur
 
 `ProductPostgresIndexSource` supports:
 
-- cursor scans ordered by `(index_revision, product_id, locale)`;
+- cursor scans ordered by the stable `(product_id, locale)` identity;
 - one-row lookahead over the caller's bounded page limit;
 - targeted loads over exact `(product_id, locale)` pairs;
 - exact tenant and schema scope;
@@ -43,18 +43,21 @@ server composition. The selected distribution enables the Product `index` featur
   errors.
 
 The source reads only Product-owned `products` and `product_translations` tables. It emits generic
-`IndexMutation::Upsert` values and never writes Index storage directly.
+`IndexMutation::Upsert` values and never writes Index storage directly. Stable enumeration uses the
+existing tenant/product identity constraint and the unique Product-translation `(product_id,
+locale)` index. The mutable source revision is deliberately excluded from the cursor so an update
+cannot move an already visited row behind or ahead of the durable enumeration position.
 
 ## Monotonic source version
 
 `products.index_revision` is a positive `BIGINT` owned by Product storage. A Product row update
 advances it through a database trigger. Insert, update, delete, or reassignment of a Product
-translation advances the affected Product revision. The bounded replay path is supported by
-`idx_products_index_replay (tenant_id, index_revision, id)`.
+translation advances the affected Product revision.
 
 The revision is storage-internal and is not added to Product API DTOs or the SeaORM write model.
 Normal Product inserts use the database default; Product and translation updates advance the
-revision inside PostgreSQL.
+revision inside PostgreSQL. It is used only as the generic mutation `source_version` and as part of
+the stable replay event identity; it is not the scan cursor.
 
 ## Explicitly open
 
@@ -64,6 +67,8 @@ revision inside PostgreSQL.
   presence does not establish persisted schema readiness.
 - Product domain events do not yet carry the source revision and are not connected to incremental
   Index mutation acknowledgement.
+- A concurrent write during one full scan can require a later replay or reconciliation pass; no
+  repeatable-read tenant snapshot is claimed by this source adapter.
 - ProductVariant and SalesChannel schemas, links, and sources remain open.
 - Storefront/admin/search authoritative consumer cutover remains forbidden.
 - Retained PostgreSQL replay, restart, cancellation, drift, freshness, and equivalence evidence has
