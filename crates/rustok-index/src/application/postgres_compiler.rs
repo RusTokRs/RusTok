@@ -5,7 +5,9 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{FieldPath, IndexQuery, LinkCardinality, LinkName, Pagination};
+use crate::domain::{
+    FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName, Pagination,
+};
 
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
@@ -84,6 +86,8 @@ pub enum PostgresQueryCompileError {
     ManyLinkOrderingPending(FieldPath),
     #[error("aggregate ordering requires a many-cardinality path: {0:?}")]
     AggregateOrderingWithoutManyLink(FieldPath),
+    #[error("aggregate ordering uses an unsupported PostgreSQL MIN/MAX type: {0:?}")]
+    AggregateOrderingUnsupportedType(FieldPath),
     #[error("query plan has no join contract for path {0:?}")]
     MissingJoinPlan(Vec<LinkName>),
     #[error("query plan many-link traversal metadata is inconsistent for path {0:?}")]
@@ -228,7 +232,16 @@ impl ExecutableQueryPlan {
         }
         validate_many_projection_contract(self)?;
         for order in &self.order_by {
-            if self.referenced_fields.get(&order.field.path) != Some(&order.field) {
+            let Some(referenced) = self.referenced_fields.get(&order.field.path) else {
+                return Err(PostgresQueryCompileError::MissingFieldPlan(
+                    order.field.path.clone(),
+                ));
+            };
+            let mut expected = referenced.clone();
+            if order.direction.aggregate().is_some() {
+                expected.nullable = true;
+            }
+            if order.field != expected {
                 return Err(PostgresQueryCompileError::MissingFieldPlan(
                     order.field.path.clone(),
                 ));
@@ -245,6 +258,11 @@ impl ExecutableQueryPlan {
                             order.field.path.clone(),
                         ),
                     );
+                }
+                (true, Some(_)) if !aggregate_type_supported(order.field.value_type) => {
+                    return Err(PostgresQueryCompileError::AggregateOrderingUnsupportedType(
+                        order.field.path.clone(),
+                    ));
                 }
                 _ => {}
             }
@@ -307,6 +325,16 @@ fn validate_many_projection_contract(
         }
     }
     Ok(())
+}
+
+fn aggregate_type_supported(value_type: IndexValueType) -> bool {
+    matches!(
+        value_type,
+        IndexValueType::Integer
+            | IndexValueType::Decimal
+            | IndexValueType::String
+            | IndexValueType::Timestamp
+    )
 }
 
 fn validate_alias(alias: &str) -> Result<(), PostgresQueryCompileError> {
