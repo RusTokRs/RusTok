@@ -38,8 +38,7 @@ impl ForumProjectionScope {
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
             | DomainEvent::TenantUpdated { .. } => Some(Self::Full),
-            DomainEvent::ProfileUpdated { user_id, .. }
-            | DomainEvent::UserDeleted { user_id } => Some(Self::Author(*user_id)),
+            DomainEvent::ProfileUpdated { user_id, .. } => Some(Self::Author(*user_id)),
             DomainEvent::TenantModuleToggled { module_slug, .. } if module_slug == "forum" => {
                 Some(Self::Full)
             }
@@ -556,10 +555,6 @@ mod tests {
                 handle: "safe-author".to_string(),
                 locale: Some("en".to_string()),
             }),
-            Some(ForumProjectionScope::Author(user_id))
-        );
-        assert_eq!(
-            ForumProjectionScope::for_event(&DomainEvent::UserDeleted { user_id }),
             Some(ForumProjectionScope::Author(user_id))
         );
         assert!(ForumProjectionScope::Author(user_id)
