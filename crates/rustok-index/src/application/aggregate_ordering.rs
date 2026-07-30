@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::domain::{
-    FieldCardinality, FieldName, FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName,
+    FieldCardinality, FieldName, FieldPath, IndexQuery, IndexValueType, LinkCardinality,
     Pagination, SchemaRef,
 };
 
@@ -45,7 +45,7 @@ impl SchemaRegistry {
             .order_by
             .iter()
             .any(|order| order.direction.aggregate().is_some());
-        if has_aggregate && !matches!(query.pagination, Pagination::Offset { .. }) {
+        if has_aggregate && !matches!(&query.pagination, Pagination::Offset { .. }) {
             return Err(AggregateOrderValidationError::AggregateRequiresOffsetPagination);
         }
 
@@ -159,8 +159,8 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        EntityName, FieldName, IndexField, IndexLink, IndexQueryScope, IndexSchema, LocaleKey,
-        LocaleMode, ModuleName, OrderDirection, OrderExpr, Pagination, SchemaVersion,
+        EntityName, FieldName, IndexField, IndexLink, IndexQueryScope, IndexSchema, LinkName,
+        LocaleKey, LocaleMode, ModuleName, OrderDirection, OrderExpr, Pagination, SchemaVersion,
     };
 
     fn reference(entity: &str) -> SchemaRef {
