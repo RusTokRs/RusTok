@@ -18,6 +18,7 @@ const scripts = [
   'verify-index-query-equivalence-admission.mjs',
   'verify-index-source-schema-registry.mjs',
   'verify-index-source-replay-contract.mjs',
+  'verify-index-replay-job-leases.mjs',
   'verify-index-query-runtime-composition.mjs',
   'verify-index-social-graph-privacy-consumer.mjs',
   'verify-social-graph-privacy-shadow-evidence.mjs',
