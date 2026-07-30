@@ -11,6 +11,7 @@ pub mod graphql;
 mod handle_write;
 pub mod loader;
 pub mod media;
+mod media_write;
 pub mod migrations;
 pub mod observability;
 pub mod presentation;
