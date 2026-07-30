@@ -67,9 +67,7 @@ impl CommandProvider for SocialGraphCommandProvider {
     async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("social_graph", "receipt-cleanup") => self.cleanup_receipts(request).await,
-            ("social_graph", "relation-event-replay") => {
-                self.replay_relation_events(request).await
-            }
+            ("social_graph", "relation-event-replay") => self.replay_relation_events(request).await,
             _ => Err(CliCoreError::UnknownCommand {
                 namespace: request.namespace,
                 name: request.name,
@@ -178,18 +176,20 @@ impl SocialGraphCommandProvider {
             message: error.message,
         })?;
 
-        Ok(CommandOutcome::success("Social Graph relation-event replay complete").with_data(
-            serde_json::json!({
-                "generated_at": Utc::now().to_rfc3339(),
-                "tenant_id": options.tenant_id,
-                "after_relation_id": options.after_relation_id,
-                "dry_run": options.dry_run,
-                "limit": options.limit,
-                "selected_relations": result.selected_relations,
-                "published_events": result.published_events,
-                "next_after_relation_id": result.next_after_relation_id,
-            }),
-        ))
+        Ok(
+            CommandOutcome::success("Social Graph relation-event replay complete").with_data(
+                serde_json::json!({
+                    "generated_at": Utc::now().to_rfc3339(),
+                    "tenant_id": options.tenant_id,
+                    "after_relation_id": options.after_relation_id,
+                    "dry_run": options.dry_run,
+                    "limit": options.limit,
+                    "selected_relations": result.selected_relations,
+                    "published_events": result.published_events,
+                    "next_after_relation_id": result.next_after_relation_id,
+                }),
+            ),
+        )
     }
 }
 
