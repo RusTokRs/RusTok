@@ -67,6 +67,19 @@ commands `verify:comments:thread-write-invariants` and
 schema v2 and the Comments FBA verify/test chains. Blog consumes the owner result;
 it does not duplicate thread locking or counter policy.
 
+Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
+boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
+`comment.deleted` for `blog_post`, uses the envelope id as the durable delivery
+identity, and commits the tenant-scoped optimistic count update, delivery row,
+and `BlogPostUpdated` outbox publication in one transaction. The retained source
+evidence is `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`,
+guarded by `scripts/verify/verify-blog-comments-event-projection.mjs` and focused
+fixture `scripts/verify/verify-blog-comments-event-projection.test.mjs`. Exact
+commands `verify:blog:comments-event-projection` and
+`test:verify:blog:comments-event-projection` run after the storefront gate in the
+Blog FBA chains. Status remains `source_verified_no_compile`; runtime delivery and
+recovery evidence is not recorded.
+
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
 mutation and Blog reindex publication share one transaction; authorization
@@ -150,15 +163,26 @@ but the JS self-test was absent from the registry and no named leaf or Comments
 FBA test chain existed. Slice 40 registers registry schema v2 and exact package
 order without recording PostgreSQL execution.
 
+The continuation audit at `ee93fd94a35d4200299a717b562c658642709c7b`
+found that the implemented Comments-to-Blog event projection was checked only by
+several inline aggregate markers. It had no dedicated machine evidence, focused
+negative fixture, named npm leaf commands, or first-class Blog source gate. Slice
+41 adds those owner-side artifacts, upgrades Blog registry schema v9, and locks
+the exact verify/test order while leaving runtime delivery and recovery pending.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v8
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v9
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
-  self-tests, and aggregate/consumer bindings for admin, storefront, category
-  Search reindex, GraphQL rate limiting, GraphQL richtext, AI richtext, offline
-  backfill, Forum ownership, and runtime order.
+  self-tests, and aggregate/consumer bindings for admin, storefront, Comments
+  event projection, category Search reindex, GraphQL rate limiting, GraphQL
+  richtext, AI richtext, offline backfill, Forum ownership, and runtime order.
+- Comments event projection: Blog-owned `source_verified_no_compile`; evidence,
+  verifier, focused self-test, exact npm leaf commands, delivery-ledger identity,
+  transactional outbox markers, and Blog FBA ordering are locked. Duplicate,
+  out-of-order, retry, rollback, restart, and PostgreSQL execution remain pending.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
@@ -189,6 +213,7 @@ order without recording PostgreSQL execution.
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`
 - `crates/rustok-comments/contracts/comments-fba-registry.json`
 - `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
 - `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
@@ -203,6 +228,8 @@ order without recording PostgreSQL execution.
 - `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
+- `scripts/verify/verify-blog-comments-event-projection.mjs`
+- `scripts/verify/verify-blog-comments-event-projection.test.mjs`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `scripts/verify/verify-blog-graphql-rate-limit.test.mjs`
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
@@ -295,6 +322,10 @@ order without recording PostgreSQL execution.
     first-class Comments FBA leaf, retained the focused JS self-test in registry
     schema v2, added exact verify/test package commands, and kept both PostgreSQL
     concurrency targets explicitly pending.
+41. Added first-class Blog Comments event-projection evidence and a focused
+    fail-closed fixture, registered exact verify/test leaf commands in registry
+    schema v9, and kept delivery, retry, rollback, restart, and PostgreSQL execution
+    explicitly pending.
 
 ## Next results
 
@@ -314,7 +345,7 @@ order without recording PostgreSQL execution.
 5. **Close comments runtime evidence.** Run both thread invariant concurrency
    targets and concurrent PostgreSQL create/delete transactions; cover approved-only
    reads, moderation, pagination, duplicate delivery, counters, first-thread
-   identity, missing-post retry, rollback, and outbox publication.
+   identity, missing-post retry, rollback, outbox publication, and restart recovery.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -326,6 +357,8 @@ order without recording PostgreSQL execution.
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
+- `npm run verify:blog:comments-event-projection`
+- `npm run test:verify:blog:comments-event-projection`
 - `npm run verify:blog:category-search-reindex`
 - `npm run test:verify:blog:category-search-reindex`
 - `npm run verify:blog:graphql-rate-limit`
