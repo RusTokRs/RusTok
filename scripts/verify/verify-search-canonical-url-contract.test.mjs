@@ -46,9 +46,12 @@ function fixture({
       const BLOG_ENTITY_TYPE: &str = "blog_post";
       const BLOG_STOREFRONT_ROUTE: &str = "/modules/blog";
       const MAX_BLOG_SLUG_LEN: usize = 200;
+      const FORUM_SOURCE_MODULE: &str = "forum";
+      const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
       pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         ${missingBlogSourceCheck ? "true" : "value.source_module == BLOG_SOURCE_MODULE"};
         content_kind_query(&value.source_module);
+        canonical_forum_reply_result_url(value);
         canonical_blog_result_url(&value.payload)
       }
       fn canonical_blog_result_url(payload: &serde_json::Value) -> Option<String> {
@@ -57,6 +60,15 @@ function fixture({
         let _ = slug.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'));
         Some(format!("{BLOG_STOREFRONT_ROUTE}?slug={slug}"))
       }
+      fn canonical_forum_reply_result_url(value: &SearchResultItem) -> Option<String> {
+        let reply_id = parse_payload_uuid(&value.payload, "reply_id")?;
+        let topic_id = parse_payload_uuid(&value.payload, "topic_id")?;
+        if reply_id != value.id { return None; }
+        Some(format!("?topic={topic_id}&reply={reply_id}"))
+      }
+      fn parse_payload_uuid(_: &serde_json::Value, _: &str) -> Option<Uuid> { None }
+      fn canonical_url_derives_forum_category_topic_and_reply_routes() {}
+      fn canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads() {}
       fn content_kind_query(_: &str) -> String { String::new() }
     `,
   );
@@ -101,9 +113,20 @@ function fixture({
   write(
     root,
     adminShellPath,
-    missingAdminShellDelegation
-      ? "fn derive_admin_search_result_url(_: &SearchResultItem) -> Option<String> { None }"
-      : "let url = rustok_search::canonical_search_result_url(&item);",
+    `
+      ${
+        missingAdminShellDelegation
+          ? "fn derive_admin_search_result_url(_: &SearchResultItem) -> Option<String> { None }"
+          : "let url = rustok_search::canonical_search_result_url(&item);"
+      }
+      ("forum_category", "forum" | "rustok-forum")
+      Permission::FORUM_CATEGORIES_READ
+      ("forum_topic", "forum" | "rustok-forum")
+      Permission::FORUM_TOPICS_READ
+      ("forum_reply", "forum" | "rustok-forum")
+      Permission::FORUM_REPLIES_READ
+      required_admin_search_permission("forum_reply", "content")
+    `,
   );
   if (transportFallbackRegression) {
     write(root, compatibilityPath, "fn blog_result_url() {} enrich_search_result_urls");
@@ -135,12 +158,16 @@ function fixture({
       cases: [
         "blog_canonical_route",
         "blog_fail_closed",
+        "forum_category_topic_routes",
+        "forum_reply_canonical_route",
+        "forum_reply_fail_closed",
         "product_and_content_routes",
         "content_kind_injection",
         "graphql_owner_projection",
         "storefront_native_owner_projection",
         "admin_native_owner_projection",
         "admin_shell_owner_projection",
+        "admin_forum_permission_gate",
         "no_transport_fallback",
       ].map((name) => ({ name })),
     }),

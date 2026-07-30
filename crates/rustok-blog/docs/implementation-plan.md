@@ -40,6 +40,15 @@ plain-text policy in the same transaction; invalid content fails closed.
 Navigation is owned by `canonical_search_result_url` across GraphQL, storefront
 native Search, Search admin preview, and admin global search.
 
+Canonical navigation is a Search-owned provider boundary, not a Blog-owned gate.
+Blog consumes the projected canonical URL and must not reconstruct routes. The
+owner evidence is
+`crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`,
+verified by `scripts/verify/verify-search-canonical-url-contract.mjs` and focused
+fixture `scripts/verify/verify-search-canonical-url-contract.test.mjs`. Exact
+leaf commands `verify:search:canonical-url` and `test:verify:search:canonical-url`
+are locked into the Search FBA verify/test chains.
+
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
 mutation and Blog reindex publication share one transaction; authorization
@@ -103,6 +112,13 @@ named npm leaf commands and were absent from the registry-owned Blog FBA chain.
 Slice 37 registers that source gate while preserving mounted Redis execution as
 a separate maintainer-owned result.
 
+The continuation audit at `d0e2a1cea5f0cba6102ca857a881f357c1cbd40e`
+confirmed that canonical navigation is already Search-owned and therefore must
+not be duplicated in the Blog FBA registry. It also found the canonical positive
+fixture stale after the verifier gained Forum reply and admin permission checks.
+Slice 38 repairs the owner fixture, adds exact Search leaf commands, and locks
+their order into the Search FBA package chains without promoting runtime status.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -128,7 +144,9 @@ a separate maintainer-owned result.
 - Comments thread write invariants: `executable_no_run`.
 - Category search reindex: `source_verified_no_compile`; evidence, verifier,
   self-test, npm leaf commands, and aggregate FBA registration are locked.
-- Canonical Search URL: `source_verified_no_compile`.
+- Canonical Search URL: Search-owned `source_verified_no_compile`; evidence,
+  verifier, synchronized fixture, exact npm leaf commands, and Search FBA package
+  ordering are locked. Runtime navigation evidence remains pending.
 
 ## Evidence and guardrails
 
@@ -169,6 +187,7 @@ a separate maintainer-owned result.
 - `scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `scripts/verify/verify-search-blog-projection.mjs`
 - `scripts/verify/verify-search-canonical-url-contract.mjs`
+- `scripts/verify/verify-search-canonical-url-contract.test.mjs`
 
 ## Completed implementation slices
 
@@ -227,6 +246,9 @@ a separate maintainer-owned result.
 37. Registered the existing GraphQL rate-limit harness as a first-class Blog FBA
     leaf gate, added exact verify/test npm commands, bound its evidence path in
     registry schema v8, and kept mounted Redis execution explicitly pending.
+38. Kept canonical navigation with the Search owner, repaired its stale positive
+    fixture for Forum/admin expansion, added exact Search verify/test leaf commands,
+    and locked both commands into the Search FBA package chains.
 
 ## Next results
 
@@ -276,6 +298,10 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:admin-boundary`
 - `npm run verify:blog:fba`
 - `npm run test:verify:blog:fba`
+- `npm run verify:search:canonical-url`
+- `npm run test:verify:search:canonical-url`
+- `npm run verify:search:fba`
+- `npm run test:verify:search:fba`
 - `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
@@ -294,8 +320,6 @@ should run the relevant subset, including:
 - `npm run verify:consumer:fba-runtime-order`
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
-- `node scripts/verify/verify-search-canonical-url-contract.mjs`
-- `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `cargo xtask module validate blog`
 
 ## References

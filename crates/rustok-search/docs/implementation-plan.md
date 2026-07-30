@@ -28,6 +28,14 @@ facade, read handlers, write handlers, normalization, execution pipeline,
 mapping, and support. Only the mapping part converts normalized results to admin
 DTOs, and it delegates URL resolution to `canonical_search_result_url`.
 
+The canonical URL fixture now mirrors the complete current verifier contract,
+including Forum category/topic/reply routes, reply identity checks, admin Forum
+permission gates, and all evidence cases. The exact leaf commands
+`verify:search:canonical-url` and `test:verify:search:canonical-url` are part of
+the Search FBA verify/test chains; `verify-search-fba.mjs` rejects command, order,
+fixture, or evidence drift. This remains source-only evidence and does not record
+runtime execution.
+
 Blog ingestion has two executable, unrun harness layers. A routing target locks
 Blog lifecycle, module-toggle, and targeted/full reindex events. An env-gated
 PostgreSQL target creates an isolated schema, runs Search migrations, projects
@@ -88,6 +96,11 @@ projection can remain stale after recovery.
   `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
 - Canonical URL guardrail:
   `scripts/verify/verify-search-canonical-url-contract.mjs`.
+- Canonical URL focused fixture:
+  `scripts/verify/verify-search-canonical-url-contract.test.mjs`.
+- Canonical URL leaf commands: `verify:search:canonical-url` and
+  `test:verify:search:canonical-url`; both are locked into the Search FBA package
+  chains by `scripts/verify/verify-search-fba.mjs`.
 - Blog projection evidence:
   `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
 - Blog projection harness status: `executable_no_run`; execution remains user-owned
@@ -158,6 +171,9 @@ rebuild behavior through replayable event transport.
 13. Reused bounded `category_ids` for exact Forum category, topic, and approved-reply
     filtering while preserving product category relations, parameterized SQL, and
     the shared FTS/typo filter path.
+14. Reconciled the canonical URL fixture with the expanded Forum/admin verifier,
+    added exact verify/test leaf commands, and locked both commands plus their
+    order into the Search FBA aggregate package chains.
 
 ## Next results
 
@@ -197,17 +213,21 @@ rebuild behavior through replayable event transport.
 
 ## Verification
 
+Execution is intentionally not recorded by this source-only update. Maintainers
+should run the relevant subset, including:
+
 - `cargo test -p rustok-server settings_service`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
 - `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
-- `node scripts/verify/verify-search-canonical-url-contract.mjs`
-- `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
+- `npm run verify:search:canonical-url`
+- `npm run test:verify:search:canonical-url`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `npm run verify:search:fba`
+- `npm run test:verify:search:fba`
 - `npm run verify:search:ui-boundary`
 - `cargo xtask module validate search`
 
