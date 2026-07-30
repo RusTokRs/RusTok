@@ -161,6 +161,9 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
   'get_or_insert_with::<IndexSourceCatalog',
   'PostgresIndexReplayCheckpointStore',
 ]);
+requireMarkers('crates/rustok-index/Cargo.toml', [
+  'tracing.workspace = true',
+]);
 requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
   'one to 256 unique `EntityKey` values',
   'limit from 1 through 1000',
@@ -176,9 +179,13 @@ requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M5/M6 bounded source replay contract: `source_complete_worker_pending`',
+  '- M6 one-page replay and durable checkpoint progression: `source_complete_fenced_job_worker_pending`',
   '- [x] Add a source replay registry with bounded failure classification.',
   '- [x] Add cursor-based `IndexSource::scan` and targeted `load` contracts.',
-  '- [ ] Add durable jobs, checkpoints, leases, heartbeat, and ownership.',
+  '- [x] Add a durable rebuild checkpoint read/write adapter over `index_checkpoints`.',
+  '- [x] Add a bounded worker that applies source pages through `PostgresMutationStore` and',
+  '- [ ] Add durable jobs, leases, heartbeat, attempt fencing, and global ownership.',
+  'No fenced job runner, scheduler, lease owner, long-running',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-schema-registry.mjs'",
