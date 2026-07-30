@@ -12,6 +12,7 @@
   "source_contract_test": "crates/rustok-search/tests/forum_projection_inbox_contract.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bp-search-inbox-ordering.md",
   "source_verifier": "scripts/verify/verify-forum-search-inbox-ordering.mjs",
+  "search_inbox_sweeper_contract": "crates/rustok-forum/contracts/forum-search-inbox-sweeper.json",
   "storage_boundary": {
     "search_owns_inbox_storage": true,
     "search_projection_inbox_added": true,
@@ -84,6 +85,14 @@
     "idle_tenant_periodic_sweep_added": false,
     "external_queue_or_scheduler_dependency_added": false
   },
+  "recovery_completion": {
+    "task": "FORUM-20BQ",
+    "startup_reconciliation_sweep_added": true,
+    "idle_tenant_periodic_sweep_added": true,
+    "pending_work_recovers_without_new_search_event": true,
+    "retryable_work_recovers_after_backoff_without_new_search_event": true,
+    "historical_20bp_boundary_preserved": true
+  },
   "event_scope_boundary": {
     "full_scope_events": [
       "ForumTopicCreated",
@@ -130,14 +139,13 @@
     "canonical_plan_updated": false,
     "crate_api_updated": false,
     "search_plan_updated": false,
-    "synchronization_debt": "Advance Forum CRATE_API, Search local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BP with conflict-safe repository-local edits after maintainer validation."
+    "synchronization_debt": "Advance Forum CRATE_API, Search local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BQ with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
-    "add a host-owned startup or periodic due-inbox sweep so an otherwise idle tenant does not require another Search-relevant event to retry pending Forum projection work",
     "add owner-issued monotonic aggregate revisions if causal ordering must remain correct under cross-producer clock skew",
     "add safe author summaries and the planned category subtree author tag locale date solved kind channel group and attachment filters under FORUM-23",
     "add Forum member projection documents after the safe public member identity contract is approved",
-    "capture maintainer-executed PostgreSQL duplicate delayed-event retry crash-replay module-disable ordering multi-process and producer-clock-skew evidence",
+    "capture maintainer-executed PostgreSQL startup periodic duplicate delayed-event retry crash-replay module-disable ordering multi-process and producer-clock-skew evidence",
     "capture maintainer-executed PostgreSQL projection cleanup approved-reply and Search query evidence",
     "capture maintainer-executed SQLite exact-visible bulk-read evidence"
   ],
@@ -145,9 +153,11 @@
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
+      "cargo test -p rustok-search --test forum_projection_sweeper_contract -- --nocapture",
       "cargo test -p rustok-search --test forum_projection_inbox_contract -- --nocapture",
       "cargo test -p rustok-search forum_inbox -- --nocapture",
       "cargo test -p rustok-search ingestion -- --nocapture",
+      "node scripts/verify/verify-forum-search-inbox-sweeper.mjs",
       "node scripts/verify/verify-forum-search-inbox-ordering.mjs",
       "node scripts/verify/verify-forum-approved-reply-search.mjs",
       "cargo xtask module validate forum"
