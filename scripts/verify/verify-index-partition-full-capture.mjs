@@ -309,7 +309,7 @@ try {
     '14. The retained bundle review inspects exactly nine authoritative files,',
     '15. The archive tooling emits a deterministic admitted-only manifest outside the',
     '16. Retained verification binds every authoritative file and required directory',
-    'one retained admitted packet, query',
+    'one retained admitted packet, server/consumer query-port composition',
   ], 'Index implementation plan');
   requireExactlyOnce(
     primaryM3Checklist,
