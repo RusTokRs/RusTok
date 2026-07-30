@@ -138,7 +138,7 @@ pub fn render_password_reset(
     locale: &str,
     reset_url: &str,
 ) -> std::result::Result<RenderedEmail, EmailError> {
-    use rustok_email::template::render_tera_string;
+    use rustok_email::template::{render_tera_html_string, render_tera_string};
 
     let vars = serde_json::json!({ "reset_url": reset_url });
 
@@ -159,7 +159,7 @@ pub fn render_password_reset(
     Ok(RenderedEmail {
         subject: render_tera_string(subj_t.trim(), &vars)?,
         text: render_tera_string(text_t, &vars)?,
-        html: render_tera_string(html_t, &vars)?,
+        html: render_tera_html_string(html_t, &vars)?,
     })
 }
 
@@ -167,7 +167,7 @@ pub fn render_email_verification(
     locale: &str,
     verification_token: &str,
 ) -> std::result::Result<RenderedEmail, EmailError> {
-    use rustok_email::template::render_tera_string;
+    use rustok_email::template::{render_tera_html_string, render_tera_string};
 
     let vars = serde_json::json!({ "verification_token": verification_token });
 
@@ -188,7 +188,7 @@ pub fn render_email_verification(
     Ok(RenderedEmail {
         subject: render_tera_string(subj_t.trim(), &vars)?,
         text: render_tera_string(text_t, &vars)?,
-        html: render_tera_string(html_t, &vars)?,
+        html: render_tera_html_string(html_t, &vars)?,
     })
 }
 
@@ -214,24 +214,18 @@ impl TemplatedSmtpMailerAdapter {
 impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
     async fn send_password_reset(
         &self,
-        email: PasswordResetEmail,
+        _email: PasswordResetEmail,
     ) -> std::result::Result<(), EmailError> {
-        tracing::info!(
-            recipient = %email.to,
-            "Password reset email provider disabled; skipping outbound send"
-        );
+        tracing::info!("Password reset email provider disabled; skipping outbound send");
         record_email_send_skipped();
         Ok(())
     }
 
     async fn send_email_verification(
         &self,
-        email: EmailVerificationEmail,
+        _email: EmailVerificationEmail,
     ) -> std::result::Result<(), EmailError> {
-        tracing::info!(
-            recipient = %email.to,
-            "Email verification provider disabled; skipping outbound send"
-        );
+        tracing::info!("Email verification provider disabled; skipping outbound send");
         record_email_send_skipped();
         Ok(())
     }
@@ -384,6 +378,18 @@ mod tests {
         assert_eq!(regional.subject, base.subject);
         assert_eq!(regional.text, base.text);
         assert_eq!(regional.html, base.html);
+    }
+
+    #[test]
+    fn render_password_reset_escapes_attribute_breakout() {
+        let rendered = render_password_reset(
+            "en",
+            "https://example.test/reset\" onclick=\"alert(1)",
+        )
+        .unwrap();
+
+        assert!(rendered.html.contains("&quot;"));
+        assert!(!rendered.html.contains("\" onclick=\""));
     }
 
     #[test]
