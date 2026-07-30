@@ -191,7 +191,7 @@ test("blog storefront boundary verifier rejects missing comment pagination parit
 test("blog storefront boundary verifier rejects legacy richtext transport", () => {
   const result = run(fixture({ legacyRichtext: true }));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /legacy body|owner RichTextView|canonical richtext|owner-generated HTML/);
+  assert.match(result.stderr, /legacy body|owner RichTextView|canonical richtext|owner-generated HTML|quarantined legacy summarizer/);
 });
 
 test("blog storefront boundary verifier rejects legacy richtext summarizer consumer", () => {
