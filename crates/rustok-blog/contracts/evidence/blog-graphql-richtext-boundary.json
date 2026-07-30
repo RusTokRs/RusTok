@@ -6,7 +6,8 @@
   "canonical_contract": {
     "write": "rustok_api::RichTextDocument",
     "read": "rustok_api::RichTextView",
-    "plain_text": "server-derived"
+    "plain_text": "server-derived",
+    "resolver_conversion": "typed input.into() delegation"
   },
   "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [
@@ -15,15 +16,25 @@
     "content_json"
   ],
   "legacy_adapter_files": [
-    "crates/rustok-blog/src/graphql/types.rs",
-    "crates/rustok-blog/src/graphql/mutation.rs"
+    "crates/rustok-blog/src/graphql/types.rs"
   ],
+  "legacy_adapter_scoped_exceptions": [
+    {
+      "file": "crates/rustok-blog/src/graphql/mutation.rs",
+      "scope": "impl From<UpdatePostInput> for DomainUpdatePostInput",
+      "reason": "temporary GraphQL-to-owner compatibility conversion"
+    }
+  ],
+  "test_only_scope": "crates/rustok-blog/src/graphql/mutation.rs #[cfg(test)] module",
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "test_coverage": [
     "canonical RichTextDocument/RichTextView fields are required",
+    "create and update resolvers delegate conversion through input.into()",
+    "async resolvers do not read or map richtext fields directly",
     "all Blog GraphQL Rust files are scanned recursively",
-    "legacy fields are rejected outside the explicit adapter allowlist",
+    "production legacy fields are rejected outside types.rs and the isolated update conversion",
+    "legacy fields remain required inside each retained adapter scope until evidence is tightened",
     "new legacy aliases are rejected in every GraphQL file",
     "legacy field removal requires evidence and guardrail tightening"
   ],
