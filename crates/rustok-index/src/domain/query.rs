@@ -62,9 +62,37 @@ impl FilterExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ManyOrderAggregate {
+    Min,
+    Max,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OrderDirection {
     Asc,
     Desc,
+    MinAsc,
+    MinDesc,
+    MaxAsc,
+    MaxDesc,
+}
+
+impl OrderDirection {
+    pub const fn aggregate(self) -> Option<ManyOrderAggregate> {
+        match self {
+            Self::MinAsc | Self::MinDesc => Some(ManyOrderAggregate::Min),
+            Self::MaxAsc | Self::MaxDesc => Some(ManyOrderAggregate::Max),
+            Self::Asc | Self::Desc => None,
+        }
+    }
+
+    pub const fn base_direction(self) -> Self {
+        match self {
+            Self::Asc | Self::MinAsc | Self::MaxAsc => Self::Asc,
+            Self::Desc | Self::MinDesc | Self::MaxDesc => Self::Desc,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,6 +224,22 @@ mod tests {
             },
             include_exact_count: false,
         }
+    }
+
+    #[test]
+    fn explicit_many_order_modes_expose_aggregate_and_base_direction() {
+        assert_eq!(OrderDirection::Asc.aggregate(), None);
+        assert_eq!(OrderDirection::Desc.base_direction(), OrderDirection::Desc);
+        assert_eq!(
+            OrderDirection::MinAsc.aggregate(),
+            Some(ManyOrderAggregate::Min)
+        );
+        assert_eq!(OrderDirection::MinDesc.base_direction(), OrderDirection::Desc);
+        assert_eq!(
+            OrderDirection::MaxDesc.aggregate(),
+            Some(ManyOrderAggregate::Max)
+        );
+        assert_eq!(OrderDirection::MaxAsc.base_direction(), OrderDirection::Asc);
     }
 
     #[test]
