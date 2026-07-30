@@ -112,19 +112,19 @@ fn min_asc_compiles_correlated_tagged_order_value() {
 
 #[test]
 fn max_desc_compiles_explicit_null_policy() {
-    let registry = registry(IndexValueType::Decimal);
+    let registry = registry(IndexValueType::String);
     let compiled = registry
         .compile_postgres_query(&query(OrderDirection::MaxDesc))
         .unwrap();
     assert!(compiled.sql.contains("SELECT MAX("));
     assert!(compiled
         .sql
-        .contains("jsonb_build_object('type', 'decimal'"));
+        .contains("jsonb_build_object('type', 'string'"));
     assert!(compiled.sql.contains("DESC NULLS FIRST"));
 }
 
 #[test]
-fn aggregate_cursor_and_uuid_modes_fail_closed() {
+fn aggregate_cursor_decimal_and_uuid_modes_fail_closed() {
     let integer = registry(IndexValueType::Integer);
     let mut cursor_query = query(OrderDirection::MinAsc);
     cursor_query.pagination = Pagination::Cursor {
@@ -138,17 +138,19 @@ fn aggregate_cursor_and_uuid_modes_fail_closed() {
         ))
     ));
 
-    let uuid = registry(IndexValueType::Uuid);
-    assert!(matches!(
-        uuid.plan_query(&query(OrderDirection::MaxAsc)),
-        Err(QueryPlanError::AggregateValidation(
-            AggregateOrderValidationError::AggregateRequiresOrderedScalar(_)
-        ))
-    ));
+    for unsupported in [IndexValueType::Decimal, IndexValueType::Uuid] {
+        let registry = registry(unsupported);
+        assert!(matches!(
+            registry.plan_query(&query(OrderDirection::MaxAsc)),
+            Err(QueryPlanError::AggregateValidation(
+                AggregateOrderValidationError::AggregateRequiresOrderedScalar(_)
+            ))
+        ));
+    }
 }
 
 #[test]
-fn forged_plans_cannot_bypass_explicit_aggregate_policy() {
+fn forged_plans_remain_fail_closed() {
     let registry = registry(IndexValueType::Integer);
 
     let mut aggregate_cursor = registry
