@@ -148,3 +148,16 @@ rebuild behavior through replayable event transport.
 - [Crate README](../README.md)
 - [Search documentation](./README.md)
 - [Search FBA registry](../contracts/search-fba-registry.json)
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `owner README, module docs, current implementation plan, Index/Search boundary and carried event-delivery/rebuild concerns`
+- Findings: `P0=0, P1=0, P2=0, P3=0`
+- Fixed in this pass: `none; verification entrypoint only`
+- Remaining risks or blockers: `generic settings secret projection, tenant/locale/channel isolation, event replay/rebuild, deletion, duplicate and out-of-order delivery, connector boundaries, and operational recovery require source inspection`
+- Evidence: `current owner documentation and post-Index verification cursor read from main`
+- Next action: `trace settings serialization and every ingestion/rebuild publisher-consumer path; fix P0/P1 before running targeted static and Rust checks`
+- Resume command: `cargo xtask module validate search && npm run verify:search:fba && node scripts/verify/verify-search-blog-projection.mjs`
