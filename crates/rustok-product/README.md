@@ -34,11 +34,14 @@
   `group_code` bindings are available over native server functions plus
   parallel GraphQL, and the module-owned admin renders grouped typed editors
   with dirty-field patch semantics.
-- The former Product-to-Index projection is removed. Product and Search must
-  not depend on an Index projection until the generic Index Engine publishes a
-  replacement owner contract. Search consumes Product's public transport
-  contract for category and attribute options while `rustok-product` remains
-  the write-model owner.
+- Under the optional `index` feature, publish one owner-generic locale-required
+  Product schema plus a bounded PostgreSQL scan/load source through the generic
+  Index source-factory boundary. The adapter reads Product-owned storage only,
+  emits generic mutations, and does not own Index persistence or scheduling.
+- Product storage owns a positive monotonic `index_revision`; Product and
+  translation changes advance it, and `(tenant_id, index_revision, id)` provides
+  the bounded replay access path. Hard-delete tombstones and incremental event
+  acknowledgement remain later Index slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -112,6 +115,9 @@
 - Depends on `rustok-taxonomy` for shared scope-aware tag dictionary while keeping `product_tags`
   module-owned.
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.
+- Optionally depends on `rustok-index` only to publish generic schema/source
+  contracts; the Index core does not depend on Product and never reads Product
+  tables directly.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - Consumed by `apps/admin` through manifest-driven module UI composition.
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
@@ -127,9 +133,11 @@
 - `ProductModule`
 - `CatalogService`
 - `ProductCatalogReadPort`
+- `product_index_schema` and `ProductPostgresIndexSourceFactory` with feature `index`
 - `services::catalog_schema::resolve_effective_product_form`
 - `ProductCatalogSchemaService`
 - `admin::ProductAdmin`
 - `storefront::ProductView`
 
-See also `docs/README.md`.
+See also `docs/README.md` and the Index
+[M7 Product source contract](../rustok-index/docs/m7-product-source.md).
