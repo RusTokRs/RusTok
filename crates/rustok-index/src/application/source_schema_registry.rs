@@ -108,7 +108,7 @@ impl IndexSchemaSourceCatalog {
 pub struct SharedIndexSchemaRegistry(Arc<SchemaRegistry>);
 
 impl SharedIndexSchemaRegistry {
-    pub fn new(registry: Arc<SchemaRegistry>) -> Self {
+    fn new(registry: Arc<SchemaRegistry>) -> Self {
         Self(registry)
     }
 
