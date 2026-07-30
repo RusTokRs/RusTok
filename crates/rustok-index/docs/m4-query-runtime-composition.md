@@ -34,7 +34,7 @@ composed, not that a specific tenant query will succeed.
 
 The public server `module_event_dispatcher` facade delegates existing provider setup to
 the retained base implementation. It then invokes the Index-owned materializer before any
-selected projection-backed consumer recomposition. This ordering guarantees that:
+selected projection-backed consumer composition. This ordering guarantees that:
 
 1. every compiled module has published its schema contribution;
 2. `rustok-distribution` has atomically materialized the complete source registry;
@@ -48,16 +48,19 @@ source schema builder or owner DTO. A consumer must resolve `SharedIndexQueryRun
 its owner/transport authorization, construct only typed `IndexQuery` values, and map bounded
 query-port errors without exposing database details.
 
-The first approved consumer is Social Graph notification block/mute policy. Its owner
-adapter is documented separately in `m4-social-graph-privacy-consumer.md`. The final host
-requires the shared runtime before recomposing that policy and does not retain the temporary
-DB-backed default created inside the private base step.
+The first approved consumer source is Social Graph notification block/mute policy. Its
+activation is separately default-off through
+`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED`. While disabled, the authoritative owner
+policy remains selected. When enabled, the final host requires the shared runtime and
+recomposes the policy without an owner-table fallback. The owner adapter is documented in
+`m4-social-graph-privacy-consumer.md`.
 
 ## Boundary
 
 Runtime composition itself does not:
 
 - authorize arbitrary callers or tenant scopes;
+- activate any projection-backed consumer by default;
 - add GraphQL, storefront, admin, search, or native-server query endpoints;
 - publish Product, Content, Flex, or other source schemas;
 - persist tenant schema readiness;
@@ -66,9 +69,9 @@ Runtime composition itself does not:
 - execute PostgreSQL/reference capture or admission;
 - authorize production partition lifecycle work.
 
-Consumer cutover remains owner-specific. The Social Graph notification slice does not make
-profile privacy, revision-bearing follow reads, presentation visibility, or other consumers
-Index-backed.
+Consumer activation remains owner-operated and evidence-gated. The Social Graph source does
+not make profile privacy, revision-bearing follow reads, presentation visibility, or other
+consumers Index-backed.
 
 ## Owner validation
 
