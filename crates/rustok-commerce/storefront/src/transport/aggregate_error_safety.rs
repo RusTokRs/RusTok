@@ -92,7 +92,7 @@ fn is_invalid_cart_selection(error: &UiTransportError) -> bool {
     [error.native_error.as_deref(), error.graphql_error.as_deref()]
         .into_iter()
         .flatten()
-        .any(|message| matches!(message, INVALID_CART_SELECTION | CART_ID_UUID_VALIDATION))
+        .any(|message| message == INVALID_CART_SELECTION || message == CART_ID_UUID_VALIDATION)
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {
