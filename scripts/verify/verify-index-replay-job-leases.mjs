@@ -57,6 +57,24 @@ for (const forbidden of [
   if (job.includes(forbidden)) fail(`${jobPath} contains forbidden marker ${forbidden}`);
 }
 
+const lockStart = job.indexOf('async fn lock_replay_scope(');
+const lockEnd = job.indexOf('async fn verify_schema_registration(', lockStart);
+if (lockStart < 0 || lockEnd <= lockStart) {
+  fail(`${jobPath} lost the replay scope lock boundary`);
+}
+const lockBody = job.slice(lockStart, lockEnd);
+for (const marker of [
+  'request.tenant_id',
+  'request.schema.module.as_str()',
+  'request.schema.entity.as_str()',
+  'request.schema.version.get()',
+]) {
+  if (!lockBody.includes(marker)) fail(`replay scope lock is missing ${marker}`);
+}
+if (lockBody.includes('request.source_name')) {
+  fail('replay claims must serialize the complete schema scope before source-owner validation');
+}
+
 const checkpointPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
 const checkpoint = requireMarkers(checkpointPath, [
   'pub struct PostgresIndexReplayCheckpointStore',
@@ -123,6 +141,27 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [x] Bind checkpoint reads and writes to the active `(job_id, worker_id, attempt_count)`',
   '- [ ] Add cancellation, bounded multi-page resume, dry-run, targeted/full/shadow rebuild.',
   'node scripts/verify/verify-index-replay-job-leases.mjs',
+]);
+
+requireMarkers('crates/rustok-index/README.md', [
+  'Current milestone: `M6 - fenced replay job ownership`',
+  '`PostgresIndexReplayJobStore` owns one schema-scoped `rebuild` job',
+  '`PostgresIndexReplayCheckpointStore` is constructed from the acquired',
+  'stale checkpoint-writer rejection',
+]);
+
+requireMarkers('crates/rustok-index/docs/README.md', [
+  '## M5/M6 source replay and rebuild ownership',
+  '`index_replay_job_v1` request contract',
+  'After reclaim, the old worker cannot advance the durable',
+  'M6 job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
+]);
+
+requireMarkers('crates/rustok-index/CRATE_API.md', [
+  '`PostgresIndexReplayJobStore`, `IndexReplayJobLeaseRequest`, `IndexReplayJobLease`',
+  '`PostgresIndexReplayCheckpointStore`',
+  '### Replay source, job, and checkpoint',
+  'A stale attempt cannot advance a checkpoint after reclaim.',
 ]);
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
