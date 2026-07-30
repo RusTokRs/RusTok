@@ -82,7 +82,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             FOR EACH ROW
             EXECUTE FUNCTION channel_promote_single_active_policy_set();
 
-            CREATE UNIQUE INDEX {UNIQUE_ACTIVE_INDEX}
+            CREATE UNIQUE INDEX IF NOT EXISTS {UNIQUE_ACTIVE_INDEX}
                 ON channel_resolution_policy_sets (tenant_id)
                 WHERE is_active;
             "#
@@ -239,6 +239,23 @@ mod tests {
         insert_policy_set(&db, Uuid::new_v4(), Uuid::new_v4(), true)
             .await
             .expect("other tenant active set");
+    }
+
+    #[tokio::test]
+    async fn sqlite_replay_preserves_the_single_active_invariant() {
+        let db = sqlite_policy_schema().await;
+        let manager = SchemaManager::new(&db);
+        Migration.up(&manager).await.expect("first migration pass");
+        Migration.up(&manager).await.expect("replayed migration pass");
+
+        let tenant_id = Uuid::new_v4();
+        insert_policy_set(&db, Uuid::new_v4(), tenant_id, true)
+            .await
+            .expect("first active set");
+        insert_policy_set(&db, Uuid::new_v4(), tenant_id, true)
+            .await
+            .expect("promoted active set");
+        assert_eq!(active_count(&db, tenant_id).await, 1);
     }
 
     #[tokio::test]
