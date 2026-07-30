@@ -27,7 +27,8 @@
     "notification_mute_source": "recipient_id",
     "notification_mute_target": "actor_id",
     "authoritative_owner_result_always_returned": true,
-    "index_shadow_never_authorizes": true
+    "index_shadow_never_authorizes": true,
+    "index_shadow_timeout_ms": 100
   },
   "server_composition": {
     "adapter": "apps/server/src/services/notification_recipient_policy.rs",
@@ -54,7 +55,8 @@
   },
   "tests": [
     "crates/rustok-social-graph/tests/privacy_sqlite.rs",
-    "crates/rustok-social-graph/src/index_privacy.rs"
+    "crates/rustok-social-graph/src/index_privacy.rs",
+    "crates/rustok-social-graph/src/index_privacy_shadow.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
