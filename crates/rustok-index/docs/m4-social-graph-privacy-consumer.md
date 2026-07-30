@@ -4,6 +4,8 @@ Date: 2026-07-30
 
 Status: `source_complete_metrics_evidence_tooling_execution_pending`
 
+Previous source-only Status: `source_complete_metrics_execution_pending`.
+
 This slice provides the first production-shaped consumer of `SharedIndexQueryRuntime`
 without granting an eventually consistent projection privacy authority. Social Graph remains
 the sole decision source for notification block/mute policy; Index is queried only as a
