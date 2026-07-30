@@ -177,11 +177,10 @@ impl ProductPostgresIndexSource {
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "{PRODUCT_INDEX_SELECT}\nWHERE p.tenant_id = $1\n  AND (p.index_revision, p.id, t.locale) > ($2, $3, $4)\nORDER BY p.index_revision ASC, p.id ASC, t.locale ASC\nLIMIT $5"
+                    "{PRODUCT_INDEX_SELECT}\nWHERE p.tenant_id = $1\n  AND (p.id, t.locale) > ($2, $3)\nORDER BY p.id ASC, t.locale ASC\nLIMIT $4"
                 ),
                 vec![
                     request.tenant_id().into(),
-                    cursor.database_revision().into(),
                     cursor.product_id.into(),
                     cursor.locale.clone().into(),
                     fetch_limit.into(),
@@ -189,7 +188,7 @@ impl ProductPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "{PRODUCT_INDEX_SELECT}\nWHERE p.tenant_id = $1\nORDER BY p.index_revision ASC, p.id ASC, t.locale ASC\nLIMIT $2"
+                    "{PRODUCT_INDEX_SELECT}\nWHERE p.tenant_id = $1\nORDER BY p.id ASC, t.locale ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -315,7 +314,6 @@ impl IndexSource for ProductPostgresIndexSource {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ProductSourceCursor {
-    source_version: u64,
     product_id: Uuid,
     locale: String,
 }
@@ -324,10 +322,7 @@ impl ProductSourceCursor {
     fn decode(cursor: &IndexSourceCursor) -> Result<Self, ProductIndexError> {
         let decoded: Self = serde_json::from_value(cursor.value().clone())
             .map_err(|_| ProductIndexError::InvalidCursor)?;
-        if decoded.source_version == 0
-            || decoded.source_version > i64::MAX as u64
-            || decoded.product_id.is_nil()
-        {
+        if decoded.product_id.is_nil() {
             return Err(ProductIndexError::InvalidCursor);
         }
         let canonical = LocaleKey::new(&decoded.locale)?;
@@ -335,10 +330,6 @@ impl ProductSourceCursor {
             return Err(ProductIndexError::InvalidCursor);
         }
         Ok(decoded)
-    }
-
-    fn database_revision(&self) -> i64 {
-        i64::try_from(self.source_version).expect("validated Product cursor revision")
     }
 
     fn encode(&self) -> Result<IndexSourceCursor, ProductIndexError> {
@@ -421,7 +412,6 @@ impl ProductSourceRow {
 
     fn cursor(&self) -> ProductSourceCursor {
         ProductSourceCursor {
-            source_version: self.source_version,
             product_id: self.product_id,
             locale: self.locale.as_str().to_owned(),
         }
@@ -599,11 +589,10 @@ mod tests {
     }
 
     #[test]
-    fn cursor_rejects_zero_revision_nil_product_and_noncanonical_locale() {
+    fn cursor_rejects_nil_product_and_noncanonical_locale() {
         for cursor in [
-            serde_json::json!({"source_version": 0, "product_id": Uuid::from_u128(2), "locale": "en-US"}),
-            serde_json::json!({"source_version": 1, "product_id": Uuid::nil(), "locale": "en-US"}),
-            serde_json::json!({"source_version": 1, "product_id": Uuid::from_u128(2), "locale": "EN-us"}),
+            serde_json::json!({"product_id": Uuid::nil(), "locale": "en-US"}),
+            serde_json::json!({"product_id": Uuid::from_u128(2), "locale": "EN-us"}),
         ] {
             let cursor = IndexSourceCursor::new(cursor).unwrap();
             assert!(ProductSourceCursor::decode(&cursor).is_err());
