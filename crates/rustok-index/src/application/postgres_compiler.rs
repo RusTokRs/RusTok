@@ -338,10 +338,7 @@ fn validate_many_projection_contract(
 fn aggregate_type_supported(value_type: IndexValueType) -> bool {
     matches!(
         value_type,
-        IndexValueType::Integer
-            | IndexValueType::Decimal
-            | IndexValueType::String
-            | IndexValueType::Timestamp
+        IndexValueType::Integer | IndexValueType::String | IndexValueType::Timestamp
     )
 }
 
