@@ -20,6 +20,10 @@ function readRepo(relativePath) {
   return readFileSync(repoPath(relativePath), "utf8");
 }
 
+function readJson(relativePath) {
+  return JSON.parse(readRepo(relativePath));
+}
+
 function fail(message) {
   failures.push(message);
 }
@@ -51,6 +55,7 @@ const graphqlRateLimitPath = "crates/rustok-blog/src/graphql/rate_limit.rs";
 const legacyApiPath = "crates/rustok-blog/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-blog/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+const adminRichtextEvidencePath = "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json";
 
 if (existsSync(repoPath(legacyApiPath))) {
   fail(`${legacyApiPath}: legacy GraphQL api adapter must live under transport/graphql_adapter.rs`);
@@ -69,6 +74,7 @@ for (const filePath of [
   graphqlRateLimitPath,
   implementationPlanPath,
   registryPath,
+  adminRichtextEvidencePath,
 ]) {
   assertExists(filePath, `${filePath}: expected blog admin FFA boundary file`);
 }
@@ -85,6 +91,7 @@ const graphqlMutation = readRepo(graphqlMutationPath);
 const graphqlRateLimit = readRepo(graphqlRateLimitPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
+const adminRichtextEvidence = readJson(adminRichtextEvidencePath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
@@ -133,20 +140,15 @@ for (const marker of [
   "blog_post_admin_editor_field_classes_view",
   "BlogPostAdminTitleInputViewModel",
   "blog_post_admin_title_input_view",
-  "BlogPostAdminBodyFormatSelectViewModel",
-  "BlogPostAdminBodyFormatOptionViewModel",
-  "blog_post_admin_body_format_select_view",
-  "BlogPostAdminBodyFormatChangeViewModel",
-  "blog_post_admin_body_format_change_view",
-  "normalize_blog_post_body_format",
+  "RichTextDocument",
+  "content: &'a RichTextDocument",
+  "content: RichTextDocument",
+  "has_required_draft_fields",
   "BlogPostAdminStatusBadgeViewModel",
   "blog_post_admin_status_badge_view",
   "BlogPostAdminEditBannerViewModel",
   "edit_banner_class",
   "blog_post_admin_edit_banner_view",
-  "BlogPostAdminRawBodyWarningViewModel",
-  "raw_body_warning_class",
-  "blog_post_admin_raw_body_warning_view",
   "BlogPostAdminPostsLoadViewModel",
   "blog_post_admin_posts_load_view",
   "blog_post_admin_posts_load_view_from_list",
@@ -171,18 +173,36 @@ for (const marker of [
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
 }
 
+const legacyRichtextAdminMarkers = [
+  "BlogPostAdminBodyFormatSelectViewModel",
+  "BlogPostAdminBodyFormatOptionViewModel",
+  "blog_post_admin_body_format_select_view",
+  "BlogPostAdminBodyFormatChangeViewModel",
+  "blog_post_admin_body_format_change_view",
+  "normalize_blog_post_body_format",
+  "BlogPostAdminRawBodyWarningViewModel",
+  "raw_body_warning_class",
+  "blog_post_admin_raw_body_warning_view",
+];
+for (const marker of legacyRichtextAdminMarkers) {
+  assertNotContains(core, marker, `${corePath}: canonical richtext core must not reintroduce legacy admin helper ${marker}`);
+  assertNotContains(ui, marker, `${uiPath}: canonical richtext UI must not reintroduce legacy admin helper ${marker}`);
+}
+
 assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter must consume core and transport layers`);
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
-assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI must use core-owned raw-body warning view policy`);
+assertContains(ui, "use super::richtext::BlogRichTextEditor;", `${uiPath}: UI must mount the owner richtext lifecycle adapter`);
+assertContains(ui, "let (content, set_content) = signal(RichTextDocument::empty());", `${uiPath}: UI must keep canonical document state`);
+assertContains(ui, "<BlogRichTextEditor", `${uiPath}: UI must render the owner richtext editor`);
+assertContains(ui, "document=content", `${uiPath}: UI must pass canonical document state to the editor`);
+assertContains(ui, "set_document=set_content", `${uiPath}: UI must receive canonical document updates from the editor`);
 assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
 assertContains(ui, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
 assertContains(ui, "core::blog_post_admin_editor_field_classes_view", `${uiPath}: UI must use core-owned editor field class presentation policy`);
 assertContains(ui, "core::blog_post_admin_title_input_view", `${uiPath}: UI must use core-owned title input/autoslug policy`);
-assertContains(ui, "core::blog_post_admin_body_format_select_view", `${uiPath}: UI must use core-owned body-format select option policy`);
-assertContains(ui, "core::blog_post_admin_body_format_change_view", `${uiPath}: UI must use core-owned body-format change normalization policy`);
 assertContains(ui, "core::blog_post_admin_posts_table_view_from_items", `${uiPath}: UI must use core-owned posts-table normalization and row view-model policy`);
 assertContains(ui, "core::blog_post_admin_table_classes_view", `${uiPath}: UI must use core-owned posts-table class presentation policy`);
 assertContains(ui, "core::blog_post_admin_shell_classes_view", `${uiPath}: UI must use core-owned admin shell class presentation policy`);
@@ -270,6 +290,34 @@ for (const marker of [
   "Permission::BLOG_POSTS_MANAGE",
 ]) {
   assertContains(graphqlRateLimit, marker, `${graphqlRateLimitPath}: missing moderation rate-limit marker ${marker}`);
+}
+
+if (
+  adminRichtextEvidence.schema_version !== 1 ||
+  adminRichtextEvidence.module !== "blog" ||
+  adminRichtextEvidence.surface !== "leptos_admin_article_richtext_boundary" ||
+  adminRichtextEvidence.status !== "source_verified_no_compile" ||
+  adminRichtextEvidence.compile_policy !== "not_run_by_request"
+) {
+  fail(`${adminRichtextEvidencePath}: evidence identity/status drift`);
+}
+if (
+  adminRichtextEvidence.sources?.core !== corePath ||
+  adminRichtextEvidence.sources?.ui !== uiPath ||
+  adminRichtextEvidence.verifier !== "scripts/verify/verify-blog-admin-boundary.mjs" ||
+  adminRichtextEvidence.self_test !== "scripts/verify/verify-blog-admin-boundary.test.mjs"
+) {
+  fail(`${adminRichtextEvidencePath}: evidence source/verifier path drift`);
+}
+for (const marker of adminRichtextEvidence.required_markers?.core ?? []) {
+  assertContains(core, marker, `${corePath}: evidence-required canonical core marker ${marker}`);
+}
+for (const marker of adminRichtextEvidence.required_markers?.ui ?? []) {
+  assertContains(ui, marker, `${uiPath}: evidence-required canonical UI marker ${marker}`);
+}
+for (const marker of adminRichtextEvidence.forbidden_markers ?? []) {
+  assertNotContains(core, marker, `${corePath}: evidence-forbidden legacy richtext marker ${marker}`);
+  assertNotContains(ui, marker, `${uiPath}: evidence-forbidden legacy richtext marker ${marker}`);
 }
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);
