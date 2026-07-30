@@ -64,8 +64,11 @@ guarded by `scripts/verify/verify-comments-thread-write-invariants.mjs` and focu
 self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`. Exact
 commands `verify:comments:thread-write-invariants` and
 `test:verify:comments:thread-write-invariants` are registered in Comments registry
-schema v2 and the Comments FBA verify/test chains. Blog consumes the owner result;
-it does not duplicate thread locking or counter policy.
+schema v2 and the Comments FBA verify/test chains. Evidence schema v2 also locks
+an owner-classified tenant/target identity marker: canonical lookup occurs only
+for that expected first-thread conflict, while unrelated insert storage errors
+propagate as typed database failures. Blog consumes the owner result and does not
+duplicate thread locking, counter policy, or error classification.
 
 The Comments consumer call surface is now a first-class Blog source boundary.
 `CommentService` depends on `Arc<dyn CommentsThreadPort>`, uses the in-process
@@ -198,6 +201,14 @@ adds a focused fail-closed fixture and exact leaf commands, aligns the shared
 runtime-order evidence, upgrades Blog registry schema v10, and keeps the remote
 adapter plus degraded UI modes explicitly pending.
 
+The continuation audit at `6b5cd3f94265ff7ba382ca89916a73065806a0b5`
+found that the Comments owner still retried canonical lookup after every thread
+insert error. Slice 43 keeps classification with the provider: Comments emits a
+scope-specific identity-conflict marker, retries only that expected first-thread
+race, propagates unrelated storage errors, upgrades its retained invariant
+evidence to schema v2, and adds focused negatives. Blog receives the corrected
+typed provider result without adding a consumer-side classifier.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -233,9 +244,10 @@ adapter plus degraded UI modes explicitly pending.
 - Blog storefront richtext boundary: `source_verified_no_compile`.
 - AI Blog draft owner writes and shim: `source_verified_no_compile`.
 - Comments thread write invariants: Comments-owned `executable_no_run`; registry
-  schema v2, evidence, verifier, focused self-test, exact npm leaf commands, Rust
-  targets, and Comments FBA ordering are locked. PostgreSQL execution remains
-  maintainer-owned.
+  schema v2, evidence schema v2, owner identity classifier, guarded canonical
+  fallback, unrelated-storage propagation, verifier, focused self-test, exact npm
+  leaf commands, Rust targets, and Comments FBA ordering are locked. PostgreSQL
+  and injected storage-error execution remain maintainer-owned.
 - Category search reindex: `source_verified_no_compile`; evidence, verifier,
   self-test, npm leaf commands, and aggregate FBA registration are locked.
 - Canonical Search URL: Search-owned `source_verified_no_compile`; evidence,
@@ -368,6 +380,10 @@ adapter plus degraded UI modes explicitly pending.
     active `PortErrorKind` mapper and runtime-order evidence to `services/comment.rs`,
     registered a focused negative fixture plus exact verify/test commands in Blog
     registry schema v10, and kept the remote adapter and degraded UI modes pending.
+43. Kept thread-insert error classification with the Comments provider, added a
+    tenant/target-scoped identity-conflict classifier, narrowed canonical fallback,
+    propagated unrelated storage errors, upgraded owner evidence to schema v2, and
+    retained all runtime and PostgreSQL proof as maintainer-owned.
 
 ## Next results
 
@@ -388,8 +404,9 @@ adapter plus degraded UI modes explicitly pending.
    shared consumer runtime-order verifier, both thread invariant concurrency
    targets, and concurrent PostgreSQL create/delete transactions; cover the
    remote adapter, degraded UI modes, approved-only reads, moderation, pagination,
-   duplicate delivery, counters, first-thread identity, missing-post retry,
-   rollback, outbox publication, and restart recovery.
+   duplicate delivery, counters, first-thread identity, unrelated insert storage
+   error propagation, missing-post retry, rollback, outbox publication, and restart
+   recovery.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -439,6 +456,7 @@ should run the relevant subset, including:
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `cargo test -p rustok-comments --test thread_creation_concurrency`
+- Targeted injected storage-error coverage for Comments thread creation
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
