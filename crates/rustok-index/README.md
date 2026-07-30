@@ -56,6 +56,7 @@ a rewrite goal.
 - M3 retained bundle review and archive verification: complete
 - M4 deterministic query planning and controlled SQL compilation: complete
 - M4 root/one and many-link query result semantics: complete
+- M4 explicit many-link aggregate ordering and Decimal tagged wire: source complete
 - M4 PostgreSQL query port and row adapter: source complete
 - M4 source-owned registry and server query-runtime composition: source complete
 - Real retained PostgreSQL packet execution: open
@@ -72,12 +73,14 @@ admitted-only archive manifest outside the bundle, and verifies the saved manife
 against an exact recursive filesystem snapshot.
 
 M4 now provides deterministic typed planning, controlled PostgreSQL compilation,
-correlated many-link filtering, nested many-link projection aggregation, strict
-result decoding, lookahead pagination, exact count, scoped cursors, an Index-owned
-PostgreSQL execution port, a source-owned immutable schema catalog, and a server-owned
-neutral query runtime. Storefront/admin/search authorization and consumer cutover,
-many-link aggregate ordering policy, live PostgreSQL/reference equivalence, and
-production partition cutover remain open.
+correlated many-link filtering, nested many-link projection aggregation, explicit bounded
+`MIN` / `MAX` many-link ordering for integer, Decimal, string, and timestamp, strict result
+decoding, lookahead pagination, exact count, scoped cursors for ordinary order expressions,
+an Index-owned PostgreSQL execution port, a source-owned immutable schema catalog, and a
+server-owned neutral query runtime. Decimal aggregate ordering remains numeric while its
+hidden tagged value uses an exact JSON string. Aggregate cursor continuation,
+PostgreSQL/reference aggregate evidence, storefront/admin/search authorization and consumer
+cutover, and production partition cutover remain open.
 
 The module-owned migration source creates:
 
@@ -195,7 +198,10 @@ readiness; execution still fails closed through the query-port preflight.
 - tenant/locale-scoped records and queries;
 - registry-backed type, cardinality, field, link, and operator validation;
 - bounded query complexity and pagination;
-- no ambiguous ordering through `many` links;
+- plain `asc` / `desc` remains ambiguous through `many`; explicit bounded `min` / `max`
+  supports integer, Decimal, string, and timestamp;
+- Decimal many-order `MIN` / `MAX` and `ORDER BY` use `numeric`, while hidden tagged JSON uses
+  an exact string from `numeric::text` without float conversion;
 - checksummed keyset cursors bound to tenant, schema, fingerprint, locale, and
   order shape;
 - reference mutation/query engine and property-based invariants for future
@@ -242,6 +248,8 @@ DDL remains benchmark-only and must not be copied into production migrations.
 - [M4 source-owned schema registry](./docs/m4-source-schema-registry.md)
 - [M4 query runtime composition](./docs/m4-query-runtime-composition.md)
 - [M4 PostgreSQL query port contract](./docs/m4-postgres-query-port.md)
+- [M4 many-link aggregate ordering](./docs/m4-many-link-aggregate-ordering.md)
+- [M4 Decimal aggregate order wire](./docs/m4-decimal-aggregate-order-wire.md)
 - [M4 many-link projection contract](./docs/m4-many-link-projection.md)
 - [M2 storage benchmark contract](./docs/storage-benchmark.md)
 - [M2 replacement evidence runbook](./docs/storage-evidence-runbook.md)

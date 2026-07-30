@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "owner": "rustok-index",
+  "status": "source_complete_execution_pending",
+  "domain_wire": {
+    "rust_type": "rust_decimal::Decimal",
+    "index_value_tag": "decimal",
+    "json_value_kind": "string",
+    "example": {
+      "type": "decimal",
+      "value": "123.4500"
+    },
+    "round_trip_test": "decimal_tagged_json_uses_exact_string_wire"
+  },
+  "postgresql_wire": {
+    "stored_source": "tagged JSON string",
+    "typed_scalar": "numeric",
+    "aggregate_functions": ["MIN", "MAX"],
+    "hidden_order_value": "jsonb_build_object with to_jsonb((aggregate_scalar)::text)",
+    "json_number_allowed": false,
+    "float_conversion_allowed": false,
+    "ordering_uses_text": false,
+    "ordering_uses_numeric": true
+  },
+  "query_boundary": {
+    "many_link_modes": ["min_asc", "min_desc", "max_asc", "max_desc"],
+    "pagination": "bounded_offset",
+    "aggregate_cursor_supported": false,
+    "empty_or_all_null_result": "null"
+  },
+  "guardrails": {
+    "domain": "crates/rustok-index/src/domain/value.rs",
+    "validator": "crates/rustok-index/src/application/aggregate_ordering.rs",
+    "compiler": "crates/rustok-index/src/application/postgres_compiler.rs",
+    "sql": "crates/rustok-index/src/application/postgres_query_sql.rs",
+    "tests": "crates/rustok-index/src/application/aggregate_ordering_tests.rs",
+    "verifier": "scripts/verify/verify-index-decimal-aggregate-wire.mjs"
+  },
+  "validation": {
+    "cargo_run": false,
+    "tests_run": false,
+    "postgresql_run": false,
+    "node_verifiers_run": false,
+    "workflows_run": false,
+    "ci_run": false
+  },
+  "non_claims": [
+    "PostgreSQL execution proof",
+    "PostgreSQL/reference equivalence",
+    "aggregate cursor continuation",
+    "retained evidence admission"
+  ]
+}

@@ -146,7 +146,10 @@ fn resolve_order_field(
 fn is_aggregate_ordered_type(value_type: IndexValueType) -> bool {
     matches!(
         value_type,
-        IndexValueType::Integer | IndexValueType::String | IndexValueType::Timestamp
+        IndexValueType::Integer
+            | IndexValueType::Decimal
+            | IndexValueType::String
+            | IndexValueType::Timestamp
     )
 }
 
@@ -232,17 +235,24 @@ mod tests {
 
     #[test]
     fn accepts_explicit_min_and_max_over_many_link() {
-        let registry = registry(IndexValueType::Integer, true);
-        assert!(
-            registry
-                .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, true))
-                .is_ok()
-        );
-        assert!(
-            registry
-                .validate_query_with_aggregate_ordering(&query(OrderDirection::MaxDesc, true))
-                .is_ok()
-        );
+        for value_type in [
+            IndexValueType::Integer,
+            IndexValueType::Decimal,
+            IndexValueType::String,
+            IndexValueType::Timestamp,
+        ] {
+            let registry = registry(value_type, true);
+            assert!(
+                registry
+                    .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, true))
+                    .is_ok()
+            );
+            assert!(
+                registry
+                    .validate_query_with_aggregate_ordering(&query(OrderDirection::MaxDesc, true))
+                    .is_ok()
+            );
+        }
     }
 
     #[test]
@@ -268,16 +278,11 @@ mod tests {
 
     #[test]
     fn aggregate_requires_supported_sortable_scalar() {
-        for unsupported in [IndexValueType::Decimal, IndexValueType::Uuid] {
-            let registry = registry(unsupported, true);
-            assert!(matches!(
-                registry.validate_query_with_aggregate_ordering(&query(
-                    OrderDirection::MaxAsc,
-                    true
-                )),
-                Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
-            ));
-        }
+        let uuid = registry(IndexValueType::Uuid, true);
+        assert!(matches!(
+            uuid.validate_query_with_aggregate_ordering(&query(OrderDirection::MaxAsc, true)),
+            Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
+        ));
 
         let unsortable = registry(IndexValueType::Integer, false);
         assert!(matches!(

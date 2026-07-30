@@ -41,3 +41,28 @@ impl IndexValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    use serde_json::json;
+
+    use super::IndexValue;
+
+    #[test]
+    fn decimal_tagged_json_uses_exact_string_wire() {
+        let value = IndexValue::Decimal(Decimal::new(1_234_500, 4));
+        let encoded = serde_json::to_value(&value).unwrap();
+
+        assert_eq!(
+            encoded,
+            json!({
+                "type": "decimal",
+                "value": "123.4500"
+            })
+        );
+
+        let decoded: IndexValue = serde_json::from_value(encoded.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), encoded);
+    }
+}
