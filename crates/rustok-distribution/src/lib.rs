@@ -4,6 +4,7 @@
 //! HTTP routing remains in `apps/server`; command providers remain in their
 //! module-local CLI adapters.
 
+mod channel_index;
 mod generated_promotions;
 mod generation;
 #[cfg(feature = "mod-product")]
@@ -66,10 +67,9 @@ fn register_runtime_bridges(extensions: &mut ModuleRuntimeExtensions) -> rustok_
 fn register_selected_index_bridges(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> rustok_core::Result<()> {
+    channel_index::register(extensions)?;
     #[cfg(feature = "mod-product")]
     product_index::register(extensions)?;
-    #[cfg(not(feature = "mod-product"))]
-    let _ = extensions;
     Ok(())
 }
 

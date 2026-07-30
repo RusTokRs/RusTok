@@ -16,6 +16,9 @@
 - Back the shared request-level `ChannelContext` used by host transport layers.
 - Own the domain resolution pipeline (`RequestFacts -> ResolutionDecision`) that host middleware applies.
 - Own the durable database generation used to recover channel-resolution caches across serving replicas.
+- Own a positive monotonic `channels.index_revision` storage column. Every Channel update advances it exactly once; the value remains storage-internal and is not exposed through Channel DTOs or the SeaORM write model.
+- Publish only a neutral `ChannelRuntimeSelected` marker for selected cross-module composition. The Channel crate does not depend on `rustok-index` and does not construct generic Index mutations.
+- The selected `rustok-distribution` bridge publishes the non-localized `rustok-channel::sales_channel@1` schema and a bounded current-state source. Replay enumeration uses stable `channel_id` ordering, while `index_revision` is used only as generic mutation `source_version`. Hard-delete tombstones, versioned Product links, and authoritative consumer cutover remain later slices.
 - Ship the module-owned Leptos admin UI package for channel management.
 - Expose `ChannelReadPort` / `channel.read_projection.v1` as the FBA provider boundary for channel/default/host-target read projections, with deadline-aware read semantics and no-compile executable fallback smoke evidence until executable runtime smoke is available.
 
@@ -70,12 +73,14 @@ It does not yet provide:
 - `rustok-cache` supplies bounded invalidation transport; Redis PubSub is an acceleration path rather than the durable source of truth.
 - `rustok-api` hosts the shared `ChannelContext` and request-level contracts.
 - `rustok-auth` remains the source of truth for OAuth applications and tokens.
+- `rustok-distribution` consumes the neutral selection marker and Channel-owned table contract to publish generic SalesChannel Index schema/source capabilities; Index core and server remain Channel-agnostic.
 - Domain modules may gradually become channel-aware by reading channel context or channel bindings.
 - The Leptos admin UI lives in `crates/rustok-channel/admin` and is mounted by `apps/admin` through manifest-driven wiring.
 
 ## Entry points
 
 - `ChannelModule`
+- `ChannelRuntimeSelected`
 - `ChannelResolver`
 - `ChannelService`
 - `read_resolution_invalidation_generation`
@@ -92,4 +97,5 @@ It does not yet provide:
 
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
+- [M7 SalesChannel Index source contract](../rustok-index/docs/m7-sales-channel-source.md)
 - [Platform docs index](../../docs/index.md)
