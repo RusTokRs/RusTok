@@ -29,7 +29,7 @@ for (const marker of [
   'postgres-concurrency:',
   'redis-recovery:',
   'TENANT_RUST_FILES:',
-  'rustfmt --edition 2024 --check $TENANT_RUST_FILES',
+  'rustfmt --edition 2024 --config skip_children=true --check $TENANT_RUST_FILES',
   'crates/rustok-commerce/src/lib.rs',
   'crates/rustok-commerce/src/services/context.rs',
   'crates/rustok-commerce/tests/context_service_test.rs',
