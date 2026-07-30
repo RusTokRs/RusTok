@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import './verify-commerce-storefront-aggregate-error-safety.mjs';
 import './verify-commerce-storefront-payment-command-error-safety.mjs';
+import './verify-commerce-storefront-shipping-command-error-safety.mjs';
 
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const rootPath = configuredRoot

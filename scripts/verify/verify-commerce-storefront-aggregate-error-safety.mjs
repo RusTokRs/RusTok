@@ -93,9 +93,9 @@ requireText(
   "impl From<UiTransportError> for ApiError",
   `${transportPath}: generic command-wrapper mapper remains explicit debt`,
 );
-if (countText(transport, ".map_err(ApiError::from)") !== 2) {
+if (countText(transport, ".map_err(ApiError::from)") !== 1) {
   failures.push(
-    `${transportPath}: exactly shipping selection and checkout completion must remain on the generic mapper`,
+    `${transportPath}: exactly checkout completion must remain on the generic mapper`,
   );
 }
 for (const marker of [
@@ -236,5 +236,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ commerce storefront aggregate fetch uses correlation-safe static public envelopes; shipping, checkout, and runtime evidence remain open",
+  "✔ commerce storefront aggregate fetch uses correlation-safe static public envelopes; checkout and runtime evidence remain open",
 );
