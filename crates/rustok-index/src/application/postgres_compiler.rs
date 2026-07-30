@@ -88,6 +88,8 @@ pub enum PostgresQueryCompileError {
     AggregateOrderingWithoutManyLink(FieldPath),
     #[error("aggregate ordering uses an unsupported PostgreSQL MIN/MAX type: {0:?}")]
     AggregateOrderingUnsupportedType(FieldPath),
+    #[error("aggregate ordering currently requires bounded offset pagination")]
+    AggregateOrderingRequiresOffsetPagination,
     #[error("query plan has no join contract for path {0:?}")]
     MissingJoinPlan(Vec<LinkName>),
     #[error("query plan many-link traversal metadata is inconsistent for path {0:?}")]
@@ -231,14 +233,17 @@ impl ExecutableQueryPlan {
             }
         }
         validate_many_projection_contract(self)?;
+        let mut has_aggregate_order = false;
         for order in &self.order_by {
             let Some(referenced) = self.referenced_fields.get(&order.field.path) else {
                 return Err(PostgresQueryCompileError::MissingFieldPlan(
                     order.field.path.clone(),
                 ));
             };
+            let aggregate = order.direction.aggregate();
+            has_aggregate_order |= aggregate.is_some();
             let mut expected = referenced.clone();
-            if order.direction.aggregate().is_some() {
+            if aggregate.is_some() {
                 expected.nullable = true;
             }
             if order.field != expected {
@@ -246,7 +251,7 @@ impl ExecutableQueryPlan {
                     order.field.path.clone(),
                 ));
             }
-            match (order.field.traverses_many, order.direction.aggregate()) {
+            match (order.field.traverses_many, aggregate) {
                 (true, None) => {
                     return Err(PostgresQueryCompileError::ManyLinkOrderingPending(
                         order.field.path.clone(),
@@ -266,6 +271,9 @@ impl ExecutableQueryPlan {
                 }
                 _ => {}
             }
+        }
+        if has_aggregate_order && !matches!(&self.pagination, Pagination::Offset { .. }) {
+            return Err(PostgresQueryCompileError::AggregateOrderingRequiresOffsetPagination);
         }
         if let Some(filter) = &self.filter {
             let mut paths = Vec::new();
