@@ -282,8 +282,8 @@ if (approvedReply) {
   if (approvedReply.search_inbox_ordering_contract !== contractPath) {
     failures.push(`${approvedReplyPath}: inbox handoff drift`);
   }
-  if (approvedReply.downstream_task !== "FORUM-20BQ") {
-    failures.push(`${approvedReplyPath}: downstream task must advance to FORUM-20BQ`);
+  if (approvedReply.downstream_task !== "FORUM-20BP") {
+    failures.push(`${approvedReplyPath}: historical downstream task drift`);
   }
   if (approvedReply.persistence_boundary?.consumer_envelope_revision_guard_added !== true) {
     failures.push(`${approvedReplyPath}: consumer ordering completion not recorded`);
