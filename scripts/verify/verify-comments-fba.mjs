@@ -12,6 +12,7 @@ const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contrac
 const threadWriteEvidencePath = 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json';
 const threadWriteVerifierPath = 'scripts/verify/verify-comments-thread-write-invariants.mjs';
 const threadWriteSelfTestPath = 'scripts/verify/verify-comments-thread-write-invariants.test.mjs';
+const classifierTestPath = 'crates/rustok-comments/src/entities/thread_insert_error_tests.rs';
 const packageJsonPath = 'package.json';
 const expectedVerifySteps = [
   'node scripts/verify/verify-comments-fba.mjs',
@@ -28,7 +29,7 @@ const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 const threadWriteEvidence = json(registry.evidence.thread_write_invariants);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 2) fail('registry schema_version drift');
+if (registry.schema_version !== 3) fail('registry schema_version drift');
 if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
 const port = registry.ports?.[0];
@@ -47,13 +48,14 @@ if (
   || threadWriteGate?.test_package_script !== 'test:verify:comments:thread-write-invariants'
   || threadWriteGate?.verifier !== threadWriteVerifierPath
   || threadWriteGate?.self_test !== threadWriteSelfTestPath
+  || threadWriteGate?.unit_test !== classifierTestPath
   || threadWriteGate?.evidence !== threadWriteEvidencePath
 ) fail('thread write source gate drift');
 if (!sameList(packageJson.scripts?.['verify:comments:fba']?.split(' && ') ?? [], expectedVerifySteps)) fail('package Comments FBA verify chain drift');
 if (!sameList(packageJson.scripts?.['test:verify:comments:fba']?.split(' && ') ?? [], expectedTestSteps)) fail('package Comments FBA test chain drift');
 if (packageJson.scripts?.['verify:comments:thread-write-invariants'] !== `node ${threadWriteVerifierPath}`) fail('thread write leaf verifier command drift');
 if (packageJson.scripts?.['test:verify:comments:thread-write-invariants'] !== `node ${threadWriteSelfTestPath}`) fail('thread write leaf self-test command drift');
-for (const filePath of [threadWriteEvidencePath, threadWriteVerifierPath, threadWriteSelfTestPath]) {
+for (const filePath of [threadWriteEvidencePath, threadWriteVerifierPath, threadWriteSelfTestPath, classifierTestPath]) {
   if (!fs.existsSync(filePath)) fail(`thread write source gate file is missing ${filePath}`);
 }
 
@@ -159,9 +161,10 @@ for (const c of runtimeSmoke.cases) {
 if (registry.evidence.thread_write_invariants !== threadWriteEvidencePath) fail('thread write evidence path drift');
 if (registry.evidence.thread_write_invariants_runner !== threadWriteVerifierPath) fail('thread write verifier path drift');
 if (registry.evidence.thread_write_invariants_self_test !== threadWriteSelfTestPath) fail('thread write self-test path drift');
+if (registry.evidence.thread_insert_error_classifier_test !== classifierTestPath) fail('thread insert classifier test path drift');
 if (registry.evidence.thread_write_invariants_test !== 'crates/rustok-comments/tests/thread_write_invariants.rs') fail('thread write test path drift');
 if (registry.evidence.thread_creation_concurrency_test !== 'crates/rustok-comments/tests/thread_creation_concurrency.rs') fail('thread creation test path drift');
-if (threadWriteEvidence.schema_version !== 2) fail('thread write evidence schema_version drift');
+if (threadWriteEvidence.schema_version !== 3) fail('thread write evidence schema_version drift');
 if (threadWriteEvidence.module !== 'comments' || threadWriteEvidence.surface !== 'thread_write_invariants' || threadWriteEvidence.owner !== 'rustok-comments') fail('thread write evidence identity drift');
 if (threadWriteEvidence.status !== 'executable_no_run' || threadWriteEvidence.compile_policy !== 'not_run_by_request') fail('thread write evidence status drift');
 const threadWriteCases = threadWriteEvidence.cases.map(c => c.name).sort().join('|');
@@ -170,6 +173,7 @@ if (threadWriteCases !== [
   'exact_active_comment_count',
   'historical_counter_repair',
   'historical_position_repair',
+  'identity_conflict_marker_structure',
   'identity_conflict_only_fallback',
   'postgres_concurrent_create_delete',
   'postgres_concurrent_first_thread_creation',
@@ -182,6 +186,7 @@ for (const [key, expected] of Object.entries({
   position_owner: 'crates/rustok-comments/src/entities/comment.rs',
   counter_and_identity_owner: 'crates/rustok-comments/src/entities/comment_thread.rs',
   thread_service: 'crates/rustok-comments/src/services.rs',
+  classifier_unit_test: classifierTestPath,
   identity_lock_entity: 'crates/rustok-comments/src/entities/comment_thread_identity_lock.rs',
   counter_repair_migration: 'crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
   identity_lock_migration: 'crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs',
@@ -206,7 +211,9 @@ const threadOwner = read(threadContract.counter_and_identity_owner);
 hasAll(threadOwner, [
   'pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER',
   'pub(crate) fn is_thread_identity_conflict(',
-  'matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix))',
+  'let DbErr::Custom(message) = error else',
+  'message.strip_prefix(&expected_prefix)',
+  'Uuid::parse_str(existing_thread_id).is_ok()',
   'serialize_thread_identity(db, &self).await?',
   'matches!(&self.comment_count, ActiveValue::Set(_))',
   'OnConflict::columns',
@@ -216,6 +223,7 @@ hasAll(threadOwner, [
   '.count(db)',
   'self.comment_count = Set(count)',
 ], 'comment thread owner');
+hasNone(threadOwner, ['message.starts_with(&expected_prefix)'], 'comment thread owner');
 const threadService = read(threadContract.thread_service);
 hasAll(threadService, [
   'match thread.insert(txn).await',
@@ -227,6 +235,14 @@ hasAll(threadService, [
   'Err(error) => Err(error.into())',
 ], 'comment thread service fallback');
 hasNone(threadService, ['Err(_) => comment_thread::Entity::find()'], 'comment thread service fallback');
+const classifierTest = read(threadContract.classifier_unit_test);
+hasAll(classifierTest, [
+  'thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid',
+  'thread_identity_conflict_classifier_rejects_malformed_owner_uuid',
+  'thread_identity_conflict_classifier_rejects_wrong_scope',
+  'unrelated_custom_error_remains_a_database_error',
+  'CommentsError::Database(DbErr::Custom(message))',
+], 'thread insert error classifier test');
 const identityEntity = read(threadContract.identity_lock_entity);
 hasAll(identityEntity, [
   '#[sea_orm(table_name = "comment_thread_identity_locks")]',
@@ -283,8 +299,12 @@ hasAll(firstThreadTest, [
 const threadWriteVerifier = read(threadWriteVerifierPath);
 hasAll(threadWriteVerifier, [
   'identity_lock::Entity::update_many()',
+  'message.strip_prefix(&expected_prefix)',
+  'Uuid::parse_str(existing_thread_id).is_ok()',
+  'thread_identity_conflict_classifier_rejects_malformed_owner_uuid',
   'comment_thread::is_thread_identity_conflict(',
   'Err(error) => Err(error.into())',
+  'identity_conflict_marker_structure',
   'identity_conflict_only_fallback',
   'postgres_concurrent_first_comments_share_one_thread',
   'status_only_thread_update_preserves_comment_count',
@@ -297,24 +317,30 @@ hasAll(threadWriteSelfTest, [
   'rejects missing first-thread concurrency harness',
   'rejects a broad insert fallback',
   'rejects a missing identity-conflict classifier',
+  'rejects a prefix-only identity-conflict classifier',
+  'rejects a missing identity classifier unit harness',
   'rejects missing unrelated storage error propagation',
 ], 'thread write invariant self-test');
 
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
 hasAll(plan, [
   '- FBA status: `boundary_ready`',
+  'Comments FBA registry schema v3',
   'comments-fba-registry.json',
   'CommentsThreadPort',
   'comments-contract-test-static-matrix.json',
   registry.evidence.runtime_order_smoke,
   registry.evidence.thread_write_invariants,
+  registry.evidence.thread_insert_error_classifier_test,
   'ActiveModelBehavior',
   'UNIQUE(thread_id, position)',
   'RUSTOK_COMMENTS_TEST_DATABASE_URL',
   'concurrent PostgreSQL',
   'identity-lock',
   'thread_creation_concurrency',
+  'thread_insert_error_tests',
   'identity-conflict-only fallback',
+  'valid canonical thread UUID',
   'unrelated storage errors propagate',
   'verify:comments:thread-write-invariants',
   'test:verify:comments:thread-write-invariants',
@@ -323,4 +349,4 @@ hasAll(plan, [
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, transactional thread writes, narrow identity-conflict fallback, and first-thread identity serialization are consistent');
+console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, strict identity classifier harness, transactional thread writes, and first-thread identity serialization are consistent');
