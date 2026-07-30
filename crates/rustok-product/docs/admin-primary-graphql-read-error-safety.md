@@ -36,8 +36,8 @@ Leptos resources and UI error normalization could therefore receive those raw pa
 
 A `GraphqlReadContext` is created before each selected GraphQL call.
 
-For `fetch_products`, Product Admin keeps its existing native-first policy. The context is
-created only after the native list call fails and immediately before the existing
+For `fetch_products`, Product Admin keeps its existing product-list native-first policy. The
+context is created only after the native list call fails and immediately before the existing
 `admin_catalog_graphql` fallback.
 
 No new retry, fallback, transport selection, or owner call is introduced.
