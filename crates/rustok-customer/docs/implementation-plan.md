@@ -14,6 +14,8 @@ Canonical root `CustomerReadPort` construction now uses `InProcessCustomerReadPo
 
 The mounted customer-admin native bootstrap, list, detail, create, and update endpoints now use static public context and typed owner envelopes. Original framework, customer storage, and profile causes remain in bounded server diagnostics with per-call correlation, tenant, actor, optional customer, channel, locale, stable code, and boundary context. `RequestContext` remains diagnostic-only, so this source slice does not change operation admission or profile audience policy.
 
+The public customer-admin transport facade now applies a second fail-closed client boundary across the same five operations. It no longer re-exports the private native `ApiError::ServerFn(String)` type; the public `ApiError::ServerFn` has no payload and always displays `Customer admin request could not be completed`. The final private native error is retained only in structured client diagnostics with operation, correlation id, and bounded request-shape facts.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -24,7 +26,8 @@ The mounted customer-admin native bootstrap, list, detail, create, and update en
 - Canonical root construction is `InProcessCustomerReadPort` / `in_process_customer_read_port`; `rustok_customer::ports` remains a compatibility path rather than the covered root entrypoint.
 - Static and source-locked runtime evidence: `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json`, `crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json`, and `crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json`.
 - Customer-admin native error-safety source evidence is `crates/rustok-customer/contracts/evidence/admin-native-error-safety-source.json`; it remains explicitly unvalidated.
-- `scripts/verify/verify-customer-admin-boundary.mjs` locks the admin boundary; `node scripts/verify/verify-customer-admin-native-error-safety.mjs` locks the mounted static error envelopes; `node scripts/verify/verify-customer-fba-no-compile.mjs` locks no-compile provider metadata and promotion blockers; `node scripts/verify/verify-customer-read-local-context.mjs` locks canonical local context retention.
+- Admin client transport error safety: `source_ready_unvalidated`; evidence is `crates/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source.json` with reviewed source handoff in `crates/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source-review.json`.
+- `scripts/verify/verify-customer-admin-boundary.mjs` locks the admin boundary; `node scripts/verify/verify-customer-admin-native-error-safety.mjs` locks the mounted static error envelopes; `node scripts/verify/verify-customer-admin-client-transport-error-safety.mjs` locks the final payload-free client envelope; `node scripts/verify/verify-customer-fba-no-compile.mjs` locks no-compile provider metadata and promotion blockers; `node scripts/verify/verify-customer-read-local-context.mjs` locks canonical local context retention.
 
 ## Open results
 
@@ -55,14 +58,22 @@ The mounted customer-admin native bootstrap, list, detail, create, and update en
    **Remaining evidence:** run `verify-customer-admin-native-error-safety.mjs`, compile `rustok-customer-admin` with `ssr`, exercise all five endpoints against validation, not-found, duplicate, profile, and database failures, and retain server logs proving correlation without customer/profile payload leakage.
    **Done when:** source guard, compile, runtime envelope, tenant isolation, profile audience, restart, and remote-profile evidence are retained without promoting FFA/FBA from source inspection alone.
 
+6. **Validate the customer-admin final client transport envelope.**
+   **Status:** source-ready / unvalidated. The public facade maps every private native error through a per-call context and exposes only a payload-free `ApiError` with one static message.
+   **Remaining evidence:** run `verify-customer-admin-client-transport-error-safety.mjs`, compile default/hydrate/ssr profiles, and retain browser plus mounted failures proving the raw private native string never reaches the rendered admin error.
+   **Done when:** all five operations preserve their successful DTOs and server-side domain policy while framework and unexpected transport text remains private across serialization and display.
+
 ## Verification
 
 - `npm run verify:customer:admin-boundary`
 - `node scripts/verify/verify-customer-admin-native-error-safety.mjs`
+- `node scripts/verify/verify-customer-admin-client-transport-error-safety.mjs`
 - `node scripts/verify/verify-customer-read-local-context.mjs`
 - `node scripts/verify/verify-customer-read-policy-context.mjs`
 - `node scripts/verify/verify-customer-fba-no-compile.mjs`
 - `npm run verify:ecommerce:fba`
+- `cargo check -p rustok-customer-admin`
+- `cargo check -p rustok-customer-admin --features hydrate`
 - `cargo check -p rustok-customer-admin --features ssr`
 - `cargo xtask module validate customer`
 - `cargo xtask module test customer`
