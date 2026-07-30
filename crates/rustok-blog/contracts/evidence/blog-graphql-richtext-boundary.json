@@ -20,19 +20,29 @@
   ],
   "conversion_owner": {
     "file": "crates/rustok-blog/src/graphql/types.rs",
-    "scope": "impl From<UpdatePostInput> for DomainUpdatePostInput",
-    "reason": "temporary GraphQL-to-owner compatibility conversion"
+    "scopes": [
+      "impl From<CreatePostInput> for DomainCreatePostInput",
+      "impl From<UpdatePostInput> for DomainUpdatePostInput"
+    ],
+    "reason": "temporary GraphQL-to-owner compatibility conversions"
   },
+  "conversion_tests": [
+    "crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
+    "crates/rustok-blog/src/graphql/types.rs #[cfg(test)] update conversion module"
+  ],
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "test_coverage": [
     "canonical RichTextDocument/RichTextView fields are required",
     "create and update resolvers delegate conversion through input.into()",
     "mutation resolvers do not own transport conversion or access richtext fields directly",
-    "the retained update conversion and its regression test live beside GraphQL input types",
+    "retained create and update conversions live beside GraphQL input types",
+    "create conversion preserves explicit transport fields and canonical RichTextDocument",
+    "create conversion retains the temporary empty-body and Markdown-format defaults",
+    "update conversion retains its field-preservation regression test beside the input type",
     "all Blog GraphQL Rust files are scanned recursively",
     "legacy fields are rejected outside types.rs",
-    "retained legacy declarations and conversion mappings are checked exactly",
+    "retained legacy declarations and both conversion mappings are checked exactly",
     "new legacy aliases are rejected in every GraphQL file",
     "legacy field removal requires evidence and guardrail tightening"
   ],
