@@ -24,6 +24,8 @@ use super::{
 
 const FORUM_MODULE_SLUG: &str = "forum";
 const FORUM_STOREFRONT_SEARCH_SURFACE: &str = "forum_storefront_search";
+const FORUM_STOREFRONT_SEARCH_UNAVAILABLE: &str =
+    "Forum storefront Search is temporarily unavailable";
 
 #[derive(Default)]
 pub struct ForumStorefrontSearchQuery;
@@ -181,7 +183,15 @@ fn map_execution_error(error: ForumStorefrontSearchExecutionError) -> FieldError
             rustok_api::PortErrorKind::Validation
             | rustok_api::PortErrorKind::NotFound
             | rustok_api::PortErrorKind::Forbidden => FieldError::new(port_error.message),
-            _ => <FieldError as GraphQLError>::internal_error(&port_error.message),
+            _ => {
+                tracing::error!(
+                    error = ?port_error,
+                    "Forum storefront Search category scope failed"
+                );
+                <FieldError as GraphQLError>::internal_error(
+                    FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
+                )
+            }
         },
         ForumStorefrontSearchExecutionError::Search(
             rustok_core::Error::Validation(message)
@@ -189,12 +199,15 @@ fn map_execution_error(error: ForumStorefrontSearchExecutionError) -> FieldError
             | rustok_core::Error::InvalidIdFormat(message),
         ) => FieldError::new(message),
         ForumStorefrontSearchExecutionError::Search(error) => {
-            <FieldError as GraphQLError>::internal_error(&error.to_string())
+            tracing::error!(error = ?error, "Forum storefront Search execution failed");
+            <FieldError as GraphQLError>::internal_error(
+                FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
+            )
         }
         ForumStorefrontSearchExecutionError::Database(error) => {
             tracing::error!(error = ?error, "Forum storefront Search database failure");
             <FieldError as GraphQLError>::internal_error(
-                "Forum storefront Search is temporarily unavailable",
+                FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
             )
         }
     }
