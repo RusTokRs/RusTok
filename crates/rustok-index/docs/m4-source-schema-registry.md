@@ -26,8 +26,10 @@ platform composition identity such as `social_graph`, while the latter is the st
 Index contract namespace such as `rustok-social-graph`.
 
 One exact schema reference may have only one source owner. Duplicate ownership is
-rejected even when both schemas have the same fingerprint, because two publishers would
-make replay and repair responsibility ambiguous.
+rejected even when both schemas have the same fingerprint. Ownership is also fixed for
+the entire schema identity across versions: one source may publish v1, v2, and later
+contracts, but a second source cannot take over another version of the same
+`(module, entity)` identity. Both rules prevent ambiguous replay and repair authority.
 
 ## Deterministic materialization
 
@@ -46,7 +48,8 @@ All schemas are passed to `SchemaRegistry::register_batch` together. This preser
 A missing or empty catalog returns `None`; it never publishes an empty
 `SharedIndexSchemaRegistry` as a completed query runtime. A non-empty catalog publishes
 one cloneable wrapper around the same immutable `Arc<SchemaRegistry>` through the module
-runtime extensions consumed by executable hosts.
+runtime extensions consumed by executable hosts. Its constructor is private, so callers
+cannot bypass catalog validation with an ad hoc registry.
 
 ## First source publication
 
