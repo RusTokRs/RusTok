@@ -51,12 +51,27 @@ before the schema column is dropped.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CommentsThreadPort` / `comments.thread.v1` in
   `crates/rustok-comments/contracts/comments-fba-registry.json`.
-- Comments FBA registry schema v3 locks the exact verify/test package order,
-  thread-invariant leaf commands, verifier, focused self-test, evidence path,
-  strict classifier unit harness, and the shared owner runtime-order gate.
-- Static and runtime-order evidence:
+- Comments FBA registry schema v4 locks the exact verify/test package order,
+  the provider port-boundary leaf, thread-invariant leaf commands, focused
+  self-tests, evidence paths, strict classifier unit harness, and shared owner
+  runtime-order gate.
+- Provider port source evidence schema v2:
   `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
-  and `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
+  with status `source_verified_no_compile`, compile policy `not_run_by_request`,
+  runtime status `pending`, source-verified `in_process`, and pending
+  `remote_adapter_placeholder`.
+- Provider port source gate:
+  `scripts/verify/verify-comments-port-boundary.mjs` with focused self-test
+  `scripts/verify/verify-comments-port-boundary.test.mjs`. It locks all seven
+  operations, shared read/write policy, typed error mapping, owner-selected
+  comment richtext, tenant-scoped approved-only public reads, and rejects source
+  or runtime promotion of the remote placeholder.
+- Exact provider leaf commands: `verify:comments:port-boundary` and
+  `test:verify:comments:port-boundary`; both are registered in
+  `verify:comments:fba` / `test:verify:comments:fba` before thread invariants.
+- Runtime-order evidence:
+  `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
+  Its executable source ordering remains uncompiled and unexecuted.
 - Thread write invariant evidence schema v3:
   `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
   with status `executable_no_run`.
@@ -71,10 +86,9 @@ before the schema column is dropped.
   `#[cfg(test)] mod thread_insert_error_tests;` in the entities module. It records
   exact-scope acceptance, malformed-owner rejection, wrong-scope rejection, and
   unrelated `DbErr` preservation as database failure. It is written but not run.
-- Exact leaf commands: `verify:comments:thread-write-invariants` and
-  `test:verify:comments:thread-write-invariants`; both are registered in
-  `verify:comments:fba` / `test:verify:comments:fba` before the shared owner
-  runtime-order gate.
+- Exact thread leaf commands: `verify:comments:thread-write-invariants` and
+  `test:verify:comments:thread-write-invariants`; both run after the provider leaf
+  and before the shared owner runtime-order gate.
 - Executable targets:
   `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`,
   `crates/rustok-comments/tests/thread_write_invariants.rs`, and
@@ -86,6 +100,9 @@ before the schema column is dropped.
   projection is implemented statically under
   `DECISIONS/2026-07-16-comments-blog-event-projection.md`; runtime delivery,
   retry, and recovery evidence remain open.
+- The remote adapter remains pending. Consumer degraded modes
+  `hide_comment_form` and `show_cached_thread_snapshot` remain planned; this
+  source-only slice does not claim fallback UI implementation.
 
 ## 2026-07-30 source continuation audit
 
@@ -112,6 +129,16 @@ suffix, adds and registers `thread_insert_error_tests`, upgrades registry and
 evidence to schema v3, and adds focused regressions for prefix-only parsing,
 missing test source, and missing test-module registration. No unit test, verifier,
 compile, database, workflow, or CI execution is recorded.
+
+The continuation audit at `7082e47699c7ec3c81d786d26fbea8c57800bc1b`
+found that the implemented `InProcessCommentsThreadProvider`, all seven operations,
+shared policy checks, typed error mapper, typed richtext DTOs, and approved-only
+public projection were still represented by a schema-v1 matrix and registry status
+`planned_cases_locked`. Slice 14 splits source-verified `in_process` from the
+pending remote placeholder, promotes only source metadata, adds a dedicated
+fail-closed verifier and focused fixture, upgrades registry schema v4, and registers
+exact provider leaf commands. No verifier, self-test, Rust test, compile, database,
+workflow, browser, or CI execution is recorded.
 
 ## Completed implementation slices
 
@@ -149,6 +176,11 @@ compile, database, workflow, or CI execution is recorded.
     a valid canonical thread UUID, added and registered a four-case Rust unit
     harness, upgraded registry/evidence schema v3, and retained the harness in the
     existing FBA leaf.
+14. Promoted the implemented in-process `CommentsThreadPort` source boundary from
+    `planned_cases_locked`, split the pending remote adapter, added a focused
+    provider verifier/self-test and exact npm leaf commands, upgraded registry
+    schema v4 and provider matrix schema v2, and retained all runtime/fallback
+    evidence as pending.
 
 ## Open results
 
@@ -171,8 +203,14 @@ compile, database, workflow, or CI execution is recorded.
    `comment.created` and `comment.deleted` idempotently, publish the Blog-owned
    update event in the projection transaction, and prove retry/degraded behavior.
 
-4. **Execute CommentsThreadPort runtime and consumer evidence.** Cover read/write
-   policy, idempotency, typed errors, fallback profiles, and Blog compatibility.
+4. **Execute CommentsThreadPort runtime and remote-profile evidence.** The
+   `in_process` source profile, seven operations, owner policy calls, typed error
+   mapping, typed richtext, and approved-only public read are source-verified. Run
+   the provider leaf, shared owner runtime-order verifier, consumer compatibility,
+   and real calls; implement and cover the remote adapter separately.
+   **Done when:** retained execution proves read/write policy, idempotency,
+   deadlines, typed errors, pagination, public visibility, remote parity, and Blog
+   compatibility without promoting planned fallback UI.
 
 5. **Extend moderation and opt-in integrations through comment ownership.**
    Add a new commentable surface only with explicit target binding, moderation,
@@ -206,6 +244,8 @@ compile, database, workflow, or CI execution is recorded.
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
+- `npm run verify:comments:port-boundary`
+- `npm run test:verify:comments:port-boundary`
 - `npm run verify:comments:thread-write-invariants`
 - `npm run test:verify:comments:thread-write-invariants`
 - `npm run verify:comments:fba`
@@ -234,5 +274,8 @@ should run the relevant subset, including:
 5. Keep the owner-classified identity marker scoped to tenant and target, require
    exactly one valid canonical thread UUID suffix, and never restore prefix-only or
    broad insert-error fallback.
-6. Keep migrations append-only and preserve both database uniqueness invariants.
-7. Update local/central contracts when the Comments boundary changes.
+6. Keep the source-verified provider profile limited to `in_process` until a remote
+   adapter exists and retains equivalent policy, error, richtext, and public-read
+   evidence.
+7. Keep migrations append-only and preserve both database uniqueness invariants.
+8. Update local/central contracts when the Comments boundary changes.
