@@ -52,7 +52,9 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
                 "Forum Search category scope requires a tenant",
             ));
         }
-        if request.source_modules.as_slice() != [FORUM_SEARCH_SOURCE_MODULE] {
+        if request.source_modules.len() != 1
+            || request.source_modules[0] != FORUM_SEARCH_SOURCE_MODULE
+        {
             return Err(PortError::validation(
                 "forum.search_category_scope.forum_only_required",
                 "Forum category expansion requires an explicit Forum-only source scope",
