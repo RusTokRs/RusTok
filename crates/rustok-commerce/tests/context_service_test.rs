@@ -75,6 +75,30 @@ async fn resolve_context_uses_tenant_locales_and_region_currency() {
 }
 
 #[tokio::test]
+async fn resolve_context_uses_owner_canonical_locale_tags() {
+    let (db, service, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    insert_tenant_locale(&db, tenant_id, "pt-BR", "Portuguese", "Português", false).await;
+
+    let resolved = service
+        .resolve_context(
+            tenant_id,
+            ResolveStoreContextInput {
+                region_id: None,
+                country_code: None,
+                locale: Some("pt_br".to_string()),
+                currency_code: None,
+            },
+        )
+        .await
+        .expect("canonical tenant locale should resolve");
+
+    assert_eq!(resolved.locale, "pt-BR");
+    assert!(resolved.available_locales.contains(&"pt-BR".to_string()));
+}
+
+#[tokio::test]
 async fn resolve_context_rejects_currency_mismatch_for_region() {
     let (db, service, regions) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -183,24 +207,43 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
         ("en", "English", "English", true),
         ("de", "German", "Deutsch", false),
     ] {
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-            vec![
-                Uuid::new_v4().into(),
-                tenant_id.into(),
-                locale.into(),
-                name.into(),
-                native_name.into(),
-                is_default.into(),
-                true.into(),
-                sea_orm::Value::String(None),
-            ],
-        ))
-        .await
-        .unwrap();
+        insert_tenant_locale(
+            db,
+            tenant_id,
+            locale,
+            name,
+            native_name,
+            is_default,
+        )
+        .await;
     }
+}
+
+async fn insert_tenant_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    locale: &str,
+    name: &str,
+    native_name: &str,
+    is_default: bool,
+) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, policy_revision, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            locale.into(),
+            name.into(),
+            native_name.into(),
+            is_default.into(),
+            true.into(),
+            sea_orm::Value::String(None),
+        ],
+    ))
+    .await
+    .unwrap();
 }
 
 async fn disable_tenant_locale(db: &DatabaseConnection, tenant_id: Uuid, locale: &str) {
