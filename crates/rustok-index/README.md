@@ -19,8 +19,8 @@ a rewrite goal.
 - Validate and plan cross-module queries.
 - Compile projection, filtering, sorting, count, and pagination to Index storage
   queries.
-- Execute compiled queries through an Index-owned PostgreSQL port.
-- Publish stable query, source, rebuild, and operator contracts.
+- Execute compiled queries through Index-owned PostgreSQL ports.
+- Publish stable query, source, rebuild, replay-runtime, and operator contracts.
 - Keep product-facing relevance and ranking in `rustok-search`.
 
 ## Boundaries
@@ -36,10 +36,12 @@ a rewrite goal.
 - The selected JSONB regression DDL lives under `ops/benches`; it is not a
   production migration or runtime storage contract. Historical three-candidate
   evidence is archived under `docs/evidence/`.
+- Replay runtime composition does not create a scheduler, background task, or
+  transport authorization surface.
 
 ## Rewrite status
 
-- Current milestone: `M6 - fenced replay job ownership`
+- Current milestone: `M6 - replay runtime host composition and operator guard`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: complete
@@ -63,8 +65,11 @@ a rewrite goal.
 - M5/M6 bounded source registry and replay/load contracts: source complete
 - M6 one-page replay and durable checkpoint progression: source complete
 - M6 replay job leases and checkpoint attempt fencing: source complete, owner execution pending
+- M6 bounded multi-page replay and cancellation: source complete, owner execution pending
+- M6 replay runtime host composition and operator guard: source complete
 - Real retained PostgreSQL packet execution: open
-- Bounded multi-page replay, cancellation, retry scheduling, and Product adapters: open
+- In-page interruption, retry/dead-letter scheduling, host scheduler, command transports,
+  and Product adapters: open
 - Query-port authorization/consumer cutover and live equivalence evidence: open
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
@@ -104,8 +109,31 @@ work with an incremented attempt fence, and rejects stale terminal updates.
 `(job_id, worker_id, attempt_count)` first. A stale worker may finish an already-started
 idempotent mutation transaction, but it cannot advance the durable cursor. Successful
 job completion requires an active lease and the exact durable rebuild checkpoint with a
-JSON null cursor. A scheduler, bounded multi-page loop, cancellation, backoff/dead-letter
-policy, locale/partition replay dimensions, and production source adapters remain open.
+JSON null cursor.
+
+`PostgresIndexReplayRunner` resolves source ownership from `SharedIndexSourceRegistry`,
+processes at most the validated 1024-page invocation budget, heartbeats only between
+pages, yields unfinished work to an immediately claimable pending attempt, and observes
+durable cancellation before and after page execution. A cancellation committed first
+cannot be overwritten by success, failure, or yield.
+
+The server freezes `SharedIndexSourceRegistry` after all selected modules register sources
+and calls the Index-owned `materialize_postgres_index_replay_runtime`. This binds the exact
+immutable schema and source registries to the host database and publishes
+`SharedIndexReplayRuntime` through `ModuleRuntimeExtensions`. Composition performs no SQL
+and starts no task.
+
+The raw runtime is then wrapped by the server-owned `IndexReplayOperatorRuntime`. It
+requires a request-bound effective permission snapshot for an exact non-nil tenant/actor,
+rejects cross-tenant invocation, requires `modules:manage`, and exposes only bounded
+`run` and `request_cancel`. Future GraphQL, HTTP, CLI, or admin transports must consume this
+guarded operator runtime rather than the raw infrastructure capability.
+
+Runtime presence does not claim persisted tenant schema readiness, source availability,
+automatic retry, scheduler ownership, graceful shutdown, command authorization, successful
+replay, or retained PostgreSQL evidence. In-page interruption, retry/backoff/dead-letter
+policy, a global host scheduler and stop-handle ownership, locale/partition replay
+dimensions, production source adapters, and retained multi-instance evidence remain open.
 
 The module-owned migration source creates:
 
@@ -193,8 +221,8 @@ readiness; execution still fails closed through the query-port preflight.
 `IndexSourceCatalog` separately fixes one replay source for each exact schema and the
 complete schema identity across versions. Materialization requires the corresponding
 owner-published schema and exact owner match. The application replay boundary remains
-database independent; PostgreSQL mutation, job, and checkpoint adapters are composed
-outside it.
+database independent; PostgreSQL mutation, job, checkpoint, runner, and host runtime
+adapters are composed outside it.
 
 ## Current entry points
 
@@ -209,6 +237,12 @@ outside it.
   `IndexReplayJobLease`, and `IndexReplayJobAcquireOutcome`
 - `PostgresIndexReplayCheckpointStore`, `IndexReplayWorker`,
   `IndexReplayCheckpoint`, and `IndexReplayPageOutcome`
+- `PostgresIndexReplayRunner`, `IndexReplayRunRequest`, `IndexReplayRunOutcome`,
+  `IndexReplayCancelOutcome`, and `IndexReplayRunError`
+- `SharedIndexReplayRuntime`, `materialize_postgres_index_replay_runtime`, and
+  `IndexReplayRuntimeCompositionError`
+- server-owned `IndexReplayOperatorRuntime`, `IndexReplayOperatorContext`, and
+  `IndexReplayOperatorError`
 - `IndexSource`, `IndexSourceCatalog`, `SharedIndexSourceRegistry`,
   `IndexSourceScanRequest`, and `IndexSourceLoadRequest`
 - `SecondaryIndexPlan`, `SecondaryIndexSpec`, `SecondaryIndexRequest`,
@@ -268,8 +302,12 @@ outside it.
   duplicate-safe replay after checkpoint failure;
 - durable schema-scoped rebuild exclusion, lease heartbeat, expired-attempt reclaim,
   attempt fencing, stale checkpoint-writer rejection, and null-cursor-gated success;
+- bounded multi-page execution, immediate resume, durable cancellation, and
+  cancellation-first terminal ordering;
 - one Index-owned PostgreSQL query-runtime constructor and neutral capability transfer
-  into `HostRuntimeContext`.
+  into `HostRuntimeContext`;
+- one Index-owned replay-runtime constructor plus a server-owned request-bound
+  `modules:manage` operator guard, with no startup SQL or background task.
 
 ## M2 benchmark
 
@@ -290,6 +328,8 @@ DDL remains benchmark-only and must not be copied into production migrations.
 - [Live implementation plan](./docs/implementation-plan.md)
 - [M5/M6 bounded source replay contract](./docs/m5-m6-source-replay-contract.md)
 - [M6 replay job lease and fencing boundary](./docs/m6-replay-job-leases.md)
+- [M6 bounded multi-page replay runner](./docs/m6-bounded-multipage-runner.md)
+- [M6 replay runtime host composition](./docs/m6-replay-runtime-composition.md)
 - [M4 source-owned schema registry](./docs/m4-source-schema-registry.md)
 - [M4 query runtime composition](./docs/m4-query-runtime-composition.md)
 - [M4 PostgreSQL query port contract](./docs/m4-postgres-query-port.md)

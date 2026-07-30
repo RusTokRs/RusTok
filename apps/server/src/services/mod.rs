@@ -63,6 +63,7 @@ pub mod forum_search_inbox_worker;
 pub mod graphql_schema;
 pub mod iggy_connector_control_adapter;
 pub mod iggy_connector_settings_service;
+pub mod index_replay_runtime_composition;
 pub mod marketplace_catalog;
 pub mod marketplace_catalog_adapter;
 pub mod marketplace_catalog_cache;
@@ -92,7 +93,8 @@ pub mod module_event_dispatcher {
     };
 
     /// Adds host-owned adapters after module/distribution registration, materializes the
-    /// canonical Index query runtime, and then activates selected non-authoritative shadows.
+    /// canonical Index query and replay runtimes, and then activates selected
+    /// non-authoritative shadows.
     pub fn build_shared_runtime_extensions_with_host_providers(
         registry: &ModuleRegistry,
         settings: &RustokSettings,
@@ -109,6 +111,10 @@ pub mod module_event_dispatcher {
         let mut extensions = base.as_ref().clone();
         rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone()).map_err(
             |error| Error::Message(format!("Index query runtime composition failed: {error}")),
+        )?;
+        super::index_replay_runtime_composition::materialize_index_replay_runtime(
+            &mut extensions,
+            db.clone(),
         )?;
 
         #[cfg(all(
@@ -148,7 +154,10 @@ pub mod module_event_dispatcher {
     #[cfg(all(test, feature = "mod-social_graph"))]
     mod tests {
         use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
-        use rustok_index::{IndexModule, SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
+        use rustok_index::{
+            IndexModule, SharedIndexQueryRuntime, SharedIndexReplayRuntime,
+            SharedIndexSchemaRegistry,
+        };
         use sea_orm::Database;
 
         use super::build_shared_runtime_extensions_with_host_providers;
@@ -177,10 +186,12 @@ pub mod module_event_dispatcher {
 
             assert!(extensions.contains::<SharedIndexSchemaRegistry>());
             assert!(extensions.contains::<SharedIndexQueryRuntime>());
+            assert!(!extensions.contains::<SharedIndexReplayRuntime>());
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
             assert!(extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>());
             let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
             assert!(host.shared_get::<SharedIndexQueryRuntime>().is_some());
+            assert!(host.shared_get::<SharedIndexReplayRuntime>().is_none());
         }
 
         #[test]
@@ -258,6 +269,3 @@ pub mod user_admin_guard;
 pub mod user_field_service;
 
 pub mod field_definition_cache;
-pub mod field_definition_registry_bootstrap;
-pub mod flex_attached_values;
-pub mod flex_standalone_service;

@@ -5,10 +5,10 @@
 //! storage-schema migrations, atomic mutation persistence, tenant-scoped source
 //! schema registration, bounded source replay/load contracts, one-page replay
 //! orchestration with durable fenced checkpoint progression, bounded multi-page
-//! replay coordination with heartbeat/yield/cancellation semantics, durable
-//! replay-job and schema-application leases, schema-derived secondary-index
-//! lifecycle, fail-closed measured partition admission, and the PostgreSQL
-//! execution adapter for structured Index queries.
+//! replay coordination with heartbeat/yield/cancellation semantics, host-published
+//! replay and query capabilities, durable replay-job and schema-application leases,
+//! schema-derived secondary-index lifecycle, fail-closed measured partition
+//! admission, and the PostgreSQL execution adapter for structured Index queries.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -26,9 +26,10 @@ pub use application::*;
 pub use domain::*;
 pub use infrastructure::postgres::{
     evaluate_partition_admission, materialize_postgres_index_query_runtime,
-    IndexQueryRuntimeCompositionError, IndexReplayCancelOutcome, IndexReplayJobAcquireOutcome,
-    IndexReplayJobError, IndexReplayJobLease, IndexReplayJobLeaseRequest, IndexReplayRunError,
-    IndexReplayRunOutcome, IndexReplayRunRequest, IndexReplayRunStatus,
+    materialize_postgres_index_replay_runtime, IndexQueryRuntimeCompositionError,
+    IndexReplayCancelOutcome, IndexReplayJobAcquireOutcome, IndexReplayJobError,
+    IndexReplayJobLease, IndexReplayJobLeaseRequest, IndexReplayRunError, IndexReplayRunOutcome,
+    IndexReplayRunRequest, IndexReplayRunStatus, IndexReplayRuntimeCompositionError,
     IndexReplayTerminalState, MutationApplyOutcome, MutationDelivery, MutationStorageError,
     PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
     PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
@@ -41,6 +42,7 @@ pub use infrastructure::postgres::{
     SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
+    SharedIndexReplayRuntime,
 };
 
 pub struct IndexModule;
