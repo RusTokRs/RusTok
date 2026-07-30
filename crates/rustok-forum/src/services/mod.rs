@@ -86,6 +86,7 @@ mod reply_owner {
     include!("reply_owner_inline.rs");
 }
 pub mod revision;
+mod search_result_eligibility;
 pub mod storefront_read_state {
     include!("storefront_read_state.rs");
     include!("storefront_read_state_bulk.rs");
@@ -195,6 +196,10 @@ pub use reply_create_audience_authorization::{
 };
 pub use reply_facade::ReplyService;
 pub use revision::RevisionService;
+pub use search_result_eligibility::{
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
+    ForumSearchResultEligibilityService, MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES,
+};
 pub use storefront_read_state::{
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicUnreadSummary,
