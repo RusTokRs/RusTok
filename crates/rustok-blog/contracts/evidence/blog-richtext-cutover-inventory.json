@@ -149,7 +149,28 @@
     },
     {
       "name": "ai_blog_draft_writer",
-      "status": "legacy_blocker",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-ai/src/rustok_blog.rs",
+      "required_markers": [
+        "rustok_blog_owner::richtext::article_document_from_plain_text",
+        "input.body.clear();",
+        "input.body_format = \"richtext\".to_string();",
+        "input.body = None;",
+        "input.body_format = None;",
+        "post.content_plain_text.clone()",
+        "post.body = plain_text;",
+        "create_input_reaches_owner_as_canonical_article_content",
+        "update_input_removes_legacy_writer_fields_before_owner_call"
+      ],
+      "forbidden_markers": [
+        "CONTENT_FORMAT_MARKDOWN",
+        "input.content = None",
+        "input.content_json = Some"
+      ]
+    },
+    {
+      "name": "ai_blog_draft_direct_compatibility",
+      "status": "contained_compatibility",
       "path": "crates/rustok-ai/src/direct.rs",
       "required_markers": [
         "body_format: Some(CONTENT_FORMAT_MARKDOWN.to_string())",
@@ -160,8 +181,7 @@
     }
   ],
   "blocking_surfaces": [
-    "storage_schema",
-    "ai_blog_draft_writer"
+    "storage_schema"
   ],
   "completion_conditions": [
     "storage_schema_uses_canonical_document_and_server_plain_text",
