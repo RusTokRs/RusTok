@@ -6,10 +6,9 @@
     "crates/rustok-payment/src/checkout_compensation_api.rs",
     "crates/rustok-payment/src/lib.rs",
     "crates/rustok-payment/docs/checkout-compensation-local-context.md",
-    "crates/rustok-payment/docs/checkout-execution-local-context.md",
     "crates/rustok-payment/docs/implementation-plan.md",
-    "scripts/verify/verify-payment-checkout-compensation-local-context.mjs",
-    "scripts/verify/verify-payment-checkout-execution-local-context.mjs"
+    "scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs",
+    "scripts/verify/verify-payment-checkout-compensation-local-context.mjs"
   ],
   "review_findings": {
     "public_wrapper_construction_preserved": true,
@@ -17,13 +16,19 @@
     "stable_code_only_classifier_present": true,
     "message_pair_classifier_removed_from_wrapper": true,
     "same_port_error_returned": true,
+    "complete_port_error_logging_removed": true,
+    "port_error_message_text_logging_removed": true,
+    "static_error_kind_logged": true,
+    "error_message_shape_logged": true,
     "safe_context_shape_only": true,
     "safe_request_shape_only": true,
     "raw_identifier_logging_removed_from_wrapper": true,
+    "severity_classification_preserved": true,
+    "local_operation_mapping_preserved": true,
     "provider_cancel_and_replay_policy_preserved": true,
     "persistent_owner_source_unchanged": true,
     "persistent_owner_diagnostic_cleanup_complete": false,
-    "execution_guard_aligned_with_current_wrapper": true,
+    "focused_wrapper_guard_added": true,
     "broad_commerce_cleanup_remains_open": true,
     "runtime_evidence_claimed": false
   },
