@@ -6,6 +6,7 @@ use super::{ApiError, configured_tenant_slug};
 
 const FORUM_STOREFRONT_SEARCH_QUERY: &str = "query ForumStorefrontSearch($input: SearchPreviewInput!) { forumStorefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY: &str = "query ForumStorefrontSearchByAuthors($input: SearchPreviewInput!, $authorIds: [String!]!) { forumStorefrontSearch(input: $input, authorIds: $authorIds) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+const FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY: &str = "query ForumStorefrontSearchByFilters($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 
 #[derive(Debug, Deserialize)]
 struct ForumStorefrontSearchResponse {
@@ -23,6 +24,15 @@ struct AuthorSearchPreviewVariables {
     input: SearchPreviewInput,
     #[serde(rename = "authorIds")]
     author_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct FilterSearchPreviewVariables {
+    input: SearchPreviewInput,
+    #[serde(rename = "authorIds")]
+    author_ids: Option<Vec<String>>,
+    tags: Option<Vec<String>>,
+    solved: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -95,6 +105,37 @@ pub async fn fetch_search_with_authors(
         GraphqlRequest::new(
             FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY,
             Some(AuthorSearchPreviewVariables { input, author_ids }),
+        ),
+        None,
+        configured_tenant_slug(),
+        None,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))?;
+
+    Ok(response.forum_storefront_search)
+}
+
+pub async fn fetch_search_with_filters(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    let input = search_preview_input(query, locale, preset_key, filters);
+    let response: ForumStorefrontSearchResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY,
+            Some(FilterSearchPreviewVariables {
+                input,
+                author_ids: (!author_ids.is_empty()).then_some(author_ids),
+                tags: (!tags.is_empty()).then_some(tags),
+                solved,
+            }),
         ),
         None,
         configured_tenant_slug(),
