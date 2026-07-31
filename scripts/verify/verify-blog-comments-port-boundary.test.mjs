@@ -190,7 +190,7 @@ Comments took too long to load. The article is still available.
     root,
     fallbackEvidencePath,
     JSON.stringify({
-      schema_version: 3,
+      schema_version: 2,
       module: 'blog',
       role: 'consumer',
       provider: 'comments',
