@@ -9,6 +9,7 @@
 - `pub use crate::{EventSchema, FieldSchema, EventValidationError, ValidateEvent}`
 - `pub use crate::{EventContract, ContractEventPayload, ContractEventEnvelope, EventContractEnvelopeError}`
 - `pub use crate::{ForumMentionEvent, FORUM_MENTION_EVENT_SCHEMAS}`
+- `pub use crate::{ForumSearchProjectionEvent, FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS}`
 - `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
@@ -32,6 +33,11 @@
 - Established root events use `DomainEvent`/`EventEnvelope`.
 - Bounded event families use sealed `EventContract` implementations and `ContractEventEnvelope`.
 - `ForumMentionEvent` defines v1 `forum.mention.user_added` and `forum.mention.audience_added` with source revision and target identity only.
+- `ForumSearchProjectionEvent` defines v1
+  `forum.search_projection.invalidation_issued` with a positive Forum owner
+  revision, one bounded projection target type, and a target identity only when
+  the scope is a category or topic. The exact legacy root envelope identity is
+  carried in typed-envelope `causation_id`, not in the payload.
 - `SocialGraphRelationEvent` defines v1 `social_graph.relation.state_changed`
   as an authoritative fact for one persisted relation revision, with relation id,
   source/target user ids, canonical kind, active state, and revision only. Tenant
@@ -56,6 +62,10 @@
 - Stores bounded-family payloads as untyped `serde_json::Value` instead of adding one typed `ContractEventPayload` family variant.
 - Copies causal identity into the event payload instead of using envelope `causation_id`.
 - Uses a nil, reconstructed, or unrelated UUID as a causal predecessor.
+- Publishes the Forum Search typed invalidation without the legacy root envelope
+  or records the typed envelope id in the Forum owner ledger.
+- Adds locale, channel, visibility, rendered content, document payload, reason,
+  claims, roles, or Search `ingest_sequence` to the Forum Search invalidation payload.
 - Adds contact data, source body or profile handle snapshots to Forum mention events instead of stable identities.
 - Adds idempotency keys, expected revisions, request context, claims, roles, locale,
   channel, or receipt snapshots to Social Graph relation events.
@@ -86,6 +96,11 @@
 - Root envelope trace identifiers must be non-empty and at most 512 bytes.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
 - Forum mention events expose source revision and resolved user/audience identity only; contact and rendered content remain owner-private.
+- Forum Search projection invalidations require `owner_revision >= 1`, accept
+  only `forum|forum_category|forum_topic`, require `target_id = null` for
+  `forum`, and require a non-nil `target_id` for category/topic scope.
+- Forum owner revision and Search-owned `ingest_sequence` remain independent
+  counters and must never be compared numerically.
 - Social Graph relation events accept only non-nil distinct source/target ids,
   canonical `block|mute|follow` kind, and a positive monotonic revision.
 - A Social Graph consumer applies by relation id plus monotonic revision, ignores
@@ -100,6 +115,9 @@
 
 ### Events / Outbox Side Effects
 - Owner modules publish sealed contracts through `TransactionalEventBus::publish_contract_in_tx` inside the owner transaction.
+- Forum dual publication writes the legacy root first, publishes the typed
+  contract caused by that exact root id, and retains the root id as owner-ledger
+  and downstream projection identity.
 - Root and bounded-family envelopes remain distinct typed transport profiles.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
 - The current release train permits only schema version 1. A versioned migration
