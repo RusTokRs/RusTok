@@ -15,6 +15,7 @@ const paths = {
   migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
   owner: "crates/rustok-forum/src/services/projection_invalidation.rs",
   outbox: "crates/rustok-outbox/src/transactional.rs",
+  outboxApi: "crates/rustok-outbox/CRATE_API.md",
   legacyContract: "crates/rustok-forum/contracts/forum-projection-invalidation.json",
   searchIngestion: "crates/rustok-search/src/ingestion.rs",
   forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
@@ -73,6 +74,7 @@ const migration = read(paths.migration);
 const migrationRegistry = read(paths.migrationRegistry);
 const owner = read(paths.owner);
 const outbox = read(paths.outbox);
+const outboxApi = read(paths.outboxApi);
 const legacyContract = read(paths.legacyContract);
 const searchIngestion = read(paths.searchIngestion);
 const forumPlan = read(paths.forumPlan);
@@ -124,6 +126,15 @@ requireOrdered(
     "pub async fn publish_root_in_tx_with_envelope_id<C>",
   ],
   `${paths.outbox} compatibility delegation`,
+);
+requireAll(
+  outboxApi,
+  [
+    "TransactionalEventBus::publish_root_in_tx_with_envelope_id",
+    "the exact root envelope",
+    "do not publish a second envelope",
+  ],
+  paths.outboxApi,
 );
 
 requireAll(
@@ -233,6 +244,12 @@ if (contract) {
   }
   if (contract.compatibility?.new_sealed_event_family_added !== false) {
     failures.push(`${paths.contract}: G2A must not claim the G2B wire family`);
+  }
+  if (contract.compatibility?.existing_public_api_signature_changed !== false) {
+    failures.push(`${paths.contract}: existing public signature compatibility drift`);
+  }
+  if (contract.compatibility?.additive_outbox_envelope_identity_api_added !== true) {
+    failures.push(`${paths.contract}: additive outbox identity API is not recorded`);
   }
   if (contract.canonical_plan_boundary?.forum_23_status_changed !== false) {
     failures.push(`${paths.contract}: canonical milestone status must remain unchanged`);
