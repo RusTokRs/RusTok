@@ -38,6 +38,7 @@
     "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
     "comments_event_projection": "crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json",
     "comments_duplicate_delivery_race": "crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json",
+    "comments_dispatcher_duplicate_delivery": "crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json",
     "richtext_cutover_inventory": "crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json",
     "richtext_cutover_inventory_doc": "crates/rustok-blog/docs/richtext-cutover-inventory.md",
     "category_search_reindex": "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json",
@@ -60,6 +61,7 @@
       "npm run test:verify:blog:comments-port-boundary",
       "npm run test:verify:blog:comments-event-projection",
       "npm run test:verify:blog:comments-duplicate-delivery-race",
+      "npm run test:verify:blog:comments-dispatcher-duplicate-delivery",
       "npm run test:verify:blog:category-search-reindex",
       "npm run test:verify:blog:graphql-rate-limit",
       "npm run test:verify:blog:graphql-richtext-boundary",
@@ -79,6 +81,7 @@
       "npm run verify:blog:comments-port-boundary",
       "npm run verify:blog:comments-event-projection",
       "npm run verify:blog:comments-duplicate-delivery-race",
+      "npm run verify:blog:comments-dispatcher-duplicate-delivery",
       "npm run verify:blog:category-search-reindex",
       "npm run verify:blog:graphql-rate-limit",
       "npm run verify:blog:graphql-richtext-boundary",
@@ -126,6 +129,14 @@
         "self_test": "scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs",
         "postgres_test": "crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
+      },
+      "comments_dispatcher_duplicate_delivery": {
+        "package_script": "verify:blog:comments-dispatcher-duplicate-delivery",
+        "test_package_script": "test:verify:blog:comments-dispatcher-duplicate-delivery",
+        "verifier": "scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.mjs",
+        "self_test": "scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.test.mjs",
+        "postgres_test": "crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
+        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
       },
       "category_search_reindex": {
         "package_script": "verify:blog:category-search-reindex",
@@ -201,6 +212,14 @@
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
       "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact",
       "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
+    },
+    "dispatcher_duplicate_delivery_harness": {
+      "path": "crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
+      "status": "executable_no_run",
+      "runtime_status": "not_run",
+      "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
     },
     "restart_harness": {
       "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
