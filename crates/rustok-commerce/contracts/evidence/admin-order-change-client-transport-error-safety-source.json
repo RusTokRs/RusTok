@@ -20,7 +20,11 @@
     "context_created_before_native_call": true,
     "raw_native_error_public": false,
     "static_public_message": true,
-    "original_error_logged_privately": true,
+    "original_error_logged_privately": false,
+    "original_error_shape_logged": true,
+    "error_variant_logged": true,
+    "error_message_length_only": true,
+    "raw_native_error_logged": false,
     "per_call_correlation_logging": true,
     "safe_request_shape_only": true,
     "token_values_logged": false,
@@ -44,6 +48,7 @@
   "notes": [
     "The GraphQL branches retain their existing correlation-aware map_graphql_error policy.",
     "Only final native ApiError results are remapped at the public order-change facade.",
+    "Private client diagnostics retain only ApiError variant and message presence or character length.",
     "The shared default and SSR native adapters remain unchanged.",
     "No FFA or FBA status is promoted from source inspection."
   ]

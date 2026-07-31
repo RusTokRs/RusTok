@@ -23,7 +23,10 @@ const requireCount = (source, value, expected, label) => {
 };
 
 function functionBody(source, functionName) {
-  const match = new RegExp(`pub\\s+async\\s+fn\\s+${functionName}\\s*\\(`).exec(source);
+  const signature = new RegExp(
+    `(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${functionName}(?:<[^>]*>)?\\s*\\(`,
+  );
+  const match = signature.exec(source);
   if (!match) {
     failures.push(`missing function ${functionName}`);
     return "";
@@ -153,11 +156,18 @@ for (const marker of [
   'const COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_BOUNDARY: &str =',
   '"commerce_admin_order_change_client_transport"',
   '"Commerce admin order-change request could not be completed"',
+  "struct OrderChangeClientErrorFacts",
+  "error_variant: &'static str",
+  "message_present: bool",
+  "message_length: usize",
   "pub(super) struct OrderChangeClientErrorContext",
   'operation: "fetch_order_changes"',
   'Self::for_write(\n            "apply_order_change"',
   'Self::for_write(\n            "cancel_order_change"',
-  "raw_error = ?error",
+  "let error_facts = order_change_client_error_facts(&error);",
+  "error_variant = error_facts.error_variant",
+  "error_message_present = error_facts.message_present",
+  "error_message_length = error_facts.message_length",
   "owner_operation = self.operation",
   "correlation_id = %self.correlation_id",
   "token_present = self.token_present",
@@ -170,8 +180,26 @@ for (const marker of [
   'code = "commerce.admin_order_change_client_transport_failed"',
   "boundary = COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_BOUNDARY",
   "ApiError::ServerFn(COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_PUBLIC_MESSAGE.to_string())",
+  "fn order_change_client_error_facts(error: &ApiError)",
+  'ApiError::Graphql(message) => ("graphql", message)',
+  'ApiError::ServerFn(message) => ("server_fn", message)',
+  "message_present: !message.trim().is_empty()",
+  "message_length: message.chars().count()",
 ]) {
   requireText(safety, marker, `${paths.safety}: safe final mapping`);
+}
+
+const mapperBody = functionBody(safety, "map_error");
+for (const forbidden of [
+  "raw_error = ?error",
+  "raw_error = %error",
+  "error = ?error",
+  "error = %error",
+  "message = %error",
+  "message = ?error",
+  "error.to_string()",
+]) {
+  forbidText(mapperBody, forbidden, `${paths.safety}: complete error diagnostics`);
 }
 
 for (const forbidden of [
@@ -189,9 +217,8 @@ for (const forbidden of [
   "status = ?",
   "draft = ?",
   "payload = ?",
-  "error.to_string()",
 ]) {
-  forbidText(safety, forbidden, `${paths.safety}: raw request or error text`);
+  forbidText(safety, forbidden, `${paths.safety}: raw request value`);
 }
 
 for (const source of [native, nativeSsr]) {
@@ -224,7 +251,7 @@ for (const endpoint of [
 }
 requireText(
   nativeGuard,
-  "Commerce admin order-change native error-safety source invariants passed",
+  "Commerce admin order-change native diagnostics use correlation-safe shape only",
   `${paths.nativeGuard}: prior server-side guard remains registered`,
 );
 
@@ -252,7 +279,11 @@ for (const [key, expected] of Object.entries({
   context_created_before_native_call: true,
   raw_native_error_public: false,
   static_public_message: true,
-  original_error_logged_privately: true,
+  original_error_logged_privately: false,
+  original_error_shape_logged: true,
+  error_variant_logged: true,
+  error_message_length_only: true,
+  raw_native_error_logged: false,
   per_call_correlation_logging: true,
   safe_request_shape_only: true,
   token_values_logged: false,
@@ -290,6 +321,11 @@ requireText(
   `${paths.doc}: static public message`,
 );
 requireText(
+  doc,
+  "complete `ApiError` is not logged",
+  `${paths.doc}: private diagnostic policy`,
+);
+requireText(
   commercePlan,
   "Finish correlation-safe mapper cleanup",
   `${paths.commercePlan}: broad ecommerce cleanup remains open`,
@@ -302,5 +338,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Commerce Admin order-change native failures use a correlation-safe static final envelope across three operations; execution evidence remains open",
+  "Commerce Admin order-change client diagnostics retain only ApiError variant and message shape; execution evidence remains open",
 );

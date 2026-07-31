@@ -9,6 +9,12 @@ const COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_BOUNDARY: &str =
 const COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_PUBLIC_MESSAGE: &str =
     "Commerce admin order-change request could not be completed";
 
+struct OrderChangeClientErrorFacts {
+    error_variant: &'static str,
+    message_present: bool,
+    message_length: usize,
+}
+
 pub(super) struct OrderChangeClientErrorContext {
     operation: &'static str,
     correlation_id: String,
@@ -93,8 +99,11 @@ impl OrderChangeClientErrorContext {
     }
 
     pub(super) fn map_error(&self, error: ApiError) -> ApiError {
+        let error_facts = order_change_client_error_facts(&error);
         tracing::error!(
-            raw_error = ?error,
+            error_variant = error_facts.error_variant,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
             owner = COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_OWNER,
             owner_operation = self.operation,
             correlation_id = %self.correlation_id,
@@ -116,6 +125,19 @@ impl OrderChangeClientErrorContext {
         );
 
         ApiError::ServerFn(COMMERCE_ADMIN_ORDER_CHANGE_CLIENT_PUBLIC_MESSAGE.to_string())
+    }
+}
+
+fn order_change_client_error_facts(error: &ApiError) -> OrderChangeClientErrorFacts {
+    let (error_variant, message) = match error {
+        ApiError::Graphql(message) => ("graphql", message),
+        ApiError::ServerFn(message) => ("server_fn", message),
+    };
+
+    OrderChangeClientErrorFacts {
+        error_variant,
+        message_present: !message.trim().is_empty(),
+        message_length: message.chars().count(),
     }
 }
 
