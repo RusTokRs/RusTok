@@ -8,6 +8,7 @@ use rustok_api::context::{AuthContext, AuthContextExtension};
 use rustok_api::{Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
 
+use crate::auth::host_authority_context_for_authenticated_actor;
 use crate::extractors::auth::resolve_current_user;
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
@@ -43,12 +44,38 @@ pub async fn resolve_optional(
                 }
             }
 
+            let host_authority = match host_authority_context_for_authenticated_actor(
+                current_user.actor_kind,
+                current_user.user.id,
+                current_user.client_id,
+                &current_user.grant_type,
+            ) {
+                Ok(authority) => authority,
+                Err(error) => {
+                    tracing::error!(
+                        actor_id = %current_user.user.id,
+                        client_id = ?current_user.client_id,
+                        error = %error,
+                        code = "host_authority.resolve_failed",
+                        "host authority resolution failed after authentication"
+                    );
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Host authority configuration is invalid",
+                    )
+                        .into_response();
+                }
+            };
+
             rbac_scope = Some(RbacRequestScope::new(
                 current_user.user.tenant_id,
                 current_user.user.id,
                 current_user.permissions.clone(),
                 current_user.inferred_role.clone(),
             ));
+            if let Some(host_authority) = host_authority {
+                parts.extensions.insert(host_authority);
+            }
             parts.extensions.insert(AuthContextExtension(AuthContext {
                 user_id: current_user.user.id,
                 session_id: current_user.session_id,
