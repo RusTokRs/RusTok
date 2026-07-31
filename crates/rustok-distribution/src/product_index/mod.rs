@@ -2,9 +2,6 @@ mod product;
 #[path = "../product_variant_index.rs"]
 mod variant;
 
-pub(crate) use product::PRODUCT_INDEX_SOURCE;
-pub(crate) use variant::PRODUCT_VARIANT_INDEX_SOURCE;
-
 pub(crate) fn register(
     extensions: &mut rustok_core::ModuleRuntimeExtensions,
 ) -> rustok_core::Result<()> {
@@ -16,7 +13,7 @@ pub(crate) fn register(
 mod tests {
     use rustok_core::ModuleRuntimeExtensions;
 
-    use super::{PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE, register};
+    use super::{product::PRODUCT_INDEX_SOURCE, register, variant::PRODUCT_VARIANT_INDEX_SOURCE};
 
     #[test]
     fn selected_product_bridge_set_registers_two_schemas_and_two_factories() {

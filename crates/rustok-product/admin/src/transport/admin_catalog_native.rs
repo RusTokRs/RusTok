@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::catalog_controls::ProductAdminListInput;
-use crate::model::{ProductList, ProductListItem};
+use crate::model::ProductList;
 
 pub(super) async fn fetch_products(
     tenant_id: String,
