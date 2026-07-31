@@ -11,6 +11,7 @@ const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY: &str = "query ForumStorefrontSea
 const FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY: &str = "query ForumStorefrontSearchByFilters($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 #[allow(dead_code)]
 const FORUM_STOREFRONT_SEARCH_BY_DATE_WINDOW_QUERY: &str = "query ForumStorefrontSearchByDateWindow($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean, $publishedFrom: String, $publishedTo: String) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved, publishedFrom: $publishedFrom, publishedTo: $publishedTo) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+#[allow(dead_code)]
 const FORUM_STOREFRONT_SEARCH_BY_CURRENT_CHANNEL_QUERY: &str = "query ForumStorefrontSearchByCurrentChannel($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean, $publishedFrom: String, $publishedTo: String) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved, publishedFrom: $publishedFrom, publishedTo: $publishedTo, currentChannelOnly: true) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 
 #[derive(Debug, Deserialize)]
@@ -197,6 +198,7 @@ pub async fn fetch_search_with_date_window(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_current_channel(
     query: String,
     locale: Option<String>,

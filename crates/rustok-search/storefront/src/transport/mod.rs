@@ -241,6 +241,7 @@ pub async fn fetch_forum_search_with_date_window(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_forum_search_with_current_channel(
     query: String,
     locale: Option<String>,

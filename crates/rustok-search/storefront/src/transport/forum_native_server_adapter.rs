@@ -1,4 +1,6 @@
 use crate::model::{SearchPreviewFilters, SearchPreviewPayload};
+#[cfg(feature = "ssr")]
+use crate::model::{SearchFacetBucket, SearchFacetGroup, SearchPreviewResultItem};
 use leptos::prelude::{ServerFnError, server};
 
 use super::ApiError;
@@ -71,6 +73,7 @@ pub async fn fetch_search_with_date_window(
     .map_err(ApiError::from)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_current_channel(
     query: String,
     locale: Option<String>,

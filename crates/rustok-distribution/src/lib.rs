@@ -123,7 +123,8 @@ pub enum CompositionModuleKind {
 
 /// Builds the module registry for the features selected in this distribution.
 pub fn build_registry() -> ModuleRegistry {
-    let registry = ModuleRegistry::new()
+    #[allow(unused_mut)]
+    let mut registry = ModuleRegistry::new()
         .register(ModulesModule)
         .register(AuthModule)
         .register(CacheModule::new())
