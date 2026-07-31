@@ -24,8 +24,9 @@ const parentContractPath =
 const docPath =
   "crates/rustok-forum/docs/forum-23b2g2b3d3-ack-restart-proof.md";
 const testPath =
-  "crates/rustok-search/tests/forum_versioned_invalidation_ack_restart_iggy.rs";
-const cargoPath = "crates/rustok-search/Cargo.toml";
+  "apps/server/tests/forum_versioned_invalidation_ack_restart_iggy.rs";
+const searchCargoPath = "crates/rustok-search/Cargo.toml";
+const serverCargoPath = "apps/server/Cargo.toml";
 const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-ack-restart-evidence.json";
@@ -65,7 +66,12 @@ assert.equal(
 );
 assert.ok(Array.isArray(contract.scenario.proves));
 assert.equal(contract.scenario.proves.length, 5);
-assert.ok(contract.maintainer_command.includes(testPath.split("/").at(-1).replace(".rs", "")));
+assert.ok(
+  contract.maintainer_command.includes(
+    testPath.split("/").at(-1).replace(".rs", ""),
+  ),
+);
+assert.ok(contract.maintainer_command.includes("cargo test -p rustok-server"));
 
 const test = read(testPath);
 requireAll(
@@ -121,20 +127,22 @@ forbidAll(
   "Iggy acknowledgement/restart executable proof",
 );
 
-const cargo = read(cargoPath);
-const devDependenciesStart = cargo.indexOf("[dev-dependencies]");
-const featuresStart = cargo.indexOf("[features]", devDependenciesStart);
-assert.ok(devDependenciesStart >= 0 && featuresStart > devDependenciesStart);
-const devDependencies = cargo.slice(devDependenciesStart, featuresStart);
-requireAll(
-  devDependencies,
-  ["rustok-iggy.workspace = true", "tokio.workspace = true"],
-  "rustok-search dev dependencies",
+const searchCargo = read(searchCargoPath);
+forbidAll(
+  searchCargo,
+  ["rustok-iggy.workspace = true", "rustok-iggy-connector"],
+  "rustok-search owner manifest",
 );
-assert.equal(
-  cargo.slice(0, devDependenciesStart).includes("rustok-iggy"),
-  false,
-  "rustok-iggy must remain a test-only Search dependency",
+const serverCargo = read(serverCargoPath);
+requireAll(
+  serverCargo,
+  [
+    "rustok-search = { workspace = true, features = [\"graphql\"] }",
+    "rustok-iggy.workspace = true",
+    "rustok-iggy-connector = { workspace = true, features = [\"migrations\"] }",
+    "tokio.workspace = true",
+  ],
+  "server host dependencies",
 );
 
 const doc = read(docPath);
@@ -175,7 +183,9 @@ assert.deepEqual(
 );
 assert.ok(Array.isArray(parent.source_ready_subproofs));
 assert.ok(
-  parent.source_ready_subproofs.some(({ task }) => task === "FORUM-23B2G2B3D2"),
+  parent.source_ready_subproofs.some(
+    ({ task }) => task === "FORUM-23B2G2B3D2",
+  ),
   "D2 PostgreSQL ingress subproof disappeared",
 );
 const subproof = parent.source_ready_subproofs.find(
@@ -205,14 +215,19 @@ assert.ok(
   ),
 );
 assert.ok(
-  parent.maintainer_commands.some((command) =>
-    command.includes("--test forum_versioned_invalidation_ack_restart_iggy"),
+  parent.maintainer_commands.some(
+    (command) =>
+      command.includes("cargo test -p rustok-server") &&
+      command.includes("--test forum_versioned_invalidation_ack_restart_iggy"),
   ),
 );
 
 const plan = read(planPath);
 const forum23Start = plan.indexOf("## `FORUM-23` — search/index integration");
-const forum24Start = plan.indexOf("## `FORUM-24` — localized routes", forum23Start);
+const forum24Start = plan.indexOf(
+  "## `FORUM-24` — localized routes",
+  forum23Start,
+);
 assert.ok(forum23Start >= 0 && forum24Start > forum23Start);
 const forum23 = plan.slice(forum23Start, forum24Start);
 requireAll(

@@ -24,10 +24,11 @@ const parentContractPath =
 const docPath =
   "crates/rustok-forum/docs/forum-23b2g2b3d5-semantic-poison-proof.md";
 const testPath =
-  "crates/rustok-search/tests/forum_versioned_invalidation_semantic_poison_iggy.rs";
+  "apps/server/tests/forum_versioned_invalidation_semantic_poison_iggy.rs";
 const workerPath =
   "apps/server/src/services/forum_search_contract_consumer.rs";
-const cargoPath = "crates/rustok-search/Cargo.toml";
+const searchCargoPath = "crates/rustok-search/Cargo.toml";
+const serverCargoPath = "apps/server/Cargo.toml";
 const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-semantic-poison-evidence.json";
@@ -67,6 +68,7 @@ assert.ok(
     "--test forum_versioned_invalidation_semantic_poison_iggy",
   ),
 );
+assert.ok(contract.maintainer_command.includes("cargo test -p rustok-server"));
 
 const test = read(testPath);
 requireAll(
@@ -136,24 +138,22 @@ requireAll(
   "server Forum Search semantic poison protocol",
 );
 
-const cargo = read(cargoPath);
-const devDependenciesStart = cargo.indexOf("[dev-dependencies]");
-const featuresStart = cargo.indexOf("[features]", devDependenciesStart);
-assert.ok(devDependenciesStart >= 0 && featuresStart > devDependenciesStart);
-const devDependencies = cargo.slice(devDependenciesStart, featuresStart);
+const searchCargo = read(searchCargoPath);
+forbidAll(
+  searchCargo,
+  ["rustok-iggy.workspace = true", "rustok-iggy-connector"],
+  "rustok-search owner manifest",
+);
+const serverCargo = read(serverCargoPath);
 requireAll(
-  devDependencies,
+  serverCargo,
   [
+    "rustok-search = { workspace = true, features = [\"graphql\"] }",
     "rustok-iggy.workspace = true",
     "rustok-iggy-connector = { workspace = true, features = [\"migrations\"] }",
     "tokio.workspace = true",
   ],
-  "rustok-search test-only broker dependencies",
-);
-assert.equal(
-  cargo.slice(0, devDependenciesStart).includes("rustok-iggy-connector"),
-  false,
-  "rustok-iggy-connector must remain a Search dev dependency",
+  "server host dependencies",
 );
 
 const doc = read(docPath);
@@ -231,14 +231,19 @@ assert.ok(
   ),
 );
 assert.ok(
-  parent.maintainer_commands.some((command) =>
-    command.includes("--test forum_versioned_invalidation_semantic_poison_iggy"),
+  parent.maintainer_commands.some(
+    (command) =>
+      command.includes("cargo test -p rustok-server") &&
+      command.includes("--test forum_versioned_invalidation_semantic_poison_iggy"),
   ),
 );
 
 const plan = read(planPath);
 const forum23Start = plan.indexOf("## `FORUM-23` — search/index integration");
-const forum24Start = plan.indexOf("## `FORUM-24` — localized routes", forum23Start);
+const forum24Start = plan.indexOf(
+  "## `FORUM-24` — localized routes",
+  forum23Start,
+);
 assert.ok(forum23Start >= 0 && forum24Start > forum23Start);
 const forum23 = plan.slice(forum23Start, forum24Start);
 requireAll(
