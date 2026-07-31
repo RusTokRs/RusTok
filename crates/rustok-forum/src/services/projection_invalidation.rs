@@ -1,4 +1,4 @@
-use rustok_events::{DomainEvent, ValidateEvent};
+use rustok_events::{DomainEvent, ForumSearchProjectionEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbBackend, Statement,
@@ -118,29 +118,40 @@ async fn write_projection_invalidation_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    let event = projection_invalidation_event(target_type, target_id);
+    let root_event = projection_invalidation_event(target_type, target_id);
 
     // The Search-owned Forum projector is PostgreSQL-only. SQLite and any
     // other non-PostgreSQL backend are domain-test/unsupported projection
     // environments, so keep root validation without requiring an outbox or
     // owner-revision ledger that has no matching Search consumer.
     if txn.get_database_backend() != DatabaseBackend::Postgres {
-        event.validate().map_err(|error| {
+        root_event.validate().map_err(|error| {
             ForumError::Validation(format!("Forum projection invalidation failed: {error}"))
         })?;
         return Ok(());
     }
 
     let revision = allocate_projection_revision_in_tx(txn, tenant_id).await?;
-    let event_id = TransactionalEventBus::publish_root_in_tx_with_envelope_id(
-        txn, tenant_id, actor_id, event,
+    let root_event_id = TransactionalEventBus::publish_root_in_tx_with_envelope_id(
+        txn,
+        tenant_id,
+        actor_id,
+        root_event,
+    )
+    .await?;
+    TransactionalEventBus::publish_contract_direct_in_tx_with_causation_and_envelope_id(
+        txn,
+        tenant_id,
+        actor_id,
+        root_event_id,
+        projection_invalidation_contract(revision, target_type, target_id),
     )
     .await?;
     record_projection_revision_in_tx(
         txn,
         tenant_id,
         revision,
-        event_id,
+        root_event_id,
         target_type,
         target_id,
     )
@@ -155,23 +166,32 @@ async fn publish_projection_invalidation_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    let event = projection_invalidation_event(target_type, target_id);
+    let root_event = projection_invalidation_event(target_type, target_id);
     if txn.get_database_backend() != DatabaseBackend::Postgres {
         event_bus
-            .publish_in_tx(txn, tenant_id, actor_id, event)
+            .publish_in_tx(txn, tenant_id, actor_id, root_event)
             .await?;
         return Ok(());
     }
 
     let revision = allocate_projection_revision_in_tx(txn, tenant_id).await?;
-    let event_id = event_bus
-        .publish_in_tx_with_envelope_id(txn, tenant_id, actor_id, event)
+    let root_event_id = event_bus
+        .publish_in_tx_with_envelope_id(txn, tenant_id, actor_id, root_event)
+        .await?;
+    event_bus
+        .publish_contract_in_tx_with_causation(
+            txn,
+            tenant_id,
+            actor_id,
+            root_event_id,
+            projection_invalidation_contract(revision, target_type, target_id),
+        )
         .await?;
     record_projection_revision_in_tx(
         txn,
         tenant_id,
         revision,
-        event_id,
+        root_event_id,
         target_type,
         target_id,
     )
@@ -183,6 +203,18 @@ fn projection_invalidation_event(
     target_id: Option<Uuid>,
 ) -> DomainEvent {
     DomainEvent::ReindexRequested {
+        target_type: target_type.to_string(),
+        target_id,
+    }
+}
+
+fn projection_invalidation_contract(
+    owner_revision: i64,
+    target_type: &'static str,
+    target_id: Option<Uuid>,
+) -> ForumSearchProjectionEvent {
+    ForumSearchProjectionEvent::InvalidationIssued {
+        owner_revision,
         target_type: target_type.to_string(),
         target_id,
     }

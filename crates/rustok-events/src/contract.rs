@@ -6,8 +6,9 @@ use ulid::Ulid;
 use uuid::Uuid;
 
 use crate::{
-    DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent, MarketplaceListingEvent,
-    MarketplaceSellerEvent, SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
+    DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent,
+    ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
+    SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -38,6 +39,8 @@ pub enum ContractEventPayload {
     Root(DomainEvent),
     #[serde(rename = "forum_mention")]
     ForumMention(ForumMentionEvent),
+    #[serde(rename = "forum_search_projection")]
+    ForumSearchProjection(ForumSearchProjectionEvent),
     #[serde(rename = "marketplace_listing")]
     MarketplaceListing(MarketplaceListingEvent),
     #[serde(rename = "marketplace_seller")]
@@ -53,6 +56,7 @@ impl ContractEventPayload {
         match self {
             Self::Root(event) => event.event_type(),
             Self::ForumMention(event) => event.event_type(),
+            Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
@@ -64,6 +68,7 @@ impl ContractEventPayload {
         match self {
             Self::Root(event) => event.schema_version(),
             Self::ForumMention(event) => event.schema_version(),
+            Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
@@ -77,6 +82,7 @@ impl ValidateEvent for ContractEventPayload {
         match self {
             Self::Root(event) => event.validate(),
             Self::ForumMention(event) => event.validate(),
+            Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
