@@ -1,0 +1,52 @@
+{
+  "contract": "forum_search_versioned_invalidation_semantic_poison_proof_v1",
+  "task": "FORUM-23B2G2B3D5",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "crates/rustok-search/tests/forum_versioned_invalidation_semantic_poison_iggy.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-semantic-poison-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "broker": "external_iggy",
+    "broker_address_env": "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS",
+    "broker_username_env": "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+    "broker_password_env": "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD",
+    "serialization": "json",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "topic": "domain",
+    "partitions": 1
+  },
+  "scenario": {
+    "id": "semantic_poison_identity_conflict",
+    "stable_error_code": "forum.search_projection.contract_inbox_identity_conflict",
+    "proves": [
+      "a valid typed Forum Search delivery conflicts with a pre-existing durable root identity and fails closed as non-retryable semantic poison",
+      "the conflicting Search inbox row remains byte-for-byte unchanged and unique and never becomes a second projection row",
+      "the exact typed broker bytes and source coordinates derive one stable connector delivery UUID and deterministic DLQ broker message identity",
+      "one PostgreSQL connector-owned poison receipt reaches published before source acknowledgement",
+      "reopening the production consumer group redelivers the same source offset and receives AlreadyPublished without a second physical DLQ message",
+      "source acknowledgement then marks the receipt acknowledged and advances the group to the next valid typed event"
+    ]
+  },
+  "identity_invariants": [
+    "the conflicting legacy root UUID remains the Search inbox event identity and is never replaced",
+    "the typed envelope UUID remains transport identity and its causation UUID remains the conflicting root identity",
+    "the connector poison delivery UUID is derived from stream, topic, partition, offset and exact typed-event bytes",
+    "the deterministic DLQ broker message UUID equals the connector poison delivery UUID",
+    "the first observed delivery attempt count remains immutable across redelivery"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_semantic_poison_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL or external Iggy execution passed",
+    "this proof does not execute the server-owned worker loop or its retry backoff",
+    "this proof does not inject DLQ publication failure, publish-mark ambiguity or poison identity collision",
+    "this proof does not execute the Search projector or advance an owner checkpoint",
+    "this proof does not establish missing-delivery repair, multi-process serialization, deletion or ACL ordering, Search-disabled recovery or LINK-FORUM-03 completion"
+  ]
+}
