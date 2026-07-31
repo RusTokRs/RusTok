@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G2B3B1",
+  "status": "source_complete_family_publisher_pending",
+  "scope": "Add a schema-neutral caused typed-envelope constructor and transactional outbox publication APIs required by the frozen Forum Search dual-publication protocol",
+  "predecessor_contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json",
+  "decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
+  "events_owner": "crates/rustok-events/src/contract.rs",
+  "outbox_owner": "crates/rustok-outbox/src/transactional.rs",
+  "events_api": "crates/rustok-events/CRATE_API.md",
+  "outbox_api": "crates/rustok-outbox/CRATE_API.md",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2g2b3b1-causation-publication-api.md",
+  "verifier": "scripts/verify/verify-forum-search-versioned-invalidation-causation-api.mjs",
+  "envelope_api": {
+    "constructor": "ContractEventEnvelope::new_caused_by",
+    "getter": "ContractEventEnvelope::causation_id",
+    "causation_location": "envelope metadata",
+    "causation_required_for_constructor": true,
+    "nil_causation_rejected": true,
+    "event_validation_preserved": true,
+    "registered_schema_validation_preserved": true,
+    "correlation_identity_behavior_changed": false,
+    "wire_fields_added": false,
+    "wire_fields_removed": false,
+    "serde_shape_changed": false,
+    "json_schema_changed": false,
+    "event_digest_changed": false
+  },
+  "publication_api": {
+    "composed_no_identity": "TransactionalEventBus::publish_contract_in_tx_with_causation",
+    "composed_identity": "TransactionalEventBus::publish_contract_in_tx_with_causation_and_envelope_id",
+    "transaction_only_identity": "TransactionalEventBus::publish_contract_direct_in_tx_with_causation_and_envelope_id",
+    "canonical_writer": "OutboxTransport::write_contract_envelope_in_tx",
+    "requires_live_owner_transaction": true,
+    "requires_sealed_event_contract": true,
+    "validates_before_insert": true,
+    "returns_exact_typed_envelope_id": true,
+    "reconstructs_identity_after_write": false,
+    "creates_second_transport_path": false,
+    "non_transactional_fallback_added": false
+  },
+  "compatibility": {
+    "ContractEventEnvelope::new_retained": true,
+    "publish_contract_in_tx_retained": true,
+    "publish_contract_in_tx_with_envelope_id_retained": true,
+    "root_event_api_changed": false,
+    "outbox_row_schema_changed": false,
+    "relay_changed": false,
+    "iggy_changed": false,
+    "search_inbox_changed": false,
+    "search_projector_changed": false,
+    "forum_publisher_changed": false,
+    "sealed_event_family_added": false,
+    "event_registry_changed": false,
+    "event_digest_artifact_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "follow_up": {
+    "task": "FORUM-23B2G2B3B2",
+    "scope": "Add ForumSearchProjectionEvent v1, registry and generated digest updates, then dual-publish the caused typed invalidation from Forum while retaining the legacy root ledger identity"
+  },
+  "non_claims": [
+    "This slice does not add forum.search_projection.invalidation_issued to the event registry",
+    "This slice does not update event-contract-digests.json",
+    "This slice does not dual-publish from Forum",
+    "This slice does not add the Search persistent typed consumer or poison receipt",
+    "This slice does not change Search projection execution",
+    "Tests, verifiers, formatting, Cargo checks, Clippy, digest generation and runtime evidence were not executed by the implementation agent"
+  ]
+}
