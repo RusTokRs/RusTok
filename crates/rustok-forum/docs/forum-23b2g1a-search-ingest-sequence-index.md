@@ -12,6 +12,14 @@ left byte-for-byte unchanged. A new additive `000011` migration ensures that
 existing installations receive the lookup index instead of relying on a modified
 historical migration that would never rerun.
 
+## Canonical plan boundary
+
+The canonical Forum and Search plans already record `FORUM-23B2G1` as
+`source_complete_execution_pending`, with owner-issued revisions and maintainer
+runtime evidence still pending. This access-path correction does not change that
+milestone status or remaining scope. `G1A` is therefore retained as a focused
+machine contract and owner note rather than a duplicate roadmap milestone.
+
 ## Query ownership
 
 Two existing owner queries require the same ordering prefix:
