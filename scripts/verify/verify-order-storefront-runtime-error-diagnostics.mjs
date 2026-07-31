@@ -34,9 +34,11 @@ for (const [value, label] of [
   ["fn native_checkout_runtime_error(", "runtime error mapper"],
   ["request_context: &rustok_api::RequestContext", "request context mapper input"],
   ["tenant_id: Uuid", "tenant mapper input"],
+  ["correlation_id: Uuid", "correlation mapper input"],
+  ["let correlation_id = Uuid::new_v4();", "server-generated correlation id"],
   ["owner = ORDER_STOREFRONT_NATIVE_OWNER", "owner diagnostics"],
   ['owner_operation = "complete_storefront_checkout"', "operation diagnostics"],
-  ["correlation_id = %request_context.correlation_id", "correlation diagnostics"],
+  ["correlation_id = %correlation_id", "correlation diagnostics"],
   ["tenant_id = %tenant_id", "tenant diagnostics"],
   ["channel_id = ?request_context.channel_id", "channel id diagnostics"],
   ["channel_slug = ?request_context.channel_slug", "channel slug diagnostics"],
@@ -70,8 +72,8 @@ for (const [value, label] of [
 
 requireText(
   source,
-  ".map_err(|error| native_checkout_runtime_error(&request_context, tenant.id, error))?;",
-  "correlation-aware runtime mapper call",
+  "native_checkout_runtime_error(&request_context, tenant.id, correlation_id, error)",
+  "server-correlation-aware runtime mapper call",
 );
 requireText(source, "let public_code = error.public_code();", "public code source");
 requireText(source, "let public_message = error.public_message();", "public message source");
@@ -89,6 +91,16 @@ if (countText(source, 'ServerFnError::new("Checkout service is temporarily unava
 }
 forbidText(
   source,
+  "request_context.correlation_id",
+  "nonexistent RequestContext correlation field",
+);
+forbidText(
+  source,
+  "correlation_id = %idempotency_key",
+  "idempotency key in diagnostics",
+);
+forbidText(
+  source,
   ".map_err(native_checkout_runtime_error)?;",
   "runtime mapper without request diagnostics",
 );
@@ -100,6 +112,9 @@ for (const [key, expected] of Object.entries({
   runtime_cause_logged_server_side: true,
   owner_operation_logged: true,
   correlation_logged: true,
+  correlation_generated_server_side: true,
+  request_context_correlation_required: false,
+  idempotency_key_logged: false,
   tenant_logged: true,
   channel_logged: true,
   locale_logged: true,
@@ -139,5 +154,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ Order storefront checkout runtime failures retain the public envelope and add correlation-safe SSR diagnostics; runtime evidence remains open",
+  "✔ Order storefront checkout runtime failures retain the public envelope and use a server-generated correlation id; runtime evidence remains open",
 );
