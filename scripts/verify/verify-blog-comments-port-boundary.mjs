@@ -3,6 +3,7 @@
 import './verify-blog-comments-http-port-injection.mjs';
 import './verify-blog-comments-graphql-port-injection.mjs';
 import './verify-blog-comments-storefront-native-port-injection.mjs';
+import './verify-blog-comments-admin-native-port-injection.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
