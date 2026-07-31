@@ -24,15 +24,15 @@
     },
     {
       "name": "two_completed_dispatch_calls",
-      "expected": "an observing EventHandler wrapper records exactly two completed calls to the real module-registered projection handler"
+      "expected": "an observing EventHandler wrapper records exactly two completed calls and zero errors from the real module-registered projection handler"
     },
     {
       "name": "single_transactional_application",
-      "expected": "after both dispatches complete the post is count one/version two with one delivery-ledger row and one outbox row"
+      "expected": "after both successful dispatches complete the post is count one/version two with one delivery-ledger row and one outbox row"
     }
   ],
   "runtime_promotion_requirements": [
-    "execute the exact env-gated PostgreSQL command and retain two completed dispatcher calls plus final counter, delivery, and outbox assertions",
+    "execute the exact env-gated PostgreSQL command and retain two completed dispatcher calls, zero handler errors, and final counter, delivery, and outbox assertions",
     "retain concurrent same-envelope handler-race execution separately from this dispatcher replay target"
   ]
 }
