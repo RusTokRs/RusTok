@@ -338,7 +338,7 @@ impl ForumOwnerCheckpointReconciler {
                 continue;
             }
             let result = transaction
-                .execute(Statement::from_string(
+                .execute(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     format!(
                         r#"
@@ -348,12 +348,13 @@ impl ForumOwnerCheckpointReconciler {
                             last_error = 'processing_lease_expired',
                             completed_at = NULL,
                             updated_at = CURRENT_TIMESTAMP
-                        WHERE tenant_id = '{tenant_id}'
+                        WHERE tenant_id = $1
                           AND source_module = 'forum'
                           AND status = 'processing'
                           AND updated_at <= CURRENT_TIMESTAMP - INTERVAL '{PROCESSING_LEASE_INTERVAL}'
                         "#
                     ),
+                    vec![tenant_id.into()],
                 ))
                 .await
                 .map_err(Error::Database)?;
@@ -542,9 +543,7 @@ async fn advance_checkpoint(
             r#"
             INSERT INTO search_projection_owner_checkpoints (
                 tenant_id, source_module, owner_revision, event_id, outcome, updated_at
-            )
-            SELECT $1, 'forum', $2, $3, $4, CURRENT_TIMESTAMP
-            WHERE $5 = 0 AND $2 = 1
+            ) VALUES ($1, 'forum', $2, $3, $4, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id, source_module)
             DO UPDATE SET
                 owner_revision = EXCLUDED.owner_revision,
