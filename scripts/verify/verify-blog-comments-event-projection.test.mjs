@@ -23,12 +23,17 @@ function fixture({
   missingSharedClassifier = false,
   directHandlesClassifier = false,
   missingCounterHarness = false,
+  missingPostgresHarness = false,
+  missingRollbackCase = false,
+  missingPostgresRegistration = false,
   statusDrift = false,
   harnessStatusDrift = false,
+  postgresStatusDrift = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
   const handlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
+  const postgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
   const serviceExportPath = 'crates/rustok-blog/src/services/mod.rs';
   const entityPath = 'crates/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
   const migrationPath = 'crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
@@ -36,6 +41,7 @@ function fixture({
   const modulePath = 'crates/rustok-blog/src/lib.rs';
   const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
   const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
+  const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 
   write(
     root,
@@ -77,6 +83,36 @@ fn ignores_non_blog_targets_and_unrelated_events()
 ${missingCounterHarness ? '' : 'fn counter_transition_is_non_negative_and_saturating()'}
 `,
   );
+
+  if (!missingPostgresHarness) {
+    write(
+      root,
+      postgresHarnessPath,
+      `
+const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+struct PostgresBlogProjectionTestDb
+CREATE SCHEMA
+DROP SCHEMA IF EXISTS
+.max_connections(1)
+SET search_path TO
+async fn duplicate_delivery_updates_counter_and_outbox_once()
+handler.handle(&envelope).await?;
+async fn delete_before_create_stays_non_negative_and_replays_in_order()
+DomainEvent::CommentDeleted
+async fn missing_post_replay_commits_only_after_source_appears()
+missing Blog post must keep the delivery retryable
+${missingRollbackCase ? '' : 'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()'}
+DROP TABLE sys_events
+missing outbox table must fail the projection transaction
+create_outbox_table(&test_db.db).await?;
+CREATE TABLE blog_comment_projection_deliveries
+CREATE TABLE sys_events
+count_delivery(&test_db.db, envelope.id)
+count_outbox_events(&test_db.db)
+`,
+    );
+  }
+
   write(root, serviceExportPath, 'pub use comment_projection::BlogCommentProjectionHandler;');
   write(
     root,
@@ -122,11 +158,12 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 2,
+      schema_version: 3,
       module: 'blog',
       surface: 'comments_event_projection',
       status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
       compile_policy: 'not_run_by_request',
+      runtime_status: 'pending',
       owner: 'rustok-blog',
       provider: 'rustok-comments',
       events: ['comment.created', 'comment.deleted'],
@@ -150,6 +187,20 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
           'non_negative_saturating_counter_transition',
         ],
       },
+      postgres_harness: {
+        status: postgresStatusDrift ? 'executed' : 'executable_no_run',
+        runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
+        path: postgresHarnessPath,
+        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+        command: postgresHarnessCommand,
+        isolation: 'unique_schema_one_connection_pool',
+        cases: [
+          'duplicate_delivery_updates_counter_and_outbox_once',
+          'delete_before_create_stays_non_negative_and_replays_in_order',
+          'missing_post_replay_commits_only_after_source_appears',
+          'outbox_failure_rolls_back_counter_and_delivery_before_retry',
+        ],
+      },
       cases: [
         { name: 'shared_event_classifier' },
         { name: 'blog_post_target_filter' },
@@ -159,6 +210,10 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
         { name: 'tenant_scoped_optimistic_update' },
         { name: 'missing_post_retry' },
         { name: 'non_negative_count' },
+        { name: 'postgres_duplicate_delivery' },
+        { name: 'postgres_out_of_order_delete_create' },
+        { name: 'postgres_missing_post_recovery' },
+        { name: 'postgres_outbox_rollback_recovery' },
         { name: 'module_listener_registration' },
       ],
     }),
@@ -167,10 +222,14 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
     root,
     registryPath,
     JSON.stringify({
+      schema_version: 12,
       evidence: { comments_event_projection: evidencePath },
       verification_chain: {
         source_gates: {
-          comments_event_projection: { unit_test: handlerPath },
+          comments_event_projection: {
+            unit_test: handlerPath,
+            ...(missingPostgresRegistration ? {} : { postgres_test: postgresHarnessPath }),
+          },
         },
       },
       event_projection: {
@@ -184,13 +243,20 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
           status: 'executable_no_run',
           command: harnessCommand,
         },
+        postgres_harness: {
+          path: postgresHarnessPath,
+          status: postgresStatusDrift ? 'executed' : 'executable_no_run',
+          runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
+          environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+          command: postgresHarnessCommand,
+        },
       },
     }),
   );
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests runtime delivery and recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests comment_projection_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL runtime delivery and recovery',
   );
 
   return root;
@@ -204,6 +270,17 @@ function run(root) {
   });
 }
 
+function expectRejected(options, pattern) {
+  const root = fixture(options);
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    if (pattern) assert.match(result.stderr, pattern);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 test('accepts the canonical Comments-to-Blog projection contract', () => {
   const root = fixture();
   try {
@@ -215,92 +292,62 @@ test('accepts the canonical Comments-to-Blog projection contract', () => {
 });
 
 test('rejects a projection without tenant scope', () => {
-  const root = fixture({ missingTenantScope: true });
-  try {
-    assert.notEqual(run(root).status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ missingTenantScope: true });
 });
 
 test('rejects a projection without envelope-id delivery lookup', () => {
-  const root = fixture({ missingDeliveryLookup: true });
-  try {
-    assert.notEqual(run(root).status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ missingDeliveryLookup: true });
 });
 
 test('rejects a projection without transactional outbox publication', () => {
-  const root = fixture({ missingOutbox: true });
-  try {
-    assert.notEqual(run(root).status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ missingOutbox: true });
 });
 
 test('rejects missing module event-listener registration', () => {
-  const root = fixture({ missingRegistration: true });
-  try {
-    assert.notEqual(run(root).status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ missingRegistration: true });
 });
 
 test('rejects project without the shared event classifier', () => {
-  const root = fixture({ missingSharedClassifier: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing fn comment_projection_change/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ missingSharedClassifier: true }, /missing fn comment_projection_change/);
 });
 
 test('rejects a separate EventHandler classifier', () => {
-  const root = fixture({ directHandlesClassifier: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /forbidden matches!/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ directHandlesClassifier: true }, /forbidden matches!/);
 });
 
 test('rejects a missing counter transition harness', () => {
-  const root = fixture({ missingCounterHarness: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing fn counter_transition_is_non_negative_and_saturating/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected(
+    { missingCounterHarness: true },
+    /missing fn counter_transition_is_non_negative_and_saturating/,
+  );
+});
+
+test('rejects a missing PostgreSQL harness source', () => {
+  expectRejected({ missingPostgresHarness: true }, /expected file is missing/);
+});
+
+test('rejects a PostgreSQL harness without rollback coverage', () => {
+  expectRejected(
+    { missingRollbackCase: true },
+    /missing async fn outbox_failure_rolls_back_counter_and_delivery_before_retry/,
+  );
+});
+
+test('rejects a registry without the PostgreSQL target', () => {
+  expectRejected(
+    { missingPostgresRegistration: true },
+    /PostgreSQL test path drift/,
+  );
 });
 
 test('rejects runtime status promotion without execution', () => {
-  const root = fixture({ statusDrift: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /status drift/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ statusDrift: true }, /status drift/);
 });
 
 test('rejects source harness execution promotion without execution', () => {
-  const root = fixture({ harnessStatusDrift: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /source harness drift/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectRejected({ harnessStatusDrift: true }, /source harness drift/);
+});
+
+test('rejects PostgreSQL harness execution promotion without execution', () => {
+  expectRejected({ postgresStatusDrift: true }, /PostgreSQL harness drift/);
 });
