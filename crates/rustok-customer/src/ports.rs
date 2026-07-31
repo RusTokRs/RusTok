@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -153,24 +153,7 @@ fn require_customer_read_policy(
     context
         .require_policy(PortCallPolicy::read())
         .map_err(|error| {
-            tracing::warn!(
-                error = ?error,
-                owner = "rustok_customer",
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                deadline_ms = ?context.deadline_ms,
-                operation = owner_operation,
-                code = %error.code,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = CUSTOMER_READ_PORT_BOUNDARY,
-                "customer read port admission was rejected"
-            );
+            log_customer_read_admission_rejection(context, owner_operation, &error);
             error
         })
 }
@@ -181,12 +164,12 @@ fn validate_customer_list_projection_request(
     request: &CustomerListProjectionRequest,
 ) -> Result<(), PortError> {
     if request.page == 0 {
-        tracing::warn!(
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "customer.page_invalid",
-            "customer projection page is invalid"
+        log_customer_list_validation_rejection(
+            context,
+            owner_operation,
+            request,
+            "page",
+            "customer.page_invalid",
         );
         return Err(PortError::validation(
             "customer.page_invalid",
@@ -194,12 +177,12 @@ fn validate_customer_list_projection_request(
         ));
     }
     if !(1..=MAX_CUSTOMERS_PER_PAGE).contains(&request.per_page) {
-        tracing::warn!(
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "customer.per_page_invalid",
-            "customer projection page size is invalid"
+        log_customer_list_validation_rejection(
+            context,
+            owner_operation,
+            request,
+            "per_page",
+            "customer.per_page_invalid",
         );
         return Err(PortError::validation(
             "customer.per_page_invalid",
@@ -213,15 +196,8 @@ fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "customer.context_invalid",
-            "customer port context is invalid"
-        );
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        log_customer_tenant_parse_rejection(context, owner_operation);
         PortError::validation(
             "customer.context_invalid",
             "customer request context is invalid",
@@ -245,6 +221,13 @@ struct CustomerReadContextFacts {
     idempotency_key_present: bool,
     idempotency_key_length: Option<usize>,
     deadline_ms: Option<u64>,
+}
+
+struct CustomerListRequestFacts {
+    search_present: bool,
+    search_length: Option<usize>,
+    page: u64,
+    per_page: u64,
 }
 
 struct CustomerOwnerErrorFacts {
@@ -288,6 +271,128 @@ fn customer_read_context_facts(context: &PortContext) -> CustomerReadContextFact
             .map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
     }
+}
+
+fn customer_list_request_facts(
+    request: &CustomerListProjectionRequest,
+) -> CustomerListRequestFacts {
+    CustomerListRequestFacts {
+        search_present: request.search.is_some(),
+        search_length: request.search.as_ref().map(|value| value.chars().count()),
+        page: request.page,
+        per_page: request.per_page,
+    }
+}
+
+fn customer_port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    }
+}
+
+fn log_customer_read_admission_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: &PortError,
+) {
+    let context_facts = customer_read_context_facts(context);
+    tracing::warn!(
+        owner = "rustok_customer",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        operation = owner_operation,
+        code = %error.code,
+        error_kind = customer_port_error_kind(&error.kind),
+        error_message_present = !error.message.is_empty(),
+        error_message_length = error.message.chars().count(),
+        retryable = error.retryable,
+        boundary = CUSTOMER_READ_PORT_BOUNDARY,
+        "customer read port admission was rejected with bounded diagnostics"
+    );
+}
+
+fn log_customer_list_validation_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    request: &CustomerListProjectionRequest,
+    validation_field: &'static str,
+    code: &'static str,
+) {
+    let context_facts = customer_read_context_facts(context);
+    let request_facts = customer_list_request_facts(request);
+    tracing::warn!(
+        owner = "rustok_customer",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        operation = owner_operation,
+        validation_field,
+        code,
+        search_present = request_facts.search_present,
+        search_length = ?request_facts.search_length,
+        page = request_facts.page,
+        per_page = request_facts.per_page,
+        max_per_page = MAX_CUSTOMERS_PER_PAGE,
+        boundary = CUSTOMER_READ_PORT_BOUNDARY,
+        "customer list projection request was rejected with bounded diagnostics"
+    );
+}
+
+fn log_customer_tenant_parse_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+) {
+    let context_facts = customer_read_context_facts(context);
+    tracing::warn!(
+        owner = "rustok_customer",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        operation = owner_operation,
+        code = "customer.context_invalid",
+        tenant_id_parse_failed = true,
+        boundary = CUSTOMER_READ_PORT_BOUNDARY,
+        "customer port context was rejected with bounded diagnostics"
+    );
 }
 
 fn customer_owner_error_facts(error: &CustomerError) -> CustomerOwnerErrorFacts {

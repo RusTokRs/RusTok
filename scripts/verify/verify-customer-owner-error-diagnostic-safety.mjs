@@ -86,10 +86,31 @@ for (const marker of [
 ]) requireText(errorSource, marker, `${paths.error}: owner error shape`);
 
 const contextFacts = functionBody(ports, 'customer_read_context_facts');
+const listFacts = functionBody(ports, 'customer_list_request_facts');
+const kindMapper = functionBody(ports, 'customer_port_error_kind');
+const admission = functionBody(ports, 'require_customer_read_policy');
+const admissionLogger = functionBody(ports, 'log_customer_read_admission_rejection');
+const listValidation = functionBody(ports, 'validate_customer_list_projection_request');
+const listLogger = functionBody(ports, 'log_customer_list_validation_rejection');
+const tenantParser = functionBody(ports, 'parse_port_tenant_id');
+const tenantLogger = functionBody(ports, 'log_customer_tenant_parse_rejection');
 const errorFacts = functionBody(ports, 'customer_owner_error_facts');
-const logger = functionBody(ports, 'log_customer_owner_failure');
+const ownerLogger = functionBody(ports, 'log_customer_owner_failure');
 const mapper = functionBody(ports, 'customer_error_to_port_error');
-const diagnosticScope = [contextFacts, errorFacts, logger, mapper].join('\n');
+const diagnosticScope = [
+  contextFacts,
+  listFacts,
+  kindMapper,
+  admission,
+  admissionLogger,
+  listValidation,
+  listLogger,
+  tenantParser,
+  tenantLogger,
+  errorFacts,
+  ownerLogger,
+  mapper,
+].join('\n');
 
 for (const marker of [
   'struct CustomerReadContextFacts',
@@ -104,6 +125,11 @@ for (const marker of [
   'traceparent_present: context.traceparent.is_some()',
   'idempotency_key_present: context.idempotency_key.is_some()',
   'deadline_ms: context.deadline_ms',
+  'struct CustomerListRequestFacts',
+  'search_present: request.search.is_some()',
+  'search_length: request.search.as_ref().map(|value| value.chars().count())',
+  'page: request.page',
+  'per_page: request.per_page',
   'struct CustomerOwnerErrorFacts',
   'CustomerError::Validation(message)',
   '("validation", 1, message.chars().count(), 0, 0, false)',
@@ -118,6 +144,88 @@ for (const marker of [
   'CustomerError::Profile(_) => ("profile", 0, 0, 0, 0, true)',
   'CustomerError::Database(_) => ("database", 0, 0, 0, 0, true)',
 ]) requireText(ports, marker, `${paths.ports}: bounded diagnostic facts`);
+
+for (const marker of [
+  'PortErrorKind::Validation => "validation"',
+  'PortErrorKind::NotFound => "not_found"',
+  'PortErrorKind::Conflict => "conflict"',
+  'PortErrorKind::Forbidden => "forbidden"',
+  'PortErrorKind::Unavailable => "unavailable"',
+  'PortErrorKind::Timeout => "timeout"',
+  'PortErrorKind::InvariantViolation => "invariant_violation"',
+]) requireText(kindMapper, marker, `${paths.ports}: closed PortError kind`);
+
+for (const marker of [
+  '.require_policy(PortCallPolicy::read())',
+  'log_customer_read_admission_rejection(context, owner_operation, &error);',
+  'error',
+]) requireText(admission, marker, `${paths.ports}: preserved admission return`);
+
+for (const marker of [
+  'tracing::warn!(',
+  'owner = "rustok_customer"',
+  'correlation_id = %context.correlation_id',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'actor_id_length = context_facts.actor_id_length',
+  'claim_count = context_facts.claim_count',
+  'role_count = context_facts.role_count',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'traceparent_present = context_facts.traceparent_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'deadline_ms = ?context_facts.deadline_ms',
+  'operation = owner_operation',
+  'code = %error.code',
+  'error_kind = customer_port_error_kind(&error.kind)',
+  'error_message_present = !error.message.is_empty()',
+  'error_message_length = error.message.chars().count()',
+  'retryable = error.retryable',
+  'boundary = CUSTOMER_READ_PORT_BOUNDARY',
+]) requireText(admissionLogger, marker, `${paths.ports}: bounded admission logger`);
+
+for (const marker of [
+  'if request.page == 0',
+  '"page"',
+  '"customer.page_invalid"',
+  '"customer projection page is invalid"',
+  'if !(1..=MAX_CUSTOMERS_PER_PAGE).contains(&request.per_page)',
+  '"per_page"',
+  '"customer.per_page_invalid"',
+  '"customer projection page size is invalid"',
+]) requireText(listValidation, marker, `${paths.ports}: preserved list validation`);
+
+for (const marker of [
+  'tracing::warn!(',
+  'validation_field,',
+  'code,',
+  'search_present = request_facts.search_present',
+  'search_length = ?request_facts.search_length',
+  'page = request_facts.page',
+  'per_page = request_facts.per_page',
+  'max_per_page = MAX_CUSTOMERS_PER_PAGE',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'boundary = CUSTOMER_READ_PORT_BOUNDARY',
+]) requireText(listLogger, marker, `${paths.ports}: bounded list logger`);
+
+for (const marker of [
+  'Uuid::parse_str(&context.tenant_id).map_err(|_|',
+  'log_customer_tenant_parse_rejection(context, owner_operation);',
+  '"customer.context_invalid"',
+  '"customer request context is invalid"',
+]) requireText(tenantParser, marker, `${paths.ports}: stable tenant parser`);
+
+for (const marker of [
+  'tracing::warn!(',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'operation = owner_operation',
+  'code = "customer.context_invalid"',
+  'tenant_id_parse_failed = true',
+  'boundary = CUSTOMER_READ_PORT_BOUNDARY',
+]) requireText(tenantLogger, marker, `${paths.ports}: bounded tenant parser logger`);
 
 for (const marker of [
   'tracing::error!(',
@@ -136,7 +244,7 @@ for (const marker of [
   'uuid_non_nil_count = error_facts.uuid_non_nil_count',
   'opaque_payload_present = error_facts.opaque_payload_present',
   'boundary = CUSTOMER_READ_PORT_BOUNDARY',
-]) requireText(logger, marker, `${paths.ports}: bounded owner logger`);
+]) requireText(ownerLogger, marker, `${paths.ports}: bounded owner logger`);
 
 for (const [variant, code, message, constructor, technical] of [
   [
@@ -213,13 +321,17 @@ for (const forbidden of [
   'customer_id = %',
   'user_id = %',
   'email = %',
-]) forbidText(diagnosticScope, forbidden, `${paths.ports}: owner mapper payload diagnostics`);
+  'search = %',
+  'search = ?',
+]) forbidText(diagnosticScope, forbidden, `${paths.ports}: read-boundary payload diagnostics`);
 
-requireText(
-  broad,
+for (const marker of [
+  "[customer, 'tenant_id_length = context_facts.tenant_id_length', 'customer tenant shape logging']",
+  "[customer, 'tenant_id_parse_failed = true', 'customer tenant parse failure']",
+  "[customer, 'error_kind = customer_port_error_kind(&error.kind)', 'customer admission error kind']",
+  "[customer, 'search_present = request_facts.search_present', 'customer list request shape']",
   "[customer, 'customer_error_to_port_error(&context, owner_operation, error)', 'customer context-aware mapping']",
-  `${paths.broad}: aggregate owner mapper coverage`,
-);
+]) requireText(broad, marker, `${paths.broad}: aggregate customer coverage`);
 
 for (const [key, expected] of Object.entries({
   owner_error_variant_count: 7,
@@ -234,17 +346,32 @@ for (const [key, expected] of Object.entries({
   aggregate_uuid_shape_logged: true,
   opaque_payload_presence_logged: true,
   bounded_context_shape_logged: true,
+  complete_port_error_logged_by_admission: false,
+  port_error_message_text_logged_by_admission: false,
+  raw_context_logged_by_admission: false,
+  static_port_error_kind_logged_by_admission: true,
+  port_error_message_shape_logged_by_admission: true,
+  raw_context_logged_by_list_validation: false,
+  list_search_text_logged: false,
+  bounded_list_request_shape_logged: true,
+  uuid_parse_error_payload_logged: false,
+  raw_tenant_logged_by_parser: false,
+  static_tenant_parse_failure_logged: true,
   database_profile_error_severity_changed: false,
   ordinary_warning_severity_changed: false,
+  admission_warning_severity_changed: false,
+  list_validation_warning_severity_changed: false,
+  tenant_parser_warning_severity_changed: false,
   public_code_changed: false,
   public_message_changed: false,
   public_kind_changed: false,
   public_retryability_changed: false,
   owner_delegation_changed: false,
   read_operations_changed: false,
-  admission_diagnostic_cleanup_closed: false,
-  tenant_parser_diagnostic_cleanup_closed: false,
-  list_validation_diagnostic_cleanup_closed: false,
+  admission_diagnostic_cleanup_closed: true,
+  tenant_parser_diagnostic_cleanup_closed: true,
+  list_validation_diagnostic_cleanup_closed: true,
+  customer_read_boundary_diagnostic_cleanup_closed: true,
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -277,6 +404,7 @@ for (const [key, expected] of Object.entries({
   all_seven_public_mappings_preserved: true,
   database_profile_severity_preserved: true,
   ordinary_warning_severity_preserved: true,
+  admission_list_parser_warning_severity_preserved: true,
   complete_customer_error_logging_removed_from_owner_mapper: true,
   database_profile_payload_removed: true,
   validation_email_text_removed: true,
@@ -284,7 +412,17 @@ for (const [key, expected] of Object.entries({
   raw_context_removed_from_owner_mapper: true,
   bounded_context_shape_retained: true,
   bounded_owner_error_shape_retained: true,
-  admission_parser_list_validation_diagnostics_remain_open: true,
+  complete_port_error_logging_removed_from_admission: true,
+  port_error_message_text_removed_from_admission: true,
+  static_port_error_kind_and_message_shape_retained: true,
+  raw_context_removed_from_admission_and_list_validation: true,
+  list_search_text_removed: true,
+  bounded_list_request_shape_retained: true,
+  uuid_parser_payload_removed: true,
+  raw_tenant_removed_from_parser: true,
+  static_tenant_parse_failure_retained: true,
+  admission_parser_list_validation_diagnostics_source_closed: true,
+  customer_read_boundary_source_closed: true,
   broad_ecommerce_cleanup_remains_open: true,
   runtime_evidence_claimed: false,
 })) {
@@ -294,20 +432,24 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const marker of [
+  '# Customer read-boundary diagnostic safety',
   'Status: **source-ready / unvalidated**',
+  'read-policy admission',
+  'list request validation',
+  'tenant UUID parsing',
   '`customer_error_to_port_error`',
   'All seven current `CustomerError` variants',
   'database and profile failures remain error severity',
-  'admission, list-validation or tenant-parser diagnostics',
-  'The broad ecommerce mapper cleanup',
+  'The UUID parser error and raw tenant value are not recorded.',
+  'the broader ecommerce cleanup remain open',
 ]) requireText(document, marker, `${paths.document}: truthful source scope`);
 
 if (failures.length > 0) {
-  console.error('Customer owner error diagnostic-safety verification failed:');
+  console.error('Customer read-boundary diagnostic-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Customer owner errors preserve public mappings and severity while retaining only bounded context and error shape; admission/parser execution evidence remains open',
+  '✔ Customer read admission, list validation, tenant parsing, and owner errors retain bounded diagnostics while preserving public behavior; execution evidence remains open',
 );
