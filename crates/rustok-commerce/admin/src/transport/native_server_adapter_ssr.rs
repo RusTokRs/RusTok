@@ -635,20 +635,135 @@ async fn apply_cart_promotion_native_with_context(
 // Order-change native boundary
 // -----------------------------------------------------------------------------
 
+struct OrderChangeRequestContextFacts {
+    request_context_present: bool,
+    request_tenant_id_non_nil: Option<bool>,
+    request_user_id_present: bool,
+    request_user_id_non_nil: Option<bool>,
+    channel_id_present: bool,
+    channel_id_non_nil: Option<bool>,
+    channel_slug_present: bool,
+    channel_slug_length: Option<usize>,
+    locale_present: bool,
+    locale_length: Option<usize>,
+}
+
+fn order_change_request_context_facts(
+    request_context: Option<&rustok_api::RequestContext>,
+) -> OrderChangeRequestContextFacts {
+    OrderChangeRequestContextFacts {
+        request_context_present: request_context.is_some(),
+        request_tenant_id_non_nil: request_context.map(|context| !context.tenant_id.is_nil()),
+        request_user_id_present: request_context.and_then(|context| context.user_id).is_some(),
+        request_user_id_non_nil: request_context
+            .and_then(|context| context.user_id)
+            .map(|value| !value.is_nil()),
+        channel_id_present: request_context
+            .and_then(|context| context.channel_id)
+            .is_some(),
+        channel_id_non_nil: request_context
+            .and_then(|context| context.channel_id)
+            .map(|value| !value.is_nil()),
+        channel_slug_present: request_context
+            .and_then(|context| context.channel_slug.as_ref())
+            .is_some(),
+        channel_slug_length: request_context
+            .and_then(|context| context.channel_slug.as_ref())
+            .map(|value| value.chars().count()),
+        locale_present: request_context.is_some(),
+        locale_length: request_context.map(|context| context.locale.chars().count()),
+    }
+}
+
+struct OrderChangeOwnerErrorFacts {
+    validation_detail_present: bool,
+    validation_detail_length: Option<usize>,
+    resource_id_present: bool,
+    resource_id_non_nil: Option<bool>,
+    transition_from_length: Option<usize>,
+    transition_to_length: Option<usize>,
+    database_cause_present: bool,
+    core_cause_present: bool,
+}
+
+fn order_change_owner_error_facts(
+    error: &rustok_order::error::OrderError,
+) -> OrderChangeOwnerErrorFacts {
+    match error {
+        rustok_order::error::OrderError::Validation(detail) => OrderChangeOwnerErrorFacts {
+            validation_detail_present: !detail.trim().is_empty(),
+            validation_detail_length: Some(detail.chars().count()),
+            resource_id_present: false,
+            resource_id_non_nil: None,
+            transition_from_length: None,
+            transition_to_length: None,
+            database_cause_present: false,
+            core_cause_present: false,
+        },
+        rustok_order::error::OrderError::OrderNotFound(id)
+        | rustok_order::error::OrderError::OrderReturnNotFound(id)
+        | rustok_order::error::OrderError::OrderChangeNotFound(id) => {
+            OrderChangeOwnerErrorFacts {
+                validation_detail_present: false,
+                validation_detail_length: None,
+                resource_id_present: true,
+                resource_id_non_nil: Some(!id.is_nil()),
+                transition_from_length: None,
+                transition_to_length: None,
+                database_cause_present: false,
+                core_cause_present: false,
+            }
+        }
+        rustok_order::error::OrderError::InvalidTransition { from, to } => {
+            OrderChangeOwnerErrorFacts {
+                validation_detail_present: false,
+                validation_detail_length: None,
+                resource_id_present: false,
+                resource_id_non_nil: None,
+                transition_from_length: Some(from.chars().count()),
+                transition_to_length: Some(to.chars().count()),
+                database_cause_present: false,
+                core_cause_present: false,
+            }
+        }
+        rustok_order::error::OrderError::Database(_) => OrderChangeOwnerErrorFacts {
+            validation_detail_present: false,
+            validation_detail_length: None,
+            resource_id_present: false,
+            resource_id_non_nil: None,
+            transition_from_length: None,
+            transition_to_length: None,
+            database_cause_present: true,
+            core_cause_present: false,
+        },
+        rustok_order::error::OrderError::Core(_) => OrderChangeOwnerErrorFacts {
+            validation_detail_present: false,
+            validation_detail_length: None,
+            resource_id_present: false,
+            resource_id_non_nil: None,
+            transition_from_length: None,
+            transition_to_length: None,
+            database_cause_present: false,
+            core_cause_present: true,
+        },
+    }
+}
+
 fn order_change_correlation_id(operation: &'static str) -> String {
     transport_correlation_id("commerce-admin-order-change", operation)
 }
 
 fn order_change_context_error<E: std::fmt::Debug>(
-    error: E,
+    _error: E,
     operation: &'static str,
     context_kind: &'static str,
     correlation_id: &str,
     code: &'static str,
     public_message: &'static str,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
         operation,
         context_kind,
@@ -697,8 +812,9 @@ async fn optional_order_change_request_context(
     match leptos_axum::extract::<rustok_api::RequestContext>().await {
         Ok(context) => Some(context),
         Err(error) => {
+            let error_type = std::any::type_name_of_val(&error);
             tracing::warn!(
-                error = ?error,
+                error_type,
                 consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
                 operation,
                 context_kind = "request",
@@ -723,20 +839,24 @@ fn order_service_from_context(
     let event_bus = runtime_ctx
         .shared_get::<rustok_outbox::TransactionalEventBus>()
         .ok_or_else(|| {
-            let (request_tenant_id, request_user_id, channel_id, channel_slug, locale) =
-                request_context_fields(request_context);
+            let request_facts = order_change_request_context_facts(request_context);
             tracing::error!(
                 owner = "rustok_order",
                 consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
                 operation,
                 correlation_id,
-                tenant_id = %tenant.id,
-                actor_id = %auth.user_id,
-                request_tenant_id = ?request_tenant_id,
-                request_user_id = ?request_user_id,
-                channel_id = ?channel_id,
-                channel_slug = ?channel_slug,
-                locale = ?locale,
+                tenant_id_non_nil = !tenant.id.is_nil(),
+                actor_id_non_nil = !auth.user_id.is_nil(),
+                request_context_present = request_facts.request_context_present,
+                request_tenant_id_non_nil = ?request_facts.request_tenant_id_non_nil,
+                request_user_id_present = request_facts.request_user_id_present,
+                request_user_id_non_nil = ?request_facts.request_user_id_non_nil,
+                channel_id_present = request_facts.channel_id_present,
+                channel_id_non_nil = ?request_facts.channel_id_non_nil,
+                channel_slug_present = request_facts.channel_slug_present,
+                channel_slug_length = ?request_facts.channel_slug_length,
+                locale_present = request_facts.locale_present,
+                locale_length = ?request_facts.locale_length,
                 code = "commerce.admin_order_change_runtime_unavailable",
                 boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
                 "commerce admin order-change runtime composition is unavailable"
@@ -806,24 +926,43 @@ fn order_change_owner_error(
         ),
     };
 
-    let (request_tenant_id, request_user_id, channel_id, channel_slug, locale) =
-        request_context_fields(context.request_context);
+    let request_facts = order_change_request_context_facts(context.request_context);
+    let error_facts = order_change_owner_error_facts(&error);
+    let order_id_present = context.order_id.is_some();
+    let order_id_non_nil = context.order_id.map(|value| !value.is_nil());
+    let order_change_id_present = context.order_change_id.is_some();
+    let order_change_id_non_nil = context.order_change_id.map(|value| !value.is_nil());
+
     if severe {
         tracing::error!(
-            error = ?error,
             owner = "rustok_order",
             consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
             operation = context.operation,
             correlation_id = context.correlation_id,
-            tenant_id = %context.tenant.id,
-            actor_id = %context.auth.user_id,
-            order_id = ?context.order_id,
-            order_change_id = ?context.order_change_id,
-            request_tenant_id = ?request_tenant_id,
-            request_user_id = ?request_user_id,
-            channel_id = ?channel_id,
-            channel_slug = ?channel_slug,
-            locale = ?locale,
+            tenant_id_non_nil = !context.tenant.id.is_nil(),
+            actor_id_non_nil = !context.auth.user_id.is_nil(),
+            order_id_present,
+            order_id_non_nil = ?order_id_non_nil,
+            order_change_id_present,
+            order_change_id_non_nil = ?order_change_id_non_nil,
+            request_context_present = request_facts.request_context_present,
+            request_tenant_id_non_nil = ?request_facts.request_tenant_id_non_nil,
+            request_user_id_present = request_facts.request_user_id_present,
+            request_user_id_non_nil = ?request_facts.request_user_id_non_nil,
+            channel_id_present = request_facts.channel_id_present,
+            channel_id_non_nil = ?request_facts.channel_id_non_nil,
+            channel_slug_present = request_facts.channel_slug_present,
+            channel_slug_length = ?request_facts.channel_slug_length,
+            locale_present = request_facts.locale_present,
+            locale_length = ?request_facts.locale_length,
+            validation_detail_present = error_facts.validation_detail_present,
+            validation_detail_length = ?error_facts.validation_detail_length,
+            resource_id_present = error_facts.resource_id_present,
+            resource_id_non_nil = ?error_facts.resource_id_non_nil,
+            transition_from_length = ?error_facts.transition_from_length,
+            transition_to_length = ?error_facts.transition_to_length,
+            database_cause_present = error_facts.database_cause_present,
+            core_cause_present = error_facts.core_cause_present,
             error_kind,
             public_code,
             boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,
@@ -831,20 +970,34 @@ fn order_change_owner_error(
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = "rustok_order",
             consumer = COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER,
             operation = context.operation,
             correlation_id = context.correlation_id,
-            tenant_id = %context.tenant.id,
-            actor_id = %context.auth.user_id,
-            order_id = ?context.order_id,
-            order_change_id = ?context.order_change_id,
-            request_tenant_id = ?request_tenant_id,
-            request_user_id = ?request_user_id,
-            channel_id = ?channel_id,
-            channel_slug = ?channel_slug,
-            locale = ?locale,
+            tenant_id_non_nil = !context.tenant.id.is_nil(),
+            actor_id_non_nil = !context.auth.user_id.is_nil(),
+            order_id_present,
+            order_id_non_nil = ?order_id_non_nil,
+            order_change_id_present,
+            order_change_id_non_nil = ?order_change_id_non_nil,
+            request_context_present = request_facts.request_context_present,
+            request_tenant_id_non_nil = ?request_facts.request_tenant_id_non_nil,
+            request_user_id_present = request_facts.request_user_id_present,
+            request_user_id_non_nil = ?request_facts.request_user_id_non_nil,
+            channel_id_present = request_facts.channel_id_present,
+            channel_id_non_nil = ?request_facts.channel_id_non_nil,
+            channel_slug_present = request_facts.channel_slug_present,
+            channel_slug_length = ?request_facts.channel_slug_length,
+            locale_present = request_facts.locale_present,
+            locale_length = ?request_facts.locale_length,
+            validation_detail_present = error_facts.validation_detail_present,
+            validation_detail_length = ?error_facts.validation_detail_length,
+            resource_id_present = error_facts.resource_id_present,
+            resource_id_non_nil = ?error_facts.resource_id_non_nil,
+            transition_from_length = ?error_facts.transition_from_length,
+            transition_to_length = ?error_facts.transition_to_length,
+            database_cause_present = error_facts.database_cause_present,
+            core_cause_present = error_facts.core_cause_present,
             error_kind,
             public_code,
             boundary = COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY,

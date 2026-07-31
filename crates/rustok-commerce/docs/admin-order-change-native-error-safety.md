@@ -1,115 +1,125 @@
-# Commerce admin order-change native error safety
+# Commerce admin order-change native diagnostic safety
 
-Date: 2026-07-30
+Date: 2026-07-31
 
-Status: `commerce_admin_order_change_native_error_safety_source_unvalidated`
+Status: `source-complete / unvalidated`
 
-This source slice hardens the mounted Commerce admin native order-change endpoints:
+This source slice hardens the mounted Commerce admin native order-change diagnostics for:
 
 - `commerce/admin/order-changes`
 - `commerce/admin/apply-order-change`
 - `commerce/admin/cancel-order-change`
 
-The ecommerce master mapper-cleanup item remains open for other owners, adapters, and
-non-`PortError` envelopes. This document records only the bounded native order-change
-source change and does not promote FFA, FBA, transport, runtime, or production status.
+The endpoint names, wrapper signatures, permissions, tenant matching, parsing, DTO mapping,
+owner calls, pagination, filtering, apply/cancel inputs, and persisted behavior remain
+unchanged.
 
-## Problem
+## Public envelopes
 
-The mounted SSR adapter previously converted framework and owner failures directly into
-`ServerFnError` values:
+Auth and tenant extraction failures retain the existing static messages:
 
-- `AuthContext` and `TenantContext` extraction failures were serialized with
-  `.map_err(ServerFnError::new)`;
-- missing `TransactionalEventBus` exposed the host-composition implementation detail;
-- `OrderService` list/apply/cancel failures were converted with
-  `.map_err(ServerFnError::new)` and could carry database, core, identity, or transition
-  details into the public server-function envelope;
-- native order-change failures had no per-call transport correlation identifier or
-  request-attributed structured diagnostics.
+- `Commerce admin authentication context is temporarily unavailable`
+- `Commerce admin tenant context is temporarily unavailable`
 
-## Source boundary
+Missing host event-bus composition retains:
 
-The mounted endpoint names, public wrapper signatures, DTO mapping, permissions, tenant
-matching, UUID/JSON validation, pagination, status filtering, and owner service calls are
-preserved.
+- `Commerce order-change runtime is temporarily unavailable`
 
-Each endpoint now creates a unique correlation identifier:
+Typed `rustok_order::error::OrderError` variants retain the same public mapping:
+
+| Owner error | Public message | Severity |
+| --- | --- | --- |
+| `Validation` | `Order change request is invalid` | warning |
+| `OrderNotFound`, `OrderReturnNotFound`, `OrderChangeNotFound` | `Order resource was not found` | warning |
+| `InvalidTransition` | `Order change conflicts with the current order state` | warning |
+| `Database` | `Order storage is temporarily unavailable` | error |
+| `Core` | `Order change could not be completed safely` | error |
+
+No public message or error-classification behavior is changed by this slice.
+
+## Framework diagnostics
+
+Auth, tenant, and optional `RequestContext` extraction diagnostics keep the consumer,
+operation, context kind, correlation ID, stable code, boundary, and Rust error type. The
+complete framework extraction errors are not logged; neither debug nor display text is
+retained.
+
+Optional `RequestContext` extraction remains diagnostic-only. Failure still falls back
+without changing authentication, authorization, tenant matching, validation, or owner-call
+admission.
+
+## Runtime composition diagnostics
+
+Missing `TransactionalEventBus` still produces the static runtime envelope and stable
+runtime diagnostic code. The event now records only:
+
+- tenant and actor UUID non-nil facts;
+- request-context presence;
+- request tenant/user/channel UUID presence and non-nil facts;
+- channel-slug and locale presence/length facts;
+- owner, consumer, operation, correlation ID, code, and boundary.
+
+Tenant, actor, request tenant/user/channel UUIDs, channel slug, and locale are not logged as
+full values.
+
+## Owner diagnostics
+
+The owner mapper still covers all seven `OrderError` variants and preserves the original
+warning/error split. Diagnostics now retain only:
+
+- owner, consumer, operation, correlation ID, typed error kind, stable public code, and
+  boundary;
+- effective tenant and actor UUID non-nil facts;
+- order and order-change ID presence/non-nil facts;
+- request-context identity presence/non-nil/length facts;
+- validation-detail presence and length;
+- not-found resource UUID presence/non-nil facts;
+- transition source/target string lengths;
+- database/core cause presence flags.
+
+The complete `OrderError` and identity values are not logged. Validation detail, transition
+state text, database/core causes, tenant/user/order UUIDs, channel slug, and locale remain
+absent from structured values.
+
+## Preserved correlation and orchestration
+
+Each mounted call still creates a unique correlation identifier:
 
 ```text
 commerce-admin-order-change:{operation}:{uuid}
 ```
 
-`RequestContext` extraction is optional and diagnostic-only. Its absence does not change
-authentication, authorization, tenant matching, validation, or owner-call admission.
-
-## Public envelopes
-
-Framework context failures use static public messages:
-
-- `Commerce admin authentication context is temporarily unavailable`
-- `Commerce admin tenant context is temporarily unavailable`
-
-Missing host event-bus composition returns:
-
-- `Commerce order-change runtime is temporarily unavailable`
-
-Typed `rustok_order::error::OrderError` variants use stable public messages:
-
-| Owner error | Public message |
-| --- | --- |
-| `Validation` | `Order change request is invalid` |
-| `OrderNotFound`, `OrderReturnNotFound`, `OrderChangeNotFound` | `Order resource was not found` |
-| `InvalidTransition` | `Order change conflicts with the current order state` |
-| `Database` | `Order storage is temporarily unavailable` |
-| `Core` | `Order change could not be completed safely` |
-
-The original typed cause remains internal.
-
-## Internal diagnostics
-
-Structured diagnostics identify:
-
-- owner and consumer;
-- consumer operation;
-- correlation ID;
-- effective tenant and authenticated actor;
-- order and order-change identity when known;
-- request tenant, user, channel ID, channel slug, and locale when available;
-- typed error kind;
-- stable public code;
-- native transport boundary.
-
-Database/core failures are logged as errors. Validation, not-found, and state-conflict
-failures are logged as warnings. Raw request metadata is not logged.
+Direct `OrderService` construction, `TransactionalEventBus` lookup, list/apply/cancel call
+order, operation constants, and result mapping are unchanged. This slice does not claim a
+host-selected typed owner port or native/REST orchestration parity.
 
 ## Promotion compatibility
 
-The same mounted SSR source still contains the previously hardened cart-promotion
-endpoints. Their endpoint names, permission policy, request parsing, unique correlation,
-request locale/channel propagation, write idempotency semantics, consumer diagnostics,
-and sanitized `PortError.message` boundary are preserved.
+The same SSR file contains the previously hardened cart-promotion boundary. Its safe
+framework type-only diagnostics, promotion request-context facts, safe `PortError` shape,
+endpoints, permissions, channel/locale forwarding, deadline, idempotency, public message,
+and owner calls remain unchanged.
 
-## Explicit non-claims
+## Evidence boundary
 
-This source slice does not:
+Focused guard:
 
-- replace direct `OrderService` construction with a host-selected typed owner port;
-- change apply/cancel orchestration policy;
-- prove parity with the REST order-change orchestration surface;
-- run Cargo, tests, static verifiers, formatting, workflows, or CI;
-- retain mounted failure-injection or remote-profile evidence;
-- close the broad ecommerce mapper-cleanup task.
-
-## Owner validation
-
-Not run by the implementation agent, per maintainer instruction.
-
-Suggested commands:
-
-```bash
-node scripts/verify/verify-commerce-admin-order-change-native-error-safety.mjs
-node scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs
-node scripts/verify/verify-commerce-admin-boundary.mjs
-cargo check -p rustok-commerce-admin --features ssr
+```text
+scripts/verify/verify-commerce-admin-order-change-native-error-safety.mjs
 ```
+
+Retained evidence:
+
+```text
+crates/rustok-commerce/contracts/evidence/admin-order-change-native-error-safety-source.json
+crates/rustok-commerce/contracts/evidence/admin-order-change-native-error-safety-source-review.json
+```
+
+No test, verifier, Cargo command, formatting command, workflow, CI job, mounted request, or
+runtime failure-injection trace was executed for this source slice.
+
+## Remaining work
+
+The broad ecommerce mapper-cleanup item remains open for direct owner-port composition,
+native/REST parity, remaining order, payment, fulfillment, inventory, customer, tax,
+promotion and adapter boundaries, and non-`PortError` public envelopes.
