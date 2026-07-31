@@ -42,6 +42,18 @@
       "module_registers_comment_projection_handler_with_host_routing"
     ]
   },
+  "dispatcher_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact",
+    "isolation": "unique_schema_one_connection_pool",
+    "scope": "event_bus_dispatcher_module_registered_handler_transactional_commit",
+    "cases": [
+      "event_dispatcher_routes_registered_handler_and_commits_projection"
+    ]
+  },
   "postgres_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
@@ -105,6 +117,10 @@
       "expected": "the retained module test invokes BlogModule::register_event_listeners, extracts one blog_comment_projection handler, accepts Blog comment created/deleted events, and rejects a non-Blog target"
     },
     {
+      "name": "postgres_event_dispatcher_delivery",
+      "expected": "the retained PostgreSQL dispatcher case registers the Blog handler through BlogModule, publishes one envelope through EventBus and EventDispatcher, then expects the counter, delivery ledger, and outbox row to commit"
+    },
+    {
       "name": "postgres_duplicate_delivery",
       "expected": "the retained PostgreSQL target replays one envelope id and expects one counter transition, one delivery row, and one outbox row"
     },
@@ -132,6 +148,7 @@
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
     "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
+    "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
     "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
     "execute the env-gated PostgreSQL comment_projection_restart_postgres_test target and retain its output",
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
@@ -139,6 +156,6 @@
     "retain missing-post retry and later recovery evidence",
     "retain restarted-handler replay evidence across a new database connection",
     "retain concurrent optimistic-update exhaustion and retry evidence",
-    "retain actual host EventDispatcher delivery and process restart recovery evidence"
+    "retain process restart recovery evidence"
   ]
 }
