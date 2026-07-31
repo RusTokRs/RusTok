@@ -145,7 +145,7 @@ impl ForumOwnerCheckpointReconciler {
         revision_limit: usize,
     ) -> Result<ForumOwnerCheckpointSweepReport> {
         let recovered_processing_events = self
-            .recover_abandoned_processing(tenant_limit)
+            .recover_abandoned_processing(tenant_limit, revision_limit)
             .await? as usize;
         let mut active_cursor = self.load_scan_cursor().await?;
         let mut heads = self.list_tenant_heads(active_cursor, tenant_limit).await?;
@@ -308,7 +308,11 @@ impl ForumOwnerCheckpointReconciler {
         })
     }
 
-    async fn recover_abandoned_processing(&self, tenant_limit: usize) -> Result<u64> {
+    async fn recover_abandoned_processing(
+        &self,
+        tenant_limit: usize,
+        event_limit: usize,
+    ) -> Result<u64> {
         let rows = self
             .db
             .query_all(Statement::from_sql_and_values(
@@ -342,19 +346,28 @@ impl ForumOwnerCheckpointReconciler {
                     DbBackend::Postgres,
                     format!(
                         r#"
-                        UPDATE search_projection_inbox
+                        WITH abandoned AS (
+                            SELECT event_id
+                            FROM search_projection_inbox
+                            WHERE tenant_id = $1
+                              AND source_module = 'forum'
+                              AND status = 'processing'
+                              AND updated_at <= CURRENT_TIMESTAMP - INTERVAL '{PROCESSING_LEASE_INTERVAL}'
+                            ORDER BY ingest_sequence ASC
+                            LIMIT $2
+                            FOR UPDATE
+                        )
+                        UPDATE search_projection_inbox AS inbox
                         SET status = 'retryable_error',
                             next_attempt_at = CURRENT_TIMESTAMP,
                             last_error = 'processing_lease_expired',
                             completed_at = NULL,
                             updated_at = CURRENT_TIMESTAMP
-                        WHERE tenant_id = $1
-                          AND source_module = 'forum'
-                          AND status = 'processing'
-                          AND updated_at <= CURRENT_TIMESTAMP - INTERVAL '{PROCESSING_LEASE_INTERVAL}'
+                        FROM abandoned
+                        WHERE inbox.event_id = abandoned.event_id
                         "#
                     ),
-                    vec![tenant_id.into()],
+                    vec![tenant_id.into(), (event_limit as i64).into()],
                 ))
                 .await
                 .map_err(Error::Database)?;
