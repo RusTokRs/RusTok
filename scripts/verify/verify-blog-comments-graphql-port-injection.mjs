@@ -56,6 +56,8 @@ const commentMutationPath = 'crates/rustok-blog/src/graphql/mutation.rs';
 const servicePath = 'crates/rustok-blog/src/services/comment.rs';
 const consumerMatrixPath =
   'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+const serverCodegenPath = 'apps/server/build.rs';
+const serverSchemaPath = 'apps/server/src/graphql/schema.rs';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
 const harnessTest =
   'graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection';
@@ -69,6 +71,8 @@ const runtimeData = read(runtimeDataPath);
 const commentReads = read(commentReadsPath);
 const commentMutation = read(commentMutationPath);
 const service = read(servicePath);
+const serverCodegen = read(serverCodegenPath);
+const serverSchema = read(serverSchemaPath);
 const plan = read(planPath);
 
 if (evidence) {
@@ -95,6 +99,8 @@ if (evidence) {
     comment_mutation: commentMutationPath,
     consumer_service: servicePath,
     consumer_matrix: consumerMatrixPath,
+    server_codegen: serverCodegenPath,
+    server_schema: serverSchemaPath,
   };
   for (const [key, expected] of Object.entries(expectedSources)) {
     if (evidence.source_contract?.[key] !== expected) {
@@ -116,6 +122,7 @@ if (evidence) {
   if (
     composition.host_inputs !== 'rustok_api::graphql::GraphqlRuntimeInputs' ||
     composition.manifest_factory !== 'graphql::attach_schema_data' ||
+    composition.schema_attachment !== 'schema_codegen::attach_module_graphql_data' ||
     composition.schema_data !== 'BlogGraphqlRuntimeData' ||
     composition.shared_value !== 'Arc<dyn CommentsThreadPort>' ||
     composition.lookup !== 'GraphqlRuntimeInputs::shared_get' ||
@@ -151,6 +158,17 @@ for (const marker of [
   'mod runtime_data;',
   'pub use runtime_data::{BlogGraphqlRuntimeData, attach_schema_data};',
 ]) requireMarker(graphqlModule, marker, graphqlModulePath);
+
+for (const marker of [
+  'graphql_runtime_data_factory: Option<String>',
+  'graphql_runtime_data_factory_expr',
+  'builder = builder.data({factory}(inputs)?);',
+]) requireMarker(serverCodegen, marker, serverCodegenPath);
+requireMarker(
+  serverSchema,
+  'schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)',
+  serverSchemaPath,
+);
 
 for (const marker of [
   'use rustok_api::graphql::GraphqlRuntimeInputs;',
@@ -210,6 +228,7 @@ for (const marker of [
   'verify-blog-comments-graphql-port-injection.test.mjs',
   'BlogGraphqlRuntimeData',
   'graphql::attach_schema_data',
+  'schema_codegen::attach_module_graphql_data',
   'GraphQL Comments host selection is source-locked',
   'Blog FBA package-chain registration remains pending',
   'remote network transport remains pending',
