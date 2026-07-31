@@ -97,8 +97,10 @@ covers the complete page because every ledger row represents a Forum projection
 invalidation and the projector materializes current category/topic/reply state.
 
 The projection transaction commits before Search attempts to advance the
-checkpoint. The checkpoint transaction then advances every returned owner
-revision in exact `+1` order while retaining each event ID.
+checkpoint. The checkpoint transaction validates every returned event ID and
+advances every owner revision in exact `+1` order. The high-water row retains the
+event ID and outcome of the latest covered revision; the append-only Forum ledger
+remains the complete revision-to-event history.
 
 The projection and checkpoint are intentionally not one cross-module database
 transaction. If checkpoint commit fails after a successful rebuild, the owner
