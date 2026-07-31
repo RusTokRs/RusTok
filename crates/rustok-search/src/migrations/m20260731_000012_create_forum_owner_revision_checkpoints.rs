@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS search_projection_owner_checkpoints (
     CONSTRAINT ck_search_projection_owner_checkpoint_revision CHECK (
         owner_revision > 0
     ),
+    CONSTRAINT ck_search_projection_owner_checkpoint_event_id CHECK (
+        event_id <> '00000000-0000-0000-0000-000000000000'::uuid
+    ),
     CONSTRAINT ck_search_projection_owner_checkpoint_outcome CHECK (
         outcome IN ('delivery_covered', 'rebuild_repaired')
     )
@@ -61,6 +64,10 @@ CREATE TABLE IF NOT EXISTS search_projection_owner_scan_cursors (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT ck_search_projection_owner_scan_source CHECK (
         source_module = 'forum'
+    ),
+    CONSTRAINT ck_search_projection_owner_scan_tenant CHECK (
+        after_tenant_id IS NULL
+        OR after_tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid
     )
 );
 
