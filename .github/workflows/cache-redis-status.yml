@@ -75,6 +75,28 @@ jobs:
         with:
           toolchain: "1.96.0"
           components: rustfmt
+      - name: Correct reconciliation staging count
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("scripts/agent/patch-storefront-search-product-channel-reconciliation-23b2e2.py")
+          text = target.read_text()
+          old = '''replace_all(
+              projector,
+              "PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL",
+              "PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL",
+              3,
+          )'''
+          new = '''replace_all(
+              projector,
+              "PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL",
+              "PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL",
+              6,
+          )'''
+          if text.count(old) != 1:
+              raise SystemExit("Product channel reconciliation count target drifted")
+          target.write_text(text.replace(old, new, 1))
+          PY
       - name: Wire bounded startup reconciliation
         run: python3 scripts/agent/patch-storefront-search-product-channel-reconciliation-23b2e2.py
       - name: Format changed Rust files only
