@@ -179,7 +179,9 @@ HTTP and GraphQL composition imports. The source marker `storefront native SSR
 Comments host selection is source-locked` is mandatory inside the existing
 first-class Comments port leaf. Blog FBA package-chain registration remains
 pending only as a dedicated parallel storefront leaf; that duplicate leaf is
-intentionally not added. The remote network transport remains pending.
+intentionally not added. The stale `admin_native_ssr_composition` pending marker
+was removed after admin native composition became source-locked. The remote
+network transport remains pending.
 
 Admin native SSR Comments composition is host-attached through the existing
 `NativeContext`. `native_context()` reads an optional
@@ -200,9 +202,15 @@ retained compile-only harness is
 `transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection`,
 with suggested command
 `cargo test -p rustok-blog-admin --features ssr transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection -- --exact`.
-The admin native SSR Comments host selection is source-locked. Blog FBA
-package-chain registration remains pending, and the remote network transport
-remains pending.
+The registered `verify:blog:comments-port-boundary` verifier imports the standalone
+admin native verifier, and the registered
+`test:verify:blog:comments-port-boundary` self-test imports all seventeen focused
+cases. `scripts/verify/verify-blog-fba.test.mjs` locks both imports beside the
+HTTP, GraphQL, and storefront native composition imports. The source marker
+`admin native SSR Comments host selection is source-locked` is mandatory inside
+the existing first-class Comments port leaf. Blog FBA package-chain registration
+remains pending only as a dedicated parallel admin native leaf; that duplicate
+leaf is intentionally not added. The remote network transport remains pending.
 
 Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
@@ -765,6 +773,27 @@ verifier, seventeen focused positive/negative cases, and a compile-only selector
 harness retain the source contract. Blog FBA package-chain integration, the remote
 network transport, and all execution remain pending.
 
+The continuation audit at `f6cd8b598d2ff57e19ec50a1455bf8d8bb31a972`
+found that slice 65's admin native evidence, standalone verifier, focused fixture,
+and compile-only harness were complete, but the registered
+`comments_port_boundary` verifier and self-test still imported only HTTP, GraphQL,
+and storefront native composition sub-contracts. The audit also found storefront
+native evidence still carrying the now-stale `admin_native_ssr_composition`
+pending marker.
+
+Slice 66 imports the standalone admin native verifier from the registered Comments
+port verifier and imports all seventeen focused admin native cases from the
+registered Comments port self-test. The parent positive fixture now materializes
+the admin `NativeContext`, selector, tenant/permission admission, pagination,
+fail-closed handoffs, harness, and schema-v1 evidence under the same temporary
+repo root. The aggregate Blog FBA self-test locks both imports beside the existing
+HTTP, GraphQL, and storefront assertions. Storefront evidence and its sixteen-case
+fixture now retain only the remote transport as pending and reject reintroduction
+of the stale admin marker. Registry schema v13, package scripts, verify/test order,
+runtime source, remote transport status, and all execution claims remain
+unchanged. Admin native composition is now a mandatory sub-contract of the
+existing first-class Comments port leaf rather than a parallel duplicate leaf.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -778,10 +807,9 @@ network transport, and all execution remain pending.
   plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
   Comments event projection, category Search reindex, GraphQL rate limiting,
   GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
-  order. The existing Comments port leaf requires HTTP, GraphQL, and storefront
-  native composition verifiers plus focused fixtures through aggregate-locked
-  imports; package order remains unchanged. The standalone admin native
-  composition guard remains outside registry package order in Slice 65.
+  order. The existing Comments port leaf requires HTTP, GraphQL, storefront
+  native, and admin native composition verifiers plus focused fixtures through
+  aggregate-locked imports; package order remains unchanged.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; evidence schema v3, all seven operations, approved public
   read, typed richtext projection, two-second deadlines, write idempotency, active
@@ -792,14 +820,13 @@ network transport, and all execution remain pending.
   GraphQL public/moderation operations use manifest-attached
   `BlogGraphqlRuntimeData`; storefront native SSR approved public reads use
   `comment_service` with typed `AVAILABLE` / `UNAVAILABLE` / `TIMEOUT`
-  degradation. Those three composition guards are retained inside the registered
-  Comments port gate. Admin native SSR moderation list and mutation now select the
-  same optional host port through `comment_service`, preserve tenant/permission
-  admission and fail-closed errors, and retain schema-v1 evidence plus a standalone
-  verifier, focused fixture, and compile-only harness. Admin package-chain
-  integration, the remote network transport, remote adapter runtime parity, cached
-  snapshot, comment-form fallback, browser/runtime evidence, and broader degraded
-  UI modes remain planned or pending.
+  degradation; admin native SSR moderation list and mutation use
+  `comment_service` with tenant/permission admission and fail-closed errors. All
+  four composition guards and their focused fixtures are retained inside the
+  registered Comments port gate. Dedicated parallel composition leaves remain
+  intentionally absent. The remote network transport, remote adapter runtime
+  parity, cached snapshot, comment-form fallback, browser/runtime evidence, and
+  broader degraded UI modes remain planned or pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence
   schema v4, shared classifier/counter/retry-decision helpers, `executable_no_run`
   source harness, deterministic PostgreSQL retry-limit target, module-registration,
@@ -1120,6 +1147,12 @@ network transport, and all execution remain pending.
     source contract in schema-v1 evidence plus a standalone verifier, seventeen
     focused cases, and a compile-only harness, and kept package integration,
     remote transport, and all execution pending.
+66. Bound the standalone admin native composition verifier and all seventeen
+    focused cases into the already registered `comments-port-boundary` verify/test
+    leaf, made the parent positive fixture self-contained, added aggregate
+    regressions for both required imports, reconciled storefront evidence to remove
+    the stale admin pending marker, preserved registry schema v13 and exact package
+    order, and changed no runtime source or execution status.
 
 ## Next results
 
@@ -1137,17 +1170,15 @@ network transport, and all execution remain pending.
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
 5. **Close comments runtime evidence.** Run the registered Comments port boundary
-   verifier and self-test, which include the standalone HTTP, GraphQL, and
-   storefront native composition verifiers plus their focused fixtures, and run
-   the standalone admin native composition verifier and focused fixture. Execute
-   the compile-only injection-signature, HTTP selection, GraphQL runtime-data,
-   storefront native, and admin native selector harnesses, shared consumer
-   runtime-order verifier, Blog projection classifier and deterministic retry
-   policy, module registration/routing, dispatcher, concurrency, retry-limit,
+   verifier and self-test, which include the standalone HTTP, GraphQL, storefront
+   native, and admin native composition verifiers plus their focused fixtures.
+   Execute the compile-only injection-signature, HTTP selection, GraphQL
+   runtime-data, storefront native, and admin native selector harnesses, shared
+   consumer runtime-order verifier, Blog projection classifier and deterministic
+   retry policy, module registration/routing, dispatcher, concurrency, retry-limit,
    duplicate-delivery, and restart targets. Retain deterministic rollback,
    cardinality, process-boundary, authorization, moderation, pagination, and
-   fail-closed outputs; then register the admin native source guard inside the
-   existing Comments port gate, implement the remote network transport through
+   fail-closed outputs; then implement the remote network transport through
    `CommentService::with_comments_thread_port`, and retain all-seven-operation
    adapter parity, naturally contended PostgreSQL retry-frequency evidence, full
    server-host restart recovery, browser parity for typed unavailable/timeout

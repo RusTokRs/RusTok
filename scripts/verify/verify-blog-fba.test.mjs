@@ -22,6 +22,10 @@ const storefrontNativeVerifierImport =
   "import './verify-blog-comments-storefront-native-port-injection.mjs';";
 const storefrontNativeSelfTestImport =
   "import './verify-blog-comments-storefront-native-port-injection.test.mjs';";
+const adminNativeVerifierImport =
+  "import './verify-blog-comments-admin-native-port-injection.mjs';";
+const adminNativeSelfTestImport =
+  "import './verify-blog-comments-admin-native-port-injection.test.mjs';";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -113,6 +117,16 @@ test('Blog FBA policy retains storefront native composition verifier inside the 
 test('Blog FBA policy retains storefront native composition focused fixture inside the registered Comments port self-test', () => {
   const source = readFileSync(commentsPortSelfTest, 'utf8');
   assert.ok(source.includes(storefrontNativeSelfTestImport));
+});
+
+test('Blog FBA policy retains admin native composition verifier inside the registered Comments port gate', () => {
+  const source = readFileSync(commentsPortVerifier, 'utf8');
+  assert.ok(source.includes(adminNativeVerifierImport));
+});
+
+test('Blog FBA policy retains admin native composition focused fixture inside the registered Comments port self-test', () => {
+  const source = readFileSync(commentsPortSelfTest, 'utf8');
+  assert.ok(source.includes(adminNativeSelfTestImport));
 });
 
 test('Blog FBA verification-chain policy rejects removal of the storefront verify step', () => {

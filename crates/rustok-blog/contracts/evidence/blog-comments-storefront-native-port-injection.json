@@ -20,7 +20,6 @@
       "host_injected_port_selection"
     ],
     "pending": [
-      "admin_native_ssr_composition",
       "remote_transport_implementation"
     ]
   },
@@ -61,7 +60,6 @@
   },
   "non_claims": [
     "no remote network transport is implemented",
-    "no admin native SSR composition is implemented",
     "no Rust or JavaScript test was run",
     "no compile, database, browser, workflow, CI, or production result is recorded"
   ]
