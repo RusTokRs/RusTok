@@ -68,9 +68,10 @@ Every worker cycle preserves the existing execution order:
 4. reconcile each tenant under the same
    `search:forum:{tenant_id}:forum` advisory lock used by the inbox claimant.
 
-Processing recovery is bounded by the tenant-page limit. It first acquires the
-same tenant advisory lock and then rechecks the lease predicate, so a live
-projector holding that lock cannot be returned to `retryable_error`.
+Processing recovery is bounded by both the tenant and event page limits. It
+selects the oldest stale rows by `ingest_sequence`, acquires the same tenant
+advisory lock and rechecks the lease predicate before updating them. A live
+projector holding that lock therefore cannot be returned to `retryable_error`.
 
 ## Pending-work barrier
 
