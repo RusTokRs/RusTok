@@ -14,7 +14,7 @@ Every operation requires an `IndexReconciliationOperatorContext` containing one 
 
 Authorization is evaluated from the current request-scoped RBAC snapshot through `permissions_for(tenant_id, actor_id)`.
 
-The boundary requires exactly `Permission::MODULES_MANAGE` and rejects:
+The boundary requires `Permission::MODULES_MANAGE` to be present and rejects:
 
 - a nil tenant or actor identity;
 - a missing request-bound permission snapshot;
