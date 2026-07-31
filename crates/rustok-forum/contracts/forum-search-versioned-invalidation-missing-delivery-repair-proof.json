@@ -1,0 +1,46 @@
+{
+  "contract": "forum_search_versioned_invalidation_missing_delivery_repair_proof_v1",
+  "task": "FORUM-23B2G2B3D6",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "crates/rustok-search/tests/forum_versioned_invalidation_missing_delivery_repair.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-missing-delivery-repair-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "broker": "not_required_for_bounded_owner_repair",
+    "owner_scan": "bounded_tenant_and_revision_pages",
+    "checkpoint_source_module": "forum"
+  },
+  "scenario": {
+    "id": "missing_delivery_owner_repair",
+    "proves": [
+      "a bounded owner tenant scan discovers a tenant whose contiguous owner ledger includes one revision with no Search inbox delivery",
+      "an injected current-state rebuild failure leaves projection state, checkpoint storage and checkpoint audit unchanged",
+      "a later successful current-state rebuild removes stale Forum Search state and inserts the current owner projection",
+      "checkpoint persistence advances through exact revisions 1, 2 and 3 only after successful rebuild",
+      "every checkpoint audit row observes the repaired Forum document before checkpoint advancement",
+      "a caught-up repeat scan performs no second rebuild and creates no additional checkpoint audit row"
+    ]
+  },
+  "identity_invariants": [
+    "owner revision event UUIDs remain independent from Search ingest_sequence values",
+    "the missing delivery is identified by the owner ledger event UUID and absence from search_projection_inbox",
+    "checkpoint event_id follows each exact owner revision event UUID",
+    "checkpoint outcome is rebuild_repaired for every revision covered by the one current-state rebuild",
+    "checkpoint revision starts at 1 and advances by exactly 1 under the production database trigger"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_missing_delivery_repair -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL execution passed",
+    "this proof does not use or validate Iggy delivery, acknowledgement, poison or DLQ behavior",
+    "this proof does not execute the host worker polling loop",
+    "this proof does not establish multi-process advisory-lock contention or scan-cursor contention",
+    "this proof does not validate deletion or ACL ordering, Search-disabled recovery, storefront visibility or LINK-FORUM-03 completion"
+  ]
+}
