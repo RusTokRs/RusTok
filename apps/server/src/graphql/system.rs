@@ -1,5 +1,4 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
-use axum::http::HeaderMap;
 use chrono::{DateTime, Utc};
 use rustok_api::{
     HostAuthority, HostAuthorityContext, Permission, graphql::GraphQLError,
@@ -10,7 +9,6 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, Quer
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
-use crate::host_authority::resolve_host_authority;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 use crate::models::_entities::sessions::{Column as SessionCol, Entity as SessionEntity};
@@ -72,28 +70,14 @@ fn require_permission<'a>(
 }
 
 fn require_host_authority(
-    ctx: &Context<'_>,
+    _ctx: &Context<'_>,
     required: HostAuthority,
 ) -> Result<HostAuthorityContext> {
-    let headers = ctx.data_opt::<HeaderMap>().ok_or_else(|| {
-        <FieldError as GraphQLError>::permission_denied("host-global authority required")
-    })?;
-    match resolve_host_authority(headers) {
-        Ok(Some(authority)) if authority.allows(required) => Ok(authority),
-        Ok(_) | Err(crate::error::Error::Unauthorized(_)) => Err(
-            <FieldError as GraphQLError>::permission_denied("host-global authority required"),
-        ),
-        Err(error) => {
-            tracing::error!(
-                error = %error,
-                code = "host_authority.graphql_configuration_invalid",
-                "host authority credential configuration is invalid"
-            );
-            Err(<FieldError as GraphQLError>::internal_error(
-                "Host authority configuration is invalid",
-            ))
-        }
-    }
+    crate::host_authority::current_host_authority()
+        .filter(|authority| authority.allows(required))
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::permission_denied("host-global authority required")
+        })
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
