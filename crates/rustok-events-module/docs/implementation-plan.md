@@ -31,29 +31,46 @@ evolves in its owning crates.
 
 ## Host-global authority boundary
 
-The native Events Admin surface controls host-global event delivery state. It
-must never infer authority from a routed tenant, tenant `SETTINGS_*` permission,
-OAuth wildcard, built-in tenant role, default tenant, or magic UUID.
+Events delivery and Iggy connector controls are host-global. They must never
+infer authority from a routed tenant, tenant `SETTINGS_*` permission, OAuth
+application or wildcard, built-in tenant role, default tenant, or magic UUID.
 
-The immediate cross-owner P0 exposure is source-mitigated:
+The source contract now separates authority and issuance from tenant identity:
 
-- `rustok_api::HostAuthorityContext` is a separate typed request context with
-  explicit `Read` and `Manage` levels and a required non-nil operator actor;
-- ordinary tenant authentication does not issue this context;
+- `rustok_api::HostAuthorityContext` is a typed request context with explicit
+  `Read` and `Manage` levels and a required non-nil operator actor;
+- the server authenticates a dedicated high-entropy
+  `X-RusTok-Host-Token` against SHA-256 digests in host-owned
+  `RUSTOK_HOST_AUTHORITY_CREDENTIALS` configuration;
+- tenant OAuth applications, scopes, metadata, roles and permissions do not
+  participate in that credential policy;
+- Axum middleware removes the raw header on success and denial before
+  downstream dispatch;
+- native `#[server]` requests receive only the typed request extension;
+- HTTP GraphQL consumes the same already authenticated typed authority from a
+  request-task-local scope and never re-reads the header or host configuration;
+- GraphQL WebSocket upgrade tasks inherit no host authority and fail closed;
 - `event_delivery_configuration_native` requires host read authority before
   resolving `SharedEventDeliveryControl`;
 - `update_event_delivery_profile_native` requires host manage authority and
-  writes the bound operator actor to the update audit path;
+  writes the configured operator actor to the update audit path;
+- the separate Iggy native configuration read requires host `Read` rather than
+  tenant `SETTINGS_READ`;
+- the separate Iggy native configuration mutation requires host `Manage`, uses
+  the configured host actor for audit, and independently binds authenticated
+  tenant id to the routed tenant before accessing tenant-owned secrets;
 - matching host-global System and Settings GraphQL operations use the same
-  authority contract;
-- `scripts/verify/verify-host-global-authority-boundary.mjs` locks the separation
-  from tenant RBAC and the required guard-before-resource ordering.
+  authority levels and tenant-secret ownership rule;
+- `scripts/verify/verify-host-global-authority-boundary.mjs` locks credential
+  ownership, one-shot removal, typed transport scope and guard-before-resource
+  ordering across Events native, Iggy native, System GraphQL and Settings
+  GraphQL.
 
-No operator issuance path exists yet. The transports therefore fail closed in
-normal tenant requests. GitHub issue #2680 remains open for the Auth/RBAC-owned
-operator credential, issuance, refresh/revocation, GraphQL/native composition,
-and live admission evidence. This is intentional: unavailable host controls are
-safer than tenant administrators receiving process-wide authority.
+The operational format, token-generation guidance and overlap rotation procedure
+are documented in `apps/server/docs/host-authority.md`. PR #2726 contains the
+current source implementation. Issue #2680 remains open until same-SHA
+compile/unit/source evidence and live denial/admission, rotation, revocation and
+replica-parity evidence are retained.
 
 ## FFA/FBA status
 
@@ -67,17 +84,17 @@ safer than tenant administrators receiving process-wide authority.
     shell composition, so server-only page exports cannot enter the client
     module graph;
   - canonical event/runtime verification remains tracked by `rustok-events`;
-  - source inspection proves host-global delivery controls require a separate
-    authority context that ordinary tenant authentication does not issue.
+  - source inspection proves host-global Events and Iggy controls require a
+    separate host-owned credential and typed authority context.
 - Last verified at (UTC): 2026-07-31
 - Owner: Events module maintainers
 
 ## Milestones
 
-1. **Complete host-operator issuance with Auth/RBAC.** Issue the typed host
-   context only from an approved operator credential, propagate it through
-   refresh/revocation and GraphQL/native composition, and retain ordinary
-   tenant denial. Track the cross-owner contract in issue #2680.
+1. **Retain host-operator execution evidence.** Run the source guard, server/API
+   unit tests, server/events/Iggy-admin compile checks and live HTTP/native
+   denial/admission, rotation, revocation, audit-actor and multi-replica probes
+   for issue #2680.
 2. Keep adapter metadata and module-owned UI placement synchronized with the
    canonical Events capability.
 3. Complete native/GraphQL/Next transport parity in the canonical Events plan.
@@ -87,28 +104,34 @@ safer than tenant administrators receiving process-wide authority.
 ## Verification
 
 - `node scripts/verify/verify-host-global-authority-boundary.mjs`
-- Source audit: ordinary tenant `SETTINGS_READ`/`SETTINGS_MANAGE` must not admit
-  host-global Events Admin operations.
-- Source audit: ordinary tenant `LOGS_READ` must not admit host-global System
-  GraphQL diagnostics.
-- Native regressions: ordinary tenant admin denied; explicitly issued host
-  principal admitted for configuration read/profile update.
-- GraphQL regressions: ordinary tenant admin denied; explicitly issued host
-  principal admitted for system/cache/events diagnostics.
 - `cargo test -p rustok-api host_authority -- --nocapture`
+- `cargo test -p rustok-server host_authority --lib -- --nocapture`
 - `cargo check -p rustok-events-module`
 - `cargo test -p rustok-events-module`
+- `cargo check -p rustok-iggy-connector-admin --features ssr`
+- `cargo check -p rustok-server --lib`
 - `cargo xtask module validate events`
 - `cargo xtask validate-manifest`
+- Live native/HTTP GraphQL regressions: no header, wrong token and ordinary
+  tenant admin denied; `read` admitted only for reads; `manage` admitted for
+  reads/writes with the configured audit actor; Iggy mutation requires matching
+  tenant authentication; WebSocket denied.
+- Rotation/revocation regressions: old/new overlap succeeds during rollout and
+  the removed token fails on every replica after rollout.
 
 ## Update Rules
 
 - Do not move canonical event schemas into this adapter.
 - Do not move outbox or Iggy delivery persistence into this adapter.
 - Do not infer host-global authority from a default tenant, magic tenant UUID,
-  tenant `SETTINGS_*`/`LOGS_*` permission, built-in tenant role, or OAuth
-  wildcard.
-- Do not insert `HostAuthorityContext` from ordinary tenant authentication.
+  tenant `SETTINGS_*`/`LOGS_*` permission, built-in tenant role, OAuth app,
+  scope, metadata or wildcard.
+- Do not store raw host tokens in repository files, application settings, tenant
+  rows, logs, URLs, browser storage or issue comments.
+- Remove the raw host credential before downstream handlers and expose only the
+  typed authority context after admission.
+- Keep GraphQL WebSocket host authority deny-by-default unless a separately
+  reviewed revocation-safe handshake/revalidation contract is added.
 - Keep local FFA/FBA status synchronized with the central readiness board.
 - Track event-contract and delivery milestones in the canonical
   `rustok-events` plan rather than duplicating them here.
@@ -118,10 +141,10 @@ safer than tenant administrators receiving process-wide authority.
 - Cycle: `cycle-001`
 - Status: `blocked`
 - Last verified at (UTC): `2026-07-31`
-- Scope inspected: `Events Admin native delivery-profile configuration/update authority; SharedEventDeliveryControl ownership; host-global System and Settings GraphQL operations; AuthContext, OAuth app and manifest issuance paths`
-- Findings: `P0=1, P1=0, P2=0, P3=0`
-- Fixed in this pass: `added a typed host authority context independent of tenant RBAC; required host read/manage authority before every confirmed host-global Events/System/Settings operation; bound mutations to a non-nil operator actor; kept ordinary tenant authentication from issuing the context; added a source boundary verifier`
-- Remaining risks or blockers: `operator credential issuance, refresh/revocation and host composition are not implemented, so host-global admin transports intentionally fail closed; same-SHA formatting, compile, unit, source-verifier and live ordinary-tenant-denial evidence remain pending`
-- Evidence: `crates/rustok-api/src/context/host_authority.rs; crates/rustok-events-module/admin/src/transport/native_server_adapter.rs; apps/server/src/graphql/system.rs; apps/server/src/graphql/settings/{mod,query,mutation}.rs; scripts/verify/verify-host-global-authority-boundary.mjs; connector-only local execution remains unavailable because github.com DNS resolution fails`
-- Next action: `run the source verifier and targeted Rust checks on the same SHA; then implement an Auth/RBAC-owned operator issuance path for issue #2680 and prove ordinary tenant denial plus explicit host-principal admission in native and GraphQL transports`
-- Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo check -p rustok-events-module && cargo test -p rustok-events-module`
+- Scope inspected: `Events Admin native delivery-profile configuration/update authority; separate Iggy Connector Admin native configuration/update authority; SharedEventDeliveryControl and SharedIggyConnectorControl ownership; host-global System and Settings HTTP GraphQL operations; tenant OAuth app administration and secret rotation; middleware and GraphQL WebSocket composition`
+- Findings: `P0=2, P1=1, P2=0, P3=0`
+- Fixed in this pass: `retained the typed host read/manage context; replaced the unsafe tenant-OAuth-client allowlist design before PR with a server-owned opaque credential whose raw token is supplied only in X-RusTok-Host-Token and whose SHA-256 digest, non-nil audit actor and level live only in RUSTOK_HOST_AUTHORITY_CREDENTIALS; added constant-time comparison, bounded parsing, duplicate-hash rejection, overlap rotation, native/HTTP GraphQL composition and WebSocket denial; manual PR review then removed the raw host header before downstream dispatch and replaced GraphQL credential revalidation with request-scoped typed authority; the final surface sweep moved the separate Iggy native read/write adapter from tenant SETTINGS_* admission to host Read/Manage, used the host actor for audit, and retained authenticated/resolved tenant equality for tenant-owned secret access`
+- Remaining risks or blockers: `same-SHA formatting, compile, unit and source-verifier evidence are pending; live ordinary-tenant denial, explicit read/manage admission, audit actor, rotation/revocation and multi-replica parity are not retained; issue #2680 remains open until those gates pass`
+- Evidence: `PR #2726 head; crates/rustok-api/src/context/host_authority.rs; apps/server/src/host_authority.rs; apps/server/src/middleware/auth_context.rs; apps/server/src/graphql/system.rs; apps/server/src/graphql/settings/{mod,query,mutation}.rs; crates/rustok-events-module/admin/src/transport/native_server_adapter.rs; crates/rustok-iggy-connector/admin/src/transport/native_server_adapter.rs; scripts/verify/verify-host-global-authority-boundary.mjs; apps/server/docs/host-authority.md; connector-only local execution remains unavailable because github.com DNS resolution fails`
+- Next action: `inspect every exact-head PR check and fix branch-related failures, then retain live HTTP/native admission, denial, rotation, revocation, audit and replica evidence before closing issue #2680`
+- Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo test -p rustok-events-module && cargo check -p rustok-iggy-connector-admin --features ssr && cargo check -p rustok-server --lib`

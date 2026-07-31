@@ -32,15 +32,17 @@ pub async fn iggy_connector_configuration_native()
 -> Result<IggyConnectorConfiguration, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{AuthContext, Permission, has_effective_permission};
+        use rustok_api::{
+            HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
+        };
         use rustok_iggy_connector::SharedIggyConnectorControl;
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
-        let auth = leptos_axum::extract::<AuthContext>()
+        let authority = leptos_axum::extract::<HostAuthorityContext>()
             .await
-            .map_err(ServerFnError::new)?;
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(ServerFnError::new("settings:read required"));
+            .map_err(|_| ServerFnError::new(HOST_AUTHORITY_REQUIRED))?;
+        if !authority.allows(HostAuthority::Read) {
+            return Err(ServerFnError::new(HOST_AUTHORITY_REQUIRED));
         }
         let control = runtime
             .shared_get::<SharedIggyConnectorControl>()
@@ -80,15 +82,27 @@ pub async fn update_iggy_connector_configuration_native(
 ) -> Result<IggyConnectorUpdate, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{AuthContext, Permission, has_effective_permission};
+        use rustok_api::{
+            AuthContext, HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
+            TenantContext,
+        };
         use rustok_iggy_connector::{IggyConnectorSettingsInput, SharedIggyConnectorControl};
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let authority = leptos_axum::extract::<HostAuthorityContext>()
+            .await
+            .map_err(|_| ServerFnError::new(HOST_AUTHORITY_REQUIRED))?;
+        if !authority.allows(HostAuthority::Manage) {
+            return Err(ServerFnError::new(HOST_AUTHORITY_REQUIRED));
+        }
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
-            return Err(ServerFnError::new("settings:manage required"));
+            .map_err(|_| ServerFnError::new("Iggy connector update is denied"))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|_| ServerFnError::new("Iggy connector update is denied"))?;
+        if auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new("Iggy connector update is denied"));
         }
         let control = runtime
             .shared_get::<SharedIggyConnectorControl>()
@@ -105,7 +119,7 @@ pub async fn update_iggy_connector_configuration_native(
                     tls_enabled: input.tls_enabled,
                     tls_domain: input.tls_domain,
                 },
-                auth.user_id,
+                authority.actor_id(),
                 auth.tenant_id,
             )
             .await

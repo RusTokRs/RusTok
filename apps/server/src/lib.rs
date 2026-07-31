@@ -20,6 +20,7 @@ pub mod extractors;
 pub mod graphql;
 pub mod guards;
 pub mod host;
+pub mod host_authority;
 pub mod initializers;
 pub mod installer_deployment;
 pub mod installer_execution;
