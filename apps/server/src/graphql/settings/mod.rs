@@ -28,10 +28,10 @@ pub(super) fn require_tenant_settings_scope(
     ))
 }
 
-pub(super) fn require_host_authority(
-    ctx: &async_graphql::Context<'_>,
+pub(super) fn require_host_authority<'a>(
+    ctx: &'a async_graphql::Context<'_>,
     required: rustok_api::HostAuthority,
-) -> async_graphql::Result<&rustok_api::HostAuthorityContext> {
+) -> async_graphql::Result<&'a rustok_api::HostAuthorityContext> {
     use rustok_api::graphql::GraphQLError;
 
     ctx.data_opt::<rustok_api::HostAuthorityContext>()

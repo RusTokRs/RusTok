@@ -69,10 +69,10 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
-fn require_host_authority(
-    ctx: &Context<'_>,
+fn require_host_authority<'a>(
+    ctx: &'a Context<'_>,
     required: HostAuthority,
-) -> Result<&HostAuthorityContext> {
+) -> Result<&'a HostAuthorityContext> {
     let authority = ctx
         .data_opt::<HostAuthorityContext>()
         .filter(|authority| authority.allows(required))

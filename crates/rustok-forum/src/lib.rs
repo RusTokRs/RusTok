@@ -73,6 +73,7 @@ pub use services::{
     ForumCategoryAudienceReadService, ForumCategoryAudienceViewer,
     ForumCategoryAudienceVisibilityService, ForumCategoryModerationAudiencePolicy,
     ForumCategoryModerationAudiencePolicyLayer, ForumCategoryModerationAudiencePolicyService,
+    ForumSearchCategoryAudienceScopeService,
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
     ForumCategoryReplyCreateAudiencePolicyService, ForumCategoryTopicCreateAudiencePolicy,
     ForumCategoryTopicCreateAudiencePolicyLayer, ForumCategoryTopicCreateAudiencePolicyService,
