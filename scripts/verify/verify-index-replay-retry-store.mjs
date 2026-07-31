@@ -43,6 +43,7 @@ const retryStore = requireMarkers(retryPath, [
 ]);
 for (const forbidden of [
   'INSERT INTO index_jobs',
+  'Storage(String)',
   'tokio::spawn',
   'tokio::time::sleep',
   'loop {',
