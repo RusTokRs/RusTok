@@ -184,7 +184,7 @@ requireAll(
   legacyContract,
   [
     '"root_event": "rustok_events::DomainEvent::ReindexRequested"',
-    '"event_type": "search.reindex_requested"',
+    '"event_type": "index.reindex_requested"',
     '"new_root_domain_event_added": false',
     '"new_event_schema_added": false',
   ],
