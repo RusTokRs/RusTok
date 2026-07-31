@@ -28,6 +28,7 @@ entry_type = "BlogModule"
 [provides.graphql]
 query = "graphql::BlogQuery"
 mutation = "graphql::BlogMutation"
+runtime_data_factory = "graphql::attach_schema_data"
 
 [provides.http]
 axum_router = "controllers::axum_router"
