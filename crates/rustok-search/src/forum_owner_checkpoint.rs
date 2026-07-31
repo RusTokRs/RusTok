@@ -362,9 +362,7 @@ impl ForumOwnerCheckpointReconciler {
                 r#"
                 INSERT INTO search_projection_owner_scan_cursors (
                     source_module, after_tenant_id, updated_at
-                )
-                SELECT 'forum', $1, CURRENT_TIMESTAMP
-                WHERE $2::uuid IS NULL
+                ) VALUES ('forum', $1, CURRENT_TIMESTAMP)
                 ON CONFLICT (source_module)
                 DO UPDATE SET
                     after_tenant_id = EXCLUDED.after_tenant_id,
