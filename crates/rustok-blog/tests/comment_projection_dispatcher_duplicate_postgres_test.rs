@@ -80,11 +80,20 @@ impl PostgresBlogDispatcherDuplicateTestDb {
 struct ObservedProjectionHandler {
     inner: Arc<dyn EventHandler>,
     completed: Arc<AtomicUsize>,
+    failed: Arc<AtomicUsize>,
 }
 
 impl ObservedProjectionHandler {
-    fn new(inner: Arc<dyn EventHandler>, completed: Arc<AtomicUsize>) -> Self {
-        Self { inner, completed }
+    fn new(
+        inner: Arc<dyn EventHandler>,
+        completed: Arc<AtomicUsize>,
+        failed: Arc<AtomicUsize>,
+    ) -> Self {
+        Self {
+            inner,
+            completed,
+            failed,
+        }
     }
 }
 
@@ -100,6 +109,9 @@ impl EventHandler for ObservedProjectionHandler {
 
     async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult {
         let result = self.inner.handle(envelope).await;
+        if result.is_err() {
+            self.failed.fetch_add(1, Ordering::SeqCst);
+        }
         self.completed.fetch_add(1, Ordering::SeqCst);
         result
     }
@@ -137,7 +149,12 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
     assert_eq!(projection.name(), "blog_comment_projection");
 
     let completed = Arc::new(AtomicUsize::new(0));
-    let observed = ObservedProjectionHandler::new(projection, Arc::clone(&completed));
+    let failed = Arc::new(AtomicUsize::new(0));
+    let observed = ObservedProjectionHandler::new(
+        projection,
+        Arc::clone(&completed),
+        Arc::clone(&failed),
+    );
     let bus = EventBus::new();
     let mut dispatcher = EventDispatcher::with_config(
         bus,
@@ -163,6 +180,7 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
         completed.load(Ordering::SeqCst),
         DISPATCHER_DUPLICATE_DELIVERIES
     );
+    assert_eq!(failed.load(Ordering::SeqCst), 0);
     assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
