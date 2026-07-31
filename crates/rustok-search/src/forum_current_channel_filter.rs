@@ -60,7 +60,7 @@ mod tests {
             snippet: None,
             score: 1.0,
             locale: Some("en".to_string()),
-            payload: serde_json::json!({ payload_key: channels }),
+            payload: serde_json::json!({ (payload_key): channels }),
         }
     }
 
