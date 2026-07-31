@@ -54,7 +54,7 @@ requireMarkers("target", [
 ]);
 
 requireMarkers("source", [
-  "LeaseSource::Blocking",
+  "Self::Blocking",
   "entered.wait().await",
   "release.wait().await",
   "event_id: Uuid::from_u128(10_300)",
