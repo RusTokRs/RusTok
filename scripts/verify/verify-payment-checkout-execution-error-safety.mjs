@@ -14,6 +14,7 @@ const failures = [];
 const wrapper = read('crates/rustok-payment/src/checkout_execution.rs');
 const parts = [
   'types.rs',
+  'diagnostic_safety.rs',
   'prepare_authorize.rs',
   'capture_provider.rs',
   'provider_helpers.rs',
@@ -34,6 +35,7 @@ const forbidText = (value, label) => {
 
 for (const includePath of [
   'checkout_execution/types.rs',
+  'checkout_execution/diagnostic_safety.rs',
   'checkout_execution/prepare_authorize.rs',
   'checkout_execution/capture_provider.rs',
   'checkout_execution/provider_helpers.rs',
@@ -50,8 +52,16 @@ for (const value of [
   'fn manual_reconciliation(message: impl Into<String>)',
   '"PortContext.tenant_id must be a UUID for payment ports"',
   '"payment provider rejected the operation"',
+  'tenant_id = %context.tenant_id',
+  'internal_tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
 ]) {
-  forbidText(value, 'payment checkout execution public error mapping');
+  forbidText(value, 'payment checkout execution public error or raw diagnostic mapping');
 }
 
 for (const [value, label] of [
@@ -64,7 +74,10 @@ for (const [value, label] of [
   ['let owner_operation = CAPTURE_CHECKOUT_COLLECTION_OPERATION;', 'capture operation mapping'],
   ['let owner_operation = READ_CHECKOUT_COLLECTION_OPERATION;', 'read operation mapping'],
   ['correlation_id = %context.correlation_id', 'correlation logging'],
-  ['tenant_id = %context.tenant_id', 'tenant logging'],
+  ['tenant_id_length = context_facts.tenant_id_length', 'safe tenant shape logging'],
+  ['actor_kind = context_facts.actor_kind', 'safe actor kind logging'],
+  ['channel_present = context_facts.channel_present', 'safe channel presence logging'],
+  ['locale_length = context_facts.locale_length', 'safe locale shape logging'],
   ['operation = owner_operation', 'owner operation logging'],
   ['code = "payment.checkout_execution_manual_reconciliation"', 'reconciliation stable code'],
   ['code = "payment.provider_request_encoding_failed"', 'request encoding stable code'],
@@ -76,6 +89,7 @@ for (const [value, label] of [
   ['persisted_provider_result(context, owner_operation', 'checkpoint context mapping'],
   ['parse_tenant_id(&context, owner_operation)', 'tenant context mapping'],
   ['require_operation_context(', 'causation context mapping'],
+  ['checkout_payment_execution_local_operation(operation, error.code.as_str())', 'stable-code local attribution'],
 ]) {
   requireText(value, label);
 }
@@ -87,5 +101,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Payment checkout execution keeps technical owner/provider failures in correlation-aware logs and exposes stable public errors',
+  '✔ Payment checkout execution keeps technical owner/provider failures in correlation-aware safe-shape logs and exposes stable public errors',
 );
