@@ -20,6 +20,7 @@ function write(root, relativePath, content) {
 function runFixture({
   missingSecondPublish = false,
   missingObservationCounter = false,
+  missingFailureObservation = false,
   missingSingleCommit = false,
   missingEvidenceCase = false,
   statusDrift = false,
@@ -44,15 +45,20 @@ const DISPATCHER_DUPLICATE_DELIVERIES: usize = 2;
 struct ObservedProjectionHandler
 inner: Arc<dyn EventHandler>
 completed: Arc<AtomicUsize>
+failed: Arc<AtomicUsize>
 impl EventHandler for ObservedProjectionHandler
 self.inner.handles(event)
 let result = self.inner.handle(envelope).await;
+if result.is_err()
+${missingFailureObservation ? '' : 'self.failed.fetch_add(1, Ordering::SeqCst);'}
 ${missingObservationCounter ? '' : 'self.completed.fetch_add(1, Ordering::SeqCst);'}
 async fn event_dispatcher_replays_duplicate_envelope_without_double_commit()
 BlogModule.register_event_listeners(&mut registry, &context);
 let mut handlers = registry.into_handlers();
 assert_eq!(handlers.len(), 1);
 assert_eq!(projection.name(), "blog_comment_projection");
+let failed = Arc::new(AtomicUsize::new(0));
+Arc::clone(&failed)
 let mut dispatcher = EventDispatcher::with_config(
 fail_fast: true
 max_concurrent: 1
@@ -63,6 +69,7 @@ running.bus().publish_envelope(envelope.clone())?;
 wait_for_completed_dispatches(&completed).await?;
 completed.load(Ordering::SeqCst)
 DISPATCHER_DUPLICATE_DELIVERIES
+assert_eq!(failed.load(Ordering::SeqCst), 0);
 load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)
 count_delivery(&test_db.db, envelope.id).await?, 1
 ${missingSingleCommit ? '' : 'count_outbox_events(&test_db.db).await?, 1'}
@@ -82,7 +89,7 @@ SET search_path TO
     },
     {
       name: 'two_completed_dispatch_calls',
-      expected: 'two handler calls complete',
+      expected: 'two handler calls complete with zero errors',
     },
     ...(
       missingEvidenceCase
@@ -162,6 +169,12 @@ test('Blog dispatcher duplicate verifier rejects removal of completed-call obser
   const result = runFixture({ missingObservationCounter: true });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /self\.completed\.fetch_add/);
+});
+
+test('Blog dispatcher duplicate verifier rejects removal of handler-error observation', () => {
+  const result = runFixture({ missingFailureObservation: true });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /self\.failed\.fetch_add/);
 });
 
 test('Blog dispatcher duplicate verifier rejects removal of the single-commit assertion', () => {
