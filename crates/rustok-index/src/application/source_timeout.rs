@@ -16,7 +16,7 @@ use crate::SchemaRef;
 /// through a bounded retryable failure code. Replay and reconciliation operators
 /// must configure leases longer than this bound plus their persistence margin;
 /// this source wrapper never extends or heartbeats a job lease.
-pub const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";
 const INDEX_SOURCE_LOAD_TIMEOUT_CODE: &str = "index_source_load_timeout";
