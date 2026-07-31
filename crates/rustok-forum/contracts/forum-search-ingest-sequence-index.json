@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G1A",
+  "status": "source_complete_execution_pending",
+  "scope": "Add an upgrade-safe PostgreSQL lookup index for Forum Search inbox ingest-sequence claim and due-tenant ordering without rewriting the already delivered ingest-sequence migration",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "canonical_plan": {
+    "predecessor_milestone": "FORUM-23B2G1",
+    "milestone_status_changed": false,
+    "remaining_scope_changed": false,
+    "predecessor_entry_remains_authoritative": true
+  },
+  "predecessor_contract": "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
+  "predecessor_migration": "crates/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
+  "additive_migration": "crates/rustok-search/src/migrations/m20260731_000011_add_forum_projection_ingest_sequence_lookup.rs",
+  "claim_owner": "crates/rustok-search/src/forum_inbox.rs",
+  "due_tenant_owner": "crates/rustok-search/src/forum_reconciliation.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2g1a-search-ingest-sequence-index.md",
+  "verifier": "scripts/verify/verify-forum-search-ingest-sequence-index.mjs",
+  "index": {
+    "name": "idx_search_projection_inbox_due_ingest_sequence",
+    "table": "search_projection_inbox",
+    "columns": ["source_module", "tenant_id", "ingest_sequence"],
+    "predicate": "status IN ('pending', 'retryable_error')",
+    "claim_query_supported": true,
+    "due_tenant_query_supported": true,
+    "terminal_rows_excluded": true,
+    "unique": false
+  },
+  "upgrade_safety": {
+    "predecessor_migration_modified": false,
+    "new_migration_registered_after_predecessor": true,
+    "already_migrated_databases_receive_index": true,
+    "sqlite_schema_changed": false,
+    "down_migration_drops_only_new_index": true
+  },
+  "constraint_repair": {
+    "inbox_constraint": "ck_search_projection_inbox_ingest_sequence",
+    "watermark_constraint": "ck_search_projection_watermark_ingest_sequence",
+    "existence_check_scoped_by_conrelid": true,
+    "inbox_positive_sequence_required": true,
+    "watermark_non_negative_sequence_required": true
+  },
+  "compatibility": {
+    "claim_order_changed": false,
+    "due_tenant_order_changed": false,
+    "watermark_semantics_changed": false,
+    "event_schema_changed": false,
+    "forum_owner_write_changed": false,
+    "public_api_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "capture maintainer-executed PostgreSQL EXPLAIN evidence for claim and due-tenant queries",
+    "add Forum-owner-issued monotonic projection revisions to versioned invalidation events",
+    "reconcile owner revision watermarks with Search ingest-sequence watermarks",
+    "capture restart, retry and LINK-FORUM-03 runtime evidence"
+  ],
+  "non_claims": [
+    "Tests, verifiers, Cargo checks, formatting, Clippy and PostgreSQL EXPLAIN were not executed by the implementation agent",
+    "The partial index does not alter event ordering or authorization semantics",
+    "This slice does not claim the PostgreSQL planner selected the index at runtime",
+    "This slice does not replace the final Forum-owner-issued projection revision"
+  ]
+}
