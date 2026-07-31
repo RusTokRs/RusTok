@@ -39,15 +39,15 @@ bounded source slice affecting both public operations.
 Unavailable, timeout, and invariant admission failures remain error severity. Other
 admission and all context-validation rejections remain warning severity.
 
-## Local settlement mapper
+## Payment-settlement boundary
 
-The payment-settlement post-delegation mapper selects its diagnostic label from
-stable `PortError.code`; public messages are not used as control flow. Both severity
-branches now retain only static `PortErrorKind`, message presence/length, retryability,
-correlation id, and safe context shape. They do not retain the complete error or
-message text, and return the original `PortError` unchanged.
+The payment-settlement post-delegation mapper and canonical owner payload-diagnostic
+sites are source-closed / unvalidated. The mapper retains only static
+`PortErrorKind` plus message shape. The owner retains static `OrderError` variant,
+aggregate text/UUID/opaque-payload shape, static parse-failure facts, and a closed
+lifecycle status label. Complete errors, parser causes, owner validation text, and
+transition text are not retained.
 
-Canonical payment-settlement owner payload diagnostics remain a separate open slice.
 Details are in `checkout-payment-settlement-local-context.md`.
 
 ## Compensation boundary
@@ -65,7 +65,7 @@ This slice does not change:
 - admission or context-validation envelopes;
 - checkout identity reads or legacy adoption;
 - settlement or compensation delegation;
-- settlement owner business source;
+- settlement transition, replay, or payment-identity policy;
 - compensation cancellation or reconciliation behavior;
 - public codes, messages, kinds, or retryability;
 - Order FFA/FBA status.
@@ -74,14 +74,15 @@ This slice does not change:
 
 - `scripts/verify/verify-order-checkout-owner-context.mjs`
 - `scripts/verify/verify-order-payment-settlement-local-context.mjs`
+- `scripts/verify/verify-order-payment-settlement-error-context.mjs`
 - `scripts/verify/verify-order-compensation-local-context.mjs`
 - `crates/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json`
 - `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json`
 
 ## Remaining gaps
 
-Shared admission/context payload diagnostics and canonical payment-settlement owner
-payload diagnostics remain open. The broad ecommerce cleanup remains open for
+Only the shared checkout admission/context payload diagnostics remain open inside
+this Order checkout wrapper layer. The broad ecommerce cleanup remains open for
 remaining owners, adapters, non-`PortError` envelopes, and runtime evidence.
 
 ## Suggested maintainer checks

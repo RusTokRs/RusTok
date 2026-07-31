@@ -54,6 +54,15 @@ and payment-collection identity; transitions a confirmed order to paid; and adop
 paid, shipped, or delivered replay only when the payment reference and method
 match. The mounted commerce fulfillment stage no longer constructs `OrderService`.
 
+The currently identified checkout payment-settlement post-delegation mapper and
+canonical owner payload-diagnostic sites are source-closed / unvalidated. Wrapper
+events retain only stable `PortError` kind and message shape. Owner events retain
+only static `OrderError` variant, aggregate text/UUID/opaque-payload shape, static
+parse-failure facts, and a closed lifecycle status label. Shared checkout
+admission/context payload diagnostics remain open as a separate Order slice.
+Public envelopes, identity policy, settlement, replay, and payment-identity routing
+are unchanged.
+
 Legacy order metadata remains a temporary compatibility input only inside
 order-owned adapters. Legacy rows retain `NULL` for unknown cart, payment,
 shipping, or hash facts rather than fabricating attribution. The metadata bridge
@@ -144,6 +153,10 @@ compile and mounted-parity validation permits their removal.
   identity, owner-local settlement, replay adoption, and payment-reference
   conflict classification.
 - [x] Cut mounted checkout fulfillment settlement over to the order payment port.
+- [x] Close the currently identified checkout payment-settlement post-delegation
+  mapper and canonical owner payload-diagnostic sites at source level without
+  changing public envelopes, identity policy, settlement, replay, or payment
+  identity behavior.
 - [x] Remove direct `orders` SQL and direct `OrderService` construction from the
   staged order stage, mounted pipeline, compensation, and fulfillment settlement
   source.
@@ -288,6 +301,9 @@ compile and mounted-parity validation permits their removal.
 - `node scripts/verify/verify-order-read-port.mjs`
 - `node scripts/verify/verify-order-compensation-local-context.mjs`
 - `node scripts/verify/verify-order-checkout-compensation-error-context.mjs`
+- `node scripts/verify/verify-order-payment-settlement-local-context.mjs`
+- `node scripts/verify/verify-order-payment-settlement-error-context.mjs`
+- `node scripts/verify/verify-order-checkout-owner-context.mjs`
 - `node scripts/verify/verify-commerce-graphql-order-read-shim.mjs`
 - `node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`
 - `node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs`

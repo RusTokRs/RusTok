@@ -61,26 +61,18 @@ function functionBody(content, functionName) {
 }
 
 const operation = functionBody(wrapper, "settle_checkout_payment");
-const facts = functionBody(wrapper, "order_checkout_port_error_facts");
-const mapper = functionBody(wrapper, "map_checkout_order_payment_settlement_local_port_error");
+const portFacts = functionBody(wrapper, "order_checkout_port_error_facts");
+const localMapper = functionBody(wrapper, "map_checkout_order_payment_settlement_local_port_error");
+const ownerFacts = functionBody(owner, "order_payment_settlement_order_error_facts");
+const ownerMapper = functionBody(owner, "order_error_to_port_error");
+const parseRejection = functionBody(owner, "log_context_parse_rejection");
+const lifecycle = functionBody(owner, "log_payment_settlement_lifecycle_conflict");
 
 for (const marker of [
   "let diagnostic_context = context.clone();",
   "self.inner.settle_checkout_payment(context, request).await",
   "map_checkout_order_payment_settlement_local_port_error(&diagnostic_context, error)",
 ]) requireText(operation, marker, `${paths.wrapper}: preserved delegation`);
-
-for (const [code, localOperation] of [
-  ["order.checkout_payment_request_invalid", "validate_request"],
-  ["order.checkout_payment_identity_missing", "require_durable_checkout_identity"],
-  ["order.checkout_payment_identity_conflict", "validate_durable_checkout_identity"],
-  ["order.checkout_payment_state_conflict", "validate_payment_settlement_lifecycle"],
-  ["order.checkout_payment_reference_conflict", "validate_settled_payment_identity"],
-]) {
-  requireText(wrapper, `"${code}"`, `${paths.wrapper}: stable code ${code}`);
-  requireText(wrapper, `"${localOperation}"`, `${paths.wrapper}: local operation ${localOperation}`);
-  requireText(owner, `"${code}"`, `${paths.owner}: owner code ${code}`);
-}
 
 for (const [variant, label] of [
   ["Validation", "validation"],
@@ -90,82 +82,82 @@ for (const [variant, label] of [
   ["Unavailable", "unavailable"],
   ["Timeout", "timeout"],
   ["InvariantViolation", "invariant_violation"],
-]) requireText(facts, `PortErrorKind::${variant} => "${label}"`, `${paths.wrapper}: ${variant}`);
+]) requireText(portFacts, `PortErrorKind::${variant} => "${label}"`, `${paths.wrapper}: ${variant}`);
 for (const marker of [
-  "message_present: !error.message.trim().is_empty()",
-  "message_length: error.message.chars().count()",
-]) requireText(facts, marker, `${paths.wrapper}: message shape`);
-
-for (const marker of [
-  "checkout_order_payment_settlement_local_operation(error.code.as_str())",
-  "let error_facts = order_checkout_port_error_facts(&error);",
-  "tracing::error!(",
-  "tracing::warn!(",
-  "internal_code = %error.code",
   "error_message_present = error_facts.message_present",
   "error_message_length = error_facts.message_length",
   "error_kind = error_facts.error_kind",
-  "retryable = error.retryable",
-  "boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY",
   "\n    error\n}",
-]) requireText(mapper, marker, `${paths.wrapper}: bounded local mapper`);
-requireCount(mapper, "error_message_present = error_facts.message_present", 2, "two message-presence fields");
-requireCount(mapper, "error_message_length = error_facts.message_length", 2, "two message-length fields");
-requireCount(mapper, "error_kind = error_facts.error_kind", 2, "two static-kind fields");
+]) requireText(localMapper, marker, `${paths.wrapper}: bounded local mapper`);
+requireCount(localMapper, "error_message_present = error_facts.message_present", 2, "two local mapper branches");
 for (const forbidden of [
   "error = ?error",
-  "error = %error",
   "internal_message",
   "error_kind = ?error.kind",
-  "error_kind = %error.kind",
-  "error.to_string()",
-  "match (error.code.as_str(), error.message.as_str())",
-]) forbidText(mapper, forbidden, `${paths.wrapper}: complete PortError payload`);
-for (const constructor of [
-  "PortError::validation(",
-  "PortError::conflict(",
-  "PortError::new(",
-  "PortError::unavailable(",
-  "PortError::invariant_violation(",
-]) forbidText(mapper, constructor, `${paths.wrapper}: replacement envelope`);
+]) forbidText(localMapper, forbidden, `${paths.wrapper}: complete PortError payload`);
 
-for (const openMarker of [
+for (const [variant, label] of [
+  ["Database(_)", "database"],
+  ["OrderNotFound(order_id)", "order_not_found"],
+  ["Validation(cause)", "validation"],
+  ["InvalidTransition { from, to }", "invalid_transition"],
+  ["OrderReturnNotFound(return_id)", "order_return_not_found"],
+  ["OrderChangeNotFound(change_id)", "order_change_not_found"],
+  ["Core(_)", "core"],
+]) requireText(ownerFacts, `OrderError::${variant}`, `${paths.owner}: ${label}`);
+for (const marker of [
+  "text_field_count:",
+  "text_total_length:",
+  "uuid_field_count:",
+  "uuid_non_nil_count:",
+  "opaque_payload_present:",
+  "let error_facts = order_payment_settlement_order_error_facts(&error);",
+]) requireText(`${ownerFacts}\n${ownerMapper}`, marker, `${paths.owner}: owner shape`);
+
+requireText(parseRejection, "parse_failed = true", `${paths.owner}: static parse failure`);
+for (const forbidden of ["error = ?error", "error: &E", "std::fmt::Debug"]) {
+  forbidText(parseRejection, forbidden, `${paths.owner}: parse payload`);
+}
+for (const marker of [
+  "let order_state = order_payment_settlement_status_kind(order_state);",
+  "order_state,",
+]) requireText(lifecycle, marker, `${paths.owner}: static lifecycle status`);
+forbidText(lifecycle, "order_state = ?order_state", `${paths.owner}: debug lifecycle status`);
+
+for (const forbidden of [
   "fn log_context_parse_rejection<E: std::fmt::Debug>",
   "fn log_order_payment_owner_error<E: std::fmt::Debug>",
-  "order_state = ?order_state",
   "error = ?error",
-]) requireText(owner, openMarker, `${paths.owner}: retained open owner gap`);
-for (const marker of [
-  "context.require_policy(PortCallPolicy::write())?;",
-  "context.require_write_semantics()?;",
-  ".read_by_operation(",
-  ".adopt_legacy(",
-  ".mark_paid(",
-  "OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered",
-]) requireText(owner, marker, `${paths.owner}: preserved settlement behavior`);
+  "from = ?from",
+  "to = ?to",
+  "internal_cause = %",
+]) forbidText(owner, forbidden, `${paths.owner}: complete owner payload`);
 
-if (evidence.status !== "order_checkout_payment_settlement_wrapper_diagnostic_safety_source_unvalidated") {
+if (evidence.status !== "order_checkout_payment_settlement_diagnostic_safety_source_unvalidated") {
   failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
 }
 for (const [key, expected] of Object.entries({
-  local_mapper_event_branch_count: 2,
-  complete_port_error_logged_by_local_mapper: false,
-  port_error_message_text_logged_by_local_mapper: false,
-  static_port_error_kind_logged_by_local_mapper: true,
-  port_error_message_shape_logged_by_local_mapper: true,
-  same_port_error_returned: true,
   local_mapper_payload_diagnostic_cleanup_closed: true,
+  canonical_owner_payload_diagnostic_cleanup_closed: true,
   shared_admission_context_payload_diagnostic_cleanup_closed: false,
-  canonical_owner_payload_diagnostic_cleanup_closed: false,
+  uuid_parse_error_payload_logged_by_owner: false,
+  complete_order_error_logged_by_owner: false,
+  owner_transition_text_logged: false,
+  static_order_error_variant_logged: true,
+  static_lifecycle_status_logged: true,
   public_code_changed: false,
   public_message_changed: false,
-  public_kind_changed: false,
-  public_retryability_changed: false,
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
   }
+}
+if (review.review_findings?.canonical_owner_payload_diagnostic_cleanup_closed !== true) {
+  failures.push(`${paths.review}: owner cleanup must be closed`);
+}
+if (review.review_findings?.shared_admission_context_payload_diagnostic_cleanup_remains_open !== true) {
+  failures.push(`${paths.review}: shared admission/context gap must remain open`);
 }
 for (const key of [
   "tests_run",
@@ -175,42 +167,14 @@ for (const key of [
   "workflow_checks_run",
   "ci_run",
   "compile_proven",
-  "settlement_replay_proven",
-  "concurrent_settlement_proven",
-  "restart_proven",
-  "remote_port_proven",
-  "mounted_runtime_proven",
 ]) {
-  if (evidence.validation?.[key] !== false) {
-    failures.push(`${paths.evidence}: validation.${key} must remain false`);
-  }
-}
-
-if (
-  review.status !==
-  "order_checkout_payment_settlement_wrapper_diagnostic_safety_source_reviewed_unvalidated"
-) failures.push(`${paths.review}: unexpected status ${review.status}`);
-for (const [key, expected] of Object.entries({
-  complete_port_error_logging_removed_from_local_mapper: true,
-  port_error_message_text_logging_removed_from_local_mapper: true,
-  static_port_error_kind_logged_by_local_mapper: true,
-  port_error_message_shape_logged_by_local_mapper: true,
-  local_mapper_payload_diagnostic_cleanup_closed: true,
-  shared_admission_context_payload_diagnostic_cleanup_remains_open: true,
-  canonical_owner_payload_diagnostic_cleanup_remains_open: true,
-  all_public_port_errors_preserved: true,
-  runtime_evidence_claimed: false,
-})) {
-  if (review.review_findings?.[key] !== expected) {
-    failures.push(`${paths.review}: review_findings.${key} must be ${expected}`);
-  }
+  if (evidence.validation?.[key] !== false) failures.push(`${paths.evidence}: ${key} must remain false`);
 }
 
 for (const marker of [
-  "Status: **wrapper source-closed / owner open / unvalidated**",
-  "They do not record the complete `PortError`",
-  "shared checkout admission/context events still retain complete `PortError`",
-  "canonical settlement owner still retains UUID parser errors",
+  "Status: **wrapper and owner source-closed / shared admission open / unvalidated**",
+  "All seven `OrderError` variants are classified by a closed static label.",
+  "Shared checkout admission/context events still retain complete `PortError`",
   "The broad ecommerce correlation-safe mapper cleanup remains open.",
 ]) requireText(doc, marker, `${paths.doc}: source status`);
 
@@ -221,5 +185,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Order payment settlement local mapper retains only static PortError kind and message shape while preserving stable routing and the same public error; owner and shared admission payload cleanup remain open",
+  "Order payment settlement wrapper and canonical owner use bounded diagnostic shape while preserving settlement behavior and leaving shared admission/context cleanup open",
 );

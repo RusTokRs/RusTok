@@ -1,14 +1,19 @@
 {
-  "status": "order_checkout_payment_settlement_wrapper_diagnostic_safety_source_unvalidated",
+  "status": "order_checkout_payment_settlement_diagnostic_safety_source_unvalidated",
   "scope": {
     "public_operation": "settle_checkout_payment",
     "shared_wrapper": "crates/rustok-order/src/checkout_owner_context.rs",
     "canonical_owner": "crates/rustok-order/src/checkout_payment_settlement.rs",
     "documentation": "crates/rustok-order/docs/checkout-payment-settlement-local-context.md",
-    "verifier": "scripts/verify/verify-order-payment-settlement-local-context.mjs"
+    "local_mapper_verifier": "scripts/verify/verify-order-payment-settlement-local-context.mjs",
+    "owner_verifier": "scripts/verify/verify-order-payment-settlement-error-context.mjs"
   },
   "source_contract": {
     "local_mapper_event_branch_count": 2,
+    "owner_context_parse_event_count": 2,
+    "order_error_variant_count": 7,
+    "owner_technical_variant_count": 2,
+    "lifecycle_status_label_count": 7,
     "shared_wrapper_stable_code_only_attribution": true,
     "shared_wrapper_safe_context_shape": true,
     "complete_port_error_logged_by_local_mapper": false,
@@ -18,11 +23,21 @@
     "same_port_error_returned": true,
     "local_mapper_payload_diagnostic_cleanup_closed": true,
     "shared_admission_context_payload_diagnostic_cleanup_closed": false,
-    "canonical_owner_payload_diagnostic_cleanup_closed": false,
+    "canonical_owner_payload_diagnostic_cleanup_closed": true,
     "canonical_owner_safe_context_shape": true,
     "canonical_owner_safe_request_shape": true,
     "canonical_owner_safe_identity_shape": true,
     "canonical_owner_safe_payment_identity_shape": true,
+    "uuid_parse_error_payload_logged_by_owner": false,
+    "complete_order_error_logged_by_owner": false,
+    "owner_validation_text_logged": false,
+    "owner_transition_text_logged": false,
+    "debug_lifecycle_status_logged": false,
+    "static_order_error_variant_logged": true,
+    "order_error_text_shape_logged": true,
+    "order_error_uuid_shape_logged": true,
+    "order_error_opaque_payload_presence_logged": true,
+    "static_lifecycle_status_logged": true,
     "correlation_id_logged": true,
     "actor_kind_logged": true,
     "context_lengths_presence_and_counts_logged": true,
@@ -81,8 +96,9 @@
   },
   "notes": [
     "The settlement post-delegation mapper records only stable PortError kind plus message presence and character length.",
-    "The original PortError is returned unchanged and stable-code routing and severity are preserved.",
-    "Shared admission/context payload diagnostics and canonical settlement-owner payload diagnostics remain open separate slices.",
-    "Runtime validation and the broad ecommerce mapper cleanup remain open."
+    "The canonical owner records static OrderError variant and aggregate text, UUID, and opaque-payload shape without complete internal payloads.",
+    "Owner tenant and actor UUID parse failures retain only static field, value length, and parse_failed facts.",
+    "Lifecycle diagnostics use a closed static OrderStatusKind label.",
+    "Shared admission/context payload diagnostics, runtime validation, and the broad ecommerce mapper cleanup remain open."
   ]
 }

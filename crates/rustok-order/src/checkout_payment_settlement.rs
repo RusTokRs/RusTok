@@ -50,6 +50,15 @@ struct OrderPaymentSettlementRequestFacts {
     fallback_locale_length: Option<usize>,
 }
 
+struct OrderPaymentSettlementOwnerErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
 #[async_trait]
 pub trait CheckoutOrderPaymentSettlementPort: Send + Sync {
     async fn settle_checkout_payment(
@@ -286,6 +295,81 @@ fn order_payment_settlement_request_facts(
     }
 }
 
+fn order_payment_settlement_status_kind(status: OrderStatusKind) -> &'static str {
+    match status {
+        OrderStatusKind::Pending => "pending",
+        OrderStatusKind::Confirmed => "confirmed",
+        OrderStatusKind::Paid => "paid",
+        OrderStatusKind::Shipped => "shipped",
+        OrderStatusKind::Delivered => "delivered",
+        OrderStatusKind::Cancelled => "cancelled",
+        OrderStatusKind::Unknown => "unknown",
+    }
+}
+
+fn order_payment_settlement_order_error_facts(
+    error: &OrderError,
+) -> OrderPaymentSettlementOwnerErrorFacts {
+    match error {
+        OrderError::Database(_) => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "database",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        OrderError::OrderNotFound(order_id) => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "order_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if order_id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderError::Validation(cause) => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "validation",
+            text_field_count: 1,
+            text_total_length: cause.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderError::InvalidTransition { from, to } => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "invalid_transition",
+            text_field_count: 2,
+            text_total_length: from.chars().count() + to.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderError::OrderReturnNotFound(return_id) => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "order_return_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if return_id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderError::OrderChangeNotFound(change_id) => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "order_change_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if change_id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderError::Core(_) => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "core",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+    }
+}
+
 fn log_missing_checkout_identity(
     context: &PortContext,
     request: &SettleCheckoutOrderPaymentRequest,
@@ -409,6 +493,7 @@ fn log_payment_settlement_lifecycle_conflict(
     order_state: OrderStatusKind,
 ) {
     let context_facts = order_payment_settlement_context_facts(context);
+    let order_state = order_payment_settlement_status_kind(order_state);
     tracing::warn!(
         owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
         operation = SETTLE_PAYMENT_OPERATION,
@@ -430,7 +515,7 @@ fn log_payment_settlement_lifecycle_conflict(
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
         order_id_non_nil = !order_id.is_nil(),
-        order_state = ?order_state,
+        order_state,
         code = "order.checkout_payment_state_conflict",
         boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
         "checkout order lifecycle does not allow payment settlement"
@@ -592,14 +677,13 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_context_parse_rejection(
             context,
             operation,
             "tenant_id",
             context.tenant_id.chars().count(),
             "order.tenant_id_invalid",
-            &error,
         );
         PortError::validation(
             "order.tenant_id_invalid",
@@ -609,35 +693,33 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|error| {
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
         log_context_parse_rejection(
             context,
             operation,
             "actor_id",
             context.actor.id.chars().count(),
             "order.actor_id_invalid",
-            &error,
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
 
-fn log_context_parse_rejection<E: std::fmt::Debug>(
+fn log_context_parse_rejection(
     context: &PortContext,
     operation: &'static str,
     field: &'static str,
     value_length: usize,
     code: &'static str,
-    error: &E,
 ) {
     let context_facts = order_payment_settlement_context_facts(context);
     tracing::warn!(
-        error = ?error,
         owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
         operation,
         local_operation = "validate_owner_context",
         field,
         value_length,
+        parse_failed = true,
         correlation_id = %context.correlation_id,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
@@ -667,9 +749,7 @@ fn log_order_payment_owner_warning(
     code: &'static str,
     resource: Option<&'static str>,
     resource_id: Option<Uuid>,
-    internal_cause: Option<&str>,
-    from: Option<&str>,
-    to: Option<&str>,
+    error_facts: &OrderPaymentSettlementOwnerErrorFacts,
 ) {
     let context_facts = order_payment_settlement_context_facts(context);
     tracing::warn!(
@@ -692,29 +772,30 @@ fn log_order_payment_owner_warning(
         idempotency_key_present = context_facts.idempotency_key_present,
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
-        resource = ?resource,
+        resource = resource.unwrap_or("none"),
         resource_id_present = resource_id.is_some(),
         resource_id_non_nil = ?resource_id.map(|value| !value.is_nil()),
-        internal_cause_present = internal_cause.is_some(),
-        internal_cause_length = ?internal_cause.map(|value| value.chars().count()),
-        from = ?from,
-        to = ?to,
+        error_variant = error_facts.error_variant,
+        text_field_count = error_facts.text_field_count,
+        text_total_length = error_facts.text_total_length,
+        uuid_field_count = error_facts.uuid_field_count,
+        uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        opaque_payload_present = error_facts.opaque_payload_present,
         code,
         boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
-        "order checkout payment settlement owner outcome retained safe context"
+        "order checkout payment settlement owner outcome retained bounded diagnostics"
     );
 }
 
-fn log_order_payment_owner_error<E: std::fmt::Debug>(
+fn log_order_payment_owner_error(
     context: &PortContext,
     operation: &'static str,
     local_operation: &'static str,
     code: &'static str,
-    error: &E,
+    error_facts: &OrderPaymentSettlementOwnerErrorFacts,
 ) {
     let context_facts = order_payment_settlement_context_facts(context);
     tracing::error!(
-        error = ?error,
         owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
         operation,
         local_operation,
@@ -734,9 +815,15 @@ fn log_order_payment_owner_error<E: std::fmt::Debug>(
         idempotency_key_present = context_facts.idempotency_key_present,
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
+        error_variant = error_facts.error_variant,
+        text_field_count = error_facts.text_field_count,
+        text_total_length = error_facts.text_total_length,
+        uuid_field_count = error_facts.uuid_field_count,
+        uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        opaque_payload_present = error_facts.opaque_payload_present,
         code,
         boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
-        "order checkout payment settlement owner technical outcome retained safe context"
+        "order checkout payment settlement owner technical outcome retained bounded diagnostics"
     );
 }
 
@@ -745,14 +832,15 @@ fn order_error_to_port_error(
     operation: &'static str,
     error: OrderError,
 ) -> PortError {
+    let error_facts = order_payment_settlement_order_error_facts(&error);
     match error {
-        OrderError::Database(error) => {
+        OrderError::Database(_) => {
             log_order_payment_owner_error(
                 context,
                 operation,
                 "owner_storage",
                 "order.database_unavailable",
-                &error,
+                &error_facts,
             );
             PortError::unavailable(
                 "order.database_unavailable",
@@ -767,13 +855,11 @@ fn order_error_to_port_error(
                 "order.order_not_found",
                 Some("order"),
                 Some(order_id),
-                None,
-                None,
-                None,
+                &error_facts,
             );
             PortError::not_found("order.order_not_found", "order was not found")
         }
-        OrderError::Validation(cause) => {
+        OrderError::Validation(_) => {
             log_order_payment_owner_warning(
                 context,
                 operation,
@@ -781,16 +867,14 @@ fn order_error_to_port_error(
                 "order.checkout_payment_validation",
                 None,
                 None,
-                Some(cause.as_str()),
-                None,
-                None,
+                &error_facts,
             );
             PortError::validation(
                 "order.checkout_payment_validation",
                 "checkout order payment settlement request is invalid",
             )
         }
-        OrderError::InvalidTransition { from, to } => {
+        OrderError::InvalidTransition { .. } => {
             log_order_payment_owner_warning(
                 context,
                 operation,
@@ -798,9 +882,7 @@ fn order_error_to_port_error(
                 "order.checkout_payment_state_conflict",
                 None,
                 None,
-                None,
-                Some(from.as_str()),
-                Some(to.as_str()),
+                &error_facts,
             );
             PortError::conflict(
                 "order.checkout_payment_state_conflict",
@@ -815,9 +897,7 @@ fn order_error_to_port_error(
                 "order.related_resource_not_found",
                 Some("order_return"),
                 Some(return_id),
-                None,
-                None,
-                None,
+                &error_facts,
             );
             PortError::not_found(
                 "order.related_resource_not_found",
@@ -832,22 +912,20 @@ fn order_error_to_port_error(
                 "order.related_resource_not_found",
                 Some("order_change"),
                 Some(change_id),
-                None,
-                None,
-                None,
+                &error_facts,
             );
             PortError::not_found(
                 "order.related_resource_not_found",
                 "related order resource was not found",
             )
         }
-        OrderError::Core(error) => {
+        OrderError::Core(_) => {
             log_order_payment_owner_error(
                 context,
                 operation,
                 "owner_invariant",
                 "order.invariant_violation",
-                &error,
+                &error_facts,
             );
             PortError::invariant_violation(
                 "order.invariant_violation",
