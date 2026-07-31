@@ -216,7 +216,7 @@ requireAll(forumPlan, [
   "LINK-FORUM-03",
 ], paths.forumPlan);
 requireAll(searchPlan, [
-  "Forum projection owner-revision reconciliation",
+  "Add owner-issued Forum projection revisions",
   "LINK-FORUM-03",
 ], paths.searchPlan);
 
