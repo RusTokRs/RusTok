@@ -169,6 +169,20 @@ mod tests {
     }
 
     #[test]
+    fn non_forum_items_never_match_active_author_filter() {
+        let expected = Uuid::new_v4();
+        let filters = ForumStorefrontDocumentFilters {
+            author_ids: vec![expected],
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let mut product = item("forum_topic", Some(expected), None, None);
+        product.entity_type = "product".to_string();
+        product.source_module = "product".to_string();
+
+        assert!(!filters.matches(&product));
+    }
+
+    #[test]
     fn tag_filter_requires_every_exact_topic_tag() {
         let filters = ForumStorefrontDocumentFilters {
             tags: vec!["Rust".to_string(), "Search".to_string()],
