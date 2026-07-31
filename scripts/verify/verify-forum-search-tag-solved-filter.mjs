@@ -90,11 +90,13 @@ requireAll(
     "pub solved: Option<bool>",
     '"forum_topic" => "tags"',
     '"forum_reply" => "topic_tags"',
-    "self.tags.iter().all",
-    '"solution_reply_id"',
+    "collect::<Option<Vec<_>>>()",
+    "projected_tags.contains(&expected.as_str())",
+    'Uuid::parse_str(value).ok().map(|_| true)',
     '"is_solution"',
     "tag_filter_requires_every_exact_topic_tag",
     "solved_filter_uses_topic_solution_and_exact_reply_marker",
+    "malformed_tag_or_solved_projection_fails_closed",
     "active_filters_intersect_and_exclude_non_forum_items",
   ],
   paths.filter,
@@ -254,6 +256,12 @@ if (contract) {
   }
   if (!contract.projection?.legacy_reply_without_topic_tags_fails_closed_when_tag_filter_active) {
     failures.push(`${paths.contract}: legacy reply fail-closed invariant is missing`);
+  }
+  if (!contract.projection?.malformed_tag_array_fails_closed) {
+    failures.push(`${paths.contract}: malformed tag projection invariant is missing`);
+  }
+  if (!contract.projection?.malformed_topic_solution_id_fails_closed) {
+    failures.push(`${paths.contract}: malformed solved projection invariant is missing`);
   }
   if (!contract.evaluation?.raw_candidate_limit_is_checked_before_filter_narrowing) {
     failures.push(`${paths.contract}: raw candidate ordering invariant is missing`);
