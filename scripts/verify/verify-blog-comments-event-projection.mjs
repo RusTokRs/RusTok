@@ -82,6 +82,10 @@ for (const marker of [
   'const BLOG_POST_TARGET_TYPE: &str = "blog_post";',
   'const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;',
   'struct CommentProjectionChange',
+  'enum ProjectionUpdateDecision',
+  'ProjectionUpdateDecision::Applied',
+  'ProjectionUpdateDecision::Retry',
+  'ProjectionUpdateDecision::LimitReached',
   'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>',
   'DomainEvent::CommentCreated',
   'delta: 1',
@@ -90,6 +94,10 @@ for (const marker of [
   'fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32)',
   'comment_count.saturating_add(delta).max(0)',
   'version.saturating_add(1)',
+  'fn projection_update_decision(',
+  'attempt_index: usize',
+  'rows_affected: u64',
+  'else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS',
   'let Some(change) = comment_projection_change(&envelope.event) else',
   'let txn = self.db.begin().await?;',
   'blog_comment_projection_delivery::Entity::find_by_id(envelope.id)',
@@ -104,7 +112,8 @@ for (const marker of [
   'Column::TenantId.eq(tenant_id)',
   'Column::Version.eq(post.version)',
   'next_comment_projection_state(post.comment_count, post.version, delta)',
-  'if result.rows_affected == 1',
+  'for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS',
+  'match projection_update_decision(attempt_index, result.rows_affected)',
   'Error::NotFound',
   'impl EventHandler for BlogCommentProjectionHandler',
   'comment_projection_change(event).is_some()',
@@ -112,6 +121,10 @@ for (const marker of [
   'fn classifies_blog_comment_lifecycle_events()',
   'fn ignores_non_blog_targets_and_unrelated_events()',
   'fn counter_transition_is_non_negative_and_saturating()',
+  'fn optimistic_retry_policy_applies_success_without_retry()',
+  'fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict()',
+  'MAX_PROJECTION_UPDATE_ATTEMPTS - 1',
+  'Some(&ProjectionUpdateDecision::LimitReached)',
 ]) {
   requireMarker(handler, marker, handlerPath);
 }
@@ -125,6 +138,26 @@ if (handlesStart === -1 || handleStart === -1) {
   const handlesBody = handler.slice(handlesStart, handleStart);
   requireMarker(handlesBody, 'comment_projection_change(event).is_some()', `${handlerPath}: handles`);
   requireNoMarker(handlesBody, 'matches!(', `${handlerPath}: handles`);
+}
+
+const retryLoopStart = handler.indexOf(
+  'for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS',
+);
+const retryLoopEnd = handler.indexOf('Err(Error::External(format!(', retryLoopStart);
+if (retryLoopStart === -1 || retryLoopEnd === -1) {
+  failures.push(`${handlerPath}: missing bounded optimistic retry loop boundary`);
+} else {
+  const retryLoopBody = handler.slice(retryLoopStart, retryLoopEnd);
+  requireMarker(
+    retryLoopBody,
+    'match projection_update_decision(attempt_index, result.rows_affected)',
+    `${handlerPath}: retry loop`,
+  );
+  requireNoMarker(
+    retryLoopBody,
+    'if result.rows_affected == 1',
+    `${handlerPath}: retry loop`,
+  );
 }
 
 for (const marker of [
@@ -327,6 +360,8 @@ if (evidence) {
       'shared_created_deleted_classifier',
       'non_blog_target_rejection',
       'non_negative_saturating_counter_transition',
+      'optimistic_retry_policy_applies_success_without_retry',
+      'optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict',
     ].sort().join('|')
   ) {
     failures.push(`${evidencePath}: source harness case drift`);
@@ -458,6 +493,7 @@ if (evidence) {
     'envelope_idempotency',
     'atomic_counter_delivery_outbox',
     'tenant_scoped_optimistic_update',
+    'bounded_optimistic_retry_policy',
     'missing_post_retry',
     'non_negative_count',
     'host_registration_routing_harness',
@@ -533,6 +569,8 @@ for (const marker of [
   'test:verify:blog:comments-event-projection',
   'source_verified_no_compile',
   'services::comment_projection::tests',
+  'ProjectionUpdateDecision',
+  'seven retry decisions',
   'tests::module_registers_comment_projection_handler_with_host_routing',
   'event_dispatcher_routes_registered_handler_and_commits_projection',
   'concurrent_created_events_converge_without_lost_updates',
@@ -555,4 +593,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection classifier, registration, dispatcher, concurrency, PostgreSQL, connection restart, and process restart harnesses are consistent');
+console.log('Blog comments event projection classifier, retry policy, registration, dispatcher, concurrency, PostgreSQL, connection restart, and process restart harnesses are consistent');
