@@ -2,6 +2,7 @@ use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
 };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
@@ -11,7 +12,8 @@ pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
 /// This is intentionally separate from tenant RBAC. Ordinary tenant roles,
 /// broad tenant permissions, OAuth wildcards, and tenant identity never imply
 /// host authority. Absence of this context means no host-global access.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum HostAuthority {
     Read,
     Manage,
@@ -19,11 +21,10 @@ pub enum HostAuthority {
 
 /// Request context issued only by a trusted host/operator authentication path.
 ///
-/// The tenant authentication middleware does not create this context. Until an
-/// explicit operator issuance path is composed, host-global transports remain
-/// fail-closed. Every issued context is bound to a concrete operator actor for
-/// mutation audit records; a nil or inferred tenant actor is not accepted by
-/// the constructor contract.
+/// The ordinary tenant permission snapshot does not create this context. Every
+/// issued context is bound to a concrete operator actor for mutation audit
+/// records; a nil or inferred tenant actor is not accepted by the constructor
+/// contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HostAuthorityContext {
     authority: HostAuthority,
@@ -32,14 +33,14 @@ pub struct HostAuthorityContext {
 
 impl HostAuthorityContext {
     pub fn read(actor_id: Uuid) -> Option<Self> {
-        Self::new(HostAuthority::Read, actor_id)
+        Self::for_actor(HostAuthority::Read, actor_id)
     }
 
     pub fn manage(actor_id: Uuid) -> Option<Self> {
-        Self::new(HostAuthority::Manage, actor_id)
+        Self::for_actor(HostAuthority::Manage, actor_id)
     }
 
-    fn new(authority: HostAuthority, actor_id: Uuid) -> Option<Self> {
+    pub fn for_actor(authority: HostAuthority, actor_id: Uuid) -> Option<Self> {
         (!actor_id.is_nil()).then_some(Self {
             authority,
             actor_id,
@@ -104,8 +105,19 @@ mod tests {
     }
 
     #[test]
+    fn generic_constructor_preserves_explicit_level() {
+        let actor_id = Uuid::new_v4();
+        let authority = HostAuthorityContext::for_actor(HostAuthority::Read, actor_id)
+            .expect("non-nil operator actor");
+
+        assert_eq!(authority.authority(), HostAuthority::Read);
+        assert_eq!(authority.actor_id(), actor_id);
+    }
+
+    #[test]
     fn nil_operator_actor_is_rejected() {
         assert!(HostAuthorityContext::read(Uuid::nil()).is_none());
         assert!(HostAuthorityContext::manage(Uuid::nil()).is_none());
+        assert!(HostAuthorityContext::for_actor(HostAuthority::Manage, Uuid::nil()).is_none());
     }
 }
