@@ -4,6 +4,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_commerce_foundation::entities::{
     inventory_item, inventory_level, product_variant, reservation_item, stock_location,
 };
+use rustok_commerce_foundation::error::CommerceError;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
@@ -15,6 +16,7 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 const MAX_RESERVATION_EXTERNAL_ID_LENGTH: usize = 191;
+const INVENTORY_PORT_BOUNDARY: &str = "inventory_reservation_port";
 
 /// Transport-neutral owner boundary for checkout/storefront inventory availability and legacy
 /// quantity-based reservations.
@@ -253,10 +255,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             ));
         }
 
-        let txn =
-            self.db.begin().await.map_err(|error| {
-                storage_unavailable_with_context(&context, owner_operation, error)
-            })?;
+        let txn = self.db.begin().await.map_err(|error| {
+            storage_unavailable_with_context(&context, owner_operation, error)
+        })?;
         let variant = load_tenant_variant(
             &context,
             owner_operation,
@@ -477,10 +478,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         request.external_id = normalize_external_id(request.external_id)?;
 
-        let txn =
-            self.db.begin().await.map_err(|error| {
-                storage_unavailable_with_context(&context, owner_operation, error)
-            })?;
+        let txn = self.db.begin().await.map_err(|error| {
+            storage_unavailable_with_context(&context, owner_operation, error)
+        })?;
         let observed = reservation_item::Entity::find_by_id(request.reservation_id)
             .one(&txn)
             .await
@@ -624,13 +624,13 @@ where
         .await
         .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?
         .ok_or_else(|| {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "inventory.variant_not_found",
-                variant_id = %variant_id,
-                "inventory variant was not found"
+            let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.variant_not_found",
+                &facts,
+                false,
             );
             PortError::not_found(
                 "inventory.variant_not_found",
@@ -808,19 +808,273 @@ fn normalize_external_id(value: String) -> Result<String, PortError> {
     Ok(value)
 }
 
+struct InventoryPortContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
+struct InventoryOwnerErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    numeric_field_count: usize,
+    numeric_nonzero_count: usize,
+    numeric_negative_count: usize,
+    opaque_payload_present: bool,
+}
+
+impl InventoryOwnerErrorFacts {
+    fn empty(error_variant: &'static str) -> Self {
+        Self {
+            error_variant,
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            numeric_field_count: 0,
+            numeric_nonzero_count: 0,
+            numeric_negative_count: 0,
+            opaque_payload_present: false,
+        }
+    }
+
+    fn uuid(error_variant: &'static str, value: Uuid) -> Self {
+        Self {
+            uuid_field_count: 1,
+            uuid_non_nil_count: usize::from(!value.is_nil()),
+            ..Self::empty(error_variant)
+        }
+    }
+
+    fn opaque(error_variant: &'static str) -> Self {
+        Self {
+            opaque_payload_present: true,
+            ..Self::empty(error_variant)
+        }
+    }
+}
+
+fn inventory_port_context_facts(context: &PortContext) -> InventoryPortContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    InventoryPortContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn inventory_owner_error_facts(error: &CommerceError) -> InventoryOwnerErrorFacts {
+    match error {
+        CommerceError::Database(_) => InventoryOwnerErrorFacts::opaque("database"),
+        CommerceError::ProductNotFound(value) => {
+            InventoryOwnerErrorFacts::uuid("product_not_found", *value)
+        }
+        CommerceError::VariantNotFound(value) => {
+            InventoryOwnerErrorFacts::uuid("variant_not_found", *value)
+        }
+        CommerceError::DuplicateHandle { handle, locale } => InventoryOwnerErrorFacts {
+            text_field_count: 2,
+            text_total_length: handle.chars().count() + locale.chars().count(),
+            ..InventoryOwnerErrorFacts::empty("duplicate_handle")
+        },
+        CommerceError::DuplicateSku(value) => InventoryOwnerErrorFacts {
+            text_field_count: 1,
+            text_total_length: value.chars().count(),
+            ..InventoryOwnerErrorFacts::empty("duplicate_sku")
+        },
+        CommerceError::InvalidPrice(value) => InventoryOwnerErrorFacts {
+            text_field_count: 1,
+            text_total_length: value.chars().count(),
+            ..InventoryOwnerErrorFacts::empty("invalid_price")
+        },
+        CommerceError::InsufficientInventory {
+            requested,
+            available,
+        } => InventoryOwnerErrorFacts {
+            numeric_field_count: 2,
+            numeric_nonzero_count: usize::from(*requested != 0) + usize::from(*available != 0),
+            numeric_negative_count: usize::from(*requested < 0) + usize::from(*available < 0),
+            ..InventoryOwnerErrorFacts::empty("insufficient_inventory")
+        },
+        CommerceError::InvalidOptionCombination => {
+            InventoryOwnerErrorFacts::empty("invalid_option_combination")
+        }
+        CommerceError::Validation(value) => InventoryOwnerErrorFacts {
+            text_field_count: 1,
+            text_total_length: value.chars().count(),
+            ..InventoryOwnerErrorFacts::empty("validation")
+        },
+        CommerceError::ShippingProfileNotFound(value) => {
+            InventoryOwnerErrorFacts::uuid("shipping_profile_not_found", *value)
+        }
+        CommerceError::DuplicateShippingProfileSlug(value) => InventoryOwnerErrorFacts {
+            text_field_count: 1,
+            text_total_length: value.chars().count(),
+            ..InventoryOwnerErrorFacts::empty("duplicate_shipping_profile_slug")
+        },
+        CommerceError::NoVariants => InventoryOwnerErrorFacts::empty("no_variants"),
+        CommerceError::CannotDeletePublished => {
+            InventoryOwnerErrorFacts::empty("cannot_delete_published")
+        }
+        CommerceError::Rich(_) => InventoryOwnerErrorFacts::opaque("rich"),
+        CommerceError::Core(_) => InventoryOwnerErrorFacts::opaque("core"),
+    }
+}
+
+fn log_inventory_port_failure(
+    context: &PortContext,
+    owner_operation: &'static str,
+    code: &'static str,
+    error_facts: &InventoryOwnerErrorFacts,
+    technical_failure: bool,
+) {
+    let context_facts = inventory_port_context_facts(context);
+    if technical_failure {
+        tracing::error!(
+            owner = "rustok_inventory",
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            operation = owner_operation,
+            code,
+            error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            numeric_field_count = error_facts.numeric_field_count,
+            numeric_nonzero_count = error_facts.numeric_nonzero_count,
+            numeric_negative_count = error_facts.numeric_negative_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
+            boundary = INVENTORY_PORT_BOUNDARY,
+            "inventory owner operation failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = "rustok_inventory",
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            operation = owner_operation,
+            code,
+            error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            numeric_field_count = error_facts.numeric_field_count,
+            numeric_nonzero_count = error_facts.numeric_nonzero_count,
+            numeric_negative_count = error_facts.numeric_negative_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
+            boundary = INVENTORY_PORT_BOUNDARY,
+            "inventory owner operation was rejected with bounded diagnostics"
+        );
+    }
+}
+
+fn log_inventory_tenant_parse_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+) {
+    let context_facts = inventory_port_context_facts(context);
+    tracing::warn!(
+        owner = "rustok_inventory",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        operation = owner_operation,
+        code = "inventory.context_invalid",
+        tenant_id_parse_failed = true,
+        boundary = INVENTORY_PORT_BOUNDARY,
+        "inventory port context was rejected with bounded diagnostics"
+    );
+}
+
 fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "inventory.context_invalid",
-            "inventory port context is invalid"
-        );
+    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+        log_inventory_tenant_parse_rejection(context, owner_operation);
         PortError::validation(
             "inventory.context_invalid",
             "inventory request context is invalid",
@@ -831,15 +1085,15 @@ fn parse_port_tenant_id(
 fn storage_unavailable_with_context(
     context: &PortContext,
     owner_operation: &'static str,
-    error: sea_orm::DbErr,
+    _error: sea_orm::DbErr,
 ) -> PortError {
-    tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        operation = owner_operation,
-        code = "inventory.database_unavailable",
-        "inventory storage operation failed"
+    let facts = InventoryOwnerErrorFacts::opaque("database");
+    log_inventory_port_failure(
+        context,
+        owner_operation,
+        "inventory.database_unavailable",
+        &facts,
+        true,
     );
     PortError::unavailable(
         "inventory.database_unavailable",
@@ -850,33 +1104,30 @@ fn storage_unavailable_with_context(
 fn inventory_error_to_port_error(
     context: &PortContext,
     owner_operation: &'static str,
-    error: rustok_commerce_foundation::error::CommerceError,
+    error: CommerceError,
 ) -> PortError {
-    use rustok_commerce_foundation::error::CommerceError;
-
+    let error_facts = inventory_owner_error_facts(&error);
     match error {
-        CommerceError::Database(error) => {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "inventory.database_unavailable",
-                "inventory owner storage operation failed"
+        CommerceError::Database(_) => {
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.database_unavailable",
+                &error_facts,
+                true,
             );
             PortError::unavailable(
                 "inventory.database_unavailable",
                 "inventory storage is temporarily unavailable",
             )
         }
-        CommerceError::VariantNotFound(variant_id) => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "inventory.variant_not_found",
-                variant_id = %variant_id,
-                "inventory variant was not found"
+        CommerceError::VariantNotFound(_) => {
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.variant_not_found",
+                &error_facts,
+                false,
             );
             PortError::new(
                 PortErrorKind::NotFound,
@@ -885,18 +1136,13 @@ fn inventory_error_to_port_error(
                 false,
             )
         }
-        CommerceError::InsufficientInventory {
-            requested,
-            available,
-        } => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "inventory.insufficient_inventory",
-                requested,
-                available,
-                "inventory reservation conflicts with available stock"
+        CommerceError::InsufficientInventory { .. } => {
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.insufficient_inventory",
+                &error_facts,
+                false,
             );
             PortError::new(
                 PortErrorKind::Conflict,
@@ -905,25 +1151,23 @@ fn inventory_error_to_port_error(
                 false,
             )
         }
-        CommerceError::InvalidPrice(message) | CommerceError::Validation(message) => {
-            tracing::warn!(
-                internal_message = %message,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "inventory.validation",
-                "inventory request validation failed"
+        CommerceError::InvalidPrice(_) | CommerceError::Validation(_) => {
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.validation",
+                &error_facts,
+                false,
             );
             PortError::validation("inventory.validation", "inventory request is invalid")
         }
-        other => {
-            tracing::error!(
-                error = ?other,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "inventory.invariant_violation",
-                "inventory owner invariant failed"
+        _ => {
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.invariant_violation",
+                &error_facts,
+                true,
             );
             PortError::invariant_violation(
                 "inventory.invariant_violation",
