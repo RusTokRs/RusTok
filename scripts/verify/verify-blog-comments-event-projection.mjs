@@ -29,6 +29,13 @@ function requireNoMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
+function requireCount(source, marker, expected, label) {
+  const count = source.split(marker).length - 1;
+  if (count !== expected) {
+    failures.push(`${label}: expected ${expected} occurrences of ${marker}, found ${count}`);
+  }
+}
+
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
 const handlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
 const postgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
@@ -46,6 +53,7 @@ const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://...
 const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
+const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
 const postgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
 
 const handler = read(handlerPath);
@@ -176,6 +184,8 @@ requireNoMarker(postgresHarness, 'runtime_verified', postgresHarnessPath);
 
 for (const marker of [
   'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'const PROCESS_WORKER_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_WORKER";',
+  'const PROCESS_EVENT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_EVENT_ID";',
   'struct PostgresBlogProjectionRestartTestDb',
   'database_url: String',
   'async fn restarted_connection(&self)',
@@ -190,10 +200,42 @@ for (const marker of [
   'load_post_state(&restarted_db, tenant_id, post_id).await?, (1, 2)',
   'count_delivery(&restarted_db, envelope.id).await?, 1',
   'count_outbox_events(&restarted_db).await?, 1',
+  'async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter()',
+  'async fn process_restart_worker_applies_envelope_from_env()',
+  'if env::var_os(PROCESS_WORKER_ENV).is_none()',
+  'let event_id = required_uuid(PROCESS_EVENT_ENV)?;',
+  'envelope.id = event_id;',
+  'envelope.correlation_id = event_id;',
+  'fn run_projection_worker(',
+  'Command::new(env::current_exe()?)',
+  '.arg("--exact")',
+  '.arg("process_restart_worker_applies_envelope_from_env")',
+  '.env(PROCESS_WORKER_ENV, "1")',
+  'Blog projection restart worker exited with status',
+  'load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)',
+  'count_delivery(&test_db.db, envelope.id).await?, 1',
+  'count_outbox_events(&test_db.db).await?, 1',
   'CREATE TABLE blog_comment_projection_deliveries',
   'CREATE TABLE sys_events',
 ]) {
   requireMarker(restartHarness, marker, restartHarnessPath);
+}
+const processParentStart = restartHarness.indexOf(
+  'async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter()',
+);
+const processWorkerStart = restartHarness.indexOf(
+  'async fn process_restart_worker_applies_envelope_from_env()',
+  processParentStart,
+);
+if (processParentStart === -1 || processWorkerStart === -1) {
+  failures.push(`${restartHarnessPath}: missing process restart parent/worker boundary`);
+} else {
+  requireCount(
+    restartHarness.slice(processParentStart, processWorkerStart),
+    'run_projection_worker(',
+    2,
+    `${restartHarnessPath}: process restart parent`,
+  );
 }
 requireNoMarker(restartHarness, '#[ignore]', restartHarnessPath);
 requireNoMarker(restartHarness, 'runtime_verified', restartHarnessPath);
@@ -371,7 +413,8 @@ if (evidence) {
     restart.path !== restartHarnessPath ||
     restart.environment !== postgresHarnessEnvironment ||
     restart.command !== restartHarnessCommand ||
-    restart.isolation !== 'unique_schema_new_connection'
+    restart.isolation !== 'unique_schema_new_connection' ||
+    restart.scope !== 'same_process_new_connection_and_handler'
   ) {
     failures.push(`${evidencePath}: restart harness drift`);
   }
@@ -380,6 +423,28 @@ if (evidence) {
     'restarted_handler_reuses_delivery_ledger_without_reapplying_counter'
   ) {
     failures.push(`${evidencePath}: restart harness case drift`);
+  }
+  const processRestart = evidence.process_restart_harness ?? {};
+  if (
+    processRestart.status !== 'executable_no_run' ||
+    processRestart.runtime_status !== 'not_run' ||
+    processRestart.path !== restartHarnessPath ||
+    processRestart.environment !== postgresHarnessEnvironment ||
+    processRestart.command !== processRestartHarnessCommand ||
+    processRestart.isolation !== 'unique_schema_two_sequential_test_processes_same_envelope' ||
+    processRestart.scope !== 'os_process_reinstantiation_durable_delivery_replay' ||
+    processRestart.non_claim !== 'does_not_prove_full_server_host_restart_or_record_execution'
+  ) {
+    failures.push(`${evidencePath}: process restart harness drift`);
+  }
+  const processRestartCases = [...(processRestart.cases ?? [])].sort().join('|');
+  if (
+    processRestartCases !== [
+      'restarted_process_reuses_delivery_ledger_without_reapplying_counter',
+      'process_restart_worker_applies_envelope_from_env',
+    ].sort().join('|')
+  ) {
+    failures.push(`${evidencePath}: process restart harness case drift`);
   }
   const events = [...(evidence.events ?? [])].sort().join('|');
   if (events !== ['comment.created', 'comment.deleted'].sort().join('|')) {
@@ -403,6 +468,7 @@ if (evidence) {
     'postgres_missing_post_recovery',
     'postgres_outbox_rollback_recovery',
     'postgres_restart_replay',
+    'postgres_process_restart_replay',
     'module_listener_registration',
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
@@ -470,13 +536,15 @@ for (const marker of [
   'tests::module_registers_comment_projection_handler_with_host_routing',
   'event_dispatcher_routes_registered_handler_and_commits_projection',
   'concurrent_created_events_converge_without_lost_updates',
+  'restarted_process_reuses_delivery_ledger_without_reapplying_counter',
   'comment_projection_postgres_test',
   'comment_projection_restart_postgres_test',
   'RUSTOK_BLOG_TEST_DATABASE_URL',
   'EventBus',
   'EventDispatcher',
   'independent PostgreSQL connections',
-  'process-level restart recovery',
+  'two sequential OS test processes',
+  'server-host restart',
 ]) {
   requireMarker(plan, marker, planPath);
 }
@@ -487,4 +555,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection classifier, registration, dispatcher, concurrency, PostgreSQL, and restart harnesses are consistent');
+console.log('Blog comments event projection classifier, registration, dispatcher, concurrency, PostgreSQL, connection restart, and process restart harnesses are consistent');
