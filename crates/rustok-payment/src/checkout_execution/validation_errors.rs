@@ -22,13 +22,20 @@ fn persisted_provider_result(
         )
     })?;
     serde_json::from_value(value).map(Some).map_err(|error| {
+        let context_facts = checkout_payment_execution_context_facts(context);
         tracing::error!(
-            operation_id = %operation.id,
+            operation_id_non_nil = !operation.id.is_nil(),
             error = ?error,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
             operation = owner_operation,
             code = "payment.provider_invalid_response",
+            boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment provider operation result is malformed"
         );
         manual_reconciliation(
@@ -132,6 +139,7 @@ fn log_checkout_payment_execution_admission_rejection(
         &error.kind,
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
     );
+    let context_facts = checkout_payment_execution_context_facts(context);
     if technical_failure {
         tracing::error!(
             error = ?error,
@@ -139,20 +147,27 @@ fn log_checkout_payment_execution_admission_rejection(
             operation = owner_operation,
             admission,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
             internal_message = %error.message,
             error_kind = ?error.kind,
             retryable = error.retryable,
-            boundary = "checkout_payment_execution_port",
-            "payment checkout execution admission failed"
+            boundary = PAYMENT_EXECUTION_BOUNDARY,
+            "payment checkout execution admission failed with safe context"
         );
     } else {
         tracing::warn!(
@@ -161,20 +176,27 @@ fn log_checkout_payment_execution_admission_rejection(
             operation = owner_operation,
             admission,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
             internal_message = %error.message,
             error_kind = ?error.kind,
             retryable = error.retryable,
-            boundary = "checkout_payment_execution_port",
-            "payment checkout execution admission was rejected"
+            boundary = PAYMENT_EXECUTION_BOUNDARY,
+            "payment checkout execution admission was rejected with safe context"
         );
     }
 }
@@ -189,13 +211,17 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
+        let context_facts = checkout_payment_execution_context_facts(context);
         tracing::warn!(
-            causation_id = ?context.causation_id,
-            checkout_operation_id = %checkout_operation_id,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            checkout_operation_id_non_nil = !checkout_operation_id.is_nil(),
+            causation_matches = false,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
+            tenant_id_length = context_facts.tenant_id_length,
             operation = owner_operation,
             code = "payment.checkout_operation_id_invalid",
+            boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment checkout execution causation context is invalid"
         );
         return Err(PortError::validation(
@@ -211,13 +237,14 @@ fn parse_tenant_id(
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|error| {
+        let context_facts = checkout_payment_execution_context_facts(context);
         tracing::warn!(
             error = ?error,
-            internal_tenant_id = %context.tenant_id,
+            tenant_id_length = context_facts.tenant_id_length,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
             operation = owner_operation,
             code = "payment.tenant_id_invalid",
+            boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment checkout execution tenant context is invalid"
         );
         PortError::validation(
@@ -232,12 +259,20 @@ fn manual_reconciliation(
     owner_operation: &'static str,
     internal_message: &'static str,
 ) -> PortError {
+    let context_facts = checkout_payment_execution_context_facts(context);
     tracing::error!(
         internal_message,
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        channel_present = context_facts.channel_present,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        deadline_ms = ?context_facts.deadline_ms,
         operation = owner_operation,
         code = "payment.checkout_execution_manual_reconciliation",
+        boundary = PAYMENT_EXECUTION_BOUNDARY,
         "payment checkout execution requires manual reconciliation"
     );
     PortError::new(
@@ -270,12 +305,20 @@ fn payment_error_to_port_error(
     error: PaymentError,
 ) -> PortError {
     let code = stable_payment_error_code(&error);
+    let context_facts = checkout_payment_execution_context_facts(context);
     tracing::error!(
         error = ?error,
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        channel_present = context_facts.channel_present,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        deadline_ms = ?context_facts.deadline_ms,
         operation = owner_operation,
         code,
+        boundary = PAYMENT_EXECUTION_BOUNDARY,
         "payment checkout execution owner operation failed"
     );
     match error {
