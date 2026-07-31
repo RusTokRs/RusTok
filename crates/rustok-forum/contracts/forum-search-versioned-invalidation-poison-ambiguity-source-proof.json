@@ -1,0 +1,87 @@
+{
+  "contract": "forum_search_versioned_invalidation_poison_ambiguity_source_proof_v1",
+  "task": "FORUM-23B2G2B3D5",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "predecessor": {
+    "task": "FORUM-23B2G2B3D4",
+    "pull_request": 2775,
+    "state_at_authorship": "merged",
+    "merge_commit": "b612786020859dca377f2e32971b491fbd14644a",
+    "parent_registration": "D4_registered_D5_deferred_until_D5_merge"
+  },
+  "test": "crates/rustok-search/tests/forum_versioned_invalidation_poison_ambiguity_iggy.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-poison-ambiguity-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "written_only_after_all_modes_pass": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "delivery_profile": "outbox_iggy",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "source_topic": "domain",
+    "dlq_topic": "dlq",
+    "iggy_instances": [
+      {
+        "mode": "dedup_enabled",
+        "address_env": "RUSTOK_FORUM_SEARCH_POISON_DEDUP_ENABLED_IGGY_ADDRESS",
+        "expected_physical_dlq_messages_after_retry": 1
+      },
+      {
+        "mode": "dedup_disabled",
+        "address_env": "RUSTOK_FORUM_SEARCH_POISON_DEDUP_DISABLED_IGGY_ADDRESS",
+        "expected_physical_dlq_messages_after_retry": 2
+      }
+    ],
+    "distinct_iggy_addresses_required": true,
+    "shared_credentials": [
+      "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+      "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "raw_poison_publish_mark_ambiguity_dedup_enabled",
+      "proves": [
+        "malformed source bytes create one deterministic connector delivery identity",
+        "the first publisher emits the DLQ message before durable mark_published",
+        "the source offset remains unacknowledged while the receipt is publishing",
+        "an expired publish claim is reclaimed after consumer and transport reconstruction",
+        "retry publication reuses the exact deterministic broker message identity",
+        "server-side dedup retains one physical DLQ message",
+        "source acknowledgement occurs only after durable published state"
+      ]
+    },
+    {
+      "id": "raw_poison_publish_mark_ambiguity_dedup_disabled",
+      "proves": [
+        "the same receipt and deterministic identity protocol is used without broker dedup",
+        "publish success before mark_published remains an unavoidable ambiguity window",
+        "retry publication produces two physical DLQ messages when server dedup is disabled",
+        "the durable receipt still fences the stale publisher and reaches acknowledged",
+        "the source group advances only after terminalization"
+      ]
+    }
+  ],
+  "identity_invariants": [
+    "ConsumerPoisonIdentity.delivery_id equals DlqEntry.broker_message_id",
+    "consumer_group remains rustok-search-forum-projection-v1",
+    "source stream, topic, partition, offset and exact payload bytes remain unchanged after restart",
+    "the stale publisher cannot mark the receipt published after lease takeover",
+    "dedup mode changes only physical broker multiplicity, not durable receipt identity or terminal ordering"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_FORUM_SEARCH_POISON_DEDUP_ENABLED_IGGY_ADDRESS=\"127.0.0.1:8090\" RUSTOK_FORUM_SEARCH_POISON_DEDUP_DISABLED_IGGY_ADDRESS=\"127.0.0.1:8091\" cargo test -p rustok-search --test forum_versioned_invalidation_poison_ambiguity_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source slice does not claim successful PostgreSQL or external Iggy execution",
+    "this source slice does not run the server-owned Forum Search worker loop",
+    "this source slice does not prove semantic poison through external Iggy",
+    "this source slice does not prove multi-process claim contention beyond one expired-lease takeover",
+    "this source slice does not modify production migrations, event schemas, broker topology or runtime flags",
+    "this source slice does not register D5 in the parent D0 contract before D5 itself merges",
+    "this source slice does not complete FORUM-23B2G2B3D or close LINK-FORUM-03"
+  ]
+}
