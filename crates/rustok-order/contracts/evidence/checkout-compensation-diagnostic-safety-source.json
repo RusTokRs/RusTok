@@ -7,8 +7,28 @@
     "canonical_owner": "crates/rustok-order/src/checkout_compensation.rs"
   },
   "source_contract": {
+    "wrapper_event_branch_count": 2,
+    "context_parse_site_count": 2,
+    "order_error_variant_count": 7,
+    "transition_conflict_site_count": 1,
+    "manual_reconciliation_call_site_count": 3,
     "stable_code_only_local_classification": true,
     "human_message_control_flow": false,
+    "complete_port_error_logged_by_wrapper": false,
+    "port_error_message_text_logged_by_wrapper": false,
+    "static_port_error_kind_logged_by_wrapper": true,
+    "port_error_message_shape_logged_by_wrapper": true,
+    "complete_order_error_logged_by_owner": false,
+    "order_error_text_logged_by_owner": false,
+    "order_error_uuid_value_logged_by_owner": false,
+    "order_error_opaque_payload_logged_by_owner": false,
+    "order_error_variant_shape_logged_by_owner": true,
+    "context_parse_error_text_logged_by_owner": false,
+    "context_parse_failure_flag_logged_by_owner": true,
+    "transition_text_logged_by_owner": false,
+    "transition_shape_logged_by_owner": true,
+    "manual_reconciliation_reason_text_logged_by_owner": false,
+    "manual_reconciliation_reason_shape_logged_by_owner": true,
     "delegated_port_error_changed": false,
     "public_code_changed": false,
     "public_message_changed": false,
@@ -45,10 +65,10 @@
     "raw_related_resource_id_logged": false,
     "raw_reason_logged": false,
     "correlation_id_logged": true,
-    "original_error_private": true,
     "warning_error_severity_preserved": true,
     "payment_settlement_business_source_changed": false,
     "commerce_compensation_source_changed": false,
+    "checkout_order_compensation_payload_diagnostic_cleanup_closed": true,
     "broad_ecommerce_cleanup_closed": false
   },
   "validation": {
@@ -63,5 +83,13 @@
     "restart_proven": false,
     "remote_port_proven": false,
     "mounted_runtime_proven": false
-  }
+  },
+  "notes": [
+    "The public wrapper records only stable PortError kind plus message presence and character length.",
+    "OrderError diagnostics retain only a static variant and aggregate text, UUID, and opaque-payload shape.",
+    "Tenant and actor UUID parse failures retain only a static field label, value length, and failure flag.",
+    "Transition and manual-reconciliation diagnostics retain static lifecycle labels plus text presence and length, never text values.",
+    "The original public PortError envelope and owner lifecycle behavior are unchanged.",
+    "Runtime validation and the broad ecommerce mapper cleanup remain open."
+  ]
 }

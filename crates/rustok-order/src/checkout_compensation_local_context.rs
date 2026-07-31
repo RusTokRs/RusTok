@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
@@ -39,6 +39,12 @@ struct OrderCompensationRequestFacts {
     expected_order_id_non_nil: Option<bool>,
     reason_present: bool,
     reason_length: Option<usize>,
+}
+
+struct OrderCompensationPortErrorFacts {
+    error_kind: &'static str,
+    message_present: bool,
+    message_length: usize,
 }
 
 pub struct InProcessCheckoutOrderCompensationPort {
@@ -145,6 +151,23 @@ fn order_compensation_request_facts(
     }
 }
 
+fn order_compensation_port_error_facts(error: &PortError) -> OrderCompensationPortErrorFacts {
+    let error_kind = match &error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    OrderCompensationPortErrorFacts {
+        error_kind,
+        message_present: !error.message.trim().is_empty(),
+        message_length: error.message.chars().count(),
+    }
+}
+
 fn order_compensation_local_operation(code: &str) -> Option<&'static str> {
     match code {
         "order.checkout_compensation_identity_invalid" => Some("validate_request"),
@@ -172,9 +195,9 @@ fn map_checkout_order_compensation_local_port_error(
         "validate_durable_checkout_identity" | "require_manual_reconciliation"
     );
     let context_facts = order_compensation_context_facts(context);
+    let error_facts = order_compensation_port_error_facts(&error);
     if integrity_failure {
         tracing::error!(
-            error = ?error,
             owner = ORDER_COMPENSATION_OWNER,
             operation = COMPENSATE_OPERATION,
             local_operation,
@@ -201,15 +224,15 @@ fn map_checkout_order_compensation_local_port_error(
             reason_present = facts.reason_present,
             reason_length = ?facts.reason_length,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = ORDER_COMPENSATION_BOUNDARY,
-            "order checkout compensation local integrity outcome retained safe context"
+            "order checkout compensation local integrity outcome retained bounded diagnostics"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = ORDER_COMPENSATION_OWNER,
             operation = COMPENSATE_OPERATION,
             local_operation,
@@ -236,11 +259,12 @@ fn map_checkout_order_compensation_local_port_error(
             reason_present = facts.reason_present,
             reason_length = ?facts.reason_length,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = ORDER_COMPENSATION_BOUNDARY,
-            "order checkout compensation local outcome retained safe context"
+            "order checkout compensation local outcome retained bounded diagnostics"
         );
     }
     error

@@ -35,6 +35,16 @@ struct OrderCompensationContextFacts {
     deadline_ms: Option<u64>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct OrderCompensationOrderErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
 #[async_trait]
 pub trait CheckoutOrderCompensationPort: Send + Sync {
     async fn compensate_checkout_order(
@@ -286,6 +296,82 @@ fn order_compensation_context_facts(context: &PortContext) -> OrderCompensationC
     }
 }
 
+fn order_status_kind_label(status: OrderStatusKind) -> &'static str {
+    match status {
+        OrderStatusKind::Pending => "pending",
+        OrderStatusKind::Confirmed => "confirmed",
+        OrderStatusKind::Paid => "paid",
+        OrderStatusKind::Shipped => "shipped",
+        OrderStatusKind::Delivered => "delivered",
+        OrderStatusKind::Cancelled => "cancelled",
+        OrderStatusKind::Unknown => "unknown",
+    }
+}
+
+fn order_compensation_order_error_facts(
+    error: &OrderError,
+) -> OrderCompensationOrderErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        OrderError::Database(_) => ("database", 0, 0, 0, 0, true),
+        OrderError::OrderNotFound(id) => (
+            "order_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        OrderError::Validation(cause) => (
+            "validation",
+            1,
+            cause.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        OrderError::InvalidTransition { from, to } => (
+            "invalid_transition",
+            2,
+            from.as_str().chars().count() + to.as_str().chars().count(),
+            0,
+            0,
+            false,
+        ),
+        OrderError::OrderReturnNotFound(id) => (
+            "order_return_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        OrderError::OrderChangeNotFound(id) => (
+            "order_change_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        OrderError::Core(_) => ("core", 0, 0, 0, 0, true),
+    };
+    OrderCompensationOrderErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
 fn log_invalid_compensation_request(
     context: &PortContext,
     request: &CheckoutOrderCompensationRequest,
@@ -332,6 +418,11 @@ fn log_compensation_transition_conflict(
     to: &str,
 ) {
     let context_facts = order_compensation_context_facts(context);
+    let current_state = order_status_kind_label(current_state);
+    let transition_from_present = !from.trim().is_empty();
+    let transition_from_length = from.chars().count();
+    let transition_to_present = !to.trim().is_empty();
+    let transition_to_length = to.chars().count();
     tracing::warn!(
         owner = ORDER_COMPENSATION_OWNER,
         operation,
@@ -353,9 +444,11 @@ fn log_compensation_transition_conflict(
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
         order_id_non_nil = !order_id.is_nil(),
-        current_state = ?current_state,
-        from,
-        to,
+        current_state,
+        transition_from_present,
+        transition_from_length,
+        transition_to_present,
+        transition_to_length,
         code = "order.checkout_compensation_state_conflict",
         boundary = ORDER_COMPENSATION_BOUNDARY,
         "order lifecycle changed while checkout compensation was being applied"
@@ -473,14 +566,13 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_context_parse_rejection(
             context,
             operation,
             "tenant_id",
             context.tenant_id.chars().count(),
             "order.tenant_id_invalid",
-            &error,
         );
         PortError::validation(
             "order.tenant_id_invalid",
@@ -490,30 +582,28 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|error| {
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
         log_context_parse_rejection(
             context,
             operation,
             "actor_id",
             context.actor.id.chars().count(),
             "order.actor_id_invalid",
-            &error,
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
 
-fn log_context_parse_rejection<E: std::fmt::Debug>(
+fn log_context_parse_rejection(
     context: &PortContext,
     operation: &'static str,
     field: &'static str,
     value_length: usize,
     code: &'static str,
-    error: &E,
 ) {
     let context_facts = order_compensation_context_facts(context);
     tracing::warn!(
-        error = ?error,
+        parse_failed = true,
         owner = ORDER_COMPENSATION_OWNER,
         operation,
         local_operation = "validate_owner_context",
@@ -549,6 +639,9 @@ fn manual_reconciliation(
     reason: &'static str,
 ) -> PortError {
     let context_facts = order_compensation_context_facts(context);
+    let order_state = order_status_kind_label(order_state);
+    let reconciliation_reason_present = !reason.trim().is_empty();
+    let reconciliation_reason_length = reason.chars().count();
     tracing::error!(
         owner = ORDER_COMPENSATION_OWNER,
         operation,
@@ -571,8 +664,9 @@ fn manual_reconciliation(
         deadline_ms = ?context_facts.deadline_ms,
         order_id_present = order_id.is_some(),
         order_id_non_nil = ?order_id.map(|value| !value.is_nil()),
-        order_state = ?order_state,
-        internal_reason = reason,
+        order_state,
+        reconciliation_reason_present,
+        reconciliation_reason_length,
         code = "order.checkout_compensation_manual_reconciliation",
         boundary = ORDER_COMPENSATION_BOUNDARY,
         "checkout order compensation requires manual reconciliation"
@@ -589,10 +683,7 @@ fn log_order_owner_warning(
     local_operation: &'static str,
     code: &'static str,
     resource: Option<&'static str>,
-    resource_id: Option<Uuid>,
-    internal_cause: Option<&str>,
-    from: Option<&str>,
-    to: Option<&str>,
+    error_facts: OrderCompensationOrderErrorFacts,
 ) {
     let context_facts = order_compensation_context_facts(context);
     tracing::warn!(
@@ -616,27 +707,27 @@ fn log_order_owner_warning(
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
         resource = ?resource,
-        resource_id_present = resource_id.is_some(),
-        resource_id_non_nil = ?resource_id.map(|value| !value.is_nil()),
-        internal_cause = ?internal_cause,
-        from = ?from,
-        to = ?to,
+        order_error_variant = error_facts.error_variant,
+        order_error_text_field_count = error_facts.text_field_count,
+        order_error_text_total_length = error_facts.text_total_length,
+        order_error_uuid_field_count = error_facts.uuid_field_count,
+        order_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        order_error_opaque_payload_present = error_facts.opaque_payload_present,
         code,
         boundary = ORDER_COMPENSATION_BOUNDARY,
-        "order checkout compensation owner outcome retained safe context"
+        "order checkout compensation owner outcome retained bounded diagnostics"
     );
 }
 
-fn log_order_owner_error<E: std::fmt::Debug>(
+fn log_order_owner_error(
     context: &PortContext,
     operation: &'static str,
     local_operation: &'static str,
     code: &'static str,
-    error: &E,
+    error_facts: OrderCompensationOrderErrorFacts,
 ) {
     let context_facts = order_compensation_context_facts(context);
     tracing::error!(
-        error = ?error,
         owner = ORDER_COMPENSATION_OWNER,
         operation,
         local_operation,
@@ -656,9 +747,15 @@ fn log_order_owner_error<E: std::fmt::Debug>(
         idempotency_key_present = context_facts.idempotency_key_present,
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
+        order_error_variant = error_facts.error_variant,
+        order_error_text_field_count = error_facts.text_field_count,
+        order_error_text_total_length = error_facts.text_total_length,
+        order_error_uuid_field_count = error_facts.uuid_field_count,
+        order_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        order_error_opaque_payload_present = error_facts.opaque_payload_present,
         code,
         boundary = ORDER_COMPENSATION_BOUNDARY,
-        "order checkout compensation owner technical outcome retained safe context"
+        "order checkout compensation owner technical outcome retained bounded diagnostics"
     );
 }
 
@@ -667,109 +764,95 @@ fn order_error_to_port_error(
     operation: &'static str,
     error: OrderError,
 ) -> PortError {
+    let error_facts = order_compensation_order_error_facts(&error);
     match error {
-        OrderError::Database(error) => {
+        OrderError::Database(_) => {
             log_order_owner_error(
                 context,
                 operation,
                 "owner_storage",
                 "order.database_unavailable",
-                &error,
+                error_facts,
             );
             PortError::unavailable(
                 "order.database_unavailable",
                 "order storage is temporarily unavailable",
             )
         }
-        OrderError::OrderNotFound(order_id) => {
+        OrderError::OrderNotFound(_) => {
             log_order_owner_warning(
                 context,
                 operation,
                 "load_order",
                 "order.order_not_found",
                 Some("order"),
-                Some(order_id),
-                None,
-                None,
-                None,
+                error_facts,
             );
             PortError::not_found("order.order_not_found", "order was not found")
         }
-        OrderError::Validation(cause) => {
+        OrderError::Validation(_) => {
             log_order_owner_warning(
                 context,
                 operation,
                 "validate_owner_request",
                 "order.checkout_compensation_validation",
                 None,
-                None,
-                Some(cause.as_str()),
-                None,
-                None,
+                error_facts,
             );
             PortError::validation(
                 "order.checkout_compensation_validation",
                 "checkout order compensation request is invalid",
             )
         }
-        OrderError::InvalidTransition { from, to } => {
+        OrderError::InvalidTransition { .. } => {
             log_order_owner_warning(
                 context,
                 operation,
                 "apply_compensation_state",
                 "order.checkout_compensation_state_conflict",
                 None,
-                None,
-                None,
-                Some(from.as_str()),
-                Some(to.as_str()),
+                error_facts,
             );
             PortError::conflict(
                 "order.checkout_compensation_state_conflict",
                 "checkout order lifecycle conflicts with compensation",
             )
         }
-        OrderError::OrderReturnNotFound(return_id) => {
+        OrderError::OrderReturnNotFound(_) => {
             log_order_owner_warning(
                 context,
                 operation,
                 "load_related_order_resource",
                 "order.related_resource_not_found",
                 Some("order_return"),
-                Some(return_id),
-                None,
-                None,
-                None,
+                error_facts,
             );
             PortError::not_found(
                 "order.related_resource_not_found",
                 "related order resource was not found",
             )
         }
-        OrderError::OrderChangeNotFound(change_id) => {
+        OrderError::OrderChangeNotFound(_) => {
             log_order_owner_warning(
                 context,
                 operation,
                 "load_related_order_resource",
                 "order.related_resource_not_found",
                 Some("order_change"),
-                Some(change_id),
-                None,
-                None,
-                None,
+                error_facts,
             );
             PortError::not_found(
                 "order.related_resource_not_found",
                 "related order resource was not found",
             )
         }
-        OrderError::Core(error) => {
+        OrderError::Core(_) => {
             log_order_owner_error(
                 context,
                 operation,
                 "owner_invariant",
                 "order.invariant_violation",
-                &error,
+                error_facts,
             );
             PortError::invariant_violation(
                 "order.invariant_violation",
