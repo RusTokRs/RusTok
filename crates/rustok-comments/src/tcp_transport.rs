@@ -10,8 +10,7 @@ use crate::{
 };
 
 use crate::tcp_protocol::{
-    DEFAULT_MAX_COMMENTS_FRAME_BYTES, ensure_frame_size, io_error, read_frame,
-    validate_frame_limit, write_frame,
+    ensure_frame_size, io_error, read_frame, validate_frame_limit, write_frame,
 };
 
 pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;
