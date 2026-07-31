@@ -127,12 +127,15 @@ forbidMarker(
   `${paths.owner}: owner must not import concrete Outbox types`,
 );
 const changedIndex = content.owner.indexOf("if changed");
-const publishIndex = content.owner.indexOf(".publish_assignment_changed(");
+const publishIndex = content.owner.indexOf(".publish_assignment_changed(", changedIndex);
 const rollbackIndex = content.owner.indexOf(
   "transaction.rollback().await.map_err(database_error)?",
   publishIndex,
 );
-const commitIndex = content.owner.indexOf("transaction.commit().await.map_err(database_error)?");
+const commitIndex = content.owner.indexOf(
+  "transaction.commit().await.map_err(database_error)?",
+  publishIndex,
+);
 if (
   !(
     changedIndex >= 0 &&
