@@ -1,6 +1,7 @@
 from pathlib import Path
 
 FORUM_PLAN = Path("crates/rustok-forum/docs/implementation-plan.md")
+SEARCH_PLAN = Path("crates/rustok-search/docs/implementation-plan.md")
 VERIFIER = Path("scripts/verify/verify-forum-search-author-filter.mjs")
 
 
@@ -32,9 +33,13 @@ b2f1_section = """- `forum-search-product-channel-visibility.json`,
 
 ### Delivered in `FORUM-23B2F1`
 
-- the explicit Forum-only GraphQL and native paths accept a separate author-ID
-  argument capped at ten raw UUID values without changing neutral
-  `SearchPreviewInput`, `SearchQuery`, or the shared storefront filter DTO;
+- the explicit Forum-only GraphQL path accepts an optional author-ID argument and
+  an additive native endpoint carries the equivalent list, capped at ten raw UUID
+  values without changing neutral `SearchPreviewInput`, `SearchQuery`, or the
+  shared storefront filter DTO;
+- the existing native `search/forum-storefront-search` endpoint retains its prior
+  signature, while author-scoped calls use
+  `search/forum-storefront-search-by-authors` and share the same execution owner;
 - Search matches only the existing Forum-owned public
   `payload.author.user_id` projection for topics and approved replies; categories,
   non-Forum rows, and missing, denied, redacted, or malformed author summaries do
@@ -46,7 +51,7 @@ b2f1_section = """- `forum-search-product-channel-visibility.json`,
 - query-rule pins are disabled while an author filter is active because the pin
   loader has no author argument and must not reintroduce an out-of-scope document;
 - ordinary storefront, mixed, Product, admin preview, and admin global Search
-  remain unchanged, and existing explicit Forum calls pass an empty author list;
+  remain unchanged, and existing explicit Forum calls retain their old endpoint;
 - `forum-search-author-filter.json`,
   `forum-23b2f1-search-author-filter.md`, and
   `verify-forum-search-author-filter.mjs` lock the public-author source,
@@ -66,7 +71,7 @@ replace_once(
 replace_once(
     FORUM_PLAN,
     "malformed explicit owner values remain hidden until Product is corrected. Admin/global\nSearch behavior remains unchanged.\n",
-    "malformed explicit owner values remain hidden until Product is corrected. An active\nForum author scope uses only the public projected author identity, excludes categories and\nmissing/redacted authors, and suppresses query-rule pins; an empty author list preserves\nthe previous explicit Forum behavior. Admin/global Search behavior remains unchanged.\n",
+    "malformed explicit owner values remain hidden until Product is corrected. An active\nForum author scope uses only the public projected author identity, excludes categories and\nmissing/redacted authors, and suppresses query-rule pins; the previous native endpoint and\nempty-author behavior remain unchanged. Admin/global Search behavior remains unchanged.\n",
 )
 
 replace_once(
@@ -93,7 +98,6 @@ replace_once(
     "The `FORUM-23B2A/B2B/B2C/B2D/B2E1/B2E2/B2F1` source and contract records do not\nclaim successful runtime verification until the maintainer runs the commands above.",
 )
 
-# The complete release verification block repeats the focused commands once.
 replace_once(
     FORUM_PLAN,
     "cargo test -p rustok-search storefront_result_eligibility -- --nocapture\ncargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture",
@@ -112,6 +116,17 @@ replace_once(
 )
 
 replace_once(
+    SEARCH_PLAN,
+    "GraphQL and native Forum-specific arguments carry at most ten UUIDs. Search",
+    "GraphQL carries an optional Forum-specific argument and an additive native\nauthor endpoint carries at most ten UUIDs without changing the existing native\nendpoint signature. Search",
+)
+replace_once(
+    SEARCH_PLAN,
+    "20. Added the exact bounded Forum author filter on public projected author identity,\n    native/GraphQL Forum-specific transport parity, pre-eligibility narrowing,",
+    "20. Added the exact bounded Forum author filter on public projected author identity,\n    optional GraphQL plus additive native transport parity, pre-eligibility narrowing,",
+)
+
+replace_once(
     VERIFIER,
     '    "exact Forum author filter",',
     '    "exact bounded Forum author filter",',
@@ -120,6 +135,16 @@ replace_once(
     VERIFIER,
     '    "exact Forum author filter",',
     '    "exact bounded Forum author filter",',
+)
+replace_once(
+    VERIFIER,
+    '    \'endpoint = "search/forum-storefront-search"\',\n  ],',
+    '    \'endpoint = "search/forum-storefront-search"\',\n    \'endpoint = "search/forum-storefront-search-by-authors"\',\n    "execute_forum_storefront_search_native",\n  ],',
+)
+replace_once(
+    VERIFIER,
+    "  if (contract.compatibility?.shared_storefront_filter_dto_changed !== false) {\n    failures.push(`${paths.contract}: shared storefront DTO must remain unchanged`);\n  }",
+    "  if (contract.compatibility?.shared_storefront_filter_dto_changed !== false) {\n    failures.push(`${paths.contract}: shared storefront DTO must remain unchanged`);\n  }\n  if (contract.transport_parity?.existing_native_endpoint_signature_changed !== false) {\n    failures.push(`${paths.contract}: existing native endpoint signature changed`);\n  }\n  if (contract.transport_parity?.additive_author_native_endpoint !== \"search/forum-storefront-search-by-authors\") {\n    failures.push(`${paths.contract}: additive native author endpoint is missing`);\n  }",
 )
 
 print("FORUM-23B2F1 canonical plan and guardrail synchronized.")
