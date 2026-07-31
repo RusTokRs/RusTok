@@ -25,6 +25,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 rustok-iggy.workspace = true
+rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 tokio.workspace = true
 
 [features]

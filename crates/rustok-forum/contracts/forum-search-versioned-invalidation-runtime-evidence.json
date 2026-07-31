@@ -53,6 +53,27 @@
         "projector_or_owner_checkpoint",
         "multi_process_or_visibility_end_to_end"
       ]
+    },
+    {
+      "task": "FORUM-23B2G2B3D4",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-raw-poison-proof.json",
+      "test": "crates/rustok-search/tests/forum_versioned_invalidation_raw_poison_iggy.rs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-raw-poison-evidence.json",
+      "covers": [
+        "stable_connector_delivery_identity",
+        "durable_publishing_and_published_before_source_acknowledgement",
+        "deterministic_dlq_broker_message_identity",
+        "same_offset_poison_redelivery_after_consumer_restart",
+        "already_published_suppresses_duplicate_dlq_publication",
+        "source_acknowledgement_then_acknowledged_state_and_group_advancement"
+      ],
+      "does_not_cover": [
+        "server_worker_retry_backoff",
+        "dlq_publish_failure_or_publish_mark_ambiguity",
+        "semantic_identity_conflict_poison",
+        "projector_or_owner_checkpoint",
+        "multi_process_or_visibility_end_to_end"
+      ]
     }
   ],
   "required_runtime": {
@@ -182,6 +203,8 @@
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_postgres -- --nocapture --test-threads=1",
     "node scripts/verify/verify-forum-search-versioned-invalidation-ack-restart-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-raw-poison-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_raw_poison_iggy -- --nocapture --test-threads=1",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
