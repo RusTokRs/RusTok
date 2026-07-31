@@ -36,6 +36,29 @@ impl MigrationTrait for Migration {
 }
 
 const POSTGRES_UP: &str = r#"
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM forum_projection_revision_counters AS counters
+        LEFT JOIN forum_projection_revision_ledger AS ledger
+          ON ledger.tenant_id = counters.tenant_id
+        GROUP BY counters.tenant_id, counters.revision
+        HAVING COUNT(ledger.revision) <> counters.revision
+            OR MIN(ledger.revision) IS DISTINCT FROM 1
+            OR MAX(ledger.revision) IS DISTINCT FROM counters.revision
+    ) OR EXISTS (
+        SELECT 1
+        FROM forum_projection_revision_ledger AS ledger
+        LEFT JOIN forum_projection_revision_counters AS counters
+          ON counters.tenant_id = ledger.tenant_id
+        WHERE counters.tenant_id IS NULL
+    ) THEN
+        RAISE EXCEPTION 'existing forum projection revision storage is inconsistent';
+    END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION forum_enforce_projection_revision_counter()
 RETURNS trigger AS $$
 BEGIN
