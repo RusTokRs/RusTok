@@ -16,6 +16,8 @@ const commentsPortVerifier = 'scripts/verify/verify-blog-comments-port-boundary.
 const commentsPortSelfTest = 'scripts/verify/verify-blog-comments-port-boundary.test.mjs';
 const httpVerifierImport = "import './verify-blog-comments-http-port-injection.mjs';";
 const httpSelfTestImport = "import './verify-blog-comments-http-port-injection.test.mjs';";
+const graphqlVerifierImport = "import './verify-blog-comments-graphql-port-injection.mjs';";
+const graphqlSelfTestImport = "import './verify-blog-comments-graphql-port-injection.test.mjs';";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -87,6 +89,16 @@ test('Blog FBA policy retains HTTP composition verifier inside the registered Co
 test('Blog FBA policy retains HTTP composition focused fixture inside the registered Comments port self-test', () => {
   const source = readFileSync(commentsPortSelfTest, 'utf8');
   assert.ok(source.includes(httpSelfTestImport));
+});
+
+test('Blog FBA policy retains GraphQL composition verifier inside the registered Comments port gate', () => {
+  const source = readFileSync(commentsPortVerifier, 'utf8');
+  assert.ok(source.includes(graphqlVerifierImport));
+});
+
+test('Blog FBA policy retains GraphQL composition focused fixture inside the registered Comments port self-test', () => {
+  const source = readFileSync(commentsPortSelfTest, 'utf8');
+  assert.ok(source.includes(graphqlSelfTestImport));
 });
 
 test('Blog FBA verification-chain policy rejects removal of the storefront verify step', () => {

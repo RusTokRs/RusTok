@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import './verify-blog-comments-http-port-injection.mjs';
+import './verify-blog-comments-graphql-port-injection.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
