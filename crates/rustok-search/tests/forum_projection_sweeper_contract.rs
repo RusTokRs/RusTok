@@ -21,10 +21,10 @@ fn due_tenant_discovery_preserves_oldest_event_retry_barrier() {
     for marker in [
         "SELECT DISTINCT ON (tenant_id)",
         "status IN ('pending', 'retryable_error')",
-        "ORDER BY tenant_id, revision_at ASC, event_id ASC",
+        "ORDER BY tenant_id, ingest_sequence ASC",
         "status = 'pending'",
         "next_attempt_at <= CURRENT_TIMESTAMP",
-        "ORDER BY revision_at ASC, event_id ASC",
+        "ORDER BY ingest_sequence ASC",
         "DEFAULT_FORUM_SWEEP_TENANT_LIMIT: usize = 32",
         "DEFAULT_FORUM_SWEEP_EVENT_LIMIT: usize = 64",
         "MAX_FORUM_SWEEP_TENANT_LIMIT: usize = 256",
