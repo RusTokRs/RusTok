@@ -10,6 +10,8 @@ pub mod ports;
 #[cfg(feature = "server")]
 mod public_read;
 #[cfg(feature = "server")]
+pub mod remote;
+#[cfg(feature = "server")]
 mod richtext;
 #[cfg(feature = "server")]
 pub mod services;
@@ -33,6 +35,8 @@ pub use entities::*;
 pub use error::{CommentsError, CommentsResult};
 #[cfg(feature = "server")]
 pub use ports::*;
+#[cfg(feature = "server")]
+pub use remote::*;
 #[cfg(feature = "server")]
 pub use services::CommentsService;
 
