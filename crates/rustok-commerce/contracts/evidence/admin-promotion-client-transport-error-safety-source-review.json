@@ -1,12 +1,13 @@
 {
   "status": "commerce_admin_promotion_client_transport_error_safety_source_reviewed_unvalidated",
-  "reviewed_at": "2026-07-30",
+  "reviewed_at": "2026-07-31",
   "review_scope": [
     "crates/rustok-commerce/admin/src/transport/mod.rs",
     "crates/rustok-commerce/admin/src/transport/promotion.rs",
     "crates/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs",
     "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
-    "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs"
+    "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
+    "scripts/verify/verify-commerce-admin-promotion-client-transport-error-safety.mjs"
   ],
   "findings": {
     "two_promotion_facade_operations_mapped": true,
@@ -17,14 +18,19 @@
     "order_change_transport_unchanged": true,
     "request_response_dtos_preserved": true,
     "static_public_message_after_native_return": true,
-    "original_native_error_private_to_structured_diagnostics": true,
+    "complete_native_error_not_logged": true,
+    "native_error_message_not_logged": true,
+    "native_error_variant_logged": true,
+    "native_error_message_presence_and_length_logged": true,
     "safe_request_shape_logging_only": true,
+    "ssr_promotion_consumer_diagnostic_cleanup_remains_open": true,
     "broad_ecommerce_mapper_cleanup_remains_open": true
   },
   "non_claims": [
     "No test or verifier was executed",
     "No Cargo compilation or formatting was executed",
     "No hydrate, SSR, browser, or mounted promotion failure was exercised",
+    "No server-side promotion diagnostic hardening is claimed by this client-only slice",
     "No Commerce FFA or FBA status was promoted"
   ]
 }
