@@ -1,0 +1,94 @@
+{
+  "contract": "forum_search_versioned_invalidation_poison_ambiguity_source_proof_v1",
+  "task": "FORUM-23B2G2B3D6",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "predecessor": {
+    "task": "FORUM-23B2G2B3D5",
+    "pull_request": 2777,
+    "state_at_authorship": "merged",
+    "merge_commit": "1d2654785047efde1d29a9682732990acc56f9b5",
+    "parent_registration": "D5_registered_D6_deferred_until_D6_merge"
+  },
+  "test": "crates/rustok-search/tests/forum_versioned_invalidation_poison_ambiguity_iggy.rs",
+  "production_reference": "apps/server/src/services/forum_search_contract_consumer.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-poison-ambiguity-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "written_only_after_all_modes_pass": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "delivery_profile": "outbox_iggy",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "source_topic": "domain",
+    "dlq_topic": "dlq",
+    "iggy_instances": [
+      {
+        "mode": "dedup_enabled",
+        "address_env": "RUSTOK_FORUM_SEARCH_POISON_DEDUP_ENABLED_IGGY_ADDRESS",
+        "expected_physical_dlq_messages_after_retry": 1
+      },
+      {
+        "mode": "dedup_disabled",
+        "address_env": "RUSTOK_FORUM_SEARCH_POISON_DEDUP_DISABLED_IGGY_ADDRESS",
+        "expected_physical_dlq_messages_after_retry": 2
+      }
+    ],
+    "distinct_iggy_addresses_required": true,
+    "shared_credentials": [
+      "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+      "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "raw_poison_publish_mark_ambiguity_dedup_enabled",
+      "proves": [
+        "malformed source bytes create one deterministic connector delivery identity",
+        "the first publisher emits the DLQ message before durable mark_published",
+        "the source offset remains unacknowledged while the receipt remains publishing",
+        "the live unexpired claim returns Busy to a second publisher",
+        "the expired publish claim is reclaimed after transport and consumer-group reconstruction",
+        "the stale publisher is fenced with ClaimLost",
+        "retry publication reuses the exact deterministic broker message identity",
+        "server-side message deduplication retains one physical DLQ message",
+        "source acknowledgement occurs only after durable published state"
+      ]
+    },
+    {
+      "id": "raw_poison_publish_mark_ambiguity_dedup_disabled",
+      "proves": [
+        "the same receipt, lease and deterministic identity protocol is used without broker deduplication",
+        "publish success before mark_published remains an unavoidable cross-system ambiguity window",
+        "retry publication produces two physical DLQ messages when server deduplication is disabled",
+        "the stale publisher is still fenced after lease takeover",
+        "the durable receipt reaches published then acknowledged",
+        "the source group advances only after terminalization"
+      ]
+    }
+  ],
+  "identity_invariants": [
+    "ConsumerPoisonIdentity.delivery_id equals DlqEntry.broker_message_id",
+    "consumer_group remains rustok-search-forum-projection-v1",
+    "source stream, topic, partition, offset and exact payload bytes remain unchanged after restart",
+    "the stale publisher cannot mark the receipt published after lease takeover",
+    "dedup mode changes only physical broker multiplicity and not durable receipt identity or terminal ordering",
+    "the next malformed delivery has a strictly later source offset"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_FORUM_SEARCH_POISON_DEDUP_ENABLED_IGGY_ADDRESS=\"127.0.0.1:8090\" RUSTOK_FORUM_SEARCH_POISON_DEDUP_DISABLED_IGGY_ADDRESS=\"127.0.0.1:8091\" cargo test -p rustok-search --test forum_versioned_invalidation_poison_ambiguity_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source slice does not claim successful PostgreSQL or external Iggy execution",
+    "this source slice does not run the server-owned Forum Search worker loop or prove its retry backoff",
+    "semantic identity-conflict poison is owned by merged FORUM-23B2G2B3D5 and is not duplicated here",
+    "this source slice does not prove arbitrary multi-process claim contention beyond one expired-lease takeover",
+    "this source slice does not prove active production deduplication configuration, TLS, replication, multiple partitions or broker failover",
+    "this source slice does not execute the Search projector or advance an owner checkpoint",
+    "this source slice does not establish missing-delivery repair, deletion or ACL visibility ordering, or Search-disabled recovery",
+    "this source slice does not register D6 in the parent D0 contract before D6 itself merges",
+    "this source slice does not complete FORUM-23B2G2B3D or close LINK-FORUM-03"
+  ]
+}
