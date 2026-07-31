@@ -58,10 +58,18 @@ for (const [value, label] of [
   ['actor_id: Uuid', 'operator identity binding'],
   ['(!actor_id.is_nil()).then_some', 'nil actor rejection'],
   ['pub const fn allows', 'authority hierarchy'],
+  ['(HostAuthority::Read, HostAuthority::Read)', 'explicit read hierarchy'],
+  ['(HostAuthority::Manage, HostAuthority::Read)', 'explicit manage-to-read hierarchy'],
+  ['(HostAuthority::Manage, HostAuthority::Manage)', 'explicit manage hierarchy'],
   ['HOST_AUTHORITY_REQUIRED', 'static denial'],
 ]) {
   requireText(authoritySource, value, label);
 }
+forbidText(
+  authoritySource,
+  '(HostAuthority::Manage, _)',
+  'host authority hierarchy must not wildcard future levels',
+);
 requireText(apiContextSource, 'HostAuthorityContext', 'context export');
 requireText(apiLibSource, 'HostAuthorityContext', 'crate export');
 forbidText(
