@@ -25,9 +25,9 @@ production timeout policy.
 ## Lease boundary
 
 The source wrapper does not acquire, heartbeat, extend, or terminalize replay/reconciliation
-leases. Operators must configure a lease longer than the 30-second source deadline plus enough
-margin for mutation persistence, checkpoint/progress persistence, cancellation observation, and
-terminal state publication.
+leases; this source wrapper never extends or heartbeats a job lease. Operators must configure a
+lease longer than the 30-second source deadline plus enough margin for mutation persistence,
+checkpoint/progress persistence, cancellation observation, and terminal state publication.
 
 A source timeout can occur after earlier pages are durable. Replay retries remain safe because
 stable event UUIDs and `PostgresMutationStore` inbox deduplication already protect repeated page
