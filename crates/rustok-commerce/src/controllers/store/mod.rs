@@ -76,6 +76,12 @@ fn map_storefront_context_error(error: StoreContextError, tenant_id: Uuid) -> Ht
             err.to_string(),
             "validation",
         ),
+        StoreContextError::TenantBoundary { .. } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_context_failed",
+            "Store context could not be resolved safely".to_string(),
+            "tenant_boundary",
+        ),
         StoreContextError::RegionBoundary { .. } => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_context_failed",
