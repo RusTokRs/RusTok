@@ -1,5 +1,6 @@
 pub(crate) mod graph;
 mod product;
+pub(crate) mod relation_admission;
 #[path = "../product_variant_index.rs"]
 mod variant;
 
