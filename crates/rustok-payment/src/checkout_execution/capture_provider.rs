@@ -108,13 +108,21 @@ impl InProcessCheckoutPaymentExecutionPort {
                     "capture",
                 )
                 .await;
+                let context_facts = checkout_payment_execution_context_facts(context);
                 tracing::error!(
-                    operation_id = %journaled.operation_id,
+                    operation_id_non_nil = !journaled.operation_id.is_nil(),
+                    provider_operation = "capture",
                     error = ?error,
                     correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
+                    tenant_id_length = context_facts.tenant_id_length,
+                    actor_kind = context_facts.actor_kind,
+                    channel_present = context_facts.channel_present,
+                    locale_length = context_facts.locale_length,
+                    causation_id_present = context_facts.causation_id_present,
+                    idempotency_key_present = context_facts.idempotency_key_present,
                     operation = owner_operation,
                     code = "payment.checkout_execution_local_persistence_failed",
+                    boundary = PAYMENT_EXECUTION_BOUNDARY,
                     "payment provider capture succeeded but local persistence failed"
                 );
                 Err(manual_reconciliation(
@@ -156,13 +164,21 @@ impl InProcessCheckoutPaymentExecutionPort {
             })?
             .to_string();
         let request_payload = serde_json::to_value(&request).map_err(|error| {
+            let context_facts = checkout_payment_execution_context_facts(context);
             tracing::error!(
                 error = ?error,
                 provider_operation,
+                provider_id_length = provider_id.chars().count(),
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                channel_present = context_facts.channel_present,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                idempotency_key_present = context_facts.idempotency_key_present,
                 operation = owner_operation,
                 code = "payment.provider_request_encoding_failed",
+                boundary = PAYMENT_EXECUTION_BOUNDARY,
                 "payment provider request encoding failed"
             );
             PortError::invariant_violation(
@@ -249,13 +265,22 @@ impl InProcessCheckoutPaymentExecutionPort {
                         .await
                 };
                 if let Err(checkpoint_error) = checkpoint {
+                    let context_facts = checkout_payment_execution_context_facts(context);
                     tracing::error!(
-                        operation_id = %journal_operation.id,
+                        operation_id_non_nil = !journal_operation.id.is_nil(),
+                        provider_operation,
+                        provider_id_length = provider_id.chars().count(),
                         error = ?checkpoint_error,
                         correlation_id = %context.correlation_id,
-                        tenant_id = %context.tenant_id,
+                        tenant_id_length = context_facts.tenant_id_length,
+                        actor_kind = context_facts.actor_kind,
+                        channel_present = context_facts.channel_present,
+                        locale_length = context_facts.locale_length,
+                        causation_id_present = context_facts.causation_id_present,
+                        idempotency_key_present = context_facts.idempotency_key_present,
                         operation = owner_operation,
                         code = "payment.checkout_execution_provider_failure_checkpoint_failed",
+                        boundary = PAYMENT_EXECUTION_BOUNDARY,
                         "payment provider failure checkpoint failed"
                     );
                     return Err(manual_reconciliation(
@@ -272,13 +297,22 @@ impl InProcessCheckoutPaymentExecutionPort {
             }
         };
         let result_payload = serde_json::to_value(&provider_result).map_err(|error| {
+            let context_facts = checkout_payment_execution_context_facts(context);
             tracing::error!(
-                operation_id = %journal_operation.id,
+                operation_id_non_nil = !journal_operation.id.is_nil(),
+                provider_operation,
+                provider_id_length = provider_id.chars().count(),
                 error = ?error,
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                channel_present = context_facts.channel_present,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                idempotency_key_present = context_facts.idempotency_key_present,
                 operation = owner_operation,
                 code = "payment.provider_result_encoding_failed",
+                boundary = PAYMENT_EXECUTION_BOUNDARY,
                 "payment provider result encoding failed"
             );
             manual_reconciliation(
@@ -295,13 +329,22 @@ impl InProcessCheckoutPaymentExecutionPort {
             )
             .await
             .map_err(|error| {
+                let context_facts = checkout_payment_execution_context_facts(context);
                 tracing::error!(
-                    operation_id = %journal_operation.id,
+                    operation_id_non_nil = !journal_operation.id.is_nil(),
+                    provider_operation,
+                    provider_id_length = provider_id.chars().count(),
                     error = ?error,
                     correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
+                    tenant_id_length = context_facts.tenant_id_length,
+                    actor_kind = context_facts.actor_kind,
+                    channel_present = context_facts.channel_present,
+                    locale_length = context_facts.locale_length,
+                    causation_id_present = context_facts.causation_id_present,
+                    idempotency_key_present = context_facts.idempotency_key_present,
                     operation = owner_operation,
                     code = "payment.checkout_execution_provider_checkpoint_failed",
+                    boundary = PAYMENT_EXECUTION_BOUNDARY,
                     "payment provider success checkpoint failed"
                 );
                 manual_reconciliation(
