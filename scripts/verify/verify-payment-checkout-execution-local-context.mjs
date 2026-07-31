@@ -25,6 +25,9 @@ const prepareAuthorize = read(
 const captureProvider = read(
   'crates/rustok-payment/src/checkout_execution/capture_provider.rs',
 );
+const providerHelpers = read(
+  'crates/rustok-payment/src/checkout_execution/provider_helpers.rs',
+);
 const compensation = read('crates/rustok-payment/src/checkout_compensation_context.rs');
 const doc = read('crates/rustok-payment/docs/checkout-execution-local-context.md');
 const paymentPlan = read('crates/rustok-payment/docs/implementation-plan.md');
@@ -187,6 +190,26 @@ for (const marker of [
   'PortError::invariant_violation(',
 ]) requireText(validationErrors, marker, 'safe admission and owner mapping');
 
+const providerDiagnosticSource = `${prepareAuthorize}\n${captureProvider}\n${providerHelpers}`;
+for (const marker of [
+  'operation_id_non_nil = !journaled.operation_id.is_nil()',
+  'operation_id_non_nil = !journal_operation.id.is_nil()',
+  'operation_id_non_nil = !operation_id.is_nil()',
+  'provider_id_length = provider_id.chars().count()',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'boundary = PAYMENT_EXECUTION_BOUNDARY',
+  'payment.checkout_execution_local_persistence_failed',
+  'payment.checkout_execution_commit_checkpoint_failed',
+  'payment.checkout_execution_reconciliation_checkpoint_failed',
+  'payment.checkout_execution_provider_failure_checkpoint_failed',
+  'payment.checkout_execution_provider_checkpoint_failed',
+]) requireText(providerDiagnosticSource, marker, 'safe provider checkpoint diagnostics');
+
 for (const [content, label] of [
   [portImpl, 'delegated outcome diagnostics'],
   [validationErrors, 'admission and owner diagnostics'],
@@ -214,6 +237,20 @@ for (const [content, label] of [
     'metadata =',
   ]) forbidText(content, forbidden, label);
 }
+
+for (const forbidden of [
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'operation_id = %journaled.operation_id',
+  'operation_id = %journal_operation.id',
+  'operation_id = %operation_id',
+  'provider_id = %provider_id',
+]) forbidText(providerDiagnosticSource, forbidden, 'provider checkpoint raw diagnostics');
 
 for (const marker of [
   'validate_identity(&request.identity)?;',
