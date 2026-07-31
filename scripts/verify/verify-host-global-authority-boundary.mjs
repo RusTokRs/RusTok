@@ -97,9 +97,9 @@ for (const [value, label] of [
 for (const [value, label] of [
   ['Permission::', 'tenant permissions must not issue host authority'],
   ['has_effective_permission', 'tenant permission implication must not issue host authority'],
-  ['scopes', 'OAuth scopes must not issue host authority'],
-  ['metadata', 'OAuth app metadata must not issue host authority'],
-  ['UserRole', 'tenant roles must not issue host authority'],
+  ['.scopes', 'OAuth scopes must not issue host authority'],
+  ['.metadata', 'OAuth app metadata must not issue host authority'],
+  ['UserRole::', 'tenant roles must not issue host authority'],
 ]) {
   forbidText(hostPolicyBlock, value, label);
 }
@@ -112,22 +112,53 @@ const serviceTokenIssue = between(
 );
 requireText(
   serviceTokenIssue,
-  'CLIENT_CREDENTIALS_GRANT_TYPE',
+  'CLIENT_CREDENTIALS_GRANT',
   'service tokens retain explicit client-credentials grant',
 );
+forbidText(
+  serviceTokenIssue,
+  'HostAuthorityContext',
+  'JWT issuance must not persist host authority',
+);
+
 const userTokenIssue = between(
   oauthTokenSource,
   'async fn prepare_user_tokens(',
-  'fn parse_requested_scopes(',
+  'async fn commit_authorization_code_exchange(',
   'user token issuance',
 );
-for (const grant of ['AUTHORIZATION_CODE_GRANT_TYPE', 'REFRESH_TOKEN_GRANT_TYPE']) {
-  requireText(userTokenIssue, grant, `user token ${grant}`);
-}
+requireText(
+  userTokenIssue,
+  'AUTHORIZATION_CODE_GRANT',
+  'authorization-code access tokens remain user grants',
+);
 forbidText(
   userTokenIssue,
   'HostAuthorityContext',
   'authorization-code and refresh issuance stay tenant-only',
+);
+
+const authorizationCodeExchange = between(
+  oauthTokenSource,
+  'AUTHORIZATION_CODE_GRANT => {',
+  'REFRESH_TOKEN_GRANT => {',
+  'authorization-code exchange',
+);
+requireOrder(
+  authorizationCodeExchange,
+  ['AUTHORIZATION_CODE_GRANT => {', 'prepare_user_tokens('],
+  'authorization-code exchange uses tenant-user token preparation',
+);
+const refreshExchange = between(
+  oauthTokenSource,
+  'REFRESH_TOKEN_GRANT => {',
+  'other => {',
+  'refresh-token exchange',
+);
+requireOrder(
+  refreshExchange,
+  ['REFRESH_TOKEN_GRANT => {', 'prepare_user_tokens('],
+  'refresh-token exchange uses tenant-user token preparation',
 );
 
 requireOrder(
