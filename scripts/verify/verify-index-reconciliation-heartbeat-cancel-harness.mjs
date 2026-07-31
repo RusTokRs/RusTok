@@ -95,7 +95,7 @@ requireMarkers("database", [
 requireMarkers("docs", [
   "Status: executable target retained, not run.",
   "No sleep, polling delay, or elapsed-time race is used.",
-  "the exact tenant then requests cancellation",
+  "The exact tenant then requests cancellation",
   "The durable cancelled job must retain the previous safe cursor boundary",
   "report zero newly applied mutations and two duplicates",
   "cancellation while the heartbeat SQL statement itself is concurrently executing",
