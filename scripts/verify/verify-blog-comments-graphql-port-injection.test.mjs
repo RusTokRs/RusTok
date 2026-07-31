@@ -258,12 +258,11 @@ test('rejects removal of the in-process fallback branch', () => {
   assert.notEqual(rejects({ missingFallback: true }).status, 0);
 });
 
-test('rejects direct provider construction in GraphQL comment reads', () => {
-  assert.notEqual(rejects({ directReadConstruction: true }).status, 0);
-});
-
-test('rejects direct provider construction in the GraphQL comment mutation', () => {
-  assert.notEqual(rejects({ directMutationConstruction: true }).status, 0);
+test('rejects direct provider construction in GraphQL comment resolvers', () => {
+  const readResult = rejects({ directReadConstruction: true });
+  const mutationResult = rejects({ directMutationConstruction: true });
+  assert.notEqual(readResult.status, 0);
+  assert.notEqual(mutationResult.status, 0);
 });
 
 test('rejects removal of the compile-only runtime-data harness', () => {
