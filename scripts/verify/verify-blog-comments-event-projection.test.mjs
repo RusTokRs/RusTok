@@ -20,6 +20,7 @@ function fixture({
   missingDeliveryLookup = false,
   missingOutbox = false,
   missingRegistration = false,
+  missingHostHarness = false,
   missingSharedClassifier = false,
   directHandlesClassifier = false,
   missingCounterHarness = false,
@@ -31,6 +32,7 @@ function fixture({
   missingRestartRegistration = false,
   statusDrift = false,
   harnessStatusDrift = false,
+  hostHarnessStatusDrift = false,
   postgresStatusDrift = false,
   restartStatusDrift = false,
 } = {}) {
@@ -46,6 +48,7 @@ function fixture({
   const modulePath = 'crates/rustok-blog/src/lib.rs';
   const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
   const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
+  const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
   const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
   const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 
@@ -178,14 +181,26 @@ mod m20260716_000001_create_blog_comment_projection_deliveries;
 Box::new(m20260716_000001_create_blog_comment_projection_deliveries::Migration)
 `,
   );
-  write(
-    root,
-    modulePath,
-    missingRegistration
-      ? ''
-      : `fn register_event_listeners(
-registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`,
-  );
+  const registrationSource = missingRegistration
+    ? ''
+    : `fn register_event_listeners(
+registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`;
+  const hostHarnessSource = missingHostHarness
+    ? ''
+    : `
+#[tokio::test]
+async fn module_registers_comment_projection_handler_with_host_routing() {
+let mut registry = ModuleEventListenerRegistry::new();
+BlogModule.register_event_listeners(&mut registry, &context);
+let handlers = registry.into_handlers();
+assert_eq!(handlers.len(), 1);
+assert_eq!(handler.name(), "blog_comment_projection");
+assert!(handler.handles(&blog_created));
+assert!(handler.handles(&blog_deleted));
+assert!(!handler.handles(&forum_created));
+}`;
+  write(root, modulePath, `${registrationSource}\n${hostHarnessSource}`);
+
   write(
     root,
     evidencePath,
@@ -219,6 +234,15 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
           'non_negative_saturating_counter_transition',
         ],
       },
+      host_registration_harness: {
+        status: hostHarnessStatusDrift ? 'executed' : 'executable_no_run',
+        runtime_status: hostHarnessStatusDrift ? 'passed' : 'not_run',
+        path: modulePath,
+        module: 'tests',
+        command: hostRegistrationHarnessCommand,
+        scope: 'module_registry_handler_identity_and_routing_only',
+        cases: ['module_registers_comment_projection_handler_with_host_routing'],
+      },
       postgres_harness: {
         status: postgresStatusDrift ? 'executed' : 'executable_no_run',
         runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
@@ -240,9 +264,7 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
         environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
         command: restartHarnessCommand,
         isolation: 'unique_schema_new_connection',
-        cases: [
-          'restarted_handler_reuses_delivery_ledger_without_reapplying_counter',
-        ],
+        cases: ['restarted_handler_reuses_delivery_ledger_without_reapplying_counter'],
       },
       cases: [
         { name: 'shared_event_classifier' },
@@ -253,6 +275,7 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
         { name: 'tenant_scoped_optimistic_update' },
         { name: 'missing_post_retry' },
         { name: 'non_negative_count' },
+        { name: 'host_registration_routing_harness' },
         { name: 'postgres_duplicate_delivery' },
         { name: 'postgres_out_of_order_delete_create' },
         { name: 'postgres_missing_post_recovery' },
@@ -308,7 +331,7 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL runtime delivery and recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL actual host EventDispatcher delivery process-level restart recovery',
   );
 
   return root;
@@ -359,6 +382,13 @@ test('rejects missing module event-listener registration', () => {
   expectRejected({ missingRegistration: true });
 });
 
+test('rejects missing module registration and routing harness', () => {
+  expectRejected(
+    { missingHostHarness: true },
+    /missing async fn module_registers_comment_projection_handler_with_host_routing/,
+  );
+});
+
 test('rejects project without the shared event classifier', () => {
   expectRejected({ missingSharedClassifier: true }, /missing fn comment_projection_change/);
 });
@@ -386,10 +416,7 @@ test('rejects a PostgreSQL harness without rollback coverage', () => {
 });
 
 test('rejects a registry without the PostgreSQL target', () => {
-  expectRejected(
-    { missingPostgresRegistration: true },
-    /PostgreSQL test path drift/,
-  );
+  expectRejected({ missingPostgresRegistration: true }, /PostgreSQL test path drift/);
 });
 
 test('rejects a missing restart harness source', () => {
@@ -404,10 +431,7 @@ test('rejects restart coverage that reuses the original connection', () => {
 });
 
 test('rejects a registry without the restart target', () => {
-  expectRejected(
-    { missingRestartRegistration: true },
-    /restart test path drift/,
-  );
+  expectRejected({ missingRestartRegistration: true }, /restart test path drift/);
 });
 
 test('rejects runtime status promotion without execution', () => {
@@ -416,6 +440,10 @@ test('rejects runtime status promotion without execution', () => {
 
 test('rejects source harness execution promotion without execution', () => {
   expectRejected({ harnessStatusDrift: true }, /source harness drift/);
+});
+
+test('rejects host registration harness execution promotion without execution', () => {
+  expectRejected({ hostHarnessStatusDrift: true }, /host registration harness drift/);
 });
 
 test('rejects PostgreSQL harness execution promotion without execution', () => {

@@ -41,6 +41,7 @@ const modulePath = 'crates/rustok-blog/src/lib.rs';
 const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
+const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const postgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
@@ -199,9 +200,20 @@ requireMarker(serviceExport, 'pub use comment_projection::BlogCommentProjectionH
 for (const marker of [
   'fn register_event_listeners(',
   'registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));',
+  '#[tokio::test]',
+  'async fn module_registers_comment_projection_handler_with_host_routing()',
+  'let mut registry = ModuleEventListenerRegistry::new();',
+  'BlogModule.register_event_listeners(&mut registry, &context);',
+  'let handlers = registry.into_handlers();',
+  'assert_eq!(handlers.len(), 1);',
+  'assert_eq!(handler.name(), "blog_comment_projection");',
+  'assert!(handler.handles(&blog_created));',
+  'assert!(handler.handles(&blog_deleted));',
+  'assert!(!handler.handles(&forum_created));',
 ]) {
   requireMarker(moduleSource, marker, modulePath);
 }
+requireNoMarker(moduleSource, 'handler.handle(&', `${modulePath}: host registration harness`);
 
 if (evidence) {
   if (evidence.schema_version !== 4) failures.push(`${evidencePath}: schema_version drift`);
@@ -246,6 +258,23 @@ if (evidence) {
     ].sort().join('|')
   ) {
     failures.push(`${evidencePath}: source harness case drift`);
+  }
+  const hostRegistration = evidence.host_registration_harness ?? {};
+  if (
+    hostRegistration.status !== 'executable_no_run' ||
+    hostRegistration.runtime_status !== 'not_run' ||
+    hostRegistration.path !== modulePath ||
+    hostRegistration.module !== 'tests' ||
+    hostRegistration.command !== hostRegistrationHarnessCommand ||
+    hostRegistration.scope !== 'module_registry_handler_identity_and_routing_only'
+  ) {
+    failures.push(`${evidencePath}: host registration harness drift`);
+  }
+  if (
+    [...(hostRegistration.cases ?? [])].join('|') !==
+    'module_registers_comment_projection_handler_with_host_routing'
+  ) {
+    failures.push(`${evidencePath}: host registration harness case drift`);
   }
   const postgres = evidence.postgres_harness ?? {};
   if (
@@ -300,6 +329,7 @@ if (evidence) {
     'tenant_scoped_optimistic_update',
     'missing_post_retry',
     'non_negative_count',
+    'host_registration_routing_harness',
     'postgres_duplicate_delivery',
     'postgres_out_of_order_delete_create',
     'postgres_missing_post_recovery',
@@ -369,9 +399,11 @@ for (const marker of [
   'test:verify:blog:comments-event-projection',
   'source_verified_no_compile',
   'services::comment_projection::tests',
+  'tests::module_registers_comment_projection_handler_with_host_routing',
   'comment_projection_postgres_test',
   'comment_projection_restart_postgres_test',
   'RUSTOK_BLOG_TEST_DATABASE_URL',
+  'actual host EventDispatcher delivery',
   'process-level restart recovery',
 ]) {
   requireMarker(plan, marker, planPath);
@@ -383,4 +415,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection source contract, unit harness, PostgreSQL target, and restart target are consistent');
+console.log('Blog comments event projection source contract, classifier, host registration, PostgreSQL, and restart harnesses are consistent');
