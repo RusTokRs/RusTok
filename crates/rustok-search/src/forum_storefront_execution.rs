@@ -8,16 +8,15 @@ use uuid::Uuid;
 
 use crate::engine::{SearchFacetBucket, SearchFacetGroup};
 use crate::{
-    FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters,
-    MAX_FORUM_SEARCH_RESULT_CANDIDATES, PgSearchEngine, SearchAnalyticsService,
-    SearchAttributeFilter, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
-    SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchResult, SearchResultItem,
-    SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
-    resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
-    resolve_trusted_storefront_channel,
+    FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
+    PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
+    SearchEngine, SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
+    SearchRankingProfile, SearchResult, SearchResultItem, SearchSettingsService,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
+    StorefrontSearchTransport, TrustedStorefrontChannel, resolve_storefront_search_category_ids,
+    resolve_storefront_search_result_candidates, resolve_trusted_storefront_channel,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";

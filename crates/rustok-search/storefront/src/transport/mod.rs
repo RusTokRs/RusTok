@@ -74,14 +74,7 @@ pub async fn fetch_search(
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, SearchTransportError> {
     if is_explicit_forum_category_scope(&filters) {
-        return fetch_forum_search_by_authors(
-            query,
-            locale,
-            preset_key,
-            filters,
-            Vec::new(),
-        )
-        .await;
+        return fetch_forum_search_by_authors(query, locale, preset_key, filters, Vec::new()).await;
     }
 
     let native_query = query.clone();
@@ -131,11 +124,7 @@ pub async fn fetch_forum_search_by_authors(
         },
         move || {
             forum_graphql_adapter::fetch_search_with_authors(
-                query,
-                locale,
-                preset_key,
-                filters,
-                author_ids,
+                query, locale, preset_key, filters, author_ids,
             )
         },
     )
@@ -145,7 +134,9 @@ pub async fn fetch_forum_search_by_authors(
 fn is_explicit_forum_category_scope(filters: &SearchPreviewFilters) -> bool {
     !filters.category_ids.is_empty()
         && filters.source_modules.len() == 1
-        && filters.source_modules[0].trim().eq_ignore_ascii_case("forum")
+        && filters.source_modules[0]
+            .trim()
+            .eq_ignore_ascii_case("forum")
 }
 
 pub async fn fetch_suggestions(

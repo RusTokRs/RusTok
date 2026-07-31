@@ -12,11 +12,11 @@ use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_telemetry::metrics;
 use tracing::Instrument;
 
+use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::forum_projector::ForumSearchProjector;
 use crate::projector::SearchProjector;
-use crate::SearchProjectionSource;
 
 const FORUM_INBOX_EVENT_BATCH: usize = 64;
 const FORUM_INBOX_OPPORTUNISTIC_BATCH: usize = 8;
@@ -38,8 +38,8 @@ impl SearchIngestionHandler {
         db: DatabaseConnection,
         forum_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
-        let forum_projector = forum_source
-            .map(|source| ForumSearchProjector::new(db.clone(), source));
+        let forum_projector =
+            forum_source.map(|source| ForumSearchProjector::new(db.clone(), source));
         let forum_inbox = forum_projector
             .as_ref()
             .map(|_| ForumProjectionInbox::new(db.clone()));
@@ -110,9 +110,7 @@ impl SearchIngestionHandler {
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
             | DomainEvent::ProfileUpdated { .. }
-            | DomainEvent::UserDeleted { .. } => {
-                projector.rebuild_tenant(envelope.tenant_id).await
-            }
+            | DomainEvent::UserDeleted { .. } => projector.rebuild_tenant(envelope.tenant_id).await,
             DomainEvent::TenantModuleToggled {
                 module_slug,
                 enabled,
@@ -212,8 +210,7 @@ impl EventHandler for SearchIngestionHandler {
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
-                module_slug == "blog"
-                    || (module_slug == "forum" && self.forum_projector.is_some())
+                module_slug == "blog" || (module_slug == "forum" && self.forum_projector.is_some())
             }
             DomainEvent::ReindexRequested { target_type, .. } => {
                 target_type == "search"
@@ -256,10 +253,7 @@ impl EventHandler for SearchIngestionHandler {
 
             if self.forum_inbox.is_some()
                 && let Err(error) = self
-                    .reconcile_forum_inbox(
-                        envelope.tenant_id,
-                        FORUM_INBOX_OPPORTUNISTIC_BATCH,
-                    )
+                    .reconcile_forum_inbox(envelope.tenant_id, FORUM_INBOX_OPPORTUNISTIC_BATCH)
                     .await
             {
                 tracing::warn!(

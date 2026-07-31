@@ -24,8 +24,8 @@ pub mod models;
 pub mod pg_engine;
 pub mod ports;
 pub mod presets;
-pub mod projection_source;
 mod product_channel_reconciliation;
+pub mod projection_source;
 pub mod projector;
 #[allow(dead_code)]
 #[path = "projector_legacy.rs"]
@@ -71,14 +71,14 @@ pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
 pub use ports::*;
 pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
+pub use product_channel_reconciliation::{
+    DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
+    ProductChannelProjectionSweepReport,
+};
 pub use projection_source::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory, SearchProjectionSourceRegistry,
     register_search_projection_source, search_projection_source_registry_from_extensions,
-};
-pub use product_channel_reconciliation::{
-    DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
-    ProductChannelProjectionSweepReport,
 };
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;

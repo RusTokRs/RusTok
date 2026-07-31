@@ -74,7 +74,9 @@ Forum-without-category requests remain on the existing exact-category
 
 `FORUM-23B2F1` adds an exact bounded Forum author filter without changing the
 neutral `SearchQuery`, `SearchPreviewInput`, or shared storefront filter DTO.
-GraphQL and native Forum-specific arguments carry at most ten UUIDs. Search
+GraphQL carries an optional Forum-specific argument and an additive native
+author endpoint carries at most ten UUIDs without changing the existing native
+endpoint signature. Search
 matches only the existing public `payload.author.user_id` projection on Forum
 topics and replies, excludes categories and missing/redacted authors while the
 filter is active, then applies exact Forum owner eligibility before visible totals,
@@ -266,7 +268,7 @@ rebuild behavior through replayable event transport.
     typo fallback, rows, totals, facets, query-rule pins and document suggestions
     under `FORUM-23B2E2`.
 20. Added the exact bounded Forum author filter on public projected author identity,
-    native/GraphQL Forum-specific transport parity, pre-eligibility narrowing,
+    optional GraphQL plus additive native transport parity, pre-eligibility narrowing,
     post-filter totals/facets/pagination, and active-scope pin suppression under
     `FORUM-23B2F1`.
 

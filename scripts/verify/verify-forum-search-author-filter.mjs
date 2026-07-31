@@ -179,6 +179,8 @@ requireAll(
     "author_ids: Vec<String>",
     "author_ids,",
     'endpoint = "search/forum-storefront-search"',
+    'endpoint = "search/forum-storefront-search-by-authors"',
+    "execute_forum_storefront_search_native",
   ],
   paths.nativeAdapter,
 );
@@ -213,7 +215,7 @@ requireAll(
   forumPlan,
   [
     "FORUM-23B2F1",
-    "exact Forum author filter",
+    "exact bounded Forum author filter",
     "verify-forum-search-author-filter.mjs",
   ],
   paths.forumPlan,
@@ -223,7 +225,7 @@ requireAll(
   [
     "FORUM-23B2F1",
     "source_complete_execution_pending",
-    "exact Forum author filter",
+    "exact bounded Forum author filter",
   ],
   paths.searchPlan,
 );
@@ -261,6 +263,12 @@ if (contract) {
   }
   if (contract.compatibility?.shared_storefront_filter_dto_changed !== false) {
     failures.push(`${paths.contract}: shared storefront DTO must remain unchanged`);
+  }
+  if (contract.transport_parity?.existing_native_endpoint_signature_changed !== false) {
+    failures.push(`${paths.contract}: existing native endpoint signature changed`);
+  }
+  if (contract.transport_parity?.additive_author_native_endpoint !== "search/forum-storefront-search-by-authors") {
+    failures.push(`${paths.contract}: additive native author endpoint is missing`);
   }
 }
 
