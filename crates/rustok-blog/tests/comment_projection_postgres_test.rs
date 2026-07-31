@@ -1,4 +1,4 @@
-use std::{error::Error, io, time::Duration};
+use std::{error::Error, io, sync::Arc, time::Duration};
 
 use rustok_blog::{BlogModule, services::BlogCommentProjectionHandler};
 use rustok_core::{
@@ -9,15 +9,18 @@ use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
+use tokio::sync::Barrier;
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;
 
 struct PostgresBlogProjectionTestDb {
     control: DatabaseConnection,
     db: DatabaseConnection,
+    database_url: String,
     schema_name: String,
 }
 
@@ -53,8 +56,15 @@ impl PostgresBlogProjectionTestDb {
         Ok(Some(Self {
             control,
             db,
+            database_url,
             schema_name,
         }))
+    }
+
+    async fn isolated_connection(&self) -> TestResult<DatabaseConnection> {
+        let db = connect(&self.database_url).await?;
+        set_search_path(&db, &self.schema_name).await?;
+        Ok(db)
     }
 
     async fn cleanup(self) -> TestResult<()> {
@@ -138,6 +148,59 @@ async fn event_dispatcher_routes_registered_handler_and_commits_projection() -> 
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
     running.stop();
+    test_db.cleanup().await
+}
+
+#[tokio::test]
+async fn concurrent_created_events_converge_without_lost_updates() -> TestResult<()> {
+    let Some(test_db) = PostgresBlogProjectionTestDb::setup("concurrent_created").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
+
+    let envelopes = (0..CONCURRENT_PROJECTION_DELIVERIES)
+        .map(|_| comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id))
+        .collect::<Vec<_>>();
+    let barrier = Arc::new(Barrier::new(envelopes.len()));
+    let mut tasks = Vec::with_capacity(envelopes.len());
+
+    for envelope in envelopes.iter().cloned() {
+        let db = test_db.isolated_connection().await?;
+        let barrier = Arc::clone(&barrier);
+        tasks.push(tokio::spawn(async move {
+            let handler = BlogCommentProjectionHandler::new(db);
+            barrier.wait().await;
+            handler.handle(&envelope).await
+        }));
+    }
+
+    for task in tasks {
+        task.await??;
+    }
+
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (
+            CONCURRENT_PROJECTION_DELIVERIES as i32,
+            CONCURRENT_PROJECTION_DELIVERIES as i32 + 1,
+        )
+    );
+    for envelope in &envelopes {
+        assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
+    }
+    assert_eq!(
+        count_all_deliveries(&test_db.db).await?,
+        CONCURRENT_PROJECTION_DELIVERIES as i64
+    );
+    assert_eq!(
+        count_outbox_events(&test_db.db).await?,
+        CONCURRENT_PROJECTION_DELIVERIES as i64
+    );
+
     test_db.cleanup().await
 }
 
@@ -413,6 +476,17 @@ async fn count_delivery(
         ))
         .await?
         .expect("delivery count query should return one row");
+    row.try_get("", "count")
+}
+
+async fn count_all_deliveries(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT COUNT(*)::bigint AS count FROM blog_comment_projection_deliveries".to_string(),
+        ))
+        .await?
+        .expect("delivery total query should return one row");
     row.try_get("", "count")
 }
 

@@ -134,13 +134,25 @@ one outbox row. Its suggested command is
 `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact`.
 The target is `executable_no_run`; no dispatcher or PostgreSQL output is recorded.
 
+The retained concurrency target is the filtered
+`concurrent_created_events_converge_without_lost_updates` case in
+`crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It creates four
+independent PostgreSQL connections against one isolated schema, constructs one
+handler per connection, releases four unique `comment.created` envelopes through
+a shared barrier, and requires the shared post to finish at `comment_count = 4`
+and `version = 5` with four delivery-ledger rows and four outbox rows. Its
+suggested command is
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact`.
+The target is `executable_no_run`. It records a written convergence contract, not
+an observed retry count or optimistic-exhaustion result.
+
 The retained PostgreSQL target is
 `crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It uses
 `RUSTOK_BLOG_TEST_DATABASE_URL` (or PostgreSQL `DATABASE_URL`), a unique schema,
-and a one-connection pool. Its four direct-handler cases cover duplicate-envelope
-idempotency, delete-before-create ordering, missing-post replay after source
-creation, and rollback/retry when the outbox table is unavailable. The suggested
-command is
+and a one-connection pool for each direct handler. Its four direct-handler cases
+cover duplicate-envelope idempotency, delete-before-create ordering, missing-post
+replay after source creation, and rollback/retry when the outbox table is
+unavailable. The suggested command is
 `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`.
 The target is registered as `executable_no_run`; no PostgreSQL result is recorded.
 
@@ -157,8 +169,8 @@ re-instantiation, not retained proof of a process or host restart.
 Exact commands `verify:blog:comments-event-projection` and
 `test:verify:blog:comments-event-projection` run after the Comments port gate in
 the Blog FBA chains. Overall status remains `source_verified_no_compile`;
-concurrent optimistic exhaustion, dispatcher/PostgreSQL execution, process-level
-restart recovery, and all other execution evidence remain pending.
+measured optimistic retry-count/exhaustion, dispatcher/PostgreSQL execution,
+process-level restart recovery, and all other execution evidence remain pending.
 
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
@@ -323,6 +335,14 @@ counter, ledger, and outbox commit. Evidence schema v4 and Blog registry schema
 v13 remain compatible; focused guards retain the target without recording
 execution.
 
+The continuation audit at `733359d7102013fa91e5fc7df0dbd2ac8f919e06`
+found that the optimistic counter loop still had no executable multi-connection
+convergence target. Slice 50 adds four independent PostgreSQL connections and
+handler instances synchronized by one barrier, delivers four unique envelopes to
+one Blog post, and retains final counter/version plus ledger/outbox cardinality in
+evidence and focused negative fixtures. It does not claim an observed retry count,
+retry exhaustion, or PostgreSQL execution.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -330,10 +350,10 @@ execution.
 - Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v13
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, the Comments projection classifier, host registration, dispatcher,
-  PostgreSQL, and restart harnesses, and aggregate/consumer bindings for admin,
-  storefront, Comments port boundary, Comments event projection, category Search
-  reindex, GraphQL rate limiting, GraphQL richtext, AI richtext, offline backfill,
-  Forum ownership, and runtime order.
+  concurrency, PostgreSQL, and restart harnesses, and aggregate/consumer bindings
+  for admin, storefront, Comments port boundary, Comments event projection,
+  category Search reindex, GraphQL rate limiting, GraphQL richtext, AI richtext,
+  offline backfill, Forum ownership, and runtime order.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; all seven operations, approved public read, typed
   richtext projection, two-second deadlines, write idempotency, active typed
@@ -345,16 +365,17 @@ execution.
   remain planned or pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence
   schema v4, shared classifier/counter helpers, `executable_no_run` classifier,
-  module-registration, dispatcher, PostgreSQL transaction, and restart targets,
-  verifier, focused self-test, exact npm leaf commands, delivery-ledger identity,
-  transactional outbox markers, and Blog FBA ordering are locked. The registration
-  target verifies identity/routing only. The dispatcher source target passes one
-  envelope through `EventBus` and `EventDispatcher` into the module-registered
-  handler and waits for the durable commit, but it has not been run. The direct
-  PostgreSQL targets write duplicate, out-of-order, missing-post replay, outbox
-  rollback/retry, and new-connection handler replay cases but have not been run.
-  Concurrent optimistic exhaustion, process-level restart recovery, and all
-  execution evidence remain pending.
+  module-registration, dispatcher, concurrency, PostgreSQL transaction, and
+  restart targets, verifier, focused self-test, exact npm leaf commands,
+  delivery-ledger identity, transactional outbox markers, and Blog FBA ordering
+  are locked. The registration target verifies identity/routing only. The
+  dispatcher target passes one envelope through `EventBus` and `EventDispatcher`
+  into the module-registered handler and waits for the durable commit. The
+  concurrency target starts four independent PostgreSQL connections behind one
+  barrier and requires a four-count/five-version result with four delivery and
+  outbox rows. None of these targets has been run. Measured retry count,
+  optimistic exhaustion, process-level restart recovery, and all execution
+  evidence remain pending.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
@@ -546,6 +567,11 @@ execution.
     `EventDispatcher`, waits for the durable delivery marker, and retains
     counter/ledger/outbox assertions in evidence plus focused negative fixtures
     without changing registry schema v13 or recording execution.
+50. Added an executable-no-run four-connection PostgreSQL convergence case for
+    unique `comment.created` envelopes on one post, synchronized start with a
+    shared barrier, and retained final counter/version plus ledger/outbox
+    cardinality in evidence and focused fail-closed fixtures without claiming
+    measured retries, exhaustion, or execution.
 
 ## Next results
 
@@ -565,17 +591,19 @@ execution.
 5. **Close comments runtime evidence.** Run the Comments port boundary fixture,
    shared consumer runtime-order verifier, Blog projection classifier harness,
    module registration/routing harness, the filtered
-   `event_dispatcher_routes_registered_handler_and_commits_projection` case, the
-   complete `comment_projection_postgres_test` and
+   `event_dispatcher_routes_registered_handler_and_commits_projection` and
+   `concurrent_created_events_converge_without_lost_updates` cases, the complete
+   `comment_projection_postgres_test` and
    `comment_projection_restart_postgres_test` targets, both thread invariant
    concurrency targets, and concurrent PostgreSQL create/delete transactions.
-   Retain dispatcher delivery output, the written duplicate, delete-before-create,
-   missing-post replay, outbox rollback/retry, and new-connection handler replay
-   assertions; then cover concurrent optimistic exhaustion, process-level restart
-   recovery, remote adapter parity, browser parity for typed unavailable/timeout
-   article rendering, cached thread snapshots, comment-form fallback,
-   approved-only reads, moderation, pagination, first-thread identity, and
-   unrelated insert storage error propagation.
+   Retain dispatcher delivery output, four-connection convergence, the written
+   duplicate, delete-before-create, missing-post replay, outbox rollback/retry,
+   and new-connection handler replay assertions; then cover measured optimistic
+   retry count and exhaustion, process-level restart recovery, remote adapter
+   parity, browser parity for typed unavailable/timeout article rendering, cached
+   thread snapshots, comment-form fallback, approved-only reads, moderation,
+   pagination, first-thread identity, and unrelated insert storage error
+   propagation.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -594,6 +622,7 @@ should run the relevant subset, including:
 - `cargo test -p rustok-blog --lib services::comment_projection::tests`
 - `cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test`
 - `npm run verify:blog:category-search-reindex`
