@@ -2,7 +2,6 @@ use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
 };
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
@@ -12,8 +11,7 @@ pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
 /// This is intentionally separate from tenant RBAC. Ordinary tenant roles,
 /// broad tenant permissions, OAuth wildcards, and tenant identity never imply
 /// host authority. Absence of this context means no host-global access.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostAuthority {
     Read,
     Manage,
