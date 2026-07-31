@@ -31,6 +31,17 @@
       "non_negative_saturating_counter_transition"
     ]
   },
+  "host_registration_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/src/lib.rs",
+    "module": "tests",
+    "command": "cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
+    "scope": "module_registry_handler_identity_and_routing_only",
+    "cases": [
+      "module_registers_comment_projection_handler_with_host_routing"
+    ]
+  },
   "postgres_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
@@ -90,6 +101,10 @@
       "expected": "the pure counter transition floors deletes at zero and saturates count and version overflow"
     },
     {
+      "name": "host_registration_routing_harness",
+      "expected": "the retained module test invokes BlogModule::register_event_listeners, extracts one blog_comment_projection handler, accepts Blog comment created/deleted events, and rejects a non-Blog target"
+    },
+    {
       "name": "postgres_duplicate_delivery",
       "expected": "the retained PostgreSQL target replays one envelope id and expects one counter transition, one delivery row, and one outbox row"
     },
@@ -116,6 +131,7 @@
   ],
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
+    "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
     "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
     "execute the env-gated PostgreSQL comment_projection_restart_postgres_test target and retain its output",
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
@@ -123,6 +139,6 @@
     "retain missing-post retry and later recovery evidence",
     "retain restarted-handler replay evidence across a new database connection",
     "retain concurrent optimistic-update exhaustion and retry evidence",
-    "retain host event-dispatch registration and process restart recovery evidence"
+    "retain actual host EventDispatcher delivery and process restart recovery evidence"
   ]
 }
