@@ -29,6 +29,8 @@
     "owner_safe_context_shape": true,
     "owner_safe_identity_shape": true,
     "owner_safe_resource_shape": true,
+    "safe_context_shape_logged": true,
+    "safe_request_shape_logged": true,
     "raw_tenant_id_logged": false,
     "raw_actor_id_logged": false,
     "raw_channel_logged": false,
