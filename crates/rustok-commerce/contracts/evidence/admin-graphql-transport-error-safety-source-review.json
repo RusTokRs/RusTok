@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "commerce_admin_graphql_transport_error_safety_source_reviewed_unvalidated",
+  "reviewed_boundary": "commerce_admin_graphql_transport",
+  "review_findings": [
+    "The shared mapper still passes non-Graphql ApiError values through unchanged.",
+    "Unauthorized, network, HTTP, GraphQL rejection, and unknown parse-failure classifications retain their existing stable codes, public messages, and warning/error severity.",
+    "The complete raw GraphQL transport string is no longer written to tracing.",
+    "The parsed GraphqlHttpError and parse-error String are no longer written to tracing.",
+    "GraphQL and HTTP detail strings are represented only by presence and character length.",
+    "The tenant ID string is represented only by presence, character length, UUID validity, and non-nil facts.",
+    "Tenant slug diagnostics remain presence and character length only.",
+    "All three order-change and seven shipping-profile map_graphql_error callsites remain outside the source diff.",
+    "Commerce Admin promotion transport remains outside this shared GraphQL boundary.",
+    "The broad ecommerce correlation-safe mapper cleanup remains open."
+  ],
+  "execution": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  },
+  "review_note": "Source review confirms error and tenant shape-only diagnostics; no compile, verifier, runtime, workflow, or CI evidence is claimed."
+}

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "status": "commerce_admin_graphql_transport_error_safety_source_unvalidated",
+  "owner": "rustok-commerce",
+  "boundary": "commerce_admin_graphql_transport",
+  "covered_consumers": [
+    "commerce_admin_order_change_transport",
+    "commerce_admin_shipping_profile_transport"
+  ],
+  "source_contract": {
+    "shared_mapper_changed": true,
+    "order_change_facade_changed": false,
+    "shipping_profile_facade_changed": false,
+    "graphql_adapter_changed": false,
+    "promotion_transport_changed": false,
+    "api_error_contract_preserved": true,
+    "order_change_graphql_callsites": 3,
+    "shipping_profile_graphql_callsites": 7,
+    "non_graphql_passthrough_preserved": true,
+    "severity_classification_preserved": true,
+    "public_messages_preserved": true,
+    "complete_graphql_error_logged": false,
+    "parsed_error_payload_logged": false,
+    "raw_tenant_id_logged": false,
+    "error_shape_only": true,
+    "tenant_shape_only": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "wasm_compile_proven": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "notes": [
+    "The shared mapper continues to classify unauthorized, network, HTTP, GraphQL rejection, and unknown parse failures into the existing public codes, messages, and severity classes.",
+    "Complete GraphQL, HTTP, and parse-failure strings are not written to diagnostics.",
+    "Private diagnostics retain only error payload presence and character length, parse success, bounded parsed-detail shape, tenant string shape, and tenant UUID validity/non-nil facts.",
+    "The three order-change and seven shipping-profile GraphQL callsites remain unchanged.",
+    "Commerce Admin promotion remains on its separate native client policy.",
+    "No FFA or FBA status is promoted from source inspection."
+  ]
+}
