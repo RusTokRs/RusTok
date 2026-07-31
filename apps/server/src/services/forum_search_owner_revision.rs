@@ -46,9 +46,6 @@ impl ForumProjectionOwnerRevisionSourcePort for ServerForumProjectionOwnerRevisi
                     ForumOwnerRevisionImpact::FullRebuild => {
                         ForumProjectionOwnerRevisionImpact::FullRebuild
                     }
-                    ForumOwnerRevisionImpact::NoProjectionChange => {
-                        ForumProjectionOwnerRevisionImpact::NoProjectionChange
-                    }
                 },
             })
             .collect())
