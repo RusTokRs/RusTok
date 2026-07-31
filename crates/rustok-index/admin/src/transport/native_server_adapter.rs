@@ -4,6 +4,25 @@ use crate::model::IndexAdminBootstrap;
 #[cfg(feature = "ssr")]
 use crate::model::{IndexModuleSnapshot, IndexTenantSnapshot};
 
+#[cfg(feature = "ssr")]
+fn require_index_admin_tenant_scope(
+    auth_tenant_id: uuid::Uuid,
+    resolved_tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    if auth_tenant_id == resolved_tenant_id {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth_tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "index.admin_tenant_scope_mismatch",
+        boundary = "index_admin_native_transport",
+        "index admin permissions cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("Index admin access is denied"))
+}
+
 #[server(prefix = "/api/fn", endpoint = "index/bootstrap")]
 pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -17,6 +36,7 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        require_index_admin_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new(
