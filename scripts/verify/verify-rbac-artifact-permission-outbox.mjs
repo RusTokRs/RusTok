@@ -65,7 +65,7 @@ for (const marker of [
   "impl EventContract for RbacArtifactPermissionEvent",
   "impl ValidateEvent for RbacArtifactPermissionEvent",
   'validate_not_nil_uuid("operation_id", operation_id)',
-  'validate_max_length(',
+  "validate_max_length(",
 ]) {
   requireMarker(content.event, marker, `${paths.event}: event contract missing ${marker}`);
 }
@@ -90,17 +90,21 @@ for (const marker of [
   "event_bus: TransactionalEventBus",
   "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus)",
   "let operation_id = match insert_operation",
+  "let changed = if command.granted",
+  "if changed {",
   ".publish_contract_in_tx(",
   "assignment_event(operation_id, &command)",
   "transaction.commit().await.map_err(database_error)?",
   "then_some(operation_id)",
+  "Ok(result.rows_affected() == 1)",
 ]) {
   requireMarker(content.owner, marker, `${paths.owner}: transactional owner path missing ${marker}`);
 }
+const changedIndex = content.owner.indexOf("if changed {");
 const publishIndex = content.owner.indexOf(".publish_contract_in_tx(");
 const commitIndex = content.owner.indexOf("transaction.commit().await.map_err(database_error)?");
-if (!(publishIndex >= 0 && commitIndex > publishIndex)) {
-  failures.push(`${paths.owner}: event publication must precede commit`);
+if (!(changedIndex >= 0 && publishIndex > changedIndex && commitIndex > publishIndex)) {
+  failures.push(`${paths.owner}: expected state change -> event publication -> commit order`);
 }
 const existingIndex = content.owner.indexOf("if let Some(existing) = find_operation");
 if (!(existingIndex >= 0 && existingIndex < publishIndex)) {
@@ -116,8 +120,9 @@ for (const marker of [
 }
 
 for (const marker of [
-  "grant_retry_and_revoke_publish_exactly_once_per_applied_operation",
-  "exact retry must not emit twice",
+  "only_state_changes_publish_artifact_permission_events",
+  "exact retry and state confirmation must not emit false changes",
+  "missing-grant confirmation must not emit a false revoke change",
   '"rbac.artifact_role_permission.assignment_changed"',
   'serde_json::json!(true)',
   'serde_json::json!(false)',
