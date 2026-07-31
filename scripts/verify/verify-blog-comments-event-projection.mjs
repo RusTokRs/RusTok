@@ -43,6 +43,7 @@ const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
 const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
+const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const postgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
@@ -120,7 +121,10 @@ if (handlesStart === -1 || handleStart === -1) {
 
 for (const marker of [
   'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;',
   'struct PostgresBlogProjectionTestDb',
+  'database_url: String',
+  'async fn isolated_connection(&self)',
   'CREATE SCHEMA',
   'DROP SCHEMA IF EXISTS',
   '.max_connections(1)',
@@ -145,6 +149,13 @@ for (const marker of [
   'tokio::time::timeout(Duration::from_secs(5)',
   'count_delivery(db, event_id).await? == 1',
   'event dispatcher did not commit delivery',
+  'async fn concurrent_created_events_converge_without_lost_updates()',
+  'Arc::new(Barrier::new(envelopes.len()))',
+  'let db = test_db.isolated_connection().await?;',
+  'tasks.push(tokio::spawn(async move {',
+  'barrier.wait().await;',
+  'CONCURRENT_PROJECTION_DELIVERIES as i32',
+  'count_all_deliveries(&test_db.db).await?',
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'DomainEvent::CommentDeleted',
   'async fn missing_post_replay_commits_only_after_source_appears()',
@@ -313,6 +324,24 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: dispatcher harness case drift`);
   }
+  const concurrency = evidence.concurrency_harness ?? {};
+  if (
+    concurrency.status !== 'executable_no_run' ||
+    concurrency.runtime_status !== 'not_run' ||
+    concurrency.path !== postgresHarnessPath ||
+    concurrency.environment !== postgresHarnessEnvironment ||
+    concurrency.command !== concurrencyHarnessCommand ||
+    concurrency.isolation !== 'unique_schema_four_independent_connections_barrier' ||
+    concurrency.scope !== 'concurrent_unique_envelopes_same_post_final_counter_delivery_outbox'
+  ) {
+    failures.push(`${evidencePath}: concurrency harness drift`);
+  }
+  if (
+    [...(concurrency.cases ?? [])].join('|') !==
+    'concurrent_created_events_converge_without_lost_updates'
+  ) {
+    failures.push(`${evidencePath}: concurrency harness case drift`);
+  }
   const postgres = evidence.postgres_harness ?? {};
   if (
     postgres.status !== 'executable_no_run' ||
@@ -368,6 +397,7 @@ if (evidence) {
     'non_negative_count',
     'host_registration_routing_harness',
     'postgres_event_dispatcher_delivery',
+    'postgres_concurrent_unique_deliveries',
     'postgres_duplicate_delivery',
     'postgres_out_of_order_delete_create',
     'postgres_missing_post_recovery',
@@ -439,11 +469,13 @@ for (const marker of [
   'services::comment_projection::tests',
   'tests::module_registers_comment_projection_handler_with_host_routing',
   'event_dispatcher_routes_registered_handler_and_commits_projection',
+  'concurrent_created_events_converge_without_lost_updates',
   'comment_projection_postgres_test',
   'comment_projection_restart_postgres_test',
   'RUSTOK_BLOG_TEST_DATABASE_URL',
   'EventBus',
   'EventDispatcher',
+  'independent PostgreSQL connections',
   'process-level restart recovery',
 ]) {
   requireMarker(plan, marker, planPath);
@@ -455,4 +487,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection classifier, registration, dispatcher, PostgreSQL, and restart harnesses are consistent');
+console.log('Blog comments event projection classifier, registration, dispatcher, concurrency, PostgreSQL, and restart harnesses are consistent');
