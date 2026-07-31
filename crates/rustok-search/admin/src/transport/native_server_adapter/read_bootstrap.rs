@@ -13,7 +13,7 @@ async fn search_admin_bootstrap_native() -> Result<SearchAdminBootstrap, ServerF
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let module = rustok_search::SearchModule;
         let settings =
@@ -64,7 +64,7 @@ async fn search_admin_preview_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let input = normalize_search_preview_input(SearchPreviewInput {
             query,
