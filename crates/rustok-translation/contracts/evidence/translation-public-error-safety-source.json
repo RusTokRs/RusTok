@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "status": "translation_public_error_safety_source_unvalidated",
+  "scope": {
+    "owner_source": "crates/rustok-translation/src/public_error.rs",
+    "owner_error": "crates/rustok-translation/src/error.rs",
+    "graphql_consumer": "crates/rustok-translation/src/graphql/context.rs",
+    "native_consumer": "crates/rustok-translation/admin/src/transport/native_server_adapter.rs",
+    "focused_verifier": "scripts/verify/verify-translation-public-error-safety.mjs",
+    "documentation": "crates/rustok-translation/docs/translation-public-error-safety.md"
+  },
+  "source_contract": {
+    "public_kind_changed": false,
+    "public_code_changed": false,
+    "public_retryability_changed": false,
+    "forbidden_message_changed": false,
+    "not_found_dynamic_payload_removed": true,
+    "bad_input_dynamic_payload_removed": true,
+    "internal_messages_changed": false,
+    "complete_translation_error_logged": false,
+    "provider_error_payload_logged": false,
+    "database_error_payload_logged": false,
+    "workflow_state_payload_logged": false,
+    "locale_revision_reason_payload_logged": false,
+    "static_error_class_logged": true,
+    "operation_logged": true,
+    "boundary_logged": true,
+    "public_code_logged": true,
+    "retryability_logged": true,
+    "correlation_logged": true,
+    "correlation_generation_changed": false,
+    "correlation_rendering_changed": false,
+    "graphql_consumer_changed": false,
+    "native_consumer_changed": false,
+    "shared_export_changed": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "graphql_runtime_proven": false,
+    "native_runtime_proven": false
+  },
+  "execution": []
+}

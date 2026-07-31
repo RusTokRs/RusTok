@@ -34,12 +34,13 @@ pub fn map_translation_public_error(
     operation: &'static str,
     boundary: &'static str,
 ) -> TranslationPublicError {
-    let (kind, message, code, retryable) = match error {
+    let (kind, message, code, retryable, error_class) = match error {
         TranslationError::Forbidden => (
             TranslationPublicErrorKind::Forbidden,
             "Translation permission denied".to_string(),
             "TRANSLATION_PERMISSION_DENIED",
             false,
+            "forbidden",
         ),
         TranslationError::JobNotFound
         | TranslationError::ItemNotFound
@@ -49,9 +50,10 @@ pub fn map_translation_public_error(
         | TranslationError::MemoryEntryNotFound
         | TranslationError::MachineOperationNotFound => (
             TranslationPublicErrorKind::NotFound,
-            error.to_string(),
+            "Translation resource was not found".to_string(),
             "TRANSLATION_RESOURCE_NOT_FOUND",
             false,
+            "not_found",
         ),
         TranslationError::InvalidRequest(_)
         | TranslationError::IdempotencyConflict
@@ -95,9 +97,10 @@ pub fn map_translation_public_error(
         | TranslationError::MachineRecoveryAlreadyRequested
         | TranslationError::MemoryRetentionConflict(_) => (
             TranslationPublicErrorKind::BadInput,
-            error.to_string(),
+            "Translation request is invalid".to_string(),
             "TRANSLATION_REQUEST_INVALID",
             false,
+            "bad_input",
         ),
         TranslationError::Provider {
             retryable: true, ..
@@ -108,23 +111,25 @@ pub fn map_translation_public_error(
             "Translation service is temporarily unavailable".to_string(),
             "TRANSLATION_TEMPORARILY_UNAVAILABLE",
             true,
+            "temporarily_unavailable",
         ),
         _ => (
             TranslationPublicErrorKind::Internal,
             "Translation operation could not be completed".to_string(),
             "TRANSLATION_OPERATION_FAILED",
             false,
+            "internal",
         ),
     };
     let correlation_id = Uuid::new_v4();
     tracing::error!(
-        error = ?error,
+        error_class,
         operation,
         boundary,
         public_code = code,
         retryable,
         %correlation_id,
-        "Translation service operation failed"
+        "Translation service operation failed with bounded diagnostics"
     );
     TranslationPublicError {
         kind,
@@ -151,5 +156,18 @@ mod tests {
         assert!(public.retryable);
         assert!(!rendered.contains("password=private"));
         assert!(!rendered.contains("host=internal"));
+    }
+
+    #[test]
+    fn bad_input_details_are_redacted() {
+        let error = TranslationError::InvalidRequest("owner-payload=private".to_string());
+        let public = map_translation_public_error(&error, "test", "translation_test");
+        let rendered = public.to_string();
+
+        assert_eq!(public.kind, TranslationPublicErrorKind::BadInput);
+        assert_eq!(public.message, "Translation request is invalid");
+        assert_eq!(public.code, "TRANSLATION_REQUEST_INVALID");
+        assert!(!public.retryable);
+        assert!(!rendered.contains("owner-payload=private"));
     }
 }
