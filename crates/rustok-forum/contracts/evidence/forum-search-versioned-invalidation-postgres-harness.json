@@ -1,0 +1,53 @@
+{
+  "format_version": 1,
+  "task": "FORUM-23B2G2B3D1",
+  "status": "source_ready_maintainer_execution_pending",
+  "predecessor": "FORUM-23B2G2B3D0",
+  "test_target": "crates/rustok-search/tests/forum_contract_ingress_postgres_test.rs",
+  "database": {
+    "backend": "postgresql",
+    "environment": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "database_url_fallback": "DATABASE_URL",
+    "isolated_schema_per_test": true,
+    "real_search_module_migrations": true,
+    "sleep_or_polling": false
+  },
+  "scenarios": {
+    "legacy_first_then_typed": {
+      "single_root_row": true,
+      "exact_existing_ingest_sequence_retained": true,
+      "new_ingress_instance_redelivery": true
+    },
+    "typed_first_then_legacy": {
+      "single_root_row": true,
+      "search_ingest_sequence_remains_owner": true,
+      "owner_revision_not_used_as_ingest_sequence": true
+    },
+    "identity_conflict": {
+      "same_root_uuid_with_different_scope_or_payload": true,
+      "stable_error_code": "forum.search_projection.contract_inbox_identity_conflict",
+      "retryable": false,
+      "durable_row_not_rewritten": true
+    }
+  },
+  "single_execution_path": {
+    "table": "search_projection_inbox",
+    "existing_search_migrations": true,
+    "second_inbox": false,
+    "second_projector": false,
+    "typed_identity": "ContractEventEnvelope.causation_id",
+    "legacy_identity": "EventEnvelope.id"
+  },
+  "not_claimed": {
+    "test_executed": false,
+    "postgresql_output_captured": false,
+    "iggy_cursor_restart": false,
+    "raw_poison_dlq": false,
+    "semantic_poison_dlq": false,
+    "dlq_duplicate_suppression": false,
+    "owner_checkpoint_repair": false,
+    "link_forum_03_closed": false
+  },
+  "remaining_task": "FORUM-23B2G2B3D",
+  "remaining_scope": "Maintainer-executed PostgreSQL output plus the remaining persistent Iggy cursor, acknowledgement, poison/DLQ redelivery, owner-checkpoint repair, multi-process, deletion/ACL, Search-disabled and LINK-FORUM-03 evidence required by D0"
+}
