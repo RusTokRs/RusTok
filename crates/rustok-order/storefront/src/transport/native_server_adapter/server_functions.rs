@@ -86,6 +86,7 @@ async fn storefront_order_complete_checkout_native(
             return Err(ServerFnError::new("Checkout request is invalid"));
         }
         let metadata = request.metadata;
+        let correlation_id = Uuid::new_v4();
 
         let completion = storefront_staged_checkout_runtime::complete_storefront_checkout_with_product_port(
             &runtime,
@@ -108,7 +109,9 @@ async fn storefront_order_complete_checkout_native(
             },
         )
         .await
-        .map_err(|error| native_checkout_runtime_error(&request_context, tenant.id, error))?;
+        .map_err(|error| {
+            native_checkout_runtime_error(&request_context, tenant.id, correlation_id, error)
+        })?;
 
         Ok(map_checkout_completion(completion))
     }
@@ -133,6 +136,7 @@ fn native_context_error(operation: &'static str, error: impl std::fmt::Display) 
 fn native_checkout_runtime_error(
     request_context: &rustok_api::RequestContext,
     tenant_id: Uuid,
+    correlation_id: Uuid,
     error: rustok_commerce::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
 ) -> ServerFnError {
     let public_code = error.public_code();
@@ -141,7 +145,7 @@ fn native_checkout_runtime_error(
         error = ?error,
         owner = ORDER_STOREFRONT_NATIVE_OWNER,
         owner_operation = "complete_storefront_checkout",
-        correlation_id = %request_context.correlation_id,
+        correlation_id = %correlation_id,
         tenant_id = %tenant_id,
         channel_id = ?request_context.channel_id,
         channel_slug = ?request_context.channel_slug,
