@@ -45,6 +45,32 @@ pub async fn fetch_search_with_filters(
     .map_err(ApiError::from)
 }
 
+pub async fn fetch_search_with_date_window(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_date_window_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        tags,
+        solved,
+        published_from,
+        published_to,
+    )
+    .await
+    .map_err(ApiError::from)
+}
+
 #[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search")]
 async fn forum_storefront_search_native(
     query: String,
@@ -59,6 +85,8 @@ async fn forum_storefront_search_native(
         filters,
         Vec::new(),
         Vec::new(),
+        None,
+        None,
         None,
     )
     .await
@@ -83,6 +111,8 @@ async fn forum_storefront_search_by_authors_native(
         author_ids,
         Vec::new(),
         None,
+        None,
+        None,
     )
     .await
 }
@@ -101,7 +131,44 @@ async fn forum_storefront_search_by_filters_native(
     solved: Option<bool>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     execute_forum_storefront_search_native(
-        query, locale, preset_key, filters, author_ids, tags, solved,
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        tags,
+        solved,
+        None,
+        None,
+    )
+    .await
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-date-window"
+)]
+async fn forum_storefront_search_by_date_window_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        tags,
+        solved,
+        published_from,
+        published_to,
     )
     .await
 }
@@ -114,6 +181,8 @@ async fn execute_forum_storefront_search_native(
     author_ids: Vec<String>,
     tags: Vec<String>,
     solved: Option<bool>,
+    published_from: Option<String>,
+    published_to: Option<String>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -164,6 +233,8 @@ async fn execute_forum_storefront_search_native(
             author_ids,
             tags,
             solved,
+            published_from,
+            published_to,
             attribute_filters: filters
                 .attribute_filters
                 .into_iter()
@@ -198,7 +269,17 @@ async fn execute_forum_storefront_search_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (query, locale, preset_key, filters, author_ids, tags, solved);
+        let _ = (
+            query,
+            locale,
+            preset_key,
+            filters,
+            author_ids,
+            tags,
+            solved,
+            published_from,
+            published_to,
+        );
         Err(ServerFnError::new(
             "Forum storefront Search requires the `ssr` feature",
         ))
