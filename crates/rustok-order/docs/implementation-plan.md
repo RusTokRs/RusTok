@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-order`
 
-Last reviewed: 2026-07-30
+Last reviewed: 2026-07-31
 
 ## Current state
 
@@ -40,6 +40,13 @@ resolution, legacy adoption, lifecycle reads, cancellation, replay adoption, and
 safe error mapping remain inside `rustok-order`. Commerce receives only a typed
 nullable compensation snapshot and no longer constructs `OrderService` on the
 mounted compensation path.
+
+The currently identified checkout compensation wrapper and owner
+payload-diagnostic sites are source-closed / unvalidated. Public wrapper events
+retain only stable `PortError` kind and message shape. Owner events retain only
+static `OrderError` variant, aggregate text/UUID/opaque-payload shape, static
+parse failure facts, and transition/reconciliation text shape. Public envelopes,
+identity policy, cancellation, replay, and lifecycle routing are unchanged.
 
 Captured checkout payment settlement invokes
 `CheckoutOrderPaymentSettlementPort`. Order owner validates checkout, cart, order,
@@ -130,6 +137,9 @@ compile and mounted-parity validation permits their removal.
   owner-local legacy adoption, cancellation replay, and manual-reconciliation
   outcomes for orders with financial or fulfillment effects.
 - [x] Cut mounted checkout compensation over to the order compensation port.
+- [x] Close the currently identified checkout compensation wrapper and owner
+  payload-diagnostic sites at source level without changing public envelopes,
+  identity policy, cancellation, replay, or lifecycle behavior.
 - [x] Publish `CheckoutOrderPaymentSettlementPort` with typed checkout/payment
   identity, owner-local settlement, replay adoption, and payment-reference
   conflict classification.
@@ -276,6 +286,8 @@ compile and mounted-parity validation permits their removal.
 
 - `npm run verify:ecommerce:fba`
 - `node scripts/verify/verify-order-read-port.mjs`
+- `node scripts/verify/verify-order-compensation-local-context.mjs`
+- `node scripts/verify/verify-order-checkout-compensation-error-context.mjs`
 - `node scripts/verify/verify-commerce-graphql-order-read-shim.mjs`
 - `node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`
 - `node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs`

@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice hardens diagnostics across the canonical
+This source boundary covers the canonical
 `CheckoutOrderCompensationPort::compensate_checkout_order` path:
 
 - the public local-context wrapper in `checkout_compensation_local_context.rs`;
@@ -14,13 +14,14 @@ This source slice hardens diagnostics across the canonical
 The public trait, request, snapshot, constructors, factory, compatibility facade, and
 Commerce composition remain unchanged.
 
-## Stable-code attribution
+## Public wrapper diagnostics
 
-The public compensation wrapper classifies known local outcomes from
+The public compensation wrapper still classifies known local outcomes from
 `PortError.code` only. Human-readable `PortError.message` is not used as control
-flow.
+flow, unknown codes pass through without another event, and the same delegated
+`PortError` is returned unchanged.
 
-Known codes map to:
+Known codes still map to:
 
 - `order.checkout_compensation_identity_invalid` → `validate_request`;
 - `order.checkout_compensation_identity_conflict` →
@@ -29,13 +30,16 @@ Known codes map to:
 - `order.checkout_compensation_manual_reconciliation` →
   `require_manual_reconciliation`.
 
-Both state-conflict messages use one truthful stable label because public wording is
-no longer a routing discriminator. Unknown codes pass through without an added local
-event. The original delegated `PortError` is returned unchanged.
+Both wrapper severity branches now retain only:
 
-The shared payment-settlement local mapper in `checkout_owner_context.rs` also uses
-stable codes only. This is a diagnostic-only change; payment-settlement owner
-business source is unchanged.
+- stable `PortError.code`;
+- a closed static `PortErrorKind` label;
+- message presence and character length;
+- retryability;
+- safe context and request shape.
+
+They do not record the complete `PortError`, its debug representation, or message
+text.
 
 ## Safe context and request shape
 
@@ -57,29 +61,42 @@ The public wrapper retains request shape before delegation:
 
 It does not log raw request identifiers or reason text.
 
-## Safe owner identity and lifecycle evidence
+## Owner error payload shape
 
-The owner still evaluates the same identity rules, but conflict diagnostics now
-record comparison facts instead of values:
+The seven `OrderError` variants now retain only:
 
-- tenant match;
-- checkout-operation match;
-- source-cart match;
-- expected-order match;
-- UUID presence and non-nil facts.
+- a closed static variant label;
+- aggregate text-field count and total character length;
+- aggregate UUID-field count and non-nil count;
+- an opaque-payload presence flag for database and core failures;
+- the established stable code, local operation, correlation id, and safe context
+  shape.
 
-Cancellation-race diagnostics retain the typed current state and transition labels,
-plus only an order UUID non-nil fact. Manual reconciliation retains the typed order
-state, optional order-id presence/non-nil state, and the static internal reason.
-Order and related-resource lookup diagnostics retain resource kind plus UUID
-presence/non-nil state.
+Validation causes, transition labels, UUID values, database errors, and core errors
+are not written into owner events. Order and related-resource lookup events retain a
+static resource kind plus aggregate error shape.
 
-Raw tenant, actor, channel, locale, causation, traceparent, idempotency, checkout,
-cart, order, durable-identity, and related-resource identifiers are not written by
-this compensation boundary.
+Tenant and actor UUID parse failures retain only the static field name, supplied
+value length, and `parse_failed = true`. Parser error text is not logged.
 
-Original parse, database, core, and owner validation causes remain private to
-structured tracing.
+## Lifecycle and reconciliation shape
+
+Cancellation-race diagnostics retain:
+
+- order UUID non-nil state;
+- a closed static current lifecycle label;
+- transition source/target presence and character lengths.
+
+They do not retain raw transition text.
+
+Manual reconciliation retains:
+
+- optional order-id presence and non-nil state;
+- a closed static order lifecycle label;
+- reconciliation-reason presence and character length.
+
+It does not retain internal reason text. All three existing reconciliation routes
+and the public conflict envelope remain unchanged.
 
 ## Preserved severity
 
@@ -118,16 +135,22 @@ This slice does not change:
 - `scripts/verify/verify-order-checkout-compensation-error-context.mjs`
 - `scripts/verify/verify-order-checkout-owner-context.mjs`
 
-The guards cover code-only attribution, safe context/request/identity shape,
-forbidden raw fields, unchanged public envelopes, unchanged identity and cancellation
-flow, and source-only validation flags.
+The two compensation guards cover stable-code wrapper attribution, closed
+`PortError` and `OrderError` shape, static parse/lifecycle/reconciliation facts,
+forbidden payload values, unchanged public envelopes, unchanged identity and
+cancellation flow, and source-only validation flags.
 
-## Remaining gaps
+## Source status and remaining gaps
+
+The currently identified checkout order compensation payload-diagnostic sites are
+**source-closed / unvalidated**. Compile, compensation replay, process-exit, restart,
+contention, mounted transport, remote-profile, workflow, CI, and production evidence
+remain unexecuted.
 
 The broad ecommerce correlation-safe mapper item remains open for remaining Order
-settlement owner diagnostics, fulfillment, inventory, customer, tax, promotion,
-remaining ecommerce adapters, non-`PortError` envelopes, and runtime evidence.
-No architecture status is promoted from source inspection.
+settlement diagnostics, fulfillment, inventory, customer, tax, promotion, remaining
+ecommerce adapters, non-`PortError` envelopes, and runtime evidence. No architecture
+status is promoted from source inspection.
 
 ## Suggested maintainer checks
 
