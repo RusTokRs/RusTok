@@ -7,7 +7,8 @@
   "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
   "authority_dependency": "FORUM-23B2E1",
   "projection_owner": "crates/rustok-search/src/projector_legacy.rs",
-  "bootstrap_reconciliation": "crates/rustok-search/src/projector.rs",
+  "legacy_projection_reconciler": "crates/rustok-search/src/product_channel_reconciliation.rs",
+  "host_startup_worker": "apps/server/src/services/search_product_channel_reconciliation.rs",
   "predicate_owner": "crates/rustok-search/src/storefront_product_channel_visibility.rs",
   "postgres_engine": "crates/rustok-search/src/pg_engine.rs",
   "query_rule_owner": "crates/rustok-search/src/dictionaries.rs",
@@ -51,10 +52,16 @@
     "admin_global_search_changed": false
   },
   "reconciliation": {
-    "search_bootstrap_detects_missing_or_non_array_projection": true,
-    "drift_scope": "tenant Product Search documents only",
+    "startup_worker_detects_missing_legacy_projection": true,
+    "tenant_batch_limit": 32,
+    "maximum_tenant_batch_limit": 256,
+    "repair_scope": "tenant Product Search documents only",
     "repair_action": "SearchProjector.rebuild_product_scope",
     "legacy_documents_are_hidden_before_repair": true,
+    "malformed_explicit_owner_projection_remains_hidden_until_owner_fix": true,
+    "malformed_explicit_owner_projection_is_not_rebuilt_forever": true,
+    "postgres_required": true,
+    "background_workers_required_for_automatic_repair": true,
     "migration_required": false,
     "manual_backfill_required": false
   },
