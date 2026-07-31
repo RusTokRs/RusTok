@@ -7,9 +7,7 @@ use crate::{
     SearchAnalyticsService, SearchClickRecord, SearchDictionaryService, SearchEngineKind,
     SearchModule, SearchSettingsService,
 };
-use rustok_api::{
-    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_effective_permission,
-};
+use rustok_api::{AuthContext, Permission, TenantContext, graphql::GraphQLError};
 use rustok_events::DomainEvent;
 use rustok_telemetry::metrics;
 
@@ -337,17 +335,7 @@ impl SearchMutationRoot {
 }
 
 async fn ensure_settings_manage_permission(ctx: &Context<'_>) -> Result<()> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-
-    if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "settings:manage required",
-        ));
-    }
-
-    Ok(())
+    super::ensure_search_admin_permission(ctx, &Permission::SETTINGS_MANAGE).await
 }
 
 fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
