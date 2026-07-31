@@ -13,6 +13,8 @@
 - `pub use crate::{MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS}`
 - `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
 - `pub use crate::{TranslationWorkflowEvent, TRANSLATION_WORKFLOW_EVENT_SCHEMAS}`
+- `ContractEventEnvelope::new_caused_by(...)` creates a registered typed envelope with one exact non-nil predecessor envelope identity
+- `ContractEventEnvelope::causation_id()` returns the validated optional causal identity
 - `ContractEventEnvelope::{payload, into_payload}` return only semantically validated typed payloads
 - `pub fn event_schema(event_type: &str) -> Option<&'static EventSchema>`
 - `pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema>`
@@ -52,6 +54,8 @@
 - Continues to import event contracts from `rustok-core` instead of `rustok-events`.
 - Implements arbitrary external `EventContract` types; the trait is intentionally sealed.
 - Stores bounded-family payloads as untyped `serde_json::Value` instead of adding one typed `ContractEventPayload` family variant.
+- Copies causal identity into the event payload instead of using envelope `causation_id`.
+- Uses a nil, reconstructed, or unrelated UUID as a causal predecessor.
 - Adds contact data, source body or profile handle snapshots to Forum mention events instead of stable identities.
 - Adds idempotency keys, expected revisions, request context, claims, roles, locale,
   channel, or receipt snapshots to Social Graph relation events.
@@ -66,6 +70,8 @@
 
 ### Input DTOs/Commands
 - Event input is defined by the public event enums and envelope constructors.
+- `ContractEventEnvelope::new` creates an uncaused typed envelope;
+  `ContractEventEnvelope::new_caused_by` records one exact durable predecessor.
 - All public payload field changes are breaking unless a new schema version and consumer migration plan are provided.
 - The committed `contracts/event-contract-digests.json` artifact must match the
   registry and every root/typed transport wire schema.
@@ -75,6 +81,8 @@
   durable/streaming deserialization.
 - Envelope event type/schema version must match the typed payload and a registered schema.
 - Tenant, envelope, correlation, causation, and optional actor identities must not be nil.
+- Adding the caused-envelope constructor does not change the serialized envelope shape;
+  `causation_id` was already an optional registered wire field.
 - Root envelope trace identifiers must be non-empty and at most 512 bytes.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
 - Forum mention events expose source revision and resolved user/audience identity only; contact and rendered content remain owner-private.
