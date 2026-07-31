@@ -29,7 +29,6 @@ pub struct ForumDomainEventResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForumProjectionOwnerRevisionImpact {
     FullRebuild,
-    NoProjectionChange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
