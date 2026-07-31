@@ -28,7 +28,7 @@ struct CommentProjectionChange {
 enum ProjectionUpdateDecision {
     Applied,
     Retry,
-    Exhausted,
+    LimitReached,
 }
 
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange> {
@@ -73,7 +73,7 @@ fn projection_update_decision(
     } else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS {
         ProjectionUpdateDecision::Retry
     } else {
-        ProjectionUpdateDecision::Exhausted
+        ProjectionUpdateDecision::LimitReached
     }
 }
 
@@ -184,7 +184,7 @@ async fn update_comment_count_in_tx(
         match projection_update_decision(attempt_index, result.rows_affected) {
             ProjectionUpdateDecision::Applied => return Ok(()),
             ProjectionUpdateDecision::Retry => continue,
-            ProjectionUpdateDecision::Exhausted => break,
+            ProjectionUpdateDecision::LimitReached => break,
         }
     }
 
@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn optimistic_retry_policy_retries_seven_times_then_exhausts_on_eighth_conflict() {
+    fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict() {
         let decisions = (0..MAX_PROJECTION_UPDATE_ATTEMPTS)
             .map(|attempt_index| projection_update_decision(attempt_index, 0))
             .collect::<Vec<_>>();
@@ -303,7 +303,7 @@ mod tests {
         );
         assert_eq!(
             decisions.last(),
-            Some(&ProjectionUpdateDecision::Exhausted)
+            Some(&ProjectionUpdateDecision::LimitReached)
         );
     }
 }
