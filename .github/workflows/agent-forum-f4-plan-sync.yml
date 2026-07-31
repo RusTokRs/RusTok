@@ -1,3 +1,4 @@
+# second push trigger after workflow registration
 name: Agent Forum F4 plan sync
 
 on:
@@ -118,25 +119,18 @@ jobs:
               "FORUM-23 remaining filters",
           )
 
-          forum = replace_once(
-              forum,
-              "node scripts/verify/verify-forum-search-locale-date-filter.mjs\ncargo check -p rustok-search --features graphql --all-targets",
-              "node scripts/verify/verify-forum-search-locale-date-filter.mjs\nnode scripts/verify/verify-forum-search-current-channel-filter.mjs\nnode scripts/verify/verify-forum-projection-invalidation.mjs\ncargo check -p rustok-search --features graphql --all-targets",
-              "FORUM-23 verifier list",
-          )
+          verifier_anchor = "node scripts/verify/verify-forum-search-locale-date-filter.mjs\ncargo check -p rustok-search --features graphql --all-targets"
+          verifier_replacement = "node scripts/verify/verify-forum-search-locale-date-filter.mjs\nnode scripts/verify/verify-forum-search-current-channel-filter.mjs\nnode scripts/verify/verify-forum-projection-invalidation.mjs\ncargo check -p rustok-search --features graphql --all-targets"
+          count = forum.count(verifier_anchor)
+          if count != 2:
+              raise SystemExit(f"verifier anchors: expected two matches, found {count}")
+          forum = forum.replace(verifier_anchor, verifier_replacement)
 
           forum = replace_once(
               forum,
               "The `FORUM-23B2A/B2B/B2C/B2D/B2E1/B2E2/B2F1/B2F2/B2F3` source and contract records do not",
               "The `FORUM-23B2A/B2B/B2C/B2D/B2E1/B2E2/B2F1/B2F2/B2F3/B2F4` source and contract records do not",
               "FORUM-23 source record list",
-          )
-
-          forum = replace_once(
-              forum,
-              "node scripts/verify/verify-forum-search-locale-date-filter.mjs\ncargo check -p rustok-search --features graphql --all-targets",
-              "node scripts/verify/verify-forum-search-locale-date-filter.mjs\nnode scripts/verify/verify-forum-search-current-channel-filter.mjs\nnode scripts/verify/verify-forum-projection-invalidation.mjs\ncargo check -p rustok-search --features graphql --all-targets",
-              "required verifier list",
           )
 
           forum = replace_once(
