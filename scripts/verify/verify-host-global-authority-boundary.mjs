@@ -160,8 +160,8 @@ forbidText(
 
 const graphqlWebsocket = between(
   graphqlControllerSource,
-  'pub async fn graphql_websocket_handler(',
-  'async fn build_ws_connection_data(',
+  'async fn graphql_ws_handler(',
+  'async fn handle_graphql_ws(',
   'GraphQL WebSocket request data',
 );
 forbidText(
@@ -172,7 +172,7 @@ forbidText(
 const wsConnectionData = between(
   graphqlControllerSource,
   'async fn build_ws_connection_data(',
-  '#[cfg(test)]',
+  'pub fn router()',
   'GraphQL WebSocket connection data',
 );
 forbidText(
