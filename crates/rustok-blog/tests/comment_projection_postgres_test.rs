@@ -16,6 +16,7 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
 const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;
+const EXPECTED_RETRY_LIMIT_ATTEMPTS: i64 = 8;
 
 struct PostgresBlogProjectionTestDb {
     control: DatabaseConnection,
@@ -200,6 +201,49 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
         count_outbox_events(&test_db.db).await?,
         CONCURRENT_PROJECTION_DELIVERIES as i64
     );
+
+    test_db.cleanup().await
+}
+
+#[tokio::test]
+async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears() -> TestResult<()> {
+    let Some(test_db) = PostgresBlogProjectionTestDb::setup("retry_limit").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
+    install_retry_limit_probe(&test_db.db).await?;
+
+    let envelope = comment_created_envelope(
+        tenant_id,
+        actor_id,
+        Uuid::new_v4(),
+        post_id,
+    );
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+
+    let error = handler
+        .handle(&envelope)
+        .await
+        .expect_err("eight zero-row updates must reach the optimistic retry limit");
+    assert!(error.to_string().contains("after 8 concurrent attempts"));
+    assert_eq!(
+        load_retry_attempt_count(&test_db.db).await?,
+        EXPECTED_RETRY_LIMIT_ATTEMPTS
+    );
+    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (0, 1));
+    assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 0);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 0);
+
+    remove_retry_limit_probe(&test_db.db).await?;
+    handler.handle(&envelope).await?;
+
+    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
     test_db.cleanup().await
 }
@@ -411,6 +455,53 @@ async fn create_outbox_table(db: &DatabaseConnection) -> Result<(), sea_orm::DbE
     )
     .await?;
     Ok(())
+}
+
+async fn install_retry_limit_probe(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+    db.execute_unprepared(
+        r#"
+        CREATE SEQUENCE blog_projection_retry_attempts START WITH 1;
+
+        CREATE FUNCTION force_blog_projection_retry_limit()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            PERFORM nextval('blog_projection_retry_attempts');
+            RETURN NULL;
+        END;
+        $$;
+
+        CREATE TRIGGER force_blog_projection_retry_limit
+        BEFORE UPDATE OF comment_count, version ON blog_posts
+        FOR EACH ROW
+        EXECUTE FUNCTION force_blog_projection_retry_limit();
+        "#,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn remove_retry_limit_probe(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+    db.execute_unprepared(
+        r#"
+        DROP TRIGGER force_blog_projection_retry_limit ON blog_posts;
+        DROP FUNCTION force_blog_projection_retry_limit();
+        "#,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn load_retry_attempt_count(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT last_value::bigint AS count FROM blog_projection_retry_attempts".to_string(),
+        ))
+        .await?
+        .expect("retry-attempt sequence should return one row");
+    row.try_get("", "count")
 }
 
 async fn insert_post(
