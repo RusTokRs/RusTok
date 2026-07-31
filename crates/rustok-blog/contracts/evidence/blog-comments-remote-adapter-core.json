@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_remote_adapter_core",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-67.md",
+  "source_contract": {
+    "provider_adapter": "crates/rustok-comments/src/remote.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "port": "rustok_comments::CommentsThreadPort",
+    "transport": "rustok_comments::CommentsThreadTransport",
+    "context": "rustok_api::PortContext",
+    "error": "rustok_api::PortError"
+  },
+  "operations": [
+    {
+      "name": "create_comment",
+      "policy": "write",
+      "request": "CommentsThreadRequest::CreateComment",
+      "response": "CommentsThreadResponse::Comment"
+    },
+    {
+      "name": "get_comment",
+      "policy": "read",
+      "request": "CommentsThreadRequest::GetComment",
+      "response": "CommentsThreadResponse::Comment"
+    },
+    {
+      "name": "list_comments_for_target",
+      "policy": "read",
+      "request": "CommentsThreadRequest::ListCommentsForTarget",
+      "response": "CommentsThreadResponse::CommentsPage"
+    },
+    {
+      "name": "list_public_comments_for_target",
+      "policy": "read",
+      "request": "CommentsThreadRequest::ListPublicCommentsForTarget",
+      "response": "CommentsThreadResponse::CommentsPage"
+    },
+    {
+      "name": "update_comment",
+      "policy": "write",
+      "request": "CommentsThreadRequest::UpdateComment",
+      "response": "CommentsThreadResponse::Comment"
+    },
+    {
+      "name": "set_comment_status",
+      "policy": "write",
+      "request": "CommentsThreadRequest::SetCommentStatus",
+      "response": "CommentsThreadResponse::Comment"
+    },
+    {
+      "name": "delete_comment",
+      "policy": "write",
+      "request": "CommentsThreadRequest::DeleteComment",
+      "response": "CommentsThreadResponse::Deleted"
+    }
+  ],
+  "context_fields_preserved": [
+    "tenant_id",
+    "actor",
+    "claims",
+    "roles",
+    "channel",
+    "locale",
+    "correlation_id",
+    "causation_id",
+    "traceparent",
+    "idempotency_key",
+    "deadline_ms"
+  ],
+  "fail_closed": {
+    "response_mismatch_code": "comments.remote_response_mismatch",
+    "response_mismatch_kind": "InvariantViolation",
+    "policy_checked_before_dispatch": true
+  },
+  "pending": [
+    "concrete_network_transport",
+    "endpoint_discovery",
+    "authentication",
+    "retry_backoff",
+    "transport_cancellation",
+    "host_publication",
+    "in_process_remote_runtime_parity",
+    "runtime_execution"
+  ],
+  "explicit_non_claims": [
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
