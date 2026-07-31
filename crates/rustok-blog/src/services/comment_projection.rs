@@ -24,6 +24,13 @@ struct CommentProjectionChange {
     delta: i32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProjectionUpdateDecision {
+    Applied,
+    Retry,
+    LimitReached,
+}
+
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange> {
     match event {
         DomainEvent::CommentCreated {
@@ -55,6 +62,19 @@ fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32) -
         comment_count.saturating_add(delta).max(0),
         version.saturating_add(1),
     )
+}
+
+fn projection_update_decision(
+    attempt_index: usize,
+    rows_affected: u64,
+) -> ProjectionUpdateDecision {
+    if rows_affected == 1 {
+        ProjectionUpdateDecision::Applied
+    } else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS {
+        ProjectionUpdateDecision::Retry
+    } else {
+        ProjectionUpdateDecision::LimitReached
+    }
 }
 
 /// Projects Comments lifecycle events into Blog-owned reply-count state.
@@ -132,7 +152,7 @@ async fn update_comment_count_in_tx(
     post_id: Uuid,
     delta: i32,
 ) -> HandlerResult {
-    for _ in 0..MAX_PROJECTION_UPDATE_ATTEMPTS {
+    for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS {
         let Some(post) = blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(txn)
@@ -161,8 +181,10 @@ async fn update_comment_count_in_tx(
             .exec(txn)
             .await?;
 
-        if result.rows_affected == 1 {
-            return Ok(());
+        match projection_update_decision(attempt_index, result.rows_affected) {
+            ProjectionUpdateDecision::Applied => return Ok(()),
+            ProjectionUpdateDecision::Retry => continue,
+            ProjectionUpdateDecision::LimitReached => break,
         }
     }
 
@@ -251,6 +273,37 @@ mod tests {
         assert_eq!(
             next_comment_projection_state(i32::MAX, i32::MAX, 1),
             (i32::MAX, i32::MAX)
+        );
+    }
+
+    #[test]
+    fn optimistic_retry_policy_applies_success_without_retry() {
+        assert_eq!(
+            projection_update_decision(0, 1),
+            ProjectionUpdateDecision::Applied
+        );
+        assert_eq!(
+            projection_update_decision(MAX_PROJECTION_UPDATE_ATTEMPTS - 1, 1),
+            ProjectionUpdateDecision::Applied
+        );
+    }
+
+    #[test]
+    fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict() {
+        let decisions = (0..MAX_PROJECTION_UPDATE_ATTEMPTS)
+            .map(|attempt_index| projection_update_decision(attempt_index, 0))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            decisions
+                .iter()
+                .filter(|decision| **decision == ProjectionUpdateDecision::Retry)
+                .count(),
+            MAX_PROJECTION_UPDATE_ATTEMPTS - 1
+        );
+        assert_eq!(
+            decisions.last(),
+            Some(&ProjectionUpdateDecision::LimitReached)
         );
     }
 }

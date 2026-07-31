@@ -28,7 +28,9 @@
     "cases": [
       "shared_created_deleted_classifier",
       "non_blog_target_rejection",
-      "non_negative_saturating_counter_transition"
+      "non_negative_saturating_counter_transition",
+      "optimistic_retry_policy_applies_success_without_retry",
+      "optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict"
     ]
   },
   "host_registration_harness": {
@@ -132,6 +134,10 @@
       "expected": "the post lookup and update require tenant identity and the observed post version, with a bounded retry loop"
     },
     {
+      "name": "bounded_optimistic_retry_policy",
+      "expected": "the production loop uses one decision helper, applies after one updated row, retries seven zero-row results, and reaches its limit on the eighth"
+    },
+    {
       "name": "missing_post_retry",
       "expected": "a missing tenant post returns an error before the delivery marker is committed so the event runtime can retry"
     },
@@ -181,7 +187,7 @@
     }
   ],
   "runtime_promotion_requirements": [
-    "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
+    "execute cargo test -p rustok-blog --lib services::comment_projection::tests and retain classifier, counter, and deterministic retry-policy output",
     "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
     "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
     "execute the env-gated PostgreSQL concurrency case and retain four-connection convergence output",
@@ -191,7 +197,7 @@
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
-    "retain explicit optimistic retry-count and exhaustion evidence",
+    "retain PostgreSQL-observed retry count and limit evidence separately from the deterministic source policy",
     "retain full server-host restart recovery evidence separately from the test-process harness"
   ]
 }

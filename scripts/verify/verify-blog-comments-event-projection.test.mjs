@@ -28,6 +28,10 @@ function fixture({
   missingSharedClassifier = false,
   directHandlesClassifier = false,
   missingCounterHarness = false,
+  missingRetryDecisionHelper = false,
+  bypassRetryDecisionHelper = false,
+  missingRetryPolicyHarness = false,
+  missingRetryPolicyEvidence = false,
   missingPostgresHarness = false,
   missingRollbackCase = false,
   missingPostgresRegistration = false,
@@ -65,6 +69,26 @@ function fixture({
   const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
   const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
 
+  const retryHelperSource = missingRetryDecisionHelper
+    ? ''
+    : `
+fn projection_update_decision(
+attempt_index: usize
+rows_affected: u64
+else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS
+`;
+  const retryLoopSource = bypassRetryDecisionHelper
+    ? 'if result.rows_affected == 1'
+    : 'match projection_update_decision(attempt_index, result.rows_affected)';
+  const retryHarnessSource = missingRetryPolicyHarness
+    ? ''
+    : `
+fn optimistic_retry_policy_applies_success_without_retry()
+fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict()
+MAX_PROJECTION_UPDATE_ATTEMPTS - 1
+Some(&ProjectionUpdateDecision::LimitReached)
+`;
+
   write(
     root,
     handlerPath,
@@ -72,6 +96,10 @@ function fixture({
 const BLOG_POST_TARGET_TYPE: &str = "blog_post";
 const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;
 struct CommentProjectionChange
+enum ProjectionUpdateDecision
+ProjectionUpdateDecision::Applied
+ProjectionUpdateDecision::Retry
+ProjectionUpdateDecision::LimitReached
 ${missingSharedClassifier ? '' : 'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>'}
 DomainEvent::CommentCreated
 delta: 1
@@ -80,6 +108,7 @@ delta: -1
 fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32)
 comment_count.saturating_add(delta).max(0)
 version.saturating_add(1)
+${retryHelperSource}
 ${missingSharedClassifier ? '' : 'let Some(change) = comment_projection_change(&envelope.event) else'}
 let txn = self.db.begin().await?;
 ${missingDeliveryLookup ? '' : 'blog_comment_projection_delivery::Entity::find_by_id(envelope.id)'}
@@ -92,7 +121,9 @@ txn.commit().await?;
 ${missingTenantScope ? '' : 'Column::TenantId.eq(tenant_id)'}
 Column::Version.eq(post.version)
 next_comment_projection_state(post.comment_count, post.version, delta)
-if result.rows_affected == 1
+for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS
+${retryLoopSource}
+Err(Error::External(format!(
 Error::NotFound
 impl EventHandler for BlogCommentProjectionHandler
 fn handles(&self, event: &DomainEvent) -> bool {
@@ -103,6 +134,7 @@ async fn handle(&self, envelope: &EventEnvelope)
 fn classifies_blog_comment_lifecycle_events()
 fn ignores_non_blog_targets_and_unrelated_events()
 ${missingCounterHarness ? '' : 'fn counter_transition_is_non_negative_and_saturating()'}
+${retryHarnessSource}
 `,
   );
 
@@ -281,6 +313,18 @@ assert!(!handler.handles(&forum_created));
 }`;
   write(root, modulePath, `${registrationSource}\n${hostHarnessSource}`);
 
+  const sourceHarnessCases = [
+    'shared_created_deleted_classifier',
+    'non_blog_target_rejection',
+    'non_negative_saturating_counter_transition',
+    ...(missingRetryPolicyEvidence
+      ? []
+      : [
+          'optimistic_retry_policy_applies_success_without_retry',
+          'optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict',
+        ]),
+  ];
+
   write(
     root,
     evidencePath,
@@ -308,11 +352,7 @@ assert!(!handler.handles(&forum_created));
         path: handlerPath,
         module: 'services::comment_projection::tests',
         command: harnessCommand,
-        cases: [
-          'shared_created_deleted_classifier',
-          'non_blog_target_rejection',
-          'non_negative_saturating_counter_transition',
-        ],
+        cases: sourceHarnessCases,
       },
       host_registration_harness: {
         status: hostHarnessStatusDrift ? 'executed' : 'executable_no_run',
@@ -388,6 +428,7 @@ assert!(!handler.handles(&forum_created));
         { name: 'envelope_idempotency' },
         { name: 'atomic_counter_delivery_outbox' },
         { name: 'tenant_scoped_optimistic_update' },
+        ...(missingRetryPolicyEvidence ? [] : [{ name: 'bounded_optimistic_retry_policy' }]),
         { name: 'missing_post_retry' },
         { name: 'non_negative_count' },
         { name: 'host_registration_routing_harness' },
@@ -449,7 +490,7 @@ assert!(!handler.handles(&forum_created));
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates restarted_process_reuses_delivery_ledger_without_reapplying_counter comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections two sequential OS test processes server-host restart',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests ProjectionUpdateDecision seven retry decisions tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates restarted_process_reuses_delivery_ledger_without_reapplying_counter comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections two sequential OS test processes server-host restart',
   );
 
   return root;
@@ -548,6 +589,31 @@ test('rejects a missing counter transition harness', () => {
     { missingCounterHarness: true },
     /missing fn counter_transition_is_non_negative_and_saturating/,
   );
+});
+
+test('rejects a missing retry decision helper', () => {
+  expectRejected(
+    { missingRetryDecisionHelper: true },
+    /missing fn projection_update_decision/,
+  );
+});
+
+test('rejects a production loop that bypasses the retry decision helper', () => {
+  expectRejected(
+    { bypassRetryDecisionHelper: true },
+    /forbidden if result.rows_affected == 1/,
+  );
+});
+
+test('rejects a missing deterministic retry policy harness', () => {
+  expectRejected(
+    { missingRetryPolicyHarness: true },
+    /missing fn optimistic_retry_policy_applies_success_without_retry/,
+  );
+});
+
+test('rejects retry policy evidence drift', () => {
+  expectRejected({ missingRetryPolicyEvidence: true }, /source harness case drift/);
 });
 
 test('rejects a missing PostgreSQL harness source', () => {
