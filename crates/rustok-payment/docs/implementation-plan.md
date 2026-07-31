@@ -104,14 +104,21 @@ tenant/causation, provider-result, owner-error, manual-reconciliation, and deleg
 outcome diagnostics now retain correlation plus safe context/request shape only.
 Local-operation attribution uses stable `PortError.code` and no longer depends on
 human-readable public messages. Public `PortError` envelopes and all execution
-semantics remain unchanged. Checkout compensation diagnostic cleanup remains open as
-a separate source slice.
+semantics remain unchanged.
+
+Payment checkout compensation wrapper diagnostic safety:
+`source_ready_unvalidated`. The public context wrapper uses stable-code-only local
+attribution, retains correlation plus safe context/request shape, and returns the
+same delegated `PortError`. The private persistent compensation owner remains
+behaviorally unchanged; its owner-local raw identifier diagnostics remain the next
+separate source cleanup.
 
 Boundary guards:
 
 - `npm run verify:payment:storefront-boundary`
 - `node scripts/verify/verify-payment-storefront-native-client-error-safety.mjs`
 - `node scripts/verify/verify-payment-checkout-execution-local-context.mjs`
+- `node scripts/verify/verify-payment-checkout-compensation-local-context.mjs`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-payment-typed-lifecycle-statuses.mjs`

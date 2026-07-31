@@ -15,8 +15,21 @@ const api = read('crates/rustok-payment/src/checkout_compensation_api.rs');
 const wrapper = read('crates/rustok-payment/src/checkout_compensation_context.rs');
 const owner = read('crates/rustok-payment/src/checkout_compensation.rs');
 const commerce = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
-const failures = [];
+const doc = read('crates/rustok-payment/docs/checkout-compensation-local-context.md');
+const paymentPlan = read('crates/rustok-payment/docs/implementation-plan.md');
+const commercePlan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const evidence = JSON.parse(
+  read(
+    'crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json',
+  ),
+);
+const review = JSON.parse(
+  read(
+    'crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json',
+  ),
+);
 
+const failures = [];
 const requireText = (content, value, label) => {
   if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
 };
@@ -35,183 +48,269 @@ const between = (content, start, end, label) => {
 
 for (const [value, label] of [
   ['#[path = "checkout_compensation.rs"]\nmod checkout_compensation_persistent;', 'private persistent owner module'],
-  ['#[path = "checkout_compensation_api.rs"]\npub mod checkout_compensation;', 'public compensation API facade'],
-  ['mod checkout_compensation_context;', 'private context wrapper module'],
+  ['#[path = "checkout_compensation_api.rs"]\npub mod checkout_compensation;', 'public compensation facade'],
+  ['mod checkout_compensation_context;', 'private wrapper module'],
   ['pub use checkout_compensation::{', 'root facade export'],
-  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'root trait/request compatibility'],
+  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'root contracts'],
   ['InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,', 'root wrapper type/factory'],
 ]) requireText(lib, value, label);
 for (const value of [
   'pub mod checkout_compensation_persistent',
   'pub use checkout_compensation_persistent::',
   'pub use checkout_compensation_context::',
-]) forbidText(lib, value, 'persistent compensation bypass');
+]) forbidText(lib, value, 'persistent owner public bypass');
 
 for (const [value, label] of [
-  ['pub use crate::checkout_compensation_context::{', 'module-path wrapper export'],
-  ['InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,', 'module-path wrapper type/factory'],
-  ['pub use crate::checkout_compensation_persistent::{', 'module-path contract export'],
-  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'module-path trait/request compatibility'],
+  ['pub use crate::checkout_compensation_context::{', 'module wrapper export'],
+  ['InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,', 'module wrapper type/factory'],
+  ['pub use crate::checkout_compensation_persistent::{', 'module contract export'],
+  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'module contracts'],
 ]) requireText(api, value, label);
 for (const value of [
   'PersistentCheckoutPaymentCompensationPort',
   'checkout_compensation_persistent::InProcessCheckoutPaymentCompensationPort',
   'checkout_compensation_persistent::in_process_checkout_payment_compensation_port',
-]) forbidText(api, value, 'public persistent implementation exposure');
+]) forbidText(api, value, 'persistent implementation exposure');
 
 for (const [value, label] of [
   ['use crate::checkout_compensation_persistent::{', 'private persistent import'],
-  ['InProcessCheckoutPaymentCompensationPort as PersistentCheckoutPaymentCompensationPort', 'persistent owner alias'],
+  ['InProcessCheckoutPaymentCompensationPort as PersistentCheckoutPaymentCompensationPort', 'persistent alias'],
   ['inner: PersistentCheckoutPaymentCompensationPort', 'wrapper inner owner'],
   ['PersistentCheckoutPaymentCompensationPort::new(db)', 'default constructor delegation'],
-  ['PersistentCheckoutPaymentCompensationPort::with_provider_registry(', 'provider registry constructor delegation'],
-  ['pub fn in_process_checkout_payment_compensation_port(', 'canonical factory'],
+  ['PersistentCheckoutPaymentCompensationPort::with_provider_registry(', 'registry constructor delegation'],
+  ['pub fn in_process_checkout_payment_compensation_port(', 'canonical wrapper factory'],
   ['Arc::new(InProcessCheckoutPaymentCompensationPort::new(db))', 'factory wrapper construction'],
 ]) requireText(wrapper, value, label);
-forbidText(wrapper, 'use crate::checkout_compensation::{', 'wrapper import through public facade');
 
 const operation = between(
   wrapper,
   'async fn compensate_checkout_payment(',
-  'fn checkout_payment_compensation_diagnostic_facts(',
-  'compensation wrapper operation',
+  'fn checkout_payment_compensation_context_facts(',
+  'wrapper operation',
 );
 for (const [value, label] of [
-  ['let diagnostic_context = context.clone();', 'accepted context retention'],
-  ['let diagnostic_facts = checkout_payment_compensation_diagnostic_facts(&request);', 'safe request-fact retention'],
-  ['.inner\n            .compensate_checkout_payment(context, request)', 'unchanged owner delegation'],
+  ['let diagnostic_context = context.clone();', 'context retention'],
+  ['let diagnostic_facts = checkout_payment_compensation_diagnostic_facts(&request);', 'request-shape retention'],
+  ['.inner\n            .compensate_checkout_payment(context, request)', 'persistent delegation'],
   ['result.map_err(|error| {', 'post-delegation mapping'],
-  ['map_checkout_payment_compensation_local_port_error(', 'local mapper call'],
-  ['&diagnostic_context,', 'retained context mapper argument'],
-  ['&diagnostic_facts,', 'retained facts mapper argument'],
+  ['map_checkout_payment_compensation_local_port_error(', 'wrapper mapper'],
 ]) requireText(operation, value, label);
-const operationIndexes = [
+const order = [
   operation.indexOf('let diagnostic_context = context.clone();'),
   operation.indexOf('checkout_payment_compensation_diagnostic_facts(&request)'),
   operation.indexOf('.compensate_checkout_payment(context, request)'),
   operation.indexOf('result.map_err(|error| {'),
   operation.indexOf('map_checkout_payment_compensation_local_port_error('),
 ];
-if (!operationIndexes.every((value, index) => value >= 0 && (index === 0 || operationIndexes[index - 1] < value))) {
-  failures.push('compensation wrapper must retain context/facts before unchanged delegation and map only returned errors');
+if (!order.every((value, index) => value >= 0 && (index === 0 || order[index - 1] < value))) {
+  failures.push('wrapper must retain safe context/facts before unchanged delegation and map only returned errors');
 }
 
-const facts = between(
-  wrapper,
-  'fn checkout_payment_compensation_diagnostic_facts(',
-  'fn payment_metadata_kind(',
-  'safe compensation facts',
-);
-for (const [value, label] of [
-  ['checkout_operation_id: request.checkout_operation_id', 'checkout operation id fact'],
-  ['collection_id: request.collection_id', 'collection id fact'],
-  ['reason_length: request.reason.as_ref().map(|value| value.chars().count())', 'reason length fact'],
-  ['metadata_kind: payment_metadata_kind(&request.metadata)', 'metadata kind fact'],
-  ['Value::Object(entries) => Some(entries.len())', 'metadata object entry count'],
-  ['Value::Array(entries) => Some(entries.len())', 'metadata array entry count'],
-]) requireText(facts, value, label);
-for (const value of [
-  'reason: request.reason.clone()',
-  'metadata: request.metadata.clone()',
-  'reason: request.reason',
-  'metadata: request.metadata',
-]) forbidText(facts, value, 'raw compensation payload retention');
+for (const marker of [
+  'struct CheckoutPaymentCompensationContextFacts',
+  'tenant_id_length: context.tenant_id.chars().count()',
+  'actor_id_length: context.actor.id.chars().count()',
+  'claim_count: context.claims.len()',
+  'role_count: context.roles.len()',
+  'channel_present: context.channel.is_some()',
+  'locale_length: context.locale.chars().count()',
+  'causation_id_present: context.causation_id.is_some()',
+  'traceparent_present: context.traceparent.is_some()',
+  'idempotency_key_present: context.idempotency_key.is_some()',
+  'checkout_operation_id_non_nil: !request.checkout_operation_id.is_nil()',
+  'collection_id_present: request.collection_id.is_some()',
+  'collection_id_non_nil: request.collection_id.map(|value| !value.is_nil())',
+  'reason_present: request.reason.is_some()',
+  'reason_length: request.reason.as_ref().map(|value| value.chars().count())',
+  'metadata_kind: payment_metadata_kind(&request.metadata)',
+  'Value::Object(entries) => Some(entries.len())',
+  'Value::Array(entries) => Some(entries.len())',
+]) requireText(wrapper, marker, 'safe wrapper facts');
 
-const mapper = wrapper.slice(wrapper.indexOf('fn map_checkout_payment_compensation_local_port_error('));
-requireText(mapper, 'match (error.code.as_str(), error.message.as_str())', 'exact code-and-message matching');
-for (const [code, message, operationLabel] of [
-  ['port.idempotency_key_required', 'write port calls require a non-empty idempotency key', 'admit_write_idempotency'],
-  ['port.deadline_required', 'port calls require deadline semantics', 'admit_deadline'],
-  ['payment.checkout_compensation_identity_invalid', 'checkout operation and payment collection identity must be non-nil UUIDs', 'validate_compensation_identity'],
-  ['payment.collection_not_found', 'payment collection was not found', 'load_collection'],
-  ['payment.checkout_compensation_manual_reconciliation', 'payment checkout compensation requires manual reconciliation', 'require_manual_reconciliation'],
-  ['payment.checkout_compensation_state_conflict', 'payment collection changed while compensation was being applied', 'apply_compensation_state'],
-  ['payment.checkout_compensation_state_conflict', 'payment lifecycle conflicts with checkout compensation', 'apply_payment_lifecycle'],
-  ['payment.checkout_compensation_provider_state_conflict', 'payment provider cancellation is in an unsupported state', 'validate_provider_journal_state'],
-  ['payment.checkout_compensation_metadata_invalid', 'payment compensation metadata must be a JSON object', 'validate_provider_metadata'],
-  ['payment.checkout_compensation_provider_identity_conflict', 'payment provider identity conflicts with the durable authorization', 'validate_provider_identity'],
-  ['payment.checkout_compensation_encoding_failed', 'payment compensation request could not be encoded', 'encode_provider_cancel_request'],
-  ['payment.database_unavailable', 'payment storage is temporarily unavailable', 'owner_storage'],
-  ['payment.checkout_compensation_validation', 'payment compensation request is invalid', 'validate_owner_request'],
-  ['payment.payment_not_found', 'payment was not found', 'load_payment'],
-  ['payment.refund_not_found', 'refund was not found', 'load_refund'],
-  ['payment.provider_unavailable', 'payment provider is temporarily unavailable', 'execute_provider_cancel'],
-  ['payment.provider_rejected', 'payment provider rejected the requested operation', 'execute_provider_cancel'],
-  ['payment.provider_invalid_response', 'payment provider response could not be applied safely', 'normalize_provider_result'],
-  ['payment.provider_not_configured', 'payment provider is not configured', 'resolve_provider'],
-]) {
-  requireText(mapper, `"${code}"`, `${operationLabel} code`);
-  requireText(mapper, `"${message}"`, `${operationLabel} message`);
-  requireText(mapper, `"${operationLabel}"`, `${operationLabel} local operation`);
-}
-for (const [value, label] of [
-  ['_ => return error,', 'unknown error pass-through'],
-  ['"require_manual_reconciliation" | "validate_provider_journal_state"', 'integrity severity classification'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation', 'technical severity classification'],
-  ['tracing::error!(', 'technical local event'],
-  ['tracing::warn!(', 'ordinary local event'],
-  ['error = ?error', 'complete delegated error'],
-  ['owner = PAYMENT_OWNER', 'truthful owner'],
-  ['operation = COMPENSATE_CHECKOUT_PAYMENT_OPERATION', 'exact public operation'],
-  ['local_operation,', 'local operation field'],
-  ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['checkout_operation_id = %facts.checkout_operation_id', 'checkout operation context'],
-  ['collection_id = ?facts.collection_id', 'collection context'],
-  ['reason_length = ?facts.reason_length', 'reason length context'],
-  ['metadata_kind = facts.metadata_kind', 'metadata kind context'],
-  ['metadata_entry_count = ?facts.metadata_entry_count', 'metadata count context'],
-  ['internal_code = %error.code', 'stable error code'],
-  ['internal_message = %error.message', 'stable error message'],
-  ['error_kind = ?error.kind', 'typed error kind'],
-  ['retryable = error.retryable', 'retryability'],
-  ['boundary = PAYMENT_COMPENSATION_BOUNDARY', 'owner boundary'],
-  ['\n    error\n}', 'same delegated error return'],
-]) requireText(mapper, value, label);
-for (const value of [
-  'payment.tenant_id_invalid',
-  'payment.checkout_compensation_causation_invalid',
-]) forbidText(mapper, value, 'tenant and causation errors must remain owner pass-through');
-for (const value of ['reason =', 'metadata =']) forbidText(mapper, value, 'raw compensation payload diagnostics');
+for (const marker of [
+  'fn checkout_payment_compensation_local_operation(code: &str)',
+  'match code {',
+  'checkout_payment_compensation_local_operation(error.code.as_str())',
+  '"port.idempotency_key_required" => Some("admit_write_idempotency")',
+  '"port.deadline_required" => Some("admit_deadline")',
+  '"payment.checkout_compensation_identity_invalid"',
+  'Some("validate_compensation_identity")',
+  '"payment.checkout_compensation_state_conflict" => Some("apply_compensation_state")',
+  '"payment.checkout_compensation_provider_state_conflict"',
+  'Some("validate_provider_journal_state")',
+  '"payment.provider_unavailable" | "payment.provider_rejected"',
+  'Some("execute_provider_cancel")',
+  '"payment.provider_invalid_response" => Some("normalize_provider_result")',
+  '_ => None,',
+]) requireText(wrapper, marker, 'stable-code wrapper attribution');
+for (const forbidden of [
+  'error.message.as_str()',
+  'match (error.code.as_str(), error.message.as_str())',
+  'write port calls require a non-empty idempotency key',
+  'payment storage is temporarily unavailable',
+  'payment provider is temporarily unavailable',
+]) forbidText(wrapper, forbidden, 'message-independent wrapper classifier');
+
+for (const marker of [
+  'let context_facts = checkout_payment_compensation_context_facts(context);',
+  'correlation_id = %context.correlation_id',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'actor_id_length = context_facts.actor_id_length',
+  'claim_count = context_facts.claim_count',
+  'role_count = context_facts.role_count',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'traceparent_present = context_facts.traceparent_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'checkout_operation_id_non_nil = facts.checkout_operation_id_non_nil',
+  'collection_id_present = facts.collection_id_present',
+  'collection_id_non_nil = ?facts.collection_id_non_nil',
+  'reason_present = facts.reason_present',
+  'reason_length = ?facts.reason_length',
+  'metadata_kind = facts.metadata_kind',
+  'metadata_entry_count = ?facts.metadata_entry_count',
+  'internal_code = %error.code',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+  'retryable = error.retryable',
+  'boundary = PAYMENT_COMPENSATION_BOUNDARY',
+  '\n    error\n}',
+]) requireText(wrapper, marker, 'safe wrapper mapper');
+
+for (const forbidden of [
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'checkout_operation_id = %',
+  'collection_id = ?',
+  'reason =',
+  'metadata =',
+]) forbidText(wrapper, forbidden, 'raw wrapper diagnostics');
 
 for (const [value, label] of [
-  ['pub trait CheckoutPaymentCompensationPort', 'persistent owner trait'],
-  ['pub struct CheckoutPaymentCompensationRequest', 'persistent request DTO'],
-  ['pub struct InProcessCheckoutPaymentCompensationPort', 'private persistent owner type'],
-  ['pub fn in_process_checkout_payment_compensation_port(', 'private persistent factory'],
+  ['pub trait CheckoutPaymentCompensationPort', 'persistent trait'],
+  ['pub struct CheckoutPaymentCompensationRequest', 'persistent request'],
   ['context.require_policy(PortCallPolicy::write())?;', 'persistent write policy'],
   ['context.require_write_semantics()?;', 'persistent write semantics'],
   ['parse_tenant_id(&context, owner_operation)?;', 'persistent tenant validation'],
   ['require_operation_context(&context, owner_operation, request.checkout_operation_id)?;', 'persistent causation validation'],
-  ['format!("payment_collection:{}:cancel", collection.id)', 'canonical cancel idempotency key'],
-  ['"operation": "cancel_payment_collection"', 'canonical provider metadata operation'],
-  ['.execute_cancel(provider_id.as_str(), provider_request)', 'provider cancel execution'],
+  ['format!("payment_collection:{}:cancel", collection.id)', 'canonical cancel key'],
+  ['"operation": "cancel_payment_collection"', 'canonical cancel metadata'],
+  ['.execute_cancel(provider_id.as_str(), provider_request)', 'provider cancel'],
   ['.mark_provider_succeeded(', 'provider success checkpoint'],
   ['.cancel_local_collection(', 'local cancellation'],
-  ['.mark_committed(outcome.operation_id)', 'provider commit checkpoint'],
+  ['.mark_committed(outcome.operation_id)', 'final commit checkpoint'],
 ]) requireText(owner, value, label);
+for (const marker of [
+  'tenant_id = %context.tenant_id',
+  'operation_id = %operation.id',
+  'checkout_operation_id = %checkout_operation_id',
+]) requireText(owner, marker, 'persistent owner diagnostic cleanup remains open');
 
 for (const [value, label] of [
-  ['use rustok_payment::{', 'commerce root payment imports'],
-  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'commerce root compensation contracts'],
-  ['InProcessCheckoutPaymentCompensationPort, PaymentCollectionStatusKind, PaymentProviderRegistry,', 'commerce root wrapper type'],
-  ['in_process_checkout_payment_compensation_port,', 'commerce root wrapper factory'],
+  ['use rustok_payment::{', 'commerce root imports'],
+  ['CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,', 'commerce contracts'],
+  ['InProcessCheckoutPaymentCompensationPort, PaymentCollectionStatusKind, PaymentProviderRegistry,', 'commerce wrapper type'],
+  ['in_process_checkout_payment_compensation_port,', 'commerce wrapper factory'],
 ]) requireText(commerce, value, label);
-forbidText(commerce, 'rustok_payment::checkout_compensation_persistent::', 'commerce private persistent construction');
+forbidText(commerce, 'rustok_payment::checkout_compensation_persistent::', 'commerce persistent bypass');
+
+if (evidence.status !== 'payment_checkout_compensation_wrapper_diagnostic_safety_source_unvalidated') {
+  failures.push(`unexpected evidence status: ${evidence.status}`);
+}
+if (
+  review.status !==
+  'payment_checkout_compensation_wrapper_diagnostic_safety_source_reviewed_unvalidated'
+) {
+  failures.push(`unexpected review status: ${review.status}`);
+}
+for (const [key, expected] of Object.entries({
+  stable_code_only_local_classification: true,
+  human_message_control_flow: false,
+  delegated_port_error_changed: false,
+  public_code_changed: false,
+  public_message_changed: false,
+  public_kind_changed: false,
+  public_retryability_changed: false,
+  owner_delegation_changed: false,
+  request_response_dto_changed: false,
+  persistent_owner_source_changed: false,
+  provider_cancel_policy_changed: false,
+  provider_journal_policy_changed: false,
+  raw_tenant_id_logged_by_wrapper: false,
+  raw_actor_id_logged_by_wrapper: false,
+  raw_channel_logged_by_wrapper: false,
+  raw_locale_logged_by_wrapper: false,
+  raw_causation_id_logged_by_wrapper: false,
+  raw_traceparent_logged_by_wrapper: false,
+  raw_idempotency_key_logged_by_wrapper: false,
+  raw_checkout_operation_id_logged_by_wrapper: false,
+  raw_collection_id_logged_by_wrapper: false,
+  raw_reason_logged_by_wrapper: false,
+  raw_metadata_logged_by_wrapper: false,
+  safe_context_shape_logged: true,
+  safe_request_shape_logged: true,
+  correlation_id_logged: true,
+  original_port_error_private: true,
+  persistent_owner_diagnostic_cleanup_complete: false,
+  broad_ecommerce_cleanup_closed: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`evidence source_contract.${key} must be ${expected}`);
+  }
+}
+for (const key of [
+  'tests_run',
+  'cargo_run',
+  'format_run',
+  'verifiers_run',
+  'workflow_checks_run',
+  'ci_run',
+  'compile_proven',
+  'provider_replay_proven',
+  'restart_proven',
+  'remote_port_proven',
+  'mounted_runtime_proven',
+]) {
+  if (evidence.validation?.[key] !== false) {
+    failures.push(`evidence validation.${key} must remain false`);
+  }
+}
+
+for (const marker of [
+  'Status: **source-ready / unvalidated**',
+  'Human-readable `PortError.message` is not used as control flow.',
+  'The persistent owner in `checkout_compensation.rs` still contains raw tenant',
+  'No FBA or FFA status is promoted from source',
+]) requireText(doc, marker, 'compensation wrapper documentation');
+requireText(
+  paymentPlan,
+  'Payment checkout compensation wrapper diagnostic safety:',
+  'payment owner wrapper status',
+);
+requireText(
+  paymentPlan,
+  'its owner-local raw identifier diagnostics remain the next',
+  'persistent owner nonclaim',
+);
+requireText(
+  commercePlan,
+  'Finish correlation-safe mapper cleanup for order, payment execution/compensation,',
+  'broad ecommerce cleanup remains open',
+);
 
 if (failures.length > 0) {
-  console.error('Payment checkout compensation local-context verification failed:');
-  for (const failure of failures) console.error(`✗ ${failure}`);
+  console.error('Payment checkout compensation wrapper diagnostic-safety verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Public payment compensation construction always uses the context wrapper, including exact admission outcomes, while persistent owner semantics and PortError results remain unchanged',
+  'Payment checkout compensation wrapper uses stable-code attribution and safe context/request shape while preserving persistent owner behavior and public PortError results; runtime evidence remains open',
 );

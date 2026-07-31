@@ -65,7 +65,7 @@ This slice does not change:
 - `PaymentError` to public `PortError` mapping;
 - public codes, messages, kinds, or retryability;
 - successful results or replay adoption;
-- payment compensation source or contracts;
+- payment compensation persistent owner or contracts;
 - Payment FFA/FBA status.
 
 The original internal error remains private to structured tracing.
@@ -80,14 +80,20 @@ The verifier guards code-only classification, safe context/request shape, forbid
 value logging, unchanged public envelopes, unchanged owner delegation, and source-only
 validation flags.
 
+## Related compensation boundary
+
+The public Payment checkout compensation wrapper now also uses stable-code-only
+attribution and safe context/request shape. Its separate evidence is maintained in the
+compensation documentation and verifier.
+
+The private persistent compensation owner still contains raw owner-local identifier
+diagnostics and remains a separate cleanup. This execution slice does not claim that work.
+
 ## Remaining gaps
 
-Payment checkout compensation still uses message-pair classification and raw context/
-identifier diagnostics. It remains the next separate owner-boundary cleanup.
-
-The broad ecommerce correlation-safe mapper item also remains open for remaining owner
-adapters, non-`PortError` envelopes, and runtime evidence. No FBA or FFA status is
-promoted from source inspection.
+The broad ecommerce correlation-safe mapper item remains open for persistent compensation,
+remaining owner adapters, non-`PortError` envelopes, and runtime evidence. No FBA or FFA
+status is promoted from source inspection.
 
 ## Suggested maintainer checks
 
@@ -96,6 +102,7 @@ These commands were intentionally not run by the implementation agent:
 ```bash
 node scripts/verify/verify-payment-checkout-execution-local-context.mjs
 node scripts/verify/verify-payment-checkout-execution-error-safety.mjs
+node scripts/verify/verify-payment-checkout-compensation-local-context.mjs
 node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-payment --lib
