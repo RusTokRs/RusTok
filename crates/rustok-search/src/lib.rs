@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+pub mod forum_document_filters;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
@@ -23,8 +24,8 @@ pub mod models;
 pub mod pg_engine;
 pub mod ports;
 pub mod presets;
-pub mod projection_source;
 mod product_channel_reconciliation;
+pub mod projection_source;
 pub mod projector;
 #[allow(dead_code)]
 #[path = "projector_legacy.rs"]
@@ -55,6 +56,7 @@ pub use engine::{
     canonical_search_result_url,
 };
 pub use engine::{SearchResult, SearchResultItem};
+pub use forum_document_filters::ForumStorefrontDocumentFilters;
 pub use forum_reconciliation::{
     DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionReconciler,
     ForumProjectionSweepReport,
@@ -69,14 +71,14 @@ pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
 pub use ports::*;
 pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
+pub use product_channel_reconciliation::{
+    DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
+    ProductChannelProjectionSweepReport,
+};
 pub use projection_source::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory, SearchProjectionSourceRegistry,
     register_search_projection_source, search_projection_source_registry_from_extensions,
-};
-pub use product_channel_reconciliation::{
-    DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
-    ProductChannelProjectionSweepReport,
 };
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;

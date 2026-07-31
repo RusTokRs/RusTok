@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2F1",
+  "status": "source_complete_execution_pending",
+  "scope": "Apply an exact bounded author filter to explicit Forum-only storefront Search before owner eligibility, visible totals, facets and pagination",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "projection_owner": "crates/rustok-forum/src/search_projection.rs",
+  "public_author_owner": "crates/rustok-forum/src/search_projection_author.rs",
+  "filter_owner": "crates/rustok-search/src/forum_document_filters.rs",
+  "execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "graphql_transport": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "storefront_graphql_adapter": "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+  "storefront_native_adapter": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "storefront_transport_facade": "crates/rustok-search/storefront/src/transport/mod.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2f1-search-author-filter.md",
+  "verifier": "scripts/verify/verify-forum-search-author-filter.mjs",
+  "input": {
+    "graphql_argument": "authorIds",
+    "native_argument": "author_ids",
+    "maximum_values": 10,
+    "value_type": "UUID",
+    "empty_values_preserve_existing_behavior": true
+  },
+  "author_source": {
+    "payload_path": "author.user_id",
+    "origin": "Forum public ProfileSummary projection",
+    "raw_forum_author_id_is_not_used": true,
+    "missing_denied_redacted_or_malformed_author_fails_closed": true,
+    "backfill_required": false
+  },
+  "evaluation": {
+    "explicit_forum_only_category_scope_required": true,
+    "forum_topics_match": true,
+    "approved_forum_replies_match": true,
+    "forum_categories_match_when_filter_active": false,
+    "non_forum_documents_match_when_filter_active": false,
+    "exact_uuid_match": true,
+    "raw_candidate_scan_limit": 100,
+    "raw_candidate_limit_is_checked_before_author_narrowing": true,
+    "author_filter_runs_before_forum_owner_eligibility": true,
+    "author_filter_runs_before_visible_totals": true,
+    "author_filter_runs_before_visible_facets": true,
+    "author_filter_runs_before_offset_and_limit": true,
+    "ranking_order_of_matching_rows_is_preserved": true,
+    "query_rule_pins_disabled_when_filter_active": true
+  },
+  "transport_parity": {
+    "graphql": true,
+    "native_server_function": true,
+    "existing_graphql_operation": "ForumStorefrontSearch",
+    "existing_graphql_operation_changed": false,
+    "additive_author_graphql_operation": "ForumStorefrontSearchByAuthors",
+    "existing_native_endpoint": "search/forum-storefront-search",
+    "existing_native_endpoint_signature_changed": false,
+    "additive_author_native_endpoint": "search/forum-storefront-search-by-authors",
+    "shared_execution_owner": true,
+    "ordinary_storefront_search_changed": false,
+    "mixed_source_search_changed": false,
+    "product_search_changed": false,
+    "admin_preview_changed": false,
+    "admin_global_search_changed": false
+  },
+  "compatibility": {
+    "database_migration_required": false,
+    "projection_backfill_required": false,
+    "public_search_preview_input_changed": false,
+    "search_query_shape_changed": false,
+    "shared_storefront_filter_dto_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "add exact Forum tag and solved filters",
+    "add locale, date, kind, channel/group and attachment-presence Forum filters",
+    "complete owner-issued monotonic projection revisions and durable non-Forum inbox ordering",
+    "complete reconciliation and deletion or ACL-change document cleanup",
+    "capture maintainer-executed PostgreSQL and LINK-FORUM-03 runtime evidence"
+  ],
+  "non_claims": [
+    "This slice does not execute tests, verifiers, Cargo checks, Clippy or runtime evidence",
+    "This slice does not expose a new storefront UI control",
+    "This slice does not authorize raw private author identity",
+    "This slice does not reduce the existing pre-authorization raw candidate bound"
+  ]
+}

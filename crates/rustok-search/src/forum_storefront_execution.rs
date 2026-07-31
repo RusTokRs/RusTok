@@ -8,15 +8,15 @@ use uuid::Uuid;
 
 use crate::engine::{SearchFacetBucket, SearchFacetGroup};
 use crate::{
-    FORUM_SEARCH_SOURCE_MODULE, MAX_FORUM_SEARCH_RESULT_CANDIDATES, PgSearchEngine,
-    SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService, SearchEngine,
-    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
-    SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
-    resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
-    resolve_trusted_storefront_channel,
+    FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
+    PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
+    SearchEngine, SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
+    SearchRankingProfile, SearchResult, SearchResultItem, SearchSettingsService,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
+    StorefrontSearchTransport, TrustedStorefrontChannel, resolve_storefront_search_category_ids,
+    resolve_storefront_search_result_candidates, resolve_trusted_storefront_channel,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -52,6 +52,7 @@ pub struct ForumStorefrontSearchRequest {
     pub source_modules: Vec<String>,
     pub statuses: Vec<String>,
     pub category_ids: Vec<String>,
+    pub author_ids: Vec<String>,
     pub attribute_filters: Vec<ForumStorefrontSearchAttributeFilter>,
     pub sort_attribute_code: Option<String>,
     pub sort_desc: bool,
@@ -123,6 +124,7 @@ struct NormalizedForumStorefrontSearchRequest {
     source_modules: Vec<String>,
     statuses: Vec<String>,
     category_ids: Vec<Uuid>,
+    document_filters: ForumStorefrontDocumentFilters,
     attribute_filters: Vec<SearchAttributeFilter>,
     sort_attribute_code: Option<String>,
     sort_desc: bool,
@@ -140,6 +142,7 @@ pub async fn execute_forum_storefront_search(
 ) -> Result<ForumStorefrontSearchExecution, ForumStorefrontSearchExecutionError> {
     let input = normalize_request(request)?;
     let trusted_channel = input.trusted_channel.clone();
+    let document_filters = input.document_filters.clone();
     let started_at = Instant::now();
     let transform =
         SearchDictionaryService::transform_query(db, input.tenant_id, &input.query).await?;
@@ -211,16 +214,21 @@ pub async fn execute_forum_storefront_search(
         auth,
         request_context,
         &trusted_channel,
+        &document_filters,
         input.transport,
     )
     .await?;
-    let result = SearchDictionaryService::apply_storefront_query_rules(
-        db,
-        &search_query,
-        result,
-        &trusted_channel,
-    )
-    .await?;
+    let result = if document_filters.is_empty() {
+        SearchDictionaryService::apply_storefront_query_rules(
+            db,
+            &search_query,
+            result,
+            &trusted_channel,
+        )
+        .await?
+    } else {
+        result
+    };
     let query_log_id = SearchAnalyticsService::record_query(
         db,
         SearchQueryLogRecord {
@@ -257,6 +265,7 @@ async fn execute_result_eligible_search(
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
     trusted_channel: &TrustedStorefrontChannel,
+    document_filters: &ForumStorefrontDocumentFilters,
     transport: StorefrontSearchTransport,
 ) -> Result<SearchResult, ForumStorefrontSearchExecutionError> {
     let started_at = Instant::now();
@@ -307,6 +316,8 @@ async fn execute_result_eligible_search(
             "Forum storefront Search candidate scan did not resolve one unique row per result",
         ));
     }
+
+    all_items.retain(|item| document_filters.matches(item));
 
     let mut seen_candidates = HashSet::new();
     let candidates = all_items
@@ -493,6 +504,9 @@ fn normalize_request(
         source_modules,
         statuses: normalize_filter_values("statuses", request.statuses)?,
         category_ids,
+        document_filters: ForumStorefrontDocumentFilters {
+            author_ids: normalize_uuid_values("author_ids", request.author_ids)?,
+        },
         attribute_filters: normalize_attribute_filters(request.attribute_filters)?,
         sort_attribute_code: normalize_attribute_code(request.sort_attribute_code)?,
         sort_desc: request.sort_desc,
