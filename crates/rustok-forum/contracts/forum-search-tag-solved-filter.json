@@ -30,6 +30,9 @@
     "reply_solved_path": "payload.is_solution",
     "reply_tags_are_inherited_from_parent_topic": true,
     "legacy_reply_without_topic_tags_fails_closed_when_tag_filter_active": true,
+    "malformed_tag_array_fails_closed": true,
+    "malformed_topic_solution_id_fails_closed": true,
+    "malformed_reply_solution_marker_fails_closed": true,
     "projection_reindex_required_for_reply_tag_matches": true
   },
   "evaluation": {
@@ -37,8 +40,8 @@
     "tag_values_use_and_semantics": true,
     "topic_matches_own_tags": true,
     "reply_matches_parent_topic_tags": true,
-    "solved_true_topic_requires_solution_reply_id": true,
-    "solved_false_topic_requires_no_solution_reply_id": true,
+    "solved_true_topic_requires_valid_solution_reply_id": true,
+    "solved_false_topic_requires_null_solution_reply_id": true,
     "solved_true_reply_requires_is_solution_true": true,
     "solved_false_reply_requires_is_solution_false": true,
     "categories_match_when_filter_active": false,
