@@ -1,0 +1,58 @@
+{
+  "status": "fulfillment_shipping_option_read_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "owner_source": "crates/rustok-fulfillment/src/shipping_option_read.rs",
+    "traits": [
+      "ShippingOptionReadPort",
+      "ShippingOptionAdminReadPort"
+    ],
+    "operations": [
+      "list_shipping_option_projections",
+      "read_shipping_option_projection",
+      "list_all_shipping_option_projections"
+    ],
+    "focused_verifier": "scripts/verify/verify-fulfillment-shipping-option-read-port.mjs",
+    "documentation": "crates/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md"
+  },
+  "source_contract": {
+    "owner_error_variant_count": 5,
+    "complete_fulfillment_error_logged": false,
+    "database_error_payload_logged": false,
+    "uuid_parser_payload_logged": false,
+    "validation_text_logged": false,
+    "transition_text_logged": false,
+    "resource_uuid_logged": false,
+    "raw_context_values_logged": false,
+    "static_error_variant_logged": true,
+    "aggregate_error_shape_logged": true,
+    "safe_context_shape_logged": true,
+    "request_identity_shape_logged": true,
+    "locale_shape_logged": true,
+    "tenant_parse_failure_logged": true,
+    "database_severity_changed": false,
+    "ordinary_severity_changed": false,
+    "read_policy_order_changed": false,
+    "tenant_parse_order_changed": false,
+    "owner_delegation_changed": false,
+    "locale_delegation_changed": false,
+    "public_traits_changed": false,
+    "request_response_dtos_changed": false,
+    "public_code_changed": false,
+    "public_message_changed": false,
+    "public_kind_changed": false,
+    "public_retryability_changed": false,
+    "fulfillment_lifecycle_read_diagnostic_cleanup_closed": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false,
+    "remote_adapter_proven": false
+  }
+}

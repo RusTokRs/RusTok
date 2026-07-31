@@ -7,6 +7,9 @@ use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentService, ShippingOptionResponse};
 
+const FULFILLMENT_OWNER: &str = "rustok_fulfillment";
+const SHIPPING_OPTION_READ_BOUNDARY: &str = "fulfillment_shipping_option_read_port";
+
 /// Transport-neutral owner boundary for storefront-complete shipping-option reads.
 #[async_trait]
 pub trait ShippingOptionReadPort: Send + Sync {
@@ -94,6 +97,42 @@ pub fn in_process_shipping_option_admin_read_port(
     db: sea_orm::DatabaseConnection,
 ) -> Arc<dyn ShippingOptionAdminReadPort> {
     Arc::new(InProcessShippingOptionAdminReadPort::new(db))
+}
+
+struct ShippingOptionReadContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
+struct ShippingOptionOwnerErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+struct ShippingOptionReadRequestFacts {
+    shipping_option_id_present: bool,
+    shipping_option_id_non_nil: bool,
+    requested_locale_present: bool,
+    requested_locale_length: Option<usize>,
+    tenant_default_locale_present: bool,
+    tenant_default_locale_length: Option<usize>,
 }
 
 #[async_trait]
@@ -190,22 +229,135 @@ impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort {
     }
 }
 
+fn shipping_option_read_context_facts(context: &PortContext) -> ShippingOptionReadContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    ShippingOptionReadContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn shipping_option_owner_error_facts(error: &FulfillmentError) -> ShippingOptionOwnerErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        FulfillmentError::Validation(value) => (
+            "validation",
+            1,
+            value.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        FulfillmentError::ShippingOptionNotFound(id) => (
+            "shipping_option_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        FulfillmentError::FulfillmentNotFound(id) => (
+            "fulfillment_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        FulfillmentError::InvalidTransition { from, to } => (
+            "invalid_transition",
+            2,
+            from.chars().count() + to.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
+    };
+    ShippingOptionOwnerErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
+fn shipping_option_read_request_facts(
+    shipping_option_id: Option<Uuid>,
+    requested_locale_length: Option<usize>,
+    tenant_default_locale_length: Option<usize>,
+) -> ShippingOptionReadRequestFacts {
+    ShippingOptionReadRequestFacts {
+        shipping_option_id_present: shipping_option_id.is_some(),
+        shipping_option_id_non_nil: shipping_option_id
+            .map(|value| !value.is_nil())
+            .unwrap_or(false),
+        requested_locale_present: requested_locale_length.is_some(),
+        requested_locale_length,
+        tenant_default_locale_present: tenant_default_locale_length.is_some(),
+        tenant_default_locale_length,
+    }
+}
+
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        let context_facts = shipping_option_read_context_facts(context);
         tracing::warn!(
-            error = ?error,
-            owner = "rustok_fulfillment",
+            owner = FULFILLMENT_OWNER,
             operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel_length = context.channel.as_deref().map(str::len),
-            locale_length = context.locale.len(),
-            causation_id_present = context.causation_id.is_some(),
-            traceparent_present = context.traceparent.is_some(),
-            deadline_ms = ?context.deadline_ms,
+            tenant_id_parse_failed = true,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
             code = "fulfillment.context_invalid",
-            boundary = "fulfillment_shipping_option_read_port",
+            boundary = SHIPPING_OPTION_READ_BOUNDARY,
             "fulfillment shipping-option read context is invalid"
         );
         PortError::validation(
@@ -224,86 +376,124 @@ fn map_owner_error(
     tenant_default_locale_length: Option<usize>,
     error: FulfillmentError,
 ) -> PortError {
-    let (kind, code, message, retryable, error_kind) = match &error {
+    let error_facts = shipping_option_owner_error_facts(&error);
+    let request_facts = shipping_option_read_request_facts(
+        shipping_option_id,
+        requested_locale_length,
+        tenant_default_locale_length,
+    );
+    let (kind, code, message, retryable, technical_failure) = match &error {
         FulfillmentError::Validation(_) => (
             PortErrorKind::Validation,
             "fulfillment.validation",
             "fulfillment request is invalid",
             false,
-            "validation",
+            false,
         ),
         FulfillmentError::ShippingOptionNotFound(_) => (
             PortErrorKind::NotFound,
             "fulfillment.shipping_option_not_found",
             "shipping option was not found",
             false,
-            "shipping_option_not_found",
+            false,
         ),
         FulfillmentError::FulfillmentNotFound(_) => (
             PortErrorKind::NotFound,
             "fulfillment.fulfillment_not_found",
             "fulfillment was not found",
             false,
-            "fulfillment_not_found",
+            false,
         ),
         FulfillmentError::InvalidTransition { .. } => (
             PortErrorKind::Conflict,
             "fulfillment.invalid_transition",
             "fulfillment lifecycle transition conflicts with the current state",
             false,
-            "invalid_transition",
+            false,
         ),
         FulfillmentError::Database(_) => (
             PortErrorKind::Unavailable,
             "fulfillment.database_unavailable",
             "fulfillment storage is temporarily unavailable",
             true,
-            "database",
+            true,
         ),
     };
+    let context_facts = shipping_option_read_context_facts(context);
 
-    if matches!(&error, FulfillmentError::Database(_)) {
+    if technical_failure {
         tracing::error!(
-            error = ?error,
-            owner = "rustok_fulfillment",
+            owner = FULFILLMENT_OWNER,
             operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel_length = context.channel.as_deref().map(str::len),
-            locale_length = context.locale.len(),
-            causation_id_present = context.causation_id.is_some(),
-            traceparent_present = context.traceparent.is_some(),
-            deadline_ms = ?context.deadline_ms,
-            shipping_option_id = ?shipping_option_id,
-            requested_locale_length = ?requested_locale_length,
-            tenant_default_locale_length = ?tenant_default_locale_length,
-            error_kind,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            shipping_option_id_present = request_facts.shipping_option_id_present,
+            shipping_option_id_non_nil = request_facts.shipping_option_id_non_nil,
+            requested_locale_present = request_facts.requested_locale_present,
+            requested_locale_length = ?request_facts.requested_locale_length,
+            tenant_default_locale_present = request_facts.tenant_default_locale_present,
+            tenant_default_locale_length = ?request_facts.tenant_default_locale_length,
+            error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
             code,
             retryable,
-            boundary = "fulfillment_shipping_option_read_port",
-            "fulfillment shipping-option read failed"
+            boundary = SHIPPING_OPTION_READ_BOUNDARY,
+            "fulfillment shipping-option read failed with bounded diagnostics"
         );
     } else {
         tracing::warn!(
-            owner = "rustok_fulfillment",
+            owner = FULFILLMENT_OWNER,
             operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel_length = context.channel.as_deref().map(str::len),
-            locale_length = context.locale.len(),
-            causation_id_present = context.causation_id.is_some(),
-            traceparent_present = context.traceparent.is_some(),
-            deadline_ms = ?context.deadline_ms,
-            shipping_option_id = ?shipping_option_id,
-            requested_locale_length = ?requested_locale_length,
-            tenant_default_locale_length = ?tenant_default_locale_length,
-            error_kind,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            shipping_option_id_present = request_facts.shipping_option_id_present,
+            shipping_option_id_non_nil = request_facts.shipping_option_id_non_nil,
+            requested_locale_present = request_facts.requested_locale_present,
+            requested_locale_length = ?request_facts.requested_locale_length,
+            tenant_default_locale_present = request_facts.tenant_default_locale_present,
+            tenant_default_locale_length = ?request_facts.tenant_default_locale_length,
+            error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
             code,
             retryable,
-            boundary = "fulfillment_shipping_option_read_port",
-            "fulfillment shipping-option read was rejected"
+            boundary = SHIPPING_OPTION_READ_BOUNDARY,
+            "fulfillment shipping-option read was rejected with bounded diagnostics"
         );
     }
 
