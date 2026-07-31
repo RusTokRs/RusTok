@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2F4",
+  "status": "source_complete_execution_pending",
+  "scope": "Add exact bounded topic or reply kind filtering to explicit Forum-only storefront Search before owner eligibility, visible totals, facets and pagination",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "filter_owner": "crates/rustok-search/src/forum_document_filters.rs",
+  "execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "graphql_transport": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "storefront_graphql_adapter": "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+  "storefront_native_adapter": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "storefront_transport_facade": "crates/rustok-search/storefront/src/transport/mod.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2f4-search-kind-filter.md",
+  "verifier": "scripts/verify/verify-forum-search-kind-filter.mjs",
+  "input": {
+    "graphql_argument": "kinds",
+    "native_argument": "kinds",
+    "allowed_values": ["topic", "reply"],
+    "maximum_values": 2,
+    "normalization": "trimmed_ascii_lowercase_exact",
+    "duplicates_removed": true,
+    "empty_values_preserve_existing_behavior": true
+  },
+  "evaluation": {
+    "explicit_forum_only_category_scope_required": true,
+    "topic_maps_to_entity_type": "forum_topic",
+    "reply_maps_to_entity_type": "forum_reply",
+    "categories_match_when_filter_active": false,
+    "non_forum_documents_match_when_filter_active": false,
+    "raw_candidate_scan_limit": 100,
+    "raw_candidate_limit_is_checked_before_kind_narrowing": true,
+    "kind_intersects_author_tag_solved_and_date": true,
+    "filters_run_before_forum_owner_eligibility": true,
+    "filters_run_before_visible_totals": true,
+    "filters_run_before_visible_facets": true,
+    "filters_run_before_offset_and_limit": true,
+    "ranking_order_of_matching_rows_is_preserved": true,
+    "query_rule_pins_disabled_when_kind_filter_active": true
+  },
+  "transport_compatibility": {
+    "existing_graphql_operations": [
+      "ForumStorefrontSearch",
+      "ForumStorefrontSearchByAuthors",
+      "ForumStorefrontSearchByFilters",
+      "ForumStorefrontSearchByDateWindow"
+    ],
+    "additive_graphql_operation": "ForumStorefrontSearchByKinds",
+    "existing_native_endpoints": [
+      "search/forum-storefront-search",
+      "search/forum-storefront-search-by-authors",
+      "search/forum-storefront-search-by-filters",
+      "search/forum-storefront-search-by-date-window"
+    ],
+    "additive_native_endpoint": "search/forum-storefront-search-by-kinds",
+    "existing_wire_signatures_changed": false,
+    "single_existing_execution_owner": true
+  },
+  "compatibility": {
+    "database_migration_required": false,
+    "forum_projection_shape_changed": false,
+    "public_search_preview_input_changed": false,
+    "search_query_shape_changed": false,
+    "shared_storefront_filter_dto_changed": false,
+    "ordinary_storefront_search_changed": false,
+    "mixed_source_search_changed": false,
+    "product_search_changed": false,
+    "admin_search_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "add channel or group and attachment-presence Forum filters",
+    "complete owner-issued monotonic projection revisions and durable non-Forum inbox ordering",
+    "complete reconciliation and deletion or ACL-change document cleanup",
+    "capture maintainer-executed PostgreSQL, reindex and LINK-FORUM-03 runtime evidence"
+  ],
+  "non_claims": [
+    "This slice does not implement future Forum topic policies such as wiki, announcement or Q&A kinds",
+    "This slice does not execute tests, verifiers, Cargo checks, Clippy or runtime evidence",
+    "This slice does not expose a new storefront UI control",
+    "This slice does not reduce the existing pre-authorization raw candidate bound"
+  ]
+}
