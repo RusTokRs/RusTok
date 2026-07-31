@@ -8,7 +8,8 @@ use crate::{
     PgSearchEngine, SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsService, SearchAttributeFilter,
     SearchDiagnosticsService, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
     SearchModule, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
-    SearchSuggestionQuery, SearchSuggestionService, resolve_trusted_storefront_channel,
+    SearchSuggestionQuery, SearchSuggestionService, TrustedStorefrontChannel,
+    resolve_trusted_storefront_channel,
 };
 use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext, graphql::GraphQLError,
@@ -470,7 +471,13 @@ impl SearchQueryRoot {
             sort_desc: input.sort_desc,
         };
 
-        let result = run_search_with_dictionaries(db, &engine, search_query.clone()).await;
+        let result = run_storefront_search_with_dictionaries(
+            db,
+            &engine,
+            search_query.clone(),
+            &trusted_channel,
+        )
+        .await;
         finalize_search_result(
             db,
             policy.surface,
@@ -492,6 +499,9 @@ impl SearchQueryRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_suggestions_input(input)?;
+        let request_context = ctx.data::<RequestContext>()?;
+        let trusted_channel = resolve_trusted_storefront_channel(request_context, tenant.id, None)
+            .map_err(|error| FieldError::new(error.to_string()))?;
         enforce_storefront_rate_limit(ctx, STOREFRONT_SUGGESTIONS_SURFACE).await?;
         let tenant_id = resolve_surface_tenant_scope(
             tenant,
@@ -503,7 +513,7 @@ impl SearchQueryRoot {
             return Ok(Vec::new());
         }
 
-        let suggestions = SearchSuggestionService::suggestions(
+        let suggestions = SearchSuggestionService::storefront_suggestions(
             db,
             SearchSuggestionQuery {
                 tenant_id,
@@ -512,6 +522,7 @@ impl SearchQueryRoot {
                 limit: normalize_suggestions_limit(input.limit),
                 published_only: true,
             },
+            &trusted_channel,
         )
         .await
         .map_err(map_search_module_error)?;
@@ -1056,6 +1067,18 @@ async fn run_search_with_dictionaries(
 ) -> rustok_core::Result<crate::SearchResult> {
     let result = engine.search(search_query.clone()).await?;
     SearchDictionaryService::apply_query_rules(db, &search_query, result).await
+}
+
+async fn run_storefront_search_with_dictionaries(
+    db: &sea_orm::DatabaseConnection,
+    engine: &PgSearchEngine,
+    search_query: SearchQuery,
+    channel: &TrustedStorefrontChannel,
+) -> rustok_core::Result<crate::SearchResult> {
+    let result = engine
+        .search_storefront(search_query.clone(), channel)
+        .await?;
+    SearchDictionaryService::apply_storefront_query_rules(db, &search_query, result, channel).await
 }
 
 fn classify_search_error(error: &rustok_core::Error) -> &'static str {

@@ -95,8 +95,14 @@ mod tests {
             "channel_visibility": { "allowed_channel_slugs": [] }
         });
 
-        assert!(product_payload_visible_for_storefront(&payload, &channel(Some("web"))));
-        assert!(product_payload_visible_for_storefront(&payload, &channel(None)));
+        assert!(product_payload_visible_for_storefront(
+            &payload,
+            &channel(Some("web"))
+        ));
+        assert!(product_payload_visible_for_storefront(
+            &payload,
+            &channel(None)
+        ));
     }
 
     #[test]
@@ -105,9 +111,18 @@ mod tests {
             "channel_visibility": { "allowed_channel_slugs": ["web"] }
         });
 
-        assert!(product_payload_visible_for_storefront(&payload, &channel(Some(" Web "))));
-        assert!(!product_payload_visible_for_storefront(&payload, &channel(Some("mobile"))));
-        assert!(!product_payload_visible_for_storefront(&payload, &channel(None)));
+        assert!(product_payload_visible_for_storefront(
+            &payload,
+            &channel(Some(" Web "))
+        ));
+        assert!(!product_payload_visible_for_storefront(
+            &payload,
+            &channel(Some("mobile"))
+        ));
+        assert!(!product_payload_visible_for_storefront(
+            &payload,
+            &channel(None)
+        ));
     }
 
     #[test]

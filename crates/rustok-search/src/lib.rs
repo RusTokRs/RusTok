@@ -32,6 +32,7 @@ pub mod ranking;
 pub mod search_settings;
 pub mod storefront_category_scope;
 pub mod storefront_channel_authority;
+mod storefront_product_channel_visibility;
 pub mod storefront_result_eligibility;
 pub mod suggestions;
 

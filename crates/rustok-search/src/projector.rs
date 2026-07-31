@@ -15,6 +15,15 @@ WHERE tenant_id = $1
   AND entity_type IN ('node', 'product')
 "#;
 
+const PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL: &str = r#"
+SELECT COUNT(*) AS total
+FROM search_documents
+WHERE tenant_id = $1
+  AND entity_type = 'product'
+  AND jsonb_typeof(payload #> '{channel_visibility,allowed_channel_slugs}')
+      IS DISTINCT FROM 'array'
+"#;
+
 /// Search-owned projector facade.
 ///
 /// Tenant rebuilds replace only the direct `node` and `product` scopes owned by
@@ -54,7 +63,25 @@ impl SearchProjector {
             .unwrap_or(0);
         if total == 0 {
             self.rebuild_tenant(tenant_id).await?;
+            return Ok(());
         }
+
+        let drift_statement = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL,
+            vec![tenant_id.into()],
+        );
+        let drift_total = self
+            .db
+            .query_one(drift_statement)
+            .await
+            .map_err(Error::Database)?
+            .and_then(|row| row.try_get::<i64>("", "total").ok())
+            .unwrap_or(0);
+        if drift_total > 0 {
+            self.rebuild_product_scope(tenant_id).await?;
+        }
+
         Ok(())
     }
 
@@ -161,7 +188,7 @@ fn record_scope_preserving_rebuild(tenant_id: Uuid, result: &Result<()>, started
 
 #[cfg(test)]
 mod tests {
-    use super::CORE_SCOPE_COUNT_SQL;
+    use super::{CORE_SCOPE_COUNT_SQL, PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL};
 
     #[test]
     fn bootstrap_count_is_limited_to_direct_search_scopes() {
@@ -169,5 +196,12 @@ mod tests {
         assert!(!CORE_SCOPE_COUNT_SQL.contains("blog_post"));
         assert!(!CORE_SCOPE_COUNT_SQL.contains("forum_category"));
         assert!(!CORE_SCOPE_COUNT_SQL.contains("forum_topic"));
+    }
+
+    #[test]
+    fn product_channel_visibility_drift_is_fail_closed() {
+        assert!(PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL.contains("entity_type = 'product'"));
+        assert!(PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL.contains("allowed_channel_slugs"));
+        assert!(PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL.contains("IS DISTINCT FROM 'array'"));
     }
 }

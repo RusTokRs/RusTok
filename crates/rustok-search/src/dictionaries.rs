@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use rustok_core::{Error, Result};
 
+use crate::TrustedStorefrontChannel;
 use crate::engine::{SearchQuery, SearchResult, SearchResultItem};
+use crate::storefront_product_channel_visibility::product_payload_visible_for_storefront;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchSynonymRecord {
@@ -374,7 +376,25 @@ impl SearchDictionaryService {
     pub async fn apply_query_rules(
         db: &DatabaseConnection,
         query: &SearchQuery,
+        result: SearchResult,
+    ) -> Result<SearchResult> {
+        Self::apply_query_rules_with_storefront_channel(db, query, result, None).await
+    }
+
+    pub async fn apply_storefront_query_rules(
+        db: &DatabaseConnection,
+        query: &SearchQuery,
+        result: SearchResult,
+        channel: &TrustedStorefrontChannel,
+    ) -> Result<SearchResult> {
+        Self::apply_query_rules_with_storefront_channel(db, query, result, Some(channel)).await
+    }
+
+    async fn apply_query_rules_with_storefront_channel(
+        db: &DatabaseConnection,
+        query: &SearchQuery,
         mut result: SearchResult,
+        storefront_channel: Option<&TrustedStorefrontChannel>,
     ) -> Result<SearchResult> {
         ensure_postgres(db)?;
 
@@ -408,7 +428,9 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if let Some(item) = Self::load_pinned_item(db, query, rule.document_id).await? {
+            if let Some(item) =
+                Self::load_pinned_item(db, query, rule.document_id, storefront_channel).await?
+            {
                 pinned.push((rule.pinned_position.max(1), item));
             }
         }
@@ -427,6 +449,7 @@ impl SearchDictionaryService {
         db: &DatabaseConnection,
         query: &SearchQuery,
         document_id: Uuid,
+        storefront_channel: Option<&TrustedStorefrontChannel>,
     ) -> Result<Option<SearchResultItem>> {
         let tenant_id = query
             .tenant_id
@@ -445,7 +468,7 @@ impl SearchDictionaryService {
         );
 
         let row = db.query_one(stmt).await.map_err(Error::Database)?;
-        row.filter(|row| pinned_item_matches_query(query, row))
+        row.filter(|row| pinned_item_matches_query(query, row, storefront_channel))
             .map(map_pinned_item_row)
             .transpose()
     }
@@ -652,7 +675,11 @@ fn has_catalog_filters(query: &SearchQuery) -> bool {
     !query.category_ids.is_empty() || !query.attribute_filters.is_empty()
 }
 
-fn pinned_item_matches_query(query: &SearchQuery, row: &QueryResult) -> bool {
+fn pinned_item_matches_query(
+    query: &SearchQuery,
+    row: &QueryResult,
+    storefront_channel: Option<&TrustedStorefrontChannel>,
+) -> bool {
     let entity_type = match row.try_get::<String>("", "entity_type") {
         Ok(value) => value,
         Err(_) => return false,
@@ -690,6 +717,17 @@ fn pinned_item_matches_query(query: &SearchQuery, row: &QueryResult) -> bool {
     }
     if !query.statuses.is_empty() && !query.statuses.contains(&status) {
         return false;
+    }
+    if entity_type == "product" {
+        if let Some(channel) = storefront_channel {
+            let payload = match row.try_get::<serde_json::Value>("", "payload") {
+                Ok(value) => value,
+                Err(_) => return false,
+            };
+            if !product_payload_visible_for_storefront(&payload, channel) {
+                return false;
+            }
+        }
     }
 
     true

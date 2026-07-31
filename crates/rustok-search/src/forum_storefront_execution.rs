@@ -14,7 +14,7 @@ use crate::{
     SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
     SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
     resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
     resolve_trusted_storefront_channel,
 };
@@ -128,6 +128,7 @@ struct NormalizedForumStorefrontSearchRequest {
     sort_desc: bool,
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
+    trusted_channel: TrustedStorefrontChannel,
     transport: StorefrontSearchTransport,
 }
 
@@ -138,6 +139,7 @@ pub async fn execute_forum_storefront_search(
     request: ForumStorefrontSearchRequest,
 ) -> Result<ForumStorefrontSearchExecution, ForumStorefrontSearchExecutionError> {
     let input = normalize_request(request)?;
+    let trusted_channel = input.trusted_channel.clone();
     let started_at = Instant::now();
     let transform =
         SearchDictionaryService::transform_query(db, input.tenant_id, &input.query).await?;
@@ -208,10 +210,17 @@ pub async fn execute_forum_storefront_search(
         effective_locale,
         auth,
         request_context,
+        &trusted_channel,
         input.transport,
     )
     .await?;
-    let result = SearchDictionaryService::apply_query_rules(db, &search_query, result).await?;
+    let result = SearchDictionaryService::apply_storefront_query_rules(
+        db,
+        &search_query,
+        result,
+        &trusted_channel,
+    )
+    .await?;
     let query_log_id = SearchAnalyticsService::record_query(
         db,
         SearchQueryLogRecord {
@@ -247,6 +256,7 @@ async fn execute_result_eligible_search(
     effective_locale: String,
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
+    trusted_channel: &TrustedStorefrontChannel,
     transport: StorefrontSearchTransport,
 ) -> Result<SearchResult, ForumStorefrontSearchExecutionError> {
     let started_at = Instant::now();
@@ -255,7 +265,9 @@ async fn execute_result_eligible_search(
     scan_query.limit = FORUM_RESULT_SCAN_PAGE_SIZE;
     scan_query.offset = 0;
 
-    let first_page = engine.search(scan_query.clone()).await?;
+    let first_page = engine
+        .search_storefront(scan_query.clone(), trusted_channel)
+        .await?;
     let raw_total = usize::try_from(first_page.total).map_err(|_| {
         ForumStorefrontSearchExecutionError::Validation(
             "Forum storefront Search candidate count is too large".to_string(),
@@ -274,7 +286,9 @@ async fn execute_result_eligible_search(
     register_raw_rows(&mut raw_rows, &all_items)?;
     while all_items.len() < raw_total {
         scan_query.offset = all_items.len();
-        let page = engine.search(scan_query.clone()).await?;
+        let page = engine
+            .search_storefront(scan_query.clone(), trusted_channel)
+            .await?;
         if page.total != raw_total as u64 || page.items.is_empty() {
             return Err(ForumStorefrontSearchExecutionError::Invariant(
                 "Forum storefront Search candidate snapshot changed during bounded eligibility evaluation",
@@ -484,6 +498,7 @@ fn normalize_request(
         sort_desc: request.sort_desc,
         auth: request.auth,
         request_context: Some(request_context),
+        trusted_channel,
         transport: request.transport,
     })
 }

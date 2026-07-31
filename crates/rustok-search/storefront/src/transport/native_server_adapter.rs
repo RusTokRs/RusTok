@@ -99,8 +99,8 @@ async fn storefront_search_native(
         use leptos::prelude::expect_context;
         use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};
         use rustok_search::{
-            PgSearchEngine, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
-            SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
+            PgSearchEngine, SearchDictionaryService, SearchFilterPresetService, SearchQuery,
+            SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
             resolve_trusted_storefront_channel,
         };
         use std::time::Instant;
@@ -161,12 +161,17 @@ async fn storefront_search_native(
         };
 
         let result = PgSearchEngine::new(db.clone())
-            .search(search_query.clone())
+            .search_storefront(search_query.clone(), &trusted_channel)
             .await
             .map_err(server_error)?;
-        let result = SearchDictionaryService::apply_query_rules(&db, &search_query, result)
-            .await
-            .map_err(server_error)?;
+        let result = SearchDictionaryService::apply_storefront_query_rules(
+            &db,
+            &search_query,
+            result,
+            &trusted_channel,
+        )
+        .await
+        .map_err(server_error)?;
         let query_log_id = rustok_search::SearchAnalyticsService::record_query(
             &db,
             SearchQueryLogRecord {
@@ -242,20 +247,27 @@ async fn storefront_search_suggestions_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{HostRuntimeContext, TenantContext};
-        use rustok_search::{SearchSuggestionQuery, SearchSuggestionService};
+        use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};
+        use rustok_search::{
+            SearchSuggestionQuery, SearchSuggestionService, resolve_trusted_storefront_channel,
+        };
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let trusted_channel = resolve_trusted_storefront_channel(&request_context, tenant.id, None)
+            .map_err(|error| ServerFnError::new(error.to_string()))?;
         let query = normalize_query(&query)?;
         let locale = normalize_locale(locale.as_deref())?;
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let suggestions = SearchSuggestionService::suggestions(
+        let suggestions = SearchSuggestionService::storefront_suggestions(
             &db,
             SearchSuggestionQuery {
                 tenant_id: tenant.id,
@@ -264,6 +276,7 @@ async fn storefront_search_suggestions_native(
                 limit: 6,
                 published_only: true,
             },
+            &trusted_channel,
         )
         .await
         .map_err(server_error)?;
