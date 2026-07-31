@@ -13,6 +13,8 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const authoritySource = read('crates/rustok-api/src/context/host_authority.rs');
 const apiContextSource = read('crates/rustok-api/src/context/mod.rs');
 const apiLibSource = read('crates/rustok-api/src/lib.rs');
+const serverAuthSource = read('apps/server/src/auth.rs');
+const oauthTokenSource = read('apps/server/src/services/oauth_token_service.rs');
 const tenantMiddlewareSource = read('apps/server/src/middleware/auth_context.rs');
 const eventsNativeSource = read(
   'crates/rustok-events-module/admin/src/transport/native_server_adapter.rs',
@@ -57,6 +59,7 @@ for (const [value, label] of [
   ['pub struct HostAuthorityContext', 'typed host context'],
   ['actor_id: Uuid', 'operator identity binding'],
   ['(!actor_id.is_nil()).then_some', 'nil actor rejection'],
+  ['pub fn for_actor', 'explicit actor constructor'],
   ['pub const fn allows', 'authority hierarchy'],
   ['(HostAuthority::Read, HostAuthority::Read)', 'explicit read hierarchy'],
   ['(HostAuthority::Manage, HostAuthority::Read)', 'explicit manage-to-read hierarchy'],
@@ -72,10 +75,75 @@ forbidText(
 );
 requireText(apiContextSource, 'HostAuthorityContext', 'context export');
 requireText(apiLibSource, 'HostAuthorityContext', 'crate export');
+
+const hostPolicyBlock = between(
+  serverAuthSource,
+  'pub struct HostAuthorityPolicy',
+  'pub struct PasswordResetClaims',
+  'host operator policy',
+);
+for (const [value, label] of [
+  ['RUSTOK_HOST_AUTHORITY_CLIENTS', 'host-owned configuration key'],
+  ['<client-uuid>=read|manage', 'documented exact mapping format'],
+  ['Uuid::parse_str', 'exact client UUID parsing'],
+  ['client_id.is_nil()', 'nil client rejection'],
+  ['contains duplicate client UUID', 'duplicate client rejection'],
+  ['SecurityActorKind::Service', 'service-only authority'],
+  ['grant_type != CLIENT_CREDENTIALS_GRANT_TYPE', 'client-credentials-only authority'],
+  ['HostAuthorityContext::for_actor(authority, actor_id)', 'typed operator context'],
+]) {
+  requireText(hostPolicyBlock, value, label);
+}
+for (const [value, label] of [
+  ['Permission::', 'tenant permissions must not issue host authority'],
+  ['has_effective_permission', 'tenant permission implication must not issue host authority'],
+  ['scopes', 'OAuth scopes must not issue host authority'],
+  ['metadata', 'OAuth app metadata must not issue host authority'],
+  ['UserRole', 'tenant roles must not issue host authority'],
+]) {
+  forbidText(hostPolicyBlock, value, label);
+}
+
+const serviceTokenIssue = between(
+  oauthTokenSource,
+  'fn issue_service_access_token(',
+  'async fn prepare_user_tokens(',
+  'service token issuance',
+);
+requireText(
+  serviceTokenIssue,
+  'CLIENT_CREDENTIALS_GRANT_TYPE',
+  'service tokens retain explicit client-credentials grant',
+);
+const userTokenIssue = between(
+  oauthTokenSource,
+  'async fn prepare_user_tokens(',
+  'fn parse_requested_scopes(',
+  'user token issuance',
+);
+for (const grant of ['AUTHORIZATION_CODE_GRANT_TYPE', 'REFRESH_TOKEN_GRANT_TYPE']) {
+  requireText(userTokenIssue, grant, `user token ${grant}`);
+}
+forbidText(
+  userTokenIssue,
+  'HostAuthorityContext',
+  'authorization-code and refresh issuance stay tenant-only',
+);
+
+requireOrder(
+  tenantMiddlewareSource,
+  [
+    'resolve_current_user(&mut parts, &ctx).await',
+    'host_authority_context_for_authenticated_actor(',
+    'parts.extensions.insert(host_authority);',
+    'parts.extensions.insert(AuthContextExtension(AuthContext {',
+  ],
+  'native request host-authority issuance after authentication',
+);
 forbidText(
   tenantMiddlewareSource,
-  'HostAuthorityContext',
-  'ordinary tenant authentication must not issue host authority',
+  'Permission::SETTINGS_',
+  'native host authority must not derive from tenant settings permissions',
 );
 
 const nativeRead = between(
@@ -118,10 +186,20 @@ for (const [block, label] of [
   forbidText(block, 'has_effective_permission', label);
 }
 
-requireText(
+const systemGuard = between(
   systemSource,
   'fn require_host_authority(',
+  '// ── Query',
   'system host authority helper',
+);
+requireOrder(
+  systemGuard,
+  [
+    'ctx.data::<AuthContext>()',
+    'host_authority_context_for_authenticated_actor(',
+    '.filter(|authority| authority.allows(required))',
+  ],
+  'System GraphQL host authority derivation',
 );
 for (const [start, end, operation] of [
   ['async fn system_health(', 'async fn cache_health(', 'system health'],
@@ -139,6 +217,7 @@ for (const [start, end, operation] of [
 
 for (const [value, label] of [
   ['fn require_host_authority(', 'settings host authority helper'],
+  ['host_authority_context_for_authenticated_actor(', 'settings host policy lookup'],
   ['fn require_host_actor', 'settings host actor helper'],
   ['authority.actor_id() != auth.user_id', 'operator/auth actor equality'],
 ]) {
@@ -208,5 +287,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Host-global diagnostics and runtime controls require typed host authority; tenant RBAC and OAuth wildcards cannot issue it',
+  '✔ Exact host-configured client_credentials services receive typed host authority; human, tenant RBAC, scope, metadata and wildcard paths remain denied',
 );
