@@ -99,11 +99,13 @@ for (const marker of [
 ]) {
   requireMarker(content.contract, marker, `${paths.contract}: sealed payload missing ${marker}`);
 }
-requireMarker(
-  content.rbacLib,
+for (const marker of [
   "ArtifactPermissionEventPublisher",
-  `${paths.rbacLib}: owner publisher port must be exported`,
-);
+  "fn dependencies(&self) -> &[&'static str]",
+  '&["outbox"]',
+]) {
+  requireMarker(content.rbacLib, marker, `${paths.rbacLib}: runtime contract missing ${marker}`);
+}
 
 for (const marker of [
   "pub trait ArtifactPermissionEventPublisher",
