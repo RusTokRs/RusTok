@@ -36,7 +36,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::ForumStorefrontDocumentFilters;
-    use crate::{SearchResultItem, SearchRankingProfile};
+    use crate::SearchResultItem;
 
     fn item(entity_type: &str, author_id: Option<Uuid>) -> SearchResultItem {
         SearchResultItem {
