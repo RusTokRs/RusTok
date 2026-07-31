@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_server_adapter",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-69.md",
+  "source_contract": {
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "shared_protocol": "crates/rustok-comments/src/tcp_protocol.rs",
+    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "port": "rustok_comments::CommentsThreadPort",
+    "request": "rustok_comments::CommentsThreadRequest",
+    "response": "rustok_comments::CommentsThreadResponse",
+    "reply": "rustok_comments::CommentsThreadTransportReply"
+  },
+  "protocol": {
+    "identity": "comments_tcp_length_prefixed_json_v1",
+    "length_prefix": "u32_big_endian",
+    "one_request_per_connection": true,
+    "one_reply_per_connection": true,
+    "default_max_frame_bytes": 8388608,
+    "shared_client_server_framing": true
+  },
+  "operations": [
+    "create_comment",
+    "get_comment",
+    "list_comments_for_target",
+    "list_public_comments_for_target",
+    "update_comment",
+    "set_comment_status",
+    "delete_comment"
+  ],
+  "authority": {
+    "resolver": "rustok_comments::CommentsTcpAuthorityResolver",
+    "required": true,
+    "allow_all_fallback": false,
+    "inputs": [
+      "peer_addr",
+      "operation",
+      "claimed_context"
+    ],
+    "trusted_output": "rustok_comments::TrustedCommentsTcpAuthority",
+    "tenant_match_required": true,
+    "replaced_fields": [
+      "actor",
+      "claims",
+      "roles"
+    ],
+    "preserved_request_metadata": [
+      "channel",
+      "locale",
+      "correlation_id",
+      "causation_id",
+      "traceparent",
+      "idempotency_key",
+      "deadline_ms"
+    ]
+  },
+  "deadline": {
+    "required_before_dispatch": true,
+    "server_scope": "authority_resolution_and_provider_dispatch",
+    "client_scope": "complete_exchange"
+  },
+  "fail_closed": {
+    "typed_error_reply": true,
+    "exact_provider_error_preserved": true,
+    "malformed_request_code": "comments.tcp_server_invalid_request",
+    "tenant_mismatch_code": "comments.tcp_authority_tenant_mismatch",
+    "processing_timeout_code": "comments.tcp_server_timeout",
+    "invalid_frame_limit_code": "comments.tcp_invalid_frame_limit",
+    "oversized_frame_code": "comments.tcp_frame_too_large"
+  },
+  "pending": [
+    "listener_bind_and_accept_loop",
+    "concrete_authority_resolver",
+    "credentials_or_mtls_identity",
+    "transport_encryption",
+    "endpoint_discovery_and_configuration",
+    "host_publication",
+    "automatic_in_process_remote_selection",
+    "connection_idle_timeout",
+    "bounded_concurrency_and_shutdown",
+    "retry_backoff",
+    "in_process_tcp_runtime_parity",
+    "runtime_execution"
+  ],
+  "explicit_non_claims": [
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_tcp_runtime_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
