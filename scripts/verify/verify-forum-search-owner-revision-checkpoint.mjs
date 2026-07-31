@@ -94,6 +94,8 @@ requireAll(migration, [
   "search_projection_owner_scan_cursors",
   "owner_revision BIGINT NOT NULL",
   "event_id UUID NOT NULL",
+  "event_id <> '00000000-0000-0000-0000-000000000000'::uuid",
+  "after_tenant_id IS NULL",
   "outcome IN ('delivery_covered', 'rebuild_repaired')",
   "NEW.owner_revision <> 1",
   "NEW.owner_revision <> OLD.owner_revision + 1",
@@ -180,8 +182,11 @@ requireAll(checkpointOwner, [
   "MAX_FORUM_OWNER_TENANT_PAGE_LIMIT: usize = 256",
   "pub async fn resolve_forum_projection_owner_tenant_heads",
   "owner tenant heads must be strictly ordered",
-  "recover_abandoned_processing(tenant_limit)",
+  "recover_abandoned_processing(tenant_limit, revision_limit)",
   "SELECT DISTINCT tenant_id",
+  "WITH abandoned AS (",
+  "ORDER BY ingest_sequence ASC",
+  "LIMIT $2",
   "status = 'processing'",
   "processing_lease_expired",
   "pg_try_advisory_xact_lock",
@@ -245,6 +250,7 @@ rejectAll(eventContracts, [
 requireAll(note, [
   "# FORUM-23B2G2B2 Search owner-revision checkpoint",
   "first Forum invalidation was committed by the owner but never reached Search",
+  "bounded by both the tenant and event page limits",
   "pending`, `processing` or `retryable_error",
   "The projection transaction commits before Search attempts to advance the checkpoint",
   "versioned owner-revision wire contract",
@@ -282,6 +288,11 @@ if (contract) {
   }
   if (contract.commit_protocol?.owner_revision_compared_numerically_with_ingest_sequence !== false) {
     failures.push(`${paths.contract}: owner and ingest counters must remain independent`);
+  }
+  if (contract.processing_recovery?.bounded_by_tenant_page_limit !== true
+      || contract.processing_recovery?.bounded_by_event_page_limit !== true
+      || contract.processing_recovery?.oldest_ingest_sequence_first !== true) {
+    failures.push(`${paths.contract}: bounded processing recovery drift`);
   }
   if (contract.compatibility?.root_event_changed !== false
       || contract.compatibility?.sealed_event_family_added !== false) {
