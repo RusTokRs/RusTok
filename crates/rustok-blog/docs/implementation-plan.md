@@ -25,7 +25,9 @@ both transports. It renders server-rendered `RichTextView` HTML with exactly one
 `content.html` sink and uses server-derived plain text as fallback. The public
 comments projection is Comments-owned and approved-only, and storefront comment
 pagination is route-owned and bounded consistently across GraphQL and native
-SSR. The active DTO/UI path has no legacy body or format field.
+SSR. Public comment reads now carry typed `AVAILABLE`, `UNAVAILABLE`, or `TIMEOUT`
+availability across both transports, while the article remains renderable for the
+two degraded states. The active DTO/UI path has no legacy body or format field.
 
 The Blog admin uses typed `RichTextDocument` state and the owner
 `BlogRichTextEditor`. The fixed Article frame is isolated with an
@@ -87,8 +89,12 @@ rather than the legacy `CommentsError` conversion. The fail-closed gate is
 `scripts/verify/verify-blog-comments-port-boundary.test.mjs`; exact commands
 `verify:blog:comments-port-boundary` and
 `test:verify:blog:comments-port-boundary` run after storefront and before event
-projection. The in-process source profile is verified; the remote adapter and
-degraded UI modes remain planned, and runtime evidence is pending.
+projection. Typed storefront comments availability is source-verified across the
+owner GraphQL resolver, GraphQL client, native SSR adapter, shared DTO, and Leptos
+UI. Only `ExternalService` and `Timeout` become empty `UNAVAILABLE` or `TIMEOUT`
+comment payloads; every other `BlogError` remains fail-closed. The in-process
+source profile is verified. The remote adapter and degraded UI modes remain planned.
+Cached snapshot and comment-form fallback remain planned, and runtime evidence is pending.
 
 Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
@@ -179,7 +185,7 @@ Forum ownership, and aggregate FBA evidence. It also found later commit
 `2f1a4f20f530b1ec8e3cee3c1f51efc36aa5017f` widening the private AI Blog shim
 with an unused `migrations` re-export. Slice 35 removes that drift, binds the
 exact owner-only surface to machine evidence and a negative fixture, reconciles
-the richtext source inventory, and registers the new gate in the Blog FBA
+the richtext inventory, and registers the new gate in the Blog FBA
 verify/test chain.
 
 The continuation audit at `ce3b1690bbf7d67e5ea80cad071180deae7e62dc`
@@ -268,6 +274,15 @@ durable delivery ledger. Projection evidence advances to schema v4 and Blog
 registry to schema v13; focused, shared-chain, and aggregate guards retain the
 new target without recording execution or claiming process-level restart proof.
 
+The continuation audit at `3e0fa3a33ad0419591b4f7fa36924fbad1dcd354`
+found that public Comments unavailability or timeout still failed the entire
+selected-article request in both native SSR and GraphQL. Slice 47 adds typed
+`AVAILABLE` / `UNAVAILABLE` / `TIMEOUT` transport parity, degrades only
+`ExternalService` and `Timeout` to an empty comment payload, renders explicit
+Leptos states while preserving the article, and extends the registered fallback
+evidence plus focused fail-closed fixture. Blog registry schema v13 and package
+order remain unchanged; no runtime or browser result is recorded.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -283,8 +298,11 @@ new target without recording execution or claiming process-level restart proof.
   the in-process profile; all seven operations, approved public read, typed
   richtext projection, two-second deadlines, write idempotency, active typed
   `PortErrorKind` mapping, exact npm leaf commands, focused fixture, and Blog FBA
-  ordering are locked. The remote adapter and degraded UI modes remain planned;
-  runtime evidence is pending.
+  ordering are locked. Typed storefront comments availability is retained across
+  GraphQL/native DTOs and Leptos UI; only external-service and timeout errors
+  degrade, while other errors propagate. The remote adapter, cached snapshot,
+  comment-form fallback, browser/runtime evidence, and broader degraded UI modes
+  remain planned or pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence
   schema v4, shared classifier/counter helpers, `executable_no_run` Rust unit,
   PostgreSQL transaction, and restart harnesses, verifier, focused self-test,
@@ -326,6 +344,11 @@ new target without recording execution or claiming process-level restart proof.
 - `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`
+- `crates/rustok-blog/src/graphql/types.rs`
+- `crates/rustok-blog/storefront/src/model.rs`
+- `crates/rustok-blog/storefront/src/transport/graphql_adapter.rs`
+- `crates/rustok-blog/storefront/src/transport/native_server_adapter.rs`
+- `crates/rustok-blog/storefront/src/ui/leptos.rs`
 - `crates/rustok-blog/src/services/comment_projection.rs`
 - `crates/rustok-blog/tests/comment_projection_postgres_test.rs`
 - `crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs`
@@ -464,6 +487,11 @@ new target without recording execution or claiming process-level restart proof.
     through a new database connection and newly constructed handler, upgraded
     projection evidence to schema v4 and Blog registry schema v13, and retained
     the target in focused/shared/aggregate gates without recording execution.
+47. Added typed storefront public-comments availability across GraphQL and native
+    SSR, degraded only external-service and timeout failures while propagating all
+    other Blog errors, rendered explicit Leptos unavailable/timeout states, and
+    extended fallback evidence plus focused negative fixtures without changing
+    Blog registry schema v13 or recording runtime execution.
 
 ## Next results
 
@@ -488,9 +516,10 @@ new target without recording execution or claiming process-level restart proof.
    Retain the written duplicate, delete-before-create, missing-post replay,
    outbox rollback/retry, and new-connection handler replay assertions; then cover
    concurrent optimistic exhaustion, host dispatch, process-level restart
-   recovery, remote adapter parity, degraded UI modes, approved-only reads,
-   moderation, pagination, first-thread identity, and unrelated insert storage
-   error propagation.
+   recovery, remote adapter parity, browser parity for typed unavailable/timeout
+   article rendering, cached thread snapshots, comment-form fallback,
+   approved-only reads, moderation, pagination, first-thread identity, and
+   unrelated insert storage error propagation.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain

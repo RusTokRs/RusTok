@@ -4,7 +4,9 @@ use crate::core::BlogStorefrontFetchRequest;
 use crate::model::BlogPostListItem;
 use crate::model::StorefrontBlogData;
 #[cfg(feature = "ssr")]
-use crate::model::{BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostList};
+use crate::model::{
+    BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
+};
 use leptos::prelude::*;
 
 use super::{ApiError, configured_tenant_slug};
@@ -139,23 +141,38 @@ async fn storefront_blog_native(
             });
 
         let selected_post = if let Some(post) = selected_post {
-            let (comments, total) = CommentService::new(runtime_ctx.db_clone(), event_bus.clone())
-                .list_for_post_with_locale_fallback(
-                    tenant_id,
-                    SecurityContext::public_read(),
-                    post.id,
-                    ListCommentsFilter {
-                        locale: Some(requested_locale.clone()),
-                        page: comments_page.max(1),
-                        per_page: COMMENTS_PAGE_SIZE,
-                    },
-                    Some(fallback_locale.as_str()),
-                )
-                .await
-                .map_err(ServerFnError::new)?;
-            let public_comments = BlogCommentList {
-                items: comments.into_iter().map(map_comment_list_item).collect(),
-                total,
+            let public_comments = match CommentService::new(
+                runtime_ctx.db_clone(),
+                event_bus.clone(),
+            )
+            .list_for_post_with_locale_fallback(
+                tenant_id,
+                SecurityContext::public_read(),
+                post.id,
+                ListCommentsFilter {
+                    locale: Some(requested_locale.clone()),
+                    page: comments_page.max(1),
+                    per_page: COMMENTS_PAGE_SIZE,
+                },
+                Some(fallback_locale.as_str()),
+            )
+            .await
+            {
+                Ok((comments, total)) => BlogCommentList {
+                    availability: BlogCommentsAvailability::Available,
+                    items: comments.into_iter().map(map_comment_list_item).collect(),
+                    total,
+                },
+                Err(error) => {
+                    let Some(availability) = comments_read_availability(&error) else {
+                        return Err(ServerFnError::new(error));
+                    };
+                    BlogCommentList {
+                        availability,
+                        items: Vec::new(),
+                        total: 0,
+                    }
+                }
             };
             Some(map_post_detail(post, public_comments))
         } else {
@@ -197,6 +214,22 @@ async fn storefront_blog_native(
         Err(ServerFnError::new(
             "blog/storefront-data requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn comments_read_availability(
+    error: &rustok_blog::BlogError,
+) -> Option<BlogCommentsAvailability> {
+    let rustok_blog::BlogError::Rich(error) = error else {
+        return None;
+    };
+    match error.kind {
+        rustok_core::error::ErrorKind::ExternalService => {
+            Some(BlogCommentsAvailability::Unavailable)
+        }
+        rustok_core::error::ErrorKind::Timeout => Some(BlogCommentsAvailability::Timeout),
+        _ => None,
     }
 }
 
