@@ -44,6 +44,12 @@ struct CheckoutPaymentCompensationDiagnosticFacts {
     metadata_entry_count: Option<usize>,
 }
 
+struct CheckoutPaymentCompensationPortErrorFacts {
+    error_kind: &'static str,
+    message_present: bool,
+    message_length: usize,
+}
+
 pub struct InProcessCheckoutPaymentCompensationPort {
     inner: PersistentCheckoutPaymentCompensationPort,
 }
@@ -162,6 +168,25 @@ fn payment_metadata_kind(metadata: &Value) -> &'static str {
     }
 }
 
+fn checkout_payment_compensation_port_error_facts(
+    error: &PortError,
+) -> CheckoutPaymentCompensationPortErrorFacts {
+    let error_kind = match &error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    CheckoutPaymentCompensationPortErrorFacts {
+        error_kind,
+        message_present: !error.message.trim().is_empty(),
+        message_length: error.message.chars().count(),
+    }
+}
+
 fn checkout_payment_compensation_local_operation(code: &str) -> Option<&'static str> {
     match code {
         "port.idempotency_key_required" => Some("admit_write_idempotency"),
@@ -217,9 +242,9 @@ fn map_checkout_payment_compensation_local_port_error(
             PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
         );
     let context_facts = checkout_payment_compensation_context_facts(context);
+    let error_facts = checkout_payment_compensation_port_error_facts(&error);
     if technical_failure {
         tracing::error!(
-            error = ?error,
             owner = PAYMENT_OWNER,
             operation = COMPENSATE_CHECKOUT_PAYMENT_OPERATION,
             local_operation,
@@ -247,15 +272,15 @@ fn map_checkout_payment_compensation_local_port_error(
             metadata_kind = facts.metadata_kind,
             metadata_entry_count = ?facts.metadata_entry_count,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_COMPENSATION_BOUNDARY,
             "payment checkout compensation local technical outcome retained safe context"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = PAYMENT_OWNER,
             operation = COMPENSATE_CHECKOUT_PAYMENT_OPERATION,
             local_operation,
@@ -283,8 +308,9 @@ fn map_checkout_payment_compensation_local_port_error(
             metadata_kind = facts.metadata_kind,
             metadata_entry_count = ?facts.metadata_entry_count,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_COMPENSATION_BOUNDARY,
             "payment checkout compensation local outcome retained safe context"
