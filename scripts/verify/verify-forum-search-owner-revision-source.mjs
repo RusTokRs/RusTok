@@ -9,11 +9,12 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 const paths = {
   contract: "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
-  note: "crates/rustok-forum/docs/forum-23b2g2a-search-owner-revision-source.md",
+  predecessor: "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  note: "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
+  ledgerMigration:
+    "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
   forumDto: "crates/rustok-forum/src/dto/event.rs",
   forumOwner: "crates/rustok-forum/src/services/event.rs",
-  forumJournal: "crates/rustok-forum/src/entities/forum_domain_event.rs",
-  forumMigrations: "crates/rustok-forum/src/migrations/mod.rs",
   searchOwner: "crates/rustok-search/src/forum_reconciliation.rs",
   searchLib: "crates/rustok-search/src/lib.rs",
   searchInbox: "crates/rustok-search/src/forum_inbox.rs",
@@ -54,11 +55,11 @@ function rejectAll(source, markers, label) {
 }
 
 const contract = parseJson(paths.contract);
+const predecessor = parseJson(paths.predecessor);
 const note = read(paths.note);
+const ledgerMigration = read(paths.ledgerMigration);
 const forumDto = read(paths.forumDto);
 const forumOwner = read(paths.forumOwner);
-const forumJournal = read(paths.forumJournal);
-const forumMigrations = read(paths.forumMigrations);
 const searchOwner = read(paths.searchOwner);
 const searchLib = read(paths.searchLib);
 const searchInbox = read(paths.searchInbox);
@@ -67,136 +68,212 @@ const hostAdapter = read(paths.hostAdapter);
 const hostComposition = read(paths.hostComposition);
 const rootEvents = read(paths.rootEvents);
 
-requireAll(forumJournal, [
-  'table_name = "forum_domain_events"',
-  "pub sequence_no: i64",
-  "pub event_id: Uuid",
-], paths.forumJournal);
+requireAll(
+  ledgerMigration,
+  [
+    "forum_projection_revision_counters",
+    "forum_projection_revision_ledger",
+    "PRIMARY KEY (tenant_id, revision)",
+    "UNIQUE (event_id)",
+    "CHECK (revision > 0)",
+    "forum_reject_projection_revision_ledger_mutation",
+  ],
+  paths.ledgerMigration,
+);
 
-requireAll(forumDto, [
-  "pub enum ForumProjectionOwnerRevisionImpact",
-  "FullRebuild",
-  "NoProjectionChange",
-  "pub struct ForumProjectionOwnerRevisionResponse",
-  "pub owner_revision: i64",
-], paths.forumDto);
+requireAll(
+  forumDto,
+  [
+    "pub enum ForumProjectionOwnerRevisionImpact",
+    "FullRebuild",
+    "pub struct ForumProjectionOwnerRevisionResponse",
+    "pub owner_revision: i64",
+    "pub event_id: Uuid",
+  ],
+  paths.forumDto,
+);
+rejectAll(forumDto, ["NoProjectionChange"], paths.forumDto);
 
-requireAll(forumOwner, [
-  "MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE: usize = 100",
-  "pub async fn list_projection_owner_revisions",
-  "after_owner_revision",
-  "SequenceNo.gt(after_owner_revision)",
-  "order_by_asc(forum_domain_event::Column::SequenceNo)",
-  "projection_revision_impact",
-  '"forum.topic.vote_changed"',
-  '"forum.mention.audience_added"',
-  "Unknown future Forum journal types fail safe",
-], paths.forumOwner);
-rejectAll(forumOwner, [
-  "SearchProjection",
-  "search_projection_inbox",
-  "search_projection_watermarks",
-], paths.forumOwner);
+requireAll(
+  forumOwner,
+  [
+    "MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE: usize = 100",
+    'FORUM_PROJECTION_INVALIDATION_EVENT_TYPE: &str = "index.reindex_requested"',
+    "pub async fn list_projection_owner_revisions",
+    "forum_projection_revision_ledger",
+    "WHERE tenant_id = $1",
+    "AND revision > $2",
+    "ORDER BY revision ASC",
+    "LIMIT $3",
+    "FORUM_PROJECTION_REVISION_SOURCE_UNAVAILABLE",
+    "ForumProjectionOwnerRevisionImpact::FullRebuild",
+  ],
+  paths.forumOwner,
+);
+rejectAll(
+  forumOwner,
+  [
+    "SequenceNo.gt(after_owner_revision)",
+    "projection_revision_impact",
+    "NoProjectionChange",
+    "search_projection_inbox",
+    "search_projection_watermarks",
+  ],
+  paths.forumOwner,
+);
 
-requireAll(searchOwner, [
-  "pub trait ForumProjectionOwnerRevisionSourcePort",
-  "pub type SharedForumProjectionOwnerRevisionSourcePort",
-  "pub async fn resolve_forum_projection_owner_revisions",
-  "DEFAULT_FORUM_OWNER_REVISION_PAGE_LIMIT: usize = 64",
-  "MAX_FORUM_OWNER_REVISION_PAGE_LIMIT: usize = 100",
-  "owner revisions must be strictly increasing",
-  "gaps are valid",
-  "owner_revision_port_requires_host_composition",
-  "owner_revision_page_rejects_reordered_or_replayed_rows",
-], paths.searchOwner);
-requireAll(searchLib, [
-  "ForumProjectionOwnerRevisionSourcePort",
-  "SharedForumProjectionOwnerRevisionSourcePort",
-  "resolve_forum_projection_owner_revisions",
-], paths.searchLib);
-rejectAll(searchOwner, [
-  "forum_domain_event::",
-  "forum_domain_events",
-  "rustok_forum",
-  "UPDATE search_projection_watermarks",
-  "INSERT INTO search_projection_watermarks",
-], paths.searchOwner);
+requireAll(
+  searchOwner,
+  [
+    "pub trait ForumProjectionOwnerRevisionSourcePort",
+    "pub type SharedForumProjectionOwnerRevisionSourcePort",
+    "pub async fn resolve_forum_projection_owner_revisions",
+    "DEFAULT_FORUM_OWNER_REVISION_PAGE_LIMIT: usize = 64",
+    "MAX_FORUM_OWNER_REVISION_PAGE_LIMIT: usize = 100",
+    "owner revisions must be contiguous and strictly ordered",
+    'event_type != "index.reindex_requested"',
+    "owner_revision_port_requires_host_composition",
+    "owner_revision_page_accepts_contiguous_tenant_ledger_sequence",
+    "owner_revision_page_rejects_gap_or_replay",
+  ],
+  paths.searchOwner,
+);
+requireAll(
+  searchLib,
+  [
+    "ForumProjectionOwnerRevisionSourcePort",
+    "SharedForumProjectionOwnerRevisionSourcePort",
+    "resolve_forum_projection_owner_revisions",
+  ],
+  paths.searchLib,
+);
+rejectAll(
+  searchOwner,
+  [
+    "forum_domain_event::",
+    "forum_domain_events",
+    "forum_projection_revision_ledger",
+    "rustok_forum",
+    "UPDATE search_projection_watermarks",
+    "INSERT INTO search_projection_watermarks",
+    "NoProjectionChange",
+  ],
+  paths.searchOwner,
+);
 
-requireAll(hostAdapter, [
-  "ServerForumProjectionOwnerRevisionSourcePort",
-  "ForumEventService::new",
-  "list_projection_owner_revisions",
-  "ForumOwnerRevisionImpact::FullRebuild",
-  "ForumProjectionOwnerRevisionImpact::NoProjectionChange",
-], paths.hostAdapter);
-rejectAll(hostAdapter, [
-  "forum_domain_event::",
-  "forum_domain_events",
-  "search_projection_watermarks",
-], paths.hostAdapter);
-requireAll(hostComposition, [
-  'mod forum_search_owner_revision {',
-  "ServerForumProjectionOwnerRevisionSourcePort::shared",
-  "extensions.insert(owner_revision);",
-  "SharedForumProjectionOwnerRevisionSourcePort",
-], paths.hostComposition);
+requireAll(
+  hostAdapter,
+  [
+    "ServerForumProjectionOwnerRevisionSourcePort",
+    "ForumEventService::new",
+    "list_projection_owner_revisions",
+    "ForumOwnerRevisionImpact::FullRebuild",
+    "ForumProjectionOwnerRevisionImpact::FullRebuild",
+  ],
+  paths.hostAdapter,
+);
+rejectAll(
+  hostAdapter,
+  [
+    "forum_domain_event::",
+    "forum_domain_events",
+    "forum_projection_revision_ledger",
+    "search_projection_watermarks",
+    "NoProjectionChange",
+  ],
+  paths.hostAdapter,
+);
+requireAll(
+  hostComposition,
+  [
+    'mod forum_search_owner_revision {',
+    "ServerForumProjectionOwnerRevisionSourcePort::shared",
+    "extensions.insert(owner_revision);",
+    "SharedForumProjectionOwnerRevisionSourcePort",
+  ],
+  paths.hostComposition,
+);
 
-requireAll(searchInbox, [
-  "ingest_sequence",
-  "ORDER BY ingest_sequence ASC",
-], `${paths.searchInbox} G1 boundary`);
-rejectAll(searchInbox, [
-  "owner_revision",
-  "forum_domain_events",
-], `${paths.searchInbox} G2A non-consumer boundary`);
-rejectAll(rootEvents, [
-  "ForumProjectionOwnerRevision",
-  "forum_projection_owner_revision",
-], `${paths.rootEvents} root event boundary`);
-rejectAll([forumMigrations, searchMigrations].join("\n"), [
-  "owner_revision_source",
-  "projection_owner_revision",
-], "migration boundary");
+requireAll(
+  searchInbox,
+  ["ingest_sequence", "ORDER BY ingest_sequence ASC"],
+  `${paths.searchInbox} G1 boundary`,
+);
+rejectAll(
+  searchInbox,
+  ["owner_revision", "forum_projection_revision_ledger", "forum_domain_events"],
+  `${paths.searchInbox} G2B1 non-consumer boundary`,
+);
+rejectAll(
+  searchMigrations,
+  ["owner_revision", "projection_owner_revision"],
+  `${paths.searchMigrations} checkpoint migration boundary`,
+);
+rejectAll(
+  rootEvents,
+  ["ForumProjectionOwnerRevision", "forum_projection_owner_revision"],
+  `${paths.rootEvents} root event boundary`,
+);
 
-requireAll(note, [
-  "# FORUM-23B2G2A Search owner-revision source",
-  "forum_domain_events.sequence_no",
-  "global while reads are tenant-scoped",
-  "does not yet connect it to the background sweeper",
-  "did not run these commands",
-], paths.note);
+requireAll(
+  note,
+  [
+    "# FORUM-23B2G2B1 Search owner-revision source",
+    "forum_projection_revision_ledger.revision",
+    "committed rows for one tenant are contiguous",
+    "does not connect it to the background sweeper",
+    "FORUM-23B2G2B2",
+    "did not run these commands",
+  ],
+  paths.note,
+);
+
+if (predecessor) {
+  if (predecessor.task !== "FORUM-23B2G2A") {
+    failures.push(`${paths.predecessor}: unexpected predecessor task`);
+  }
+  if (predecessor.revision_owner?.storage !== "forum_projection_revision_counters") {
+    failures.push(`${paths.predecessor}: revision counter ownership drift`);
+  }
+  if (predecessor.ledger?.table !== "forum_projection_revision_ledger") {
+    failures.push(`${paths.predecessor}: owner ledger drift`);
+  }
+}
 
 if (contract) {
-  if (contract.task !== "FORUM-23B2G2A") {
+  if (contract.task !== "FORUM-23B2G2B1") {
     failures.push(`${paths.contract}: unexpected task`);
   }
-  if (contract.status !== "source_complete_consumer_reconciliation_pending") {
+  if (contract.status !== "source_complete_consumer_checkpoint_pending") {
     failures.push(`${paths.contract}: unexpected status`);
   }
-  if (contract.owner_clock?.field !== "sequence_no") {
-    failures.push(`${paths.contract}: owner clock must reuse sequence_no`);
+  if (contract.owner_clock?.table !== "forum_projection_revision_ledger") {
+    failures.push(`${paths.contract}: owner clock must use the Forum projection ledger`);
   }
-  if (contract.owner_clock?.new_counter_added !== false) {
-    failures.push(`${paths.contract}: a second owner counter is forbidden`);
+  if (contract.owner_clock?.contiguous_committed_revisions !== true) {
+    failures.push(`${paths.contract}: committed owner revisions must be contiguous`);
   }
-  if (contract.owner_clock?.migration_added !== false) {
-    failures.push(`${paths.contract}: G2A must not add a migration`);
+  if (contract.owner_clock?.forum_domain_event_sequence_used !== false) {
+    failures.push(`${paths.contract}: Forum journal sequence must not be reused`);
   }
-  if (contract.forum_owner?.payload_exposed !== false) {
-    failures.push(`${paths.contract}: owner journal payload must remain private`);
+  if (contract.search_contract?.contiguous_page_required !== true) {
+    failures.push(`${paths.contract}: Search must fail closed on owner revision gaps`);
   }
   if (contract.search_contract?.independent_from_search_ingest_sequence !== true) {
     failures.push(`${paths.contract}: owner and ingest sequences must remain independent`);
   }
-  if (contract.host_composition?.direct_search_read_of_forum_domain_events !== false) {
-    failures.push(`${paths.contract}: Search must not read the Forum journal directly`);
+  if (contract.host_composition?.direct_search_read_of_forum_projection_revision_ledger !== false) {
+    failures.push(`${paths.contract}: Search must not read the Forum ledger directly`);
+  }
+  if (contract.compatibility?.search_watermark_changed !== false) {
+    failures.push(`${paths.contract}: G2B1 must not claim checkpoint mutation`);
   }
 }
 
 if (failures.length > 0) {
-  console.error("FORUM-23B2G2A owner revision source verification failed:");
+  console.error("FORUM-23B2G2B1 owner revision source verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("FORUM-23B2G2A owner revision source contract is consistent.");
+console.log("FORUM-23B2G2B1 owner revision source contract is consistent.");
