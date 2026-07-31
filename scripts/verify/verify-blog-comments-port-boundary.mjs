@@ -34,6 +34,10 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
+function requireNoMarker(source, marker, label) {
+  if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+}
+
 function sameSet(actual, expected) {
   return [...actual].sort().join('|') === [...expected].sort().join('|');
 }
@@ -41,6 +45,11 @@ function sameSet(actual, expected) {
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const fallbackEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
 const servicePath = 'crates/rustok-blog/src/services/comment.rs';
+const graphqlOwnerPath = 'crates/rustok-blog/src/graphql/types.rs';
+const storefrontModelPath = 'crates/rustok-blog/storefront/src/model.rs';
+const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
+const storefrontNativePath = 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
+const storefrontUiPath = 'crates/rustok-blog/storefront/src/ui/leptos.rs';
 const providerRegistryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
 const consumerRegistryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
@@ -59,6 +68,11 @@ const fallbackEvidence = json(fallbackEvidencePath);
 const providerRegistry = json(providerRegistryPath);
 const consumerRegistry = json(consumerRegistryPath);
 const service = read(servicePath);
+const graphqlOwner = read(graphqlOwnerPath);
+const storefrontModel = read(storefrontModelPath);
+const storefrontGraphql = read(storefrontGraphqlPath);
+const storefrontNative = read(storefrontNativePath);
+const storefrontUi = read(storefrontUiPath);
 const plan = read(planPath);
 
 if (evidence) {
@@ -97,7 +111,7 @@ if (evidence) {
 }
 
 if (fallbackEvidence) {
-  if (fallbackEvidence.schema_version !== 2) failures.push(`${fallbackEvidencePath}: schema_version drift`);
+  if (fallbackEvidence.schema_version !== 3) failures.push(`${fallbackEvidencePath}: schema_version drift`);
   if (
     fallbackEvidence.module !== 'blog' ||
     fallbackEvidence.role !== 'consumer' ||
@@ -110,11 +124,45 @@ if (fallbackEvidence) {
   if (fallbackEvidence.runner !== 'scripts/verify/verify-blog-comments-port-boundary.mjs') {
     failures.push(`${fallbackEvidencePath}: runner drift`);
   }
+  const expectedSources = {
+    consumer_service: servicePath,
+    consumer_error_mapping: servicePath,
+    provider_port_registry: providerRegistryPath,
+    graphql_owner: graphqlOwnerPath,
+    storefront_model: storefrontModelPath,
+    storefront_graphql: storefrontGraphqlPath,
+    storefront_native: storefrontNativePath,
+    storefront_ui: storefrontUiPath,
+  };
+  for (const [key, expected] of Object.entries(expectedSources)) {
+    if (fallbackEvidence.source_contract?.[key] !== expected) {
+      failures.push(`${fallbackEvidencePath}: ${key} source path drift`);
+    }
+  }
+  const readDegradation = fallbackEvidence.storefront_read_degradation ?? {};
   if (
-    fallbackEvidence.source_contract?.consumer_service !== servicePath ||
-    fallbackEvidence.source_contract?.consumer_error_mapping !== servicePath ||
-    fallbackEvidence.source_contract?.provider_port_registry !== providerRegistryPath
-  ) failures.push(`${fallbackEvidencePath}: active source path drift`);
+    readDegradation.status !== 'source_verified_no_compile' ||
+    readDegradation.runtime_status !== 'not_run' ||
+    readDegradation.operation !== 'list_public_comments_for_target' ||
+    readDegradation.propagated_error_policy !== 'all_other_blog_errors' ||
+    readDegradation.cached_thread_snapshot !== 'planned' ||
+    readDegradation.comment_form_fallback !== 'planned' ||
+    readDegradation.runtime_evidence !== 'pending'
+  ) failures.push(`${fallbackEvidencePath}: storefront read degradation status drift`);
+  if (!sameSet(readDegradation.transports ?? [], ['graphql', 'native_ssr'])) {
+    failures.push(`${fallbackEvidencePath}: storefront transport parity drift`);
+  }
+  if (!sameSet(readDegradation.availability_states ?? [], ['AVAILABLE', 'UNAVAILABLE', 'TIMEOUT'])) {
+    failures.push(`${fallbackEvidencePath}: availability state drift`);
+  }
+  if (!sameSet(readDegradation.degraded_error_kinds ?? [], ['ExternalService', 'Timeout'])) {
+    failures.push(`${fallbackEvidencePath}: degraded error-kind drift`);
+  }
+  if (
+    !Array.isArray(readDegradation.degraded_payload?.items) ||
+    readDegradation.degraded_payload.items.length !== 0 ||
+    readDegradation.degraded_payload?.total !== 0
+  ) failures.push(`${fallbackEvidencePath}: degraded payload drift`);
   if (
     fallbackEvidence.fallback_smoke?.status !== 'planned' ||
     fallbackEvidence.fallback_smoke?.runtime_evidence !== 'pending'
@@ -162,6 +210,55 @@ for (const marker of [
   'Self::ensure_blog_target(&existing)?',
 ]) requireMarker(service, marker, servicePath);
 
+for (const marker of [
+  'pub enum BlogCommentsAvailability',
+  '#[serde(rename_all = "SCREAMING_SNAKE_CASE")]',
+  'Available,',
+  'Unavailable,',
+  'Timeout,',
+  'pub availability: BlogCommentsAvailability',
+]) requireMarker(storefrontModel, marker, storefrontModelPath);
+
+for (const marker of [
+  'fn comments_read_availability(',
+  'rustok_core::error::ErrorKind::ExternalService',
+  'Some(BlogCommentsAvailability::Unavailable)',
+  'rustok_core::error::ErrorKind::Timeout',
+  'Some(BlogCommentsAvailability::Timeout)',
+  'let Some(availability) = comments_read_availability(&error) else',
+  'return Err(ServerFnError::new(error));',
+  'availability: BlogCommentsAvailability::Available',
+  'items: Vec::new()',
+  'total: 0',
+]) requireMarker(storefrontNative, marker, storefrontNativePath);
+requireNoMarker(storefrontNative, 'Err(_) => BlogCommentList', storefrontNativePath);
+
+for (const marker of [
+  'pub enum GqlBlogCommentsAvailability',
+  'pub availability: GqlBlogCommentsAvailability',
+  'fn graphql_comments_read_availability(error: &BlogError)',
+  'ErrorKind::ExternalService => Some(GqlBlogCommentsAvailability::Unavailable)',
+  'ErrorKind::Timeout => Some(GqlBlogCommentsAvailability::Timeout)',
+  'let Some(availability) = graphql_comments_read_availability(&error) else',
+  'return Err(async_graphql::Error::new(error.to_string()));',
+  'GqlBlogCommentsAvailability::Available',
+]) requireMarker(graphqlOwner, marker, graphqlOwnerPath);
+requireNoMarker(graphqlOwner, 'Err(_) => (Vec::new(), 0', graphqlOwnerPath);
+
+requireMarker(
+  storefrontGraphql,
+  'publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability total items',
+  storefrontGraphqlPath,
+);
+
+for (const marker of [
+  'comments.availability != BlogCommentsAvailability::Available',
+  'BlogCommentsAvailability::Unavailable',
+  'BlogCommentsAvailability::Timeout',
+  'Comments are temporarily unavailable. The article is still available.',
+  'Comments took too long to load. The article is still available.',
+]) requireMarker(storefrontUi, marker, storefrontUiPath);
+
 const directBypasses = [...service.matchAll(/\.comments\s*\.\s*([a-z_]+)\s*\(/g)].map((match) => match[1]);
 if (directBypasses.length > 0) {
   failures.push(`${servicePath}: direct CommentsService bypass ${directBypasses.sort().join('|')}`);
@@ -182,7 +279,8 @@ for (const marker of [
   'verify:blog:comments-port-boundary',
   'test:verify:blog:comments-port-boundary',
   'source_verified_no_compile',
-  'degraded UI modes remain planned',
+  'typed storefront comments availability',
+  'cached snapshot and comment-form fallback remain planned',
 ]) requireMarker(plan, marker, planPath);
 
 if (failures.length > 0) {
@@ -191,4 +289,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog Comments consumer port source boundary is consistent');
+console.log('Blog Comments consumer port and storefront read-degradation source boundary is consistent');
