@@ -10,6 +10,7 @@
   "forum_migration": "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
   "forum_owner": "crates/rustok-forum/src/services/projection_invalidation.rs",
   "outbox_api": "crates/rustok-outbox/src/transactional.rs",
+  "outbox_api_documentation": "crates/rustok-outbox/CRATE_API.md",
   "owner_note": "crates/rustok-forum/docs/forum-23b2g2a-search-owner-revision-ledger.md",
   "verifier": "scripts/verify/verify-forum-search-owner-revision-ledger.mjs",
   "revision_owner": {
@@ -55,7 +56,8 @@
     "new_root_domain_event_added": false,
     "new_sealed_event_family_added": false,
     "event_contract_digest_changed": false,
-    "public_api_changed": false,
+    "existing_public_api_signature_changed": false,
+    "additive_outbox_envelope_identity_api_added": true,
     "sqlite_schema_changed": false,
     "dependency_added": false,
     "cargo_lock_changed": false
