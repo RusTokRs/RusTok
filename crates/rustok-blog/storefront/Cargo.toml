@@ -16,7 +16,6 @@ ssr = [
   "dep:rustok-outbox",
   "dep:rustok-tenant",
   "rustok-api/server",
-  "rustok-comments/server",
 ]
 
 [dependencies]
@@ -30,7 +29,6 @@ serde = { workspace = true, features = ["derive"] }
 rustok-core = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
-rustok-comments = { workspace = true, default-features = false, optional = true }
 rustok-ui-i18n-leptos.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
