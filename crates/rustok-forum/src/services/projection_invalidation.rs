@@ -1,6 +1,8 @@
 use rustok_events::{DomainEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbBackend, Statement,
+};
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
@@ -116,15 +118,12 @@ async fn write_projection_invalidation_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    let event = DomainEvent::ReindexRequested {
-        target_type: target_type.to_string(),
-        target_id,
-    };
+    let event = projection_invalidation_event(target_type, target_id);
 
     // The Search-owned Forum projector is PostgreSQL-only. SQLite and any
     // other non-PostgreSQL backend are domain-test/unsupported projection
-    // environments, so keep root validation without requiring an outbox table
-    // that has no matching Search consumer.
+    // environments, so keep root validation without requiring an outbox or
+    // owner-revision ledger that has no matching Search consumer.
     if txn.get_database_backend() != DatabaseBackend::Postgres {
         event.validate().map_err(|error| {
             ForumError::Validation(format!("Forum projection invalidation failed: {error}"))
@@ -132,8 +131,20 @@ async fn write_projection_invalidation_in_tx(
         return Ok(());
     }
 
-    TransactionalEventBus::publish_root_in_tx(txn, tenant_id, actor_id, event).await?;
-    Ok(())
+    let revision = allocate_projection_revision_in_tx(txn, tenant_id).await?;
+    let event_id = TransactionalEventBus::publish_root_in_tx_with_envelope_id(
+        txn, tenant_id, actor_id, event,
+    )
+    .await?;
+    record_projection_revision_in_tx(
+        txn,
+        tenant_id,
+        revision,
+        event_id,
+        target_type,
+        target_id,
+    )
+    .await
 }
 
 async fn publish_projection_invalidation_in_tx(
@@ -144,16 +155,96 @@ async fn publish_projection_invalidation_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    event_bus
-        .publish_in_tx(
-            txn,
-            tenant_id,
-            actor_id,
-            DomainEvent::ReindexRequested {
-                target_type: target_type.to_string(),
-                target_id,
-            },
-        )
+    let event = projection_invalidation_event(target_type, target_id);
+    if txn.get_database_backend() != DatabaseBackend::Postgres {
+        event_bus
+            .publish_in_tx(txn, tenant_id, actor_id, event)
+            .await?;
+        return Ok(());
+    }
+
+    let revision = allocate_projection_revision_in_tx(txn, tenant_id).await?;
+    let event_id = event_bus
+        .publish_in_tx_with_envelope_id(txn, tenant_id, actor_id, event)
         .await?;
+    record_projection_revision_in_tx(
+        txn,
+        tenant_id,
+        revision,
+        event_id,
+        target_type,
+        target_id,
+    )
+    .await
+}
+
+fn projection_invalidation_event(
+    target_type: &'static str,
+    target_id: Option<Uuid>,
+) -> DomainEvent {
+    DomainEvent::ReindexRequested {
+        target_type: target_type.to_string(),
+        target_id,
+    }
+}
+
+async fn allocate_projection_revision_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> ForumResult<i64> {
+    let row = txn
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            INSERT INTO forum_projection_revision_counters (
+                tenant_id, revision, updated_at
+            ) VALUES ($1, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT (tenant_id)
+            DO UPDATE SET
+                revision = forum_projection_revision_counters.revision + 1,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING revision
+            "#,
+            vec![tenant_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| {
+            ForumError::Validation(
+                "Forum projection revision allocation returned no row".to_string(),
+            )
+        })?;
+    let revision: i64 = row.try_get("", "revision")?;
+    if revision <= 0 {
+        return Err(ForumError::Validation(
+            "Forum projection revision must be positive".to_string(),
+        ));
+    }
+    Ok(revision)
+}
+
+async fn record_projection_revision_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    revision: i64,
+    event_id: Uuid,
+    target_type: &'static str,
+    target_id: Option<Uuid>,
+) -> ForumResult<()> {
+    txn.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        r#"
+        INSERT INTO forum_projection_revision_ledger (
+            tenant_id, revision, event_id, target_type, target_id, created_at
+        ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+        "#,
+        vec![
+            tenant_id.into(),
+            revision.into(),
+            event_id.into(),
+            target_type.to_string().into(),
+            target_id.into(),
+        ],
+    ))
+    .await?;
     Ok(())
 }

@@ -5,6 +5,8 @@
 
 ## Primary Public Types and Signatures
 - `pub struct TransactionalEventBus`
+- `pub async fn TransactionalEventBus::publish_root_in_tx(...)`
+- `pub async fn TransactionalEventBus::publish_root_in_tx_with_envelope_id(...) -> Result<Uuid>`
 - `pub async fn TransactionalEventBus::publish_in_tx(...)`
 - `pub async fn TransactionalEventBus::publish_contract_in_tx<C, E>(...) where E: EventContract`
 - `pub struct OutboxRelay`, `pub struct RelayConfig`, `pub struct RelayMetricsSnapshot`
@@ -36,9 +38,13 @@
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- Root events use `publish_in_tx`.
+- Root events use `publish_in_tx` or the static `publish_root_in_tx` owner helper.
+- Owners that must durably bind audit state to the exact root envelope use
+  `publish_root_in_tx_with_envelope_id`; the returned UUID is the ID of the
+  validated envelope written by the same transaction.
 - Sealed bounded-family events use `publish_contract_in_tx`.
-- Both APIs require the live owner transaction and preserve the returned envelope identity internally.
+- Every API requires the live owner transaction; identity-returning variants do
+  not publish a second envelope or reconstruct an ID after persistence.
 
 ### Domain Invariants
 - State, owner timeline, outbox envelope, and command receipt commit or roll back together.
