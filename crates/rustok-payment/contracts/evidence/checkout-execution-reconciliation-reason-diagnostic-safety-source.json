@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_execution_reconciliation_reason_diagnostic_safety_source_reviewed_unvalidated",
+  "owner": "rustok-payment",
+  "boundary": "checkout_payment_execution_port",
+  "scope": "manual-reconciliation diagnostic reason classification",
+  "source_contract": {
+    "reconciliation_reason_variant_count": 4,
+    "free_form_reason_parameter_allowed": false,
+    "free_form_reason_text_logged": false,
+    "stable_reason_label_logged": true,
+    "missing_durable_result_reason_preserved": true,
+    "malformed_durable_result_reason_preserved": true,
+    "invalid_successful_response_reason_preserved": true,
+    "unknown_provider_outcome_reason_preserved": true,
+    "manual_reconciliation_code_preserved": true,
+    "manual_reconciliation_kind_preserved": true,
+    "manual_reconciliation_message_preserved": true,
+    "manual_reconciliation_retryability_preserved": true,
+    "call_routing_preserved": true,
+    "provider_result_recovery_changed": false,
+    "provider_execution_changed": false,
+    "payment_lifecycle_changed": false,
+    "local_persistence_diagnostics_changed": false,
+    "provider_checkpoint_diagnostics_changed": false,
+    "remaining_payment_execution_diagnostics_open": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "notes": [
+    "The reconciliation helper accepts a closed four-variant enum instead of a free-form static string.",
+    "Diagnostics emit only a stable snake-case reason label selected by the enum.",
+    "Missing and malformed durable results retain their existing manual-reconciliation routes.",
+    "Provider invalid-response and unknown-outcome owner errors retain their existing routes.",
+    "The public conflict code, message, kind, and retryability remain unchanged.",
+    "Local persistence and provider checkpoint diagnostics remain separate open slices.",
+    "No payment FFA or FBA status is promoted from source inspection."
+  ]
+}
