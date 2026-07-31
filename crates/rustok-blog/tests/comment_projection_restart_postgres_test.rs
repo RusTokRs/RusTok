@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{env, error::Error, io, process::Command};
 
 use rustok_blog::services::BlogCommentProjectionHandler;
 use rustok_core::events::EventHandler;
@@ -11,6 +11,14 @@ use uuid::Uuid;
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+const PROCESS_WORKER_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_WORKER";
+const PROCESS_DATABASE_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_DATABASE_URL";
+const PROCESS_SCHEMA_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_SCHEMA";
+const PROCESS_TENANT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_TENANT_ID";
+const PROCESS_POST_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_POST_ID";
+const PROCESS_ACTOR_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_ACTOR_ID";
+const PROCESS_COMMENT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_COMMENT_ID";
+const PROCESS_EVENT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_EVENT_ID";
 
 struct PostgresBlogProjectionRestartTestDb {
     control: DatabaseConnection,
@@ -108,6 +116,140 @@ async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -
     drop(restarted_handler);
     drop(restarted_db);
     test_db.cleanup().await
+}
+
+#[tokio::test]
+async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter() -> TestResult<()> {
+    let Some(test_db) = PostgresBlogProjectionRestartTestDb::setup().await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let comment_id = Uuid::new_v4();
+    let envelope = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentCreated {
+            comment_id,
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+        },
+    );
+    insert_post(&test_db.db, tenant_id, post_id, actor_id).await?;
+
+    run_projection_worker(
+        &test_db,
+        tenant_id,
+        post_id,
+        actor_id,
+        comment_id,
+        envelope.id,
+    )?;
+    run_projection_worker(
+        &test_db,
+        tenant_id,
+        post_id,
+        actor_id,
+        comment_id,
+        envelope.id,
+    )?;
+
+    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 1);
+
+    test_db.cleanup().await
+}
+
+#[tokio::test]
+async fn process_restart_worker_applies_envelope_from_env() -> TestResult<()> {
+    if env::var_os(PROCESS_WORKER_ENV).is_none() {
+        return Ok(());
+    }
+
+    let database_url = required_env(PROCESS_DATABASE_ENV)?;
+    let schema_name = required_env(PROCESS_SCHEMA_ENV)?;
+    let tenant_id = required_uuid(PROCESS_TENANT_ENV)?;
+    let post_id = required_uuid(PROCESS_POST_ENV)?;
+    let actor_id = required_uuid(PROCESS_ACTOR_ENV)?;
+    let comment_id = required_uuid(PROCESS_COMMENT_ENV)?;
+    let event_id = required_uuid(PROCESS_EVENT_ENV)?;
+
+    let db = connect(&database_url).await?;
+    set_search_path(&db, &schema_name).await?;
+    let mut envelope = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentCreated {
+            comment_id,
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+        },
+    );
+    envelope.id = event_id;
+    envelope.correlation_id = event_id;
+
+    let handler = BlogCommentProjectionHandler::new(db);
+    handler.handle(&envelope).await?;
+    Ok(())
+}
+
+fn run_projection_worker(
+    test_db: &PostgresBlogProjectionRestartTestDb,
+    tenant_id: Uuid,
+    post_id: Uuid,
+    actor_id: Uuid,
+    comment_id: Uuid,
+    event_id: Uuid,
+) -> TestResult<()> {
+    let status = Command::new(env::current_exe()?)
+        .arg("--exact")
+        .arg("process_restart_worker_applies_envelope_from_env")
+        .arg("--nocapture")
+        .env(PROCESS_WORKER_ENV, "1")
+        .env(PROCESS_DATABASE_ENV, &test_db.database_url)
+        .env(PROCESS_SCHEMA_ENV, &test_db.schema_name)
+        .env(PROCESS_TENANT_ENV, tenant_id.to_string())
+        .env(PROCESS_POST_ENV, post_id.to_string())
+        .env(PROCESS_ACTOR_ENV, actor_id.to_string())
+        .env(PROCESS_COMMENT_ENV, comment_id.to_string())
+        .env(PROCESS_EVENT_ENV, event_id.to_string())
+        .status()?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Blog projection restart worker exited with status {status}"),
+        )
+        .into())
+    }
+}
+
+fn required_env(name: &str) -> TestResult<String> {
+    env::var(name).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("missing or invalid {name}: {error}"),
+        )
+        .into()
+    })
+}
+
+fn required_uuid(name: &str) -> TestResult<Uuid> {
+    let value = required_env(name)?;
+    Uuid::parse_str(&value).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid UUID in {name}: {error}"),
+        )
+        .into()
+    })
 }
 
 async fn create_projection_tables(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
@@ -230,8 +372,8 @@ async fn count_outbox_events(db: &DatabaseConnection) -> Result<i64, sea_orm::Db
 }
 
 fn postgres_database_url() -> Option<String> {
-    std::env::var(BLOG_TEST_DATABASE_ENV)
-        .or_else(|_| std::env::var("DATABASE_URL"))
+    env::var(BLOG_TEST_DATABASE_ENV)
+        .or_else(|_| env::var("DATABASE_URL"))
         .ok()
         .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
 }
