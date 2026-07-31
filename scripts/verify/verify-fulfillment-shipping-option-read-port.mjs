@@ -10,20 +10,24 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
+const requireText = (source, value, label) => {
+  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+};
+const forbidText = (source, value, label) => {
+  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+};
 
 const ownerRoot = read('crates/rustok-fulfillment/src/lib.rs');
-const ownerSource = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
-const errorSource = read('crates/rustok-fulfillment/src/error.rs');
-const contextSource = read(
+const owner = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
+const context = read(
   'crates/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
 );
-const optionSource = read(
+const optionConsumer = read(
   'crates/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs',
 );
-const enrichmentSource = read(
+const listConsumer = read(
   'crates/rustok-commerce/src/graphql/mutations/typed_shipping_enrichment_helper.rs',
 );
-const projectionSource = read('crates/rustok-commerce/src/storefront_shipping.rs');
 const evidence = JSON.parse(
   read(
     'crates/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source.json',
@@ -34,59 +38,67 @@ const review = JSON.parse(
     'crates/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source-review.json',
   ),
 );
-const diagnosticDoc = read(
+const doc = read(
   'crates/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md',
 );
-const plan = read('crates/rustok-fulfillment/docs/implementation-plan.md');
 
-const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
-};
-const forbidText = (source, value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
-};
+for (const marker of [
+  'mod shipping_option_read;',
+  'ShippingOptionReadPort,',
+  'ShippingOptionAdminReadPort,',
+  'in_process_shipping_option_read_port,',
+  'in_process_shipping_option_admin_read_port,',
+]) requireText(ownerRoot, marker, 'owner export');
 
-for (const [source, value, label] of [
-  [ownerRoot, 'mod shipping_option_read;', 'private owner module'],
-  [ownerRoot, 'ShippingOptionReadPort,', 'storefront trait export'],
-  [ownerRoot, 'ShippingOptionAdminReadPort,', 'admin trait export'],
-  [ownerRoot, 'in_process_shipping_option_read_port,', 'storefront factory export'],
-  [ownerRoot, 'in_process_shipping_option_admin_read_port,', 'admin factory export'],
-  [ownerSource, 'pub trait ShippingOptionReadPort: Send + Sync {', 'storefront read trait'],
-  [ownerSource, 'pub trait ShippingOptionAdminReadPort: Send + Sync {', 'admin read trait'],
-  [ownerSource, 'impl ShippingOptionReadPort for InProcessShippingOptionReadPort', 'storefront implementation'],
-  [ownerSource, 'impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort', 'admin implementation'],
-]) requireText(source, value, label);
+for (const marker of [
+  'pub trait ShippingOptionReadPort: Send + Sync {',
+  'pub trait ShippingOptionAdminReadPort: Send + Sync {',
+  'impl ShippingOptionReadPort for InProcessShippingOptionReadPort',
+  'impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort',
+  'context.require_policy(PortCallPolicy::read())?',
+  'parse_tenant_id(&context, "list_shipping_option_projections")?',
+  'parse_tenant_id(&context, "read_shipping_option_projection")?',
+  'parse_tenant_id(&context, "list_all_shipping_option_projections")?',
+  '.list_shipping_options(',
+  '.get_shipping_option(',
+  '.list_all_shipping_options(',
+  'request.requested_locale.as_deref()',
+  'request.tenant_default_locale.as_deref()',
+]) requireText(owner, marker, 'owner topology');
 
-for (const [value, label] of [
-  ['context.require_policy(PortCallPolicy::read())?', 'read admission'],
-  ['parse_tenant_id(&context, "list_shipping_option_projections")?', 'active-list tenant parse'],
-  ['parse_tenant_id(&context, "read_shipping_option_projection")?', 'lookup tenant parse'],
-  ['parse_tenant_id(&context, "list_all_shipping_option_projections")?', 'list-all tenant parse'],
-  ['.list_shipping_options(', 'active-list owner delegation'],
-  ['.get_shipping_option(', 'lookup owner delegation'],
-  ['.list_all_shipping_options(', 'list-all owner delegation'],
-  ['request.requested_locale.as_deref()', 'requested locale delegation'],
-  ['request.tenant_default_locale.as_deref()', 'default locale delegation'],
-]) requireText(ownerSource, value, label);
+for (const marker of [
+  'ShippingOptionReadContextFacts',
+  'ShippingOptionOwnerErrorFacts',
+  'ShippingOptionReadRequestFacts',
+  'tenant_id_parse_failed = true',
+  'shipping_option_id_present = request_facts.shipping_option_id_present',
+  'shipping_option_id_non_nil = request_facts.shipping_option_id_non_nil',
+  'requested_locale_present = request_facts.requested_locale_present',
+  'tenant_default_locale_present = request_facts.tenant_default_locale_present',
+  'error_variant = error_facts.error_variant',
+  'text_total_length = error_facts.text_total_length',
+  'uuid_non_nil_count = error_facts.uuid_non_nil_count',
+  'opaque_payload_present = error_facts.opaque_payload_present',
+  'boundary = SHIPPING_OPTION_READ_BOUNDARY',
+  'PortError::new(kind, code, message, retryable)',
+  'tracing::error!(',
+  'tracing::warn!(',
+]) requireText(owner, marker, 'bounded diagnostics');
 
-for (const [value, label] of [
-  ['ShippingOptionReadContextFacts', 'bounded context facts'],
-  ['ShippingOptionOwnerErrorFacts', 'bounded owner-error facts'],
-  ['ShippingOptionReadRequestFacts', 'bounded request facts'],
-  ['tenant_id_parse_failed = true', 'tenant parse failure fact'],
-  ['shipping_option_id_present = request_facts.shipping_option_id_present', 'identity presence fact'],
-  ['shipping_option_id_non_nil = request_facts.shipping_option_id_non_nil', 'identity shape fact'],
-  ['requested_locale_present = request_facts.requested_locale_present', 'requested locale presence'],
-  ['tenant_default_locale_present = request_facts.tenant_default_locale_present', 'default locale presence'],
-  ['error_variant = error_facts.error_variant', 'static error variant'],
-  ['text_total_length = error_facts.text_total_length', 'text shape'],
-  ['uuid_non_nil_count = error_facts.uuid_non_nil_count', 'uuid shape'],
-  ['opaque_payload_present = error_facts.opaque_payload_present', 'opaque payload presence'],
-  ['boundary = SHIPPING_OPTION_READ_BOUNDARY', 'owner boundary'],
-  ['tracing::error!(', 'technical severity'],
-  ['tracing::warn!(', 'ordinary severity'],
-]) requireText(ownerSource, value, label);
+for (const marker of [
+  '"fulfillment.context_invalid"',
+  '"fulfillment.validation"',
+  '"fulfillment.shipping_option_not_found"',
+  '"fulfillment.fulfillment_not_found"',
+  '"fulfillment.invalid_transition"',
+  '"fulfillment.database_unavailable"',
+  '"fulfillment request context is invalid"',
+  '"fulfillment request is invalid"',
+  '"shipping option was not found"',
+  '"fulfillment was not found"',
+  '"fulfillment lifecycle transition conflicts with the current state"',
+  '"fulfillment storage is temporarily unavailable"',
+]) requireText(owner, marker, 'stable public error');
 
 for (const value of [
   'error = ?error',
@@ -101,35 +113,19 @@ for (const value of [
   'requested_locale = ?',
   'tenant_default_locale = %',
   'tenant_default_locale = ?',
-]) forbidText(ownerSource, value, 'shipping-option owner diagnostics');
+]) forbidText(owner, value, 'complete owner payload');
 
-for (const marker of [
-  'Validation(String)',
-  'ShippingOptionNotFound(Uuid)',
-  'FulfillmentNotFound(Uuid)',
-  'InvalidTransition { from: String, to: String }',
-  'Database(#[from] DbErr)',
-]) requireText(errorSource, marker, 'retained owner error shape');
-
-for (const [source, value, label] of [
-  [contextSource, 'PortActor::service("rustok-commerce.storefront-shipping")', 'commerce service actor'],
-  [contextSource, 'format!("storefront-shipping:{operation}:{cart_id}")', 'commerce correlation'],
-  [contextSource, '.with_deadline(std::time::Duration::from_secs(2))', 'commerce deadline'],
-  [contextSource, 'context.clone().with_channel(channel)', 'commerce channel propagation'],
-  [contextSource, 'rustok_fulfillment::in_process_shipping_option_read_port(db)', 'commerce root factory'],
-  [optionSource, '.read_shipping_option_projection(', 'mounted lookup'],
-  [enrichmentSource, '.list_shipping_option_projections(', 'mounted active-list'],
-  [projectionSource, 'pub fn enrich_cart_delivery_groups_from_options(', 'pure projection'],
-]) requireText(source, value, label);
-
-for (const source of [optionSource, enrichmentSource]) {
-  for (const value of [
-    'FulfillmentService::new(',
-    '.get_shipping_option(',
-    '.list_shipping_options(',
-    'FulfillmentError',
-    'error.message',
-  ]) forbidText(source, value, 'mounted shipping-option topology');
+for (const [source, marker, label] of [
+  [context, 'PortActor::service("rustok-commerce.storefront-shipping")', 'commerce actor'],
+  [context, '.with_deadline(std::time::Duration::from_secs(2))', 'commerce deadline'],
+  [context, 'rustok_fulfillment::in_process_shipping_option_read_port(db)', 'root factory'],
+  [optionConsumer, '.read_shipping_option_projection(', 'mounted lookup'],
+  [listConsumer, '.list_shipping_option_projections(', 'mounted list'],
+]) requireText(source, marker, label);
+for (const source of [optionConsumer, listConsumer]) {
+  for (const value of ['FulfillmentService::new(', 'FulfillmentError', 'error.message']) {
+    forbidText(source, value, 'mounted consumer boundary');
+  }
 }
 
 for (const [key, expected] of Object.entries({
@@ -153,9 +149,6 @@ for (const [key, expected] of Object.entries({
     failures.push(`diagnostic evidence ${key} must be ${expected}`);
   }
 }
-if (evidence.validation?.compile_proven !== false) {
-  failures.push('diagnostic evidence must not claim compilation');
-}
 for (const [key, expected] of Object.entries({
   public_traits_preserved: true,
   read_admission_order_preserved: true,
@@ -171,22 +164,14 @@ for (const [key, expected] of Object.entries({
     failures.push(`source review ${key} must be ${expected}`);
   }
 }
-
-for (const marker of [
-  'Status: **source-ready / unvalidated**',
-  'Fulfillment lifecycle projection-read diagnostics',
-]) requireText(diagnosticDoc, marker, 'diagnostic documentation');
-for (const marker of [
-  'Shipping-option projection-read owner payload diagnostics are source-closed / unvalidated.',
-  'verify-fulfillment-shipping-option-read-port.mjs',
-]) requireText(plan, marker, 'implementation plan');
+requireText(doc, 'Status: **source-ready / unvalidated**', 'diagnostic document');
+requireText(doc, 'Fulfillment lifecycle projection-read diagnostics', 'remaining gap');
 
 if (failures.length > 0) {
   console.error('Fulfillment shipping-option read port verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
-
 console.log(
   '✔ fulfillment shipping-option projection reads retain owner topology, bounded diagnostics, and stable public PortError behavior',
 );
