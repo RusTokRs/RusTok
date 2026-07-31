@@ -25,13 +25,11 @@ pub(crate) fn product_channel_visibility_sql(
     format!(
         "(
             {entity_type_column} <> 'product'
-            OR (
-                jsonb_typeof({allowed_slugs}) = 'array'
-                AND (
-                    jsonb_array_length({allowed_slugs}) = 0
-                    OR {channel_match}
-                )
-            )
+            OR CASE
+                WHEN jsonb_typeof({allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE
+                WHEN jsonb_array_length({allowed_slugs}) = 0 THEN TRUE
+                ELSE {channel_match}
+            END
         )"
     )
 }
@@ -140,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_scope_binds_only_a_present_channel_slug() {
+    fn sql_scope_guards_array_length_with_case() {
         let mut values = Vec::<Value>::new();
         let mut next_param = 4;
         let sql = product_channel_visibility_sql(
@@ -152,7 +150,9 @@ mod tests {
         );
 
         assert!(sql.contains("entity_type <> 'product'"));
-        assert!(sql.contains("jsonb_array_length"));
+        assert!(sql.contains("OR CASE"));
+        assert!(sql.contains("IS DISTINCT FROM 'array' THEN FALSE"));
+        assert!(sql.contains("WHEN jsonb_array_length"));
         assert!(sql.contains("? $4"));
         assert_eq!(values.len(), 1);
         assert_eq!(next_param, 5);
@@ -166,7 +166,7 @@ mod tests {
             &mut unscoped_values,
             &mut unscoped_next_param,
         );
-        assert!(unscoped_sql.contains("OR FALSE"));
+        assert!(unscoped_sql.contains("ELSE FALSE"));
         assert!(unscoped_values.is_empty());
         assert_eq!(unscoped_next_param, 4);
     }
