@@ -52,7 +52,7 @@ impl ArtifactPermissionEventPublisher for TransactionalOutboxArtifactPermissionE
         tenant_id: Uuid,
         actor_id: Uuid,
         event: RbacArtifactPermissionEvent,
-    ) -> Result<(), ArtifactPermissionAssignmentError> {
+    ) -> std::result::Result<(), ArtifactPermissionAssignmentError> {
         self.event_bus
             .publish_contract_in_tx(transaction, tenant_id, Some(actor_id), event)
             .await
