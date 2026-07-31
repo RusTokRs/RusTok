@@ -4,6 +4,8 @@
   "status": "source_complete_consumer_checkpoint_pending",
   "scope": "Expose the append-only Forum projection revision ledger as a bounded neutral Search source without advancing Search owner-revision checkpoints",
   "predecessor": "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
+  "source_verifier": "scripts/verify/verify-forum-search-owner-revision-source.mjs",
   "owner_clock": {
     "table": "forum_projection_revision_ledger",
     "field": "revision",
