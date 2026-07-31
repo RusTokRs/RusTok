@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::dto::{
     ForumDomainEventQuery, ForumDomainEventResponse, ForumProjectionOwnerRevisionImpact,
-    ForumProjectionOwnerRevisionResponse,
+    ForumProjectionOwnerRevisionResponse, ForumProjectionOwnerTenantHeadResponse,
 };
 use crate::entities::forum_domain_event;
 use crate::error::{ForumError, ForumResult};
@@ -17,6 +17,7 @@ use crate::services::rbac::enforce_scope;
 const DEFAULT_EVENT_LIMIT: u64 = 50;
 const MAX_EVENT_LIMIT: u64 = 100;
 pub const MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE: usize = 100;
+pub const MAX_FORUM_PROJECTION_OWNER_TENANT_PAGE: usize = 256;
 const FORUM_PROJECTION_INVALIDATION_EVENT_TYPE: &str = "index.reindex_requested";
 
 #[derive(Clone)]
@@ -111,12 +112,7 @@ impl ForumEventService {
                 "projection owner revision limit must be between 1 and {MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE}"
             )));
         }
-        if self.db.get_database_backend() != DbBackend::Postgres {
-            return Err(ForumError::capability_unavailable(
-                "forum_projection_revision_source",
-                "FORUM_PROJECTION_REVISION_SOURCE_UNAVAILABLE",
-            ));
-        }
+        self.ensure_projection_revision_source_available()?;
 
         let rows = self
             .db
@@ -148,6 +144,79 @@ impl ForumEventService {
                 })
             })
             .collect()
+    }
+
+    /// Pages tenant heads from the same owner ledger so Search can discover a
+    /// tenant whose first durable invalidation delivery was lost. The stable UUID
+    /// cursor exposes no ledger target or event payload.
+    pub async fn list_projection_owner_revision_tenants(
+        &self,
+        after_tenant_id: Option<Uuid>,
+        limit: usize,
+    ) -> ForumResult<Vec<ForumProjectionOwnerTenantHeadResponse>> {
+        if after_tenant_id.is_some_and(|tenant_id| tenant_id.is_nil()) {
+            return Err(ForumError::Validation(
+                "projection owner tenant cursor must not be nil".to_string(),
+            ));
+        }
+        if !(1..=MAX_FORUM_PROJECTION_OWNER_TENANT_PAGE).contains(&limit) {
+            return Err(ForumError::Validation(format!(
+                "projection owner tenant limit must be between 1 and {MAX_FORUM_PROJECTION_OWNER_TENANT_PAGE}"
+            )));
+        }
+        self.ensure_projection_revision_source_available()?;
+
+        let (sql, values) = match after_tenant_id {
+            Some(after_tenant_id) => (
+                r#"
+                SELECT tenant_id, MAX(revision) AS latest_owner_revision
+                FROM forum_projection_revision_ledger
+                WHERE tenant_id > $1
+                GROUP BY tenant_id
+                ORDER BY tenant_id ASC
+                LIMIT $2
+                "#,
+                vec![after_tenant_id.into(), (limit as i64).into()],
+            ),
+            None => (
+                r#"
+                SELECT tenant_id, MAX(revision) AS latest_owner_revision
+                FROM forum_projection_revision_ledger
+                GROUP BY tenant_id
+                ORDER BY tenant_id ASC
+                LIMIT $1
+                "#,
+                vec![(limit as i64).into()],
+            ),
+        };
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                values,
+            ))
+            .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(ForumProjectionOwnerTenantHeadResponse {
+                    tenant_id: row.try_get("", "tenant_id")?,
+                    latest_owner_revision: row.try_get("", "latest_owner_revision")?,
+                })
+            })
+            .collect()
+    }
+
+    fn ensure_projection_revision_source_available(&self) -> ForumResult<()> {
+        if self.db.get_database_backend() == DbBackend::Postgres {
+            Ok(())
+        } else {
+            Err(ForumError::capability_unavailable(
+                "forum_projection_revision_source",
+                "FORUM_PROJECTION_REVISION_SOURCE_UNAVAILABLE",
+            ))
+        }
     }
 }
 
