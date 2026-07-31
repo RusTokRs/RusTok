@@ -53,6 +53,8 @@ pub struct ForumStorefrontSearchRequest {
     pub statuses: Vec<String>,
     pub category_ids: Vec<String>,
     pub author_ids: Vec<String>,
+    pub tags: Vec<String>,
+    pub solved: Option<bool>,
     pub attribute_filters: Vec<ForumStorefrontSearchAttributeFilter>,
     pub sort_attribute_code: Option<String>,
     pub sort_desc: bool,
@@ -506,6 +508,8 @@ fn normalize_request(
         category_ids,
         document_filters: ForumStorefrontDocumentFilters {
             author_ids: normalize_uuid_values("author_ids", request.author_ids)?,
+            tags: normalize_tag_values("tags", request.tags)?,
+            solved: request.solved,
         },
         attribute_filters: normalize_attribute_filters(request.attribute_filters)?,
         sort_attribute_code: normalize_attribute_code(request.sort_attribute_code)?,
@@ -575,6 +579,33 @@ fn normalize_filter_values(
             Ok(value)
         })
         .collect()
+}
+
+fn normalize_tag_values(
+    field: &str,
+    values: Vec<String>,
+) -> Result<Vec<String>, ForumStorefrontSearchExecutionError> {
+    if values.len() > MAX_FILTER_VALUES {
+        return validation(format!(
+            "{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"
+        ));
+    }
+    let mut normalized = values
+        .into_iter()
+        .map(|value| {
+            let value = value.trim();
+            if value.is_empty()
+                || value.chars().count() > MAX_FILTER_VALUE_LEN
+                || value.chars().any(char::is_control)
+            {
+                return validation(format!("{field} contains an invalid value"));
+            }
+            Ok(value.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    normalized.sort();
+    normalized.dedup();
+    Ok(normalized)
 }
 
 fn normalize_uuid_values(

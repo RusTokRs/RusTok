@@ -85,6 +85,20 @@ narrowing. Query-rule pins are disabled for an active author scope so a pinned
 document cannot escape the requested author set. Ordinary, mixed, Product and
 admin Search paths remain unchanged. Runtime evidence remains pending.
 
+`FORUM-23B2F2` adds exact bounded tag and solved-state filters to the same
+explicit Forum-only execution owner. Tag values are trimmed, case-sensitive,
+exact and intersect with AND semantics. Topics use `payload.tags`; approved
+replies use Forum-projected parent `payload.topic_tags`. Solved topics require a
+valid UUID or explicit null in `solution_reply_id`, while replies use the exact
+current boolean `is_solution` marker; malformed projected values fail closed.
+The raw 100-candidate cap remains before narrowing, all active document filters
+intersect before owner eligibility, visible totals/facets/pagination are computed
+after authorization, and query-rule pins remain disabled under any active document
+filter. Legacy replies without `topic_tags` fail closed for tag-scoped queries until
+a Forum Search reindex. Existing GraphQL/native legacy and author-only operations,
+neutral DTOs, mixed/Product/admin Search and unfiltered behavior remain unchanged.
+Runtime and reindex evidence remain pending.
+
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
 server-wide generic `platform_settings` service no longer admits a `search`
@@ -182,6 +196,11 @@ projection can remain stale after recovery.
 - Exact Forum author filter contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-author-filter.json` and
   `scripts/verify/verify-forum-search-author-filter.mjs`.
+- Exact Forum tag and solved filter status:
+  `source_complete_execution_pending` under `FORUM-23B2F2`.
+- Exact Forum tag and solved contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-tag-solved-filter.json` and
+  `scripts/verify/verify-forum-search-tag-solved-filter.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -199,6 +218,8 @@ projection can remain stale after recovery.
   `FORUM-23B2E2`.
 - Exact Forum author filtering is `source_complete_execution_pending` under
   `FORUM-23B2F1`.
+- Exact Forum tag and solved filtering is `source_complete_execution_pending` under
+  `FORUM-23B2F2`.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -271,11 +292,15 @@ rebuild behavior through replayable event transport.
     optional GraphQL plus additive native transport parity, pre-eligibility narrowing,
     post-filter totals/facets/pagination, and active-scope pin suppression under
     `FORUM-23B2F1`.
+21. Added exact bounded Forum tag and solved-state filters, parent-topic tag
+    projection for approved replies, additive GraphQL/native filter operations,
+    pre-eligibility intersection, post-authorization totals/facets/pagination, and
+    fail-closed legacy reply behavior under `FORUM-23B2F2`.
 
 ## Next results
 
-1. **Complete remaining Forum storefront query filters.** Add tag, locale, date,
-   solved, kind, channel/group and attachment-presence filters without moving owner
+1. **Complete remaining Forum storefront query filters.** Add locale, date, kind,
+   channel/group and attachment-presence filters without moving owner
    authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
    the same bounded filter contract and every owner-sensitive result still passes
    exact post-retrieval eligibility.
