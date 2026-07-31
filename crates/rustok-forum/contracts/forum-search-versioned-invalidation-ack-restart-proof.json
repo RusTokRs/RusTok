@@ -1,0 +1,53 @@
+{
+  "contract": "forum_search_versioned_invalidation_ack_restart_proof_v1",
+  "task": "FORUM-23B2G2B3D3",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "crates/rustok-search/tests/forum_versioned_invalidation_ack_restart_iggy.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-ack-restart-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "broker": "external_iggy",
+    "broker_address_env": "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS",
+    "broker_username_env": "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+    "broker_password_env": "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD",
+    "serialization": "json",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "topic": "domain",
+    "partitions": 1
+  },
+  "scenario": {
+    "id": "acknowledgement_failure_restart",
+    "injected_failure": "replace the exact delivery acknowledgement token with a validly encoded token carrying a different consumer identity",
+    "proves": [
+      "the first typed delivery reaches the PostgreSQL Search inbox before acknowledgement is attempted",
+      "the injected acknowledgement-token mismatch fails and therefore does not commit the exact source offset",
+      "reopening the production Forum Search Iggy consumer group redelivers the same offset, typed envelope and root causation identity",
+      "redelivery reuses the existing complete Search inbox row and preserves its original positive ingest_sequence",
+      "successful acknowledgement after restart advances the production group to the next published typed event"
+    ]
+  },
+  "identity_invariants": [
+    "the consumer group is exactly rustok-search-forum-projection-v1",
+    "the topic is exactly domain",
+    "the typed envelope id is transport identity only",
+    "the typed causation id is the durable Search inbox event id",
+    "the redelivered broker offset equals the first observed offset",
+    "the Search inbox row count for the root event remains exactly one",
+    "the Search ingest_sequence is unchanged across redelivery"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL or external Iggy execution passed",
+    "this proof does not run the server-owned worker loop or its retry backoff",
+    "this proof does not establish poison receipts, deterministic DLQ publication or poison acknowledgement",
+    "this proof does not execute the Search projector or advance an owner checkpoint",
+    "this proof does not establish multi-process serialization, deletion or ACL ordering, Search-disabled recovery or LINK-FORUM-03 completion"
+  ]
+}
