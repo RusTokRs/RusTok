@@ -12,9 +12,10 @@ use crate::SchemaRef;
 
 /// Default upper bound for one owner-source `scan` or targeted `load` call.
 ///
-/// The timeout is deliberately shorter than the minimum production replay lease
-/// recommended by the M6 run contract. A timed-out source call is cancelled by
-/// dropping its future and is reported through a bounded retryable failure code.
+/// A timed-out source call is cancelled by dropping its future and is reported
+/// through a bounded retryable failure code. Replay and reconciliation operators
+/// must configure leases longer than this bound plus their persistence margin;
+/// this source wrapper never extends or heartbeats a job lease.
 pub const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";
@@ -97,7 +98,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{EntityName, ModuleName, SchemaVersion};
+    use crate::{EntityName, IndexSourceFailureKind, ModuleName, SchemaVersion};
 
     struct PendingSource;
 
@@ -138,7 +139,7 @@ mod tests {
         .unwrap();
 
         let failure = source.scan(request).await.unwrap_err();
-        assert_eq!(failure.kind(), super::super::IndexSourceFailureKind::Retryable);
+        assert_eq!(failure.kind(), IndexSourceFailureKind::Retryable);
         assert_eq!(failure.code(), INDEX_SOURCE_SCAN_TIMEOUT_CODE);
     }
 
@@ -154,7 +155,7 @@ mod tests {
         let request = IndexSourceLoadRequest::new(vec![key]).unwrap();
 
         let failure = source.load(request).await.unwrap_err();
-        assert_eq!(failure.kind(), super::super::IndexSourceFailureKind::Retryable);
+        assert_eq!(failure.kind(), IndexSourceFailureKind::Retryable);
         assert_eq!(failure.code(), INDEX_SOURCE_LOAD_TIMEOUT_CODE);
     }
 }
