@@ -38,7 +38,9 @@ rest of the owner work.
 
 `TransactionalEventBus::publish_root_in_tx_with_envelope_id` is an additive API
 that validates the registered root event, creates one envelope, writes it to the
-canonical outbox and returns that exact envelope ID.
+canonical outbox and returns that exact envelope ID. Existing outbox method
+signatures and behavior are unchanged; the additive identity-returning method is
+recorded in `crates/rustok-outbox/CRATE_API.md`.
 
 The Forum invalidation owner performs these ordered steps:
 
@@ -69,10 +71,11 @@ The legacy root event, event type and target strings remain unchanged. Existing
 Search ingestion, durable inbox ordering, retries, rebuild semantics and visible
 query behavior therefore continue without a second projection path.
 
-No root event schema, sealed contract family, event digest, Search migration,
-public API, dependency or `Cargo.lock` change is introduced. SQLite remains the
-existing validation-only invalidation environment because background Forum Search
-projection is PostgreSQL-only.
+No existing public signature, root event schema, sealed contract family, event
+digest, Search migration, dependency or `Cargo.lock` change is introduced. The
+only public surface addition is the exact-envelope-ID outbox helper described
+above. SQLite remains the existing validation-only invalidation environment
+because background Forum Search projection is PostgreSQL-only.
 
 The canonical Forum and Search plans already list owner-issued revision ordering
 and reconciliation as remaining work. This foundation does not mark that result
