@@ -12,9 +12,7 @@ use async_trait::async_trait;
 use rustok_blog::BlogModule;
 use rustok_core::{
     ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleRuntimeExtensions, RusToKModule,
-    events::{
-        DispatcherConfig, EventBus, EventDispatcher, EventHandler, HandlerResult,
-    },
+    events::{DispatcherConfig, EventBus, EventDispatcher, EventHandler, HandlerResult},
 };
 use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{
@@ -22,7 +20,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
- type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
 const DISPATCHER_DUPLICATE_DELIVERIES: usize = 2;
