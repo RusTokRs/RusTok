@@ -21,7 +21,7 @@ pub async fn read_job(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<Du
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT job_id, state, attempt_count::bigint AS attempt_count_value, (cursor->>'completed_passes')::bigint AS completed_passes, (cursor->>'pages_processed')::bigint AS pages_processed, lease_owner, (lease_expires_at > CURRENT_TIMESTAMP + INTERVAL '50 minutes') AS lease_extended, (lease_owner IS NULL AND lease_expires_at IS NULL) AS lease_released FROM index_jobs WHERE tenant_id = $1 AND kind = 'reconcile'",
+            "SELECT job_id, state, attempt_count::bigint AS attempt_count_value, (cursor->>'completed_passes')::bigint AS completed_passes, (cursor->>'pages_processed')::bigint AS pages_processed, lease_owner, COALESCE(lease_expires_at > CURRENT_TIMESTAMP + INTERVAL '50 minutes', FALSE) AS lease_extended, (lease_owner IS NULL AND lease_expires_at IS NULL) AS lease_released FROM index_jobs WHERE tenant_id = $1 AND kind = 'reconcile'",
             vec![tenant_id.into()],
         ))
         .await?
