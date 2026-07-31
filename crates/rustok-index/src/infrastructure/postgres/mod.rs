@@ -10,6 +10,7 @@ mod source_factory;
 mod source_reconciliation_runner;
 mod source_replay;
 mod source_replay_job;
+mod source_replay_retry;
 mod source_replay_runner;
 
 #[cfg(test)]
@@ -74,6 +75,10 @@ pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
     IndexReplayJobLeaseRequest, PostgresIndexReplayJobStore,
+};
+pub use source_replay_retry::{
+    IndexReplayRetryDisposition, IndexReplayRetryError, IndexReplayRetryFailure,
+    IndexReplayRetryFailureKind, IndexReplayRetryPolicy, PostgresIndexReplayRetryStore,
 };
 pub use source_replay_runner::{
     IndexReplayCancelOutcome, IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest,
