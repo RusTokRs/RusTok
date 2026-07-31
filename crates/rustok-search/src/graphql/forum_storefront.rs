@@ -12,10 +12,11 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecutionError,
-    ForumStorefrontSearchRequest, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchTransport,
-    execute_forum_storefront_search, resolve_trusted_storefront_channel_input,
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchDateWindowRequest,
+    ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchTransport, execute_forum_storefront_search,
+    execute_forum_storefront_search_with_date_window, resolve_trusted_storefront_channel_input,
 };
 
 use super::{
@@ -34,9 +35,9 @@ pub struct ForumStorefrontSearchQuery;
 #[Object]
 impl ForumStorefrontSearchQuery {
     /// Executes published Search through the Forum-owned richer category scope,
-    /// exact topic/reply result eligibility and optional exact author, tag and
-    /// solved-state scope. The input must explicitly select only the `forum` source
-    /// and at least one category root.
+    /// exact topic/reply result eligibility and optional exact author, tag,
+    /// solved-state and inclusive published-date scope. The input must explicitly
+    /// select only the `forum` source and at least one category root.
     async fn forum_storefront_search(
         &self,
         ctx: &Context<'_>,
@@ -44,6 +45,8 @@ impl ForumStorefrontSearchQuery {
         author_ids: Option<Vec<String>>,
         tags: Option<Vec<String>>,
         solved: Option<bool>,
+        published_from: Option<String>,
+        published_to: Option<String>,
     ) -> Result<SearchPreviewPayload> {
         require_module_enabled(ctx, FORUM_MODULE_SLUG).await?;
         enforce_rate_limit(ctx).await?;
@@ -118,13 +121,27 @@ impl ForumStorefrontSearchQuery {
             transport: StorefrontSearchTransport::Graphql,
         };
 
-        let execution = execute_forum_storefront_search(
-            db,
-            category_scope_port,
-            result_eligibility_port,
-            request,
-        )
-        .await
+        let execution = if published_from.is_some() || published_to.is_some() {
+            execute_forum_storefront_search_with_date_window(
+                db,
+                category_scope_port,
+                result_eligibility_port,
+                ForumStorefrontSearchDateWindowRequest {
+                    request,
+                    published_from,
+                    published_to,
+                },
+            )
+            .await
+        } else {
+            execute_forum_storefront_search(
+                db,
+                category_scope_port,
+                result_eligibility_port,
+                request,
+            )
+            .await
+        }
         .map_err(map_execution_error)?;
         metrics::record_read_path_query(
             "graphql",

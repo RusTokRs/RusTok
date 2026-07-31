@@ -7,6 +7,7 @@ use super::{ApiError, configured_tenant_slug};
 const FORUM_STOREFRONT_SEARCH_QUERY: &str = "query ForumStorefrontSearch($input: SearchPreviewInput!) { forumStorefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY: &str = "query ForumStorefrontSearchByAuthors($input: SearchPreviewInput!, $authorIds: [String!]!) { forumStorefrontSearch(input: $input, authorIds: $authorIds) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 const FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY: &str = "query ForumStorefrontSearchByFilters($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+const FORUM_STOREFRONT_SEARCH_BY_DATE_WINDOW_QUERY: &str = "query ForumStorefrontSearchByDateWindow($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean, $publishedFrom: String, $publishedTo: String) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved, publishedFrom: $publishedFrom, publishedTo: $publishedTo) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 
 #[derive(Debug, Deserialize)]
 struct ForumStorefrontSearchResponse {
@@ -33,6 +34,19 @@ struct FilterSearchPreviewVariables {
     author_ids: Option<Vec<String>>,
     tags: Option<Vec<String>>,
     solved: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct DateWindowSearchPreviewVariables {
+    input: SearchPreviewInput,
+    #[serde(rename = "authorIds")]
+    author_ids: Option<Vec<String>>,
+    tags: Option<Vec<String>>,
+    solved: Option<bool>,
+    #[serde(rename = "publishedFrom")]
+    published_from: Option<String>,
+    #[serde(rename = "publishedTo")]
+    published_to: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -135,6 +149,41 @@ pub async fn fetch_search_with_filters(
                 author_ids: (!author_ids.is_empty()).then_some(author_ids),
                 tags: (!tags.is_empty()).then_some(tags),
                 solved,
+            }),
+        ),
+        None,
+        configured_tenant_slug(),
+        None,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))?;
+
+    Ok(response.forum_storefront_search)
+}
+
+pub async fn fetch_search_with_date_window(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    let input = search_preview_input(query, locale, preset_key, filters);
+    let response: ForumStorefrontSearchResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            FORUM_STOREFRONT_SEARCH_BY_DATE_WINDOW_QUERY,
+            Some(DateWindowSearchPreviewVariables {
+                input,
+                author_ids: (!author_ids.is_empty()).then_some(author_ids),
+                tags: (!tags.is_empty()).then_some(tags),
+                solved,
+                published_from,
+                published_to,
             }),
         ),
         None,
