@@ -18,7 +18,7 @@ fn persisted_provider_result(
         manual_reconciliation(
             context,
             owner_operation,
-            "payment provider operation has no normalized durable result",
+            CheckoutPaymentExecutionReconciliationReason::MissingNormalizedDurableResult,
         )
     })?;
     let (provider_result_kind, provider_result_collection_length) = match &value {
@@ -51,7 +51,7 @@ fn persisted_provider_result(
         manual_reconciliation(
             context,
             owner_operation,
-            "payment provider operation result is malformed",
+            CheckoutPaymentExecutionReconciliationReason::MalformedDurableResult,
         )
     })
 }
@@ -265,14 +265,34 @@ fn parse_tenant_id(
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+enum CheckoutPaymentExecutionReconciliationReason {
+    MissingNormalizedDurableResult,
+    MalformedDurableResult,
+    InvalidSuccessfulProviderResponse,
+    UnknownProviderOutcome,
+}
+
+impl CheckoutPaymentExecutionReconciliationReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::MissingNormalizedDurableResult => "missing_normalized_durable_result",
+            Self::MalformedDurableResult => "malformed_durable_result",
+            Self::InvalidSuccessfulProviderResponse => "invalid_successful_provider_response",
+            Self::UnknownProviderOutcome => "unknown_provider_outcome",
+        }
+    }
+}
+
 fn manual_reconciliation(
     context: &PortContext,
     owner_operation: &'static str,
-    internal_message: &'static str,
+    reason: CheckoutPaymentExecutionReconciliationReason,
 ) -> PortError {
     let context_facts = checkout_payment_execution_context_facts(context);
+    let reconciliation_reason = reason.label();
     tracing::error!(
-        internal_message,
+        reconciliation_reason,
         correlation_id = %context.correlation_id,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
@@ -497,12 +517,12 @@ fn payment_error_to_port_error(
         PaymentError::ProviderInvalidResponse { .. } => manual_reconciliation(
             context,
             owner_operation,
-            "payment provider returned an invalid successful response",
+            CheckoutPaymentExecutionReconciliationReason::InvalidSuccessfulProviderResponse,
         ),
         PaymentError::ProviderOutcomeUnknown { .. } => manual_reconciliation(
             context,
             owner_operation,
-            "payment provider operation outcome is unknown",
+            CheckoutPaymentExecutionReconciliationReason::UnknownProviderOutcome,
         ),
         PaymentError::ProviderConfiguration { .. } => PortError::invariant_violation(
             "payment.provider_not_configured",
