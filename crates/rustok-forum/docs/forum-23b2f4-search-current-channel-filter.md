@@ -39,6 +39,25 @@ Legacy reply documents without `topic_channel_slugs`, malformed arrays and array
 containing non-string values fail closed while the filter is active until a Forum
 Search reindex repairs them.
 
+## Parent-derived refresh ordering
+
+A parent topic channel change must update both the topic document and every reply
+document that copied `topic_channel_slugs`. The public root `TopicService::update`
+therefore uses the existing `update_with_inline_relations` owner command rather
+than the older compatibility update. That command writes
+`ReindexRequested { target_type: "forum_topic" }` through the transactional
+outbox before the topic transaction commits.
+
+The Search inbox maps an exact `forum_topic` reindex request to the tenant-wide
+Forum scope. `ForumSearchProjector::refresh_entity` also converts a topic refresh
+to `rebuild_tenant`, so the resulting projection replaces the topic and all of
+its approved replies from current Forum owner state. The same owner path preserves
+omitted quote relations instead of clearing them during an ordinary topic edit.
+
+This is source-locked ordering only. Runtime execution of the topic update,
+outbox relay, ordered inbox claim and full projection rebuild remains maintainer
+evidence.
+
 ## Evaluation order
 
 The stable raw 100-candidate limit is checked before channel narrowing. Exact
@@ -92,8 +111,11 @@ The implementation agent did not run these commands, as requested:
 ```bash
 cargo test -p rustok-search forum_current_channel_filter -- --nocapture
 cargo test -p rustok-search current_channel_only -- --nocapture
+cargo test -p rustok-forum topic_update -- --nocapture
+cargo test -p rustok-search forum_projection -- --nocapture
 cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture
 node scripts/verify/verify-forum-search-current-channel-filter.mjs
+node scripts/verify/verify-forum-projection-invalidation.mjs
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
@@ -104,4 +126,7 @@ cargo xtask module validate search
 PostgreSQL and reindex evidence should cover a trusted channel, an unscoped
 request, global and channel-assigned topics, approved replies, legacy reply
 projections, malformed arrays, intersections with the existing filters, the raw
-candidate cap, owner eligibility, totals, facets and pagination.
+candidate cap, owner eligibility, totals, facets and pagination. It should also
+change a topic channel assignment through the public owner, retain omitted quote
+relations, observe one transactional `forum_topic` invalidation, process the full
+scope in order and confirm that both topic and reply channel projections changed.
