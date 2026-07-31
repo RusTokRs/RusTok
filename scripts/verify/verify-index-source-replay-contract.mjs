@@ -71,7 +71,7 @@ for (const forbidden of [
 
 const timeoutPath = 'crates/rustok-index/src/application/source_timeout.rs';
 const sourceTimeout = requireMarkers(timeoutPath, [
-  'pub const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
+  'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
   'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
   'const INDEX_SOURCE_LOAD_TIMEOUT_CODE: &str = "index_source_load_timeout";',
   'struct TimedIndexSource<S>',
@@ -195,7 +195,7 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'IndexReplayWorker',
   'IndexReplayCheckpointStore',
   'materialize_index_source_registry',
-  'pub use source_timeout::{DEFAULT_INDEX_SOURCE_CALL_TIMEOUT, register_index_source};',
+  'pub use source_timeout::register_index_source;',
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay;',
