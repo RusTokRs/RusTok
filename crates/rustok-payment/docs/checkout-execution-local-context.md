@@ -18,29 +18,24 @@ outcome attribution.
 
 ## Stable-code classification
 
-The local outcome mapper now selects `local_operation` from `PortError.code` plus the
-known owner operation where an authorize/capture distinction is required. Human-readable
+The local outcome mapper selects `local_operation` from `PortError.code` plus the known
+owner operation where an authorize/capture distinction is required. Human-readable
 `PortError.message` is not used as control flow.
 
 This keeps diagnostic attribution stable when public wording changes while preserving the
-same delegated `PortError` code, message, kind, and retryability.
-
-Unknown codes continue to pass through without an added local outcome event.
+same delegated `PortError` code, message, kind, and retryability. Unknown codes continue to
+pass through without an added local outcome event.
 
 ## Safe diagnostic context
 
 The per-call correlation id remains available for event joining. Other `PortContext`
 values are recorded only as non-sensitive shape facts:
 
-- tenant, actor-id, channel, locale, causation-id, traceparent, and idempotency-key
-  character lengths;
+- tenant, actor-id, channel, locale, causation-id, traceparent, and idempotency-key lengths;
 - actor kind;
 - claim and role counts;
 - presence flags for optional values;
 - deadline milliseconds.
-
-The diagnostics do not record raw tenant ids, actor ids, channels, locales, causation ids,
-traceparents, or idempotency keys.
 
 Request identity is also shape-only:
 
@@ -49,8 +44,8 @@ Request identity is also shape-only:
 - decimal text length rather than the requested amount;
 - currency, order-plan-hash, provider-id, and provider-payment-id character lengths.
 
-Raw checkout/payment identifiers, provider identities, request metadata, and financial
-values are not written by these execution diagnostics.
+Raw context values, checkout/payment identifiers, provider identities, request metadata,
+and financial values are not written by these execution diagnostics.
 
 ## Preserved behavior
 
@@ -65,7 +60,7 @@ This slice does not change:
 - `PaymentError` to public `PortError` mapping;
 - public codes, messages, kinds, or retryability;
 - successful results or replay adoption;
-- payment compensation persistent owner or contracts;
+- payment compensation contracts;
 - Payment FFA/FBA status.
 
 The original internal error remains private to structured tracing.
@@ -82,18 +77,21 @@ validation flags.
 
 ## Related compensation boundary
 
-The public Payment checkout compensation wrapper now also uses stable-code-only
-attribution and safe context/request shape. Its separate evidence is maintained in the
-compensation documentation and verifier.
+The public Payment checkout compensation wrapper and its private persistent owner now both
+use safe context shape. Wrapper local attribution is stable-code-only; owner diagnostics
+cover tenant/causation rejection, owner mapping, manual reconciliation, provider
+serialization, persisted-result decoding, and journal checkpoint failures without raw
+identifiers.
 
-The private persistent compensation owner still contains raw owner-local identifier
-diagnostics and remains a separate cleanup. This execution slice does not claim that work.
+Their separate evidence is maintained in the compensation documentation and focused
+verifier. Provider cancel/replay, lifecycle, journal, local cancellation, and public
+`PortError` semantics remain unchanged.
 
 ## Remaining gaps
 
-The broad ecommerce correlation-safe mapper item remains open for persistent compensation,
-remaining owner adapters, non-`PortError` envelopes, and runtime evidence. No FBA or FFA
-status is promoted from source inspection.
+The broad ecommerce correlation-safe mapper item remains open for remaining owner adapters,
+non-`PortError` envelopes, and runtime evidence. No FBA or FFA status is promoted from source
+inspection.
 
 ## Suggested maintainer checks
 

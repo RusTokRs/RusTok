@@ -1,136 +1,106 @@
-# Payment checkout compensation wrapper diagnostic safety
+# Payment checkout compensation diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens the public context wrapper around the canonical payment compensation owner boundary:
+This source boundary covers both layers of the canonical Payment checkout compensation port:
 
+- the public context wrapper in `checkout_compensation_context.rs`;
+- the private persistent owner in `checkout_compensation.rs`;
 - `CheckoutPaymentCompensationPort::compensate_checkout_payment`;
-- public `InProcessCheckoutPaymentCompensationPort`;
-- root `in_process_checkout_payment_compensation_port`;
-- the compatibility namespace `rustok_payment::checkout_compensation::*`.
+- public root and `rustok_payment::checkout_compensation::*` construction.
 
-The wrapper still delegates the original `PortContext` and request to the private persistent owner in
-`checkout_compensation.rs`. Provider cancellation, journal adoption, lifecycle policy, local
-cancellation, and reconciliation behavior remain in that persistent owner and are unchanged here.
+The public wrapper still delegates the original `PortContext` and request to the private owner. The
+owner still owns write admission, tenant and causation validation, typed collection lifecycle policy,
+provider cancellation, provider-journal replay/checkpointing, local cancellation, and reconciliation.
 
-## Public construction
+## Public wrapper
 
-`lib.rs` preserves the existing layered facade:
+The wrapper retains its previously established contract:
 
-- `checkout_compensation.rs` is loaded privately as `checkout_compensation_persistent`;
-- `checkout_compensation_context.rs` owns the public wrapper implementation;
-- `checkout_compensation_api.rs` preserves the public module namespace;
-- crate-root exports resolve to the wrapper type and factory.
-
-Callers therefore continue to use the same public trait, request, type, and factory names without a
-public persistent-implementation bypass.
-
-## Delegation order
-
-The public operation keeps this source order:
-
-1. clone the incoming `PortContext` for post-delegation diagnostics;
-2. retain safe request-shape facts;
-3. delegate the original context and request to the persistent owner;
-4. inspect only a returned `PortError`;
-5. classify known outcomes from stable `PortError.code`;
-6. return the same `PortError` unchanged.
+1. capture safe context and request shape;
+2. delegate the original context and request;
+3. classify known returned outcomes from stable `PortError.code`;
+4. return the same `PortError` unchanged.
 
 Human-readable `PortError.message` is not used as control flow. Unknown codes pass through without an
 additional wrapper event.
 
-The two previous message-specific labels behind
-`payment.checkout_compensation_state_conflict` are intentionally represented by one stable wrapper
-label, `apply_compensation_state`, because the public message is no longer a routing discriminator.
+Wrapper diagnostics retain correlation plus lengths, counts, presence flags, actor kind, deadline,
+UUID non-nil facts, reason length, metadata kind, and metadata entry count. They do not record raw
+tenant, actor, channel, locale, causation, traceparent, idempotency, checkout-operation, collection,
+reason, or metadata values.
 
-## Safe wrapper context
+## Persistent owner diagnostics
 
-The per-call correlation id remains available for joining diagnostics. Other `PortContext` values are
-recorded only as shape facts:
+The private owner now uses one shared safe-context model for:
 
-- tenant, actor-id, channel, locale, causation-id, traceparent, and idempotency-key lengths;
-- actor kind;
-- claim and role counts;
-- presence flags for optional values;
-- deadline milliseconds.
-
-The wrapper no longer records raw tenant id, actor id, channel, locale, causation id, traceparent, or
-idempotency key.
-
-Request facts are also shape-only:
-
-- checkout-operation UUID non-nil state;
-- collection-id presence and non-nil state;
-- reason presence and character length;
-- metadata JSON kind;
-- object-field or array-element count when applicable.
-
-The wrapper does not log checkout-operation ids, collection ids, reason text, or metadata values.
-The original typed `PortError` remains private to structured tracing.
-
-## Stable-code attribution
-
-The wrapper recognizes stable codes for:
-
-- write idempotency and deadline admission;
-- invalid compensation identity;
-- collection, payment, and refund lookup;
+- invalid tenant context;
+- checkout-operation causation mismatch;
+- `PaymentError` owner mapping;
 - manual reconciliation;
-- compensation lifecycle/state conflicts;
-- unsupported provider-journal state;
-- provider metadata and provider identity validation;
-- provider cancel request encoding;
-- payment storage and owner validation;
-- provider unavailable, rejected, invalid response, and missing configuration outcomes.
+- provider cancel request/result serialization failures;
+- recovered, success, failure, reconciliation, and final commit checkpoint failures;
+- malformed persisted provider cancel results.
 
-Unavailable, timeout, and invariant kinds use error severity. Manual reconciliation and unsupported
-provider-journal state also use error severity. Other recognized outcomes use warning severity.
+Owner events retain:
 
-No public error is reconstructed. Code, message, kind, retryability, and return identity remain those
-of the delegated `PortError`.
+- truthful owner and operation;
+- stable code and local operation;
+- per-call correlation id;
+- tenant, actor-id, channel, locale, causation-id, traceparent, and idempotency-key lengths;
+- actor kind, claim count, role count, presence flags, and deadline;
+- provider-journal operation presence/non-nil facts;
+- checkout-operation non-nil and causation-match facts where applicable;
+- the original internal error only inside private structured tracing.
 
-## Preserved persistent-owner behavior
+The owner no longer writes raw tenant, actor, channel, locale, causation, traceparent, idempotency,
+checkout-operation, collection, provider-journal operation, reason, metadata, provider identity, or
+financial values into these diagnostic fields.
+
+## Preserved owner behavior
 
 This slice does not change:
 
-- compensation request or response DTOs;
-- write policy, deadline, idempotency, tenant, or causation admission;
+- public trait, request, response, wrapper, factory, or module exports;
+- write policy, deadline, idempotency, tenant, or causation admission order;
 - optional missing-collection no-op behavior;
 - captured-payment refund-policy reconciliation;
-- payment collection lifecycle classification;
+- `PaymentCollectionStatusKind` lifecycle routing;
 - provider selection or manual-provider fallback;
 - canonical `payment_collection:{collection_id}:cancel` idempotency key;
 - provider request metadata and `cancel_payment_collection` marker;
-- provider journal begin, claim, replay, error, success, commit, or reconciliation transitions;
-- provider payment identity recovery;
-- local cancellation race handling;
+- provider identity recovery from committed authorization;
+- provider journal begin, claim, replay adoption, error, success, commit, or reconciliation transitions;
+- provider cancellation execution;
+- local cancellation race adoption;
 - final provider-operation commit checkpoint;
-- provider-registry constructor behavior;
-- Commerce compensation ordering;
-- public `PortError` envelopes;
+- `PaymentError` to public `PortError` mapping;
+- public error code, message, kind, or retryability;
+- manual-reconciliation public envelope;
 - Payment FFA/FBA status.
 
 ## Static evidence
 
 - `crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json`
 - `crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json`
+- `crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json`
+- `crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-payment-checkout-compensation-local-context.mjs`
 
-The focused verifier guards wrapper/facade construction, context and request shape, stable-code-only
-classification, absence of raw wrapper fields, unchanged persistent owner markers, same-error return,
-and source-only validation flags.
+The focused verifier guards facade wiring, stable-code-only wrapper attribution, safe wrapper and
+owner context shape, absence of raw diagnostic values, unchanged provider/journal/lifecycle markers,
+unchanged public envelopes, and source-only validation flags.
 
 ## Remaining gaps
 
-The persistent owner in `checkout_compensation.rs` still contains raw tenant, causation,
-checkout-operation, collection, and provider-journal operation identifiers in owner-local diagnostics.
-It remains the next separate Payment compensation diagnostic-safety slice.
+Compile, provider replay, process-exit, restart, contention, mounted transport, remote-profile,
+workflow, CI, and production evidence remain unexecuted.
 
-The broad ecommerce correlation-safe mapper item also remains open for remaining owner adapters,
-non-`PortError` envelopes, and runtime evidence. No FBA or FFA status is promoted from source
-inspection.
+The broad ecommerce correlation-safe mapper item remains open for remaining order, fulfillment,
+inventory, customer, tax, promotion, ecommerce adapter, and non-`PortError` public envelopes. No FBA
+or FFA status is promoted from source inspection.
 
 ## Suggested maintainer checks
 
