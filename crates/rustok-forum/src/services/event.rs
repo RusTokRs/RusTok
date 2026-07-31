@@ -1,6 +1,9 @@
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement,
+};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -14,6 +17,7 @@ use crate::services::rbac::enforce_scope;
 const DEFAULT_EVENT_LIMIT: u64 = 50;
 const MAX_EVENT_LIMIT: u64 = 100;
 pub const MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE: usize = 100;
+const FORUM_PROJECTION_INVALIDATION_EVENT_TYPE: &str = "index.reindex_requested";
 
 #[derive(Clone)]
 pub struct ForumEventService {
@@ -82,9 +86,10 @@ impl ForumEventService {
             .collect())
     }
 
-    /// Reads the immutable Forum owner journal as a bounded projection-revision
-    /// source. This internal owner boundary deliberately omits journal payload,
-    /// actor and user-facing authorization state.
+    /// Reads the append-only Forum projection revision ledger through a bounded
+    /// owner API. The boundary exposes only causal revision and durable envelope
+    /// identity; ledger targets, timestamps, actors and outbox payloads remain
+    /// Forum-private.
     pub async fn list_projection_owner_revisions(
         &self,
         tenant_id: Uuid,
@@ -106,41 +111,43 @@ impl ForumEventService {
                 "projection owner revision limit must be between 1 and {MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE}"
             )));
         }
+        if self.db.get_database_backend() != DbBackend::Postgres {
+            return Err(ForumError::capability_unavailable(
+                "forum_projection_revision_source",
+                "FORUM_PROJECTION_REVISION_SOURCE_UNAVAILABLE",
+            ));
+        }
 
-        let events = forum_domain_event::Entity::find()
-            .filter(forum_domain_event::Column::TenantId.eq(tenant_id))
-            .filter(forum_domain_event::Column::SequenceNo.gt(after_owner_revision))
-            .order_by_asc(forum_domain_event::Column::SequenceNo)
-            .limit(limit as u64)
-            .all(&self.db)
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"
+                SELECT revision, event_id
+                FROM forum_projection_revision_ledger
+                WHERE tenant_id = $1
+                  AND revision > $2
+                ORDER BY revision ASC
+                LIMIT $3
+                "#,
+                vec![
+                    tenant_id.into(),
+                    after_owner_revision.into(),
+                    (limit as i64).into(),
+                ],
+            ))
             .await?;
 
-        Ok(events
-            .into_iter()
-            .map(|event| ForumProjectionOwnerRevisionResponse {
-                owner_revision: event.sequence_no,
-                event_id: event.event_id,
-                impact: projection_revision_impact(&event.event_type),
-                event_type: event.event_type,
+        rows.into_iter()
+            .map(|row| {
+                Ok(ForumProjectionOwnerRevisionResponse {
+                    owner_revision: row.try_get("", "revision")?,
+                    event_id: row.try_get("", "event_id")?,
+                    event_type: FORUM_PROJECTION_INVALIDATION_EVENT_TYPE.to_string(),
+                    impact: ForumProjectionOwnerRevisionImpact::FullRebuild,
+                })
             })
-            .collect())
-    }
-}
-
-fn projection_revision_impact(event_type: &str) -> ForumProjectionOwnerRevisionImpact {
-    match event_type {
-        "forum.topic.vote_changed"
-        | "forum.reply.vote_changed"
-        | "forum.category.subscription_changed"
-        | "forum.topic.subscription_changed"
-        | "forum.mention.user_added"
-        | "forum.mention.audience_added" => {
-            ForumProjectionOwnerRevisionImpact::NoProjectionChange
-        }
-        // Unknown future Forum journal types fail safe. Until the owner contract
-        // explicitly classifies them, Search reconciliation must assume that the
-        // public projection may have changed.
-        _ => ForumProjectionOwnerRevisionImpact::FullRebuild,
+            .collect()
     }
 }
 
@@ -159,44 +166,4 @@ fn normalize_filter(value: Option<String>, field: &str) -> ForumResult<Option<St
             Ok(normalized)
         })
         .transpose()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::projection_revision_impact;
-    use crate::ForumProjectionOwnerRevisionImpact;
-
-    #[test]
-    fn non_projection_events_are_explicitly_classified() {
-        for event_type in [
-            "forum.topic.vote_changed",
-            "forum.reply.vote_changed",
-            "forum.category.subscription_changed",
-            "forum.topic.subscription_changed",
-            "forum.mention.user_added",
-            "forum.mention.audience_added",
-        ] {
-            assert_eq!(
-                projection_revision_impact(event_type),
-                ForumProjectionOwnerRevisionImpact::NoProjectionChange
-            );
-        }
-    }
-
-    #[test]
-    fn projection_and_unknown_events_fail_safe_to_full_rebuild() {
-        for event_type in [
-            "forum.category.updated",
-            "forum.topic.updated",
-            "forum.reply.status_changed",
-            "forum.solution.marked",
-            "forum.topic.tags_changed",
-            "forum.future_projection_event",
-        ] {
-            assert_eq!(
-                projection_revision_impact(event_type),
-                ForumProjectionOwnerRevisionImpact::FullRebuild
-            );
-        }
-    }
 }
