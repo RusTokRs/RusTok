@@ -91,6 +91,13 @@ for (const [value, label] of [
   ['credential.actor_id.is_nil()', 'nil actor rejection'],
   ['must not contain duplicate token hashes', 'ambiguous token rejection'],
   ['HostAuthorityContext::for_actor', 'typed operator issuance'],
+  ['headers.remove(HOST_AUTHORITY_TOKEN_HEADER)', 'raw credential removal'],
+  ['tokio::task_local!', 'request-local typed authority'],
+  ['pub async fn with_host_authority_scope', 'typed authority scope entry'],
+  ['pub fn current_host_authority()', 'typed authority scope read'],
+  ['header_is_removed_before_typed_authority_is_returned', 'header removal regression'],
+  ['invalid_header_is_removed_before_denial', 'denied header removal regression'],
+  ['typed_authority_is_request_scoped_and_does_not_leak', 'scope leakage regression'],
   ['rotation_can_overlap_distinct_tokens_for_the_same_actor', 'rotation overlap regression'],
 ]) {
   requireText(credentialSource, value, label);
@@ -117,20 +124,33 @@ forbidText(
   'tenant OAuth admin must not manage host credentials',
 );
 
-requireOrder(
+const middlewareResolve = between(
   tenantMiddlewareSource,
+  'pub async fn resolve_optional(',
+  'fn is_human_user_self_service_path(',
+  'host and tenant middleware composition',
+);
+requireOrder(
+  middlewareResolve,
   [
-    'resolve_host_authority(&parts.headers)',
+    'take_host_authority(&mut parts.headers)',
     'resolve_current_user(&mut parts, &ctx).await',
     'parts.extensions.insert(AuthContextExtension(AuthContext {',
     'parts.extensions.insert(host_authority);',
+    'with_host_authority_scope(',
+    'with_rbac_request_scope(rbac_scope, next.run(req))',
   ],
-  'independent host and tenant authentication composition',
+  'one-shot host credential and tenant authentication composition',
 );
 requireText(
-  tenantMiddlewareSource,
+  middlewareResolve,
   'Err(crate::error::Error::Unauthorized(_))',
   'invalid presented host credential rejection',
+);
+forbidText(
+  middlewareResolve,
+  'resolve_host_authority(&parts.headers)',
+  'raw host credential must not remain readable',
 );
 forbidText(
   tenantMiddlewareSource,
@@ -138,13 +158,6 @@ forbidText(
   'native host authority must not derive from tenant settings permissions',
 );
 
-const graphqlHttp = between(
-  graphqlControllerSource,
-  'pub async fn graphql_handler(',
-  'pub async fn graphql_websocket_handler(',
-  'GraphQL HTTP request data',
-);
-requireText(graphqlHttp, '.data(headers)', 'HTTP GraphQL header context');
 const graphqlWebsocket = between(
   graphqlControllerSource,
   'pub async fn graphql_websocket_handler(',
@@ -217,11 +230,17 @@ const systemGuard = between(
 requireOrder(
   systemGuard,
   [
-    'ctx.data_opt::<HeaderMap>()',
-    'resolve_host_authority(headers)',
-    'authority.allows(required)',
+    'current_host_authority()',
+    '.filter(|authority| authority.allows(required))',
+    'permission_denied("host-global authority required")',
   ],
-  'System GraphQL host token validation',
+  'System GraphQL typed authority consumption',
+);
+forbidText(systemGuard, 'HeaderMap', 'System GraphQL raw header access');
+forbidText(
+  systemGuard,
+  'resolve_host_authority',
+  'System GraphQL credential revalidation',
 );
 for (const [start, end, operation] of [
   ['async fn system_health(', 'async fn cache_health(', 'system health'],
@@ -238,8 +257,7 @@ for (const [start, end, operation] of [
 }
 
 for (const [value, label] of [
-  ['ctx.data_opt::<HeaderMap>()', 'Settings GraphQL HTTP header context'],
-  ['resolve_host_authority(headers)', 'Settings GraphQL host token validation'],
+  ['current_host_authority()', 'Settings GraphQL typed host authority'],
   ['fn require_host_actor', 'Iggy tenant secret-owner helper'],
   ['ctx.data::<crate::context::AuthContext>()', 'Iggy tenant authentication'],
   ['ctx.data::<crate::context::TenantContext>()', 'Iggy routed tenant owner'],
@@ -247,6 +265,12 @@ for (const [value, label] of [
 ]) {
   requireText(settingsModuleSource, value, label);
 }
+forbidText(settingsModuleSource, 'HeaderMap', 'Settings GraphQL raw header access');
+forbidText(
+  settingsModuleSource,
+  'resolve_host_authority',
+  'Settings GraphQL credential revalidation',
+);
 forbidText(
   settingsModuleSource,
   'authority.actor_id() != auth.user_id',
@@ -316,5 +340,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Host-owned opaque credentials issue typed HTTP/native authority independently from tenant OAuth, RBAC, scopes, roles and metadata; WebSocket remains fail-closed',
+  '✔ Host-owned opaque credentials are removed before dispatch and issue request-scoped typed HTTP/native authority independently from tenant OAuth, RBAC, scopes, roles and metadata; WebSocket remains fail-closed',
 );
