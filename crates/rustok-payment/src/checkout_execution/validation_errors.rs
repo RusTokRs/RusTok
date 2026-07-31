@@ -284,6 +284,131 @@ fn manual_reconciliation(
     )
 }
 
+#[derive(Debug)]
+struct CheckoutPaymentExecutionPaymentErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+fn checkout_payment_execution_payment_error_facts(
+    error: &PaymentError,
+) -> CheckoutPaymentExecutionPaymentErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        PaymentError::Validation(value) => (
+            "validation",
+            1,
+            value.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::PaymentCollectionNotFound(id) => (
+            "payment_collection_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::PaymentNotFound(id) => (
+            "payment_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::RefundNotFound(id) => (
+            "refund_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::InvalidTransition { from, to } => (
+            "invalid_transition",
+            2,
+            from.chars().count() + to.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderUnavailable {
+            provider_id,
+            operation,
+        } => (
+            "provider_unavailable",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderRejected {
+            provider_id,
+            operation,
+        } => (
+            "provider_rejected",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderInvalidResponse {
+            provider_id,
+            operation,
+        } => (
+            "provider_invalid_response",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderOutcomeUnknown {
+            provider_id,
+            operation,
+        } => (
+            "provider_outcome_unknown",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderConfiguration { provider_id } => (
+            "provider_configuration",
+            1,
+            provider_id.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::Database(_) => ("database", 0, 0, 0, 0, true),
+    };
+    CheckoutPaymentExecutionPaymentErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
 fn stable_payment_error_code(error: &PaymentError) -> &'static str {
     match error {
         PaymentError::Database(_) => "payment.database_unavailable",
@@ -307,8 +432,14 @@ fn payment_error_to_port_error(
 ) -> PortError {
     let code = stable_payment_error_code(&error);
     let context_facts = checkout_payment_execution_context_facts(context);
+    let error_facts = checkout_payment_execution_payment_error_facts(&error);
     tracing::error!(
-        error = ?error,
+        owner_error_variant = error_facts.error_variant,
+        owner_error_text_field_count = error_facts.text_field_count,
+        owner_error_text_total_length = error_facts.text_total_length,
+        owner_error_uuid_field_count = error_facts.uuid_field_count,
+        owner_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        owner_error_opaque_payload_present = error_facts.opaque_payload_present,
         correlation_id = %context.correlation_id,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
