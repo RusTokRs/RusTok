@@ -51,12 +51,13 @@ source-mitigated that exposure through the separate typed
 writes require host `Manage`, and mutations are bound to a non-nil operator
 actor.
 
-The current source follow-up implements issuance without trusting tenant OAuth
-or RBAC. A rejected design that allowlisted tenant OAuth client ids was removed
-before PR after the audit confirmed tenant `settings:manage` can rotate OAuth
-app secrets. The replacement uses a dedicated high-entropy
-`X-RusTok-Host-Token`; deployments store only SHA-256 digests, explicit
-read/manage levels and non-nil audit actors in host-owned
+The follow-up merged through PR #2735 as
+`1ce83819b077ef6e0df009fd5675f556315ef63a` implements issuance without
+trusting tenant OAuth or RBAC. A rejected design that allowlisted tenant OAuth
+client ids was removed before merge after the audit confirmed tenant
+`settings:manage` can rotate OAuth app secrets. The replacement uses a dedicated
+high-entropy `X-RusTok-Host-Token`; deployments store only SHA-256 digests,
+explicit read/manage levels and non-nil audit actors in host-owned
 `RUSTOK_HOST_AUTHORITY_CREDENTIALS`. Middleware removes and authenticates the
 raw header once before downstream dispatch. Native transports receive only the
 typed request extension, while HTTP GraphQL consumes the same typed authority
@@ -64,13 +65,14 @@ from a request-task-local scope without re-reading the credential; GraphQL
 WebSocket remains fail-closed.
 
 The final surface sweep found a separate Iggy Connector native read/write path
-that still used tenant `SETTINGS_READ`/`SETTINGS_MANAGE`. PR #2726 moves that
-path to host `Read`/`Manage`; its mutation uses the host operator for audit and
-separately requires authenticated tenant equality with the routed tenant before
-accessing tenant-owned connector secrets. Issue #2680 remains open until
-same-SHA compile/unit/source evidence and retained live ordinary-tenant denial,
-host admission, rotation/revocation and multi-replica parity exist. These
-cross-owner findings do not change the Tenant-owner count.
+that still used tenant `SETTINGS_READ`/`SETTINGS_MANAGE`. The merged PR #2735
+moves that path to host `Read`/`Manage`; its mutation uses the host operator for
+audit and separately requires authenticated tenant equality with the routed
+tenant before accessing tenant-owned connector secrets. Superseded PR #2726 is
+historical staging only. Issue #2680 remains open until same-SHA
+compile/unit/source evidence and retained live ordinary-tenant denial, host
+admission, rotation/revocation and multi-replica parity exist. These cross-owner
+findings do not change the Tenant-owner count.
 
 Detailed post-handoff evidence is retained in
 [`cycle-001-core-trust-supplement-20260731.md`](./cycle-001-core-trust-supplement-20260731.md).
@@ -214,8 +216,8 @@ is still required; source inspection is not a substitute.
 - Last verified at (UTC): `2026-07-31`
 - Scope inspected: `tenant owner CRUD and provisioning concurrency; locale-policy CAS/idempotency and migration invariants; lifecycle outbox; cache generation; storefront and commerce owner scope; Tenant/Auth/RBAC Admin authenticated-resolved tenant equality; host-global Events, Iggy, System and Settings authority; tenant OAuth administration; native/HTTP GraphQL/WebSocket composition`
 - Findings: `P0=3, P1=11, P2=1, P3=0` (Tenant-owner count; cross-owner issue #2680 is tracked separately with two P0 surfaces and one P1 transport-secret-lifetime defect)
-- Fixed in this pass: `Tenant owner and directly related P0/P1/P2 corrections are merged in main through PR #2665; subsequent Channel, Index, Search, Email and Outbox Admin tenant-scope corrections are recorded in the cycle supplement; PR #2720 merged the typed fail-closed host authority contract; PR #2726 replaces the rejected tenant-OAuth client allowlist design with a host-owned opaque token digest policy, one-shot middleware removal, typed native/HTTP GraphQL admission, WebSocket denial, overlap rotation support, separate Iggy authenticated/resolved tenant secret ownership and host-audited Iggy native control`
+- Fixed in this pass: `Tenant owner and directly related P0/P1/P2 corrections are merged in main through PR #2665; subsequent Channel, Index, Search, Email and Outbox Admin tenant-scope corrections are recorded in the cycle supplement; PR #2720 merged the typed fail-closed host authority contract; PR #2735 merged the host-owned opaque token digest policy, one-shot middleware removal, typed native/HTTP GraphQL admission, WebSocket denial, overlap rotation support, separate Iggy authenticated/resolved tenant secret ownership and host-audited Iggy native control as 1ce83819b077ef6e0df009fd5675f556315ef63a`
 - Remaining risks or blockers: `same-SHA formatting, source guard, Rust compile/test and module validation are pending; both PostgreSQL races must rerun on the final revision; live Redis recovery, PostgreSQL backfill, real MySQL 8, deployed/native parity and remaining cache/RBAC inspection are required; issue #2680 needs retained live host credential denial/admission, audit actor, rotation/revocation and replica parity evidence`
-- Evidence: `source files, unit regressions and the operator runbook are present on PR #2726; no execution claim is made because connector-only local execution remains unavailable while github.com DNS resolution fails; the old temporary Tenant workflow was not merged and is not evidence for the current SHA; historical PostgreSQL race passes occurred on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 and must be rerun`
-- Next action: `inspect every PR #2726 exact-head check and fix branch-related failures; then execute retained Tenant PostgreSQL, Redis and migration evidence before advancing the cursor`
+- Evidence: `source files, unit regressions and the operator runbook are merged at 1ce83819b077ef6e0df009fd5675f556315ef63a; PR #2735 exact-head checks were queued at merge and are not claimed as passed; Rust-host smoke remained in its pre-build migration phase; no pull-request workflow runs are currently returned for the merge commit; connector-only local execution remains unavailable while github.com DNS resolution fails; superseded PR #2726 is not merge-SHA evidence; the old temporary Tenant workflow was not merged and is not evidence for the current SHA; historical PostgreSQL race passes occurred on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 and must be rerun`
+- Next action: `collect any completed PR #2735 exact-head results without treating queued jobs as evidence; run the source/unit/compile gates on a reconciled revision, then execute retained Tenant PostgreSQL, Redis and migration evidence before advancing the cursor`
 - Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo check -p rustok-iggy-connector-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture`
