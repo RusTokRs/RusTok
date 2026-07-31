@@ -10,9 +10,13 @@ const failures = [];
 const paths = {
   contract: "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
   predecessor: "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  hardening:
+    "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
   note: "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
   ledgerMigration:
     "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
+  hardeningMigration:
+    "crates/rustok-forum/src/migrations/m20260731_000008_harden_forum_projection_revision_counter.rs",
   forumDto: "crates/rustok-forum/src/dto/event.rs",
   forumOwner: "crates/rustok-forum/src/services/event.rs",
   searchOwner: "crates/rustok-search/src/forum_reconciliation.rs",
@@ -56,8 +60,10 @@ function rejectAll(source, markers, label) {
 
 const contract = parseJson(paths.contract);
 const predecessor = parseJson(paths.predecessor);
+const hardening = parseJson(paths.hardening);
 const note = read(paths.note);
 const ledgerMigration = read(paths.ledgerMigration);
+const hardeningMigration = read(paths.hardeningMigration);
 const forumDto = read(paths.forumDto);
 const forumOwner = read(paths.forumOwner);
 const searchOwner = read(paths.searchOwner);
@@ -79,6 +85,19 @@ requireAll(
     "forum_reject_projection_revision_ledger_mutation",
   ],
   paths.ledgerMigration,
+);
+requireAll(
+  hardeningMigration,
+  [
+    "existing forum projection revision storage is inconsistent",
+    "NEW.revision <> 1",
+    "NEW.revision <> OLD.revision + 1",
+    "DEFERRABLE INITIALLY DEFERRED",
+    "forum projection revision counter requires a matching ledger row",
+    "BEFORE TRUNCATE ON forum_projection_revision_counters",
+    "BEFORE TRUNCATE ON forum_projection_revision_ledger",
+  ],
+  paths.hardeningMigration,
 );
 
 requireAll(
@@ -220,6 +239,7 @@ requireAll(
   [
     "# FORUM-23B2G2B1 Search owner-revision source",
     "forum_projection_revision_ledger.revision",
+    "FORUM-23B2G2A1",
     "committed rows for one tenant are contiguous",
     "does not connect it to the background sweeper",
     "FORUM-23B2G2B2",
@@ -240,6 +260,24 @@ if (predecessor) {
   }
 }
 
+if (hardening) {
+  if (hardening.task !== "FORUM-23B2G2A1") {
+    failures.push(`${paths.hardening}: unexpected hardening task`);
+  }
+  if (hardening.counter_invariants?.update_must_equal_previous_plus !== 1) {
+    failures.push(`${paths.hardening}: exact +1 counter invariant drift`);
+  }
+  if (hardening.counter_invariants?.committed_revision_requires_matching_ledger_row !== true) {
+    failures.push(`${paths.hardening}: commit-time ledger coverage drift`);
+  }
+  if (hardening.counter_invariants?.table_truncate_forbidden !== true) {
+    failures.push(`${paths.hardening}: counter truncate boundary drift`);
+  }
+  if (hardening.ledger_invariants?.table_truncate_forbidden !== true) {
+    failures.push(`${paths.hardening}: ledger truncate boundary drift`);
+  }
+}
+
 if (contract) {
   if (contract.task !== "FORUM-23B2G2B1") {
     failures.push(`${paths.contract}: unexpected task`);
@@ -252,6 +290,12 @@ if (contract) {
   }
   if (contract.owner_clock?.contiguous_committed_revisions !== true) {
     failures.push(`${paths.contract}: committed owner revisions must be contiguous`);
+  }
+  if (contract.owner_clock?.exact_increment_enforced !== true) {
+    failures.push(`${paths.contract}: exact increment hardening must remain required`);
+  }
+  if (contract.owner_clock?.commit_requires_ledger_coverage !== true) {
+    failures.push(`${paths.contract}: commit-time ledger coverage must remain required`);
   }
   if (contract.owner_clock?.forum_domain_event_sequence_used !== false) {
     failures.push(`${paths.contract}: Forum journal sequence must not be reused`);
