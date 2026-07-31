@@ -38,15 +38,17 @@ are accepted, each up to 64 characters after trimming.
 
 Tag matching is exact, case-sensitive and uses AND semantics: every requested tag
 must occur in the projected tag list. This follows the Forum owner, which trims
-and deduplicates tags without lowercasing them.
+and deduplicates tags without lowercasing them. A missing tag list or an array
+containing any non-string value fails closed while tag scope is active.
 
 `solved` is a nullable boolean:
 
-- for topics, `true` means `solution_reply_id` is present and `false` means it is
-  absent;
+- for topics, `true` requires a valid UUID string in `solution_reply_id`, while
+  `false` requires an explicit JSON null;
 - for replies, `true` means the reply is the exact current solution and `false`
   means its projected `is_solution` value is false;
-- a missing or malformed projected solved marker fails closed.
+- a missing, wrongly typed or otherwise malformed projected solved marker fails
+  closed.
 
 The arguments remain separate from neutral `SearchPreviewInput`, `SearchQuery`
 and `SearchPreviewFilters` contracts.
@@ -124,5 +126,6 @@ cargo xtask module validate search
 
 PostgreSQL proof should cover tagged solved and unsolved topics, solution and
 ordinary approved replies, a reply reindexed with parent-topic tags, one legacy
-reply without `topic_tags`, categories, mismatched case, multiple-tag AND
-semantics, totals, facets and pagination after exact owner eligibility.
+reply without `topic_tags`, categories, malformed tag/solution projections,
+mismatched case, multiple-tag AND semantics, totals, facets and pagination after
+exact owner eligibility.
