@@ -1823,8 +1823,9 @@ attachment presence.
 - topics match `payload.tags`, approved replies match Forum-projected parent
   `payload.topic_tags`, and legacy replies missing that projection fail closed
   under an active tag scope until reindexed;
-- solved topics match the presence or absence of `solution_reply_id`; replies match
-  the exact current projected `is_solution` boolean;
+- solved topics require either a valid UUID string or explicit null in
+  `solution_reply_id`; replies require the exact current projected `is_solution`
+  boolean, and malformed tag or solved projections fail closed;
 - active author, tag and solved predicates intersect after the stable bounded raw
   snapshot and before exact Forum owner eligibility, visible totals, facets,
   offset and limit while preserving ranking order;
@@ -1841,9 +1842,12 @@ attachment presence.
 
 ### Compatibility and degraded mode
 
-No database migration, manual backfill, Search query shape, Forum projection
-shape, dependency, public DTO or `Cargo.lock` change is required by
-`FORUM-23B2A/B2B/B2C/B2D/B2E1/B2E2/B2F1/B2F2`. The Search-owned Product payload gains the
+No database migration, manual backfill, Search query shape, dependency, public
+DTO or `Cargo.lock` change is required by
+`FORUM-23B2A/B2B/B2C/B2D/B2E1/B2E2/B2F1/B2F2`. `FORUM-23B2F2` extends the
+Forum reply projection payload with parent-topic `topic_tags`; legacy reply rows
+require reindex before positive tag matches and fail closed until repaired. The
+Search-owned Product payload gains the
 channel allowlist projection, and missing legacy projections are repaired by a
 bounded PostgreSQL background worker started during server bootstrap.
 The ordinary GraphQL `storefrontSearch` field and native

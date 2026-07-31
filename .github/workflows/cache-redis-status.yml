@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-redis-status-${{ github.ref }}
@@ -35,7 +35,6 @@ concurrency:
 
 jobs:
   contract:
-    if: github.head_ref != 'agent/forum-search-tag-solved-filter-23b2f2'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -61,24 +60,3 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
-
-  agent-forum-search-tag-solved-docs:
-    if: github.head_ref == 'agent/forum-search-tag-solved-filter-23b2f2'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - name: Synchronize final documentation contract
-        run: python3 scripts/agent/patch-forum-search-tag-solved-docs-23b2f2.py
-      - name: Commit synchronization and remove temporary files
-        run: |
-          git checkout origin/main -- .github/workflows/cache-redis-status.yml
-          rm scripts/agent/patch-forum-search-tag-solved-docs-23b2f2.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/rustok-forum/docs/implementation-plan.md crates/rustok-search/docs/implementation-plan.md .github/workflows/cache-redis-status.yml scripts/agent
-          git commit -m "docs(search): finalize Forum tag solved contract"
-          git push origin HEAD:${{ github.head_ref }}

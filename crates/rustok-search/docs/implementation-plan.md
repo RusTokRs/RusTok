@@ -88,8 +88,9 @@ admin Search paths remain unchanged. Runtime evidence remains pending.
 `FORUM-23B2F2` adds exact bounded tag and solved-state filters to the same
 explicit Forum-only execution owner. Tag values are trimmed, case-sensitive,
 exact and intersect with AND semantics. Topics use `payload.tags`; approved
-replies use Forum-projected parent `payload.topic_tags`. Solved topics are derived
-from `solution_reply_id`, while replies use the exact current `is_solution` marker.
+replies use Forum-projected parent `payload.topic_tags`. Solved topics require a
+valid UUID or explicit null in `solution_reply_id`, while replies use the exact
+current boolean `is_solution` marker; malformed projected values fail closed.
 The raw 100-candidate cap remains before narrowing, all active document filters
 intersect before owner eligibility, visible totals/facets/pagination are computed
 after authorization, and query-rule pins remain disabled under any active document
