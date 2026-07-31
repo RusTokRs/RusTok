@@ -1,6 +1,6 @@
 # Order checkout owner admission and context validation
 
-Status: **source-ready / unvalidated**
+Status: **partial source-ready / unvalidated**
 
 ## Scope
 
@@ -9,8 +9,8 @@ The public checkout owner wrappers preserve admission and context validation for
 - `CheckoutOrderPaymentSettlementPort`;
 - `CheckoutOrderCompensationPort`.
 
-This update changes only diagnostics. Constructors, factories, compatibility facade,
-request/response contracts, validation order, and owner delegation remain unchanged.
+Constructors, factories, compatibility facade, request/response contracts,
+validation order, and owner delegation remain unchanged.
 
 ## Public API and ordering
 
@@ -23,45 +23,37 @@ Both public wrappers preserve:
 5. checkout causation matching;
 6. delegation of the original context and request.
 
-The same admission or validation `PortError` is returned unchanged.
+The same admission, validation, or delegated `PortError` is returned unchanged.
 
-## Safe shared context
+## Shared context shape
 
-Admission and context-rejection events retain the correlation id. Other context is
-recorded only as:
+Events retain the correlation id. Other `PortContext` values are represented by
+lengths, presence flags, actor kind, claim/role counts, and deadline milliseconds;
+raw context values are not recorded.
 
-- tenant and actor-id lengths;
-- actor kind;
-- claim and role counts;
-- channel presence and length;
-- locale length;
-- causation, traceparent, and idempotency presence and lengths;
-- deadline milliseconds.
-
-Tenant/actor parse causes and the original mapped `PortError` remain private
-structured evidence. Causation rejection records expected-operation presence/non-nil
-and a false match fact, not the expected or actual UUID.
-
-Raw tenant, actor, channel, locale, causation, traceparent, and idempotency values are
-not recorded by the shared wrapper.
+The shared admission/context diagnostic payload itself is not yet closed: admission
+branches still retain the complete `PortError`, and context rejection still retains
+the mapped `PortError` plus UUID parse-cause payload. That work remains a separate
+bounded source slice affecting both public operations.
 
 Unavailable, timeout, and invariant admission failures remain error severity. Other
 admission and all context-validation rejections remain warning severity.
 
 ## Local settlement mapper
 
-The payment-settlement post-delegation mapper now selects its diagnostic label from
-stable `PortError.code`; public messages are not used as control flow. It records the
-same safe context shape and returns the original `PortError` unchanged.
+The payment-settlement post-delegation mapper selects its diagnostic label from
+stable `PortError.code`; public messages are not used as control flow. Both severity
+branches now retain only static `PortErrorKind`, message presence/length, retryability,
+correlation id, and safe context shape. They do not retain the complete error or
+message text, and return the original `PortError` unchanged.
 
-`checkout_payment_settlement.rs` is not modified by this slice. Request validation,
-identity handling, lifecycle transitions, payment-reference policy, and owner error
-mapping remain separate work.
+Canonical payment-settlement owner payload diagnostics remain a separate open slice.
+Details are in `checkout-payment-settlement-local-context.md`.
 
 ## Compensation boundary
 
-The compensation local wrapper and canonical owner use the same safe-context policy,
-plus safe request, identity-comparison, lifecycle, and resource shape. Details are in
+The compensation local wrapper and canonical owner payload-diagnostic sites are
+source-closed / unvalidated. Details are in
 `checkout-compensation-local-context.md`.
 
 ## Preserved behavior
@@ -81,18 +73,16 @@ This slice does not change:
 ## Static evidence
 
 - `scripts/verify/verify-order-checkout-owner-context.mjs`
+- `scripts/verify/verify-order-payment-settlement-local-context.mjs`
 - `scripts/verify/verify-order-compensation-local-context.mjs`
+- `crates/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json`
 - `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json`
-- `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json`
-
-The guards cover routing order, same-error return, code-only local attribution, safe
-shape, absence of raw context fields, and source-only validation flags.
 
 ## Remaining gaps
 
-Payment-settlement owner-local request/identity/lifecycle diagnostics remain a
-separate Order slice. The broad ecommerce cleanup remains open for remaining owners,
-adapters, non-`PortError` envelopes, and runtime evidence.
+Shared admission/context payload diagnostics and canonical payment-settlement owner
+payload diagnostics remain open. The broad ecommerce cleanup remains open for
+remaining owners, adapters, non-`PortError` envelopes, and runtime evidence.
 
 ## Suggested maintainer checks
 
@@ -100,8 +90,9 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-order-checkout-owner-context.mjs
-node scripts/verify/verify-order-compensation-local-context.mjs
+node scripts/verify/verify-order-payment-settlement-local-context.mjs
 node scripts/verify/verify-order-payment-settlement-error-context.mjs
+node scripts/verify/verify-order-compensation-local-context.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-order --lib
 cargo check -p rustok-commerce --lib

@@ -38,6 +38,12 @@ struct OrderCheckoutContextFacts {
     deadline_ms: Option<u64>,
 }
 
+struct OrderCheckoutPortErrorFacts {
+    error_kind: &'static str,
+    message_present: bool,
+    message_length: usize,
+}
+
 pub struct InProcessCheckoutOrderCompensationPort {
     inner: Arc<dyn CheckoutOrderCompensationPort>,
 }
@@ -226,6 +232,23 @@ fn order_checkout_context_facts(context: &PortContext) -> OrderCheckoutContextFa
     }
 }
 
+fn order_checkout_port_error_facts(error: &PortError) -> OrderCheckoutPortErrorFacts {
+    let error_kind = match &error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    OrderCheckoutPortErrorFacts {
+        error_kind,
+        message_present: !error.message.trim().is_empty(),
+        message_length: error.message.chars().count(),
+    }
+}
+
 fn checkout_order_payment_settlement_local_operation(code: &str) -> Option<&'static str> {
     match code {
         "order.checkout_payment_request_invalid" => Some("validate_request"),
@@ -257,9 +280,9 @@ fn map_checkout_order_payment_settlement_local_port_error(
             | "validate_settled_payment_identity"
     );
     let context_facts = order_checkout_context_facts(context);
+    let error_facts = order_checkout_port_error_facts(&error);
     if integrity_failure {
         tracing::error!(
-            error = ?error,
             owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
             operation = SETTLE_PAYMENT_OPERATION,
             local_operation,
@@ -280,15 +303,15 @@ fn map_checkout_order_payment_settlement_local_port_error(
             idempotency_key_length = ?context_facts.idempotency_key_length,
             deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
-            "order checkout payment settlement local integrity outcome retained safe context"
+            "order checkout payment settlement local integrity outcome retained bounded diagnostics"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
             operation = SETTLE_PAYMENT_OPERATION,
             local_operation,
@@ -309,11 +332,12 @@ fn map_checkout_order_payment_settlement_local_port_error(
             idempotency_key_length = ?context_facts.idempotency_key_length,
             deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
-            "order checkout payment settlement local outcome retained safe context"
+            "order checkout payment settlement local outcome retained bounded diagnostics"
         );
     }
     error
