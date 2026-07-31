@@ -114,6 +114,16 @@ Forum Search reindex. Neutral DTOs, `SearchQuery`, mixed/Product/admin Search an
 existing wire signatures remain unchanged. Runtime and reindex evidence remain
 pending.
 
+`FORUM-23B2F4` adds an optional exact trusted-current-channel filter to the
+same explicit Forum-only execution owner. Topics match their Forum-projected
+`channel_slugs`; approved replies inherit `topic_channel_slugs` from the parent
+topic. The filter accepts no arbitrary channel input, excludes global topics and
+categories, runs before owner eligibility/totals/facets/pagination and suppresses
+pins. Existing transports remain unchanged while additive current-channel
+GraphQL/native operations carry the boolean. Arbitrary channel/group selection,
+future topic kinds and attachment presence remain blocked on their Forum owner
+contracts. Runtime and reindex evidence remain pending.
+
 `FORUM-23B2G1` adds a durable PostgreSQL-issued Forum inbox ingest sequence.
 Existing rows are deterministically backfilled, new successful inserts receive a
 positive unique sequence, and claim, retry blocking, due-tenant order plus scope
@@ -231,6 +241,11 @@ projection can remain stale after recovery.
 - Exact Forum locale/date contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-locale-date-filter.json` and
   `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
+- Trusted current-channel Forum filter status:
+  `source_complete_execution_pending` under `FORUM-23B2F4`.
+- Trusted current-channel contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-current-channel-filter.json` and
+  `scripts/verify/verify-forum-search-current-channel-filter.mjs`.
 - Durable Forum inbox ingest-sequence status:
   `source_complete_execution_pending` under `FORUM-23B2G1`.
 - Durable ingest-sequence contract and guardrail:
@@ -257,6 +272,8 @@ projection can remain stale after recovery.
   `FORUM-23B2F2`.
 - Exact Forum locale and date filtering is `source_complete_execution_pending` under
   `FORUM-23B2F3`.
+- Trusted current-channel Forum filtering is `source_complete_execution_pending`
+  under `FORUM-23B2F4`.
 - Durable Forum inbox ingest ordering is `source_complete_execution_pending` under
   `FORUM-23B2G1`; Forum-owner-issued revisions remain pending.
 - Durable non-Forum projection replay/recovery remains `blocked`.
@@ -339,17 +356,20 @@ rebuild behavior through replayable event transport.
     published date-window filtering through an additive Forum-only execution owner,
     Forum-owned topic/reply timestamp projection, post-scan locale assertion and
     fail-closed legacy projection behavior under `FORUM-23B2F3`.
-23. Added a PostgreSQL-issued immutable Forum inbox ingest sequence, deterministic
+23. Added trusted current-channel Forum narrowing, parent-topic channel projection
+    for approved replies, additive transport parity and transactional topic-update
+    invalidation under `FORUM-23B2F4`.
+24. Added a PostgreSQL-issued immutable Forum inbox ingest sequence, deterministic
     existing-row backfill, sequence-based claims/due-tenant ordering and completed
     sequence watermarks under `FORUM-23B2G1`.
 
 ## Next results
 
-1. **Complete remaining Forum storefront query filters.** Add kind,
-   channel/group and attachment-presence filters without moving owner
-   authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
-   the same bounded filter contract and every owner-sensitive result still passes
-   exact post-retrieval eligibility.
+1. **Complete owner-backed Forum storefront query filters.** Add arbitrary
+   channel/group selection only through an exact authorized Forum owner contract;
+   add topic kinds after `FORUM-22` and attachment presence after `FORUM-14`.
+   **Done when:** no caller-selected audience identifier or owner policy is copied
+   into Search and every result still passes exact post-retrieval eligibility.
 2. **Add owner-issued Forum projection revisions.** Carry a monotonic Forum-owned
    revision in versioned invalidation events and reconcile it with the delivered
    Search ingest sequence during rolling deployment. **Done when:** source revision

@@ -229,7 +229,7 @@ at the end of this file remain authoritative.
 | `FORUM-20` | `in_progress` | FORUM-20A-AZ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation, exact topic/reply create authorization, topic-local reply narrowing, inherited moderation audiences, and existing solution-route transport composition. FORUM-20BA synchronizes the canonical ledger and owner notes after FORUM-20AV-AZ. Remaining read/search/index/SEO/deep-link migration, visibility-scoped bulk read commands, future moderation transport reuse, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
-| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution; FORUM-23B2D applies exact topic-local and approved-reply result eligibility before visible Search totals, facets and pagination; FORUM-23B2E1 binds storefront channel selection to trusted `RequestContext`; FORUM-23B2E2 projects canonical Product channel allowlists and applies one fail-closed storefront predicate to Product-bearing Search paths; FORUM-23B2F1 adds an exact bounded Forum author filter; FORUM-23B2F2 adds exact bounded Forum tag and solved filters; FORUM-23B2F3 locks exact requested/fallback locale and adds inclusive published date-window filters; FORUM-23B2G1 replaces Forum Search inbox wall-clock/UUID execution ordering with a durable PostgreSQL ingest sequence and sequence watermarks. Remaining kind, channel/group and attachment-presence filters, owner-issued revision ordering/reconciliation and maintainer runtime evidence remain. |
+| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution; FORUM-23B2D applies exact topic-local and approved-reply result eligibility before visible Search totals, facets and pagination; FORUM-23B2E1 binds storefront channel selection to trusted `RequestContext`; FORUM-23B2E2 projects canonical Product channel allowlists and applies one fail-closed storefront predicate to Product-bearing Search paths; FORUM-23B2F1 adds an exact bounded Forum author filter; FORUM-23B2F2 adds exact bounded Forum tag and solved filters; FORUM-23B2F3 locks exact requested/fallback locale and adds inclusive published date-window filters; FORUM-23B2F4 narrows explicit Forum-only Search to topics and approved replies assigned to the trusted current request channel; FORUM-23B2G1 replaces Forum Search inbox wall-clock/UUID execution ordering with a durable PostgreSQL ingest sequence and sequence watermarks. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and owner-issued revision reconciliation plus maintainer runtime evidence remain. |
 | `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
@@ -1865,6 +1865,27 @@ attachment presence.
   ordering, compatibility and degraded-mode behavior while execution/reindex
   evidence remains pending.
 
+### Delivered in `FORUM-23B2F4`
+
+- an optional `current_channel_only` filter narrows explicit Forum-only Search to
+  topics explicitly assigned to the trusted request channel and approved replies
+  inheriting the same parent-topic assignment;
+- Forum projects parent-topic channel slugs onto reply documents, and legacy reply
+  rows without that projection fail closed until reindexed;
+- the filter accepts no caller-selected channel slug, excludes global topics and
+  categories, runs before exact Forum owner eligibility/totals/facets/pagination,
+  and suppresses query-rule pins while active;
+- topic channel updates publish the existing transactional `forum_topic`
+  invalidation so topic and parent-derived reply channel projections rebuild
+  together;
+- existing wire signatures remain unchanged; additive
+  `ForumStorefrontSearchByCurrentChannel` and
+  `search/forum-storefront-search-by-current-channel` transports share the
+  existing execution owner;
+- arbitrary channel/group selection remains blocked on a separately authorized
+  Forum owner contract, kind filtering waits on `FORUM-22`, and attachment
+  presence waits on `FORUM-14`.
+
 ### Delivered in `FORUM-23B2G1`
 
 - a Search-owned PostgreSQL migration adds positive unique immutable
@@ -1923,12 +1944,16 @@ Forum-projected state, exclude categories, intersect with author scope, and supp
 Legacy replies without `topic_tags` fail closed for tag queries until reindexed. Exact
 requested/fallback locale scopes every explicit Forum transport and post-scan result; date
 windows use Forum-projected timestamps and legacy topic/reply rows fail closed until
-reindexed. Existing legacy, author-only and B2F2 GraphQL/native wire signatures remain
-unchanged. Admin/global Search behavior remains unchanged.
+reindexed. Current-channel scope uses only trusted `RequestContext`, excludes global/category
+rows and fails closed for legacy replies without parent-topic channel projection. Existing
+legacy, author-only and B2F2 GraphQL/native wire signatures remain unchanged. Admin/global
+Search behavior remains unchanged.
 
 ### Remaining scope
 
-- add kind, channel/group and attachment-presence query filters;
+- add owner-safe arbitrary channel/group filtering only after an exact authorized
+  Forum owner contract exists; add kind after `FORUM-22` and attachment presence
+  after `FORUM-14`;
 - add Forum-owner-issued monotonic projection revisions and reconcile them with
   the delivered Search ingest sequence; complete deletion/ACL runtime evidence;
 - capture maintainer-executed PostgreSQL query/result evidence and the
@@ -1967,6 +1992,7 @@ node scripts/verify/verify-forum-search-product-channel-visibility.mjs
 node scripts/verify/verify-forum-search-author-filter.mjs
 node scripts/verify/verify-forum-search-tag-solved-filter.mjs
 node scripts/verify/verify-forum-search-locale-date-filter.mjs
+node scripts/verify/verify-forum-search-current-channel-filter.mjs
 node scripts/verify/verify-forum-search-durable-ingest-sequence.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
@@ -2763,6 +2789,7 @@ node scripts/verify/verify-forum-search-result-eligibility.mjs
 node scripts/verify/verify-forum-search-author-filter.mjs
 node scripts/verify/verify-forum-search-tag-solved-filter.mjs
 node scripts/verify/verify-forum-search-locale-date-filter.mjs
+node scripts/verify/verify-forum-search-current-channel-filter.mjs
 node scripts/verify/verify-forum-search-durable-ingest-sequence.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
