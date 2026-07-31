@@ -70,8 +70,8 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
 requireMarkers('crates/rustok-index/docs/m6-replay-retry-transition-store.md', [
   'Status: `source_complete_runner_wiring_pending`',
   'maximum attempts: `5`',
-  '`running -> pending`',
-  '`running -> failed`',
+  'running -> pending',
+  'running -> failed',
   '`index_replay_retry_v1`',
   'wiring retry classification from `PostgresIndexReplayRunner` into this store',
   'scope-level dead-letter blocking and an authorized operator requeue command',
