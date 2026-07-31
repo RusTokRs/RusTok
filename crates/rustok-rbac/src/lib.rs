@@ -52,7 +52,7 @@ pub use services::permission_authorizer::{
     authorize_permission,
 };
 pub use services::permission_evaluator::{
-    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permissions,
+    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
     evaluate_single_permission,
 };
 pub use services::permission_policy::{
