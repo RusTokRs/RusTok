@@ -17,7 +17,10 @@ const runtimeSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-ru
 const consumerRuntimeOrderSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
 const commentsEventProjectionPath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
 const projectionHandlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
+const projectionPostgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
 const projectionHarnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
+const projectionPostgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
+const projectionPostgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
 const richtextInventoryPath = 'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json';
 const richtextInventoryDocPath = 'crates/rustok-blog/docs/richtext-cutover-inventory.md';
 const categorySearchReindexPath = 'crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json';
@@ -30,6 +33,7 @@ const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
 const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 const commentsEventProjection = json(commentsEventProjectionPath);
+const projectionPostgresHarness = read(projectionPostgresHarnessPath);
 const richtextInventory = json(richtextInventoryPath);
 const categorySearchReindex = json(categorySearchReindexPath);
 const graphqlRateLimit = json(graphqlRateLimitPath);
@@ -37,7 +41,7 @@ const aiRichtextBoundary = json(aiRichtextBoundaryPath);
 const provider = json(providerPath);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 11) fail('registry schema_version drift');
+if (registry.schema_version !== 12) fail('registry schema_version drift');
 if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 for (const failure of collectBlogFbaVerificationChainFailures({
   registry,
@@ -48,15 +52,33 @@ for (const failure of collectBlogFbaVerificationChainFailures({
 }
 if (registry.consumer_profile !== 'blog_post_comments') fail('consumer profile drift');
 if (registry.evidence.comments_event_projection !== commentsEventProjectionPath) fail('comments event projection registry path drift');
-if (commentsEventProjection.schema_version !== 2) fail('comments event projection schema_version drift');
+if (commentsEventProjection.schema_version !== 3) fail('comments event projection schema_version drift');
 if (commentsEventProjection.module !== 'blog' || commentsEventProjection.surface !== 'comments_event_projection' || commentsEventProjection.owner !== 'rustok-blog' || commentsEventProjection.provider !== 'rustok-comments') fail('comments event projection identity drift');
-if (commentsEventProjection.status !== 'source_verified_no_compile' || commentsEventProjection.compile_policy !== 'not_run_by_request') fail('comments event projection status drift');
+if (commentsEventProjection.status !== 'source_verified_no_compile' || commentsEventProjection.compile_policy !== 'not_run_by_request' || commentsEventProjection.runtime_status !== 'pending') fail('comments event projection status drift');
 if (
   commentsEventProjection.source_harness?.status !== 'executable_no_run'
   || commentsEventProjection.source_harness?.path !== projectionHandlerPath
   || commentsEventProjection.source_harness?.module !== 'services::comment_projection::tests'
   || commentsEventProjection.source_harness?.command !== projectionHarnessCommand
 ) fail('comments event projection source harness drift');
+if (
+  commentsEventProjection.postgres_harness?.status !== 'executable_no_run'
+  || commentsEventProjection.postgres_harness?.runtime_status !== 'not_run'
+  || commentsEventProjection.postgres_harness?.path !== projectionPostgresHarnessPath
+  || commentsEventProjection.postgres_harness?.environment !== projectionPostgresHarnessEnvironment
+  || commentsEventProjection.postgres_harness?.command !== projectionPostgresHarnessCommand
+  || commentsEventProjection.postgres_harness?.isolation !== 'unique_schema_one_connection_pool'
+) fail('comments event projection PostgreSQL harness drift');
+sameSet(
+  commentsEventProjection.postgres_harness?.cases ?? [],
+  [
+    'duplicate_delivery_updates_counter_and_outbox_once',
+    'delete_before_create_stays_non_negative_and_replays_in_order',
+    'missing_post_replay_commits_only_after_source_appears',
+    'outbox_failure_rolls_back_counter_and_delivery_before_retry',
+  ],
+  'comments event projection PostgreSQL cases',
+);
 if (registry.evidence.richtext_cutover_inventory !== richtextInventoryPath) fail('richtext cutover inventory registry path drift');
 if (registry.evidence.richtext_cutover_inventory_doc !== richtextInventoryDocPath) fail('richtext cutover inventory doc registry path drift');
 if (registry.evidence.category_search_reindex !== categorySearchReindexPath) fail('category Search reindex registry path drift');
@@ -246,7 +268,15 @@ if (
   || projection.source_harness?.status !== 'executable_no_run'
   || projection.source_harness?.command !== projectionHarnessCommand
 ) fail('event projection registry source harness drift');
+if (
+  projection.postgres_harness?.path !== projectionPostgresHarnessPath
+  || projection.postgres_harness?.status !== 'executable_no_run'
+  || projection.postgres_harness?.runtime_status !== 'not_run'
+  || projection.postgres_harness?.environment !== projectionPostgresHarnessEnvironment
+  || projection.postgres_harness?.command !== projectionPostgresHarnessCommand
+) fail('event projection registry PostgreSQL harness drift');
 if (registry.verification_chain?.source_gates?.comments_event_projection?.unit_test !== projectionHandlerPath) fail('event projection source-gate unit test drift');
+if (registry.verification_chain?.source_gates?.comments_event_projection?.postgres_test !== projectionPostgresHarnessPath) fail('event projection source-gate PostgreSQL test drift');
 const projectionSource = read(projectionHandlerPath);
 hasAll(projectionSource, [
   'impl EventHandler for BlogCommentProjectionHandler',
@@ -261,16 +291,30 @@ hasAll(projectionSource, [
   'DomainEvent::BlogPostUpdated',
   '.publish_in_tx(',
 ], 'blog comment projection');
+hasAll(projectionPostgresHarness, [
+  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'struct PostgresBlogProjectionTestDb',
+  '.max_connections(1)',
+  'SET search_path TO',
+  'async fn duplicate_delivery_updates_counter_and_outbox_once()',
+  'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
+  'async fn missing_post_replay_commits_only_after_source_appears()',
+  'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
+  'DROP TABLE sys_events',
+  'CREATE TABLE blog_comment_projection_deliveries',
+  'CREATE TABLE sys_events',
+], 'blog comment projection PostgreSQL target');
+hasNone(projectionPostgresHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection PostgreSQL target');
 const migration = read('crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs');
 hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
 const moduleSource = read('crates/rustok-blog/src/lib.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
 
 const plan = read('crates/rustok-blog/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-port-boundary', 'test:verify:blog:comments-port-boundary', 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection', 'services::comment_projection::tests', 'registry schema v11', 'degraded UI modes remain planned'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-port-boundary', 'test:verify:blog:comments-port-boundary', 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection', 'services::comment_projection::tests', 'comment_projection_postgres_test', 'RUSTOK_BLOG_TEST_DATABASE_URL', 'registry schema v12', 'degraded UI modes remain planned'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 
-console.log('[verify-blog-fba] Blog FBA registry, exact admin/storefront/comments-port/comments-projection/category/rate-limit/GraphQL/AI richtext source-gate chain, Comments projection unit harness, consumer metadata, and no-compile evidence are consistent');
+console.log('[verify-blog-fba] Blog FBA registry, exact admin/storefront/comments-port/comments-projection/category/rate-limit/GraphQL/AI richtext source-gate chain, Comments projection unit and PostgreSQL harnesses, consumer metadata, and no-compile evidence are consistent');
