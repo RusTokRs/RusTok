@@ -55,6 +55,8 @@ const paths = {
   capture: "crates/rustok-payment/src/checkout_execution/capture_provider.rs",
   evidence:
     "crates/rustok-payment/contracts/evidence/checkout-execution-reconciliation-reason-diagnostic-safety-source.json",
+  checkpointEvidence:
+    "crates/rustok-payment/contracts/evidence/checkout-execution-checkpoint-encoding-diagnostic-safety-source.json",
   doc:
     "crates/rustok-payment/docs/checkout-execution-reconciliation-reason-diagnostic-safety.md",
   plan: "crates/rustok-commerce/docs/implementation-plan.md",
@@ -66,6 +68,7 @@ const authorize = read(paths.authorize);
 const capture = read(paths.capture);
 const runtime = [validation, helpers, authorize, capture].join("\n");
 const evidence = JSON.parse(read(paths.evidence));
+const checkpointEvidence = JSON.parse(read(paths.checkpointEvidence));
 const doc = read(paths.doc);
 const plan = read(paths.plan);
 
@@ -197,8 +200,11 @@ for (const [key, expected] of Object.entries({
   provider_execution_changed: false,
   payment_lifecycle_changed: false,
   local_persistence_diagnostics_changed: true,
-  provider_checkpoint_diagnostics_changed: false,
-  remaining_provider_checkpoint_diagnostics_open: true,
+  provider_checkpoint_diagnostics_changed: true,
+  request_result_encoding_diagnostics_changed: true,
+  companion_checkpoint_encoding_contract_present: true,
+  remaining_provider_checkpoint_diagnostics_open: false,
+  checkout_execution_payload_diagnostic_cleanup_closed: true,
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -220,13 +226,26 @@ for (const key of [
   }
 }
 
+if (
+  checkpointEvidence.status !==
+  "payment_checkout_execution_checkpoint_encoding_diagnostic_safety_source_reviewed_unvalidated"
+) {
+  failures.push(`${paths.checkpointEvidence}: unexpected status ${checkpointEvidence.status}`);
+}
+if (checkpointEvidence.source_contract?.diagnostic_site_count !== 6) {
+  failures.push(`${paths.checkpointEvidence}: diagnostic_site_count must be 6`);
+}
+if (checkpointEvidence.source_contract?.checkout_execution_payload_diagnostic_cleanup_closed !== true) {
+  failures.push(`${paths.checkpointEvidence}: checkout execution diagnostic cleanup must be source-closed`);
+}
+
 requireText(doc, "Status: **source-ready / unvalidated**", `${paths.doc}: status`);
 requireText(doc, "closed enum contains sixteen reasons", `${paths.doc}: reason count`);
 requireText(doc, "All sixteen checkout execution call sites", `${paths.doc}: call coverage`);
 requireText(
   doc,
-  "Separate cleanup remains open for provider checkpoint",
-  `${paths.doc}: remaining work`,
+  "Provider checkpoint and request/result encoding diagnostics are sanitized",
+  `${paths.doc}: companion closure`,
 );
 requireText(
   plan,
@@ -243,5 +262,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Payment checkout execution reconciliation diagnostics use sixteen stable typed reasons across all call sites; execution evidence remains open",
+  "Payment checkout execution reconciliation diagnostics use sixteen stable typed reasons across all call sites; companion payload diagnostics are source-closed while execution evidence remains open",
 );

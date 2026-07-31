@@ -42,22 +42,26 @@ This source slice does not change:
 - `PortErrorKind::Conflict`, public message, or retryability;
 - payment lifecycle, provider registry behavior, or journal mutation semantics.
 
-The companion reconciliation-reason contract now covers all sixteen checkout execution
+The companion reconciliation-reason contract covers all sixteen checkout execution
 manual-reconciliation call sites with stable typed labels.
 
-## Remaining payment execution diagnostics
+## Related diagnostic slices
 
-Separate cleanup remains open for provider checkpoint failures and provider
-request/result encoding errors. Those sites still require their own bounded diagnostic
-facts and are intentionally unchanged by this slice.
+Provider checkpoint and request/result encoding diagnostics are sanitized in
+`checkout-execution-checkpoint-encoding-diagnostic-safety.md`. Together, the owner,
+admission, UUID/serde decode, reconciliation reason, local persistence, and
+checkpoint/encoding source contracts close the currently identified checkout execution
+payload-diagnostic sites.
 
-The canonical ecommerce correlation-safe mapper-cleanup item remains open.
+This source closure is unvalidated. The canonical ecommerce correlation-safe
+mapper-cleanup item remains open across other modules and envelopes.
 
 ## Evidence
 
 - `contracts/evidence/checkout-execution-local-persistence-diagnostic-safety-source.json`
 - `scripts/verify/verify-payment-checkout-execution-local-persistence-diagnostic-safety.mjs`
 - `docs/checkout-execution-reconciliation-reason-diagnostic-safety.md`
+- `docs/checkout-execution-checkpoint-encoding-diagnostic-safety.md`
 
 ## Validation still required
 
