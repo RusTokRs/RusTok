@@ -2,7 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-23B2G2A1",
   "status": "source_complete_execution_pending",
-  "scope": "Harden the merged Forum projection revision counter and ledger against direct non-monotonic row mutation, uncovered committed revisions and table truncation without editing the delivered G2A baseline migration",
+  "scope": "Harden the merged Forum projection revision counter and ledger against inconsistent preexisting state, direct non-monotonic row mutation, uncovered committed revisions and table truncation without editing the delivered G2A baseline migration",
   "predecessor_task": "FORUM-23B2G2A",
   "predecessor_contract": "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
   "baseline_migration": "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
@@ -10,6 +10,15 @@
   "migration_registry": "crates/rustok-forum/src/migrations/mod.rs",
   "owner_note": "crates/rustok-forum/docs/forum-23b2g2a1-search-owner-revision-counter-hardening.md",
   "verifier": "scripts/verify/verify-forum-search-owner-revision-counter-hardening.mjs",
+  "upgrade_preflight": {
+    "existing_counter_requires_contiguous_ledger_from_one": true,
+    "existing_ledger_without_counter_rejected": true,
+    "minimum_revision_must_equal": 1,
+    "maximum_revision_must_equal_counter": true,
+    "ledger_row_count_must_equal_counter": true,
+    "inconsistent_upgrade_fails_closed": true,
+    "existing_rows_rewritten": false
+  },
   "counter_invariants": {
     "table": "forum_projection_revision_counters",
     "first_revision_must_equal": 1,
@@ -58,6 +67,6 @@
     "publish and consume a versioned Forum projection invalidation carrying owner revision",
     "store owner revision independently from Search ingest_sequence",
     "reconcile pending retryable missing and stale delivery without advancing early",
-    "capture concurrent writer direct SQL rollback deferred-constraint truncate and LINK-FORUM-03 PostgreSQL evidence"
+    "capture inconsistent-upgrade concurrent-writer direct-SQL rollback deferred-constraint truncate and LINK-FORUM-03 PostgreSQL evidence"
   ]
 }
