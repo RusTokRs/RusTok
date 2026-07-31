@@ -161,7 +161,7 @@ pub enum IndexReplayRetryError {
     #[error("Index replay retry transition lost lease ownership")]
     LeaseLost,
     #[error("Index replay retry storage operation failed")]
-    Storage(String),
+    Storage,
 }
 
 #[derive(Clone)]
@@ -346,14 +346,12 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayRetryEr
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),
-        backend => Err(IndexReplayRetryError::Storage(format!(
-            "Index replay retry store does not support {backend:?}"
-        ))),
+        _ => Err(IndexReplayRetryError::Storage),
     }
 }
 
-fn storage_error(error: impl std::fmt::Display) -> IndexReplayRetryError {
-    IndexReplayRetryError::Storage(error.to_string())
+fn storage_error(_error: impl std::fmt::Display) -> IndexReplayRetryError {
+    IndexReplayRetryError::Storage
 }
 
 fn placeholder_prefix(backend: DbBackend) -> &'static str {
