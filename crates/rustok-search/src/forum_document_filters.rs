@@ -1,20 +1,45 @@
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::SearchResultItem;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ForumStorefrontDocumentFilters {
+    pub exact_locale: Option<String>,
     pub author_ids: Vec<Uuid>,
     pub tags: Vec<String>,
     pub solved: Option<bool>,
+    pub published_from: Option<DateTime<Utc>>,
+    pub published_to: Option<DateTime<Utc>>,
 }
 
 impl ForumStorefrontDocumentFilters {
     pub fn is_empty(&self) -> bool {
-        self.author_ids.is_empty() && self.tags.is_empty() && self.solved.is_none()
+        self.author_ids.is_empty()
+            && self.tags.is_empty()
+            && self.solved.is_none()
+            && self.published_from.is_none()
+            && self.published_to.is_none()
+    }
+
+    pub fn has_date_window(&self) -> bool {
+        self.published_from.is_some() || self.published_to.is_some()
     }
 
     pub fn matches(&self, item: &SearchResultItem) -> bool {
+        if let Some(exact_locale) = self.exact_locale.as_deref() {
+            if item.source_module != "forum"
+                || !item
+                    .locale
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_some_and(|value| value.eq_ignore_ascii_case(exact_locale))
+            {
+                return false;
+            }
+        }
+
         if self.is_empty() {
             return true;
         }
@@ -24,7 +49,10 @@ impl ForumStorefrontDocumentFilters {
             return false;
         }
 
-        self.matches_author(item) && self.matches_tags(item) && self.matches_solved(item)
+        self.matches_author(item)
+            && self.matches_tags(item)
+            && self.matches_solved(item)
+            && self.matches_published_at(item)
     }
 
     fn matches_author(&self, item: &SearchResultItem) -> bool {
@@ -95,14 +123,45 @@ impl ForumStorefrontDocumentFilters {
             _ => false,
         }
     }
+
+    fn matches_published_at(&self, item: &SearchResultItem) -> bool {
+        if !self.has_date_window() {
+            return true;
+        }
+
+        let Some(published_at) = item
+            .payload
+            .get("published_at")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.with_timezone(&Utc))
+        else {
+            return false;
+        };
+
+        self.published_from
+            .as_ref()
+            .map_or(true, |from| &published_at >= from)
+            && self
+                .published_to
+                .as_ref()
+                .map_or(true, |to| &published_at <= to)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Utc};
     use uuid::Uuid;
 
     use super::ForumStorefrontDocumentFilters;
     use crate::SearchResultItem;
+
+    fn timestamp(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .expect("valid timestamp")
+            .with_timezone(&Utc)
+    }
 
     fn item(
         entity_type: &str,
@@ -151,6 +210,24 @@ mod tests {
         let filters = ForumStorefrontDocumentFilters::default();
         assert!(filters.matches(&item("forum_category", None, None, None)));
         assert!(filters.matches(&item("forum_topic", None, None, None)));
+    }
+
+    #[test]
+    fn exact_locale_preserves_categories_and_fails_closed_on_missing_locale() {
+        let filters = ForumStorefrontDocumentFilters {
+            exact_locale: Some("en".to_string()),
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let mut category = item("forum_category", None, None, None);
+        category.locale = Some("EN".to_string());
+        let mut foreign = item("forum_topic", None, None, None);
+        foreign.locale = Some("de".to_string());
+        let mut missing = item("forum_topic", None, None, None);
+        missing.locale = None;
+
+        assert!(filters.matches(&category));
+        assert!(!filters.matches(&foreign));
+        assert!(!filters.matches(&missing));
     }
 
     #[test]
@@ -232,6 +309,39 @@ mod tests {
     }
 
     #[test]
+    fn published_window_is_inclusive_and_excludes_categories() {
+        let filters = ForumStorefrontDocumentFilters {
+            exact_locale: Some("en".to_string()),
+            published_from: Some(timestamp("2026-07-15T12:00:00Z")),
+            published_to: Some(timestamp("2026-07-15T12:00:00Z")),
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let mut matching = item("forum_topic", None, None, None);
+        matching.payload["published_at"] = serde_json::json!("2026-07-15T12:00:00Z");
+        let mut after = item("forum_reply", None, None, None);
+        after.payload["published_at"] = serde_json::json!("2026-07-15T12:00:01Z");
+        let category = item("forum_category", None, None, None);
+
+        assert!(filters.matches(&matching));
+        assert!(!filters.matches(&after));
+        assert!(!filters.matches(&category));
+    }
+
+    #[test]
+    fn malformed_or_missing_published_projection_fails_closed() {
+        let filters = ForumStorefrontDocumentFilters {
+            published_from: Some(timestamp("2026-07-01T00:00:00Z")),
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let mut malformed = item("forum_topic", None, None, None);
+        malformed.payload["published_at"] = serde_json::json!("not-a-date");
+        let missing = item("forum_reply", None, None, None);
+
+        assert!(!filters.matches(&malformed));
+        assert!(!filters.matches(&missing));
+    }
+
+    #[test]
     fn malformed_tag_or_solved_projection_fails_closed() {
         let tag_filter = ForumStorefrontDocumentFilters {
             tags: vec!["Rust".to_string()],
@@ -257,6 +367,7 @@ mod tests {
             author_ids: vec![expected],
             tags: vec!["Rust".to_string()],
             solved: Some(true),
+            ..ForumStorefrontDocumentFilters::default()
         };
         let matching = item(
             "forum_reply",

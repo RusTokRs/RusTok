@@ -323,6 +323,7 @@ impl ForumSearchProjectionSource {
                 "is_pinned": topic.is_pinned,
                 "is_locked": topic.is_locked,
                 "solution_reply_id": topic.solution_reply_id,
+                "published_at": created_at.to_rfc3339(),
                 "route": format!("/modules/forum?topic={}", topic.id)
             }),
             published_at: Some(created_at),
@@ -428,6 +429,7 @@ impl ForumSearchProjectionSource {
                 "topic_tags": topic_tags,
                 "parent_reply_id": reply.parent_reply_id,
                 "is_solution": is_solution,
+                "published_at": created_at.to_rfc3339(),
                 "route": route
             }),
             published_at: Some(created_at),

@@ -56,6 +56,32 @@ fn checkout_payment_execution_context_facts(
 }
 
 #[derive(Debug)]
+struct CheckoutPaymentExecutionPortErrorFacts {
+    error_kind: &'static str,
+    message_present: bool,
+    message_length: usize,
+}
+
+fn checkout_payment_execution_port_error_facts(
+    error: &PortError,
+) -> CheckoutPaymentExecutionPortErrorFacts {
+    let error_kind = match &error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    CheckoutPaymentExecutionPortErrorFacts {
+        error_kind,
+        message_present: !error.message.trim().is_empty(),
+        message_length: error.message.chars().count(),
+    }
+}
+
+#[derive(Debug)]
 struct CheckoutPaymentExecutionDiagnosticFacts {
     checkout_operation_id_non_nil: bool,
     cart_id_non_nil: bool,

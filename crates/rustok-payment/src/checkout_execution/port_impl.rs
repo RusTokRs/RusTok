@@ -173,9 +173,9 @@ fn map_checkout_payment_execution_local_port_error(
             PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
         );
     let context_facts = checkout_payment_execution_context_facts(context);
+    let error_facts = checkout_payment_execution_port_error_facts(&error);
     if technical_failure {
         tracing::error!(
-            error = ?error,
             owner = "rustok_payment",
             operation,
             local_operation,
@@ -210,15 +210,15 @@ fn map_checkout_payment_execution_local_port_error(
             provider_payment_id_present = facts.provider_payment_id_present,
             provider_payment_id_length = ?facts.provider_payment_id_length,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment checkout execution local technical outcome retained safe context"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = "rustok_payment",
             operation,
             local_operation,
@@ -253,8 +253,9 @@ fn map_checkout_payment_execution_local_port_error(
             provider_payment_id_present = facts.provider_payment_id_present,
             provider_payment_id_length = ?facts.provider_payment_id_length,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment checkout execution local outcome retained safe context"

@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2F3",
+  "status": "source_complete_execution_pending",
+  "scope": "Lock explicit Forum-only storefront Search to one effective locale and add inclusive RFC3339 published-date filtering before Forum owner eligibility, visible totals, facets and pagination",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "projection_owner": "crates/rustok-forum/src/search_projection.rs",
+  "filter_owner": "crates/rustok-search/src/forum_document_filters.rs",
+  "execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "graphql_transport": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "storefront_graphql_adapter": "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+  "storefront_native_adapter": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "storefront_transport_facade": "crates/rustok-search/storefront/src/transport/mod.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2f3-search-locale-date-filter.md",
+  "verifier": "scripts/verify/verify-forum-search-locale-date-filter.mjs",
+  "architecture": {
+    "single_execution_owner": true,
+    "single_normalization_owner": true,
+    "separate_date_execution_module_allowed": false,
+    "legacy_parallel_execution_path_allowed": false
+  },
+  "input": {
+    "locale_source": "existing SearchPreviewInput.locale with tenant fallback",
+    "locale_match": "normalized_case_insensitive_exact",
+    "graphql_arguments": ["publishedFrom", "publishedTo"],
+    "native_arguments": ["published_from", "published_to"],
+    "date_format": "RFC3339",
+    "date_bounds": "inclusive",
+    "from_must_not_exceed_to": true,
+    "empty_values_preserve_existing_behavior": true
+  },
+  "projection": {
+    "topic_published_path": "payload.published_at",
+    "reply_published_path": "payload.published_at",
+    "published_value_owner": "Forum source created_at serialized as RFC3339",
+    "legacy_topic_or_reply_without_published_at_fails_closed_when_date_filter_active": true,
+    "malformed_published_at_fails_closed": true,
+    "projection_reindex_required_for_date_matches": true
+  },
+  "evaluation": {
+    "explicit_forum_only_category_scope_required": true,
+    "postgres_locale_predicate_is_exact": true,
+    "post_scan_locale_assertion_is_exact": true,
+    "locale_only_preserves_category_results": true,
+    "date_scope_excludes_categories": true,
+    "date_scope_applies_to_topics_and_replies": true,
+    "published_from_is_inclusive": true,
+    "published_to_is_inclusive": true,
+    "raw_candidate_scan_limit": 100,
+    "raw_candidate_limit_is_checked_before_date_narrowing": true,
+    "filters_run_before_forum_owner_eligibility": true,
+    "filters_run_before_visible_totals": true,
+    "filters_run_before_visible_facets": true,
+    "filters_run_before_offset_and_limit": true,
+    "ranking_order_of_matching_rows_is_preserved": true,
+    "query_rule_pins_disabled_when_date_filter_active": true
+  },
+  "transport_compatibility": {
+    "existing_graphql_operations": [
+      "ForumStorefrontSearch",
+      "ForumStorefrontSearchByAuthors",
+      "ForumStorefrontSearchByFilters"
+    ],
+    "additive_graphql_operation": "ForumStorefrontSearchByDateWindow",
+    "existing_native_endpoints": [
+      "search/forum-storefront-search",
+      "search/forum-storefront-search-by-authors",
+      "search/forum-storefront-search-by-filters"
+    ],
+    "additive_native_endpoint": "search/forum-storefront-search-by-date-window",
+    "existing_wire_signatures_changed": false,
+    "shared_execution_owner": true
+  },
+  "compatibility": {
+    "database_migration_required": false,
+    "public_search_preview_input_changed": false,
+    "search_query_shape_changed": false,
+    "shared_storefront_filter_dto_changed": false,
+    "ordinary_storefront_search_changed": false,
+    "mixed_source_search_changed": false,
+    "product_search_changed": false,
+    "admin_search_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "add kind, channel or group and attachment-presence Forum filters",
+    "complete owner-issued monotonic projection revisions and durable inbox ordering",
+    "complete reconciliation and deletion or ACL-change document cleanup",
+    "capture maintainer-executed PostgreSQL, reindex and LINK-FORUM-03 runtime evidence"
+  ],
+  "non_claims": [
+    "Tests, verifiers, Cargo checks, Clippy and runtime evidence were not executed by the implementation agent",
+    "This slice does not expose a new storefront UI control",
+    "This slice does not reduce the existing pre-authorization raw candidate bound",
+    "This slice does not claim legacy topic or reply documents match date filters before reindex"
+  ]
+}
