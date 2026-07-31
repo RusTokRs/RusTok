@@ -206,11 +206,13 @@ fixture
 `scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.test.mjs`. Its
 suggested command is
 `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact`.
-This closes the source-only dispatcher-level duplicate delivery gap without
-claiming PostgreSQL execution or the separate concurrent handler race. The
-retained evidence remains `source_verified_no_compile`, the target is
-`executable_no_run`, and the standalone guard is not added to registry-owned
-package order in Slice 56.
+Exact leaf commands `verify:blog:comments-dispatcher-duplicate-delivery` and
+`test:verify:blog:comments-dispatcher-duplicate-delivery` are registered
+immediately after the concurrent duplicate-delivery race leaf in both Blog FBA
+chains. This closes the source-only dispatcher-level duplicate delivery gap
+without claiming PostgreSQL execution or the separate concurrent handler race.
+The retained evidence remains `source_verified_no_compile` and the target remains
+`executable_no_run`.
 
 The retained PostgreSQL target is
 `crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It uses
@@ -246,17 +248,16 @@ The target is `executable_no_run`; it proves a written OS process boundary, not 
 full application server-host restart, and no execution result is recorded.
 
 Exact commands `verify:blog:comments-event-projection` /
-`test:verify:blog:comments-event-projection` and
+`test:verify:blog:comments-event-projection`,
 `verify:blog:comments-duplicate-delivery-race` /
-`test:verify:blog:comments-duplicate-delivery-race` run after the Comments port
-gate, with the duplicate-delivery race leaf immediately after the main
-event-projection leaf. The dispatcher duplicate-delivery target is separately
-guarded and intentionally remains outside registry-owned package order in Slice
-56. Overall status remains `source_verified_no_compile`; the deterministic retry
-policy, retry-limit target, concurrent duplicate race, and dispatcher duplicate
-replay are source-locked, while all target execution, naturally contended
-retry-frequency evidence, full server-host restart recovery, and all other
-runtime evidence remain pending.
+`test:verify:blog:comments-duplicate-delivery-race`, and
+`verify:blog:comments-dispatcher-duplicate-delivery` /
+`test:verify:blog:comments-dispatcher-duplicate-delivery` run after the Comments
+port gate in that exact order. Overall status remains
+`source_verified_no_compile`; the deterministic retry policy, retry-limit target,
+concurrent duplicate race, and dispatcher duplicate replay are source-locked,
+while all target execution, naturally contended retry-frequency evidence, full
+server-host restart recovery, and all other runtime evidence remain pending.
 
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
@@ -517,6 +518,22 @@ delivery contract. Blog registry schema v13 and package order remain unchanged;
 no Rust, JavaScript, PostgreSQL, browser, workflow, CI, or production execution is
 recorded.
 
+The continuation audit at `ca47b6153d09f3665d8a355894883496ccbf0a6e`
+found that slice 56's source target, evidence, verifier, and focused fixture were
+complete but remained outside the registry-owned Blog FBA chain. The standalone
+verifier had no named npm leaf commands, the registry did not bind its evidence or
+PostgreSQL target, and aggregate chain drift could silently omit dispatcher-level
+duplicate replay.
+
+Slice 57 registers `comments_dispatcher_duplicate_delivery` as a first-class Blog
+FBA source gate immediately after `comments_duplicate_delivery_race`. It adds exact
+verify/test npm leaf commands, binds schema-v1 evidence and the PostgreSQL target
+in registry schema v13, and locks both aggregate orders through the shared chain
+policy plus focused negative cases for step, command, and target drift. Runtime
+code, the dispatcher target, and its standalone verifier are unchanged. No Rust
+test, JavaScript verifier, compile, PostgreSQL, browser, workflow, CI, or
+production execution is recorded.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -524,14 +541,13 @@ recorded.
 - Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v13
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, the Comments projection classifier, deterministic retry policy,
-  PostgreSQL retry-limit rollback/replay and duplicate-delivery race targets,
-  host registration, dispatcher, concurrency, PostgreSQL, same-process restart,
-  and process-restart harnesses, plus aggregate/consumer bindings for admin,
-  storefront, Comments port boundary, Comments event projection, category Search
-  reindex, GraphQL rate limiting, GraphQL richtext, AI richtext, offline backfill,
-  Forum ownership, and runtime order. The separately guarded dispatcher duplicate
-  target is source-ready but intentionally outside registry package order in
-  Slice 56.
+  PostgreSQL retry-limit rollback/replay, concurrent duplicate-delivery race, and
+  dispatcher duplicate-delivery targets, host registration, dispatcher,
+  concurrency, PostgreSQL, same-process restart, and process-restart harnesses,
+  plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
+  Comments event projection, category Search reindex, GraphQL rate limiting,
+  GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
+  order.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; all seven operations, approved public read, typed
   richtext projection, two-second deadlines, write idempotency, active typed
@@ -547,16 +563,15 @@ recorded.
   dispatcher, concurrency, PostgreSQL transaction, same-process restart, and
   process-restart targets, verifier, focused self-test, exact npm leaf commands,
   delivery-ledger identity, transactional outbox markers, and Blog FBA ordering
-  are locked. Separate schema-v1 evidence and a first-class fail-closed source gate
-  retain the concurrent same-envelope target: both named workers must be observed
-  blocked after their initial ledger lookups, then one transaction commits and the
-  loser rolls back before clean replay. Its exact npm leaf commands and position
-  immediately after the main projection gate are locked. Separate schema-v1
-  evidence and a standalone fail-closed guard retain dispatcher replay of the same
-  envelope twice with two completed handler calls, zero errors, and one database
-  application. None of these targets has been run. Naturally contended PostgreSQL
-  retry frequency, full server-host restart recovery, and all execution evidence
-  remain pending.
+  are locked. Separate schema-v1 first-class source gates retain the concurrent
+  same-envelope race and dispatcher duplicate replay. The race gate requires both
+  named workers to pass their initial ledger lookups before one commits and the
+  loser rolls back; the dispatcher gate requires two completed module-registered
+  handler calls with zero errors and one database application. Their exact npm
+  leaf commands and order immediately after the main projection gate are locked.
+  None of these targets has been run. Naturally contended PostgreSQL retry
+  frequency, full server-host restart recovery, and all execution evidence remain
+  pending.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
@@ -790,6 +805,11 @@ recorded.
     application in schema-v1 evidence plus a standalone verifier and focused
     negative fixture without changing registry package order or recording
     execution.
+57. Registered the dispatcher duplicate-delivery target as a first-class Blog FBA
+    source gate, added exact verify/test npm leaf commands after the concurrent
+    duplicate-delivery race gate, bound its evidence and PostgreSQL target in
+    registry schema v13, and locked aggregate verify/test order without changing
+    runtime code or recording execution.
 
 ## Next results
 
@@ -850,8 +870,8 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:comments-event-projection`
 - `npm run verify:blog:comments-duplicate-delivery-race`
 - `npm run test:verify:blog:comments-duplicate-delivery-race`
-- `node scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.mjs`
-- `node --test scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.test.mjs`
+- `npm run verify:blog:comments-dispatcher-duplicate-delivery`
+- `npm run test:verify:blog:comments-dispatcher-duplicate-delivery`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests::optimistic_retry_policy_applies_success_without_retry -- --exact`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests::optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict -- --exact`
