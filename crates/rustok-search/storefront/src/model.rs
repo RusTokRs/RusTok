@@ -97,6 +97,8 @@ pub struct SearchPreviewFilters {
     pub statuses: Vec<String>,
     #[serde(default, rename = "categoryIds")]
     pub category_ids: Vec<String>,
+    #[serde(default, rename = "authorIds")]
+    pub author_ids: Vec<String>,
     #[serde(default, rename = "attributeFilters")]
     pub attribute_filters: Vec<SearchAttributeFilter>,
     #[serde(default, rename = "sortAttributeCode")]
