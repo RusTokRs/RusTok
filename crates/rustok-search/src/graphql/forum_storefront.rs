@@ -44,6 +44,7 @@ impl ForumStorefrontSearchQuery {
         author_ids: Option<Vec<String>>,
         tags: Option<Vec<String>>,
         solved: Option<bool>,
+        kinds: Option<Vec<String>>,
         published_from: Option<String>,
         published_to: Option<String>,
     ) -> Result<SearchPreviewPayload> {
@@ -99,6 +100,7 @@ impl ForumStorefrontSearchQuery {
             source_modules: input.source_modules.unwrap_or_default(),
             statuses: input.statuses.unwrap_or_default(),
             category_ids: input.category_ids.unwrap_or_default(),
+            kinds: kinds.unwrap_or_default(),
             author_ids: author_ids.unwrap_or_default(),
             tags: tags.unwrap_or_default(),
             solved,

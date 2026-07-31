@@ -114,6 +114,16 @@ Forum Search reindex. Neutral DTOs, `SearchQuery`, mixed/Product/admin Search an
 existing wire signatures remain unchanged. Runtime and reindex evidence remain
 pending.
 
+`FORUM-23B2F4` adds an exact bounded `topic`/`reply` document-kind filter to the
+same unified Forum-only execution owner. At most two values are trimmed,
+ASCII-lowercased, validated and deduplicated. The raw 100-candidate cap remains
+before narrowing; kind intersects exact locale, author, tag, solved and date
+predicates before owner eligibility and visible totals/facets/pagination. An
+active kind scope excludes categories and suppresses query-rule pins. Existing
+GraphQL/native operations remain unchanged; additive `ByKinds` transports carry
+the new argument without changing neutral DTOs, `SearchQuery`, mixed/Product/admin
+Search or Forum projection shape. Runtime evidence remains pending.
+
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
 server-wide generic `platform_settings` service no longer admits a `search`
@@ -221,6 +231,11 @@ projection can remain stale after recovery.
 - Exact Forum locale/date contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-locale-date-filter.json` and
   `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
+- Exact Forum document-kind filter status:
+  `source_complete_execution_pending` under `FORUM-23B2F4`.
+- Exact Forum document-kind contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-kind-filter.json` and
+  `scripts/verify/verify-forum-search-kind-filter.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -242,6 +257,8 @@ projection can remain stale after recovery.
   `FORUM-23B2F2`.
 - Exact Forum locale and date filtering is `source_complete_execution_pending` under
   `FORUM-23B2F3`.
+- Exact Forum document-kind filtering is `source_complete_execution_pending` under
+  `FORUM-23B2F4`.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -322,11 +339,14 @@ rebuild behavior through replayable event transport.
     published date-window filtering through an additive Forum-only execution owner,
     Forum-owned topic/reply timestamp projection, post-scan locale assertion and
     fail-closed legacy projection behavior under `FORUM-23B2F3`.
+23. Added exact bounded Forum topic/reply document-kind filtering, additive
+    GraphQL/native transport parity, pre-eligibility intersection and active-scope
+    pin suppression under `FORUM-23B2F4`.
 
 ## Next results
 
-1. **Complete remaining Forum storefront query filters.** Add kind,
-   channel/group and attachment-presence filters without moving owner
+1. **Complete remaining Forum storefront query filters.** Add channel/group
+   and attachment-presence filters without moving owner
    authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
    the same bounded filter contract and every owner-sensitive result still passes
    exact post-retrieval eligibility.
@@ -382,6 +402,7 @@ should run the relevant subset, including:
 - `node scripts/verify/verify-forum-search-author-filter.mjs`
 - `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
 - `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
+- `node scripts/verify/verify-forum-search-kind-filter.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
 - `npm run verify:search:blog-projection`
@@ -403,3 +424,4 @@ should run the relevant subset, including:
 - [Forum author-filter contract](../../rustok-forum/contracts/forum-search-author-filter.json)
 - [Forum tag/solved contract](../../rustok-forum/contracts/forum-search-tag-solved-filter.json)
 - [Forum locale/date contract](../../rustok-forum/contracts/forum-search-locale-date-filter.json)
+- [Forum document-kind contract](../../rustok-forum/contracts/forum-search-kind-filter.json)

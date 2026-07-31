@@ -6,6 +6,7 @@ use crate::SearchResultItem;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ForumStorefrontDocumentFilters {
     pub exact_locale: Option<String>,
+    pub kinds: Vec<String>,
     pub author_ids: Vec<Uuid>,
     pub tags: Vec<String>,
     pub solved: Option<bool>,
@@ -15,7 +16,8 @@ pub struct ForumStorefrontDocumentFilters {
 
 impl ForumStorefrontDocumentFilters {
     pub fn is_empty(&self) -> bool {
-        self.author_ids.is_empty()
+        self.kinds.is_empty()
+            && self.author_ids.is_empty()
             && self.tags.is_empty()
             && self.solved.is_none()
             && self.published_from.is_none()
@@ -49,10 +51,24 @@ impl ForumStorefrontDocumentFilters {
             return false;
         }
 
-        self.matches_author(item)
+        self.matches_kind(item)
+            && self.matches_author(item)
             && self.matches_tags(item)
             && self.matches_solved(item)
             && self.matches_published_at(item)
+    }
+
+    fn matches_kind(&self, item: &SearchResultItem) -> bool {
+        if self.kinds.is_empty() {
+            return true;
+        }
+
+        let kind = match item.entity_type.as_str() {
+            "forum_topic" => "topic",
+            "forum_reply" => "reply",
+            _ => return false,
+        };
+        self.kinds.iter().any(|expected| expected == kind)
     }
 
     fn matches_author(&self, item: &SearchResultItem) -> bool {
@@ -231,6 +247,30 @@ mod tests {
     }
 
     #[test]
+    fn kind_filter_selects_exact_topic_or_reply_documents() {
+        let topics = ForumStorefrontDocumentFilters {
+            kinds: vec!["topic".to_string()],
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let replies = ForumStorefrontDocumentFilters {
+            kinds: vec!["reply".to_string()],
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let both = ForumStorefrontDocumentFilters {
+            kinds: vec!["reply".to_string(), "topic".to_string()],
+            ..ForumStorefrontDocumentFilters::default()
+        };
+
+        assert!(topics.matches(&item("forum_topic", None, None, None)));
+        assert!(!topics.matches(&item("forum_reply", None, None, None)));
+        assert!(!topics.matches(&item("forum_category", None, None, None)));
+        assert!(replies.matches(&item("forum_reply", None, None, None)));
+        assert!(!replies.matches(&item("forum_topic", None, None, None)));
+        assert!(both.matches(&item("forum_topic", None, None, None)));
+        assert!(both.matches(&item("forum_reply", None, None, None)));
+    }
+
+    #[test]
     fn author_filter_matches_exact_public_topic_or_reply_author() {
         let expected = Uuid::new_v4();
         let filters = ForumStorefrontDocumentFilters {
@@ -364,6 +404,7 @@ mod tests {
     fn active_filters_intersect_and_exclude_non_forum_items() {
         let expected = Uuid::new_v4();
         let filters = ForumStorefrontDocumentFilters {
+            kinds: vec!["reply".to_string()],
             author_ids: vec![expected],
             tags: vec!["Rust".to_string()],
             solved: Some(true),

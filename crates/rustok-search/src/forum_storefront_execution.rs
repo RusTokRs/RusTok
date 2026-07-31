@@ -11,13 +11,13 @@ use crate::engine::{SearchFacetBucket, SearchFacetGroup};
 use crate::{
     FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
     PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
-    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
-    SearchRankingProfile, SearchResult, SearchResultItem, SearchSettingsService,
-    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
-    StorefrontSearchTransport, TrustedStorefrontChannel, resolve_storefront_search_category_ids,
-    resolve_storefront_search_result_candidates, resolve_trusted_storefront_channel,
+    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
+    SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
+    resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
+    resolve_trusted_storefront_channel,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -53,6 +53,7 @@ pub struct ForumStorefrontSearchRequest {
     pub source_modules: Vec<String>,
     pub statuses: Vec<String>,
     pub category_ids: Vec<String>,
+    pub kinds: Vec<String>,
     pub author_ids: Vec<String>,
     pub tags: Vec<String>,
     pub solved: Option<bool>,
@@ -465,10 +466,9 @@ fn normalize_request(
     let query = normalize_query(&request.query)?;
     let locale = normalize_locale(request.locale.as_deref())?;
     let fallback_locale = normalize_required_locale(&request.fallback_locale)?;
-    let exact_locale = locale
-        .clone()
-        .unwrap_or_else(|| fallback_locale.clone());
-    let published_from = normalize_optional_rfc3339("published_from", request.published_from.as_deref())?;
+    let exact_locale = locale.clone().unwrap_or_else(|| fallback_locale.clone());
+    let published_from =
+        normalize_optional_rfc3339("published_from", request.published_from.as_deref())?;
     let published_to = normalize_optional_rfc3339("published_to", request.published_to.as_deref())?;
     if published_from
         .as_ref()
@@ -523,6 +523,7 @@ fn normalize_request(
         category_ids,
         document_filters: ForumStorefrontDocumentFilters {
             exact_locale: Some(exact_locale),
+            kinds: normalize_forum_kinds(request.kinds)?,
             author_ids: normalize_uuid_values("author_ids", request.author_ids)?,
             tags: normalize_tag_values("tags", request.tags)?,
             solved: request.solved,
@@ -616,6 +617,27 @@ fn normalize_filter_values(
             Ok(value)
         })
         .collect()
+}
+
+fn normalize_forum_kinds(
+    values: Vec<String>,
+) -> Result<Vec<String>, ForumStorefrontSearchExecutionError> {
+    if values.len() > 2 {
+        return validation("kinds exceeds the maximum size of 2 values");
+    }
+    let mut normalized = values
+        .into_iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .map(|value| {
+            if !matches!(value.as_str(), "topic" | "reply") {
+                return validation("kinds contains an unsupported value");
+            }
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    normalized.sort();
+    normalized.dedup();
+    Ok(normalized)
 }
 
 fn normalize_tag_values(
