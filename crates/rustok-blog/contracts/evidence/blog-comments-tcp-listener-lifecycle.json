@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_listener_lifecycle",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-71.md",
+  "source_contract": {
+    "host_runtime": "apps/server/src/services/comments_provider_runtime.rs",
+    "bootstrap": "apps/server/src/services/server_bootstrap.rs",
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "provider_factory": "rustok_comments::in_process_comments_thread_port",
+    "authority_trait": "rustok_comments::CommentsTcpAuthorityResolver",
+    "stop_handle": "apps/server/src/services/app_lifecycle.rs"
+  },
+  "configuration": {
+    "enabled_environment": "RUSTOK_COMMENTS_TCP_LISTENER_ENABLED",
+    "default_enabled": false,
+    "bind_environment": "RUSTOK_COMMENTS_TCP_BIND",
+    "bind_format": "explicit_ip_socket_address",
+    "loopback_required": true,
+    "non_zero_port_required": true,
+    "max_connections_environment": "RUSTOK_COMMENTS_TCP_MAX_CONNECTIONS",
+    "default_max_connections": 64,
+    "pre_request_timeout_environment": "RUSTOK_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS",
+    "default_pre_request_timeout_ms": 2000,
+    "shutdown_grace_environment": "RUSTOK_COMMENTS_TCP_SHUTDOWN_GRACE_MS",
+    "default_shutdown_grace_ms": 5000,
+    "max_frame_environment": "RUSTOK_COMMENTS_TCP_MAX_FRAME_BYTES",
+    "default_max_frame_bytes": 8388608,
+    "max_frame_wire_limit": "u32_max",
+    "positive_numeric_values_required": true,
+    "non_utf8_values_rejected": true
+  },
+  "authority": {
+    "required_wrapper": "SharedCommentsTcpAuthorityResolver",
+    "runtime_context_supported": true,
+    "module_runtime_extensions_supported": true,
+    "allow_all_fallback": false,
+    "payload_principal_trusted": false,
+    "built_in_credentials": false,
+    "built_in_mtls": false,
+    "listener_start_without_authority": false
+  },
+  "provider": {
+    "override_wrapper": "SharedCommentsTcpServerProvider",
+    "consumer_port_reused_as_server_provider": false,
+    "default_provider": "owner_managed_in_process",
+    "default_provider_inputs": [
+      "server_database",
+      "transactional_event_bus"
+    ]
+  },
+  "lifecycle": {
+    "opt_in": true,
+    "startup_hook": "bootstrap_application_router",
+    "startup_after_app_runtime": true,
+    "startup_before_remaining_workers": true,
+    "idempotent_reservation": true,
+    "reservation_released_on_startup_failure": true,
+    "listener": "tokio::net::TcpListener",
+    "accepted_peer_loopback_recheck": true,
+    "bounded_concurrency": "tokio::sync::Semaphore",
+    "over_capacity_behavior": "reject_and_close",
+    "connection_tasks": "tokio::task::JoinSet",
+    "shared_shutdown_signal": "StopHandle",
+    "stop_accepting_before_drain": true,
+    "bounded_drain": true,
+    "abort_after_grace": true
+  },
+  "connection": {
+    "one_request_per_connection": true,
+    "pre_request_timeout_method": "TcpJsonCommentsServerAdapter::handle_connection_with_pre_request_timeout",
+    "pre_request_timeout_code": "comments.tcp_server_idle_timeout",
+    "invalid_pre_request_timeout_code": "comments.tcp_server_invalid_idle_timeout",
+    "request_deadline_retained_after_decode": true,
+    "provider_error_message_logged": false,
+    "provider_error_shape_logged": [
+      "code",
+      "kind",
+      "retryable"
+    ]
+  },
+  "fail_closed": {
+    "missing_bind_rejected": true,
+    "invalid_bind_rejected": true,
+    "non_loopback_bind_rejected": true,
+    "zero_port_rejected": true,
+    "invalid_boolean_rejected": true,
+    "zero_limits_rejected": true,
+    "oversized_frame_limit_rejected": true,
+    "missing_authority_rejected": true,
+    "non_serving_host_mode_rejected": true,
+    "non_loopback_peer_rejected": true,
+    "over_capacity_connection_rejected": true
+  },
+  "pending": [
+    "credential_envelope_or_mtls_identity",
+    "concrete_authenticated_authority_resolver",
+    "transport_encryption",
+    "non_loopback_remote_publication",
+    "service_discovery",
+    "startup_connection_probe",
+    "listener_readiness_and_health",
+    "retry_backoff",
+    "in_process_tcp_runtime_parity",
+    "runtime_execution"
+  ],
+  "explicit_non_claims": [
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_tcp_runtime_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}

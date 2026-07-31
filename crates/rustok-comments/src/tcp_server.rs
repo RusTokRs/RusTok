@@ -116,14 +116,47 @@ impl TcpJsonCommentsServerAdapter {
     /// Handles exactly one request/reply exchange on an accepted stream.
     pub async fn handle_connection(
         &self,
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+    ) -> Result<(), PortError> {
+        self.handle_connection_inner(stream, peer_addr, None).await
+    }
+
+    /// Handles one exchange while bounding how long an accepted peer may remain
+    /// idle before sending the complete first request frame.
+    ///
+    /// The request's own `PortContext` deadline continues to bound trusted
+    /// authority resolution and provider dispatch after the frame is decoded.
+    pub async fn handle_connection_with_pre_request_timeout(
+        &self,
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        pre_request_timeout: Duration,
+    ) -> Result<(), PortError> {
+        if pre_request_timeout.is_zero() {
+            return Err(PortError::validation(
+                "comments.tcp_server_invalid_idle_timeout",
+                "comments TCP pre-request timeout must be greater than zero",
+            ));
+        }
+        self.handle_connection_inner(stream, peer_addr, Some(pre_request_timeout))
+            .await
+    }
+
+    async fn handle_connection_inner(
+        &self,
         mut stream: TcpStream,
         peer_addr: SocketAddr,
+        pre_request_timeout: Option<Duration>,
     ) -> Result<(), PortError> {
         stream
             .set_nodelay(true)
             .map_err(|error| io_error("server_set_nodelay", error))?;
 
-        let reply = match self.read_authorize_and_dispatch(&mut stream, peer_addr).await {
+        let reply = match self
+            .read_authorize_and_dispatch(&mut stream, peer_addr, pre_request_timeout)
+            .await
+        {
             Ok(response) => CommentsThreadTransportReply::Success(response),
             Err(error) => CommentsThreadTransportReply::Error(error),
         };
@@ -140,8 +173,19 @@ impl TcpJsonCommentsServerAdapter {
         &self,
         stream: &mut TcpStream,
         peer_addr: SocketAddr,
+        pre_request_timeout: Option<Duration>,
     ) -> Result<CommentsThreadResponse, PortError> {
-        let request_payload = read_frame(stream, self.max_frame_bytes).await?;
+        let request_payload = match pre_request_timeout {
+            Some(duration) => timeout(duration, read_frame(stream, self.max_frame_bytes))
+                .await
+                .map_err(|_| {
+                    PortError::timeout(
+                        "comments.tcp_server_idle_timeout",
+                        "comments TCP peer did not send a complete request frame before the idle timeout",
+                    )
+                })??,
+            None => read_frame(stream, self.max_frame_bytes).await?,
+        };
         let mut request = serde_json::from_slice::<CommentsThreadRequest>(&request_payload)
             .map_err(|_| {
                 PortError::validation(
@@ -356,5 +400,11 @@ mod tests {
 
         assert_eq!(error.kind, PortErrorKind::Forbidden);
         assert_eq!(error.code, "comments.tcp_authority_tenant_mismatch");
+    }
+
+    #[test]
+    fn pre_request_timeout_api_is_source_visible() {
+        let handler = TcpJsonCommentsServerAdapter::handle_connection_with_pre_request_timeout;
+        let _ = handler;
     }
 }
