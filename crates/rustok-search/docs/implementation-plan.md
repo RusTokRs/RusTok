@@ -72,6 +72,17 @@ limit after owner eligibility. Mixed, unspecified, Product, Blog, Content, and
 Forum-without-category requests remain on the existing exact-category
 `storefrontSearch` path.
 
+`FORUM-23B2F1` adds an exact bounded Forum author filter without changing the
+neutral `SearchQuery`, `SearchPreviewInput`, or shared storefront filter DTO.
+GraphQL and native Forum-specific arguments carry at most ten UUIDs. Search
+matches only the existing public `payload.author.user_id` projection on Forum
+topics and replies, excludes categories and missing/redacted authors while the
+filter is active, then applies exact Forum owner eligibility before visible totals,
+facets and pagination. The stable raw 100-candidate cap remains before author
+narrowing. Query-rule pins are disabled for an active author scope so a pinned
+document cannot escape the requested author set. Ordinary, mixed, Product and
+admin Search paths remain unchanged. Runtime evidence remains pending.
+
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
 server-wide generic `platform_settings` service no longer admits a `search`
@@ -164,6 +175,11 @@ projection can remain stale after recovery.
 - Product channel visibility contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-product-channel-visibility.json` and
   `scripts/verify/verify-forum-search-product-channel-visibility.mjs`.
+- Exact Forum author filter status:
+  `source_complete_execution_pending` under `FORUM-23B2F1`.
+- Exact Forum author filter contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-author-filter.json` and
+  `scripts/verify/verify-forum-search-author-filter.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -179,6 +195,8 @@ projection can remain stale after recovery.
   under `FORUM-23B2E1`.
 - Product channel visibility is `source_complete_execution_pending` under
   `FORUM-23B2E2`.
+- Exact Forum author filtering is `source_complete_execution_pending` under
+  `FORUM-23B2F1`.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -247,10 +265,14 @@ rebuild behavior through replayable event transport.
     for missing legacy projections, and applied one storefront predicate to FTS,
     typo fallback, rows, totals, facets, query-rule pins and document suggestions
     under `FORUM-23B2E2`.
+20. Added the exact bounded Forum author filter on public projected author identity,
+    native/GraphQL Forum-specific transport parity, pre-eligibility narrowing,
+    post-filter totals/facets/pagination, and active-scope pin suppression under
+    `FORUM-23B2F1`.
 
 ## Next results
 
-1. **Complete Forum storefront query filters.** Add author, tag, locale, date,
+1. **Complete remaining Forum storefront query filters.** Add tag, locale, date,
    solved, kind, channel/group and attachment-presence filters without moving owner
    authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
    the same bounded filter contract and every owner-sensitive result still passes
@@ -291,6 +313,7 @@ should run the relevant subset, including:
 - `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
 - `cargo test -p rustok-search storefront_category_scope -- --nocapture`
 - `cargo test -p rustok-search storefront_result_eligibility -- --nocapture`
+- `cargo test -p rustok-search forum_document_filters -- --nocapture`
 - `cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture`
 - `cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture`
 - `cargo test -p rustok-search product_channel_reconciliation -- --nocapture`
@@ -302,6 +325,7 @@ should run the relevant subset, including:
 - `node scripts/verify/verify-forum-search-storefront-scope.mjs`
 - `node scripts/verify/verify-forum-search-result-eligibility.mjs`
 - `node scripts/verify/verify-forum-search-product-channel-visibility.mjs`
+- `node scripts/verify/verify-forum-search-author-filter.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
 - `npm run verify:search:blog-projection`
@@ -320,3 +344,4 @@ should run the relevant subset, including:
 - [Search FBA registry](../contracts/search-fba-registry.json)
 - [Forum exact-category contract](../../rustok-forum/contracts/forum-search-exact-category-filter.json)
 - [Forum result-eligibility contract](../../rustok-forum/contracts/forum-search-result-eligibility.json)
+- [Forum author-filter contract](../../rustok-forum/contracts/forum-search-author-filter.json)
