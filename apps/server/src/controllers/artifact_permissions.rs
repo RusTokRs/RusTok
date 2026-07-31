@@ -21,7 +21,10 @@ use uuid::Uuid;
 use crate::{
     error::{Error, Result, http_error},
     extractors::tenant::CurrentTenant,
-    services::server_runtime_context::ServerRuntimeContext,
+    services::{
+        event_bus::transactional_event_bus_from_context,
+        server_runtime_context::ServerRuntimeContext,
+    },
 };
 
 /// The transport input for one exact role-to-artifact-permission operation.
@@ -99,7 +102,10 @@ async fn assign(
     input: ArtifactRolePermissionAssignmentRequest,
     granted: bool,
 ) -> Result<Response> {
-    let service = RbacArtifactPermissionAssignmentService::new(ctx.db_clone());
+    let service = RbacArtifactPermissionAssignmentService::new(
+        ctx.db_clone(),
+        transactional_event_bus_from_context(ctx),
+    );
     let result = service
         .assign(ArtifactRolePermissionAssignmentCommand {
             tenant_id,

@@ -8,7 +8,8 @@ use uuid::Uuid;
 use crate::{
     DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent,
     ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
+    RbacArtifactPermissionEvent, SocialGraphRelationEvent, TranslationWorkflowEvent,
+    ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -45,6 +46,8 @@ pub enum ContractEventPayload {
     MarketplaceListing(MarketplaceListingEvent),
     #[serde(rename = "marketplace_seller")]
     MarketplaceSeller(MarketplaceSellerEvent),
+    #[serde(rename = "rbac_artifact_permission")]
+    RbacArtifactPermission(RbacArtifactPermissionEvent),
     #[serde(rename = "social_graph_relation")]
     SocialGraphRelation(SocialGraphRelationEvent),
     #[serde(rename = "translation_workflow")]
@@ -59,6 +62,7 @@ impl ContractEventPayload {
             Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
+            Self::RbacArtifactPermission(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
             Self::TranslationWorkflow(event) => event.event_type(),
         }
@@ -71,6 +75,7 @@ impl ContractEventPayload {
             Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
+            Self::RbacArtifactPermission(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
             Self::TranslationWorkflow(event) => event.schema_version(),
         }
@@ -85,6 +90,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
+            Self::RbacArtifactPermission(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
             Self::TranslationWorkflow(event) => event.validate(),
         }

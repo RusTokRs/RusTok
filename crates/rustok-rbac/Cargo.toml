@@ -11,6 +11,7 @@ async-trait.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-outbox.workspace = true
 sea-orm-migration.workspace = true
 sea-orm.workspace = true
 serde.workspace = true
