@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, io};
 
 use rustok_index::IndexReconciliationRunStatus;
 use uuid::Uuid;
@@ -25,7 +25,13 @@ pub async fn run() -> TestResult<()> {
     let worker_id = match phase.as_str() {
         YIELD_PHASE => "process-restart-worker-a",
         COMPLETE_PHASE => "process-restart-worker-b",
-        _ => return Err(format!("unknown reconciliation process phase {phase}").into()),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unknown reconciliation process phase {phase}"),
+            )
+            .into());
+        }
     };
     let outcome = runner.run(request(tenant_id, worker_id)).await?;
     match phase.as_str() {
