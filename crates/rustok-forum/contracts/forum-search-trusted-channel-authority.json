@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2E1",
+  "status": "source_complete_execution_pending",
+  "scope": "Derive storefront Search channel identity from trusted RequestContext and treat the public channel_id field only as a compatibility assertion",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "search_owner": "crates/rustok-search/src/storefront_channel_authority.rs",
+  "graphql_storefront": "crates/rustok-search/src/graphql/query.rs",
+  "graphql_forum_storefront": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "native_storefront": "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+  "native_forum_storefront": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "forum_execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2e1-trusted-channel-authority.md",
+  "verifier": "scripts/verify/verify-forum-search-trusted-channel-authority.mjs",
+  "authority": {
+    "tenant_source": "RequestContext.tenant_id",
+    "channel_id_source": "RequestContext.channel_id",
+    "channel_slug_source": "RequestContext.channel_slug",
+    "request_context_is_middleware_owned": true,
+    "request_context_tenant_must_match_search_tenant": true,
+    "channel_id_and_slug_must_be_both_present_or_both_absent": true,
+    "nil_channel_id_is_rejected": true,
+    "empty_or_control_character_channel_slug_is_rejected": true
+  },
+  "caller_input": {
+    "public_channel_id_field_removed": false,
+    "public_channel_id_is_only_an_assertion": true,
+    "absent_assertion_uses_trusted_context": true,
+    "matching_assertion_is_accepted": true,
+    "mismatched_assertion_fails_closed": true,
+    "malformed_assertion_fails_validation": true,
+    "caller_cannot_select_another_channel": true
+  },
+  "surfaces": {
+    "graphql_storefront_search": true,
+    "native_storefront_search": true,
+    "graphql_forum_storefront_search": true,
+    "native_forum_storefront_search": true,
+    "forum_execution_owner_revalidates_context": true,
+    "admin_search_preview_changed": false,
+    "admin_global_search_changed": false
+  },
+  "compatibility": {
+    "matching_legacy_channel_id_remains_accepted": true,
+    "public_dto_changed": false,
+    "search_query_shape_changed": false,
+    "migration_required": false,
+    "backfill_required": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "denormalize canonical product channel visibility into Search-owned documents",
+    "backfill existing product Search documents safely",
+    "apply one trusted channel predicate to base products, totals, facets, typo fallback, suggestions and query rules",
+    "retain PostgreSQL and transport runtime evidence"
+  ],
+  "non_claims": [
+    "This slice does not make restricted products disappear from the base Search result set",
+    "This slice does not change Product projection payload or facets",
+    "This slice does not execute tests, verifiers or runtime evidence"
+  ]
+}

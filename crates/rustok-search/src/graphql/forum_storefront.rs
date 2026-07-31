@@ -15,7 +15,7 @@ use crate::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecutionError,
     ForumStorefrontSearchRequest, SharedStorefrontSearchCategoryScopePort,
     SharedStorefrontSearchResultEligibilityPort, StorefrontSearchTransport,
-    execute_forum_storefront_search,
+    execute_forum_storefront_search, resolve_trusted_storefront_channel_input,
 };
 
 use super::{
@@ -61,6 +61,12 @@ impl ForumStorefrontSearchQuery {
             }
         }
         let request_context = ctx.data::<RequestContext>()?.clone();
+        let trusted_channel = resolve_trusted_storefront_channel_input(
+            &request_context,
+            tenant.id,
+            input.channel_id.as_deref(),
+        )
+        .map_err(|error| FieldError::new(error.to_string()))?;
         let auth = ctx.data_opt::<AuthContext>().cloned();
         let extensions = ctx.data_opt::<Arc<ModuleRuntimeExtensions>>();
         let category_scope_port = extensions.and_then(|extensions| {
@@ -78,7 +84,7 @@ impl ForumStorefrontSearchQuery {
             query: input.query,
             locale: input.locale,
             fallback_locale: tenant.default_locale.clone(),
-            channel_id: input.channel_id,
+            channel_id: trusted_channel.channel_id.map(|value| value.to_string()),
             limit: input.limit,
             offset: input.offset,
             ranking_profile: input.ranking_profile,

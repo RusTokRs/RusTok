@@ -8,7 +8,7 @@ use crate::{
     PgSearchEngine, SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsService, SearchAttributeFilter,
     SearchDiagnosticsService, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
     SearchModule, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
-    SearchSuggestionQuery, SearchSuggestionService,
+    SearchSuggestionQuery, SearchSuggestionService, resolve_trusted_storefront_channel,
 };
 use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext, graphql::GraphQLError,
@@ -425,6 +425,10 @@ impl SearchQueryRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
+        let request_context = ctx.data::<RequestContext>()?;
+        let trusted_channel =
+            resolve_trusted_storefront_channel(request_context, tenant.id, input.channel_id)
+                .map_err(|error| FieldError::new(error.to_string()))?;
         enforce_storefront_rate_limit(ctx, policy.surface).await?;
         let engine = PgSearchEngine::new(db.clone());
         let requested_limit = input.limit;
@@ -449,7 +453,7 @@ impl SearchQueryRoot {
         let search_query = SearchQuery {
             tenant_id: Some(tenant.id),
             locale: input.locale,
-            channel_id: input.channel_id,
+            channel_id: trusted_channel.channel_id,
             original_query: transform.original_query,
             query: transform.effective_query,
             ranking_profile: resolved.ranking_profile,

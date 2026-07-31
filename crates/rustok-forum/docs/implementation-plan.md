@@ -229,7 +229,7 @@ at the end of this file remain authoritative.
 | `FORUM-20` | `in_progress` | FORUM-20A-AZ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation, exact topic/reply create authorization, topic-local reply narrowing, inherited moderation audiences, and existing solution-route transport composition. FORUM-20BA synchronizes the canonical ledger and owner notes after FORUM-20AV-AZ. Remaining read/search/index/SEO/deep-link migration, visibility-scoped bulk read commands, future moderation transport reuse, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
-| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution; FORUM-23B2D applies exact topic-local and approved-reply result eligibility before visible Search totals, facets and pagination. Trusted channel authority, remaining filters, owner revision ordering/reconciliation and maintainer runtime evidence remain. |
+| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution; FORUM-23B2D applies exact topic-local and approved-reply result eligibility before visible Search totals, facets and pagination; FORUM-23B2E1 binds storefront channel selection to trusted `RequestContext`. Product channel projection/predicates, remaining filters, owner revision ordering/reconciliation and maintainer runtime evidence remain. |
 | `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
@@ -1741,10 +1741,28 @@ attachment presence.
   `verify-forum-search-result-eligibility.mjs` lock the owner, bound, transport and
   post-authorization pagination contract while recording execution as pending.
 
+### Delivered in `FORUM-23B2E1`
+
+- `TrustedStorefrontChannel` is a Search-owned neutral authority derived from the
+  middleware `RequestContext`; it requires the exact Search tenant and a complete
+  channel ID/slug pair or an explicitly unscoped request;
+- the public `channel_id` input remains for compatibility but is assertion-only:
+  absent input uses trusted context, an exact match is accepted, and malformed or
+  mismatched input fails closed instead of selecting another channel;
+- ordinary and Forum-only GraphQL/native Search use the same authority, while the
+  shared Forum execution owner revalidates the context for future transports;
+- admin preview and admin global Search keep their existing operator-selected
+  channel behavior;
+- `forum-search-trusted-channel-authority.json`,
+  `forum-23b2e1-trusted-channel-authority.md`, and
+  `verify-forum-search-trusted-channel-authority.mjs` lock the source boundary and
+  record maintainer execution as pending.
+
 ### Compatibility and degraded mode
 
 No migration, backfill, Search query shape, Forum projection shape, dependency,
-public DTO or `Cargo.lock` change is required by `FORUM-23B2A/B2B/B2C/B2D`.
+public DTO or `Cargo.lock` change is required by
+`FORUM-23B2A/B2B/B2C/B2D/B2E1`.
 The ordinary GraphQL `storefrontSearch` field and native
 `search/storefront-search` endpoint remain unchanged; exact category behavior
 remains available for mixed, unspecified and non-Forum-only requests.
@@ -1757,12 +1775,17 @@ audience facts. Authenticated trust, Channel, or Groups selectors fail closed
 only when a required owner fact remains unresolved. Raw Forum-only result sets
 above 100 rows fail with a request to narrow the query or category scope rather
 than creating partial pagination or an unbounded owner-call chain. Product
-category identifiers are never expanded or filtered through Forum policy.
+category identifiers are never expanded or filtered through Forum policy. The
+legacy storefront `channel_id` remains accepted only when it matches the trusted
+request channel; missing, incomplete, foreign-tenant or mismatched trusted context
+fails closed. Product channel allowlist projection and base-result filtering remain
+open and are not claimed by `FORUM-23B2E1`.
 
 ### Remaining scope
 
-- derive trusted channel authority consistently for every storefront Search
-  result predicate, especially Product visibility;
+- project and backfill canonical Product channel allowlists, then apply the
+  trusted `RequestContext` channel consistently to base results, totals, facets,
+  typo fallback, suggestions, query rules and attribute operations;
 - add author, tag, locale, date, solved, kind, channel/group and
   attachment-presence query filters;
 - complete owner-issued monotonic projection revisions, durable inbox ordering,
@@ -1783,6 +1806,7 @@ cargo test -p rustok-forum category_search_scope -- --nocapture
 cargo test -p rustok-forum category_search_audience_scope -- --nocapture
 cargo test -p rustok-search storefront_category_scope -- --nocapture
 cargo test -p rustok-search storefront_result_eligibility -- --nocapture
+cargo test -p rustok-search storefront_channel_authority -- --nocapture
 cargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture
 cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture
 cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture
@@ -1793,6 +1817,7 @@ node scripts/verify/verify-forum-search-category-audience-scope.mjs
 node scripts/verify/verify-forum-search-exact-category-filter.mjs
 node scripts/verify/verify-forum-search-storefront-scope.mjs
 node scripts/verify/verify-forum-search-result-eligibility.mjs
+node scripts/verify/verify-forum-search-trusted-channel-authority.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
 cargo check -p rustok-server --features mod-forum --all-targets
@@ -1800,8 +1825,8 @@ cargo xtask module validate forum
 cargo xtask module validate search
 ```
 
-The `FORUM-23B2A/B2B/B2C/B2D` source and contract records do not claim successful
-runtime verification until the maintainer runs the commands above.
+The `FORUM-23B2A/B2B/B2C/B2D/B2E1` source and contract records do not claim
+successful runtime verification until the maintainer runs the commands above.
 
 ## `FORUM-24` — localized routes, canonical URLs and aliases
 
