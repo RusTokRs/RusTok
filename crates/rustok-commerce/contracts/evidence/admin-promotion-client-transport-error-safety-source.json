@@ -1,6 +1,6 @@
 {
   "status": "commerce_admin_promotion_client_transport_error_safety_source_unvalidated",
-  "reviewed_at": "2026-07-30",
+  "reviewed_at": "2026-07-31",
   "boundary": "commerce_admin_promotion_client_transport",
   "public_error_type": "ApiError",
   "public_message": "Commerce admin promotion request could not be completed",
@@ -9,9 +9,12 @@
     "apply_cart_promotion"
   ],
   "confirmed_gap": {
-    "native_api_error_returned_directly": true,
-    "native_error_payload_type": "ApiError::ServerFn(String)",
-    "facade_mapping_before_slice": false
+    "native_api_error_returned_directly_before_original_slice": true,
+    "native_error_payload_types": [
+      "ApiError::Graphql(String)",
+      "ApiError::ServerFn(String)"
+    ],
+    "complete_native_error_logged_before_this_slice": true
   },
   "source_contract": {
     "native_adapters_changed": false,
@@ -23,7 +26,11 @@
     "context_created_before_native_call": true,
     "raw_native_error_public": false,
     "static_public_message": true,
-    "original_error_logged_privately": true,
+    "original_error_logged_privately": false,
+    "original_error_shape_logged": true,
+    "error_variant_logged": true,
+    "error_message_length_only": true,
+    "raw_native_error_logged": false,
     "per_call_correlation_logging": true,
     "safe_request_shape_only": true,
     "cart_id_values_logged": false,
@@ -45,6 +52,7 @@
     "Run the existing promotion native error-safety verifier",
     "Compile the Commerce admin package for hydrate and ssr profiles",
     "Retain mounted preview and apply failure evidence",
+    "Remove raw framework and owner error values from the SSR promotion consumer diagnostics in a separate source slice",
     "Continue the broad ecommerce mapper cleanup in other owner and transport boundaries"
   ]
 }
