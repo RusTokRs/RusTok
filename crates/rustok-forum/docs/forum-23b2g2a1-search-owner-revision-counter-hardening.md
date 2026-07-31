@@ -13,6 +13,17 @@ The delivered baseline migration
 hardening is applied through additive migration
 `m20260731_000008_harden_forum_projection_revision_counter`.
 
+## Upgrade preflight
+
+Before installing triggers, PostgreSQL verifies the existing G2A storage. For
+each tenant, ledger revisions must form one contiguous sequence from `1` through
+the current counter value. The minimum must be `1`, the maximum and row count
+must equal the counter, and a ledger tenant cannot exist without a counter row.
+
+An inconsistent database fails the migration instead of silently accepting a
+preexisting gap or orphaned audit history. The preflight is read-only and does
+not repair, renumber or delete existing rows.
+
 ## Counter invariants
 
 PostgreSQL row triggers enforce:
@@ -99,8 +110,9 @@ cargo check -p rustok-forum --all-targets
 cargo xtask module validate forum
 ```
 
-PostgreSQL evidence should attempt initial revision values other than `1`, skipped
-and repeated revisions, tenant-key mutation, row deletion, a counter-only commit,
-counter truncation and ledger truncation. It should also confirm that the
-canonical concurrent `INSERT ... ON CONFLICT` allocator continues to commit exact
-increasing tenant revisions with matching ledger rows.
+PostgreSQL evidence should attempt an inconsistent pre-upgrade ledger, initial
+revision values other than `1`, skipped and repeated revisions, tenant-key
+mutation, row deletion, a counter-only commit, counter truncation and ledger
+truncation. It should also confirm that the canonical concurrent
+`INSERT ... ON CONFLICT` allocator continues to commit exact increasing tenant
+revisions with matching ledger rows.
