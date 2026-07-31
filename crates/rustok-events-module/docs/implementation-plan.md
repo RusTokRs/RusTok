@@ -67,10 +67,12 @@ The source contract now separates authority and issuance from tenant identity:
   GraphQL.
 
 The operational format, token-generation guidance and overlap rotation procedure
-are documented in `apps/server/docs/host-authority.md`. PR #2726 contains the
-current source implementation. Issue #2680 remains open until same-SHA
-compile/unit/source evidence and live denial/admission, rotation, revocation and
-replica-parity evidence are retained.
+are documented in `apps/server/docs/host-authority.md`. PR #2735 merged the
+source implementation as
+`1ce83819b077ef6e0df009fd5675f556315ef63a`; superseded PR #2726 is historical
+staging only. Issue #2680 remains open until same-SHA compile/unit/source
+evidence and live denial/admission, rotation, revocation and replica-parity
+evidence are retained.
 
 ## FFA/FBA status
 
@@ -143,8 +145,8 @@ replica-parity evidence are retained.
 - Last verified at (UTC): `2026-07-31`
 - Scope inspected: `Events Admin native delivery-profile configuration/update authority; separate Iggy Connector Admin native configuration/update authority; SharedEventDeliveryControl and SharedIggyConnectorControl ownership; host-global System and Settings HTTP GraphQL operations; tenant OAuth app administration and secret rotation; middleware and GraphQL WebSocket composition`
 - Findings: `P0=2, P1=1, P2=0, P3=0`
-- Fixed in this pass: `retained the typed host read/manage context; replaced the unsafe tenant-OAuth-client allowlist design before PR with a server-owned opaque credential whose raw token is supplied only in X-RusTok-Host-Token and whose SHA-256 digest, non-nil audit actor and level live only in RUSTOK_HOST_AUTHORITY_CREDENTIALS; added constant-time comparison, bounded parsing, duplicate-hash rejection, overlap rotation, native/HTTP GraphQL composition and WebSocket denial; manual PR review then removed the raw host header before downstream dispatch and replaced GraphQL credential revalidation with request-scoped typed authority; the final surface sweep moved the separate Iggy native read/write adapter from tenant SETTINGS_* admission to host Read/Manage, used the host actor for audit, and retained authenticated/resolved tenant equality for tenant-owned secret access`
+- Fixed in this pass: `retained the typed host read/manage context; replaced the unsafe tenant-OAuth-client allowlist design before merge with a server-owned opaque credential whose raw token is supplied only in X-RusTok-Host-Token and whose SHA-256 digest, non-nil audit actor and level live only in RUSTOK_HOST_AUTHORITY_CREDENTIALS; added constant-time comparison, bounded parsing, duplicate-hash rejection, overlap rotation, native/HTTP GraphQL composition and WebSocket denial; manual review then removed the raw host header before downstream dispatch and replaced GraphQL credential revalidation with request-scoped typed authority; the final surface sweep moved the separate Iggy native read/write adapter from tenant SETTINGS_* admission to host Read/Manage, used the host actor for audit, and retained authenticated/resolved tenant equality for tenant-owned secret access; PR #2735 merged these source fixes as 1ce83819b077ef6e0df009fd5675f556315ef63a`
 - Remaining risks or blockers: `same-SHA formatting, compile, unit and source-verifier evidence are pending; live ordinary-tenant denial, explicit read/manage admission, audit actor, rotation/revocation and multi-replica parity are not retained; issue #2680 remains open until those gates pass`
-- Evidence: `PR #2726 head; crates/rustok-api/src/context/host_authority.rs; apps/server/src/host_authority.rs; apps/server/src/middleware/auth_context.rs; apps/server/src/graphql/system.rs; apps/server/src/graphql/settings/{mod,query,mutation}.rs; crates/rustok-events-module/admin/src/transport/native_server_adapter.rs; crates/rustok-iggy-connector/admin/src/transport/native_server_adapter.rs; scripts/verify/verify-host-global-authority-boundary.mjs; apps/server/docs/host-authority.md; connector-only local execution remains unavailable because github.com DNS resolution fails`
-- Next action: `inspect every exact-head PR check and fix branch-related failures, then retain live HTTP/native admission, denial, rotation, revocation, audit and replica evidence before closing issue #2680`
+- Evidence: `source files, unit regressions, the boundary verifier and operator runbook are merged at 1ce83819b077ef6e0df009fd5675f556315ef63a; PR #2735 exact-head jobs were queued at merge and are not claimed as passed; Rust-host smoke remained in its pre-build migration phase; no pull-request workflow runs are currently returned for the merge commit; connector-only local execution remains unavailable because github.com DNS resolution fails; superseded PR #2726 is not merge-SHA evidence`
+- Next action: `collect any completed PR #2735 exact-head result without treating queued jobs as evidence, then retain live HTTP/native admission, denial, rotation, revocation, audit and replica evidence before closing issue #2680`
 - Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo test -p rustok-events-module && cargo check -p rustok-iggy-connector-admin --features ssr && cargo check -p rustok-server --lib`
