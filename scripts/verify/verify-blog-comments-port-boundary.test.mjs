@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import './verify-blog-comments-http-port-injection.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -23,6 +24,8 @@ const injectionTest =
   'services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port';
 const injectionCommand =
   `cargo test -p rustok-blog --lib ${injectionTest} -- --exact`;
+const httpHarnessTest = 'controllers::tests::blog_http_runtime_exposes_comments_port_selection';
+const httpHarnessCommand = `cargo test -p rustok-blog --lib ${httpHarnessTest} -- --exact`;
 
 function write(root, relativePath, content) {
   const target = path.join(root, relativePath);
@@ -48,7 +51,10 @@ function fixture({
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-port-'));
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
   const fallbackEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
+  const httpEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json';
   const servicePath = 'crates/rustok-blog/src/services/comment.rs';
+  const httpRuntimePath = 'crates/rustok-blog/src/controllers/mod.rs';
+  const httpControllerPath = 'crates/rustok-blog/src/controllers/comments.rs';
   const graphqlOwnerPath = 'crates/rustok-blog/src/graphql/types.rs';
   const storefrontModelPath = 'crates/rustok-blog/storefront/src/model.rs';
   const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
@@ -109,6 +115,28 @@ post_id
 ${directBypass ? '.comments.get_comment(' : ''}
 `,
   );
+
+  write(
+    root,
+    httpRuntimePath,
+    `
+use rustok_comments::CommentsThreadPort;
+use std::sync::Arc;
+comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
+fn comment_service(&self) -> CommentService {
+if let Some(comments_thread_port) = self.comments_thread_port.clone() {
+CommentService::with_comments_thread_port(self.db_clone(), comments_thread_port)
+} else {
+CommentService::new(self.db_clone(), self.event_bus())
+}
+}
+comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>()
+mod tests
+fn blog_http_runtime_exposes_comments_port_selection()
+let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_service;
+`,
+  );
+  write(root, httpControllerPath, 'let service = runtime.comment_service();');
 
   write(
     root,
@@ -223,6 +251,48 @@ Comments took too long to load. The article is still available.
 
   write(
     root,
+    httpEvidencePath,
+    JSON.stringify({
+      schema_version: 1,
+      module: 'blog',
+      surface: 'comments_http_port_injection',
+      role: 'consumer',
+      provider: 'comments',
+      status: 'source_verified_no_compile',
+      compile_policy: 'not_run_by_request',
+      runtime_status: 'not_run',
+      source_contract: {
+        http_runtime: httpRuntimePath,
+        moderation_controller: httpControllerPath,
+        consumer_service: servicePath,
+        consumer_matrix: evidencePath,
+      },
+      profiles: {
+        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
+        pending: ['remote_transport_implementation'],
+      },
+      composition: {
+        host_context: 'rustok_api::HostRuntimeContext',
+        shared_value: 'Arc<dyn CommentsThreadPort>',
+        lookup: 'HostRuntimeContext::shared_get',
+        selector: 'BlogHttpRuntime::comment_service',
+        injected_constructor: 'CommentService::with_comments_thread_port',
+        fallback_constructor: 'CommentService::new',
+        http_operation: 'moderate_comment',
+      },
+      harness: {
+        status: 'executable_no_run',
+        runtime_status: 'not_run',
+        source: httpRuntimePath,
+        test: httpHarnessTest,
+        command: httpHarnessCommand,
+      },
+      non_claims: [],
+    }),
+  );
+
+  write(
+    root,
     fallbackEvidencePath,
     JSON.stringify({
       schema_version: 2,
@@ -307,7 +377,7 @@ Comments took too long to load. The article is still available.
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port remote transport remains pending cached snapshot and comment-form fallback remain planned',
+    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json blog-comments-http-port-injection.json verify-blog-comments-http-port-injection.mjs verify-blog-comments-http-port-injection.test.mjs verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port BlogHttpRuntime::comment_service HTTP moderation remote transport remains pending remote network transport remains pending cached snapshot and comment-form fallback remain planned Slice 59 Slice 60',
   );
 
   return root;
