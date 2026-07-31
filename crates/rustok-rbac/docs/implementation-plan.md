@@ -16,7 +16,7 @@ targeted verification.
 - `docs/verification/rbac-server-modules-verification-plan.md` remains the
   cross-platform verification checklist, not a second RBAC implementation plan.
 
-Last reconciled with `main`: 2026-07-15.
+Last reconciled with `main`: 2026-07-31.
 
 ## Current state
 
@@ -245,8 +245,8 @@ The ownership boundary is:
 - [x] Focused unit coverage retains matching and mismatched tenant cases.
 - [ ] Same-SHA `rustfmt`, `cargo check -p rustok-rbac-admin --features ssr`,
   focused unit execution and composed native parity remain required.
-- This correction is part of the active `core/tenant` cross-module work unit and
-  does not mark the later `core/rbac` queue item completed or in progress.
+- This correction was delivered during the `core/tenant` cross-module work unit
+  and is carried evidence for the now-active `core/rbac` verification item.
 
 ## Verification commands
 
@@ -310,3 +310,16 @@ harness owns them.
    `docs/modules/registry.md` when ownership or FFA/FBA boundary status changes.
 7. Do not mark source, compiled, live-service or transport verification complete
    without the corresponding evidence.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-31`
+- Scope inspected: `verification handoff initialized after the blocked Tenant visit; RBAC owner docs, source-complete phase claims, tenant trust-boundary carryover and required execution matrix were reconciled before code inspection`
+- Findings: `P0=0, P1=0, P2=0, P3=0` (initial handoff only; no new RBAC finding is claimed yet)
+- Fixed in this pass: `none; this handoff only establishes the active cursor and preserves the previously merged RBAC Admin tenant-boundary correction as unvalidated evidence`
+- Remaining risks or blockers: `all source-complete phases still require same-SHA format, compile, Clippy, targeted test and module validation evidence; PostgreSQL mutation concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design and module-owned management flows remain open`
+- Evidence: `AGENTS.md, docs/index.md, the crate README, local documentation index and this implementation plan were read at main bd8188db80ebc9b9d7771a7da40483f31bc718bf; no execution result is claimed`
+- Next action: `inspect relation writes, principal classification, tenant-composite integrity, durable invalidation generation, cache recovery, repair tooling and every native/GraphQL/server adapter for P0/P1 defects; add regression coverage before any correction is merged`
+- Resume command: `cargo check -p rustok-rbac --all-features && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --lib rbac && cargo xtask module validate rbac && cargo xtask module test rbac`
