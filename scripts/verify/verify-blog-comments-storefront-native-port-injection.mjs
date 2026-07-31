@@ -107,10 +107,7 @@ if (evidence) {
     ])
   ) failures.push(`${evidencePath}: source-verified profile drift`);
   if (
-    !sameSet(evidence.profiles?.pending ?? [], [
-      'admin_native_ssr_composition',
-      'remote_transport_implementation',
-    ])
+    !sameSet(evidence.profiles?.pending ?? [], ['remote_transport_implementation'])
   ) failures.push(`${evidencePath}: pending profile drift`);
 
   const composition = evidence.composition ?? {};
@@ -237,7 +234,6 @@ for (const marker of [
   'verify-blog-comments-storefront-native-port-injection.mjs',
   'verify-blog-comments-storefront-native-port-injection.test.mjs',
   'storefront native SSR Comments host selection is source-locked',
-  'admin native SSR composition',
   'Blog FBA package-chain registration remains pending',
   'remote network transport remains pending',
   'Slice 63',
