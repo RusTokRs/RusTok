@@ -15,12 +15,26 @@ use crate::model::{
 };
 
 #[cfg(feature = "ssr")]
-fn ensure_manage_permission(permissions: &[rustok_api::Permission]) -> Result<(), ServerFnError> {
+fn ensure_manage_permission(
+    auth: &rustok_api::AuthContext,
+    resolved_tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
     use rustok_api::Permission;
     use rustok_api::has_any_effective_permission;
 
+    if auth.tenant_id != resolved_tenant_id {
+        tracing::warn!(
+            auth_tenant_id = %auth.tenant_id,
+            resolved_tenant_id = %resolved_tenant_id,
+            code = "channel.admin_tenant_scope_mismatch",
+            boundary = "channel_admin_native_transport",
+            "channel admin permissions cannot cross the resolved tenant boundary"
+        );
+        return Err(ServerFnError::new("Channel admin access is denied"));
+    }
+
     if !has_any_effective_permission(
-        permissions,
+        &auth.permissions,
         &[Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE],
     ) {
         return Err(ServerFnError::new(
@@ -286,7 +300,7 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
             .ok()
             .and_then(|value| value.0);
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channels = service
@@ -446,7 +460,7 @@ pub(super) async fn channel_create_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel = service
@@ -490,7 +504,7 @@ pub(super) async fn channel_set_default_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -532,7 +546,7 @@ pub(super) async fn channel_create_target_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -583,7 +597,7 @@ pub(super) async fn channel_update_target_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -635,7 +649,7 @@ pub(super) async fn channel_bind_module_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -685,7 +699,7 @@ pub(super) async fn channel_bind_oauth_app_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         let oauth_app_uuid = parse_uuid(&payload.oauth_app_id, "oauth_app_id")?;
@@ -759,7 +773,7 @@ pub(super) async fn channel_delete_target_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -802,7 +816,7 @@ pub(super) async fn channel_delete_module_binding_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -845,7 +859,7 @@ pub(super) async fn channel_delete_oauth_app_binding_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
@@ -887,7 +901,7 @@ pub(super) async fn channel_create_resolution_policy_set_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let policy_set = service
@@ -934,7 +948,7 @@ pub(super) async fn channel_activate_resolution_policy_set_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
@@ -976,7 +990,7 @@ pub(super) async fn channel_create_resolution_rule_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
         let action_channel_id = parse_uuid(&payload.action_channel_id, "action_channel_id")?;
@@ -1032,7 +1046,7 @@ pub(super) async fn channel_update_resolution_rule_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
@@ -1098,7 +1112,7 @@ pub(super) async fn channel_reorder_resolution_rules_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
@@ -1149,7 +1163,7 @@ pub(super) async fn channel_delete_resolution_rule_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_manage_permission(&auth.permissions)?;
+        ensure_manage_permission(&auth, tenant.id)?;
 
         let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
