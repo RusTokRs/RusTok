@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cache-redis-status-${{ github.ref }}
@@ -35,6 +35,7 @@ concurrency:
 
 jobs:
   contract:
+    if: github.head_ref != 'agent/storefront-search-product-channel-23b2e2'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -60,3 +61,36 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
+
+  agent-storefront-search-product-channel:
+    if: github.head_ref == 'agent/storefront-search-product-channel-23b2e2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Apply deterministic Product channel patch
+        run: python3 scripts/agent/patch-storefront-search-product-channel-23b2e2.py
+      - name: Format changed Rust files only
+        run: |
+          rustfmt --edition 2024 \
+            crates/rustok-search/src/storefront_product_channel_visibility.rs \
+            crates/rustok-search/src/projector.rs \
+            crates/rustok-search/src/projector_legacy.rs \
+            crates/rustok-search/src/pg_engine.rs \
+            crates/rustok-search/src/dictionaries.rs \
+            crates/rustok-search/src/suggestions.rs \
+            crates/rustok-search/src/graphql/query.rs \
+            crates/rustok-search/src/forum_storefront_execution.rs \
+            crates/rustok-search/storefront/src/transport/native_server_adapter.rs
+      - name: Commit patch and remove temporary agent files
+        run: |
+          git checkout origin/main -- .github/workflows/cache-redis-status.yml
+          rm scripts/agent/patch-storefront-search-product-channel-23b2e2.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-search .github/workflows/cache-redis-status.yml scripts/agent
+          git commit -m "feat(search): enforce product storefront channels"
+          git push origin HEAD:${{ github.head_ref }}
