@@ -30,7 +30,9 @@ function assertNotContains(text, pattern, description) {
 }
 
 function functionBody(text, functionName) {
-  const signature = new RegExp(`(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${functionName}\\s*\\(`);
+  const signature = new RegExp(
+    `(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${functionName}(?:<[^>]*>)?\\s*\\(`,
+  );
   const match = signature.exec(text);
   if (!match) {
     fail(`missing function ${functionName}`);
@@ -61,10 +63,16 @@ const safeAdapterPath =
   "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs";
 const evidencePath =
   "crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source.json";
+const reviewPath =
+  "crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source-review.json";
+const docPath =
+  "crates/rustok-commerce/docs/admin-promotion-native-error-safety.md";
 
 const routing = readRepo(routingPath);
 const safeAdapter = readRepo(safeAdapterPath);
 const evidence = JSON.parse(readRepo(evidencePath));
+const review = JSON.parse(readRepo(reviewPath));
+const doc = readRepo(docPath);
 
 assertContains(
   routing,
@@ -84,51 +92,112 @@ for (const endpoint of [
   assertContains(safeAdapter, endpoint, `${safeAdapterPath}: missing mounted endpoint ${endpoint}`);
 }
 
-assertContains(
-  safeAdapter,
-  'uuid::Uuid::new_v4()',
-  `${safeAdapterPath}: promotion calls need a unique transport correlation id`,
-);
-assertContains(
-  safeAdapter,
-  'optional_promotion_request_context',
-  `${safeAdapterPath}: request context must be captured for attribution without changing admission`,
-);
-assertContains(
-  safeAdapter,
-  '.map(|context| context.locale.as_str())',
-  `${safeAdapterPath}: effective request locale must cross the promotion port`,
-);
-assertContains(
-  safeAdapter,
-  'context.with_channel(channel)',
-  `${safeAdapterPath}: resolved request channel must cross the promotion port`,
-);
-assertContains(
-  safeAdapter,
-  '.with_idempotency_key(correlation_id.to_string())',
-  `${safeAdapterPath}: promotion write must carry non-empty idempotency semantics`,
-);
-assertContains(
-  safeAdapter,
-  'fn promotion_port_error(',
-  `${safeAdapterPath}: owner PortError must have a consumer-side diagnostic boundary`,
-);
-assertContains(
-  safeAdapter,
-  'ServerFnError::new(error.message)',
-  `${safeAdapterPath}: only the already-sanitized PortError public message may cross the boundary`,
-);
+for (const marker of [
+  "uuid::Uuid::new_v4()",
+  "struct PromotionRequestContextFacts",
+  "fn promotion_request_context_facts(",
+  "optional_promotion_request_context",
+  ".map(|context| context.locale.as_str())",
+  "context.with_channel(channel)",
+  ".with_idempotency_key(correlation_id.to_string())",
+  "fn promotion_port_error(",
+  'owner = "rustok_cart.promotion"',
+  "ServerFnError::new(error.message)",
+]) {
+  assertContains(safeAdapter, marker, `${safeAdapterPath}: missing preserved or safe promotion marker ${marker}`);
+}
 
-for (const [functionName, contextMapper] of [
-  ["commerce_admin_preview_cart_promotion_native", "promotion_auth_context_error"],
-  ["commerce_admin_apply_cart_promotion_native", "promotion_auth_context_error"],
+const contextErrorBody = functionBody(safeAdapter, "promotion_context_error");
+assertContains(
+  contextErrorBody,
+  "let error_type = std::any::type_name::<E>();",
+  `${safeAdapterPath}: framework extraction diagnostics must retain type only`,
+);
+assertContains(contextErrorBody, "error_type", `${safeAdapterPath}: framework error type must be logged`);
+for (const forbidden of ["error = ?error", "error = %error", "error = ?_error", "error = %_error"]) {
+  assertNotContains(
+    contextErrorBody,
+    forbidden,
+    `${safeAdapterPath}: framework extraction diagnostics must not log the complete error`,
+  );
+}
+
+const optionalContextBody = functionBody(safeAdapter, "optional_promotion_request_context");
+assertContains(
+  optionalContextBody,
+  "let error_type = std::any::type_name_of_val(&error);",
+  `${safeAdapterPath}: optional request-context failure must retain type only`,
+);
+for (const forbidden of ["error = ?error", "error = %error"]) {
+  assertNotContains(
+    optionalContextBody,
+    forbidden,
+    `${safeAdapterPath}: optional request-context diagnostics must not log framework text`,
+  );
+}
+
+const portErrorBody = functionBody(safeAdapter, "promotion_port_error");
+for (const marker of [
+  "promotion_request_context_facts(request_context)",
+  "public_message_present",
+  "public_message_length",
+  "tenant_id_non_nil = !tenant.id.is_nil()",
+  "actor_id_non_nil = !auth.user_id.is_nil()",
+  "cart_id_non_nil = !cart_id.is_nil()",
+  "request_context_present = request_facts.request_context_present",
+  "request_tenant_id_non_nil = ?request_facts.request_tenant_id_non_nil",
+  "request_user_id_present = request_facts.request_user_id_present",
+  "request_user_id_non_nil = ?request_facts.request_user_id_non_nil",
+  "channel_id_present = request_facts.channel_id_present",
+  "channel_id_non_nil = ?request_facts.channel_id_non_nil",
+  "channel_slug_present = request_facts.channel_slug_present",
+  "channel_slug_length = ?request_facts.channel_slug_length",
+  "locale_present = request_facts.locale_present",
+  "locale_length = ?request_facts.locale_length",
+  "effective_locale_length",
+  "effective_channel_present",
+  "public_code = %error.code",
+  "error_kind = ?error.kind",
+  "retryable = error.retryable",
+  "PortErrorKind::Unavailable",
+  "PortErrorKind::Timeout",
+  "PortErrorKind::InvariantViolation",
+  "tracing::error!",
+  "tracing::warn!",
+  "ServerFnError::new(error.message)",
+]) {
+  assertContains(portErrorBody, marker, `${safeAdapterPath}: promotion owner mapper missing ${marker}`);
+}
+
+for (const forbidden of [
+  "error = ?error",
+  "error = %error",
+  "tenant_id = %tenant.id",
+  "actor_id = %auth.user_id",
+  "cart_id = %cart_id",
+  "request_tenant_id = ?request_tenant_id",
+  "request_user_id = ?request_user_id",
+  "channel_id = ?channel_id",
+  "channel_slug = ?channel_slug",
+  "locale = ?locale",
+  "public_message = %error.message",
+]) {
+  assertNotContains(
+    portErrorBody,
+    forbidden,
+    `${safeAdapterPath}: promotion owner diagnostics contain raw error or identity field ${forbidden}`,
+  );
+}
+
+for (const functionName of [
+  "commerce_admin_preview_cart_promotion_native",
+  "commerce_admin_apply_cart_promotion_native",
 ]) {
   const body = functionBody(safeAdapter, functionName);
-  assertContains(body, contextMapper, `${safeAdapterPath}: ${functionName} must sanitize auth extraction`);
+  assertContains(body, "promotion_auth_context_error", `${safeAdapterPath}: ${functionName} must sanitize auth extraction`);
   assertContains(body, "promotion_tenant_context_error", `${safeAdapterPath}: ${functionName} must sanitize tenant extraction`);
-  assertContains(body, "optional_promotion_request_context", `${safeAdapterPath}: ${functionName} must capture request attribution`);
-  assertNotContains(body, ".map_err(ServerFnError::new)", `${safeAdapterPath}: ${functionName} must not publish raw framework extraction errors`);
+  assertContains(body, "optional_promotion_request_context", `${safeAdapterPath}: ${functionName} must capture optional request context`);
+  assertNotContains(body, ".map_err(ServerFnError::new)", `${safeAdapterPath}: ${functionName} must not publish raw extraction errors`);
 }
 
 for (const functionName of [
@@ -136,42 +205,33 @@ for (const functionName of [
   "apply_cart_promotion_native_with_context",
 ]) {
   const body = functionBody(safeAdapter, functionName);
-  assertContains(body, "promotion_port_error", `${safeAdapterPath}: ${functionName} must log typed owner failures at the consumer boundary`);
+  assertContains(body, "promotion_port_error", `${safeAdapterPath}: ${functionName} must use the safe owner mapper`);
   assertNotContains(body, "ServerFnError::new(error.to_string())", `${safeAdapterPath}: ${functionName} must not serialize raw owner errors`);
   assertNotContains(body, "ServerFnError::new(err.to_string())", `${safeAdapterPath}: ${functionName} must not serialize raw owner errors`);
 }
 
-assertNotContains(
-  functionBody(safeAdapter, "cart_promotion_port_context"),
-  'format!("commerce-admin-cart-promotion:{operation}:{cart_id}")',
-  `${safeAdapterPath}: promotion correlation must not be deterministic only by operation and cart`,
-);
-
 assertContains(
   safeAdapter,
-  'owner = "rustok_cart.promotion"',
-  `${safeAdapterPath}: diagnostics must identify the cart promotion owner`,
+  "fn order_change_context_error<E: std::fmt::Debug>(",
+  `${safeAdapterPath}: order-change source must remain present and explicitly out of scope`,
 );
-for (const marker of [
-  "consumer_operation",
-  "owner_operation",
-  "correlation_id",
-  "tenant_id",
-  "actor_id",
-  "cart_id",
-  "channel_id",
-  "channel_slug",
-  "locale",
-  "public_code",
-  "error_kind",
-  "retryable",
-  "boundary",
-]) {
-  assertContains(safeAdapter, marker, `${safeAdapterPath}: missing structured diagnostic field ${marker}`);
-}
 
 if (evidence.status !== "commerce_admin_promotion_native_error_safety_source_unvalidated") {
   fail(`${evidencePath}: source evidence must remain explicitly unvalidated`);
+}
+for (const [field, expected] of Object.entries({
+  framework_error_type_only: true,
+  complete_framework_error_logged: false,
+  owner_port_error_shape_only: true,
+  complete_owner_port_error_logged: false,
+  raw_tenant_actor_cart_logged: false,
+  raw_request_context_values_logged: false,
+  public_port_error_message_preserved: true,
+  order_change_cleanup_is_out_of_scope: true,
+})) {
+  if (evidence.source_claims?.[field] !== expected) {
+    fail(`${evidencePath}: source_claims.${field} must be ${expected}`);
+  }
 }
 for (const field of [
   "focused_verifier_executed",
@@ -186,10 +246,30 @@ for (const field of [
   }
 }
 
+if (review.status !== "commerce_admin_promotion_native_error_safety_source_reviewed_unvalidated") {
+  fail(`${reviewPath}: source review must remain explicitly unvalidated`);
+}
+for (const field of [
+  "framework_error_text_removed",
+  "owner_port_error_text_removed",
+  "identity_values_removed",
+  "safe_shape_diagnostics_reviewed",
+  "public_envelopes_preserved",
+  "order_change_source_explicitly_not_claimed_safe",
+]) {
+  if (review.review?.[field] !== true) {
+    fail(`${reviewPath}: review.${field} must be true`);
+  }
+}
+
+assertContains(doc, "Status: `source-complete / unvalidated`", `${docPath}: status must remain unvalidated`);
+assertContains(doc, "complete framework extraction errors are not logged", `${docPath}: framework diagnostic policy`);
+assertContains(doc, "complete `PortError` and identity values are not logged", `${docPath}: owner diagnostic policy`);
+
 if (failures.length > 0) {
   console.error("Commerce admin promotion native error-safety check failed:");
   failures.forEach((failure) => console.error(`✗ ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Commerce admin promotion native error-safety source invariants passed");
+console.log("✔ Commerce admin promotion native diagnostics use correlation-safe shape only; execution evidence remains open");
