@@ -27,6 +27,7 @@ function requireMarker(text, marker, description) {
 
 const paths = {
   modules: "modules.toml",
+  modulesExample: "modules.toml.example",
   moduleManifest: "crates/rustok-rbac/rustok-module.toml",
   cargo: "crates/rustok-rbac/Cargo.toml",
   event: "crates/rustok-events/src/rbac_artifact_permission.rs",
@@ -41,10 +42,17 @@ const content = Object.fromEntries(
   Object.entries(paths).map(([name, relativePath]) => [name, read(relativePath)]),
 );
 
+const manifestMarker =
+  'rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true, depends_on = ["outbox"] }';
 requireMarker(
   content.modules,
-  'rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true, depends_on = ["outbox"] }',
+  manifestMarker,
   `${paths.modules}: RBAC Core module must declare Outbox dependency`,
+);
+requireMarker(
+  content.modulesExample,
+  manifestMarker,
+  `${paths.modulesExample}: example topology must mirror the RBAC Outbox dependency`,
 );
 requireMarker(
   content.moduleManifest,
