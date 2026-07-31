@@ -10,7 +10,9 @@ use uuid::Uuid;
 use rustok_core::{Error, Result};
 use rustok_telemetry::metrics;
 
-use crate::{MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionSource};
+use crate::{
+    MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionSource,
+};
 
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
@@ -26,7 +28,10 @@ pub(crate) struct ForumSearchProjector {
 }
 
 impl ForumSearchProjector {
-    pub(crate) fn new(db: DatabaseConnection, source: Arc<dyn SearchProjectionSource>) -> Self {
+    pub(crate) fn new(
+        db: DatabaseConnection,
+        source: Arc<dyn SearchProjectionSource>,
+    ) -> Self {
         Self { db, source }
     }
 
@@ -48,7 +53,8 @@ impl ForumSearchProjector {
                     .await?;
                 if page.documents.len() > MAX_SEARCH_PROJECTION_PAGE_SIZE {
                     return Err(Error::Validation(
-                        "Forum Search projection source exceeded the bounded page size".to_string(),
+                        "Forum Search projection source exceeded the bounded page size"
+                            .to_string(),
                     ));
                 }
                 for document in page.documents {
@@ -89,12 +95,7 @@ impl ForumSearchProjector {
             tx.commit().await.map_err(Error::Database)
         }
         .await;
-        record_operation(
-            "rebuild_forum_scope",
-            tenant_id,
-            &result,
-            started_at.elapsed(),
-        );
+        record_operation("rebuild_forum_scope", tenant_id, &result, started_at.elapsed());
         result
     }
 
@@ -136,12 +137,7 @@ impl ForumSearchProjector {
             tx.commit().await.map_err(Error::Database)
         }
         .await;
-        record_operation(
-            "refresh_forum_entity",
-            tenant_id,
-            &result,
-            started_at.elapsed(),
-        );
+        record_operation("refresh_forum_entity", tenant_id, &result, started_at.elapsed());
         result
     }
 
@@ -149,12 +145,7 @@ impl ForumSearchProjector {
         self.ensure_postgres()?;
         let started_at = Instant::now();
         let result = delete_forum_scope(&self.db, tenant_id).await;
-        record_operation(
-            "delete_forum_scope",
-            tenant_id,
-            &result,
-            started_at.elapsed(),
-        );
+        record_operation("delete_forum_scope", tenant_id, &result, started_at.elapsed());
         result
     }
 
@@ -200,7 +191,8 @@ fn validate_document(tenant_id: Uuid, document: &SearchProjectionDocument) -> Re
         || !document.is_public
     {
         return Err(Error::Validation(
-            "Forum Search projection source returned a foreign or non-public document".to_string(),
+            "Forum Search projection source returned a foreign or non-public document"
+                .to_string(),
         ));
     }
     validate_entity_type(document.entity_type.as_str())?;
@@ -243,17 +235,17 @@ where
     let statement = Statement::from_sql_and_values(
         DbBackend::Postgres,
         "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = 'forum' AND entity_type = $2 AND document_id = $3",
-        vec![
-            tenant_id.into(),
-            entity_type.to_string().into(),
-            entity_id.into(),
-        ],
+        vec![tenant_id.into(), entity_type.to_string().into(), entity_id.into()],
     );
     conn.execute(statement).await.map_err(Error::Database)?;
     Ok(())
 }
 
-async fn insert_document<C>(conn: &C, table: &str, document: SearchProjectionDocument) -> Result<()>
+async fn insert_document<C>(
+    conn: &C,
+    table: &str,
+    document: SearchProjectionDocument,
+) -> Result<()>
 where
     C: ConnectionTrait,
 {
@@ -298,7 +290,12 @@ where
     Ok(())
 }
 
-fn record_operation(operation: &str, tenant_id: Uuid, result: &Result<()>, duration: Duration) {
+fn record_operation(
+    operation: &str,
+    tenant_id: Uuid,
+    result: &Result<()>,
+    duration: Duration,
+) {
     let status = if result.is_ok() { "success" } else { "error" };
     metrics::record_search_indexing_operation(
         operation,
