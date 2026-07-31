@@ -14,6 +14,15 @@ Server middleware supplies locale and OAuth-app request facts, and the cache key
 includes both. The admin package keeps a Leptos-free core, owner transport
 facade, native server adapter, and REST secondary adapter; it is host-neutral.
 
+Channel Admin binds authenticated authority to the middleware-resolved tenant
+before admitting `settings:manage` or `modules:manage`. All sixteen authenticated
+native endpoints call one shared guard with the full `AuthContext` and resolved
+tenant id. A mismatch returns the static public message `Channel admin access is
+denied`; both tenant ids remain only in structured diagnostics with code
+`channel.admin_tenant_scope_mismatch`. The retained source-contract test requires
+every Auth/Tenant extractor pair to use the scoped guard and requires tenant
+equality to precede permission admission.
+
 The host channel cache is byte-weighted, uses bounded request facts, and has a
 bounded monotonic tenant-generation registry with full-clear rollover and
 fail-safe bypass on allocator exhaustion. Channel mutations advance
@@ -31,8 +40,9 @@ primary-target promotion; host target claims are rebuilt from authoritative
 channel rows and uniquely scoped by tenant; OAuth bindings and policy actions
 reject cross-tenant relations and incompatible parent tenant moves. Historical
 duplicates or mismatches block the migration instead of being silently
-rewritten. The changes are not part of `main` and are not compiled/live verified
-until the queued migration and cache workflows complete successfully on one SHA.
+rewritten. The draft remains open and is not part of `main`; its current SHA
+`53ce761f7801d8893278744b84051325f2439ede` has no accepted same-SHA compile,
+migration, PostgreSQL or Redis evidence.
 
 The source now includes eleven durable-recovery evidence layers:
 
@@ -128,11 +138,12 @@ contracts documented and source-locked.
 2. **Merge and verify the tenant/concurrency invariant fix.** PR #2469 adds
    database-owned default/active/primary promotion, host-claim serialization,
    tenant relation guards, historical-data preflights and an SQLite transaction
-   seal. Fix every channel-specific compile, migration, PostgreSQL or Redis
-   failure before merging; do not treat queued or cancelled jobs as evidence.
+   seal. Reconcile the old branch with current `main`, fix every channel-specific
+   format, compile, migration, PostgreSQL or Redis failure, and do not treat
+   queued, cancelled or stale-head jobs as evidence.
    **Depends on:** a Rust 1.96 runner plus PostgreSQL 17 and Redis 7 jobs.
-   **Done when:** the relevant jobs pass on one PR SHA and the source changes are
-   merged into `main` without weakening the fail-closed migrations.
+   **Done when:** the relevant jobs pass on one current PR SHA and the source
+   changes are merged into `main` without weakening fail-closed migrations.
 
 3. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
    server two-replica, lagged-listener resolved-value, PostgreSQL, Redis readiness,
@@ -173,6 +184,8 @@ contracts documented and source-locked.
 - `npm run verify:channel:fba`
 - `npm run verify:channel:resolution-contract`
 - `npm run verify:channel:proof-points`
+- `cargo test -p rustok-channel-admin --test tenant_scope_contract`
+- `cargo check -p rustok-channel-admin --features ssr`
 - `cargo check -p rustok-channel --lib`
 - `cargo test -p rustok-channel --lib`
 - `cargo test -p rustok-channel invalidation_generation --lib`
@@ -211,11 +224,11 @@ contracts documented and source-locked.
 
 - Cycle: `cycle-001`
 - Status: `blocked`
-- Last verified at (UTC): `2026-07-30`
-- Scope inspected: `channel ownership and transport boundaries; tenant-scoped reads/writes; OAuth and policy relation integrity; default/active/primary selection concurrency; host claim uniqueness; durable invalidation and migration replay; cache dimensions; multilingual database contract`
-- Findings: `P0=0, P1=5, P2=0, P3=1`
-- Fixed in this pass: `staged PR #2469 with DB-owned single-default, single-active-policy and single-primary promotion; tenant-scoped host claims; cross-tenant OAuth/policy guards; fail-fast historical preflights; replay-safe claim rebuild and SQLite transaction seal; isolated legacy OAuth fixture normalization to cfg(test)`
-- Remaining risks or blockers: `P1 channel-display-name multilingual cutover is open; the four staged tenant/concurrency P1 fixes are not in main and remain unverified because Actions jobs on SHA 53ce761f7801d8893278744b84051325f2439ede are queued; local clone/build is unavailable because github.com DNS resolution fails`
-- Evidence: `owner service, REST/native adapters, ChannelReadPort, navigation consumer, resolution pipeline, all channel migrations, durable invalidation tests, SeaORM 1.1 migration transaction behavior, cache workflow, migration workflow and multilingual database audit were inspected; draft PR #2469 and runs 30517068108/30517068093 contain the pending source evidence`
-- Next action: `resume PR #2469 when a runner is available, fix every channel-specific failure, merge only after same-SHA evidence, then implement the channel translation cutover before closing-gate completion`
-- Resume command: `cargo xtask module validate channel && cargo xtask module test channel && cargo test -p rustok-channel --lib`
+- Last verified at (UTC): `2026-07-31`
+- Scope inspected: `channel ownership and transport boundaries; authenticated/resolved tenant equality across all Channel Admin native endpoints; tenant-scoped reads/writes; OAuth and policy relation integrity; default/active/primary selection concurrency; host claim uniqueness; durable invalidation and migration replay; cache dimensions; multilingual database contract`
+- Findings: `P0=1, P1=5, P2=0, P3=1`
+- Fixed in this pass: `merged PR #2671 / main commit dabb11a321ad02935e98dacbdcd7e59eef2cb65f so all sixteen authenticated Channel Admin native endpoints require AuthContext.tenant_id == TenantContext.id before settings:manage/modules:manage admission, return a static denial on mismatch and retain both ids only in structured diagnostics; added rustok-channel-admin tenant_scope_contract source regression; PR #2469 still stages DB-owned single-default, single-active-policy and single-primary promotion, tenant-scoped host claims, cross-tenant OAuth/policy guards, fail-fast historical preflights, replay-safe claim rebuild, SQLite transaction seal and cfg(test)-only legacy OAuth fixture normalization`
+- Remaining risks or blockers: `P1 channel-display-name multilingual cutover remains open; draft PR #2469 is still based on old main, currently reports non-mergeable and has no accepted same-SHA format/compile/migration/PostgreSQL/Redis evidence; permanent channel cache and composed runtime evidence remain pending; local clone/build remains unavailable because github.com DNS resolution fails`
+- Evidence: `PR #2671 exact two-file patch and source-contract test prove tenant equality precedes permission admission at every authenticated Channel Admin endpoint; owner service, REST/native adapters, ChannelReadPort, navigation consumer, resolution pipeline, all channel migrations, durable invalidation tests, SeaORM migration transaction behavior, cache workflow, migration workflow and multilingual database audit were inspected; draft PR #2469 remains source evidence only`
+- Next action: `reconcile PR #2469 onto current main without weakening its fail-closed migrations, run channel-admin tenant-scope compile/test plus channel migration/cache gates on one SHA, fix every channel-specific failure, then implement channel translation ownership before closing-gate completion`
+- Resume command: `cargo test -p rustok-channel-admin --test tenant_scope_contract && cargo check -p rustok-channel-admin --features ssr && cargo xtask module validate channel && cargo xtask module test channel && cargo test -p rustok-channel --lib`
