@@ -1,2 +1,2 @@
 Trigger the same-repository pull_request workflow for FORUM-23B2G1.
-Retry with both watermark signatures anchored explicitly.
+Synchronize parallel FORUM-23B2F4 current-channel delivery into canonical plans.
