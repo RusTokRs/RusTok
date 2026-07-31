@@ -77,20 +77,18 @@ jobs:
           from pathlib import Path
           target = Path("scripts/agent/patch-storefront-search-product-channel-23b2e2.py")
           text = target.read_text()
-          old = '''replace_once(
+          section = text.index("# PostgreSQL Search uses one storefront-only base predicate")
+          needle = '''replace_once(
               "crates/rustok-search/src/pg_engine.rs",
-              """    query: &SearchQuery,\n    offset: i64,\n    limit: i64,\n) -> Result<SearchResult> {\n    let filters = build_filter_clause(query, 4);\n""",
-              """    query: &SearchQuery,\n    storefront_channel: Option<&TrustedStorefrontChannel>,\n    offset: i64,\n    limit: i64,\n) -> Result<SearchResult> {\n    let filters = build_filter_clause(query, 4, storefront_channel);\n""",
-          )'''
-          new = '''replace_after(
+              """    query: &SearchQuery,'''
+          index = text.find(needle, section)
+          if index < 0:
+              raise SystemExit("FTS replacement call not found")
+          replacement = '''replace_after(
               "crates/rustok-search/src/pg_engine.rs",
               "async fn run_fts_search(\\n",
-              """    query: &SearchQuery,\n    offset: i64,\n    limit: i64,\n) -> Result<SearchResult> {\n    let filters = build_filter_clause(query, 4);\n""",
-              """    query: &SearchQuery,\n    storefront_channel: Option<&TrustedStorefrontChannel>,\n    offset: i64,\n    limit: i64,\n) -> Result<SearchResult> {\n    let filters = build_filter_clause(query, 4, storefront_channel);\n""",
-          )'''
-          if text.count(old) != 1:
-              raise SystemExit("FTS patch target drifted")
-          target.write_text(text.replace(old, new, 1))
+              """    query: &SearchQuery,'''
+          target.write_text(text[:index] + replacement + text[index + len(needle):])
           PY
       - name: Apply deterministic Product channel patch
         run: python3 scripts/agent/patch-storefront-search-product-channel-23b2e2.py
