@@ -60,20 +60,25 @@ a document outside the requested author scope.
 ## Transport parity
 
 The GraphQL and native adapters carry author IDs as a Forum-specific argument to
-the same Search execution owner. GraphQL adds one optional field argument. Native
-keeps the existing `search/forum-storefront-search` endpoint and its wire shape
-unchanged, while author-scoped calls use the additive
-`search/forum-storefront-search-by-authors` endpoint. The storefront transport
-facade exposes `fetch_forum_search_by_authors` without changing the general
-`fetch_search` contract. Existing explicit Forum Search calls continue through
-the old endpoint with the previous behavior.
+the same Search execution owner. The existing GraphQL operation
+`ForumStorefrontSearch` stays byte-for-byte free of the new argument for rolling
+compatibility, while author-scoped calls use the additive
+`ForumStorefrontSearchByAuthors` operation. Native keeps the existing
+`search/forum-storefront-search` endpoint and its wire shape unchanged, while
+author-scoped calls use the additive
+`search/forum-storefront-search-by-authors` endpoint.
+
+The storefront transport facade exposes `fetch_forum_search_by_authors` without
+changing the general `fetch_search` contract. Existing explicit Forum Search calls
+continue through the old GraphQL operation or native endpoint with the previous
+behavior.
 
 ## Compatibility and degraded mode
 
 No database migration, projection backfill, public `SearchPreviewInput` field,
 shared storefront filter DTO, `SearchQuery` field, dependency or `Cargo.lock`
-change is introduced. The existing native server-function endpoint also retains
-its previous signature for rolling-deploy compatibility.
+change is introduced. Existing GraphQL and native wire operations also retain
+their previous shape for rolling-deploy compatibility.
 
 The filter relies on public author data already present in current Forum topic and
 reply projections. Documents whose author summary is absent remain searchable
