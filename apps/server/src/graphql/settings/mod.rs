@@ -29,35 +29,18 @@ pub(super) fn require_tenant_settings_scope(
 }
 
 pub(super) fn require_host_authority(
-    ctx: &async_graphql::Context<'_>,
+    _ctx: &async_graphql::Context<'_>,
     required: rustok_api::HostAuthority,
 ) -> async_graphql::Result<rustok_api::HostAuthorityContext> {
-    use axum::http::HeaderMap;
     use rustok_api::graphql::GraphQLError;
 
-    let headers = ctx.data_opt::<HeaderMap>().ok_or_else(|| {
-        <async_graphql::FieldError as GraphQLError>::permission_denied(
-            "host-global authority required",
-        )
-    })?;
-    match crate::host_authority::resolve_host_authority(headers) {
-        Ok(Some(authority)) if authority.allows(required) => Ok(authority),
-        Ok(_) | Err(crate::error::Error::Unauthorized(_)) => Err(
+    crate::host_authority::current_host_authority()
+        .filter(|authority| authority.allows(required))
+        .ok_or_else(|| {
             <async_graphql::FieldError as GraphQLError>::permission_denied(
                 "host-global authority required",
-            ),
-        ),
-        Err(error) => {
-            tracing::error!(
-                error = %error,
-                code = "host_authority.graphql_configuration_invalid",
-                "host authority credential configuration is invalid"
-            );
-            Err(<async_graphql::FieldError as GraphQLError>::internal_error(
-                "Host authority configuration is invalid",
-            ))
-        }
-    }
+            )
+        })
 }
 
 /// Iggy connector secrets are still stored under a routed tenant owner. The
