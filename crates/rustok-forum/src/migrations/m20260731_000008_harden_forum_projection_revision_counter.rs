@@ -76,6 +76,28 @@ CREATE TRIGGER forum_projection_revision_counter_delete
 BEFORE DELETE ON forum_projection_revision_counters
 FOR EACH ROW EXECUTE FUNCTION forum_enforce_projection_revision_counter();
 
+CREATE OR REPLACE FUNCTION forum_require_projection_revision_ledger_row()
+RETURNS trigger AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM forum_projection_revision_ledger
+        WHERE tenant_id = NEW.tenant_id
+          AND revision = NEW.revision
+    ) THEN
+        RAISE EXCEPTION 'forum projection revision counter requires a matching ledger row';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS forum_projection_revision_counter_ledger_commit
+    ON forum_projection_revision_counters;
+CREATE CONSTRAINT TRIGGER forum_projection_revision_counter_ledger_commit
+AFTER INSERT OR UPDATE ON forum_projection_revision_counters
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION forum_require_projection_revision_ledger_row();
+
 CREATE OR REPLACE FUNCTION forum_reject_projection_revision_truncate()
 RETURNS trigger AS $$
 BEGIN
@@ -102,6 +124,8 @@ DROP TRIGGER IF EXISTS forum_projection_revision_ledger_truncate
     ON forum_projection_revision_ledger;
 DROP TRIGGER IF EXISTS forum_projection_revision_counter_truncate
     ON forum_projection_revision_counters;
+DROP TRIGGER IF EXISTS forum_projection_revision_counter_ledger_commit
+    ON forum_projection_revision_counters;
 DROP TRIGGER IF EXISTS forum_projection_revision_counter_delete
     ON forum_projection_revision_counters;
 DROP TRIGGER IF EXISTS forum_projection_revision_counter_update
@@ -109,5 +133,6 @@ DROP TRIGGER IF EXISTS forum_projection_revision_counter_update
 DROP TRIGGER IF EXISTS forum_projection_revision_counter_insert
     ON forum_projection_revision_counters;
 DROP FUNCTION IF EXISTS forum_reject_projection_revision_truncate();
+DROP FUNCTION IF EXISTS forum_require_projection_revision_ledger_row();
 DROP FUNCTION IF EXISTS forum_enforce_projection_revision_counter();
 "#;
