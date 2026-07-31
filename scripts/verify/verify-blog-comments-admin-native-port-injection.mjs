@@ -192,15 +192,16 @@ for (const marker of [
   'let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;',
 ]) requireMarker(adminAdapter, marker, adminAdapterPath);
 
-if (
-  countMarker(adminAdapter, 'rustok_blog::CommentService::with_comments_thread_port(') !== 1
-) failures.push(`${adminAdapterPath}: expected one injected constructor branch`);
-if (countMarker(adminAdapter, 'rustok_blog::CommentService::new(') !== 1) {
+if (countMarker(adminAdapter, 'CommentService::with_comments_thread_port(') !== 1) {
+  failures.push(`${adminAdapterPath}: expected one injected constructor branch`);
+}
+if (countMarker(adminAdapter, 'CommentService::new(') !== 1) {
   failures.push(`${adminAdapterPath}: expected one in-process fallback branch`);
 }
 if (countMarker(adminAdapter, 'comment_service(&context)') !== 2) {
   failures.push(`${adminAdapterPath}: expected two moderation selector handoffs`);
 }
+requireNoMarker(adminAdapter, 'use rustok_blog::CommentService;', adminAdapterPath);
 requireNoMarker(adminAdapter, 'use rustok_blog::{CommentService,', adminAdapterPath);
 requireNoMarker(adminAdapter, 'Err(_) => BlogModerationCommentList', adminAdapterPath);
 requireNoMarker(adminAdapter, 'unwrap_or_default()', adminAdapterPath);
