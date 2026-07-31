@@ -50,7 +50,6 @@ requireMarkers("target", [
   "IndexReconciliationRunError::Source",
   "IndexSourceError::SourceFailure",
   "IndexSourceFailureKind::Retryable",
-  "owner_source_retryable_after_progress",
   'const PAGE_FAILURE_CODE: &str = "index.reconciliation_page_failed"',
   'const FAILURE_CONTRACT: &str = "index_reconciliation_run_failure_v1"',
   "failed.pages_processed, 1",
@@ -69,6 +68,7 @@ requireMarkers("target", [
 ]);
 
 requireMarkers("source", [
+  'pub const FAILURE_CODE: &str = "owner_source_retryable_after_progress"',
   "FailSecondPage",
   "RecoverSecondPage",
   'IndexSourceCursor::new(json!({ "offset": 1 }))',
