@@ -91,20 +91,34 @@ for (const marker of [
   "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus)",
   "let operation_id = match insert_operation",
   "let changed = if command.granted",
-  "if changed {",
+  "if changed",
   ".publish_contract_in_tx(",
   "assignment_event(operation_id, &command)",
+  "transaction.rollback().await.map_err(database_error)?",
   "transaction.commit().await.map_err(database_error)?",
   "then_some(operation_id)",
   "Ok(result.rows_affected() == 1)",
 ]) {
   requireMarker(content.owner, marker, `${paths.owner}: transactional owner path missing ${marker}`);
 }
-const changedIndex = content.owner.indexOf("if changed {");
+const changedIndex = content.owner.indexOf("if changed");
 const publishIndex = content.owner.indexOf(".publish_contract_in_tx(");
+const rollbackIndex = content.owner.indexOf(
+  "transaction.rollback().await.map_err(database_error)?",
+  publishIndex,
+);
 const commitIndex = content.owner.indexOf("transaction.commit().await.map_err(database_error)?");
-if (!(changedIndex >= 0 && publishIndex > changedIndex && commitIndex > publishIndex)) {
-  failures.push(`${paths.owner}: expected state change -> event publication -> commit order`);
+if (
+  !(
+    changedIndex >= 0 &&
+    publishIndex > changedIndex &&
+    rollbackIndex > publishIndex &&
+    commitIndex > rollbackIndex
+  )
+) {
+  failures.push(
+    `${paths.owner}: expected state change -> event publication -> failure rollback -> commit order`,
+  );
 }
 const existingIndex = content.owner.indexOf("if let Some(existing) = find_operation");
 if (!(existingIndex >= 0 && existingIndex < publishIndex)) {
@@ -123,6 +137,10 @@ for (const marker of [
   "only_state_changes_publish_artifact_permission_events",
   "exact retry and state confirmation must not emit false changes",
   "missing-grant confirmation must not emit a false revoke change",
+  "publication_failure_rolls_back_grant_and_idempotency_receipt",
+  "non-Outbox transport must fail closed",
+  'table_count(&db, "rbac_artifact_role_permissions")',
+  'table_count(&db, "rbac_artifact_role_permission_operations")',
   '"rbac.artifact_role_permission.assignment_changed"',
   'serde_json::json!(true)',
   'serde_json::json!(false)',
