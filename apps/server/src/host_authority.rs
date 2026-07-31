@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use axum::http::{HeaderMap, HeaderName};
+use axum::http::HeaderMap;
 use rustok_api::{HostAuthority, HostAuthorityContext};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -124,20 +124,23 @@ impl HostAuthorityPolicy {
     }
 }
 
-/// Remove and authenticate the host-only credential header.
-///
-/// Ordinary requests do not parse host credential configuration. A presented
-/// token is always removed before downstream request handling so it cannot be
-/// logged or forwarded accidentally.
-pub fn take_host_authority(headers: &mut HeaderMap) -> Result<Option<HostAuthorityContext>> {
-    let header_name = HeaderName::from_static(HOST_AUTHORITY_TOKEN_HEADER);
-    let Some(value) = headers.remove(header_name) else {
+/// Authenticate the host-only credential header without consulting tenant or
+/// OAuth state. Ordinary requests do not parse host credential configuration.
+pub fn resolve_host_authority(headers: &HeaderMap) -> Result<Option<HostAuthorityContext>> {
+    let Some(value) = headers.get(HOST_AUTHORITY_TOKEN_HEADER) else {
         return Ok(None);
     };
-    let token = value.to_str().map_err(|_| {
+    let policy = HostAuthorityPolicy::from_env()?;
+    resolve_with_policy(value.to_str(), &policy)
+}
+
+fn resolve_with_policy(
+    token: std::result::Result<&str, axum::http::header::ToStrError>,
+    policy: &HostAuthorityPolicy,
+) -> Result<Option<HostAuthorityContext>> {
+    let token = token.map_err(|_| {
         Error::Unauthorized("Host-global authority credential is invalid".to_string())
     })?;
-    let policy = HostAuthorityPolicy::from_env()?;
     policy
         .authenticate(token)
         .map(Some)
@@ -146,7 +149,10 @@ pub fn take_host_authority(headers: &mut HeaderMap) -> Result<Option<HostAuthori
 
 #[cfg(test)]
 mod tests {
-    use super::{HostAuthorityPolicy, take_host_authority};
+    use super::{
+        HOST_AUTHORITY_TOKEN_HEADER, HostAuthorityPolicy, resolve_host_authority,
+        resolve_with_policy,
+    };
     use axum::http::HeaderMap;
     use rustok_api::HostAuthority;
     use sha2::{Digest, Sha256};
@@ -182,6 +188,21 @@ mod tests {
         assert_eq!(authority.authority(), HostAuthority::Manage);
         assert!(policy.authenticate("wrong-operator-token-with-at-least-32-bytes").is_none());
         assert!(policy.authenticate("too-short").is_none());
+    }
+
+    #[test]
+    fn header_resolution_uses_the_same_exact_policy() {
+        let actor_id = Uuid::new_v4();
+        let token = "operator-token-with-at-least-32-bytes-of-entropy";
+        let policy = HostAuthorityPolicy::parse(&policy_json(actor_id, "read", token))
+            .expect("valid host policy");
+
+        let authority = resolve_with_policy(Ok(token), &policy)
+            .expect("valid credential")
+            .expect("configured authority");
+        assert_eq!(authority.actor_id(), actor_id);
+        assert_eq!(authority.authority(), HostAuthority::Read);
+        assert!(resolve_with_policy(Ok("wrong-operator-token-with-at-least-32-bytes"), &policy).is_err());
     }
 
     #[test]
@@ -221,12 +242,26 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let hash = token_hash("operator-token-with-at-least-32-bytes-of-entropy");
         assert!(HostAuthorityPolicy::parse("{}").is_err());
-        assert!(HostAuthorityPolicy::parse(&policy_json(Uuid::nil(), "manage", "operator-token-with-at-least-32-bytes")).is_err());
-        assert!(HostAuthorityPolicy::parse(&policy_json(actor_id, "owner", "operator-token-with-at-least-32-bytes")).is_err());
+        assert!(
+            HostAuthorityPolicy::parse(&policy_json(
+                Uuid::nil(),
+                "manage",
+                "operator-token-with-at-least-32-bytes"
+            ))
+            .is_err()
+        );
+        assert!(
+            HostAuthorityPolicy::parse(&policy_json(
+                actor_id,
+                "owner",
+                "operator-token-with-at-least-32-bytes"
+            ))
+            .is_err()
+        );
         assert!(
             HostAuthorityPolicy::parse(
                 &serde_json::json!([
-                    {"actor_id": actor_id, "authority": "read", "token_sha256": hash},
+                    {"actor_id": actor_id, "authority": "read", "token_sha256": hash.clone()},
                     {"actor_id": Uuid::new_v4(), "authority": "manage", "token_sha256": hash}
                 ])
                 .to_string()
@@ -237,7 +272,19 @@ mod tests {
 
     #[test]
     fn absent_header_does_not_consult_host_configuration() {
+        let headers = HeaderMap::new();
+        assert!(resolve_host_authority(&headers).expect("no header").is_none());
+    }
+
+    #[test]
+    fn header_name_is_static_and_lowercase() {
         let mut headers = HeaderMap::new();
-        assert!(take_host_authority(&mut headers).expect("no header").is_none());
+        headers.insert(
+            HOST_AUTHORITY_TOKEN_HEADER,
+            "operator-token-with-at-least-32-bytes-of-entropy"
+                .parse()
+                .expect("valid header"),
+        );
+        assert!(headers.contains_key(HOST_AUTHORITY_TOKEN_HEADER));
     }
 }
