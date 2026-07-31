@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G2B3A",
+  "status": "contract_frozen_implementation_pending",
+  "scope": "Freeze the version-1 Forum Search owner-revision invalidation wire shape and rolling dual-delivery protocol before changing the sealed event registry or Search consumer runtime",
+  "decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "predecessors": [
+    "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+    "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
+    "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
+    "crates/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json",
+    "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json"
+  ],
+  "event_contract": {
+    "registry_owner": "rustok-events",
+    "publisher_owner": "rustok-forum",
+    "consumer_owner": "rustok-search",
+    "rust_family": "ForumSearchProjectionEvent",
+    "transport_family": "forum_search_projection",
+    "variant": "InvalidationIssued",
+    "event_type": "forum.search_projection.invalidation_issued",
+    "schema_version": 1,
+    "payload": {
+      "owner_revision": {
+        "type": "int64",
+        "minimum": 1
+      },
+      "target_type": {
+        "type": "string",
+        "allowed": [
+          "forum",
+          "forum_category",
+          "forum_topic"
+        ]
+      },
+      "target_id": {
+        "type": "uuid",
+        "nullable": true,
+        "null_only_when_target_type": "forum",
+        "required_when_target_type": [
+          "forum_category",
+          "forum_topic"
+        ]
+      }
+    },
+    "forbidden_payload": [
+      "tenant_id",
+      "actor_id",
+      "ingest_sequence",
+      "locale",
+      "channel",
+      "visibility_snapshot",
+      "document_payload",
+      "reason",
+      "claims",
+      "roles"
+    ],
+    "envelope": {
+      "tenant_id_from_metadata": true,
+      "actor_id_from_metadata": true,
+      "causation_id_required": true,
+      "causation_id_equals_legacy_root_envelope_id": true,
+      "legacy_root_event_type": "index.reindex_requested",
+      "typed_envelope_id_is_projection_identity": false
+    }
+  },
+  "owner_transaction_protocol": {
+    "postgresql_only": true,
+    "order": [
+      "allocate_owner_revision",
+      "publish_legacy_root_and_retain_envelope_id",
+      "publish_typed_contract_caused_by_legacy_root",
+      "append_owner_ledger_with_legacy_root_envelope_id",
+      "commit_owner_transaction"
+    ],
+    "legacy_root_publication_required": true,
+    "typed_publication_required_after_rollout_enablement": true,
+    "failure_rolls_back_owner_state_root_typed_and_ledger": true,
+    "sqlite_dual_publication": false
+  },
+  "single_projection_path": {
+    "inbox_table": "search_projection_inbox",
+    "legacy_ingress_identity": "EventEnvelope.id",
+    "typed_ingress_identity": "ContractEventEnvelope.causation_id",
+    "shared_identity": "legacy root envelope ID",
+    "typed_envelope_id_usage": [
+      "transport_receipt",
+      "dead_letter_receipt",
+      "diagnostics"
+    ],
+    "typed_ingress_adapts_to_existing_root_inbox_shape": true,
+    "existing_inbox_unique_boundary_collapses_dual_delivery": true,
+    "existing_forum_projector_reused": true,
+    "second_inbox_forbidden": true,
+    "second_projector_forbidden": true
+  },
+  "consumer_cursor_protocol": {
+    "transport": "persistent contract consumer cursor",
+    "valid_event_terminal_result": "shared inbox inserted or durable duplicate recognized",
+    "valid_event_ack_after_terminal_result": true,
+    "decode_schema_or_semantic_poison_terminal_result": "durable DLQ receipt and one successful DLQ publication",
+    "poison_ack_after_terminal_result": true,
+    "transient_failure_acknowledged": false,
+    "ack_failure_acknowledged": false,
+    "process_local_fallback": false,
+    "exact_cursor_receive_and_ack": true
+  },
+  "ordering": {
+    "owner_revision_source": "forum_projection_revision_ledger.revision",
+    "delivery_order_source": "search_projection_inbox.ingest_sequence",
+    "owner_revision_compared_numerically_with_ingest_sequence": false,
+    "checkpoint_advances_only_after_projection_success": true,
+    "legacy_root_event_id_remains_ledger_identity": true
+  },
+  "rollout_slices": [
+    {
+      "task": "FORUM-23B2G2B3A",
+      "result": "freeze contract and rollout decision"
+    },
+    {
+      "task": "FORUM-23B2G2B3B",
+      "result": "add sealed v1 family, registry, schema digest, causation-aware outbox publication and Forum dual publisher"
+    },
+    {
+      "task": "FORUM-23B2G2B3C",
+      "result": "add Search persistent contract consumer, durable poison receipt and one-inbox dedupe adapter"
+    },
+    {
+      "task": "FORUM-23B2G2B3D",
+      "result": "capture PostgreSQL, persistent cursor, restart, poison, dual-delivery and LINK-FORUM-03 evidence"
+    }
+  ],
+  "current_slice_changes": {
+    "sealed_event_family_added": false,
+    "event_registry_changed": false,
+    "event_digest_changed": false,
+    "forum_publisher_changed": false,
+    "search_consumer_changed": false,
+    "search_inbox_changed": false,
+    "projection_execution_changed": false,
+    "canonical_task_closed": false
+  },
+  "non_claims": [
+    "This slice does not publish the typed event",
+    "This slice does not add a persistent Search contract consumer",
+    "This slice does not change the legacy root event payload or event type",
+    "This slice does not retire legacy root publication",
+    "This slice does not claim PostgreSQL, Iggy, restart, poison, DLQ, ACL or LINK-FORUM-03 runtime evidence",
+    "Tests, verifiers, formatting, Cargo checks, Clippy and runtime evidence were not executed by the implementation agent"
+  ]
+}
