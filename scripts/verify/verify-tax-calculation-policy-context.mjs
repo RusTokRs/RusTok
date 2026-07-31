@@ -31,24 +31,32 @@ for (const [value, label] of [
   ],
   ['fn require_tax_calculation_policy(', 'policy helper definition'],
   [
-    'context.require_policy(PortCallPolicy::read()).map_err(|error| {',
+    '.require_policy(PortCallPolicy::read())\n        .inspect_err(|error| {',
     'unchanged read policy admission',
   ],
   [
-    'log_tax_calculation_policy_rejection(context, owner_operation, &error);',
+    'log_tax_calculation_policy_rejection(context, owner_operation, error);',
     'rejection diagnostics before rethrow',
   ],
+  ['fn tax_calculation_context_facts(', 'safe context fact helper'],
   ['fn log_tax_calculation_policy_rejection(', 'structured diagnostic helper'],
   ['owner = "rustok_tax"', 'truthful tax owner'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
+  ['tenant_id_length = facts.tenant_id_length', 'tenant shape'],
+  ['actor_kind = facts.actor_kind', 'actor kind'],
+  ['actor_id_length = facts.actor_id_length', 'actor id shape'],
+  ['claim_count = facts.claim_count', 'claim count'],
+  ['role_count = facts.role_count', 'role count'],
+  ['channel_present = facts.channel_present', 'channel presence'],
+  ['channel_length = ?facts.channel_length', 'channel length'],
+  ['locale_length = facts.locale_length', 'locale length'],
+  ['causation_id_present = facts.causation_id_present', 'causation presence'],
+  ['causation_id_length = ?facts.causation_id_length', 'causation length'],
+  ['traceparent_present = facts.traceparent_present', 'trace presence'],
+  ['traceparent_length = ?facts.traceparent_length', 'trace length'],
+  ['idempotency_key_present = facts.idempotency_key_present', 'idempotency presence'],
+  ['idempotency_key_length = ?facts.idempotency_key_length', 'idempotency length'],
+  ['deadline_ms = ?facts.deadline_ms', 'deadline context'],
   ['operation = owner_operation', 'exact owner operation'],
   ['code = %error.code', 'original port code'],
   ['error_kind = ?error.kind', 'original port kind'],
@@ -77,7 +85,6 @@ if (!(operationIndex >= 0 && operationIndex < policyIndex && policyIndex < valid
 }
 
 for (const [value, label] of [
-  ['error\n    })', 'original PortError rethrow'],
   [
     '.map_err(|error| tax_error_to_port_error(&context, owner_operation, error))?',
     'existing owner error mapping',
@@ -93,6 +100,18 @@ for (const [value, label] of [
   requireText(value, label);
 }
 
+for (const [value, label] of [
+  ['tenant_id = %context.tenant_id', 'raw tenant context'],
+  ['actor = ?context.actor', 'raw actor context'],
+  ['channel = ?context.channel', 'raw channel context'],
+  ['locale = %context.locale', 'raw locale context'],
+  ['causation_id = ?context.causation_id', 'raw causation context'],
+  ['traceparent = ?context.traceparent', 'raw trace context'],
+  ['idempotency_key = ?context.idempotency_key', 'raw idempotency context'],
+]) {
+  forbidText(value, label);
+}
+
 forbidText(
   'context.require_policy(PortCallPolicy::read())?;\n        let owner_operation',
   'policy admission before owner operation',
@@ -105,5 +124,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Tax calculation policy rejections retain complete owner context and the original PortError',
+  '✔ Tax calculation policy rejections retain correlation plus safe context shape and the original PortError',
 );

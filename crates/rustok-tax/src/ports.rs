@@ -8,6 +8,24 @@ use crate::{CalculatedTaxLine, TaxCalculationInput, TaxCalculationResult, TaxErr
 
 const TAX_CALCULATION_PORT_BOUNDARY: &str = "tax_calculation_port";
 
+struct TaxCalculationContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
 /// Transport-neutral owner boundary for tax calculation.
 #[async_trait]
 pub trait TaxCalculationPort: Send + Sync {
@@ -57,6 +75,40 @@ impl TaxCalculationPort for crate::TaxService {
     }
 }
 
+fn tax_calculation_context_facts(context: &PortContext) -> TaxCalculationContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    TaxCalculationContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
 fn require_tax_calculation_policy(
     context: &PortContext,
     owner_operation: &'static str,
@@ -73,20 +125,28 @@ fn log_tax_calculation_policy_rejection(
     owner_operation: &'static str,
     error: &PortError,
 ) {
+    let facts = tax_calculation_context_facts(context);
     match &error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
             tracing::error!(
                 error = ?error,
                 owner = "rustok_tax",
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
+                tenant_id_length = facts.tenant_id_length,
+                actor_kind = facts.actor_kind,
+                actor_id_length = facts.actor_id_length,
+                claim_count = facts.claim_count,
+                role_count = facts.role_count,
+                channel_present = facts.channel_present,
+                channel_length = ?facts.channel_length,
+                locale_length = facts.locale_length,
+                causation_id_present = facts.causation_id_present,
+                causation_id_length = ?facts.causation_id_length,
+                traceparent_present = facts.traceparent_present,
+                traceparent_length = ?facts.traceparent_length,
+                idempotency_key_present = facts.idempotency_key_present,
+                idempotency_key_length = ?facts.idempotency_key_length,
+                deadline_ms = ?facts.deadline_ms,
                 operation = owner_operation,
                 code = %error.code,
                 error_kind = ?error.kind,
@@ -100,14 +160,21 @@ fn log_tax_calculation_policy_rejection(
                 error = ?error,
                 owner = "rustok_tax",
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
+                tenant_id_length = facts.tenant_id_length,
+                actor_kind = facts.actor_kind,
+                actor_id_length = facts.actor_id_length,
+                claim_count = facts.claim_count,
+                role_count = facts.role_count,
+                channel_present = facts.channel_present,
+                channel_length = ?facts.channel_length,
+                locale_length = facts.locale_length,
+                causation_id_present = facts.causation_id_present,
+                causation_id_length = ?facts.causation_id_length,
+                traceparent_present = facts.traceparent_present,
+                traceparent_length = ?facts.traceparent_length,
+                idempotency_key_present = facts.idempotency_key_present,
+                idempotency_key_length = ?facts.idempotency_key_length,
+                deadline_ms = ?facts.deadline_ms,
                 operation = owner_operation,
                 code = %error.code,
                 error_kind = ?error.kind,
@@ -319,14 +386,31 @@ fn tax_request_error(
     code: &'static str,
     detail: impl std::fmt::Display,
 ) -> PortError {
+    let detail = detail.to_string();
+    let facts = tax_calculation_context_facts(context);
     tracing::warn!(
-        detail = %detail,
         owner = "rustok_tax",
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        channel = ?context.channel,
+        tenant_id_length = facts.tenant_id_length,
+        actor_kind = facts.actor_kind,
+        actor_id_length = facts.actor_id_length,
+        claim_count = facts.claim_count,
+        role_count = facts.role_count,
+        channel_present = facts.channel_present,
+        channel_length = ?facts.channel_length,
+        locale_length = facts.locale_length,
+        causation_id_present = facts.causation_id_present,
+        causation_id_length = ?facts.causation_id_length,
+        traceparent_present = facts.traceparent_present,
+        traceparent_length = ?facts.traceparent_length,
+        idempotency_key_present = facts.idempotency_key_present,
+        idempotency_key_length = ?facts.idempotency_key_length,
+        deadline_ms = ?facts.deadline_ms,
         operation = owner_operation,
         code,
+        detail_present = !detail.trim().is_empty(),
+        detail_length = detail.chars().count(),
+        boundary = TAX_CALCULATION_PORT_BOUNDARY,
         "tax request validation failed"
     );
     PortError::validation(code, "tax request is invalid")
@@ -338,14 +422,31 @@ fn tax_result_error(
     code: &'static str,
     detail: impl std::fmt::Display,
 ) -> PortError {
+    let detail = detail.to_string();
+    let facts = tax_calculation_context_facts(context);
     tracing::error!(
-        detail = %detail,
         owner = "rustok_tax",
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        channel = ?context.channel,
+        tenant_id_length = facts.tenant_id_length,
+        actor_kind = facts.actor_kind,
+        actor_id_length = facts.actor_id_length,
+        claim_count = facts.claim_count,
+        role_count = facts.role_count,
+        channel_present = facts.channel_present,
+        channel_length = ?facts.channel_length,
+        locale_length = facts.locale_length,
+        causation_id_present = facts.causation_id_present,
+        causation_id_length = ?facts.causation_id_length,
+        traceparent_present = facts.traceparent_present,
+        traceparent_length = ?facts.traceparent_length,
+        idempotency_key_present = facts.idempotency_key_present,
+        idempotency_key_length = ?facts.idempotency_key_length,
+        deadline_ms = ?facts.deadline_ms,
         operation = owner_operation,
         code,
+        detail_present = !detail.trim().is_empty(),
+        detail_length = detail.chars().count(),
+        boundary = TAX_CALCULATION_PORT_BOUNDARY,
         "tax provider result violated the owner contract"
     );
     PortError::invariant_violation(code, "tax calculation result is invalid")
@@ -358,14 +459,30 @@ fn tax_error_to_port_error(
 ) -> PortError {
     match error {
         TaxError::Validation(message) => {
+            let facts = tax_calculation_context_facts(context);
             tracing::warn!(
-                error = %message,
                 owner = "rustok_tax",
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
+                tenant_id_length = facts.tenant_id_length,
+                actor_kind = facts.actor_kind,
+                actor_id_length = facts.actor_id_length,
+                claim_count = facts.claim_count,
+                role_count = facts.role_count,
+                channel_present = facts.channel_present,
+                channel_length = ?facts.channel_length,
+                locale_length = facts.locale_length,
+                causation_id_present = facts.causation_id_present,
+                causation_id_length = ?facts.causation_id_length,
+                traceparent_present = facts.traceparent_present,
+                traceparent_length = ?facts.traceparent_length,
+                idempotency_key_present = facts.idempotency_key_present,
+                idempotency_key_length = ?facts.idempotency_key_length,
+                deadline_ms = ?facts.deadline_ms,
                 operation = owner_operation,
                 code = "tax.validation",
+                validation_message_present = !message.trim().is_empty(),
+                validation_message_length = message.chars().count(),
+                boundary = TAX_CALCULATION_PORT_BOUNDARY,
                 "tax owner validation failed"
             );
             PortError::validation("tax.validation", "tax request is invalid")
