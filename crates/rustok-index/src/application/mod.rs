@@ -74,5 +74,5 @@ pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,
     SharedIndexSchemaRegistry, materialize_index_schema_registry, register_index_schema_source,
 };
-pub use source_timeout::{DEFAULT_INDEX_SOURCE_CALL_TIMEOUT, register_index_source};
+pub use source_timeout::register_index_source;
 pub use validation::{QueryValidationError, RecordValidationError};
