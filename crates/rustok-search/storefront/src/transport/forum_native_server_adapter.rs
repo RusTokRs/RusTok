@@ -29,6 +29,22 @@ pub async fn fetch_search_with_authors(
         .map_err(ApiError::from)
 }
 
+pub async fn fetch_search_with_filters(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_filters_native(
+        query, locale, preset_key, filters, author_ids, tags, solved,
+    )
+    .await
+    .map_err(ApiError::from)
+}
+
 #[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search")]
 async fn forum_storefront_search_native(
     query: String,
@@ -36,7 +52,16 @@ async fn forum_storefront_search_native(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
-    execute_forum_storefront_search_native(query, locale, preset_key, filters, Vec::new()).await
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        Vec::new(),
+        Vec::new(),
+        None,
+    )
+    .await
 }
 
 #[server(
@@ -50,7 +75,35 @@ async fn forum_storefront_search_by_authors_native(
     filters: SearchPreviewFilters,
     author_ids: Vec<String>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
-    execute_forum_storefront_search_native(query, locale, preset_key, filters, author_ids).await
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        Vec::new(),
+        None,
+    )
+    .await
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-filters"
+)]
+async fn forum_storefront_search_by_filters_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(
+        query, preset_key, locale, filters, author_ids, tags, solved,
+    )
+    .await
 }
 
 async fn execute_forum_storefront_search_native(
@@ -59,6 +112,8 @@ async fn execute_forum_storefront_search_native(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
     author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -107,6 +162,8 @@ async fn execute_forum_storefront_search_native(
             statuses: filters.statuses,
             category_ids: filters.category_ids,
             author_ids,
+            tags,
+            solved,
             attribute_filters: filters
                 .attribute_filters
                 .into_iter()
@@ -141,7 +198,15 @@ async fn execute_forum_storefront_search_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (query, locale, preset_key, filters, author_ids);
+        let _ = (
+            query,
+            locale,
+            preset_key,
+            filters,
+            author_ids,
+            tags,
+            solved,
+        );
         Err(ServerFnError::new(
             "Forum storefront Search requires the `ssr` feature",
         ))
