@@ -153,6 +153,10 @@ pub async fn bootstrap_application_router(
         &runtime_ctx,
     )?;
 
+    crate::services::search_product_channel_reconciliation::start_product_channel_projection_reconciliation_if_ready(
+        &runtime_ctx,
+    )?;
+
     #[cfg(feature = "mod-forum")]
     crate::services::forum_search_inbox_worker::start_forum_search_inbox_worker_if_ready(
         &runtime_ctx,

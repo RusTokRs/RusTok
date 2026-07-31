@@ -24,6 +24,7 @@ pub mod pg_engine;
 pub mod ports;
 pub mod presets;
 pub mod projection_source;
+mod product_channel_reconciliation;
 pub mod projector;
 #[allow(dead_code)]
 #[path = "projector_legacy.rs"]
@@ -32,6 +33,7 @@ pub mod ranking;
 pub mod search_settings;
 pub mod storefront_category_scope;
 pub mod storefront_channel_authority;
+mod storefront_product_channel_visibility;
 pub mod storefront_result_eligibility;
 pub mod suggestions;
 
@@ -71,6 +73,10 @@ pub use projection_source::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory, SearchProjectionSourceRegistry,
     register_search_projection_source, search_projection_source_registry_from_extensions,
+};
+pub use product_channel_reconciliation::{
+    DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
+    ProductChannelProjectionSweepReport,
 };
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;

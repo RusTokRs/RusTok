@@ -217,15 +217,8 @@ if (contract) {
   }
 }
 
-// B2E1 intentionally does not claim the Product projection/filter work.
-rejectAll(
-  projector,
-  ["allowed_channel_slugs'", "channel_visibility'"],
-  `${paths.projector} B2E1 non-claim`,
-);
-if (engine.includes("allowed_channel_slugs")) {
-  failures.push(`${paths.engine}: product visibility predicate moved into B2E1 unexpectedly`);
-}
+// Later slices may add Product visibility while B2E1 continues to guard only
+// trusted transport authority and assertion semantics.
 
 if (failures.length > 0) {
   console.error("FORUM-23B2E1 trusted channel authority verification failed:");
