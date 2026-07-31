@@ -121,6 +121,17 @@ for (const value of [
 }
 
 for (const value of [
+  'error = ?error',
+  'error = %message',
+  'resource_id = %id',
+  'from = %from',
+  'to = %to',
+  'tenant_id = %context.tenant_id',
+]) {
+  forbidText(fulfillment, value, 'fulfillment payload diagnostics');
+}
+
+for (const value of [
   'format!("customer storage unavailable: {error}")',
   'format!("customer {id} not found")',
   'format!("customer for user {id} not found")',
@@ -224,14 +235,23 @@ for (const [source, value, label] of [
   [paymentCompensation, 'persisted_cancel_result(context, owner_operation', 'payment compensation checkpoint context mapping'],
   [paymentCompensation, 'fn manual_reconciliation(\n    context: &PortContext,', 'payment compensation reconciliation context'],
   [fulfillment, 'correlation_id = %context.correlation_id', 'fulfillment correlation logging'],
-  [fulfillment, 'tenant_id = %context.tenant_id', 'fulfillment tenant logging'],
+  [fulfillment, 'tenant_id_length = context_facts.tenant_id_length', 'fulfillment tenant shape logging'],
+  [fulfillment, 'actor_kind = context_facts.actor_kind', 'fulfillment actor kind logging'],
+  [fulfillment, 'claim_count = context_facts.claim_count', 'fulfillment claim count logging'],
+  [fulfillment, 'role_count = context_facts.role_count', 'fulfillment role count logging'],
+  [fulfillment, 'tenant_id_parse_failed = true', 'fulfillment tenant parse failure'],
+  [fulfillment, 'error_variant = error_facts.error_variant', 'fulfillment static error variant'],
+  [fulfillment, 'text_field_count = error_facts.text_field_count', 'fulfillment error text shape'],
+  [fulfillment, 'uuid_field_count = error_facts.uuid_field_count', 'fulfillment error UUID shape'],
+  [fulfillment, 'opaque_payload_present = error_facts.opaque_payload_present', 'fulfillment opaque payload shape'],
+  [fulfillment, 'boundary = SHIPPING_SELECTION_BOUNDARY', 'fulfillment owner boundary'],
   [fulfillment, 'operation = owner_operation', 'fulfillment owner operation logging'],
-  [fulfillment, 'code = "fulfillment.context_invalid"', 'fulfillment context stable code'],
-  [fulfillment, 'code = "fulfillment.validation"', 'fulfillment validation stable code'],
-  [fulfillment, 'code = "fulfillment.shipping_option_not_found"', 'fulfillment shipping option stable code'],
-  [fulfillment, 'code = "fulfillment.fulfillment_not_found"', 'fulfillment resource stable code'],
-  [fulfillment, 'code = "fulfillment.invalid_transition"', 'fulfillment transition stable code'],
-  [fulfillment, 'code = "fulfillment.database_unavailable"', 'fulfillment database stable code'],
+  [fulfillment, '"fulfillment.context_invalid"', 'fulfillment context stable code'],
+  [fulfillment, '"fulfillment.validation"', 'fulfillment validation stable code'],
+  [fulfillment, '"fulfillment.shipping_option_not_found"', 'fulfillment shipping option stable code'],
+  [fulfillment, '"fulfillment.fulfillment_not_found"', 'fulfillment resource stable code'],
+  [fulfillment, '"fulfillment.invalid_transition"', 'fulfillment transition stable code'],
+  [fulfillment, '"fulfillment.database_unavailable"', 'fulfillment database stable code'],
   [fulfillment, '"fulfillment request context is invalid"', 'fulfillment stable context message'],
   [fulfillment, '"fulfillment request is invalid"', 'fulfillment stable validation message'],
   [fulfillment, '"shipping option was not found"', 'fulfillment stable shipping option message'],
@@ -364,5 +384,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
