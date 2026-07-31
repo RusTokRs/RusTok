@@ -3,7 +3,7 @@
   "task": "FORUM-23B2G2B3D3",
   "status": "source_ready_maintainer_execution_pending",
   "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
-  "test": "crates/rustok-search/tests/forum_versioned_invalidation_ack_restart_iggy.rs",
+  "test": "apps/server/tests/forum_versioned_invalidation_ack_restart_iggy.rs",
   "evidence_artifact": {
     "path": "target/forum-search-versioned-invalidation-ack-restart-evidence.json",
     "generation": "executable_test_only",
@@ -42,7 +42,7 @@
     "the Search inbox row count for the root event remains exactly one",
     "the Search ingest_sequence is unchanged across redelivery"
   ],
-  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-server --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
   "non_claims": [
     "this source-ready proof does not claim that PostgreSQL or external Iggy execution passed",
     "this proof does not run the server-owned worker loop or its retry backoff",

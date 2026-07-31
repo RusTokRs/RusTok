@@ -16,10 +16,10 @@ The machine-readable proof contract is:
 crates/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json
 ```
 
-The executable test is:
+The executable cross-module host test is:
 
 ```text
-crates/rustok-search/tests/forum_versioned_invalidation_semantic_poison_iggy.rs
+apps/server/tests/forum_versioned_invalidation_semantic_poison_iggy.rs
 ```
 
 Successful execution writes:
@@ -73,8 +73,10 @@ production seam is introduced.
 
 ## Compatibility and degraded mode
 
-This slice adds only an integration test, contracts, documentation and a static
-verifier. It does not change production Rust paths, dependencies, migrations,
+This slice retains only a host-owned integration test, contracts, documentation
+and a static verifier. The server package already owns direct Search, Iggy and
+connector dependencies, so the proof adds no package edge and requires no
+`Cargo.lock` change. It does not change production Rust paths, migrations,
 event schemas or digests, public DTOs, Search queries, broker topology, the
 default-off server consumer flag, or the mandatory legacy root path.
 
@@ -98,7 +100,7 @@ Those remain separate bounded runtime slices under the parent D0 protocol.
 node scripts/verify/verify-forum-search-versioned-invalidation-semantic-poison-proof.mjs
 RUSTOK_SEARCH_TEST_DATABASE_URL="$DATABASE_URL" \
 RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS="127.0.0.1:8090" \
-  cargo test -p rustok-search \
+  cargo test -p rustok-server \
   --test forum_versioned_invalidation_semantic_poison_iggy \
   -- --nocapture --test-threads=1
 ```

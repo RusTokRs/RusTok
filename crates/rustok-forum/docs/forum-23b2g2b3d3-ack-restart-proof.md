@@ -16,10 +16,10 @@ The machine-readable proof contract is:
 crates/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json
 ```
 
-The executable test is:
+The executable cross-module host test is:
 
 ```text
-crates/rustok-search/tests/forum_versioned_invalidation_ack_restart_iggy.rs
+apps/server/tests/forum_versioned_invalidation_ack_restart_iggy.rs
 ```
 
 Successful execution writes:
@@ -63,8 +63,10 @@ false proof that merely observed the first delivery twice without committing it.
 
 ## Compatibility and degraded mode
 
-This slice adds only an integration test, a dev dependency, contracts,
-documentation and a static verifier. It does not change production migrations,
+This slice retains only a host-owned integration test, contracts,
+documentation and a static verifier. The server package already owns direct
+Search, Iggy and connector dependencies, so the proof adds no package edge and
+requires no `Cargo.lock` change. It does not change production migrations,
 event schemas or digests, public DTOs, Search query behavior, broker topology,
 the default-off server consumer flag, or the mandatory legacy
 `index.reindex_requested` path.
@@ -88,7 +90,7 @@ Those remain separate bounded runtime slices under the parent D0 protocol.
 node scripts/verify/verify-forum-search-versioned-invalidation-ack-restart-proof.mjs
 RUSTOK_SEARCH_TEST_DATABASE_URL="$DATABASE_URL" \
 RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS="127.0.0.1:8090" \
-  cargo test -p rustok-search \
+  cargo test -p rustok-server \
   --test forum_versioned_invalidation_ack_restart_iggy \
   -- --nocapture --test-threads=1
 ```
