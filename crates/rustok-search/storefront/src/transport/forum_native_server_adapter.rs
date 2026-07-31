@@ -12,7 +12,17 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    forum_storefront_search_native(query, locale, preset_key, filters)
+    fetch_search_with_authors(query, locale, preset_key, filters, Vec::new()).await
+}
+
+pub async fn fetch_search_with_authors(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_native(query, locale, preset_key, filters, author_ids)
         .await
         .map_err(ApiError::from)
 }
@@ -23,6 +33,7 @@ async fn forum_storefront_search_native(
     locale: Option<String>,
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -70,6 +81,7 @@ async fn forum_storefront_search_native(
             source_modules: filters.source_modules,
             statuses: filters.statuses,
             category_ids: filters.category_ids,
+            author_ids,
             attribute_filters: filters
                 .attribute_filters
                 .into_iter()
@@ -104,7 +116,7 @@ async fn forum_storefront_search_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (query, locale, preset_key, filters);
+        let _ = (query, locale, preset_key, filters, author_ids);
         Err(ServerFnError::new(
             "search/forum-storefront-search requires the `ssr` feature",
         ))
