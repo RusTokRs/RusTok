@@ -1,0 +1,46 @@
+name: Agent Forum Search locale/date sync
+
+on:
+  push:
+    branches:
+      - agent/forum-search-locale-date-filter-23b2f3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-forum-search-locale-date-filter-23b2f3
+  cancel-in-progress: false
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/forum-search-locale-date-filter-23b2f3
+          fetch-depth: 2
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Apply exact source and plan changes
+        run: python3 scripts/agent/apply_forum_search_locale_date.py
+      - name: Format changed Rust files only
+        run: |
+          rustfmt --edition 2024 crates/rustok-search/src/forum_document_filters.rs
+          rustfmt --edition 2024 crates/rustok-search/src/forum_storefront_execution.rs
+          rustfmt --edition 2024 crates/rustok-search/src/graphql/forum_storefront.rs
+          rustfmt --edition 2024 crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs
+          rustfmt --edition 2024 crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs
+          rustfmt --edition 2024 crates/rustok-search/storefront/src/transport/mod.rs
+      - name: Commit synchronization and remove staging files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/agent-forum-search-locale-date-sync.yml
+          rm scripts/agent/apply_forum_search_locale_date.py
+          git add -A
+          git commit -m "feat(search): add Forum locale and date filters"
+          git push origin HEAD:agent/forum-search-locale-date-filter-23b2f3
