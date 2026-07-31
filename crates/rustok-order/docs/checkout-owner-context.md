@@ -4,145 +4,95 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the delegated-context diagnostic gap for the two checkout write ports
-owned by `rustok-order`:
+The public checkout owner wrappers preserve admission and context validation for:
 
 - `CheckoutOrderPaymentSettlementPort`;
 - `CheckoutOrderCompensationPort`.
 
-The existing owner implementations already enforced write admission, tenant UUID parsing, actor
-UUID parsing, and checkout causation matching. Those checks used context-dropping `?` admission
-forms and partial validation warnings.
+This update changes only diagnostics. Constructors, factories, compatibility facade,
+request/response contracts, validation order, and owner delegation remain unchanged.
 
-This slice introduces public wrapper ports that perform the same checks before delegating to the
-existing implementations.
+## Public API and ordering
 
-## Public API cutover
+Both public wrappers preserve:
 
-The crate-root API retains the existing names:
+1. write-policy admission;
+2. write-semantics admission;
+3. tenant UUID parsing;
+4. actor UUID parsing;
+5. checkout causation matching;
+6. delegation of the original context and request.
 
-- `CheckoutOrderPaymentSettlementPort`;
-- `SettleCheckoutOrderPaymentRequest`;
-- `InProcessCheckoutOrderPaymentSettlementPort`;
-- `in_process_checkout_order_payment_settlement_port`;
-- `CheckoutOrderCompensationPort`;
-- `CheckoutOrderCompensationRequest`;
-- `CheckoutOrderCompensationSnapshot`;
-- `InProcessCheckoutOrderCompensationPort`;
-- `in_process_checkout_order_compensation_port`.
+The same admission or validation `PortError` is returned unchanged.
 
-The wrapper structs retain `new` and `with_identity_port` constructor parity. Existing commerce
-consumers continue to import the same crate-root names.
+## Safe shared context
 
-The legacy implementation modules are now crate-private. This prevents an external caller from
-bypassing the context-preserving wrapper through the old module-scoped factories while preserving
-the root contracts used by the repository.
+Admission and context-rejection events retain the correlation id. Other context is
+recorded only as:
 
-## Admission contract
+- tenant and actor-id lengths;
+- actor kind;
+- claim and role counts;
+- channel presence and length;
+- locale length;
+- causation, traceparent, and idempotency presence and lengths;
+- deadline milliseconds.
 
-Both public wrappers preserve the existing order:
+Tenant/actor parse causes and the original mapped `PortError` remain private
+structured evidence. Causation rejection records expected-operation presence/non-nil
+and a false match fact, not the expected or actual UUID.
 
-1. require write policy;
-2. require write semantics;
-3. parse tenant UUID;
-4. parse actor UUID;
-5. require checkout causation identity;
-6. delegate to the existing owner implementation.
+Raw tenant, actor, channel, locale, causation, traceparent, and idempotency values are
+not recorded by the shared wrapper.
 
-Policy and write-semantics rejections retain the original `PortError` unchanged.
+Unavailable, timeout, and invariant admission failures remain error severity. Other
+admission and all context-validation rejections remain warning severity.
 
-Diagnostics record:
+## Local settlement mapper
 
-- truthful owner;
-- exact public operation;
-- phase `policy` or `write_semantics`;
-- boundary;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent;
-- idempotency key and deadline;
-- original code, message, typed kind, and retryability;
-- the original `PortError`.
+The payment-settlement post-delegation mapper now selects its diagnostic label from
+stable `PortError.code`; public messages are not used as control flow. It records the
+same safe context shape and returns the original `PortError` unchanged.
 
-Unavailable, timeout, and invariant failures use error severity. Ordinary rejection uses warning
-severity.
+`checkout_payment_settlement.rs` is not modified by this slice. Request validation,
+identity handling, lifecycle transitions, payment-reference policy, and owner error
+mapping remain separate work.
 
-## Context validation contract
+## Compensation boundary
 
-Tenant and actor parsing preserve the existing stable public envelopes:
+The compensation local wrapper and canonical owner use the same safe-context policy,
+plus safe request, identity-comparison, lifecycle, and resource shape. Details are in
+`checkout-compensation-local-context.md`.
 
-- `order.tenant_id_invalid` / `order request context is invalid`;
-- `order.actor_id_invalid` / `order request context is invalid`.
-
-The original UUID parse cause remains internal structured evidence.
-
-Causation matching preserves the existing owner-specific envelopes:
-
-- settlement: `order.checkout_payment_causation_invalid`;
-- compensation: `order.checkout_compensation_causation_invalid`;
-- message: `checkout operation context is invalid`.
-
-Missing, malformed, or mismatched causation remains rejected. The expected operation UUID and raw
-delegated causation value remain internal diagnostics.
-
-Each context-validation event records the full available `PortContext`, exact owner, exact
-operation, validation phase, boundary, mapped code/message/kind/retryability, and mapped
-`PortError`. The same constructed error is returned unchanged.
-
-## Preserved owner behavior
-
-After wrapper validation succeeds, the original settlement and compensation implementations are
-called with the original context and request.
+## Preserved behavior
 
 This slice does not change:
 
-- request or response DTOs;
-- checkout identity read or legacy adoption;
-- payment settlement request validation;
-- durable identity missing/conflict handling;
-- order lifecycle settlement rules;
-- payment reference and method conflict rules;
-- compensation identity validation;
-- cancellation race adoption;
-- manual reconciliation decisions;
-- order service calls or `OrderError` mapping;
-- public codes, messages, kinds, or retryability for downstream owner outcomes.
-
-The original implementation repeats admission and context validation after wrapper success. Those
-checks are deterministic and succeed for the already accepted context; downstream behavior remains
-unchanged.
+- public exports or module paths;
+- constructor and factory parity;
+- admission or context-validation envelopes;
+- checkout identity reads or legacy adoption;
+- settlement or compensation delegation;
+- settlement owner business source;
+- compensation cancellation or reconciliation behavior;
+- public codes, messages, kinds, or retryability;
+- Order FFA/FBA status.
 
 ## Static evidence
 
-`scripts/verify/verify-order-checkout-owner-context.mjs` guards:
+- `scripts/verify/verify-order-checkout-owner-context.mjs`
+- `scripts/verify/verify-order-compensation-local-context.mjs`
+- `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json`
+- `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json`
 
-- crate-private legacy modules and context-preserving root exports;
-- constructor and factory compatibility;
-- admission-before-tenant-before-actor-before-causation-before-delegation ordering;
-- full admission context and technical-versus-ordinary severity;
-- original admission error return;
-- tenant/actor parse-cause retention;
-- owner-specific causation codes;
-- full context-validation diagnostics;
-- stable public validation envelopes;
-- preserved settlement and compensation owner behavior.
-
-The existing settlement and compensation error-context verifiers remain applicable because the
-legacy owner implementations and all downstream mappings are unchanged.
+The guards cover routing order, same-error return, code-only local attribution, safe
+shape, absence of raw context fields, and source-only validation flags.
 
 ## Remaining gaps
 
-The master ecommerce correlation-safe mapper task remains open for:
-
-- settlement request, durable identity, lifecycle, and payment-reference local outcomes;
-- compensation request, identity, cancellation-race, and reconciliation local outcomes;
-- inventory reservation owner admission and validation;
-- remaining payment execution and compensation consumers;
-- GraphQL query customer reads and shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No architecture status is promoted from source inspection alone.
+Payment-settlement owner-local request/identity/lifecycle diagnostics remain a
+separate Order slice. The broad ecommerce cleanup remains open for remaining owners,
+adapters, non-`PortError` envelopes, and runtime evidence.
 
 ## Suggested maintainer checks
 
@@ -150,8 +100,8 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-order-checkout-owner-context.mjs
+node scripts/verify/verify-order-compensation-local-context.mjs
 node scripts/verify/verify-order-payment-settlement-error-context.mjs
-node scripts/verify/verify-order-checkout-compensation-error-context.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-order --lib
 cargo check -p rustok-commerce --lib

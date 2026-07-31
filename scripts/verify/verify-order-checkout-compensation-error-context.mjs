@@ -11,7 +11,9 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const source = read('crates/rustok-order/src/checkout_compensation.rs');
-const portContract = read('crates/rustok-api/src/ports.rs');
+const evidence = JSON.parse(
+  read('crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json'),
+);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -30,186 +32,174 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const cancellation = between(
-  source,
-  'async fn cancel_or_adopt_cancelled(',
-  'pub fn in_process_checkout_order_compensation_port(',
-  'checkout cancellation/adoption implementation',
-);
+for (const marker of [
+  'const ORDER_COMPENSATION_OWNER: &str = "rustok_order.checkout_compensation";',
+  'const ORDER_COMPENSATION_BOUNDARY: &str = "checkout_order_compensation_port";',
+  'const COMPENSATE_OPERATION: &str = "compensate_checkout_order";',
+  'struct OrderCompensationContextFacts',
+  'tenant_id_length: context.tenant_id.chars().count()',
+  'actor_id_length: context.actor.id.chars().count()',
+  'claim_count: context.claims.len()',
+  'role_count: context.roles.len()',
+  'channel_present: context.channel.is_some()',
+  'locale_length: context.locale.chars().count()',
+  'causation_id_present: context.causation_id.is_some()',
+  'traceparent_present: context.traceparent.is_some()',
+  'idempotency_key_present: context.idempotency_key.is_some()',
+]) requireText(source, marker, 'owner safe context');
+
 const compensation = between(
   source,
   'impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {',
-  'fn validate_identity(',
-  'checkout compensation implementation',
+  'fn order_compensation_context_facts(',
+  'compensation owner operation',
 );
-const invalidRequest = between(
-  compensation,
-  'if request.checkout_operation_id.is_nil() || request.cart_id.is_nil() {',
-  'let Some(identity) = self.resolve_identity',
-  'checkout compensation request validation',
-);
-const missingIdentity = between(
-  compensation,
-  'let Some(identity) = self.resolve_identity',
+for (const marker of [
+  'context.require_policy(PortCallPolicy::write())?;',
+  'context.require_write_semantics()?;',
+  'let tenant_id = parse_tenant_id(&context, COMPENSATE_OPERATION)?;',
+  'let actor_id = parse_actor_id(&context, COMPENSATE_OPERATION)?;',
+  'require_operation_context(',
+  'log_invalid_compensation_request(&context, &request);',
+  'self.resolve_identity(&context, &request).await?',
+  'return if request.expected_order_id.is_none()',
   'validate_identity(&context, tenant_id, &request, &identity)?;',
-  'missing durable checkout identity',
-);
-const identityValidation = between(
+  '.get_order(tenant_id, identity.order_id)',
+  '.cancel_or_adopt_cancelled(&context, tenant_id, actor_id, order, request.reason)',
+]) requireText(compensation, marker, 'preserved operation flow');
+
+for (const marker of [
+  'fn log_invalid_compensation_request(',
+  'checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()',
+  'cart_id_non_nil = !request.cart_id.is_nil()',
+  'expected_order_id_present = request.expected_order_id.is_some()',
+  'reason_present = request.reason.is_some()',
+  'reason_length = ?request.reason.as_ref().map(|value| value.chars().count())',
+  'fn log_compensation_transition_conflict(',
+  'order_id_non_nil = !order_id.is_nil()',
+  'current_state = ?current_state',
+  'local_operation = "apply_compensation_state"',
+]) requireText(source, marker, 'safe request and lifecycle evidence');
+
+const identity = between(
   source,
   'fn validate_identity(',
   'fn require_operation_context(',
-  'checkout compensation identity validation',
+  'identity validation',
 );
-const operationContext = between(
-  source,
-  'fn require_operation_context(',
-  'fn parse_tenant_id(',
-  'checkout compensation causation validation',
-);
-const tenantParser = between(
-  source,
-  'fn parse_tenant_id(',
-  'fn parse_actor_id(',
-  'checkout compensation tenant parser',
-);
-const actorParser = between(
-  source,
-  'fn parse_actor_id(',
-  'fn manual_reconciliation(',
-  'checkout compensation actor parser',
-);
-const reconciliation = between(
-  source,
-  'fn manual_reconciliation(',
-  'fn order_error_to_port_error(',
-  'checkout compensation reconciliation mapper',
-);
-const ownerMapper = source.slice(source.indexOf('fn order_error_to_port_error('));
+for (const marker of [
+  'let tenant_matches = identity.tenant_id == tenant_id;',
+  'let checkout_operation_matches =',
+  'let source_cart_matches = identity',
+  'let expected_order_matches = request',
+  'tenant_matches,',
+  'checkout_operation_matches,',
+  'source_cart_matches,',
+  'expected_order_matches,',
+  'request_checkout_operation_id_non_nil',
+  'request_cart_id_non_nil',
+  'identity_checkout_operation_id_non_nil',
+  'identity_order_id_non_nil',
+  'identity_source_cart_id_present',
+]) requireText(identity, marker, 'safe identity comparison evidence');
 
-for (const [value, label] of [
-  [
-    'const ORDER_COMPENSATION_OWNER: &str = "rustok_order.checkout_compensation";',
-    'compensation owner constant',
-  ],
-  ['const COMPENSATE_OPERATION: &str = "compensate_checkout_order";', 'compensation operation'],
-  ['parse_tenant_id(&context, COMPENSATE_OPERATION)', 'context-aware tenant parsing'],
-  ['parse_actor_id(&context, COMPENSATE_OPERATION)', 'context-aware actor parsing'],
-  [
-    'validate_identity(&context, tenant_id, &request, &identity)?;',
-    'context-aware identity validation',
-  ],
-  [
-    'order_error_to_port_error(&context, "read_checkout_order_for_compensation", error)',
-    'context-aware order read mapping',
-  ],
-]) requireText(source, value, label);
+for (const marker of [
+  'checkout_operation_id_non_nil = !checkout_operation_id.is_nil()',
+  'causation_matches = false',
+  'fn log_context_parse_rejection',
+  'field,',
+  'value_length,',
+  'fn manual_reconciliation(',
+  'order_id_present = order_id.is_some()',
+  'order_id_non_nil = ?order_id.map(|value| !value.is_nil())',
+  'order_state = ?order_state',
+  'internal_reason = reason',
+  'fn log_order_owner_warning(',
+  'resource_id_present = resource_id.is_some()',
+  'resource_id_non_nil = ?resource_id.map(|value| !value.is_nil())',
+  'fn log_order_owner_error',
+]) requireText(source, marker, 'safe owner outcome evidence');
 
-for (const [block, label] of [
-  [invalidRequest, 'checkout compensation request validation'],
-  [identityValidation, 'checkout compensation identity validation'],
-  [operationContext, 'checkout compensation causation validation'],
-  [tenantParser, 'checkout compensation tenant parser'],
-  [actorParser, 'checkout compensation actor parser'],
-  [reconciliation, 'checkout compensation reconciliation mapper'],
+for (const forbidden of [
+  'tenant_id = %context.tenant_id',
+  'internal_tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'checkout_operation_id = %',
+  'cart_id = %',
+  'order_id = %',
+  'resource_id = %',
+  'request_checkout_operation_id = %',
+  'request_cart_id = %',
+  'request_expected_order_id = ?',
+  'identity_tenant_id = %',
+  'identity_checkout_operation_id = %',
+  'identity_order_id = %',
+  'identity_source_cart_id = ?',
+  'reason = %reason',
+]) forbidText(source, forbidden, 'raw compensation owner diagnostic');
+
+for (const marker of [
+  'Err(OrderError::InvalidTransition { from, to })',
+  'if current.status_kind() == OrderStatusKind::Cancelled',
+  'state @ (OrderStatusKind::Paid',
+  'OrderStatusKind::Unknown => Err(manual_reconciliation(',
+  '.read_by_operation(',
+  '.adopt_legacy(',
+  '.cancel_order(tenant_id, actor_id, order.id, reason)',
+]) requireText(source, marker, 'preserved compensation state machine');
+
+for (const [code, message] of [
+  ['order.checkout_compensation_identity_invalid', 'checkout compensation request is invalid'],
+  ['order.checkout_compensation_identity_conflict', 'checkout order identity conflicts with the compensation request'],
+  ['order.checkout_compensation_state_conflict', 'checkout order changed while compensation was being applied'],
+  ['order.checkout_compensation_manual_reconciliation', 'checkout requires manual reconciliation'],
+  ['order.database_unavailable', 'order storage is temporarily unavailable'],
+  ['order.order_not_found', 'order was not found'],
+  ['order.checkout_compensation_validation', 'checkout order compensation request is invalid'],
+  ['order.related_resource_not_found', 'related order resource was not found'],
+  ['order.invariant_violation', 'order compensation failed an internal invariant'],
 ]) {
-  for (const [value, detail] of [
-    ['owner = ORDER_COMPENSATION_OWNER', `${label} owner log`],
-    ['correlation_id = %context.correlation_id', `${label} correlation log`],
-    ['tenant_id = %context.tenant_id', `${label} tenant log`],
-    ['channel = ?context.channel', `${label} channel log`],
-  ]) requireText(block, value, detail);
+  requireText(source, `"${code}"`, `public code ${code}`);
+  requireText(source, `"${message}"`, `public message ${message}`);
 }
 
-for (const [value, label] of [
-  ['Err(OrderError::InvalidTransition { from, to })', 'transition race cause capture'],
-  ['current_state = ?current.status_kind()', 'transition race current state'],
-  ['from = %from', 'transition race source state'],
-  ['to = %to', 'transition race target state'],
-  ['state @ (OrderStatusKind::Paid', 'financial-effect typed lifecycle reconciliation'],
-  ['Some(order.id)', 'known order identity reconciliation'],
-  ['request.expected_order_id', 'missing identity reconciliation evidence'],
-]) requireText(cancellation + missingIdentity, value, label);
+for (const [variant, localOperation] of [
+  ['OrderError::Database(error)', 'owner_storage'],
+  ['OrderError::OrderNotFound(order_id)', 'load_order'],
+  ['OrderError::Validation(cause)', 'validate_owner_request'],
+  ['OrderError::InvalidTransition { from, to }', 'apply_compensation_state'],
+  ['OrderError::OrderReturnNotFound(return_id)', 'load_related_order_resource'],
+  ['OrderError::OrderChangeNotFound(change_id)', 'load_related_order_resource'],
+  ['OrderError::Core(error)', 'owner_invariant'],
+]) {
+  requireText(source, variant, `owner mapper variant ${variant}`);
+  requireText(source, `"${localOperation}"`, `owner mapper operation ${localOperation}`);
+}
 
-for (const [block, value, label] of [
-  [invalidRequest, 'expected_order_id = ?request.expected_order_id', 'request expected order evidence'],
-  [identityValidation, 'code = "order.checkout_compensation_identity_conflict"', 'identity conflict stable code'],
-  [identityValidation, 'identity_order_id = %identity.order_id', 'durable order identity evidence'],
-  [identityValidation, 'identity_source_cart_id = ?identity.source_cart_id', 'durable cart identity evidence'],
-  [operationContext, 'actual_causation_id = ?context.causation_id', 'actual causation evidence'],
-  [tenantParser, 'error = ?error', 'tenant parse cause'],
-  [actorParser, 'error = ?error', 'actor parse cause'],
-  [reconciliation, 'order_id: Option<Uuid>', 'truthful optional order identity'],
-  [reconciliation, 'order_state = ?order_state', 'typed reconciliation state'],
-  [reconciliation, 'reason = %reason', 'internal reconciliation cause'],
-]) requireText(block, value, label);
-
-for (const [value, label] of [
-  ['OrderError::OrderNotFound(order_id)', 'order not-found identity capture'],
-  ['order_id = %order_id', 'order not-found identity log'],
-  ['OrderError::Validation(cause)', 'validation cause capture'],
-  ['cause = %cause', 'validation cause log'],
-  ['OrderError::InvalidTransition { from, to }', 'owner transition cause capture'],
-  ['from = %from', 'owner transition source log'],
-  ['to = %to', 'owner transition target log'],
-  ['OrderError::OrderReturnNotFound(return_id)', 'return identity capture'],
-  ['resource_id = %return_id', 'return identity log'],
-  ['OrderError::OrderChangeNotFound(change_id)', 'change identity capture'],
-  ['resource_id = %change_id', 'change identity log'],
-  ['OrderError::Database(error)', 'database cause capture'],
-  ['OrderError::Core(error)', 'core cause capture'],
-]) requireText(ownerMapper, value, label);
-
-for (const value of [
-  'owner = ORDER_COMPENSATION_OWNER',
-  'correlation_id = %context.correlation_id',
-  'tenant_id = %context.tenant_id',
-  'channel = ?context.channel',
-  'operation,',
-]) requireText(ownerMapper, value, `owner mapper ${value}`);
-
-for (const [value, label] of [
-  ['"checkout compensation request is invalid"', 'static request-validation envelope'],
-  [
-    '"checkout order identity conflicts with the compensation request"',
-    'static identity-conflict envelope',
-  ],
-  ['"checkout operation context is invalid"', 'static causation envelope'],
-  ['"order request context is invalid"', 'static owner-context envelope'],
-  ['"checkout requires manual reconciliation"', 'static reconciliation envelope'],
-  ['"order storage is temporarily unavailable"', 'static storage envelope'],
-  ['"order was not found"', 'static order not-found envelope'],
-  ['"checkout order compensation request is invalid"', 'static owner-validation envelope'],
-  ['"checkout order lifecycle conflicts with compensation"', 'static owner-transition envelope'],
-  ['"related order resource was not found"', 'static related-resource envelope'],
-  ['"order compensation failed an internal invariant"', 'static invariant envelope'],
-]) requireText(source, value, label);
-
-for (const value of [
-  'validate_identity(tenant_id, &request, &identity)',
-  'OrderError::OrderNotFound(_)',
-  'OrderError::InvalidTransition { .. }',
-  'OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_)',
-  '.map_err(order_error_to_port_error)',
-  'PortError::validation("order.checkout_compensation_validation", cause)',
-  'unwrap_or_default()',
-]) forbidText(source, value, 'unsafe checkout compensation mapping');
-
-for (const [value, label] of [
-  ['pub struct PortContext {', 'shared port context'],
-  ['pub correlation_id: String', 'shared correlation field'],
-  ['pub channel: Option<String>', 'shared channel field'],
-  ['pub struct PortError {', 'shared port error'],
-  ['pub fn validation(', 'typed validation constructor'],
-  ['pub fn conflict(', 'typed conflict constructor'],
-  ['pub fn invariant_violation(', 'typed invariant constructor'],
-]) requireText(portContract, value, label);
+if (evidence.source_contract?.owner_safe_context_shape !== true) {
+  failures.push('evidence owner_safe_context_shape must be true');
+}
+if (evidence.source_contract?.owner_safe_identity_shape !== true) {
+  failures.push('evidence owner_safe_identity_shape must be true');
+}
+if (evidence.source_contract?.public_message_changed !== false) {
+  failures.push('evidence public_message_changed must be false');
+}
+if (evidence.validation?.compile_proven !== false) {
+  failures.push('evidence compile_proven must remain false');
+}
 
 if (failures.length > 0) {
-  console.error('Order checkout compensation error-context verification failed:');
-  for (const failure of failures) console.error(`✗ ${failure}`);
+  console.error('Order checkout compensation owner diagnostic-safety verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Order checkout compensation retains owner, channel, correlation, reconciliation evidence, and static public envelopes',
+  'Order checkout compensation owner diagnostics retain safe context/identity shape and static public envelopes while preserving cancellation and reconciliation behavior',
 );
