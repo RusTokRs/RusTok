@@ -44,6 +44,12 @@ mod cart_context_boundary {
                     "validation",
                 )
             }
+            StoreContextError::TenantBoundary { .. } => (
+                "Store context could not be resolved safely",
+                "STORE_CONTEXT_RESOLUTION_FAILED",
+                false,
+                "tenant_boundary",
+            ),
             StoreContextError::RegionBoundary { .. } => (
                 "Store context could not be resolved safely",
                 "STORE_CONTEXT_RESOLUTION_FAILED",
