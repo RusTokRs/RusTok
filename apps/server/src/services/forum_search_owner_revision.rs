@@ -7,6 +7,7 @@ use rustok_forum::{
 use rustok_search::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRecord,
     ForumProjectionOwnerRevisionRequest, ForumProjectionOwnerRevisionSourcePort,
+    ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
     SharedForumProjectionOwnerRevisionSourcePort,
 };
 use sea_orm::DatabaseConnection;
@@ -47,6 +48,24 @@ impl ForumProjectionOwnerRevisionSourcePort for ServerForumProjectionOwnerRevisi
                         ForumProjectionOwnerRevisionImpact::FullRebuild
                     }
                 },
+            })
+            .collect())
+    }
+
+    async fn list_owner_revision_tenants(
+        &self,
+        request: ForumProjectionOwnerTenantPageRequest,
+    ) -> Result<Vec<ForumProjectionOwnerTenantHead>, PortError> {
+        let heads = ForumEventService::new(self.db.clone())
+            .list_projection_owner_revision_tenants(request.after_tenant_id, request.limit)
+            .await
+            .map_err(map_forum_error)?;
+
+        Ok(heads
+            .into_iter()
+            .map(|head| ForumProjectionOwnerTenantHead {
+                tenant_id: head.tenant_id,
+                latest_owner_revision: head.latest_owner_revision,
             })
             .collect())
     }

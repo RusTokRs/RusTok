@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G2B2",
+  "status": "source_complete_runtime_evidence_pending",
+  "scope": "Persist and advance a Search-owned Forum projection owner-revision checkpoint only after existing durable inbox work is resolved or a missing delivery is repaired from current Forum owner state",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "owner_revision_source_contract": "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
+  "owner_revision_ledger_contract": "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  "owner_revision_hardening_contract": "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
+  "ingest_sequence_contract": "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
+  "search_migration": "crates/rustok-search/src/migrations/m20260731_000012_create_forum_owner_revision_checkpoints.rs",
+  "search_checkpoint_owner": "crates/rustok-search/src/forum_owner_checkpoint.rs",
+  "search_reconciler": "crates/rustok-search/src/forum_reconciliation.rs",
+  "forum_owner_source": "crates/rustok-forum/src/services/event.rs",
+  "host_adapter": "apps/server/src/services/forum_search_owner_revision.rs",
+  "host_worker": "apps/server/src/services/forum_search_inbox_worker.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2g2b2-search-owner-revision-checkpoint.md",
+  "verifier": "scripts/verify/verify-forum-search-owner-revision-checkpoint.mjs",
+  "owner_discovery": {
+    "source_table": "forum_projection_revision_ledger",
+    "owner_api": "ForumEventService::list_projection_owner_revision_tenants",
+    "neutral_port_method": "ForumProjectionOwnerRevisionSourcePort::list_owner_revision_tenants",
+    "cursor": "exclusive tenant UUID",
+    "ordering": "tenant_id ASC",
+    "maximum_page_size": 256,
+    "head": "MAX(revision) per tenant",
+    "persistent_search_cursor": "search_projection_owner_scan_cursors",
+    "cursor_compare_and_set": true,
+    "first_lost_delivery_tenant_discoverable": true,
+    "direct_search_read_of_forum_tables": false
+  },
+  "checkpoint_storage": {
+    "table": "search_projection_owner_checkpoints",
+    "primary_key": ["tenant_id", "source_module"],
+    "source_module": "forum",
+    "first_revision": 1,
+    "exact_increment": 1,
+    "positive_revision_required": true,
+    "event_identity_retained": true,
+    "outcomes": ["delivery_covered", "rebuild_repaired"],
+    "row_delete_forbidden": true,
+    "table_truncate_forbidden": true,
+    "independent_from_ingest_sequence": true
+  },
+  "commit_protocol": {
+    "existing_inbox_sweep_runs_first": true,
+    "tenant_advisory_lock_reused": "search:forum:{tenant_id}:forum",
+    "pending_blocks_checkpoint": true,
+    "processing_blocks_checkpoint": true,
+    "retryable_error_blocks_checkpoint": true,
+    "coverage_identity": ["tenant_id", "event_id"],
+    "completed_is_covered": true,
+    "skipped_is_covered": true,
+    "missing_requires_rebuild": true,
+    "dead_letter_requires_rebuild": true,
+    "repair_owner": "ForumSearchProjector::rebuild_tenant",
+    "one_rebuild_per_bounded_revision_page": true,
+    "checkpoint_advances_after_projection_commit": true,
+    "checkpoint_advances_contiguously": true,
+    "checkpoint_failure_retries_rebuild_safely": true,
+    "owner_revision_compared_numerically_with_ingest_sequence": false
+  },
+  "processing_recovery": {
+    "lease_age": "1 hour",
+    "bounded_by_tenant_page_limit": true,
+    "same_tenant_advisory_lock_required": true,
+    "active_projector_cannot_be_recovered": true,
+    "recovered_status": "retryable_error",
+    "recovered_error": "processing_lease_expired"
+  },
+  "evidence_repair": {
+    "historical_sweeper_test_updated": "crates/rustok-search/tests/forum_projection_sweeper_contract.rs",
+    "historical_sweeper_verifier_updated": "scripts/verify/verify-forum-search-inbox-sweeper.mjs",
+    "old_revision_at_ordering_removed": true,
+    "durable_ingest_sequence_ordering_retained": true
+  },
+  "compatibility": {
+    "existing_inbox_schema_modified": false,
+    "existing_ingest_sequence_modified": false,
+    "existing_watermark_semantics_modified": false,
+    "root_event_changed": false,
+    "sealed_event_family_added": false,
+    "event_digest_changed": false,
+    "storefront_query_changed": false,
+    "public_transport_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false,
+    "sqlite_background_reconciliation_added": false
+  },
+  "canonical_plan_boundary": {
+    "forum_23_status_changed": false,
+    "search_status_changed": false,
+    "reason": "FORUM-23 remains in progress because a versioned owner-revision wire contract plus maintainer PostgreSQL and LINK-FORUM-03 runtime evidence are still open. The existing broad owner-revision reconciliation wording therefore remains true until that rollout is complete."
+  },
+  "remaining_scope": [
+    "publish and consume the planned versioned Forum projection invalidation contract without adding a parallel projection execution path",
+    "capture maintainer-executed PostgreSQL migration tenant-discovery pending retry dead-letter missing-delivery restart lease and multi-process evidence",
+    "capture deletion ACL ordering and LINK-FORUM-03 cross-module runtime evidence"
+  ],
+  "non_claims": [
+    "This slice does not add or change a root or sealed event schema",
+    "This slice does not compare owner revision and Search ingest sequence values",
+    "This slice does not make Search query or storefront behavior depend on the checkpoint",
+    "This slice does not claim atomicity between the Forum projection transaction and the later Search checkpoint transaction; it guarantees checkpoint-after-success and idempotent rebuild retry",
+    "Tests, verifiers, formatting, Cargo checks, Clippy and PostgreSQL runtime evidence were not executed by the implementation agent"
+  ]
+}
