@@ -27,3 +27,39 @@ pub(super) fn require_tenant_settings_scope(
         "Settings access is denied",
     ))
 }
+
+pub(super) fn require_host_authority(
+    ctx: &async_graphql::Context<'_>,
+    required: rustok_api::HostAuthority,
+) -> async_graphql::Result<&rustok_api::HostAuthorityContext> {
+    use rustok_api::graphql::GraphQLError;
+
+    ctx.data_opt::<rustok_api::HostAuthorityContext>()
+        .filter(|authority| authority.allows(required))
+        .ok_or_else(|| {
+            <async_graphql::FieldError as GraphQLError>::permission_denied(
+                "host-global authority required",
+            )
+        })
+}
+
+pub(super) fn require_host_actor<'a>(
+    ctx: &'a async_graphql::Context<'_>,
+    required: rustok_api::HostAuthority,
+) -> async_graphql::Result<(
+    &'a rustok_api::HostAuthorityContext,
+    &'a crate::context::AuthContext,
+)> {
+    use rustok_api::graphql::GraphQLError;
+
+    let authority = require_host_authority(ctx, required)?;
+    let auth = ctx
+        .data::<crate::context::AuthContext>()
+        .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
+    if authority.actor_id() != auth.user_id {
+        return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
+            "host-global authority required",
+        ));
+    }
+    Ok((authority, auth))
+}
