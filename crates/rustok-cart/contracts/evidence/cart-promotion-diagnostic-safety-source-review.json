@@ -1,0 +1,33 @@
+{
+  "status": "cart_promotion_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-cart/src/promotion_guard.rs",
+    "crates/rustok-cart/docs/promotion-diagnostic-safety.md",
+    "crates/rustok-cart/docs/implementation-plan.md",
+    "scripts/verify/verify-cart-promotion-port-error-safety.mjs",
+    "crates/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source.json"
+  ],
+  "review_findings": {
+    "public_api_preserved": true,
+    "preview_read_policy_preserved": true,
+    "apply_write_policy_preserved": true,
+    "scope_and_line_item_validation_preserved": true,
+    "tenant_parsing_preserved": true,
+    "promotion_service_selection_preserved": true,
+    "promotion_argument_order_preserved": true,
+    "metadata_forwarding_preserved": true,
+    "all_public_port_errors_preserved": true,
+    "context_logs_safe_shape_only": true,
+    "request_logs_safe_shape_only": true,
+    "owner_error_logs_safe_shape_only": true,
+    "raw_context_values_removed": true,
+    "raw_request_identifiers_removed": true,
+    "raw_source_amount_and_metadata_removed": true,
+    "raw_owner_error_values_removed": true,
+    "legacy_cart_service_compatibility_preserved": true,
+    "cart_status_not_promoted": true,
+    "broad_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
