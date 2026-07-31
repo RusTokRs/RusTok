@@ -69,6 +69,11 @@ rejectAll(baseline, [
 ], `${paths.baseline} immutable baseline boundary`);
 
 requireAll(migration, [
+  "existing forum projection revision storage is inconsistent",
+  "COUNT(ledger.revision) <> counters.revision",
+  "MIN(ledger.revision) IS DISTINCT FROM 1",
+  "MAX(ledger.revision) IS DISTINCT FROM counters.revision",
+  "WHERE counters.tenant_id IS NULL",
   "forum_enforce_projection_revision_counter",
   "NEW.revision <> 1",
   "NEW.tenant_id <> OLD.tenant_id OR NEW.revision <> OLD.revision + 1",
@@ -124,6 +129,8 @@ rejectAll(allocator, [
 requireAll(note, [
   "# FORUM-23B2G2A1 Search owner-revision counter hardening",
   "baseline migration",
+  "ledger revisions must form one contiguous sequence",
+  "fails the migration",
   "advance the previous revision by exactly `1`",
   "DEFERRABLE INITIALLY DEFERRED",
   "direct counter-only commit",
@@ -138,6 +145,12 @@ if (contract) {
   }
   if (contract.status !== "source_complete_execution_pending") {
     failures.push(`${paths.contract}: unexpected status`);
+  }
+  if (contract.upgrade_preflight?.existing_counter_requires_contiguous_ledger_from_one !== true
+      || contract.upgrade_preflight?.existing_ledger_without_counter_rejected !== true
+      || contract.upgrade_preflight?.inconsistent_upgrade_fails_closed !== true
+      || contract.upgrade_preflight?.existing_rows_rewritten !== false) {
+    failures.push(`${paths.contract}: upgrade preflight contract is incomplete`);
   }
   if (contract.counter_invariants?.first_revision_must_equal !== 1) {
     failures.push(`${paths.contract}: first revision invariant must equal 1`);
