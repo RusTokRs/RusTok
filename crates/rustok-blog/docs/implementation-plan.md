@@ -114,8 +114,12 @@ controller delegates only to that selector. Schema-v1 evidence lives at
 `crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`,
 guarded by `scripts/verify/verify-blog-comments-http-port-injection.mjs` and
 focused fixture
-`scripts/verify/verify-blog-comments-http-port-injection.test.mjs`. The retained
-compile-only harness is
+`scripts/verify/verify-blog-comments-http-port-injection.test.mjs`. The registered
+`verify:blog:comments-port-boundary` verifier imports the standalone HTTP verifier,
+and the registered `test:verify:blog:comments-port-boundary` self-test imports its
+focused fixture. `scripts/verify/verify-blog-fba.test.mjs` locks both imports, so
+the existing first-class Comments port leaf cannot silently drop HTTP composition
+coverage. The retained compile-only harness is
 `controllers::tests::blog_http_runtime_exposes_comments_port_selection`, with
 suggested command
 `cargo test -p rustok-blog --lib controllers::tests::blog_http_runtime_exposes_comments_port_selection -- --exact`.
@@ -588,6 +592,21 @@ negative fixtures, and a compile-only selector harness retain the HTTP compositi
 contract. GraphQL/native SSR wiring, package-chain registration, the remote
 network transport, and all execution remain pending.
 
+The continuation audit at `c1870d5473f0cecc2d95fa19fcd9377118a9a2d2`
+found that the HTTP composition evidence, standalone verifier, focused fixture,
+and compile-only selector harness were complete, but the registered
+`comments_port_boundary` leaf did not execute either standalone JavaScript asset.
+The HTTP contract could therefore drift while both Blog FBA package chains still
+passed their existing source order.
+
+Slice 60 imports the standalone HTTP verifier from the registered Comments port
+verifier and imports its focused fixture from the registered Comments port
+self-test. The aggregate Blog FBA self-test locks both import statements. Registry
+schema v13, package scripts, and verify/test order remain unchanged because HTTP
+composition is now a required sub-contract of the existing first-class Comments
+port leaf rather than a parallel duplicate leaf. Runtime source, evidence, remote
+transport status, and all execution claims remain unchanged.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -601,17 +620,19 @@ network transport, and all execution remain pending.
   plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
   Comments event projection, category Search reindex, GraphQL rate limiting,
   GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
-  order. The standalone HTTP Comments composition guard remains outside registry
-  package order in Slice 59.
+  order. The existing Comments port leaf now requires the HTTP composition
+  verifier and focused fixture through aggregate-locked imports; package order is
+  unchanged.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; evidence schema v3, all seven operations, approved public
   read, typed richtext projection, two-second deadlines, write idempotency, active
   typed `PortErrorKind` mapping, public transport-neutral injection constructor,
   compile-only exact-signature harness, exact npm leaf commands, focused fixture,
-  and Blog FBA ordering are locked. HTTP moderation now selects an optional
+  and Blog FBA ordering are locked. HTTP moderation selects an optional
   host-provided port through `BlogHttpRuntime::comment_service` with an in-process
-  fallback; schema-v1 standalone evidence and focused negatives retain that source
-  contract. Typed storefront comments availability is retained across
+  fallback; schema-v1 evidence, standalone verification, all focused HTTP
+  negatives, and both parent imports are retained inside the registered Comments
+  port gate. Typed storefront comments availability is retained across
   GraphQL/native DTOs and Leptos UI; only external-service and timeout errors
   degrade, while other errors propagate. GraphQL and native SSR composition, the
   remote network transport, remote adapter runtime parity, cached snapshot,
@@ -888,6 +909,10 @@ network transport, and all execution remain pending.
     plus a standalone verifier, focused negative fixture, and compile-only harness,
     and kept GraphQL/native SSR composition, package registration, remote transport,
     and all execution pending.
+60. Bound the standalone HTTP composition verifier and focused fixture into the
+    already registered `comments-port-boundary` verify/test leaf, added aggregate
+    regressions for both required imports, preserved registry schema v13 and exact
+    package order, and changed no runtime source or execution status.
 
 ## Next results
 
@@ -904,11 +929,12 @@ network transport, and all execution remain pending.
 4. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
-5. **Close comments runtime evidence.** Run the Comments port boundary fixture,
-   the compile-only injection-signature and HTTP selection harnesses, the
-   standalone HTTP composition verifier and focused fixture, shared consumer
-   runtime-order verifier, Blog projection classifier and deterministic
-   retry-policy harness, module registration/routing harness, the filtered
+5. **Close comments runtime evidence.** Run the registered Comments port boundary
+   verifier and self-test, which now include the standalone HTTP composition
+   verifier and all focused HTTP negatives, plus the compile-only injection-signature
+   and HTTP selection harnesses, shared consumer runtime-order verifier, Blog
+   projection classifier and deterministic retry-policy harness, module
+   registration/routing harness, the filtered
    `event_dispatcher_routes_registered_handler_and_commits_projection`,
    `event_dispatcher_replays_duplicate_envelope_without_double_commit`,
    `concurrent_created_events_converge_without_lost_updates`,
