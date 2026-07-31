@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2E2",
+  "status": "source_complete_execution_pending",
+  "scope": "Project canonical Product channel allowlists into Search-owned documents and apply one trusted storefront channel predicate to every Product-bearing Search response path",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "authority_dependency": "FORUM-23B2E1",
+  "projection_owner": "crates/rustok-search/src/projector_legacy.rs",
+  "bootstrap_reconciliation": "crates/rustok-search/src/projector.rs",
+  "predicate_owner": "crates/rustok-search/src/storefront_product_channel_visibility.rs",
+  "postgres_engine": "crates/rustok-search/src/pg_engine.rs",
+  "query_rule_owner": "crates/rustok-search/src/dictionaries.rs",
+  "suggestion_owner": "crates/rustok-search/src/suggestions.rs",
+  "graphql_storefront": "crates/rustok-search/src/graphql/query.rs",
+  "native_storefront": "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+  "forum_execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2e2-product-channel-visibility.md",
+  "verifier": "scripts/verify/verify-forum-search-product-channel-visibility.mjs",
+  "canonical_product_input": {
+    "owner": "Product",
+    "path": "metadata.channel_visibility.allowed_channel_slugs",
+    "search_projection_path": "payload.channel_visibility.allowed_channel_slugs",
+    "missing_owner_channel_visibility_means_global": true,
+    "canonical_array_is_preserved": true,
+    "malformed_owner_value_is_not_coerced_to_global": true
+  },
+  "storefront_predicate": {
+    "trusted_channel_source": "TrustedStorefrontChannel from FORUM-23B2E1",
+    "non_product_rows_are_unchanged": true,
+    "projected_value_must_be_array": true,
+    "empty_allowlist_is_global": true,
+    "nonempty_allowlist_requires_matching_normalized_slug": true,
+    "missing_or_malformed_projection_fails_closed": true,
+    "unscoped_request_hides_restricted_products": true,
+    "single_sql_predicate_owner": true
+  },
+  "covered_surfaces": {
+    "graphql_storefront_search": true,
+    "native_storefront_search": true,
+    "graphql_forum_storefront_search": true,
+    "native_forum_storefront_search": true,
+    "fts_rows": true,
+    "typo_fallback_rows": true,
+    "totals": true,
+    "facets": true,
+    "query_rule_pins": true,
+    "document_suggestions": true,
+    "query_text_suggestions_are_not_product_documents": true,
+    "admin_preview_changed": false,
+    "admin_global_search_changed": false
+  },
+  "reconciliation": {
+    "search_bootstrap_detects_missing_or_non_array_projection": true,
+    "drift_scope": "tenant Product Search documents only",
+    "repair_action": "SearchProjector.rebuild_product_scope",
+    "legacy_documents_are_hidden_before_repair": true,
+    "migration_required": false,
+    "manual_backfill_required": false
+  },
+  "compatibility": {
+    "public_dto_changed": false,
+    "search_query_shape_changed": false,
+    "database_schema_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false,
+    "search_product_payload_changed": true,
+    "matching_existing_storefront_behavior_preserved": true
+  },
+  "remaining_scope": [
+    "add author, tag, locale, date, solved, kind, channel/group and attachment-presence Forum query filters",
+    "complete owner-issued monotonic projection revisions and durable non-Forum inbox ordering",
+    "complete reconciliation and deletion or ACL-change document cleanup",
+    "capture maintainer-executed PostgreSQL and LINK-FORUM-03 runtime evidence"
+  ],
+  "non_claims": [
+    "This slice does not execute tests, verifiers, Cargo checks, Clippy or runtime evidence",
+    "This slice does not add remaining Forum query filters",
+    "This slice does not complete durable non-Forum projection ordering or deletion cleanup",
+    "Query-text suggestions are aggregate strings and are not Product result exposure"
+  ]
+}
