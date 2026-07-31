@@ -147,12 +147,17 @@ impl ForumOwnerCheckpointReconciler {
         revision_limit: usize,
     ) -> Result<ForumOwnerCheckpointSweepReport> {
         let recovered_processing_events = self.recover_abandoned_processing().await? as usize;
-        let mut cursor = self.load_scan_cursor().await?;
-        let mut heads = self.list_tenant_heads(cursor, tenant_limit).await?;
-        if heads.is_empty() && cursor.is_some() {
-            self.store_scan_cursor(None).await?;
-            cursor = None;
-            heads = self.list_tenant_heads(cursor, tenant_limit).await?;
+        let mut active_cursor = self.load_scan_cursor().await?;
+        let mut heads = self.list_tenant_heads(active_cursor, tenant_limit).await?;
+        if heads.is_empty() && active_cursor.is_some() {
+            if !self.store_scan_cursor(active_cursor, None).await? {
+                return Ok(ForumOwnerCheckpointSweepReport {
+                    recovered_processing_events,
+                    ..ForumOwnerCheckpointSweepReport::default()
+                });
+            }
+            active_cursor = None;
+            heads = self.list_tenant_heads(active_cursor, tenant_limit).await?;
         }
 
         let mut report = ForumOwnerCheckpointSweepReport {
@@ -194,7 +199,7 @@ impl ForumOwnerCheckpointReconciler {
         } else {
             heads.last().map(|head| head.tenant_id)
         };
-        self.store_scan_cursor(next_cursor).await?;
+        let _ = self.store_scan_cursor(active_cursor, next_cursor).await?;
         Ok(report)
     }
 
@@ -337,29 +342,42 @@ impl ForumOwnerCheckpointReconciler {
             ))
             .await
             .map_err(Error::Database)?;
-        row.map(|row| row.try_get("", "after_tenant_id").map_err(Error::Database))
-            .transpose()
-            .map(|cursor| cursor.flatten())
+        match row {
+            Some(row) => row
+                .try_get::<Option<Uuid>>("", "after_tenant_id")
+                .map_err(Error::Database),
+            None => Ok(None),
+        }
     }
 
-    async fn store_scan_cursor(&self, cursor: Option<Uuid>) -> Result<()> {
-        self.db
-            .execute(Statement::from_sql_and_values(
+    async fn store_scan_cursor(
+        &self,
+        expected_cursor: Option<Uuid>,
+        next_cursor: Option<Uuid>,
+    ) -> Result<bool> {
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO search_projection_owner_scan_cursors (
                     source_module, after_tenant_id, updated_at
-                ) VALUES ('forum', $1, CURRENT_TIMESTAMP)
+                )
+                SELECT 'forum', $1, CURRENT_TIMESTAMP
+                WHERE $2::uuid IS NULL
                 ON CONFLICT (source_module)
                 DO UPDATE SET
                     after_tenant_id = EXCLUDED.after_tenant_id,
                     updated_at = CURRENT_TIMESTAMP
+                WHERE search_projection_owner_scan_cursors.after_tenant_id
+                      IS NOT DISTINCT FROM $2
+                RETURNING source_module
                 "#,
-                vec![cursor.into()],
+                vec![next_cursor.into(), expected_cursor.into()],
             ))
             .await
             .map_err(Error::Database)?;
-        Ok(())
+        Ok(row.is_some())
     }
 }
 
@@ -534,5 +552,8 @@ async fn advance_checkpoint(
 }
 
 fn map_owner_port_error(error: PortError) -> Error {
-    Error::External(format!("Forum owner revision source failed: {error}"))
+    Error::External(format!(
+        "Forum owner revision source failed with stable code `{}`",
+        error.code
+    ))
 }
