@@ -1,9 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
+  "runtime_status": "pending",
   "owner": "rustok-blog",
   "provider": "rustok-comments",
   "events": [
@@ -28,6 +29,20 @@
       "shared_created_deleted_classifier",
       "non_blog_target_rejection",
       "non_negative_saturating_counter_transition"
+    ]
+  },
+  "postgres_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test",
+    "isolation": "unique_schema_one_connection_pool",
+    "cases": [
+      "duplicate_delivery_updates_counter_and_outbox_once",
+      "delete_before_create_stays_non_negative_and_replays_in_order",
+      "missing_post_replay_commits_only_after_source_appears",
+      "outbox_failure_rolls_back_counter_and_delivery_before_retry"
     ]
   },
   "cases": [
@@ -64,13 +79,30 @@
       "expected": "the pure counter transition floors deletes at zero and saturates count and version overflow"
     },
     {
+      "name": "postgres_duplicate_delivery",
+      "expected": "the retained PostgreSQL target replays one envelope id and expects one counter transition, one delivery row, and one outbox row"
+    },
+    {
+      "name": "postgres_out_of_order_delete_create",
+      "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count with monotonic versions"
+    },
+    {
+      "name": "postgres_missing_post_recovery",
+      "expected": "the retained PostgreSQL target expects no delivery or outbox commit while the post is missing, then replays the same envelope after source creation"
+    },
+    {
+      "name": "postgres_outbox_rollback_recovery",
+      "expected": "the retained PostgreSQL target removes the outbox table, expects counter and delivery rollback, recreates the table, and replays the same envelope"
+    },
+    {
       "name": "module_listener_registration",
       "expected": "Blog registers BlogCommentProjectionHandler through the module event-listener registry"
     }
   ],
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
-    "execute duplicate and out-of-order comment.created/comment.deleted deliveries against PostgreSQL",
+    "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
+    "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
     "retain concurrent optimistic-update exhaustion and retry evidence",
