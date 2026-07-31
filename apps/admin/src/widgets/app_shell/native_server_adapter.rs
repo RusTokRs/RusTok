@@ -7,6 +7,25 @@ use super::header::AdminGlobalSearchPayload;
 #[cfg(feature = "ssr")]
 const MAX_ADMIN_SEARCH_QUERY_LEN: usize = 256;
 
+#[cfg(feature = "ssr")]
+fn require_admin_global_search_tenant_scope(
+    auth_tenant_id: uuid::Uuid,
+    resolved_tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    if auth_tenant_id == resolved_tenant_id {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth_tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "admin.global_search_tenant_scope_mismatch",
+        boundary = "admin_global_search_native_transport",
+        "admin global search authority cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("Admin search access is denied"))
+}
+
 #[server(prefix = "/api/fn", endpoint = "admin/global-search")]
 pub(crate) async fn admin_global_search_native(
     query: String,
@@ -27,6 +46,7 @@ pub(crate) async fn admin_global_search_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        require_admin_global_search_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new("settings:read required"));
