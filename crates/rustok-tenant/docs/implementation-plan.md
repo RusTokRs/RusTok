@@ -45,7 +45,8 @@ state adapter extracts `TenantContext` and never accepts a client tenant slug.
 
 The cross-owner trust sweep also found host-global Events/System/Settings
 operations that had accepted ordinary tenant `settings:*` or `logs:*`
-permissions. That exposure is source-mitigated through the separate typed
+permissions. Commit `35afdd3a5d4ae74e735a2963e7246e21a3031e5d` (PR #2720)
+source-mitigates that exposure through the separate typed
 `rustok_api::HostAuthorityContext`: normal tenant authentication does not issue
 it, global reads require host `Read`, global writes require host `Manage`, and
 mutations are bound to a non-nil operator actor. No operator credential issuance
@@ -187,8 +188,8 @@ is still required; source inspection is not a substitute.
 - Last verified at (UTC): `2026-07-31`
 - Scope inspected: `tenant owner CRUD and provisioning concurrency; locale-policy CAS/idempotency and migration invariants; lifecycle outbox; cache generation; storefront and commerce owner scope; Tenant/Auth/RBAC Admin authenticated-resolved tenant equality; host-global Events/System/Settings authority; OAuth and manifest issuance paths`
 - Findings: `P0=3, P1=11, P2=1, P3=0` (Tenant-owner count; cross-owner issue #2680 is tracked separately)
-- Fixed in this pass: `Tenant owner and directly related P0/P1/P2 corrections are merged in main through PR #2665; subsequent Channel, Index, Search, Email and Outbox Admin tenant-scope corrections are recorded in the cycle supplement; this work unit adds a separate typed host authority contract and moves confirmed host-global Events/System/Settings transports from tenant permissions to fail-closed host read/manage guards with non-nil operator audit identity`
+- Fixed in this pass: `Tenant owner and directly related P0/P1/P2 corrections are merged in main through PR #2665; subsequent Channel, Index, Search, Email and Outbox Admin tenant-scope corrections are recorded in the cycle supplement; PR #2720 merged the separate typed host authority contract as 35afdd3a5d4ae74e735a2963e7246e21a3031e5d and moved confirmed host-global Events/System/Settings transports from tenant permissions to fail-closed host read/manage guards with non-nil operator audit identity`
 - Remaining risks or blockers: `same-SHA formatting, source guard, Rust compile/test and module validation are pending; both PostgreSQL races must rerun on the final revision; live Redis recovery, PostgreSQL backfill, real MySQL 8, deployed/native parity and remaining cache/RBAC inspection are required; issue #2680 still needs an approved operator issuance/refresh/revocation path before host-global controls are functional`
-- Evidence: `source files and focused regressions are present; the old temporary Tenant workflow was not merged and is not evidence for the current SHA; historical PostgreSQL race passes occurred on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 and must be rerun; connector-only local execution remains unavailable because github.com DNS resolution fails`
-- Next action: `inspect PR #2720 same-SHA checks and fix every branch-related failure; run the host-authority source/unit/compile gates, then execute the retained Tenant PostgreSQL, Redis and migration evidence before advancing the cursor`
+- Evidence: `source files and focused regressions are merged at 35afdd3a5d4ae74e735a2963e7246e21a3031e5d; standard PR checks were still queued at merge and are not claimed as passed; the old temporary Tenant workflow was not merged and is not evidence for the current SHA; historical PostgreSQL race passes occurred on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 and must be rerun; connector-only local execution remains unavailable because github.com DNS resolution fails`
+- Next action: `inspect merge-commit and PR same-SHA checks and fix every branch-related failure; run the host-authority source/unit/compile gates, then execute the retained Tenant PostgreSQL, Redis and migration evidence before advancing the cursor`
 - Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo check -p rustok-events-module && cargo check -p rustok-server --lib && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture`
