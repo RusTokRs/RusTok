@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "comments_dispatcher_duplicate_delivery",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "pending",
+  "owner": "rustok-blog",
+  "provider": "rustok-comments",
+  "harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact",
+    "isolation": "unique_schema_one_connection_pool_module_registered_handler_observed_two_dispatches",
+    "scope": "same_envelope_published_twice_through_event_bus_dispatcher_single_projection_commit",
+    "non_claim": "does_not_record_postgresql_execution_or_concurrent_duplicate_race"
+  },
+  "cases": [
+    {
+      "name": "module_registered_handler_routed_twice",
+      "expected": "BlogModule registers one blog_comment_projection handler and the same envelope is published twice through EventBus and EventDispatcher"
+    },
+    {
+      "name": "two_completed_dispatch_calls",
+      "expected": "an observing EventHandler wrapper records exactly two completed calls to the real module-registered projection handler"
+    },
+    {
+      "name": "single_transactional_application",
+      "expected": "after both dispatches complete the post is count one/version two with one delivery-ledger row and one outbox row"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute the exact env-gated PostgreSQL command and retain two completed dispatcher calls plus final counter, delivery, and outbox assertions",
+    "retain concurrent same-envelope handler-race execution separately from this dispatcher replay target"
+  ]
+}
