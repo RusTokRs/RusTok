@@ -64,6 +64,7 @@ requireAll(baseline, [
 ], `${paths.baseline} retained baseline`);
 rejectAll(baseline, [
   "forum_enforce_projection_revision_counter",
+  "forum_require_projection_revision_ledger_row",
   "forum_reject_projection_revision_truncate",
 ], `${paths.baseline} immutable baseline boundary`);
 
@@ -75,6 +76,10 @@ requireAll(migration, [
   "forum_projection_revision_counter_insert",
   "forum_projection_revision_counter_update",
   "forum_projection_revision_counter_delete",
+  "forum_require_projection_revision_ledger_row",
+  "forum projection revision counter requires a matching ledger row",
+  "CREATE CONSTRAINT TRIGGER forum_projection_revision_counter_ledger_commit",
+  "DEFERRABLE INITIALLY DEFERRED",
   "forum_reject_projection_revision_truncate",
   "forum_projection_revision_counter_truncate",
   "forum_projection_revision_ledger_truncate",
@@ -108,9 +113,11 @@ requireAll(allocator, [
   "VALUES ($1, 1, CURRENT_TIMESTAMP)",
   "revision = forum_projection_revision_counters.revision + 1",
   "RETURNING revision",
+  "INSERT INTO forum_projection_revision_ledger",
 ], `${paths.allocator} compatibility`);
 rejectAll(allocator, [
   "forum_enforce_projection_revision_counter",
+  "forum_require_projection_revision_ledger_row",
   "forum_reject_projection_revision_truncate",
 ], `${paths.allocator} no duplicate hardening`);
 
@@ -118,6 +125,8 @@ requireAll(note, [
   "# FORUM-23B2G2A1 Search owner-revision counter hardening",
   "baseline migration",
   "advance the previous revision by exactly `1`",
+  "DEFERRABLE INITIALLY DEFERRED",
+  "direct counter-only commit",
   "rejects truncation of both",
   "does not decode or validate `sys_events.payload`",
   "did not run these commands",
@@ -138,8 +147,13 @@ if (contract) {
   }
   if (contract.counter_invariants?.tenant_key_immutable !== true
       || contract.counter_invariants?.row_delete_forbidden !== true
-      || contract.counter_invariants?.table_truncate_forbidden !== true) {
-    failures.push(`${paths.contract}: counter lifecycle invariants are incomplete`);
+      || contract.counter_invariants?.table_truncate_forbidden !== true
+      || contract.counter_invariants?.committed_revision_requires_matching_ledger_row !== true) {
+    failures.push(`${paths.contract}: counter lifecycle and commit invariants are incomplete`);
+  }
+  if (contract.counter_invariants?.ledger_coverage_check
+      !== "deferred constraint trigger at transaction commit") {
+    failures.push(`${paths.contract}: deferred ledger coverage contract is missing`);
   }
   if (contract.ledger_invariants?.table_truncate_forbidden !== true) {
     failures.push(`${paths.contract}: ledger truncate guard is missing`);
