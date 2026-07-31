@@ -12,9 +12,18 @@ fn every_channel_admin_permission_check_is_bound_to_the_resolved_tenant() {
         .matches("leptos_axum::extract::<TenantContext>()")
         .count();
 
-    assert_eq!(scoped_calls, 16, "all native channel admin endpoints must use the scoped guard");
-    assert_eq!(auth_extracts, scoped_calls, "every authenticated endpoint must apply the guard");
-    assert_eq!(tenant_extracts, scoped_calls, "every routed tenant must be bound to authenticated authority");
+    assert_eq!(
+        scoped_calls, 16,
+        "all native channel admin endpoints must use the scoped guard"
+    );
+    assert_eq!(
+        auth_extracts, scoped_calls,
+        "every authenticated endpoint must apply the guard"
+    );
+    assert_eq!(
+        tenant_extracts, scoped_calls,
+        "every routed tenant must be bound to authenticated authority"
+    );
     assert!(!SOURCE.contains("ensure_manage_permission(&auth.permissions)?;"));
 }
 
@@ -36,7 +45,10 @@ fn tenant_equality_is_checked_before_permission_admission() {
         .find("has_any_effective_permission(")
         .expect("permission admission must remain");
 
-    assert!(tenant_check < permission_check, "tenant equality must precede permission admission");
+    assert!(
+        tenant_check < permission_check,
+        "tenant equality must precede permission admission"
+    );
     assert!(helper.contains("Channel admin access is denied"));
     assert!(helper.contains("channel.admin_tenant_scope_mismatch"));
     assert!(helper.contains("auth_tenant_id = %auth.tenant_id"));
