@@ -11,8 +11,12 @@ const paths = {
   contract: "crates/rustok-forum/contracts/forum-search-current-channel-filter.json",
   note: "crates/rustok-forum/docs/forum-23b2f4-search-current-channel-filter.md",
   projection: "crates/rustok-forum/src/search_projection.rs",
+  topicOwner: "crates/rustok-forum/src/services/topic_owner.rs",
+  topicInline: "crates/rustok-forum/src/services/topic_inline.rs",
   filter: "crates/rustok-search/src/forum_current_channel_filter.rs",
   execution: "crates/rustok-search/src/forum_storefront_execution.rs",
+  forumInbox: "crates/rustok-search/src/forum_inbox.rs",
+  forumProjector: "crates/rustok-search/src/forum_projector.rs",
   searchLib: "crates/rustok-search/src/lib.rs",
   graphqlOwner: "crates/rustok-search/src/graphql/forum_storefront.rs",
   graphqlTypes: "crates/rustok-search/src/graphql/types.rs",
@@ -55,11 +59,41 @@ function parseJson(relativePath) {
   }
 }
 
+function functionBody(source, functionName) {
+  const signature = new RegExp(
+    `(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${functionName}(?:<[^>]*>)?\\s*\\(`,
+  );
+  const match = signature.exec(source);
+  if (!match) {
+    failures.push(`missing function ${functionName}`);
+    return "";
+  }
+  const openBrace = source.indexOf("{", match.index);
+  if (openBrace < 0) {
+    failures.push(`missing body for ${functionName}`);
+    return "";
+  }
+  let depth = 0;
+  for (let index = openBrace; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(openBrace, index + 1);
+    }
+  }
+  failures.push(`unterminated body for ${functionName}`);
+  return "";
+}
+
 const contract = parseJson(paths.contract);
 const note = read(paths.note);
 const projection = read(paths.projection);
+const topicOwner = read(paths.topicOwner);
+const topicInline = read(paths.topicInline);
 const filter = read(paths.filter);
 const execution = read(paths.execution);
+const forumInbox = read(paths.forumInbox);
+const forumProjector = read(paths.forumProjector);
 const searchLib = read(paths.searchLib);
 const graphqlOwner = read(paths.graphqlOwner);
 const graphqlTypes = read(paths.graphqlTypes);
@@ -85,6 +119,34 @@ requireAll(filter, [
   "missing_or_malformed_projection_fails_closed",
 ], paths.filter);
 rejectAll(filter, ["rustok_forum", "forum_topic::", "forum_reply::", "group_ids"], paths.filter);
+
+const ownerUpdate = functionBody(topicOwner, "update");
+requireAll(ownerUpdate, [
+  "update_with_inline_relations",
+  "input.into()",
+], `${paths.topicOwner}: public topic update`);
+rejectAll(ownerUpdate, ["update_with_relations"], `${paths.topicOwner}: legacy update path`);
+
+const inlineUpdate = functionBody(topicInline, "update_with_inline_relations");
+requireAll(inlineUpdate, [
+  "publish_forum_topic_projection_in_tx",
+  "txn.commit().await?;",
+], `${paths.topicInline}: transactional projection invalidation`);
+if (
+  inlineUpdate.indexOf("publish_forum_topic_projection_in_tx") >
+  inlineUpdate.indexOf("txn.commit().await?;")
+) {
+  failures.push(`${paths.topicInline}: topic invalidation must precede commit`);
+}
+
+requireAll(forumInbox, [
+  '("search", _) | ("forum", _) | ("forum_topic", Some(_)) => Some(Self::Full)',
+], `${paths.forumInbox}: topic reindex scope`);
+const refreshEntity = functionBody(forumProjector, "refresh_entity");
+requireAll(refreshEntity, [
+  "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+  "return self.rebuild_tenant(tenant_id).await;",
+], `${paths.forumProjector}: parent-derived reply refresh`);
 
 requireAll(searchLib, ["mod forum_current_channel_filter;"], paths.searchLib);
 requireAll(execution, [
@@ -157,6 +219,8 @@ rejectAll(
 requireAll(note, [
   "# FORUM-23B2F4 trusted current-channel Search filter",
   "boolean, not a caller-selected channel slug",
+  "Parent-derived refresh ordering",
+  "update_with_inline_relations",
   "full channel/group roadmap therefore remains open",
   "did not run these commands",
 ], paths.note);
@@ -177,6 +241,18 @@ if (contract) {
   }
   if (contract.compatibility?.neutral_search_query_changed !== false) {
     failures.push(`${paths.contract}: neutral SearchQuery changed`);
+  }
+  if (!contract.projection_refresh?.topic_update_invalidation_is_transactional) {
+    failures.push(`${paths.contract}: transactional topic invalidation missing`);
+  }
+  if (contract.projection_refresh?.topic_reindex_inbox_scope !== "Full") {
+    failures.push(`${paths.contract}: topic reindex must use full scope`);
+  }
+  if (contract.projection_refresh?.topic_refresh_operation !== "rebuild_tenant") {
+    failures.push(`${paths.contract}: topic refresh must rebuild the tenant projection`);
+  }
+  if (contract.projection_refresh?.legacy_update_with_relations_used_by_public_owner !== false) {
+    failures.push(`${paths.contract}: public owner still permits legacy update path`);
   }
 }
 
