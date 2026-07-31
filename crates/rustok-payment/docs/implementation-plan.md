@@ -84,8 +84,8 @@ request payload values:
 
 An upgraded retry therefore adopts the existing provider-operation journal row
 instead of executing a second provider effect. Provider success is checkpointed
-before local collection mutation; a local persistence failure after provider
-success is classified as reconciliation-required.
+before local collection mutation; a local persistence failure after provider success
+is classified as reconciliation-required.
 
 The payment storefront owner transport continues to use
 `execute_selected_transport` for `create_payment_collection`,
@@ -99,10 +99,19 @@ errors in correlation-aware private diagnostics, and returns a static public env
 before `UiTransportError` aggregation. Hydrate, SSR, browser, and mounted runtime
 evidence remain open.
 
+Payment checkout execution diagnostic safety: `source_ready_unvalidated`. Admission,
+tenant/causation, provider-result, owner-error, manual-reconciliation, and delegated
+outcome diagnostics now retain correlation plus safe context/request shape only.
+Local-operation attribution uses stable `PortError.code` and no longer depends on
+human-readable public messages. Public `PortError` envelopes and all execution
+semantics remain unchanged. Checkout compensation diagnostic cleanup remains open as
+a separate source slice.
+
 Boundary guards:
 
 - `npm run verify:payment:storefront-boundary`
 - `node scripts/verify/verify-payment-storefront-native-client-error-safety.mjs`
+- `node scripts/verify/verify-payment-checkout-execution-local-context.mjs`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-payment-typed-lifecycle-statuses.mjs`

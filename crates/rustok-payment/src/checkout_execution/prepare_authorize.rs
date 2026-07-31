@@ -193,13 +193,21 @@ impl InProcessCheckoutPaymentExecutionPort {
                     "authorize",
                 )
                 .await;
+                let context_facts = checkout_payment_execution_context_facts(context);
                 tracing::error!(
-                    operation_id = %journaled.operation_id,
+                    operation_id_non_nil = !journaled.operation_id.is_nil(),
+                    provider_operation = "authorize",
                     error = ?error,
                     correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
+                    tenant_id_length = context_facts.tenant_id_length,
+                    actor_kind = context_facts.actor_kind,
+                    channel_present = context_facts.channel_present,
+                    locale_length = context_facts.locale_length,
+                    causation_id_present = context_facts.causation_id_present,
+                    idempotency_key_present = context_facts.idempotency_key_present,
                     operation = owner_operation,
                     code = "payment.checkout_execution_local_persistence_failed",
+                    boundary = PAYMENT_EXECUTION_BOUNDARY,
                     "payment provider authorization succeeded but local persistence failed"
                 );
                 Err(manual_reconciliation(
