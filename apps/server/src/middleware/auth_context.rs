@@ -57,13 +57,9 @@ pub async fn resolve_optional(
                         client_id = ?current_user.client_id,
                         error = %error,
                         code = "host_authority.resolve_failed",
-                        "host authority resolution failed after authentication"
+                        "host authority resolution failed after authentication; ordinary service request continues without host authority"
                     );
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Host authority configuration is invalid",
-                    )
-                        .into_response();
+                    None
                 }
             };
 
