@@ -11,6 +11,10 @@ use rustok_events::{DomainEvent, EventEnvelope};
 use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::ForumProjectionInbox;
+use crate::forum_owner_checkpoint::{
+    ForumOwnerCheckpointReconciler, ForumProjectionOwnerTenantHead,
+    ForumProjectionOwnerTenantPageRequest,
+};
 use crate::forum_projector::ForumSearchProjector;
 use crate::projector::SearchProjector;
 
@@ -47,6 +51,16 @@ pub trait ForumProjectionOwnerRevisionSourcePort: Send + Sync {
         &self,
         request: ForumProjectionOwnerRevisionRequest,
     ) -> std::result::Result<Vec<ForumProjectionOwnerRevisionRecord>, PortError>;
+
+    async fn list_owner_revision_tenants(
+        &self,
+        _request: ForumProjectionOwnerTenantPageRequest,
+    ) -> std::result::Result<Vec<ForumProjectionOwnerTenantHead>, PortError> {
+        Err(PortError::unavailable(
+            "forum.search_projection_owner_revision.tenant_source_unavailable",
+            "Forum projection owner tenant source is temporarily unavailable",
+        ))
+    }
 }
 
 pub type SharedForumProjectionOwnerRevisionSourcePort =
@@ -156,6 +170,13 @@ pub struct ForumProjectionSweepReport {
     pub claimed_events: usize,
     pub completed_events: usize,
     pub failed_events: usize,
+    pub recovered_processing_events: usize,
+    pub owner_tenants_scanned: usize,
+    pub owner_tenants_reconciled: usize,
+    pub owner_tenants_blocked: usize,
+    pub owner_tenants_failed: usize,
+    pub owner_revisions_checkpointed: usize,
+    pub owner_rebuilds: usize,
 }
 
 #[derive(Clone)]
@@ -165,15 +186,39 @@ pub struct ForumProjectionReconciler {
     blog_projector: BlogSearchProjector,
     forum_projector: ForumSearchProjector,
     inbox: ForumProjectionInbox,
+    owner_checkpoint: Option<ForumOwnerCheckpointReconciler>,
 }
 
 impl ForumProjectionReconciler {
     pub fn new(db: DatabaseConnection, forum_source: Arc<dyn SearchProjectionSource>) -> Self {
+        let forum_projector = ForumSearchProjector::new(db.clone(), forum_source);
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db.clone()),
-            forum_projector: ForumSearchProjector::new(db.clone(), forum_source),
+            forum_projector,
             inbox: ForumProjectionInbox::new(db.clone()),
+            owner_checkpoint: None,
+            db,
+        }
+    }
+
+    pub fn with_owner_revision_source(
+        db: DatabaseConnection,
+        forum_source: Arc<dyn SearchProjectionSource>,
+        owner_source: SharedForumProjectionOwnerRevisionSourcePort,
+    ) -> Self {
+        let forum_projector = ForumSearchProjector::new(db.clone(), forum_source);
+        let owner_checkpoint = ForumOwnerCheckpointReconciler::new(
+            db.clone(),
+            forum_projector.clone(),
+            owner_source,
+        );
+        Self {
+            projector: SearchProjector::new(db.clone()),
+            blog_projector: BlogSearchProjector::new(db.clone()),
+            forum_projector,
+            inbox: ForumProjectionInbox::new(db.clone()),
+            owner_checkpoint: Some(owner_checkpoint),
             db,
         }
     }
@@ -205,6 +250,22 @@ impl ForumProjectionReconciler {
             report.claimed_events += tenant_report.claimed_events;
             report.completed_events += tenant_report.completed_events;
             report.failed_events += tenant_report.failed_events;
+        }
+
+        if let Some(owner_checkpoint) = &self.owner_checkpoint {
+            let owner_report = owner_checkpoint
+                .sweep_due(
+                    tenant_limit,
+                    event_limit.min(MAX_FORUM_OWNER_REVISION_PAGE_LIMIT),
+                )
+                .await?;
+            report.recovered_processing_events += owner_report.recovered_processing_events;
+            report.owner_tenants_scanned += owner_report.owner_tenants_scanned;
+            report.owner_tenants_reconciled += owner_report.owner_tenants_reconciled;
+            report.owner_tenants_blocked += owner_report.owner_tenants_blocked;
+            report.owner_tenants_failed += owner_report.owner_tenants_failed;
+            report.owner_revisions_checkpointed += owner_report.owner_revisions_checkpointed;
+            report.owner_rebuilds += owner_report.owner_rebuilds;
         }
         Ok(report)
     }
