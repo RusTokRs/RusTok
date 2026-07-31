@@ -21,6 +21,8 @@ function fixture({
   missingOutbox = false,
   missingRegistration = false,
   missingHostHarness = false,
+  missingDispatcherCase = false,
+  missingDispatcherWait = false,
   missingSharedClassifier = false,
   directHandlesClassifier = false,
   missingCounterHarness = false,
@@ -33,6 +35,7 @@ function fixture({
   statusDrift = false,
   harnessStatusDrift = false,
   hostHarnessStatusDrift = false,
+  dispatcherStatusDrift = false,
   postgresStatusDrift = false,
   restartStatusDrift = false,
 } = {}) {
@@ -49,6 +52,7 @@ function fixture({
   const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
   const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
   const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
+  const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
   const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
   const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 
@@ -94,6 +98,28 @@ ${missingCounterHarness ? '' : 'fn counter_transition_is_non_negative_and_satura
   );
 
   if (!missingPostgresHarness) {
+    const dispatcherSource = missingDispatcherCase
+      ? ''
+      : `
+async fn event_dispatcher_routes_registered_handler_and_commits_projection()
+let extensions = ModuleRuntimeExtensions::default();
+BlogModule.register_event_listeners(&mut registry, &context);
+let bus = EventBus::new();
+let mut dispatcher = EventDispatcher::with_config(
+fail_fast: true
+max_concurrent: 1
+retry_count: 0
+dispatcher.register_boxed(handler);
+assert_eq!(dispatcher.handler_count(), 1);
+let running = dispatcher.start();
+running.bus().publish_envelope(envelope.clone())?;
+${missingDispatcherWait ? '' : 'wait_for_dispatch_commit(&test_db.db, envelope.id).await?;'}
+running.stop();
+async fn wait_for_dispatch_commit(db: &DatabaseConnection, event_id: Uuid)
+tokio::time::timeout(Duration::from_secs(5)
+count_delivery(db, event_id).await? == 1
+event dispatcher did not commit delivery
+`;
     write(
       root,
       postgresHarnessPath,
@@ -106,6 +132,7 @@ DROP SCHEMA IF EXISTS
 SET search_path TO
 async fn duplicate_delivery_updates_counter_and_outbox_once()
 handler.handle(&envelope).await?;
+${dispatcherSource}
 async fn delete_before_create_stays_non_negative_and_replays_in_order()
 DomainEvent::CommentDeleted
 async fn missing_post_replay_commits_only_after_source_appears()
@@ -243,6 +270,16 @@ assert!(!handler.handles(&forum_created));
         scope: 'module_registry_handler_identity_and_routing_only',
         cases: ['module_registers_comment_projection_handler_with_host_routing'],
       },
+      dispatcher_harness: {
+        status: dispatcherStatusDrift ? 'executed' : 'executable_no_run',
+        runtime_status: dispatcherStatusDrift ? 'passed' : 'not_run',
+        path: postgresHarnessPath,
+        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+        command: dispatcherHarnessCommand,
+        isolation: 'unique_schema_one_connection_pool',
+        scope: 'event_bus_dispatcher_module_registered_handler_transactional_commit',
+        cases: ['event_dispatcher_routes_registered_handler_and_commits_projection'],
+      },
       postgres_harness: {
         status: postgresStatusDrift ? 'executed' : 'executable_no_run',
         runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
@@ -276,6 +313,7 @@ assert!(!handler.handles(&forum_created));
         { name: 'missing_post_retry' },
         { name: 'non_negative_count' },
         { name: 'host_registration_routing_harness' },
+        { name: 'postgres_event_dispatcher_delivery' },
         { name: 'postgres_duplicate_delivery' },
         { name: 'postgres_out_of_order_delete_create' },
         { name: 'postgres_missing_post_recovery' },
@@ -331,7 +369,7 @@ assert!(!handler.handles(&forum_created));
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL actual host EventDispatcher delivery process-level restart recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher process-level restart recovery',
   );
 
   return root;
@@ -386,6 +424,20 @@ test('rejects missing module registration and routing harness', () => {
   expectRejected(
     { missingHostHarness: true },
     /missing async fn module_registers_comment_projection_handler_with_host_routing/,
+  );
+});
+
+test('rejects a missing EventDispatcher delivery case', () => {
+  expectRejected(
+    { missingDispatcherCase: true },
+    /missing async fn event_dispatcher_routes_registered_handler_and_commits_projection/,
+  );
+});
+
+test('rejects EventDispatcher coverage without durable delivery wait', () => {
+  expectRejected(
+    { missingDispatcherWait: true },
+    /missing wait_for_dispatch_commit\(&test_db.db, envelope.id\).await\?;/,
   );
 });
 
@@ -444,6 +496,10 @@ test('rejects source harness execution promotion without execution', () => {
 
 test('rejects host registration harness execution promotion without execution', () => {
   expectRejected({ hostHarnessStatusDrift: true }, /host registration harness drift/);
+});
+
+test('rejects dispatcher harness execution promotion without execution', () => {
+  expectRejected({ dispatcherStatusDrift: true }, /dispatcher harness drift/);
 });
 
 test('rejects PostgreSQL harness execution promotion without execution', () => {
