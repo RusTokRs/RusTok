@@ -1,0 +1,87 @@
+{
+  "format_version": 1,
+  "task": "FORUM-23B2G2B3C",
+  "status": "source_complete_runtime_evidence_pending",
+  "predecessors": [
+    "FORUM-23B2G2B3A",
+    "FORUM-23B2G2B3B1",
+    "FORUM-23B2G2B3B2"
+  ],
+  "transport": {
+    "topic": "domain",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "persistent_cursor_required": true,
+    "default_off_flag": "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_ENABLED",
+    "postgresql_required": true,
+    "delivery_profile_required": "outbox_iggy"
+  },
+  "accepted_event": {
+    "event_type": "forum.search_projection.invalidation_issued",
+    "schema_version": 1,
+    "typed_envelope_id_is_projection_identity": false,
+    "projection_identity": "ContractEventEnvelope.causation_id",
+    "projection_identity_equals_legacy_root_envelope_id": true,
+    "missing_causation_is_semantic_poison": true
+  },
+  "single_execution_path": {
+    "inbox_table": "search_projection_inbox",
+    "source_module": "forum",
+    "existing_inbox_reused": true,
+    "existing_reconciler_reused": true,
+    "existing_projector_reused": true,
+    "second_inbox_created": false,
+    "second_reconciler_created": false,
+    "second_projector_created": false,
+    "typed_event_adapted_to_legacy_root_envelope": true,
+    "duplicate_recognition_requires_exact_tenant_scope_and_payload_match": true,
+    "uuid_collision_is_semantic_poison": true
+  },
+  "ordering": {
+    "search_owned_clock": "search_projection_inbox.ingest_sequence",
+    "forum_owner_clock": "owner_revision",
+    "owner_revision_compared_numerically_with_ingest_sequence": false,
+    "owner_revision_stored_as_search_ingest_sequence": false,
+    "broker_offset_committed_after_projection_success": false,
+    "broker_offset_committed_after_durable_inbox_admission": true,
+    "projection_remains_existing_background_reconciler_work": true
+  },
+  "acknowledgement": {
+    "valid_relevant_delivery": "after durable shared inbox row is inserted or exact duplicate is recognized",
+    "valid_unrelated_delivery": "after registered envelope is classified as unrelated",
+    "raw_decode_or_schema_poison": "after durable poison receipt and successful DLQ publication or durable prior-publication recognition",
+    "semantic_poison": "after durable poison receipt and successful DLQ publication or durable prior-publication recognition",
+    "transient_storage_failure": "leave exact broker offset uncommitted",
+    "ack_failure_after_durable_result": "retry acknowledgement only; redelivery recognizes durable result"
+  },
+  "poison_policy": {
+    "receipt_store": "iggy_connector_consumer_poison_receipts",
+    "receipt_identity": [
+      "consumer_group",
+      "source_stream",
+      "source_topic",
+      "source_partition",
+      "source_offset",
+      "exact_raw_payload"
+    ],
+    "deterministic_dlq_message_id": true,
+    "process_local_fallback": false,
+    "new_terminal_result_allowed_when_dlq_disabled": false,
+    "existing_durable_receipt_continues_when_dlq_disabled": true
+  },
+  "runtime_boundary": {
+    "search_crate_transport_neutral": true,
+    "server_owns_iggy_cursor_dlq_and_ack": true,
+    "forum_search_inbox_worker_module_is_single_host_owner": true,
+    "sqlite_consumer_supported": false
+  },
+  "not_claimed": {
+    "postgresql_iggy_restart_evidence": false,
+    "dual_delivery_runtime_evidence": false,
+    "poison_runtime_evidence": false,
+    "link_forum_03_closed": false
+  },
+  "follow_up": {
+    "task": "FORUM-23B2G2B3D",
+    "scope": "PostgreSQL and persistent-cursor restart, poison, dual-delivery, and LINK-FORUM-03 evidence"
+  }
+}

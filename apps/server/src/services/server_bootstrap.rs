@@ -162,6 +162,12 @@ pub async fn bootstrap_application_router(
         &runtime_ctx,
     )?;
 
+    #[cfg(feature = "mod-forum")]
+    crate::services::forum_search_inbox_worker::start_forum_search_contract_consumer_if_enabled(
+        &runtime_ctx,
+    )
+    .await?;
+
     #[cfg(feature = "mod-social_graph")]
     crate::services::social_graph_index_worker::start_social_graph_index_worker_if_enabled(
         &runtime_ctx,

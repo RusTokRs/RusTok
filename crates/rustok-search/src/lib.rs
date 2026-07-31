@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+mod forum_contract_ingress;
 mod forum_current_channel_filter;
 pub mod forum_document_filters;
 mod forum_inbox;
@@ -58,6 +59,11 @@ pub use engine::{
     canonical_search_result_url,
 };
 pub use engine::{SearchResult, SearchResultItem};
+pub use forum_contract_ingress::{
+    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_EVENT_TYPE,
+    FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress,
+    ForumSearchContractIngressError, ForumSearchContractIngressOutcome,
+};
 pub use forum_document_filters::ForumStorefrontDocumentFilters;
 pub use forum_owner_checkpoint::{
     ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,

@@ -1,3 +1,11 @@
+#[path = "forum_search_contract_consumer.rs"]
+mod contract_consumer;
+
+pub use contract_consumer::{
+    ForumSearchContractConsumerWorkerHandle, forum_search_contract_consumer_enabled,
+    start_forum_search_contract_consumer_if_enabled,
+};
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
