@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_membership_and_retry_identity_are_stable() {
+    fn product_sales_channel_relation_canonical_membership_and_retry_identity_are_stable() {
         let first = snapshot(
             7,
             "en-US",
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn relation_change_requires_a_strictly_larger_epoch() {
+    fn product_sales_channel_relation_change_requires_a_strictly_larger_epoch() {
         let previous = snapshot(8, "en-US", [Uuid::from_u128(3)]);
         let changed_same_epoch = snapshot(8, "en-US", [Uuid::from_u128(4)]);
         let regressed = snapshot(7, "en-US", [Uuid::from_u128(4)]);
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_identity_and_duplicate_membership_fail_closed() {
+    fn product_sales_channel_relation_invalid_identity_and_duplicates_fail_closed() {
         assert_eq!(
             ProductSalesChannelRelationEpoch::new(0),
             Err(ProductSalesChannelRelationAdmissionError::ZeroEpoch)
@@ -283,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_membership_is_valid_but_scope_cannot_change() {
+    fn product_sales_channel_relation_empty_membership_is_valid_but_scope_cannot_change() {
         let previous = snapshot(1, "en-US", []);
         let other_locale = snapshot(2, "fr-FR", []);
 
