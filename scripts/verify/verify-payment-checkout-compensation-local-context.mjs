@@ -122,6 +122,7 @@ for (const marker of [
   'fn log_checkout_payment_compensation_owner_error<',
   'operation_id_present = operation_id.is_some()',
   'operation_id_non_nil = operation_id.map(|value| !value.is_nil())',
+  'fn log_checkout_payment_compensation_owner_warning<',
   'fn log_checkout_payment_compensation_context_warning(',
   'checkout_operation_id_non_nil = ?checkout_operation_id_non_nil',
   'causation_matches = ?causation_matches',
@@ -172,8 +173,8 @@ for (const forbidden of [
 requireCount(
   owner,
   'log_checkout_payment_compensation_owner_error(',
-  9,
-  'nine owner error calls',
+  8,
+  'eight owner error calls',
 );
 
 for (const [value, label] of [
