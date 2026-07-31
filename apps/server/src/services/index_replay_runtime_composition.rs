@@ -1,3 +1,12 @@
+#[path = "index_replay_runtime_composition_base.rs"]
+mod base;
+
+pub use base::{
+    IndexReconciliationOperatorContext, IndexReconciliationOperatorError,
+    IndexReconciliationOperatorRuntime, IndexReplayOperatorContext, IndexReplayOperatorError,
+    IndexReplayOperatorRuntime,
+};
+
 use std::fmt;
 
 use rustok_api::{Permission, has_effective_permission};
@@ -9,372 +18,174 @@ use uuid::Uuid;
 use crate::error::{Error as ServerError, Result};
 use crate::services::rbac_request_scope::permissions_for;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IndexReplayOperatorContext {
-    tenant_id: Uuid,
-    actor_id: Uuid,
-}
-
-impl IndexReplayOperatorContext {
-    pub fn new(tenant_id: Uuid, actor_id: Uuid) -> Result<Self, IndexReplayOperatorError> {
-        if tenant_id.is_nil() || actor_id.is_nil() {
-            return Err(IndexReplayOperatorError::InvalidContext);
-        }
-        Ok(Self {
-            tenant_id,
-            actor_id,
-        })
-    }
-
-    pub fn tenant_id(&self) -> Uuid {
-        self.tenant_id
-    }
-
-    pub fn actor_id(&self) -> Uuid {
-        self.actor_id
-    }
-
-    fn authorize_for(&self, requested_tenant: Uuid) -> Result<(), IndexReplayOperatorError> {
-        if requested_tenant != self.tenant_id {
-            return Err(IndexReplayOperatorError::TenantMismatch);
-        }
-        let permissions = permissions_for(&self.tenant_id, &self.actor_id)
-            .ok_or(IndexReplayOperatorError::MissingRequestAuthority)?;
-        if !has_effective_permission(&permissions, &Permission::MODULES_MANAGE) {
-            return Err(IndexReplayOperatorError::Forbidden);
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug, Error)]
-pub enum IndexReplayOperatorError {
-    #[error("Index replay operator tenant and actor must not be nil")]
-    InvalidContext,
-    #[error("Index replay request tenant does not match the authorized operator tenant")]
-    TenantMismatch,
-    #[error("Index replay operations require a request-bound effective permission snapshot")]
+pub enum IndexReconciliationDeadLetterOperatorError {
+    #[error(
+        "Index reconciliation dead-letter inspection requires a request-bound effective permission snapshot"
+    )]
     MissingRequestAuthority,
-    #[error("modules:manage is required for Index replay operations")]
+    #[error("modules:manage is required for Index reconciliation dead-letter inspection")]
     Forbidden,
     #[error(transparent)]
-    Replay(#[from] rustok_index::IndexReplayRunError),
+    Inspection(#[from] rustok_index::IndexReconciliationDeadLetterInspectionError),
 }
 
-/// Server-owned guarded operator boundary over the canonical Index replay runtime.
+/// Server-owned guarded read-only boundary for one failed reconciliation job.
 ///
-/// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
-/// accepts only `modules:manage`, rejects cross-tenant requests before database access, and exposes
-/// no connection, source registry, scheduler, or worker-spawn handle.
+/// The tenant is always derived from the request-bound reconciliation operator context.
+/// Callers provide only the failed job UUID; database access occurs only after the current
+/// effective RBAC snapshot proves `modules:manage` for the exact context tenant and actor.
 #[derive(Clone)]
-pub struct IndexReplayOperatorRuntime {
-    inner: rustok_index::SharedIndexReplayRuntime,
+pub struct IndexReconciliationDeadLetterOperatorRuntime {
+    inner: rustok_index::PostgresIndexReconciliationDeadLetterInspector,
 }
 
-impl IndexReplayOperatorRuntime {
-    fn new(inner: rustok_index::SharedIndexReplayRuntime) -> Self {
+impl IndexReconciliationDeadLetterOperatorRuntime {
+    fn new(inner: rustok_index::PostgresIndexReconciliationDeadLetterInspector) -> Self {
         Self { inner }
     }
 
-    pub async fn run(
+    pub async fn inspect_dead_letter(
         &self,
-        context: IndexReplayOperatorContext,
-        request: rustok_index::IndexReplayRunRequest,
-    ) -> Result<rustok_index::IndexReplayRunOutcome, IndexReplayOperatorError> {
-        context.authorize_for(request.page_request().tenant_id())?;
-        self.inner.run(request).await.map_err(Into::into)
-    }
-
-    pub async fn request_cancel(
-        &self,
-        context: IndexReplayOperatorContext,
+        context: IndexReconciliationOperatorContext,
         job_id: Uuid,
-    ) -> Result<rustok_index::IndexReplayCancelOutcome, IndexReplayOperatorError> {
-        context.authorize_for(context.tenant_id())?;
+    ) -> std::result::Result<
+        Option<rustok_index::IndexReconciliationDeadLetterInspection>,
+        IndexReconciliationDeadLetterOperatorError,
+    > {
+        authorize_dead_letter_inspection(&context)?;
         self.inner
-            .request_cancel(context.tenant_id(), job_id)
+            .inspect(context.tenant_id(), job_id)
             .await
             .map_err(Into::into)
     }
 }
 
-impl fmt::Debug for IndexReplayOperatorRuntime {
+impl fmt::Debug for IndexReconciliationDeadLetterOperatorRuntime {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("IndexReplayOperatorRuntime")
+            .debug_struct("IndexReconciliationDeadLetterOperatorRuntime")
             .finish_non_exhaustive()
     }
 }
 
-/// Materializes the host-owned Index replay capability after all modules have registered sources.
-///
-/// This function performs no database I/O and starts no worker. It invokes selected source
-/// factories only to construct adapters, freezes the complete source catalog, binds the immutable
-/// schema/source registries to the host database, and publishes the guarded bounded operator
-/// capability through `ModuleRuntimeExtensions`.
+fn authorize_dead_letter_inspection(
+    context: &IndexReconciliationOperatorContext,
+) -> std::result::Result<(), IndexReconciliationDeadLetterOperatorError> {
+    let permissions = permissions_for(&context.tenant_id(), &context.actor_id())
+        .ok_or(IndexReconciliationDeadLetterOperatorError::MissingRequestAuthority)?;
+    if !has_effective_permission(&permissions, &Permission::MODULES_MANAGE) {
+        return Err(IndexReconciliationDeadLetterOperatorError::Forbidden);
+    }
+    Ok(())
+}
+
+/// Materializes the existing replay/reconciliation operators and, only when the guarded
+/// reconciliation capability exists, publishes the exact-tenant dead-letter inspector.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
 ) -> Result<()> {
-    if extensions.contains::<rustok_index::SharedIndexSourceRegistry>()
-        || extensions.contains::<IndexReplayOperatorRuntime>()
-    {
+    if extensions.contains::<IndexReconciliationDeadLetterOperatorRuntime>() {
         return Err(ServerError::Message(
-            "shared Index replay runtime is already materialized".to_string(),
+            "guarded Index reconciliation dead-letter runtime is already materialized".to_string(),
         ));
     }
 
-    rustok_index::materialize_postgres_index_sources(extensions, db.clone()).map_err(|error| {
-        ServerError::Message(format!(
-            "PostgreSQL Index source factory materialization failed: {error}"
-        ))
-    })?;
-    let sources = rustok_index::materialize_index_source_registry(extensions).map_err(|error| {
-        ServerError::Message(format!(
-            "Index replay source registry materialization failed: {error}"
-        ))
-    })?;
-    if let Some(sources) = sources {
-        extensions.insert(sources);
-    }
-
-    let runtime = rustok_index::materialize_postgres_index_replay_runtime(extensions, db).map_err(
-        |error| ServerError::Message(format!("Index replay runtime composition failed: {error}")),
-    )?;
-    if let Some(runtime) = runtime {
-        extensions.insert(IndexReplayOperatorRuntime::new(runtime));
+    base::materialize_index_replay_runtime(extensions, db.clone())?;
+    if extensions.contains::<IndexReconciliationOperatorRuntime>() {
+        extensions.insert(IndexReconciliationDeadLetterOperatorRuntime::new(
+            rustok_index::PostgresIndexReconciliationDeadLetterInspector::new(db),
+        ));
     }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use async_trait::async_trait;
     use rustok_api::Permission;
-    use rustok_core::{
-        MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule, UserRole,
-    };
-    use rustok_index::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexSource,
-        IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
-        IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
-        SharedIndexReplayRuntime, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
-        register_index_schema_source, register_index_source,
-    };
+    use rustok_core::UserRole;
     use sea_orm::Database;
-    use sea_orm_migration::MigrationTrait;
     use uuid::Uuid;
 
     use super::{
-        IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
-        materialize_index_replay_runtime,
+        IndexReconciliationDeadLetterOperatorError,
+        IndexReconciliationDeadLetterOperatorRuntime, IndexReconciliationOperatorContext,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
-    struct DemoReplayModule;
-    struct NoopSource;
-
-    #[async_trait]
-    impl IndexSource for NoopSource {
-        async fn scan(
-            &self,
-            request: IndexSourceScanRequest,
-        ) -> Result<IndexSourcePage, IndexSourceFailure> {
-            Ok(IndexSourcePage::new(&request, Vec::new(), None)
-                .expect("empty final replay page should be valid"))
-        }
-
-        async fn load(
-            &self,
-            request: IndexSourceLoadRequest,
-        ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
-            Ok(IndexSourceLoadBatch::new(&request, Vec::new())
-                .expect("empty targeted load should be valid"))
-        }
-    }
-
-    impl MigrationSource for DemoReplayModule {
-        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-            Vec::new()
-        }
-    }
-
-    #[async_trait]
-    impl RusToKModule for DemoReplayModule {
-        fn slug(&self) -> &'static str {
-            "demo_replay"
-        }
-
-        fn name(&self) -> &'static str {
-            "Demo replay"
-        }
-
-        fn description(&self) -> &'static str {
-            "Test source-owned Index replay publisher"
-        }
-
-        fn version(&self) -> &'static str {
-            "0.1.0"
-        }
-
-        fn register_runtime_extensions(
-            &self,
-            extensions: &mut ModuleRuntimeExtensions,
-        ) -> rustok_core::Result<()> {
-            let schema = demo_schema();
-            register_index_schema_source(extensions, self.slug(), schema.clone()).map_err(
-                |error| {
-                    rustok_core::Error::Validation(format!(
-                        "demo replay schema registration failed: {error}"
-                    ))
-                },
-            )?;
-            register_index_source(
-                extensions,
-                self.slug(),
-                "demo-replay-primary",
-                [schema.reference],
-                NoopSource,
-            )
-            .map_err(|error| {
-                rustok_core::Error::Validation(format!(
-                    "demo replay source registration failed: {error}"
-                ))
-            })
-        }
-    }
-
-    fn demo_schema() -> IndexSchema {
-        IndexSchema {
-            reference: SchemaRef {
-                module: ModuleName::new("demo-replay").unwrap(),
-                entity: EntityName::new("item").unwrap(),
-                version: SchemaVersion::INITIAL,
-            },
-            locale_mode: LocaleMode::None,
-            fields: vec![IndexField {
-                name: FieldName::new("id").unwrap(),
-                value_type: IndexValueType::Uuid,
-                cardinality: FieldCardinality::One,
-                nullable: false,
-                selectable: true,
-                filterable: true,
-                sortable: true,
-            }],
-            links: Vec::new(),
-        }
-    }
-
-    #[tokio::test]
-    async fn missing_replay_sources_do_not_publish_false_host_runtime() {
-        let registry = ModuleRegistry::new().register(IndexModule);
-        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
-            .expect("empty Index composition should build");
+    async fn runtime() -> IndexReconciliationDeadLetterOperatorRuntime {
         let db = Database::connect("sqlite::memory:")
             .await
-            .expect("test database");
-
-        materialize_index_replay_runtime(&mut extensions, db)
-            .expect("missing sources should remain optional");
-        assert!(!extensions.contains::<SharedIndexSourceRegistry>());
-        assert!(!extensions.contains::<SharedIndexReplayRuntime>());
-        assert!(!extensions.contains::<IndexReplayOperatorRuntime>());
+            .expect("test database without Index tables");
+        IndexReconciliationDeadLetterOperatorRuntime::new(
+            rustok_index::PostgresIndexReconciliationDeadLetterInspector::new(db),
+        )
     }
 
     #[tokio::test]
-    async fn complete_source_catalog_publishes_guarded_runtime_to_host_context() {
-        let registry = ModuleRegistry::new()
-            .register(IndexModule)
-            .register(DemoReplayModule);
-        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
-            .expect("source schema composition should build");
-        assert!(extensions.contains::<SharedIndexSchemaRegistry>());
-        assert!(!extensions.contains::<SharedIndexSourceRegistry>());
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("test database");
-
-        materialize_index_replay_runtime(&mut extensions, db.clone())
-            .expect("complete replay runtime should compose");
-        assert!(extensions.contains::<SharedIndexSourceRegistry>());
-        assert!(extensions.contains::<SharedIndexReplayRuntime>());
-        assert!(extensions.contains::<IndexReplayOperatorRuntime>());
-
-        let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
-        assert!(host.shared_get::<IndexReplayOperatorRuntime>().is_some());
-    }
-
-    #[tokio::test]
-    async fn duplicate_host_replay_materialization_fails_closed() {
-        let registry = ModuleRegistry::new()
-            .register(IndexModule)
-            .register(DemoReplayModule);
-        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
-            .expect("source schema composition should build");
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("test database");
-        materialize_index_replay_runtime(&mut extensions, db.clone())
-            .expect("first replay materialization");
-
-        let error = materialize_index_replay_runtime(&mut extensions, db)
-            .expect_err("duplicate replay materialization must fail");
-        assert!(error.to_string().contains("already materialized"));
-    }
-
-    #[tokio::test]
-    async fn operator_authorization_requires_exact_tenant_actor_and_modules_manage() {
+    async fn dead_letter_inspection_requires_request_bound_authority_before_database_access() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
-        let context = IndexReplayOperatorContext::new(tenant_id, actor_id).unwrap();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+        let error = runtime()
+            .await
+            .inspect_dead_letter(context, Uuid::new_v4())
+            .await
+            .expect_err("missing request authority must fail before database access");
         assert!(matches!(
-            context.authorize_for(tenant_id),
-            Err(IndexReplayOperatorError::MissingRequestAuthority)
+            error,
+            IndexReconciliationDeadLetterOperatorError::MissingRequestAuthority
         ));
+    }
 
-        with_rbac_request_scope(
+    #[tokio::test]
+    async fn dead_letter_inspection_requires_modules_manage() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+        let error = with_rbac_request_scope(
             Some(RbacRequestScope::new(
                 tenant_id,
                 actor_id,
                 vec![Permission::MODULES_READ],
                 UserRole::Admin,
             )),
-            async {
-                assert!(matches!(
-                    context.authorize_for(tenant_id),
-                    Err(IndexReplayOperatorError::Forbidden)
-                ));
-            },
+            runtime()
+                .await
+                .inspect_dead_letter(context, Uuid::new_v4()),
         )
-        .await;
+        .await
+        .expect_err("modules:read must not authorize dead-letter inspection");
+        assert!(matches!(
+            error,
+            IndexReconciliationDeadLetterOperatorError::Forbidden
+        ));
+    }
 
-        with_rbac_request_scope(
+    #[tokio::test]
+    async fn authorized_dead_letter_inspection_uses_context_tenant_and_delegates() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+        let error = with_rbac_request_scope(
             Some(RbacRequestScope::new(
                 tenant_id,
                 actor_id,
                 vec![Permission::MODULES_MANAGE],
                 UserRole::Admin,
             )),
-            async {
-                assert!(context.authorize_for(tenant_id).is_ok());
-                assert!(matches!(
-                    context.authorize_for(Uuid::new_v4()),
-                    Err(IndexReplayOperatorError::TenantMismatch)
-                ));
-            },
+            runtime()
+                .await
+                .inspect_dead_letter(context, Uuid::new_v4()),
         )
-        .await;
-    }
-
-    #[test]
-    fn operator_context_rejects_nil_identity() {
+        .await
+        .expect_err("authorized request should reach the table-less inspector fixture");
         assert!(matches!(
-            IndexReplayOperatorContext::new(Uuid::nil(), Uuid::new_v4()),
-            Err(IndexReplayOperatorError::InvalidContext)
-        ));
-        assert!(matches!(
-            IndexReplayOperatorContext::new(Uuid::new_v4(), Uuid::nil()),
-            Err(IndexReplayOperatorError::InvalidContext)
+            error,
+            IndexReconciliationDeadLetterOperatorError::Inspection(
+                rustok_index::IndexReconciliationDeadLetterInspectionError::Storage
+            )
         ));
     }
 }

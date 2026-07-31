@@ -27,7 +27,10 @@ This directory contains the detailed technical architecture documentation for `r
 ## Reference Documents
 
 - [Live Implementation Plan](./implementation-plan.md)
+- [Implementation Status Audit — 2026-07-31](./implementation-plan-audit-2026-07-31.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
+- [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
+- [M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)
 - [M6 Replay Job Leases](./m6-replay-job-leases.md)
 - [M6 Bounded Multi-page Replay Runner](./m6-bounded-multipage-runner.md)
 - [M6 Replay Runtime Host Composition](./m6-replay-runtime-composition.md)

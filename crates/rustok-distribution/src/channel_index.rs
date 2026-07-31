@@ -19,17 +19,59 @@ pub(crate) const SALES_CHANNEL_INDEX_SOURCE: &str = "sales-channel-postgres-prim
 const SALES_CHANNEL_INDEX_FACTORY: &str = "sales-channel-postgres-primary";
 const SALES_CHANNEL_EVENT_DOMAIN: &str = "rustok-channel.sales-channel-replay-v1";
 
-const SALES_CHANNEL_SELECT: &str = r#"
+const SALES_CHANNEL_ROWS_CTE: &str = r#"
+sales_channel_index_union AS (
+    SELECT
+        FALSE AS is_deleted,
+        c.tenant_id,
+        c.id AS channel_id,
+        c.index_revision,
+        c.slug,
+        c.name,
+        c.is_active,
+        c.is_default,
+        c.status
+    FROM channels c
+    WHERE c.tenant_id = $1
+
+    UNION ALL
+
+    SELECT
+        TRUE AS is_deleted,
+        tombstone.tenant_id,
+        tombstone.channel_id,
+        tombstone.source_version AS index_revision,
+        NULL::text AS slug,
+        NULL::text AS name,
+        NULL::boolean AS is_active,
+        NULL::boolean AS is_default,
+        NULL::text AS status
+    FROM channel_index_tombstones tombstone
+    WHERE tombstone.tenant_id = $1
+),
+sales_channel_index_rows AS (
+    SELECT
+        row.*,
+        COUNT(*) OVER (
+            PARTITION BY row.tenant_id, row.channel_id
+        ) AS identity_count
+    FROM sales_channel_index_union row
+)
+"#;
+
+const SALES_CHANNEL_ROW_SELECT: &str = r#"
 SELECT
-    c.tenant_id,
-    c.id AS channel_id,
-    c.index_revision,
-    c.slug,
-    c.name,
-    c.is_active,
-    c.is_default,
-    c.status
-FROM channels c
+    row.is_deleted,
+    row.identity_count,
+    row.tenant_id,
+    row.channel_id,
+    row.index_revision,
+    row.slug,
+    row.name,
+    row.is_active,
+    row.is_default,
+    row.status
+FROM sales_channel_index_rows row
 "#;
 
 #[derive(Debug, Error)]
@@ -163,7 +205,7 @@ impl SalesChannelPostgresIndexSource {
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "{SALES_CHANNEL_SELECT}\nWHERE c.tenant_id = $1\n  AND c.id > $2\nORDER BY c.id ASC\nLIMIT $3"
+                    "WITH {SALES_CHANNEL_ROWS_CTE}\n{SALES_CHANNEL_ROW_SELECT}\nWHERE row.channel_id > $2\nORDER BY row.channel_id ASC\nLIMIT $3"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -173,7 +215,7 @@ impl SalesChannelPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "{SALES_CHANNEL_SELECT}\nWHERE c.tenant_id = $1\nORDER BY c.id ASC\nLIMIT $2"
+                    "WITH {SALES_CHANNEL_ROWS_CTE}\n{SALES_CHANNEL_ROW_SELECT}\nORDER BY row.channel_id ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -200,7 +242,7 @@ impl SalesChannelPostgresIndexSource {
             values.push(key.entity_id.into());
         }
         let sql = format!(
-            "WITH requested(channel_id) AS (VALUES {})\n{SALES_CHANNEL_SELECT}\nJOIN requested r ON r.channel_id = c.id\nWHERE c.tenant_id = $1\nORDER BY c.id ASC",
+            "WITH requested(channel_id) AS (VALUES {}),\n{SALES_CHANNEL_ROWS_CTE}\n{SALES_CHANNEL_ROW_SELECT}\nJOIN requested requested_key ON requested_key.channel_id = row.channel_id\nORDER BY row.channel_id ASC",
             rows.join(", ")
         );
         self.db
@@ -295,6 +337,17 @@ struct SalesChannelRow {
     tenant_id: Uuid,
     channel_id: Uuid,
     source_version: u64,
+    state: SalesChannelRowState,
+}
+
+#[derive(Debug)]
+enum SalesChannelRowState {
+    Live(SalesChannelLiveFields),
+    Deleted,
+}
+
+#[derive(Debug)]
+struct SalesChannelLiveFields {
     slug: String,
     name: String,
     is_active: bool,
@@ -307,6 +360,12 @@ impl SalesChannelRow {
         row: QueryResult,
         expected_tenant: Uuid,
     ) -> Result<Self, SalesChannelIndexBridgeError> {
+        let is_deleted = row
+            .try_get::<bool>("", "is_deleted")
+            .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
+        let identity_count = row
+            .try_get::<i64>("", "identity_count")
+            .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
         let tenant_id = row
             .try_get::<Uuid>("", "tenant_id")
             .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
@@ -316,27 +375,41 @@ impl SalesChannelRow {
         let revision = row
             .try_get::<i64>("", "index_revision")
             .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
-        if tenant_id != expected_tenant
+        if identity_count != 1
+            || tenant_id != expected_tenant
             || tenant_id.is_nil()
             || channel_id.is_nil()
             || revision <= 0
         {
             return Err(SalesChannelIndexBridgeError::InvalidRow);
         }
+        let source_version =
+            u64::try_from(revision).map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
+
+        if is_deleted {
+            return Ok(Self {
+                tenant_id,
+                channel_id,
+                source_version,
+                state: SalesChannelRowState::Deleted,
+            });
+        }
+
         Ok(Self {
             tenant_id,
             channel_id,
-            source_version: u64::try_from(revision)
-                .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?,
-            slug: required_string(&row, "slug")?,
-            name: required_string(&row, "name")?,
-            is_active: row
-                .try_get::<bool>("", "is_active")
-                .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?,
-            is_default: row
-                .try_get::<bool>("", "is_default")
-                .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?,
-            status: required_string(&row, "status")?,
+            source_version,
+            state: SalesChannelRowState::Live(SalesChannelLiveFields {
+                slug: required_string(&row, "slug")?,
+                name: required_string(&row, "name")?,
+                is_active: row
+                    .try_get::<bool>("", "is_active")
+                    .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?,
+                is_default: row
+                    .try_get::<bool>("", "is_default")
+                    .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?,
+                status: required_string(&row, "status")?,
+            }),
         })
     }
 
@@ -355,27 +428,40 @@ impl SalesChannelRow {
             self.source_version,
         )
         .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
+        let key = EntityKey {
+            tenant_id: self.tenant_id,
+            schema: sales_channel_schema_ref()
+                .map_err(SalesChannelIndexBridgeError::InvalidContract)?,
+            entity_id: self.channel_id,
+            locale: None,
+        };
+
+        let SalesChannelRowState::Live(live) = self.state else {
+            return Ok(IndexMutation::Delete {
+                event_id,
+                key,
+                source_version: self.source_version,
+            });
+        };
+
         let fields = BTreeMap::from([
             (field_name("id")?, IndexValue::Uuid(self.channel_id)),
-            (field_name("slug")?, IndexValue::String(self.slug)),
-            (field_name("name")?, IndexValue::String(self.name)),
-            (field_name("is_active")?, IndexValue::Boolean(self.is_active)),
+            (field_name("slug")?, IndexValue::String(live.slug)),
+            (field_name("name")?, IndexValue::String(live.name)),
+            (
+                field_name("is_active")?,
+                IndexValue::Boolean(live.is_active),
+            ),
             (
                 field_name("is_default")?,
-                IndexValue::Boolean(self.is_default),
+                IndexValue::Boolean(live.is_default),
             ),
-            (field_name("status")?, IndexValue::String(self.status)),
+            (field_name("status")?, IndexValue::String(live.status)),
         ]);
         Ok(IndexMutation::Upsert {
             event_id,
             record: IndexRecord {
-                key: EntityKey {
-                    tenant_id: self.tenant_id,
-                    schema: sales_channel_schema_ref()
-                        .map_err(SalesChannelIndexBridgeError::InvalidContract)?,
-                    entity_id: self.channel_id,
-                    locale: None,
-                },
+                key,
                 source_version: self.source_version,
                 fields,
                 links: Vec::new(),
@@ -440,6 +526,45 @@ mod tests {
         ] {
             let cursor = IndexSourceCursor::new(value).unwrap();
             assert!(SalesChannelCursor::decode(&cursor).is_err());
+        }
+    }
+
+    #[test]
+    fn selected_sales_channel_tombstone_emits_delete_with_stable_identity() {
+        let tenant_id = Uuid::from_u128(1);
+        let channel_id = Uuid::from_u128(2);
+        let mutation = SalesChannelRow {
+            tenant_id,
+            channel_id,
+            source_version: 7,
+            state: SalesChannelRowState::Deleted,
+        }
+        .into_mutation()
+        .unwrap();
+
+        match mutation {
+            IndexMutation::Delete {
+                event_id,
+                key,
+                source_version,
+            } => {
+                assert_eq!(key.tenant_id, tenant_id);
+                assert_eq!(key.entity_id, channel_id);
+                assert_eq!(key.locale, None);
+                assert_eq!(source_version, 7);
+                assert_eq!(
+                    event_id,
+                    derive_index_source_event_id(
+                        SALES_CHANNEL_EVENT_DOMAIN,
+                        tenant_id,
+                        channel_id,
+                        None,
+                        7,
+                    )
+                    .unwrap()
+                );
+            }
+            IndexMutation::Upsert { .. } => panic!("retained delete must not become an upsert"),
         }
     }
 
