@@ -42,6 +42,7 @@ export const BLOG_FBA_SOURCE_GATES = {
     test_package_script: 'test:verify:blog:comments-event-projection',
     verifier: 'scripts/verify/verify-blog-comments-event-projection.mjs',
     self_test: 'scripts/verify/verify-blog-comments-event-projection.test.mjs',
+    unit_test: 'crates/rustok-blog/src/services/comment_projection.rs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json',
   },
   category_search_reindex: {
@@ -168,7 +169,8 @@ export function collectBlogFbaVerificationChainFailures({
     if (
       gate?.verifier !== expectedGate.verifier ||
       gate?.self_test !== expectedGate.self_test ||
-      gate?.evidence !== expectedGate.evidence
+      gate?.evidence !== expectedGate.evidence ||
+      gate?.unit_test !== expectedGate.unit_test
     ) {
       failures.push(`registry source gate ${gateName} path drift`);
     }
@@ -189,7 +191,12 @@ export function collectBlogFbaVerificationChainFailures({
       failures.push(`package source gate ${gateName} test command drift`);
     }
 
-    for (const filePath of [expectedGate.verifier, expectedGate.self_test, expectedGate.evidence]) {
+    for (const filePath of [
+      expectedGate.verifier,
+      expectedGate.self_test,
+      expectedGate.evidence,
+      expectedGate.unit_test,
+    ].filter(Boolean)) {
       if (!existsSync(filePath)) {
         failures.push(`registry source gate ${gateName} missing ${filePath}`);
       }
