@@ -167,6 +167,7 @@ fn take_presented_token(headers: &mut HeaderMap) -> Option<axum::http::HeaderVal
     headers.remove(HOST_AUTHORITY_TOKEN_HEADER)
 }
 
+#[cfg(test)]
 fn take_with_policy(
     headers: &mut HeaderMap,
     policy: &HostAuthorityPolicy,
