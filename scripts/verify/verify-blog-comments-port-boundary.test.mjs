@@ -3,6 +3,7 @@
 import './verify-blog-comments-http-port-injection.test.mjs';
 import './verify-blog-comments-graphql-port-injection.test.mjs';
 import './verify-blog-comments-storefront-native-port-injection.test.mjs';
+import './verify-blog-comments-admin-native-port-injection.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -36,6 +37,10 @@ const storefrontHarnessTest =
   'transport::native_server_adapter::tests::storefront_native_runtime_exposes_comments_port_selection';
 const storefrontHarnessCommand =
   `cargo test -p rustok-blog-storefront --features ssr ${storefrontHarnessTest} -- --exact`;
+const adminHarnessTest =
+  'transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection';
+const adminHarnessCommand =
+  `cargo test -p rustok-blog-admin --features ssr ${adminHarnessTest} -- --exact`;
 
 function write(root, relativePath, content) {
   const target = path.join(root, relativePath);
@@ -66,6 +71,8 @@ function fixture({
     'crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json';
   const storefrontEvidencePath =
     'crates/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json';
+  const adminEvidencePath =
+    'crates/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json';
   const facadePath = 'crates/rustok-blog/src/lib.rs';
   const servicePath = 'crates/rustok-blog/src/services/comment.rs';
   const httpRuntimePath = 'crates/rustok-blog/src/controllers/mod.rs';
@@ -81,6 +88,7 @@ function fixture({
   const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
   const storefrontNativePath = 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
   const storefrontUiPath = 'crates/rustok-blog/storefront/src/ui/leptos.rs';
+  const adminNativePath = 'crates/rustok-blog/admin/src/transport/native_server_adapter.rs';
   const providerRegistryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
   const consumerRegistryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 
@@ -295,6 +303,44 @@ Comments took too long to load. The article is still available.
 `,
   );
 
+  write(
+    root,
+    adminNativePath,
+    `
+use std::sync::Arc;
+struct NativeContext {
+comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>
+}
+let runtime = expect_context::<HostRuntimeContext>();
+if auth.tenant_id != tenant.id
+runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()
+fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
+context.comments_thread_port.clone()
+rustok_blog::CommentService::with_comments_thread_port(
+rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())
+}
+fn require_manage_permission(
+&[rustok_api::Permission::BLOG_POSTS_MANAGE]
+"Permission denied: blog_posts:manage required"
+#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]
+require_manage_permission(&context.auth)?;
+comment_service(&context)
+page: page.max(1)
+per_page: per_page.clamp(1, 100)
+.list_for_post_with_locale_fallback(
+.map_err(ServerFnError::new)?;
+#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]
+require_manage_permission(&context.auth)?;
+comment_service(&context)
+.moderate_comment(
+.map_err(ServerFnError::new)?;
+#[cfg(feature = "ssr")]
+fn optional_text
+fn admin_native_runtime_exposes_comments_port_selection()
+let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;
+`,
+  );
+
   const cases = operations.map((operation) => ({
     operation,
     assertions: ['typed_port_error_mapping', 'context_deadline_preserved'],
@@ -462,7 +508,7 @@ Comments took too long to load. The article is still available.
       },
       profiles: {
         source_verified: ['in_process_fallback', 'host_injected_port_selection'],
-        pending: ['admin_native_ssr_composition', 'remote_transport_implementation'],
+        pending: ['remote_transport_implementation'],
       },
       composition: {
         host_context: 'rustok_api::HostRuntimeContext',
@@ -496,7 +542,78 @@ Comments took too long to load. The article is still available.
       },
       non_claims: [
         'no remote network transport is implemented',
-        'no admin native SSR composition is implemented',
+        'no Rust or JavaScript test was run',
+        'no compile, database, browser, workflow, CI, or production result is recorded',
+      ],
+    }),
+  );
+
+  write(
+    root,
+    adminEvidencePath,
+    JSON.stringify({
+      schema_version: 1,
+      module: 'blog',
+      surface: 'comments_admin_native_port_injection',
+      role: 'consumer',
+      provider: 'comments',
+      status: 'source_verified_no_compile',
+      compile_policy: 'not_run_by_request',
+      runtime_status: 'not_run',
+      source_contract: {
+        admin_adapter: adminNativePath,
+        consumer_service: servicePath,
+        consumer_matrix: evidencePath,
+      },
+      profiles: {
+        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
+        pending: ['remote_transport_implementation'],
+      },
+      composition: {
+        host_context: 'rustok_api::HostRuntimeContext',
+        native_context: 'NativeContext',
+        shared_value: 'Arc<dyn rustok_blog::CommentsThreadPort>',
+        lookup: 'HostRuntimeContext::shared_get',
+        selector: 'comment_service',
+        injected_constructor: 'CommentService::with_comments_thread_port',
+        fallback_constructor: 'CommentService::new',
+        native_endpoints: [
+          'blog/admin/moderation-comments',
+          'blog/admin/moderate-comment',
+        ],
+        port_operations: [
+          'list_comments_for_target',
+          'get_comment',
+          'set_comment_status',
+        ],
+      },
+      authorization: {
+        tenant_binding: 'AuthContext.tenant_id == TenantContext.id',
+        permission: 'blog_posts:manage',
+        checked_before_port_call: true,
+      },
+      moderation_policy: {
+        read_pagination: 'page >= 1; 1 <= per_page <= 100',
+        error_policy: 'all_blog_errors_propagated',
+        storefront_degradation_reused: false,
+      },
+      harness: {
+        status: 'executable_no_run',
+        runtime_status: 'not_run',
+        source: adminNativePath,
+        test: adminHarnessTest,
+        command: adminHarnessCommand,
+      },
+      registration: {
+        standalone_verifier:
+          'scripts/verify/verify-blog-comments-admin-native-port-injection.mjs',
+        focused_fixture:
+          'scripts/verify/verify-blog-comments-admin-native-port-injection.test.mjs',
+        blog_fba_package_chain: 'pending',
+      },
+      non_claims: [
+        'no remote network transport is implemented',
+        'no admin moderation error is degraded to an empty success payload',
         'no Rust or JavaScript test was run',
         'no compile, database, browser, workflow, CI, or production result is recorded',
       ],
@@ -589,7 +706,7 @@ Comments took too long to load. The article is still available.
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json blog-comments-http-port-injection.json verify-blog-comments-http-port-injection.mjs verify-blog-comments-http-port-injection.test.mjs blog-comments-graphql-port-injection.json verify-blog-comments-graphql-port-injection.mjs verify-blog-comments-graphql-port-injection.test.mjs blog-comments-storefront-native-port-injection.json verify-blog-comments-storefront-native-port-injection.mjs verify-blog-comments-storefront-native-port-injection.test.mjs BlogGraphqlRuntimeData graphql::attach_schema_data schema_codegen::attach_module_graphql_data GraphQL Comments host selection is source-locked storefront native SSR Comments host selection is source-locked Blog FBA package-chain registration remains pending admin native SSR composition remains pending verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port BlogHttpRuntime::comment_service HTTP moderation remote transport remains pending remote network transport remains pending cached snapshot and comment-form fallback remain planned Slice 59 Slice 60 Slice 61 Slice 62 Slice 63 Slice 64',
+    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json blog-comments-http-port-injection.json verify-blog-comments-http-port-injection.mjs verify-blog-comments-http-port-injection.test.mjs blog-comments-graphql-port-injection.json verify-blog-comments-graphql-port-injection.mjs verify-blog-comments-graphql-port-injection.test.mjs blog-comments-storefront-native-port-injection.json verify-blog-comments-storefront-native-port-injection.mjs verify-blog-comments-storefront-native-port-injection.test.mjs blog-comments-admin-native-port-injection.json verify-blog-comments-admin-native-port-injection.mjs verify-blog-comments-admin-native-port-injection.test.mjs BlogGraphqlRuntimeData graphql::attach_schema_data schema_codegen::attach_module_graphql_data GraphQL Comments host selection is source-locked storefront native SSR Comments host selection is source-locked admin native SSR Comments host selection is source-locked Blog FBA package-chain registration remains pending verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port BlogHttpRuntime::comment_service HTTP moderation remote transport remains pending remote network transport remains pending cached snapshot and comment-form fallback remain planned Slice 59 Slice 60 Slice 61 Slice 62 Slice 63 Slice 64 Slice 65 Slice 66',
   );
 
   return root;
