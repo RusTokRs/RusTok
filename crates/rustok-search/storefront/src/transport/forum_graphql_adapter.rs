@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
 
-const FORUM_STOREFRONT_SEARCH_QUERY: &str = "query ForumStorefrontSearch($input: SearchPreviewInput!, $authorIds: [String!]) { forumStorefrontSearch(input: $input, authorIds: $authorIds) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+const FORUM_STOREFRONT_SEARCH_QUERY: &str = "query ForumStorefrontSearch($input: SearchPreviewInput!) { forumStorefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY: &str = "query ForumStorefrontSearchByAuthors($input: SearchPreviewInput!, $authorIds: [String!]!) { forumStorefrontSearch(input: $input, authorIds: $authorIds) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 
 #[derive(Debug, Deserialize)]
 struct ForumStorefrontSearchResponse {
@@ -15,8 +16,13 @@ struct ForumStorefrontSearchResponse {
 #[derive(Debug, Serialize)]
 struct SearchPreviewVariables {
     input: SearchPreviewInput,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthorSearchPreviewVariables {
+    input: SearchPreviewInput,
     #[serde(rename = "authorIds")]
-    author_ids: Option<Vec<String>>,
+    author_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,7 +65,21 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    fetch_search_with_authors(query, locale, preset_key, filters, Vec::new()).await
+    let input = search_preview_input(query, locale, preset_key, filters);
+    let response: ForumStorefrontSearchResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            FORUM_STOREFRONT_SEARCH_QUERY,
+            Some(SearchPreviewVariables { input }),
+        ),
+        None,
+        configured_tenant_slug(),
+        None,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))?;
+
+    Ok(response.forum_storefront_search)
 }
 
 pub async fn fetch_search_with_authors(
@@ -69,6 +89,29 @@ pub async fn fetch_search_with_authors(
     filters: SearchPreviewFilters,
     author_ids: Vec<String>,
 ) -> Result<SearchPreviewPayload, ApiError> {
+    let input = search_preview_input(query, locale, preset_key, filters);
+    let response: ForumStorefrontSearchResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY,
+            Some(AuthorSearchPreviewVariables { input, author_ids }),
+        ),
+        None,
+        configured_tenant_slug(),
+        None,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))?;
+
+    Ok(response.forum_storefront_search)
+}
+
+fn search_preview_input(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+) -> SearchPreviewInput {
     let SearchPreviewFilters {
         channel_id,
         entity_types,
@@ -79,38 +122,23 @@ pub async fn fetch_search_with_authors(
         sort_attribute_code,
         sort_desc,
     } = filters;
-    let response: ForumStorefrontSearchResponse = execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(
-            FORUM_STOREFRONT_SEARCH_QUERY,
-            Some(SearchPreviewVariables {
-                input: SearchPreviewInput {
-                    query,
-                    locale,
-                    channel_id,
-                    limit: Some(12),
-                    offset: Some(0),
-                    preset_key,
-                    entity_types: (!entity_types.is_empty()).then_some(entity_types),
-                    source_modules,
-                    statuses: (!statuses.is_empty()).then_some(statuses),
-                    category_ids,
-                    attribute_filters: (!attribute_filters.is_empty())
-                        .then_some(search_attribute_filter_inputs(attribute_filters)),
-                    sort_attribute_code,
-                    sort_desc: sort_desc.then_some(true),
-                },
-                author_ids: (!author_ids.is_empty()).then_some(author_ids),
-            }),
-        ),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))?;
 
-    Ok(response.forum_storefront_search)
+    SearchPreviewInput {
+        query,
+        locale,
+        channel_id,
+        limit: Some(12),
+        offset: Some(0),
+        preset_key,
+        entity_types: (!entity_types.is_empty()).then_some(entity_types),
+        source_modules,
+        statuses: (!statuses.is_empty()).then_some(statuses),
+        category_ids,
+        attribute_filters: (!attribute_filters.is_empty())
+            .then_some(search_attribute_filter_inputs(attribute_filters)),
+        sort_attribute_code,
+        sort_desc: sort_desc.then_some(true),
+    }
 }
 
 fn search_attribute_filter_inputs(
