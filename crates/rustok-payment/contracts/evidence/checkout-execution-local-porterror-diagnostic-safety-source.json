@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_execution_local_porterror_diagnostic_safety_source_reviewed_unvalidated",
+  "owner": "rustok-payment",
+  "boundary": "checkout_payment_execution_port",
+  "scope": "final local PortError mapper across prepare, authorize, capture, and read operations",
+  "source_contract": {
+    "operation_count": 4,
+    "diagnostic_helper_added": true,
+    "complete_port_error_logged": false,
+    "port_error_message_text_logged": false,
+    "stable_error_code_logged": true,
+    "static_error_kind_logged": true,
+    "retryability_logged": true,
+    "message_shape_only": true,
+    "context_shape_preserved": true,
+    "identity_shape_preserved": true,
+    "original_port_error_returned": true,
+    "public_port_error_contract_changed": false,
+    "payment_lifecycle_changed": false,
+    "provider_execution_changed": false,
+    "admission_diagnostics_changed": false,
+    "owner_payment_error_diagnostics_changed": false,
+    "provider_checkpoint_diagnostics_changed": false,
+    "remaining_payment_execution_diagnostics_open": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "notes": [
+    "The final local mapper still classifies technical failures for error severity and other outcomes for warning severity.",
+    "The stable PortError code and retryability remain available to diagnostics.",
+    "The complete PortError and its message text are replaced by a static error-kind label plus message presence and character length.",
+    "All four port methods still return the exact mapper result, and the mapper still returns the original PortError unchanged.",
+    "Admission, owner PaymentError, serde/UUID, local persistence, and provider checkpoint diagnostics remain outside this source slice and are still open.",
+    "No FFA or FBA status is promoted from source inspection."
+  ]
+}
