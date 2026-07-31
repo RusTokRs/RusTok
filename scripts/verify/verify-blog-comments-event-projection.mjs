@@ -372,7 +372,7 @@ for (const marker of [
   'comment_projection_postgres_test',
   'comment_projection_restart_postgres_test',
   'RUSTOK_BLOG_TEST_DATABASE_URL',
-  'runtime delivery and recovery',
+  'process-level restart recovery',
 ]) {
   requireMarker(plan, marker, planPath);
 }
