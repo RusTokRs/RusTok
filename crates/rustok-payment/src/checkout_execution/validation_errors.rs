@@ -140,9 +140,9 @@ fn log_checkout_payment_execution_admission_rejection(
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
     );
     let context_facts = checkout_payment_execution_context_facts(context);
+    let error_facts = checkout_payment_execution_port_error_facts(error);
     if technical_failure {
         tracing::error!(
-            error = ?error,
             owner = "rustok_payment",
             operation = owner_operation,
             admission,
@@ -163,15 +163,15 @@ fn log_checkout_payment_execution_admission_rejection(
             idempotency_key_length = ?context_facts.idempotency_key_length,
             deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment checkout execution admission failed with safe context"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = "rustok_payment",
             operation = owner_operation,
             admission,
@@ -192,8 +192,9 @@ fn log_checkout_payment_execution_admission_rejection(
             idempotency_key_length = ?context_facts.idempotency_key_length,
             deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_EXECUTION_BOUNDARY,
             "payment checkout execution admission was rejected with safe context"
