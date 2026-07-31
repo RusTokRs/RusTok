@@ -2,6 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   BLOG_FBA_CONSUMER_RUNTIME_SELF_TEST,
   BLOG_FBA_SELF_TEST,
@@ -10,6 +11,11 @@ import {
   BLOG_FBA_VERIFICATION_STEPS,
   collectBlogFbaVerificationChainFailures,
 } from './blog-fba-verification-chain.mjs';
+
+const commentsPortVerifier = 'scripts/verify/verify-blog-comments-port-boundary.mjs';
+const commentsPortSelfTest = 'scripts/verify/verify-blog-comments-port-boundary.test.mjs';
+const httpVerifierImport = "import './verify-blog-comments-http-port-injection.mjs';";
+const httpSelfTestImport = "import './verify-blog-comments-http-port-injection.test.mjs';";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -71,6 +77,16 @@ function failures({
 
 test('Blog FBA verification-chain policy accepts canonical verify and test chains', () => {
   assert.deepEqual(failures(), []);
+});
+
+test('Blog FBA policy retains HTTP composition verifier inside the registered Comments port gate', () => {
+  const source = readFileSync(commentsPortVerifier, 'utf8');
+  assert.ok(source.includes(httpVerifierImport));
+});
+
+test('Blog FBA policy retains HTTP composition focused fixture inside the registered Comments port self-test', () => {
+  const source = readFileSync(commentsPortSelfTest, 'utf8');
+  assert.ok(source.includes(httpSelfTestImport));
 });
 
 test('Blog FBA verification-chain policy rejects removal of the storefront verify step', () => {
