@@ -81,7 +81,7 @@ pub struct CommentsTcpListenerConfig {
 }
 
 impl CommentsTcpListenerConfig {
-    pub fn from_environment() -> Result<Option<Self>, String> {
+    pub fn from_environment() -> std::result::Result<Option<Self>, String> {
         let enabled = match read_optional_environment(COMMENTS_TCP_LISTENER_ENABLED_ENV)? {
             Some(value) => parse_bool_value(COMMENTS_TCP_LISTENER_ENABLED_ENV, &value)?,
             None => false,
