@@ -1,12 +1,15 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-07-31",
   "status": "order_storefront_runtime_error_diagnostics_source_unvalidated",
   "scope": "order storefront native checkout runtime error mapper",
   "source_contract": {
     "runtime_cause_logged_server_side": true,
     "owner_operation_logged": true,
     "correlation_logged": true,
+    "correlation_generated_server_side": true,
+    "request_context_correlation_required": false,
+    "idempotency_key_logged": false,
     "tenant_logged": true,
     "channel_logged": true,
     "locale_logged": true,
