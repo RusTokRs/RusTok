@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/forum-search-locale-date-filter-23b2f3
+  pull_request:
+    branches:
+      - agent/forum-search-locale-date-filter-23b2f3
 
 permissions:
   contents: write
