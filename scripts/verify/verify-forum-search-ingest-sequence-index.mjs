@@ -137,6 +137,7 @@ requireAll(
   [
     "# FORUM-23B2G1A Forum Search ingest-sequence lookup index",
     "left byte-for-byte unchanged",
+    "focused machine contract and owner note",
     "idx_search_projection_inbox_due_ingest_sequence",
     "EXPLAIN (ANALYZE, BUFFERS)",
     "did not run these commands",
@@ -146,20 +147,20 @@ requireAll(
 requireAll(
   forumPlan,
   [
-    "FORUM-23B2G1A",
-    "partial ingest-sequence lookup index",
-    "verify-forum-search-ingest-sequence-index.mjs",
+    "FORUM-23B2G1",
+    "durable PostgreSQL ingest sequence",
+    "owner-issued revision reconciliation",
   ],
-  paths.forumPlan,
+  `${paths.forumPlan} predecessor milestone`,
 );
 requireAll(
   searchPlan,
   [
-    "FORUM-23B2G1A",
+    "FORUM-23B2G1",
     "source_complete_execution_pending",
-    "ingest-sequence lookup index",
+    "Durable Forum inbox ingest ordering",
   ],
-  paths.searchPlan,
+  `${paths.searchPlan} predecessor milestone`,
 );
 
 if (contract) {
@@ -184,6 +185,15 @@ if (contract) {
   }
   if (contract.compatibility?.claim_order_changed !== false) {
     failures.push(`${paths.contract}: claim order compatibility drift`);
+  }
+  if (contract.canonical_plan?.predecessor_milestone !== "FORUM-23B2G1") {
+    failures.push(`${paths.contract}: predecessor plan milestone drift`);
+  }
+  if (contract.canonical_plan?.milestone_status_changed !== false) {
+    failures.push(`${paths.contract}: hardening must not invent a new plan status`);
+  }
+  if (contract.canonical_plan?.remaining_scope_changed !== false) {
+    failures.push(`${paths.contract}: hardening must preserve remaining plan scope`);
   }
 }
 
