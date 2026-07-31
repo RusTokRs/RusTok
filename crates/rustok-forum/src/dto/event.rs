@@ -25,3 +25,17 @@ pub struct ForumDomainEventResponse {
     pub payload: Value,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForumProjectionOwnerRevisionImpact {
+    FullRebuild,
+    NoProjectionChange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForumProjectionOwnerRevisionResponse {
+    pub owner_revision: i64,
+    pub event_id: Uuid,
+    pub event_type: String,
+    pub impact: ForumProjectionOwnerRevisionImpact,
+}
