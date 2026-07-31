@@ -82,8 +82,12 @@ fn command(
     }
 }
 
+async fn outbox_rows(db: &DatabaseConnection) -> Vec<rustok_outbox::SysEvent> {
+    SysEvents::find().all(db).await.expect("load outbox")
+}
+
 #[tokio::test]
-async fn grant_retry_and_revoke_publish_exactly_once_per_applied_operation() {
+async fn only_state_changes_publish_artifact_permission_events() {
     let db = setup_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
@@ -106,42 +110,85 @@ async fn grant_retry_and_revoke_publish_exactly_once_per_applied_operation() {
 
     assert!(service.assign(grant.clone()).await.expect("grant").applied);
     assert!(!service.assign(grant).await.expect("exact retry").applied);
+    assert!(
+        service
+            .assign(command(
+                tenant_id,
+                role_id,
+                installation_id,
+                actor_id,
+                permission_key,
+                true,
+                "grant-confirmation",
+            ))
+            .await
+            .expect("grant state confirmation")
+            .applied
+    );
 
-    let after_retry = SysEvents::find().all(&db).await.expect("load outbox");
-    assert_eq!(after_retry.len(), 1, "exact retry must not emit twice");
+    let after_grant_noops = outbox_rows(&db).await;
     assert_eq!(
-        after_retry[0].event_type,
+        after_grant_noops.len(),
+        1,
+        "exact retry and state confirmation must not emit false changes"
+    );
+    assert_eq!(
+        after_grant_noops[0].event_type,
         "rbac.artifact_role_permission.assignment_changed"
     );
-    assert_eq!(after_retry[0].schema_version, 1);
+    assert_eq!(after_grant_noops[0].schema_version, 1);
     assert_eq!(
-        after_retry[0].payload["tenant_id"],
+        after_grant_noops[0].payload["tenant_id"],
         serde_json::json!(tenant_id)
     );
     assert_eq!(
-        after_retry[0].payload["actor_id"],
+        after_grant_noops[0].payload["actor_id"],
         serde_json::json!(actor_id)
     );
     assert_eq!(
-        after_retry[0].payload["event"]["event"]["data"]["granted"],
+        after_grant_noops[0].payload["event"]["event"]["data"]["granted"],
         serde_json::json!(true)
     );
 
-    let revoke = command(
-        tenant_id,
-        role_id,
-        installation_id,
-        actor_id,
-        permission_key,
-        false,
-        "revoke-1",
+    assert!(
+        service
+            .assign(command(
+                tenant_id,
+                role_id,
+                installation_id,
+                actor_id,
+                permission_key,
+                false,
+                "revoke-1",
+            ))
+            .await
+            .expect("revoke")
+            .applied
     );
-    assert!(service.assign(revoke).await.expect("revoke").applied);
+    assert!(
+        service
+            .assign(command(
+                tenant_id,
+                role_id,
+                installation_id,
+                actor_id,
+                permission_key,
+                false,
+                "revoke-confirmation",
+            ))
+            .await
+            .expect("revoke state confirmation")
+            .applied
+    );
 
-    let after_revoke = SysEvents::find().all(&db).await.expect("load outbox");
-    assert_eq!(after_revoke.len(), 2);
+    let after_revoke_noop = outbox_rows(&db).await;
     assert_eq!(
-        after_revoke[1].payload["event"]["event"]["data"]["granted"],
+        after_revoke_noop.len(),
+        2,
+        "missing-grant confirmation must not emit a false revoke change"
+    );
+    assert_eq!(
+        after_revoke_noop[1].payload["event"]["event"]["data"]["granted"],
         serde_json::json!(false)
     );
 }
