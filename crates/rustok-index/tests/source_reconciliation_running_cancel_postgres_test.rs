@@ -6,8 +6,6 @@ mod connection;
 mod control;
 #[path = "reconciliation_running_cancel/database.rs"]
 mod database;
-#[path = "reconciliation_running_cancel/fixture.rs"]
-mod fixture;
 #[path = "reconciliation_running_cancel/job.rs"]
 mod job;
 #[path = "reconciliation_running_cancel/prepare.rs"]
