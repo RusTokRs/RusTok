@@ -29,6 +29,15 @@
     "legacy_reply_without_parent_channels_fails_closed": true,
     "reindex_required_for_legacy_reply_matches": true
   },
+  "projection_refresh": {
+    "public_topic_update_path": "TopicService::update -> update_with_inline_relations",
+    "topic_update_invalidation_is_transactional": true,
+    "topic_reindex_event_target": "forum_topic",
+    "topic_reindex_inbox_scope": "Full",
+    "topic_refresh_operation": "rebuild_tenant",
+    "parent_derived_reply_channels_refresh_with_topic": true,
+    "legacy_update_with_relations_used_by_public_owner": false
+  },
   "evaluation": {
     "explicit_forum_only_category_scope_required": true,
     "raw_candidate_scan_limit": 100,
@@ -85,13 +94,14 @@
     "add owner-safe arbitrary channel or group filtering only after an exact authorized owner contract exists",
     "add kind and attachment-presence filters after their owner models exist",
     "complete owner-issued monotonic projection revisions, durable inbox ordering and reconciliation",
-    "capture maintainer-executed PostgreSQL, reindex and LINK-FORUM-03 runtime evidence"
+    "capture maintainer-executed PostgreSQL, topic-update reindex and LINK-FORUM-03 runtime evidence"
   ],
   "non_claims": [
     "Tests, verifiers, Cargo checks, formatting, Clippy and runtime evidence were not executed by the implementation agent",
     "This slice does not expose a storefront UI control",
     "This slice does not let callers select another channel",
     "This slice does not claim legacy reply documents match before reindex",
+    "This slice does not claim the topic-update reindex chain has been executed",
     "This slice does not complete the full channel/group filter roadmap"
   ]
 }
