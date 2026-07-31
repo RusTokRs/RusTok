@@ -25,6 +25,11 @@ function requireMarker(text, marker, description) {
   if (!found) failures.push(description);
 }
 
+function forbidMarker(text, marker, description) {
+  const found = typeof marker === "string" ? text.includes(marker) : marker.test(text);
+  if (found) failures.push(description);
+}
+
 const paths = {
   modules: "modules.toml",
   modulesExample: "modules.toml.example",
@@ -33,6 +38,7 @@ const paths = {
   event: "crates/rustok-events/src/rbac_artifact_permission.rs",
   eventLib: "crates/rustok-events/src/lib.rs",
   contract: "crates/rustok-events/src/contract.rs",
+  rbacLib: "crates/rustok-rbac/src/lib.rs",
   owner: "crates/rustok-rbac/src/artifact_permission_assignment.rs",
   host: "apps/server/src/controllers/artifact_permissions.rs",
   integrationTest: "crates/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs",
@@ -59,10 +65,10 @@ requireMarker(
   'outbox = { version_req = ">=0.1.0" }',
   `${paths.moduleManifest}: Outbox module dependency missing`,
 );
-requireMarker(
+forbidMarker(
   content.cargo,
   "rustok-outbox.workspace = true",
-  `${paths.cargo}: rustok-outbox crate dependency missing`,
+  `${paths.cargo}: RBAC owner must depend on its publisher port, not the concrete Outbox crate`,
 );
 
 for (const marker of [
@@ -93,14 +99,20 @@ for (const marker of [
 ]) {
   requireMarker(content.contract, marker, `${paths.contract}: sealed payload missing ${marker}`);
 }
+requireMarker(
+  content.rbacLib,
+  "ArtifactPermissionEventPublisher",
+  `${paths.rbacLib}: owner publisher port must be exported`,
+);
 
 for (const marker of [
-  "event_bus: TransactionalEventBus",
-  "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus)",
+  "pub trait ArtifactPermissionEventPublisher",
+  "transaction: &DatabaseTransaction",
+  "event_publisher: Arc<dyn ArtifactPermissionEventPublisher>",
   "let operation_id = match insert_operation",
   "let changed = if command.granted",
   "if changed",
-  ".publish_contract_in_tx(",
+  ".publish_assignment_changed(",
   "assignment_event(operation_id, &command)",
   "transaction.rollback().await.map_err(database_error)?",
   "transaction.commit().await.map_err(database_error)?",
@@ -109,8 +121,13 @@ for (const marker of [
 ]) {
   requireMarker(content.owner, marker, `${paths.owner}: transactional owner path missing ${marker}`);
 }
+forbidMarker(
+  content.owner,
+  "rustok_outbox",
+  `${paths.owner}: owner must not import concrete Outbox types`,
+);
 const changedIndex = content.owner.indexOf("if changed");
-const publishIndex = content.owner.indexOf(".publish_contract_in_tx(");
+const publishIndex = content.owner.indexOf(".publish_assignment_changed(");
 const rollbackIndex = content.owner.indexOf(
   "transaction.rollback().await.map_err(database_error)?",
   publishIndex,
@@ -125,7 +142,7 @@ if (
   )
 ) {
   failures.push(
-    `${paths.owner}: expected state change -> event publication -> failure rollback -> commit order`,
+    `${paths.owner}: expected state change -> publisher port -> failure rollback -> commit order`,
   );
 }
 const existingIndex = content.owner.indexOf("if let Some(existing) = find_operation");
@@ -134,31 +151,40 @@ if (!(existingIndex >= 0 && existingIndex < publishIndex)) {
 }
 
 for (const marker of [
+  "TransactionalOutboxArtifactPermissionEventPublisher",
+  "impl ArtifactPermissionEventPublisher",
+  ".publish_contract_in_tx(",
   "transactional_event_bus_from_context",
-  "RbacArtifactPermissionAssignmentService::new(",
-  "ctx.db_clone(),",
+  "Arc::new(TransactionalOutboxArtifactPermissionEventPublisher::new(",
+  "RbacArtifactPermissionAssignmentService::new(ctx.db_clone(), event_publisher)",
+  "transactional_outbox_adapter_writes_typed_event",
+  '"rbac.artifact_role_permission.assignment_changed"',
 ]) {
-  requireMarker(content.host, marker, `${paths.host}: host composition missing ${marker}`);
+  requireMarker(content.host, marker, `${paths.host}: host Outbox adapter missing ${marker}`);
 }
 
 for (const marker of [
+  "impl ArtifactPermissionEventPublisher for SqliteArtifactPermissionEventPublisher",
   "only_state_changes_publish_artifact_permission_events",
-  "exact retry and state confirmation must not emit false changes",
-  "missing-grant confirmation must not emit a false revoke change",
+  "assert_eq!(event_grants(&db).await, vec![true])",
+  "assert_eq!(event_grants(&db).await, vec![true, false])",
   "publication_failure_rolls_back_grant_and_idempotency_receipt",
-  "non-Outbox transport must fail closed",
+  "publisher failure must fail closed",
   'table_count(&db, "rbac_artifact_role_permissions")',
   'table_count(&db, "rbac_artifact_role_permission_operations")',
-  '"rbac.artifact_role_permission.assignment_changed"',
-  'serde_json::json!(true)',
-  'serde_json::json!(false)',
+  'table_count(&db, "rbac_artifact_permission_events")',
 ]) {
   requireMarker(
     content.integrationTest,
     marker,
-    `${paths.integrationTest}: executable regression missing ${marker}`,
+    `${paths.integrationTest}: executable owner regression missing ${marker}`,
   );
 }
+forbidMarker(
+  content.integrationTest,
+  "rustok_outbox",
+  `${paths.integrationTest}: owner regression must remain transport-neutral`,
+);
 
 if (failures.length > 0) {
   console.error("RBAC artifact permission outbox verification failed:");
