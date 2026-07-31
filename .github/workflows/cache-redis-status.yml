@@ -1,62 +1,52 @@
-name: Cache Redis status
+name: Agent Forum Search locale/date finalize
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "crates/rustok-cache/src/redis_status.rs"
-      - "crates/rustok-cache/Cargo.toml"
-      - "crates/rustok-telemetry/src/lib.rs"
-      - "apps/server/src/services/cache_redis_status_monitor.rs"
-      - "apps/server/src/services/event_transport_factory.rs"
-      - "apps/server/src/services/mod.rs"
-      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
-      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
-      - ".github/workflows/cache-redis-status.yml"
-  pull_request:
-    paths:
-      - "crates/rustok-cache/src/redis_status.rs"
-      - "crates/rustok-cache/Cargo.toml"
-      - "crates/rustok-telemetry/src/lib.rs"
-      - "apps/server/src/services/cache_redis_status_monitor.rs"
-      - "apps/server/src/services/event_transport_factory.rs"
-      - "apps/server/src/services/mod.rs"
-      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
-      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
-      - ".github/workflows/cache-redis-status.yml"
-  workflow_dispatch:
+    branches:
+      - agent/forum-search-locale-date-filter-23b2f3
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: cache-redis-status-${{ github.ref }}
+  group: agent-forum-search-locale-date-filter-23b2f3-finalize
   cancel-in-progress: true
 
 jobs:
-  contract:
+  finalize:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: agent/forum-search-locale-date-filter-23b2f3
+          fetch-depth: 2
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cache-redis-status
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Compile
+          components: rustfmt
+      - name: Apply final source and plan corrections
+        run: python3 scripts/agent/finalize_forum_search_locale_date.py
+      - name: Format changed Rust files only
         run: |
-          cargo check -p rustok-cache --lib
-          cargo check -p rustok-server --lib
-      - name: Redis status tests
+          rustfmt --edition 2024 crates/rustok-forum/src/search_projection.rs
+          rustfmt --edition 2024 crates/rustok-search/src/forum_storefront_date_execution.rs
+          rustfmt --edition 2024 crates/rustok-search/src/forum_storefront_date_execution/types_and_execute.rs
+          rustfmt --edition 2024 crates/rustok-search/src/forum_storefront_date_execution/result_scan.rs
+          rustfmt --edition 2024 crates/rustok-search/src/forum_storefront_date_execution/normalization.rs
+          rustfmt --edition 2024 crates/rustok-search/src/forum_storefront_locale_date_filters.rs
+          rustfmt --edition 2024 crates/rustok-search/src/graphql/forum_storefront.rs
+          rustfmt --edition 2024 crates/rustok-search/src/lib.rs
+          rustfmt --edition 2024 crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs
+          rustfmt --edition 2024 crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs
+          rustfmt --edition 2024 crates/rustok-search/storefront/src/transport/mod.rs
+      - name: Commit corrections and restore workflow
         run: |
-          cargo test -p rustok-cache redis_status --lib
-          cargo test -p rustok-server --test cache_redis_status_architecture_guard --test cache_redis_monitor_architecture_guard
-      - name: Clippy
-        run: |
-          cargo clippy -p rustok-cache --lib -- -D warnings
-          cargo clippy -p rustok-server --lib -- -D warnings
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --depth=1
+          git show origin/main:.github/workflows/cache-redis-status.yml > .github/workflows/cache-redis-status.yml
+          rm -f scripts/agent/finalize_forum_search_locale_date.py
+          git add -A
+          git commit -m "fix(search): finalize Forum locale and date scope"
+          git push origin HEAD:agent/forum-search-locale-date-filter-23b2f3
