@@ -3,129 +3,13 @@ pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, InviteClaims, JwtAlgorithm,
 };
 
-use std::{collections::HashMap, sync::Arc};
-
 use crate::error::{Error, Result};
-use rustok_api::{HostAuthority, HostAuthorityContext};
-use rustok_core::SecurityActorKind;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
-use uuid::Uuid;
 
 const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
 const PASSWORD_RESET_FINGERPRINT_DOMAIN: &[u8] = b"rustok-password-reset-credential-v1";
-const CLIENT_CREDENTIALS_GRANT_TYPE: &str = "client_credentials";
-pub const HOST_AUTHORITY_CLIENTS_ENV: &str = "RUSTOK_HOST_AUTHORITY_CLIENTS";
-
-/// Host-owned exact OAuth client allowlist for process-wide operational authority.
-///
-/// The value is never derived from tenant roles, OAuth scopes, app metadata, a
-/// default tenant, or magic identifiers. The host parses it from
-/// `RUSTOK_HOST_AUTHORITY_CLIENTS`, whose format is a comma-separated list of
-/// `<client-uuid>=read|manage` entries. An empty or absent variable means no host
-/// authority is issued.
-#[derive(Clone, Debug, Default)]
-pub struct HostAuthorityPolicy {
-    clients: Arc<HashMap<Uuid, HostAuthority>>,
-}
-
-impl HostAuthorityPolicy {
-    pub fn from_env() -> Result<Self> {
-        match std::env::var(HOST_AUTHORITY_CLIENTS_ENV) {
-            Ok(value) => Self::parse(&value),
-            Err(std::env::VarError::NotPresent) => Ok(Self::default()),
-            Err(std::env::VarError::NotUnicode(_)) => Err(Error::BadRequest(format!(
-                "{HOST_AUTHORITY_CLIENTS_ENV} must contain valid UTF-8"
-            ))),
-        }
-    }
-
-    pub fn parse(value: &str) -> Result<Self> {
-        if value.trim().is_empty() {
-            return Ok(Self::default());
-        }
-
-        let mut clients = HashMap::new();
-        for raw_entry in value.split(',') {
-            let entry = raw_entry.trim();
-            let (client_id, authority) = entry.split_once('=').ok_or_else(|| {
-                Error::BadRequest(format!(
-                    "{HOST_AUTHORITY_CLIENTS_ENV} entry `{entry}` must use `<client-uuid>=read|manage`"
-                ))
-            })?;
-            let client_id = Uuid::parse_str(client_id.trim()).map_err(|_| {
-                Error::BadRequest(format!(
-                    "{HOST_AUTHORITY_CLIENTS_ENV} entry `{entry}` contains an invalid client UUID"
-                ))
-            })?;
-            if client_id.is_nil() {
-                return Err(Error::BadRequest(format!(
-                    "{HOST_AUTHORITY_CLIENTS_ENV} must not contain the nil client UUID"
-                )));
-            }
-            let authority = match authority.trim().to_ascii_lowercase().as_str() {
-                "read" => HostAuthority::Read,
-                "manage" => HostAuthority::Manage,
-                _ => {
-                    return Err(Error::BadRequest(format!(
-                        "{HOST_AUTHORITY_CLIENTS_ENV} entry `{entry}` must use authority `read` or `manage`"
-                    )));
-                }
-            };
-            if clients.insert(client_id, authority).is_some() {
-                return Err(Error::BadRequest(format!(
-                    "{HOST_AUTHORITY_CLIENTS_ENV} contains duplicate client UUID `{client_id}`"
-                )));
-            }
-        }
-
-        Ok(Self {
-            clients: Arc::new(clients),
-        })
-    }
-
-    pub fn authority_for_client(&self, client_id: Uuid) -> Option<HostAuthority> {
-        self.clients.get(&client_id).copied()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.clients.is_empty()
-    }
-}
-
-/// Resolve host authority from trusted host configuration after the ordinary
-/// authentication path has revalidated the user/session or active OAuth app.
-///
-/// Only a service actor authenticated through `client_credentials` can receive
-/// the context. Human users, authorization-code tokens and refresh-derived user
-/// tokens remain tenant-only even when their OAuth client id is also present in
-/// the host allowlist.
-pub fn host_authority_context_for_authenticated_actor(
-    actor_kind: SecurityActorKind,
-    actor_id: Uuid,
-    client_id: Option<Uuid>,
-    grant_type: &str,
-) -> Result<Option<HostAuthorityContext>> {
-    if actor_kind != SecurityActorKind::Service {
-        return Ok(None);
-    }
-    if grant_type != CLIENT_CREDENTIALS_GRANT_TYPE {
-        return Err(Error::Unauthorized(
-            "Service credentials must use client_credentials".to_string(),
-        ));
-    }
-    let client_id = client_id.ok_or_else(|| {
-        Error::Unauthorized("Service credentials are missing client_id".to_string())
-    })?;
-    let policy = HostAuthorityPolicy::from_env()?;
-    let Some(authority) = policy.authority_for_client(client_id) else {
-        return Ok(None);
-    };
-    HostAuthorityContext::for_actor(authority, actor_id)
-        .map(Some)
-        .ok_or_else(|| Error::Unauthorized("Host operator actor is invalid".to_string()))
-}
 
 /// Server-owned password reset claims.
 ///
@@ -366,75 +250,6 @@ mod tests {
 
     fn secret() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
-    }
-
-    #[test]
-    fn host_authority_policy_defaults_to_no_operator_clients() {
-        let policy = HostAuthorityPolicy::parse("  ").expect("empty policy");
-
-        assert!(policy.is_empty());
-        assert_eq!(policy.authority_for_client(Uuid::new_v4()), None);
-    }
-
-    #[test]
-    fn host_authority_policy_maps_exact_clients() {
-        let read_client = Uuid::new_v4();
-        let manage_client = Uuid::new_v4();
-        let policy = HostAuthorityPolicy::parse(&format!(
-            "{read_client}=read, {manage_client}=MANAGE"
-        ))
-        .expect("valid host policy");
-
-        assert_eq!(
-            policy.authority_for_client(read_client),
-            Some(HostAuthority::Read)
-        );
-        assert_eq!(
-            policy.authority_for_client(manage_client),
-            Some(HostAuthority::Manage)
-        );
-        assert_eq!(policy.authority_for_client(Uuid::new_v4()), None);
-    }
-
-    #[test]
-    fn host_authority_policy_rejects_ambiguous_or_magic_clients() {
-        let client_id = Uuid::new_v4();
-        assert!(
-            HostAuthorityPolicy::parse(&format!("{client_id}=read,{client_id}=manage")).is_err()
-        );
-        assert!(HostAuthorityPolicy::parse(&format!("{}=manage", Uuid::nil())).is_err());
-        assert!(HostAuthorityPolicy::parse(&format!("{client_id}=owner")).is_err());
-        assert!(HostAuthorityPolicy::parse("not-a-uuid=read").is_err());
-    }
-
-    #[test]
-    fn human_and_authorization_code_actors_never_receive_host_authority() {
-        let actor_id = Uuid::new_v4();
-        let client_id = Uuid::new_v4();
-
-        assert!(
-            host_authority_context_for_authenticated_actor(
-                SecurityActorKind::User,
-                actor_id,
-                Some(client_id),
-                "authorization_code",
-            )
-            .expect("human actor stays tenant-only")
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn malformed_service_grants_fail_closed_before_policy_lookup() {
-        let error = host_authority_context_for_authenticated_actor(
-            SecurityActorKind::Service,
-            Uuid::new_v4(),
-            Some(Uuid::new_v4()),
-            "refresh_token",
-        )
-        .expect_err("service refresh must fail closed");
-
-        assert!(matches!(error, Error::Unauthorized(_)));
     }
 
     #[test]
