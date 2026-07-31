@@ -57,7 +57,9 @@ impl HostAuthorityContext {
     pub const fn allows(self, required: HostAuthority) -> bool {
         matches!(
             (self.authority, required),
-            (HostAuthority::Manage, _) | (HostAuthority::Read, HostAuthority::Read)
+            (HostAuthority::Read, HostAuthority::Read)
+                | (HostAuthority::Manage, HostAuthority::Read)
+                | (HostAuthority::Manage, HostAuthority::Manage)
         )
     }
 }
