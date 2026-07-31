@@ -13,6 +13,16 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1))
 
 
+def replace_exact(path: Path, old: str, new: str, expected: int) -> None:
+    text = path.read_text()
+    count = text.count(old)
+    if count != expected:
+        raise SystemExit(
+            f"{path}: expected {expected} replacements, found {count}\n{old[:160]}"
+        )
+    path.write_text(text.replace(old, new))
+
+
 replace_once(
     FORUM_PLAN,
     "| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution; FORUM-23B2D applies exact topic-local and approved-reply result eligibility before visible Search totals, facets and pagination; FORUM-23B2E1 binds storefront channel selection to trusted `RequestContext`; FORUM-23B2E2 projects canonical Product channel allowlists and applies one fail-closed storefront predicate to Product-bearing Search paths. Remaining filters, owner revision ordering/reconciliation and maintainer runtime evidence remain. |",
@@ -126,15 +136,11 @@ replace_once(
     "20. Added the exact bounded Forum author filter on public projected author identity,\n    optional GraphQL plus additive native transport parity, pre-eligibility narrowing,",
 )
 
-replace_once(
+replace_exact(
     VERIFIER,
     '    "exact Forum author filter",',
     '    "exact bounded Forum author filter",',
-)
-replace_once(
-    VERIFIER,
-    '    "exact Forum author filter",',
-    '    "exact bounded Forum author filter",',
+    2,
 )
 replace_once(
     VERIFIER,
