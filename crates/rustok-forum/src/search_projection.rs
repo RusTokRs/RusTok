@@ -14,6 +14,7 @@ use sea_orm::{
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::ForumPublicDiscoveryService;
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply_body, forum_topic_translation,
 };
@@ -22,7 +23,6 @@ use crate::search_projection_author::{
     public_author_payload,
 };
 use crate::state_machine::ReplyStatus;
-use crate::ForumPublicDiscoveryService;
 
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
@@ -75,19 +75,13 @@ impl ForumSearchProjectionSource {
                 .order_by_asc(forum_category_translation::Column::CategoryId)
                 .order_by_asc(forum_category_translation::Column::Locale)
                 .limit(limit as u64);
-            if let Some(ProjectionCursor::Category {
-                entity_id,
-                locale,
-            }) = cursor.as_ref()
-            {
+            if let Some(ProjectionCursor::Category { entity_id, locale }) = cursor.as_ref() {
                 query = query.filter(
                     Condition::any()
                         .add(forum_category_translation::Column::CategoryId.gt(*entity_id))
                         .add(
                             Condition::all()
-                                .add(
-                                    forum_category_translation::Column::CategoryId.eq(*entity_id),
-                                )
+                                .add(forum_category_translation::Column::CategoryId.eq(*entity_id))
                                 .add(forum_category_translation::Column::Locale.gt(locale.clone())),
                         ),
                 );
@@ -112,11 +106,7 @@ impl ForumSearchProjectionSource {
                 .order_by_asc(forum_topic_translation::Column::TopicId)
                 .order_by_asc(forum_topic_translation::Column::Locale)
                 .limit(remaining as u64);
-            if let Some(ProjectionCursor::Topic {
-                entity_id,
-                locale,
-            }) = cursor.as_ref()
-            {
+            if let Some(ProjectionCursor::Topic { entity_id, locale }) = cursor.as_ref() {
                 query = query.filter(
                     Condition::any()
                         .add(forum_topic_translation::Column::TopicId.gt(*entity_id))
@@ -146,11 +136,7 @@ impl ForumSearchProjectionSource {
             .order_by_asc(forum_reply_body::Column::ReplyId)
             .order_by_asc(forum_reply_body::Column::Locale)
             .limit(remaining as u64);
-        if let Some(ProjectionCursor::Reply {
-            entity_id,
-            locale,
-        }) = cursor.as_ref()
-        {
+        if let Some(ProjectionCursor::Reply { entity_id, locale }) = cursor.as_ref() {
             query = query.filter(
                 Condition::any()
                     .add(forum_reply_body::Column::ReplyId.gt(*entity_id))
@@ -262,18 +248,14 @@ impl ForumSearchProjectionSource {
         };
         let category = self
             .discovery
-            .get_public_category_with_locale_fallback(
-                tenant_id,
-                topic.category_id,
-                locale,
-                None,
-            )
+            .get_public_category_with_locale_fallback(tenant_id, topic.category_id, locale, None)
             .await
             .map_err(map_forum_error)?;
         let Some(category) = category else {
             return Ok(None);
         };
-        let author = load_public_author_summary(&self.db, tenant_id, topic.author_id, locale).await?;
+        let author =
+            load_public_author_summary(&self.db, tenant_id, topic.author_id, locale).await?;
         let author_id = public_author_id(author.as_ref());
         let author_handle = public_author_handle(author.as_ref());
         let author_keywords = public_author_keywords(author.as_ref());
@@ -357,13 +339,7 @@ impl ForumSearchProjectionSource {
         }
         let topic = self
             .discovery
-            .get_public_topic_with_locale_fallback(
-                tenant_id,
-                reply.topic_id,
-                locale,
-                None,
-                None,
-            )
+            .get_public_topic_with_locale_fallback(tenant_id, reply.topic_id, locale, None, None)
             .await
             .map_err(map_forum_error)?;
         let Some(topic) = topic else {
@@ -371,22 +347,19 @@ impl ForumSearchProjectionSource {
         };
         let category = self
             .discovery
-            .get_public_category_with_locale_fallback(
-                tenant_id,
-                topic.category_id,
-                locale,
-                None,
-            )
+            .get_public_category_with_locale_fallback(tenant_id, topic.category_id, locale, None)
             .await
             .map_err(map_forum_error)?;
         let Some(category) = category else {
             return Ok(None);
         };
-        let author = load_public_author_summary(&self.db, tenant_id, reply.author_id, locale).await?;
+        let author =
+            load_public_author_summary(&self.db, tenant_id, reply.author_id, locale).await?;
         let author_id = public_author_id(author.as_ref());
         let author_handle = public_author_handle(author.as_ref());
         let author_keywords = public_author_keywords(author.as_ref());
         let author_payload = public_author_payload(author.as_ref());
+        let topic_tags = topic.tags.clone();
 
         let created_at = parse_timestamp(&reply.created_at, "reply.created_at")?;
         let updated_at = parse_timestamp(&reply.updated_at, "reply.updated_at")?;
@@ -424,6 +397,7 @@ impl ForumSearchProjectionSource {
                 "topic_id": topic.id,
                 "category_id": topic.category_id,
                 "author": author_payload,
+                "topic_tags": topic_tags,
                 "parent_reply_id": reply.parent_reply_id,
                 "is_solution": is_solution,
                 "route": route
@@ -621,11 +595,7 @@ fn ensure_locale_bound(count: usize) -> Result<()> {
 fn parse_timestamp(value: &str, field: &str) -> Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .map(|timestamp| timestamp.with_timezone(&Utc))
-        .map_err(|_| {
-            Error::Validation(format!(
-                "Forum Search projection {field} is not RFC3339"
-            ))
-        })
+        .map_err(|_| Error::Validation(format!("Forum Search projection {field} is not RFC3339")))
 }
 
 fn map_forum_error(error: crate::ForumError) -> Error {

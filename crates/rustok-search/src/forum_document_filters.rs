@@ -72,11 +72,12 @@ impl ForumStorefrontDocumentFilters {
         };
 
         match item.entity_type.as_str() {
-            "forum_topic" => item
-                .payload
-                .get("solution_reply_id")
-                .map(|value| !value.is_null())
-                == Some(expected),
+            "forum_topic" => {
+                item.payload
+                    .get("solution_reply_id")
+                    .map(|value| !value.is_null())
+                    == Some(expected)
+            }
             "forum_reply" => {
                 item.payload
                     .get("is_solution")
@@ -154,12 +155,7 @@ mod tests {
 
         assert!(filters.matches(&item("forum_topic", Some(expected), None, None)));
         assert!(filters.matches(&item("forum_reply", Some(expected), None, None)));
-        assert!(!filters.matches(&item(
-            "forum_topic",
-            Some(Uuid::new_v4()),
-            None,
-            None
-        )));
+        assert!(!filters.matches(&item("forum_topic", Some(Uuid::new_v4()), None, None)));
         assert!(!filters.matches(&item("forum_category", None, None, None)));
         assert!(!filters.matches(&item("forum_reply", None, None, None)));
     }
@@ -189,12 +185,7 @@ mod tests {
             Some(vec!["rust", "Search"]),
             None
         )));
-        assert!(!filters.matches(&item(
-            "forum_reply",
-            None,
-            Some(vec!["Rust"]),
-            Some(false)
-        )));
+        assert!(!filters.matches(&item("forum_reply", None, Some(vec!["Rust"]), Some(false))));
         assert!(!filters.matches(&item("forum_reply", None, None, Some(false))));
     }
 

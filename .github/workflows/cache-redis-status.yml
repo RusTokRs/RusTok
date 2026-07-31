@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-redis-status-${{ github.ref }}
@@ -35,7 +35,6 @@ concurrency:
 
 jobs:
   contract:
-    if: github.head_ref != 'agent/forum-search-tag-solved-filter-23b2f2'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -61,38 +60,3 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
-
-  agent-forum-search-tag-solved-sync:
-    if: github.head_ref == 'agent/forum-search-tag-solved-filter-23b2f2'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.96.0"
-          components: rustfmt
-      - name: Synchronize source and canonical plans
-        run: python3 scripts/agent/patch-forum-search-tag-solved-filter-23b2f2.py
-      - name: Format changed Rust files only
-        run: |
-          rustfmt --edition 2024 \
-            crates/rustok-forum/src/search_projection.rs \
-            crates/rustok-search/src/forum_document_filters.rs \
-            crates/rustok-search/src/forum_storefront_execution.rs \
-            crates/rustok-search/src/graphql/forum_storefront.rs \
-            crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs \
-            crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs \
-            crates/rustok-search/storefront/src/transport/mod.rs
-      - name: Commit synchronization and remove temporary files
-        run: |
-          git checkout origin/main -- .github/workflows/cache-redis-status.yml
-          rm scripts/agent/patch-forum-search-tag-solved-filter-23b2f2.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/rustok-forum crates/rustok-search scripts/verify .github/workflows/cache-redis-status.yml scripts/agent
-          git commit -m "feat(search): complete Forum tag and solved filters"
-          git push origin HEAD:${{ github.head_ref }}

@@ -34,14 +34,16 @@ pub struct ForumStorefrontSearchQuery;
 #[Object]
 impl ForumStorefrontSearchQuery {
     /// Executes published Search through the Forum-owned richer category scope,
-    /// exact topic/reply result eligibility and optional exact author scope. The
-    /// input must explicitly select only the `forum` source and at least one
-    /// category root.
+    /// exact topic/reply result eligibility and optional exact author, tag and
+    /// solved-state scope. The input must explicitly select only the `forum` source
+    /// and at least one category root.
     async fn forum_storefront_search(
         &self,
         ctx: &Context<'_>,
         input: SearchPreviewInput,
         author_ids: Option<Vec<String>>,
+        tags: Option<Vec<String>>,
+        solved: Option<bool>,
     ) -> Result<SearchPreviewPayload> {
         require_module_enabled(ctx, FORUM_MODULE_SLUG).await?;
         enforce_rate_limit(ctx).await?;
@@ -96,6 +98,8 @@ impl ForumStorefrontSearchQuery {
             statuses: input.statuses.unwrap_or_default(),
             category_ids: input.category_ids.unwrap_or_default(),
             author_ids: author_ids.unwrap_or_default(),
+            tags: tags.unwrap_or_default(),
+            solved,
             attribute_filters: input
                 .attribute_filters
                 .unwrap_or_default()
@@ -125,7 +129,7 @@ impl ForumStorefrontSearchQuery {
         metrics::record_read_path_query(
             "graphql",
             FORUM_STOREFRONT_SEARCH_SURFACE,
-            "forum_category_scope_author_filter_result_eligibility_then_fts",
+            "forum_category_scope_document_filters_result_eligibility_then_fts",
             execution.elapsed_ms as f64 / 1000.0,
             execution.result.total,
         );

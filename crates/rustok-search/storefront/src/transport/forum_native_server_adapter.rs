@@ -101,7 +101,7 @@ async fn forum_storefront_search_by_filters_native(
     solved: Option<bool>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     execute_forum_storefront_search_native(
-        query, preset_key, locale, filters, author_ids, tags, solved,
+        query, locale, preset_key, filters, author_ids, tags, solved,
     )
     .await
 }
@@ -198,15 +198,7 @@ async fn execute_forum_storefront_search_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            query,
-            locale,
-            preset_key,
-            filters,
-            author_ids,
-            tags,
-            solved,
-        );
+        let _ = (query, locale, preset_key, filters, author_ids, tags, solved);
         Err(ServerFnError::new(
             "Forum storefront Search requires the `ssr` feature",
         ))
