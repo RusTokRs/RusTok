@@ -62,9 +62,21 @@ PortError::validation("payment.validation", "payment request is invalid");
 
 function canonicalFulfillment() {
   return `
+struct FulfillmentPortContextFacts {}
+struct FulfillmentOwnerErrorFacts {}
+fn fulfillment_owner_error_facts() {}
 tracing::error!(
   correlation_id = %context.correlation_id,
-  tenant_id = %context.tenant_id,
+  tenant_id_length = context_facts.tenant_id_length,
+  actor_kind = context_facts.actor_kind,
+  claim_count = context_facts.claim_count,
+  role_count = context_facts.role_count,
+  tenant_id_parse_failed = true,
+  error_variant = error_facts.error_variant,
+  text_field_count = error_facts.text_field_count,
+  uuid_field_count = error_facts.uuid_field_count,
+  opaque_payload_present = error_facts.opaque_payload_present,
+  boundary = SHIPPING_SELECTION_BOUNDARY,
   operation = owner_operation,
   code = "fulfillment.database_unavailable",
 );
@@ -146,7 +158,6 @@ async fn available_quantity<C>(
     context: &PortContext,
 `;
 }
-
 
 function canonicalOrder() {
   return `
@@ -300,7 +311,6 @@ function fixture(options = {}) {
   }
   put(root, 'crates/rustok-inventory/src/ports.rs', inventory);
 
-
   let order = `${canonicalOrder()}${options.orderAppend ?? ''}`;
   if (options.removeOrderCorrelation) {
     order = order.replace(
@@ -439,6 +449,34 @@ test('public port error verifier rejects raw fulfillment storage cause', () => {
   );
 });
 
+test('public port error verifier rejects complete fulfillment error diagnostics', () => {
+  expectFailure(
+    { fulfillmentAppend: 'tracing::error!(error = ?error);' },
+    /fulfillment payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw fulfillment tenant diagnostics', () => {
+  expectFailure(
+    { fulfillmentAppend: 'tenant_id = %context.tenant_id;' },
+    /fulfillment payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects fulfillment resource identity diagnostics', () => {
+  expectFailure(
+    { fulfillmentAppend: 'resource_id = %id;' },
+    /fulfillment payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects fulfillment transition text diagnostics', () => {
+  expectFailure(
+    { fulfillmentAppend: 'from = %from;' },
+    /fulfillment payload diagnostics: forbidden/,
+  );
+});
+
 test('public port error verifier rejects raw customer validation cause', () => {
   expectFailure(
     {
@@ -531,7 +569,6 @@ test('public port error verifier requires helper storage context', () => {
     /inventory helper storage mapping: missing/,
   );
 });
-
 
 test('public port error verifier rejects raw generic order validation cause', () => {
   expectFailure(
