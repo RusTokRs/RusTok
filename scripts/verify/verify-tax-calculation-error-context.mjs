@@ -33,8 +33,14 @@ const between = (content, start, end, label) => {
 const calculationPort = between(
   source,
   'impl TaxCalculationPort for crate::TaxService {',
-  'fn require_tax_calculation_policy(',
+  'fn tax_calculation_context_facts(',
   'tax calculation port',
+);
+const contextHelper = between(
+  source,
+  'fn tax_calculation_context_facts(',
+  'fn require_tax_calculation_policy(',
+  'tax context fact helper',
 );
 const policyHelper = between(
   source,
@@ -77,18 +83,33 @@ for (const [value, label] of [
 ]) requireText(calculationPort, value, label);
 
 for (const [value, label] of [
+  ['tenant_id_length: context.tenant_id.chars().count()', 'tenant length fact'],
+  ['actor_kind,', 'actor kind fact'],
+  ['actor_id_length: context.actor.id.chars().count()', 'actor id length fact'],
+  ['claim_count: context.claims.len()', 'claim count fact'],
+  ['role_count: context.roles.len()', 'role count fact'],
+  ['channel_present: context.channel.is_some()', 'channel presence fact'],
+  ['locale_length: context.locale.chars().count()', 'locale length fact'],
+  ['causation_id_present: context.causation_id.is_some()', 'causation presence fact'],
+  ['traceparent_present: context.traceparent.is_some()', 'trace presence fact'],
+  ['idempotency_key_present: context.idempotency_key.is_some()', 'idempotency presence fact'],
+  ['deadline_ms: context.deadline_ms', 'deadline fact'],
+]) requireText(contextHelper, value, label);
+
+for (const [value, label] of [
   [
-    'context.require_policy(PortCallPolicy::read()).map_err(|error| {',
+    '.require_policy(PortCallPolicy::read())\n        .inspect_err(|error| {',
     'unchanged read policy admission',
   ],
   [
-    'log_tax_calculation_policy_rejection(context, owner_operation, &error);',
+    'log_tax_calculation_policy_rejection(context, owner_operation, error);',
     'policy rejection diagnostics',
   ],
   ['owner = "rustok_tax"', 'policy owner log'],
   ['correlation_id = %context.correlation_id', 'policy correlation log'],
-  ['tenant_id = %context.tenant_id', 'policy tenant log'],
-  ['channel = ?context.channel', 'policy channel log'],
+  ['tenant_id_length = facts.tenant_id_length', 'policy tenant shape'],
+  ['actor_kind = facts.actor_kind', 'policy actor kind'],
+  ['channel_present = facts.channel_present', 'policy channel shape'],
   ['operation = owner_operation', 'policy operation log'],
   ['boundary = TAX_CALCULATION_PORT_BOUNDARY', 'policy boundary log'],
 ]) requireText(policyHelper, value, label);
@@ -103,27 +124,34 @@ for (const [content, label] of [
     ["owner_operation: &'static str", `${label} operation input`],
     ['owner = "rustok_tax"', `${label} owner log`],
     ['correlation_id = %context.correlation_id', `${label} correlation log`],
-    ['tenant_id = %context.tenant_id', `${label} tenant log`],
-    ['channel = ?context.channel', `${label} channel log`],
+    ['tenant_id_length = facts.tenant_id_length', `${label} tenant shape`],
+    ['actor_kind = facts.actor_kind', `${label} actor kind`],
+    ['channel_present = facts.channel_present', `${label} channel shape`],
     ['operation = owner_operation', `${label} operation log`],
+    ['boundary = TAX_CALCULATION_PORT_BOUNDARY', `${label} boundary log`],
   ]) requireText(content, value, detail);
 }
 
 for (const [value, label] of [
-  ['detail = %detail', 'request internal detail log'],
+  ['let detail = detail.to_string();', 'request detail bounded conversion'],
+  ['detail_present = !detail.trim().is_empty()', 'request detail presence'],
+  ['detail_length = detail.chars().count()', 'request detail length'],
   ['code,', 'request stable code log'],
   ['PortError::validation(code, "tax request is invalid")', 'request static public envelope'],
 ]) requireText(requestMapper, value, label);
 
 for (const [value, label] of [
-  ['detail = %detail', 'result internal detail log'],
+  ['let detail = detail.to_string();', 'result detail bounded conversion'],
+  ['detail_present = !detail.trim().is_empty()', 'result detail presence'],
+  ['detail_length = detail.chars().count()', 'result detail length'],
   ['code,', 'result stable code log'],
   ['PortError::invariant_violation(code, "tax calculation result is invalid")', 'result static public envelope'],
 ]) requireText(resultMapper, value, label);
 
 for (const [value, label] of [
   ['TaxError::Validation(message)', 'owner validation cause capture'],
-  ['error = %message', 'owner validation internal cause log'],
+  ['validation_message_present = !message.trim().is_empty()', 'owner validation presence'],
+  ['validation_message_length = message.chars().count()', 'owner validation length'],
   ['code = "tax.validation"', 'owner validation stable code log'],
   ['PortError::validation("tax.validation", "tax request is invalid")', 'owner validation static public envelope'],
 ]) requireText(ownerMapper, value, label);
@@ -133,8 +161,16 @@ for (const value of [
   'PortError::validation("tax.validation", message)',
   'PortError::invariant_violation(code, detail)',
   '.map_err(tax_error_to_port_error)',
-  'context.require_policy(PortCallPolicy::read())?;\n        let owner_operation',
-]) forbidText(source, value, 'unsafe tax public mapping');
+  'detail = %detail',
+  'error = %message',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+]) forbidText(source, value, 'unsafe tax diagnostic or public mapping');
 
 for (const [value, label] of [
   ['pub struct PortContext {', 'shared port context'],
@@ -151,4 +187,6 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ Tax calculation errors retain owner, channel, correlation, and static public envelopes');
+console.log(
+  '✔ Tax calculation owner errors retain stable envelopes, correlation, and safe context/detail shape',
+);
