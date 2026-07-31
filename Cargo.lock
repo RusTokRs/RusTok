@@ -12064,6 +12064,7 @@ dependencies = [
  "tokio",
  "toml 1.1.2+spec-1.1.0",
  "tower",
+ "tracing",
  "uuid",
  "wasm-bindgen",
  "web-sys",
@@ -14893,6 +14894,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 

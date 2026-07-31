@@ -5,8 +5,11 @@ use serde::{Deserialize, Serialize};
 use super::{ApiError, configured_tenant_slug};
 
 const FORUM_STOREFRONT_SEARCH_QUERY: &str = "query ForumStorefrontSearch($input: SearchPreviewInput!) { forumStorefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+#[allow(dead_code)]
 const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY: &str = "query ForumStorefrontSearchByAuthors($input: SearchPreviewInput!, $authorIds: [String!]!) { forumStorefrontSearch(input: $input, authorIds: $authorIds) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+#[allow(dead_code)]
 const FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY: &str = "query ForumStorefrontSearchByFilters($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
+#[allow(dead_code)]
 const FORUM_STOREFRONT_SEARCH_BY_DATE_WINDOW_QUERY: &str = "query ForumStorefrontSearchByDateWindow($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean, $publishedFrom: String, $publishedTo: String) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved, publishedFrom: $publishedFrom, publishedTo: $publishedTo) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 
 #[derive(Debug, Deserialize)]
@@ -20,6 +23,7 @@ struct SearchPreviewVariables {
     input: SearchPreviewInput,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct AuthorSearchPreviewVariables {
     input: SearchPreviewInput,
@@ -27,6 +31,7 @@ struct AuthorSearchPreviewVariables {
     author_ids: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct FilterSearchPreviewVariables {
     input: SearchPreviewInput,
@@ -36,6 +41,7 @@ struct FilterSearchPreviewVariables {
     solved: Option<bool>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct DateWindowSearchPreviewVariables {
     input: SearchPreviewInput,
@@ -106,6 +112,7 @@ pub async fn fetch_search(
     Ok(response.forum_storefront_search)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_authors(
     query: String,
     locale: Option<String>,
@@ -130,6 +137,7 @@ pub async fn fetch_search_with_authors(
     Ok(response.forum_storefront_search)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_filters(
     query: String,
     locale: Option<String>,
@@ -161,6 +169,7 @@ pub async fn fetch_search_with_filters(
     Ok(response.forum_storefront_search)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_date_window(
     query: String,
     locale: Option<String>,

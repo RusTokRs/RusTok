@@ -112,6 +112,7 @@ pub async fn fetch_search(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_forum_search_by_authors(
     query: String,
     locale: Option<String>,
@@ -146,6 +147,7 @@ pub async fn fetch_forum_search_by_authors(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_forum_search_with_filters(
     query: String,
     locale: Option<String>,
@@ -185,6 +187,7 @@ pub async fn fetch_forum_search_with_filters(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_forum_search_with_date_window(
     query: String,
     locale: Option<String>,

@@ -1,4 +1,6 @@
 pub(crate) mod graph;
+#[cfg(test)]
+pub(crate) use graph::{PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE};
 mod product;
 #[path = "../product_variant_index.rs"]
 mod variant;
@@ -14,7 +16,7 @@ pub(crate) fn register(
 mod tests {
     use rustok_core::ModuleRuntimeExtensions;
 
-    use super::{product::PRODUCT_INDEX_SOURCE, register, variant::PRODUCT_VARIANT_INDEX_SOURCE};
+    use super::{PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE, register};
 
     #[test]
     fn selected_product_bridge_set_registers_four_schemas_and_two_stable_factories() {

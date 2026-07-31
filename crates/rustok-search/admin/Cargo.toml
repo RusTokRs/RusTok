@@ -42,3 +42,4 @@ sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid.workspace = true
+tracing.workspace = true

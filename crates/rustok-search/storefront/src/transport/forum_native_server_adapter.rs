@@ -1,7 +1,4 @@
-use crate::model::{
-    SearchFacetBucket, SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload,
-    SearchPreviewResultItem,
-};
+use crate::model::{SearchPreviewFilters, SearchPreviewPayload};
 use leptos::prelude::{ServerFnError, server};
 
 use super::ApiError;
@@ -17,6 +14,7 @@ pub async fn fetch_search(
         .map_err(ApiError::from)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_authors(
     query: String,
     locale: Option<String>,
@@ -29,6 +27,7 @@ pub async fn fetch_search_with_authors(
         .map_err(ApiError::from)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_filters(
     query: String,
     locale: Option<String>,
@@ -45,6 +44,7 @@ pub async fn fetch_search_with_filters(
     .map_err(ApiError::from)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_search_with_date_window(
     query: String,
     locale: Option<String>,
@@ -173,6 +173,7 @@ async fn forum_storefront_search_by_date_window_native(
     .await
 }
 
+#[allow(dead_code)]
 async fn execute_forum_storefront_search_native(
     query: String,
     locale: Option<String>,
