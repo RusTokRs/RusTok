@@ -32,6 +32,7 @@ function requireNoMarker(source, marker, label) {
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
 const handlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
 const postgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
+const restartHarnessPath = 'crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
 const serviceExportPath = 'crates/rustok-blog/src/services/mod.rs';
 const entityPath = 'crates/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
 const migrationPath = 'crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
@@ -41,10 +42,12 @@ const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
+const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const postgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
 
 const handler = read(handlerPath);
 const postgresHarness = read(postgresHarnessPath);
+const restartHarness = read(restartHarnessPath);
 const serviceExport = read(serviceExportPath);
 const entity = read(entityPath);
 const migration = read(migrationPath);
@@ -141,6 +144,30 @@ requireNoMarker(postgresHarness, '#[ignore]', postgresHarnessPath);
 requireNoMarker(postgresHarness, 'runtime_verified', postgresHarnessPath);
 
 for (const marker of [
+  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'struct PostgresBlogProjectionRestartTestDb',
+  'database_url: String',
+  'async fn restarted_connection(&self)',
+  'SET search_path TO',
+  'async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()',
+  'let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());',
+  'first_handler.handle(&envelope).await?;',
+  'drop(first_handler);',
+  'let restarted_db = test_db.restarted_connection().await?;',
+  'let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());',
+  'restarted_handler.handle(&envelope).await?;',
+  'load_post_state(&restarted_db, tenant_id, post_id).await?, (1, 2)',
+  'count_delivery(&restarted_db, envelope.id).await?, 1',
+  'count_outbox_events(&restarted_db).await?, 1',
+  'CREATE TABLE blog_comment_projection_deliveries',
+  'CREATE TABLE sys_events',
+]) {
+  requireMarker(restartHarness, marker, restartHarnessPath);
+}
+requireNoMarker(restartHarness, '#[ignore]', restartHarnessPath);
+requireNoMarker(restartHarness, 'runtime_verified', restartHarnessPath);
+
+for (const marker of [
   '#[sea_orm(table_name = "blog_comment_projection_deliveries")]',
   '#[sea_orm(primary_key, auto_increment = false)]',
   'pub event_id: Uuid',
@@ -177,7 +204,7 @@ for (const marker of [
 }
 
 if (evidence) {
-  if (evidence.schema_version !== 3) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 4) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== 'blog' ||
     evidence.surface !== 'comments_event_projection' ||
@@ -242,6 +269,23 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: PostgreSQL harness case drift`);
   }
+  const restart = evidence.restart_harness ?? {};
+  if (
+    restart.status !== 'executable_no_run' ||
+    restart.runtime_status !== 'not_run' ||
+    restart.path !== restartHarnessPath ||
+    restart.environment !== postgresHarnessEnvironment ||
+    restart.command !== restartHarnessCommand ||
+    restart.isolation !== 'unique_schema_new_connection'
+  ) {
+    failures.push(`${evidencePath}: restart harness drift`);
+  }
+  if (
+    [...(restart.cases ?? [])].join('|') !==
+    'restarted_handler_reuses_delivery_ledger_without_reapplying_counter'
+  ) {
+    failures.push(`${evidencePath}: restart harness case drift`);
+  }
   const events = [...(evidence.events ?? [])].sort().join('|');
   if (events !== ['comment.created', 'comment.deleted'].sort().join('|')) {
     failures.push(`${evidencePath}: event set drift`);
@@ -260,6 +304,7 @@ if (evidence) {
     'postgres_out_of_order_delete_create',
     'postgres_missing_post_recovery',
     'postgres_outbox_rollback_recovery',
+    'postgres_restart_replay',
     'module_listener_registration',
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
@@ -267,7 +312,7 @@ if (evidence) {
 }
 
 if (registry) {
-  if (registry.schema_version !== 12) failures.push(`${registryPath}: schema_version drift`);
+  if (registry.schema_version !== 13) failures.push(`${registryPath}: schema_version drift`);
   if (registry.evidence?.comments_event_projection !== evidencePath) {
     failures.push(`${registryPath}: comments event projection evidence path drift`);
   }
@@ -297,12 +342,24 @@ if (registry) {
   ) {
     failures.push(`${registryPath}: event projection PostgreSQL harness drift`);
   }
+  if (
+    projection.restart_harness?.path !== restartHarnessPath ||
+    projection.restart_harness?.status !== 'executable_no_run' ||
+    projection.restart_harness?.runtime_status !== 'not_run' ||
+    projection.restart_harness?.environment !== postgresHarnessEnvironment ||
+    projection.restart_harness?.command !== restartHarnessCommand
+  ) {
+    failures.push(`${registryPath}: event projection restart harness drift`);
+  }
   const sourceGate = registry.verification_chain?.source_gates?.comments_event_projection;
   if (sourceGate?.unit_test !== handlerPath) {
     failures.push(`${registryPath}: comments event projection unit test path drift`);
   }
   if (sourceGate?.postgres_test !== postgresHarnessPath) {
     failures.push(`${registryPath}: comments event projection PostgreSQL test path drift`);
+  }
+  if (sourceGate?.restart_test !== restartHarnessPath) {
+    failures.push(`${registryPath}: comments event projection restart test path drift`);
   }
 }
 
@@ -313,6 +370,7 @@ for (const marker of [
   'source_verified_no_compile',
   'services::comment_projection::tests',
   'comment_projection_postgres_test',
+  'comment_projection_restart_postgres_test',
   'RUSTOK_BLOG_TEST_DATABASE_URL',
   'runtime delivery and recovery',
 ]) {
@@ -325,4 +383,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection source contract, unit harness, and PostgreSQL target are consistent');
+console.log('Blog comments event projection source contract, unit harness, PostgreSQL target, and restart target are consistent');
