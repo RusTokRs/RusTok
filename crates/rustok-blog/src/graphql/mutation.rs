@@ -9,8 +9,9 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CommentService, ModerateCommentInput, PostService};
+use crate::{ModerateCommentInput, PostService};
 
+use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
 
 const MODULE_SLUG: &str = "blog";
@@ -233,6 +234,7 @@ impl BlogMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let auth = require_blog_permission(
             ctx,
             &[Permission::BLOG_POSTS_MANAGE],
@@ -247,7 +249,8 @@ impl BlogMutation {
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| tenant.default_locale.clone());
 
-        CommentService::new(db.clone(), event_bus.clone())
+        runtime
+            .comment_service(db.clone(), event_bus.clone())
             .moderate_comment(
                 tenant_id,
                 id,
