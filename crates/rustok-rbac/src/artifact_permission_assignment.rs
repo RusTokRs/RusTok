@@ -1,7 +1,9 @@
 //! RBAC-owned grants and checks for immutable artifact permission vocabulary.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use rustok_events::RbacArtifactPermissionEvent;
-use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait,
@@ -49,6 +51,22 @@ pub enum ArtifactPermissionAssignmentError {
     Database(String),
 }
 
+/// Host-neutral publisher used by the RBAC owner while its transaction is live.
+///
+/// Implementations must persist the typed event through the configured durable
+/// transport using the supplied owner transaction. Returning an error causes
+/// RBAC to roll back both the mutation and its idempotency receipt.
+#[async_trait]
+pub trait ArtifactPermissionEventPublisher: Send + Sync {
+    async fn publish_assignment_changed(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        event: RbacArtifactPermissionEvent,
+    ) -> Result<(), ArtifactPermissionAssignmentError>;
+}
+
 /// Durable RBAC owner service for explicit dynamic artifact permission grants.
 ///
 /// This service never writes the static `role_permissions` relation. Dynamic
@@ -59,12 +77,18 @@ pub enum ArtifactPermissionAssignmentError {
 #[derive(Clone)]
 pub struct RbacArtifactPermissionAssignmentService {
     db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
+    event_publisher: Arc<dyn ArtifactPermissionEventPublisher>,
 }
 
 impl RbacArtifactPermissionAssignmentService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+    pub fn new(
+        db: DatabaseConnection,
+        event_publisher: Arc<dyn ArtifactPermissionEventPublisher>,
+    ) -> Self {
+        Self {
+            db,
+            event_publisher,
+        }
     }
 
     pub async fn assign(
@@ -110,17 +134,17 @@ impl RbacArtifactPermissionAssignmentService {
         };
         if changed
             && let Err(error) = self
-                .event_bus
-                .publish_contract_in_tx(
+                .event_publisher
+                .publish_assignment_changed(
                     &transaction,
                     command.tenant_id,
-                    Some(command.actor_id),
+                    command.actor_id,
                     assignment_event(operation_id, &command),
                 )
                 .await
         {
             transaction.rollback().await.map_err(database_error)?;
-            return Err(database_error(error));
+            return Err(error);
         }
         transaction.commit().await.map_err(database_error)?;
 
