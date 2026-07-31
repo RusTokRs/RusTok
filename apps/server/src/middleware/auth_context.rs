@@ -9,7 +9,7 @@ use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
 
 use crate::extractors::auth::resolve_current_user;
-use crate::host_authority::resolve_host_authority;
+use crate::host_authority::{take_host_authority, with_host_authority_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -20,7 +20,7 @@ pub async fn resolve_optional(
 ) -> Response {
     let (mut parts, body) = req.into_parts();
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
-    let host_authority = match resolve_host_authority(&parts.headers) {
+    let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
         Err(crate::error::Error::Unauthorized(_)) => {
             return (StatusCode::FORBIDDEN, HOST_AUTHORITY_REQUIRED).into_response();
@@ -88,7 +88,11 @@ pub async fn resolve_optional(
         parts.extensions.insert(host_authority);
     }
     let req = Request::from_parts(parts, body);
-    with_rbac_request_scope(rbac_scope, next.run(req)).await
+    with_host_authority_scope(
+        host_authority,
+        with_rbac_request_scope(rbac_scope, next.run(req)),
+    )
+    .await
 }
 
 fn is_human_user_self_service_path(path: &str) -> bool {
