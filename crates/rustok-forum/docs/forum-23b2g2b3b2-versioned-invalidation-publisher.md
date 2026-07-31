@@ -2,10 +2,10 @@
 
 ## Status
 
-`source_complete_consumer_pending`
+`source_complete_runtime_evidence_pending`
 
-This slice completes the owner-publisher half of the accepted Forum Search
-versioned invalidation rollout. Forum now publishes one sealed version-1 typed
+This slice completed the owner-publisher half of the accepted Forum Search
+versioned invalidation rollout. Forum publishes one sealed version-1 typed
 contract beside the existing root invalidation inside the same PostgreSQL owner
 transaction.
 
@@ -22,9 +22,16 @@ The machine-readable implementation result is:
 crates/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json
 ```
 
+The remaining runtime-evidence protocol is:
+
+```text
+crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
+```
+
 ## Sealed event family
 
-`rustok-events` now owns:
+`rustok-events` owns:
 
 ```text
 Rust family: ForumSearchProjectionEvent
@@ -43,7 +50,7 @@ target_id: null for forum; non-nil UUID for forum_category/forum_topic
 ```
 
 Tenant and optional actor remain envelope metadata. The exact predecessor root
-envelope id remains typed-envelope `causation_id`. Search `ingest_sequence`,
+envelope ID remains typed-envelope `causation_id`. Search `ingest_sequence`,
 locale, channel, visibility snapshots, rendered content, document payload,
 reasons, claims and roles are not part of the typed payload.
 
@@ -54,15 +61,15 @@ invent an arbitrary event name or untyped JSON payload.
 
 ## PostgreSQL owner transaction
 
-Both active Forum invalidation publisher styles now perform the same ordered
+Both active Forum invalidation publisher styles perform the same ordered
 sequence:
 
 1. allocate the next tenant-scoped Forum owner revision;
 2. publish the mandatory legacy `index.reindex_requested` root envelope and
-   retain its exact envelope id;
+   retain its exact envelope ID;
 3. publish `forum.search_projection.invalidation_issued` with
-   `causation_id` equal to that root id;
-4. append `forum_projection_revision_ledger` with the same root id;
+   `causation_id` equal to that root ID;
+4. append `forum_projection_revision_ledger` with the same root ID;
 5. commit owner state, revision counter, both outbox rows and ledger row
    together.
 
@@ -89,18 +96,19 @@ legacy root or owner mutation without the required typed counterpart.
 
 ## Identity and ordering
 
-The legacy root envelope id remains the canonical identity in:
+The legacy root envelope ID remains the canonical identity in:
 
 ```text
 forum_projection_revision_ledger.event_id
 search_projection_inbox.event_id
+ContractEventEnvelope.causation_id
 ```
 
-The typed envelope has its own transport id, but that id is not written to the
-Forum owner ledger and is not a second Search projection identity. The future
-Search consumer must adapt the typed delivery through its mandatory
-`causation_id`, so legacy and typed delivery converge on the existing root-id
-inbox uniqueness boundary.
+The typed envelope has its own transport ID, but that ID is not written to the
+Forum owner ledger and is not a second Search projection identity. The Search
+consumer adapts the typed delivery through its mandatory `causation_id`, so
+legacy and typed delivery converge on the existing root-ID inbox uniqueness
+boundary.
 
 Forum owner revision and Search-owned `ingest_sequence` remain independent:
 
@@ -124,7 +132,7 @@ runtime consumer.
 
 ## Digest release gate
 
-Adding the family changes three release digests and deliberately leaves the two
+Adding the family changed three release digests and deliberately left the two
 root-wire digests unchanged:
 
 ```text
@@ -149,35 +157,57 @@ Maintainers may independently regenerate the artifact with:
 cargo run -p rustok-events --example event_contract_digests -- --write
 ```
 
-## Compatibility boundary
+## Delivered consumer
 
-This slice does not:
-
-- change or remove the legacy root event;
-- change the root event or root envelope JSON schema;
-- change the outbox table or relay;
-- add a second Forum publisher path;
-- add a Search inbox or projector;
-- advance a Search owner checkpoint on enqueue;
-- add dependencies or change `Cargo.lock`;
-- claim remote transport or PostgreSQL runtime evidence.
-
-`FORUM-23` and `LINK-FORUM-03` remain open.
-
-## Next slice
-
-`FORUM-23B2G2B3C` must add one persistent Search typed-contract consumer that:
+`FORUM-23B2G2B3C` was merged through PR #2753. It adds one default-off persistent
+Search typed-contract consumer that:
 
 1. receives and acknowledges with the exact persistent cursor;
-2. validates the sealed event and mandatory root causation id;
-3. maps that root id into the existing `search_projection_inbox.event_id`;
-4. treats an existing row as a durable duplicate;
+2. validates the sealed event and mandatory root causation ID;
+3. maps that root ID into the existing `search_projection_inbox.event_id`;
+4. validates a complete matching durable row before accepting a duplicate;
 5. records decode/schema/semantic poison durably before DLQ acknowledgement;
 6. reuses the existing Forum reconciler and projector;
 7. never creates a second projection lane or compares owner revision with
    `ingest_sequence`.
 
+`FORUM-23B2G2B3D0` now freezes the remaining executable evidence protocol in
+`crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json`.
+It does not claim that PostgreSQL, Iggy, restart, poison, DLQ or multi-process
+evidence has run.
+
+## Compatibility boundary
+
+The delivered publisher and consumer do not:
+
+- change or remove the legacy root event;
+- change the root event or root envelope JSON schema;
+- change the outbox table or relay;
+- add a second Forum publisher path;
+- add a second Search inbox or projector;
+- advance a Search owner checkpoint on enqueue;
+- compare Forum owner revision with Search `ingest_sequence`;
+- make Search a synchronous Forum command dependency;
+- add an Iggy dependency to `rustok-search`;
+- close `FORUM-23` or `LINK-FORUM-03` without runtime evidence.
+
+The persistent consumer remains default-off and requires PostgreSQL plus the
+`outbox_iggy` delivery profile when enabled.
+
 ## Verification status
 
 Tests, source verifiers, formatting, Cargo checks, Clippy, CI and runtime
 evidence were intentionally not executed by the implementation agent.
+
+```bash
+node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs
+node scripts/verify/verify-forum-search-versioned-invalidation-causation-api.mjs
+node scripts/verify/verify-forum-search-versioned-invalidation-publisher.mjs
+node scripts/verify/verify-forum-search-versioned-invalidation-consumer.mjs
+cargo run -p rustok-events --example event_contract_digests
+cargo test -p rustok-events
+cargo test -p rustok-search forum_contract_ingress -- --nocapture
+cargo check -p rustok-forum --all-targets
+cargo check -p rustok-search --all-targets
+cargo check -p rustok-server --features mod-forum --all-targets
+```

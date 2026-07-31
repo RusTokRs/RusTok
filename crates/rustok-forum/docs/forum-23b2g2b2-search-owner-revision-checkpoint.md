@@ -111,42 +111,57 @@ revision remains unacknowledged and the next sweep repeats the idempotent
 current-state rebuild. The system may perform extra safe work but cannot record
 coverage before projection success.
 
-## Rolling compatibility
+## Delivered versioned transport rollout
 
-The existing legacy `index.reindex_requested` event, durable inbox,
+The legacy `index.reindex_requested` event, durable inbox,
 `ingest_sequence`, retry/dead-letter behavior, Search watermarks and projection
-execution remain unchanged. This slice adds no root event variant, sealed event
-family, event digest, public route, GraphQL/native input, storefront filter,
-dependency or `Cargo.lock` change.
+execution remain active.
 
-SQLite remains a validation-only Forum Search environment. Background inbox and
-owner-checkpoint reconciliation remain PostgreSQL-only.
+`FORUM-23B2G2B3A` through `FORUM-23B2G2B3C` are now merged. The rollout adds a
+sealed caused typed contract, atomic Forum dual publication and a default-off
+persistent Search consumer while preserving the legacy root envelope ID as the
+single Forum ledger and Search inbox identity.
 
-The historical sweeper source test and verifier still expected the pre-G1
-`revision_at` ordering. They are corrected to the delivered `ingest_sequence`
-order without changing runtime behavior.
+The typed consumer does not add a second checkpoint, inbox, reconciler or
+projector. Whichever legacy/typed representation arrives first creates or
+recognizes the same durable root row; the other delivery must match the complete
+retained identity.
 
-## Canonical plan boundary
+SQLite remains a validation-only Forum Search environment. Background inbox,
+typed-contract consumption and owner-checkpoint reconciliation remain
+PostgreSQL-only. Enabling the persistent consumer additionally requires the
+`outbox_iggy` delivery profile.
 
-The Forum and Search canonical plans remain `in_progress`. Their broad
-owner-revision reconciliation item is not removed in this slice because the
-planned versioned owner-revision wire contract and maintainer-executed PostgreSQL
-and `LINK-FORUM-03` evidence are still open.
+## Runtime evidence boundary
 
-A later bounded slice must add the versioned transport contract without creating
-a second Search projection path, then execute the complete rolling-deployment,
-restart, retry, deletion and ACL proof.
+The Forum and Search canonical plans remain `in_progress`. Runtime completion is
+now bounded by `FORUM-23B2G2B3D0`:
+
+```text
+crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
+```
+
+The protocol requires executable proof for normal delivery, both duplicate
+arrival orders, acknowledgement failure and restart, raw and semantic poison,
+missing-delivery owner repair, multi-process serialization, deletion/ACL
+ordering and Search-disabled continuity. It also records that the canonical
+`FORUM-23` ledger must be reconciled with the delivered B2G2 chain before runtime
+completion is claimed.
 
 ## Maintainer verification
 
 The implementation agent did not run these commands, as requested:
 
 ```bash
+node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs
 cargo test -p rustok-search --test forum_projection_sweeper_contract -- --nocapture
 cargo test -p rustok-search owner_revision_tests -- --nocapture
+cargo test -p rustok-search forum_contract_ingress -- --nocapture
 node scripts/verify/verify-forum-search-inbox-sweeper.mjs
 node scripts/verify/verify-forum-search-owner-revision-source.mjs
 node scripts/verify/verify-forum-search-owner-revision-checkpoint.mjs
+node scripts/verify/verify-forum-search-versioned-invalidation-consumer.mjs
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-search --all-targets
 cargo check -p rustok-server --features mod-forum --all-targets
@@ -154,9 +169,9 @@ cargo xtask module validate forum
 cargo xtask module validate search
 ```
 
-PostgreSQL evidence should cover migration upgrade/down behavior, tenant paging
+PostgreSQL evidence must cover migration upgrade/down behavior, tenant paging
 and cursor wrap, concurrent cursor compare-and-set, exact event coverage,
 pending/retry barriers, a first missing delivery with no inbox row, dead-letter
 repair, restart recovery, an active projector older than the lease threshold,
 checkpoint failure after rebuild, multi-process lock contention, deletion/ACL
-projection removal and the `LINK-FORUM-03` correlation chain.
+projection removal and the complete `LINK-FORUM-03` correlation chain.

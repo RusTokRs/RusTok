@@ -1,0 +1,164 @@
+{
+  "contract": "forum_search_versioned_invalidation_runtime_evidence_v1",
+  "task": "FORUM-23B2G2B3D0",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_reconciliation": "required_before_runtime_completion_claim",
+  "rollout_decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
+  "baseline": {
+    "main_commit": "bd25ea3577b164225359beba86f973e907b74bef",
+    "merged_pull_requests": [2731, 2738, 2741, 2749, 2753],
+    "owner_revision_checkpoint": "FORUM-23B2G2B2",
+    "wire_contract": "FORUM-23B2G2B3A",
+    "caused_publication_api": "FORUM-23B2G2B3B1",
+    "owner_publisher": "FORUM-23B2G2B3B2",
+    "persistent_consumer": "FORUM-23B2G2B3C"
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "delivery_profile": "outbox_iggy",
+    "consumer_flag": "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_ENABLED=true",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "topic": "domain",
+    "minimum_server_processes_for_serialization_case": 2
+  },
+  "identity_invariants": [
+    "forum_projection_revision_ledger.event_id equals the legacy root envelope id",
+    "ContractEventEnvelope.causation_id equals the same legacy root envelope id",
+    "search_projection_inbox.event_id equals the same legacy root envelope id",
+    "the typed envelope id is used only for transport and poison receipts",
+    "Forum owner_revision is never compared numerically with Search ingest_sequence"
+  ],
+  "required_scenarios": [
+    {
+      "id": "normal_delivery",
+      "requires": [
+        "one owner transaction commits owner state, legacy root, caused typed event and ledger row",
+        "the typed consumer durably admits exactly one matching Search inbox row",
+        "the existing projector completes and the owner checkpoint advances only after projection success"
+      ]
+    },
+    {
+      "id": "legacy_first_duplicate",
+      "requires": [
+        "legacy delivery creates the shared inbox row before typed delivery",
+        "typed delivery recognizes the exact durable duplicate",
+        "one projection identity and one projector execution lane remain"
+      ]
+    },
+    {
+      "id": "typed_first_duplicate",
+      "requires": [
+        "typed delivery creates the shared inbox row before legacy delivery",
+        "legacy delivery collapses on the same root event identity",
+        "one ingest sequence is allocated for the shared inbox row"
+      ]
+    },
+    {
+      "id": "acknowledgement_failure_restart",
+      "requires": [
+        "durable inbox admission completes before the injected acknowledgement failure",
+        "the exact broker offset remains uncommitted",
+        "a restarted consumer recognizes the same durable root row and acknowledges without a second projection row"
+      ]
+    },
+    {
+      "id": "raw_poison_dlq_redelivery",
+      "requires": [
+        "decode or schema poison creates one durable connector-owned poison receipt",
+        "DLQ publication uses the deterministic message identity",
+        "redelivery reuses the durable receipt and does not duplicate DLQ publication",
+        "source acknowledgement occurs only after the durable terminal result"
+      ]
+    },
+    {
+      "id": "semantic_poison_identity_conflict",
+      "requires": [
+        "a conflicting pre-existing root event UUID fails with forum.search_projection.contract_inbox_identity_conflict",
+        "the conflicting row never enters the projector",
+        "the semantic poison uses the same durable receipt and DLQ protocol as raw poison"
+      ]
+    },
+    {
+      "id": "missing_delivery_owner_repair",
+      "requires": [
+        "an owner ledger revision exists without a Search inbox delivery",
+        "the bounded owner scan discovers the tenant",
+        "one current-state rebuild repairs projection state",
+        "the owner checkpoint advances in exact contiguous revision order only after rebuild success"
+      ]
+    },
+    {
+      "id": "multi_process_serialization",
+      "requires": [
+        "at least two server processes contend for the same tenant",
+        "the shared advisory lock prevents concurrent tenant projection and checkpoint advancement",
+        "cursor compare-and-set and exact +1 checkpoint guards prevent regression or skips"
+      ]
+    },
+    {
+      "id": "deletion_acl_ordering",
+      "requires": [
+        "published content is searchable before the owner change",
+        "hide, delete and richer ACL changes each issue owner revisions",
+        "out-of-order and duplicate deliveries cannot restore denied content",
+        "the final storefront Search result excludes the content for the denied viewer"
+      ]
+    },
+    {
+      "id": "search_disabled_profile",
+      "requires": [
+        "Forum owner commands and transactional events still commit with Search disabled",
+        "no synchronous Search dependency is introduced",
+        "reenabling Search permits bounded owner-ledger reconciliation without owner-state loss"
+      ]
+    }
+  ],
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-runtime-evidence.json",
+    "generation": "executable_runtime_only",
+    "hand_editing_forbidden": true,
+    "required_fields": [
+      "contract",
+      "source_commit",
+      "database_backend",
+      "delivery_profile",
+      "consumer_group",
+      "scenario_results",
+      "owner_revision_rows",
+      "typed_and_root_event_ids",
+      "search_inbox_rows",
+      "ingest_sequences",
+      "owner_checkpoints",
+      "poison_receipts",
+      "dlq_receipts",
+      "storefront_visibility_assertions"
+    ]
+  },
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs",
+    "cargo run -p rustok-events --example event_contract_digests",
+    "cargo test -p rustok-events",
+    "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
+    "cargo test -p rustok-search owner_revision_tests -- --nocapture",
+    "cargo test -p rustok-search --test forum_projection_sweeper_contract -- --nocapture",
+    "cargo check -p rustok-forum --all-targets",
+    "cargo check -p rustok-search --all-targets",
+    "cargo check -p rustok-server --features mod-forum --all-targets",
+    "node scripts/verify/verify-forum-search-owner-revision-source.mjs",
+    "node scripts/verify/verify-forum-search-owner-revision-checkpoint.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-wire.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-causation-api.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-publisher.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-consumer.mjs",
+    "cargo xtask module validate forum",
+    "cargo xtask module validate search"
+  ],
+  "non_claims": [
+    "this contract does not claim that PostgreSQL, Iggy, DLQ, restart or multi-process evidence has run",
+    "this contract does not close FORUM-23 or LINK-FORUM-03",
+    "this contract does not claim the canonical FORUM-23 ledger has been reconciled with the delivered B2G2 chain",
+    "this contract does not retire the legacy index.reindex_requested event",
+    "this contract does not add a second Search inbox, projector, reconciler or ordering clock"
+  ]
+}
