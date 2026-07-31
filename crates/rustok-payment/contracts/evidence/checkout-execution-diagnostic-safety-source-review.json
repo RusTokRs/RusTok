@@ -5,8 +5,12 @@
     "crates/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
     "crates/rustok-payment/src/checkout_execution/port_impl.rs",
     "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
+    "crates/rustok-payment/src/checkout_execution/prepare_authorize.rs",
+    "crates/rustok-payment/src/checkout_execution/capture_provider.rs",
+    "crates/rustok-payment/src/checkout_execution/provider_helpers.rs",
     "crates/rustok-payment/docs/checkout-execution-local-context.md",
-    "scripts/verify/verify-payment-checkout-execution-local-context.mjs"
+    "scripts/verify/verify-payment-checkout-execution-local-context.mjs",
+    "scripts/verify/verify-payment-checkout-execution-error-safety.mjs"
   ],
   "review_findings": {
     "four_public_port_operations_preserved": true,
@@ -22,6 +26,8 @@
     "manual_reconciliation_envelope_preserved": true,
     "payment_error_mapping_preserved": true,
     "provider_operation_result_policy_preserved": true,
+    "provider_checkpoint_transitions_preserved": true,
+    "local_persistence_reconciliation_preserved": true,
     "compensation_source_unchanged": true,
     "runtime_evidence_claimed": false
   },
