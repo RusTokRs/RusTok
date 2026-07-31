@@ -77,8 +77,8 @@ replace_once(
 
 replace_once(
     FORUM_PLAN,
-    "cargo test -p rustok-search storefront_result_eligibility -- --nocapture\n",
-    "cargo test -p rustok-search storefront_result_eligibility -- --nocapture\ncargo test -p rustok-search forum_document_filters -- --nocapture\n",
+    "cargo test -p rustok-search storefront_result_eligibility -- --nocapture\ncargo test -p rustok-search storefront_channel_authority -- --nocapture",
+    "cargo test -p rustok-search storefront_result_eligibility -- --nocapture\ncargo test -p rustok-search forum_document_filters -- --nocapture\ncargo test -p rustok-search storefront_channel_authority -- --nocapture",
 )
 
 replace_once(
@@ -116,7 +116,6 @@ replace_once(
     '    "exact Forum author filter",',
     '    "exact bounded Forum author filter",',
 )
-# The same marker occurs once for each plan after the first replacement.
 replace_once(
     VERIFIER,
     '    "exact Forum author filter",',
