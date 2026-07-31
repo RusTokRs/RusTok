@@ -1,4 +1,4 @@
-use std::{env, error::Error};
+use std::{env, error::Error, io};
 
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 
@@ -38,5 +38,11 @@ pub async fn scoped_connection(
 }
 
 pub fn required_env(name: &str) -> TestResult<String> {
-    Ok(env::var(name).map_err(|_| format!("missing required process fixture variable {name}"))?)
+    env::var(name).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("missing required process fixture variable {name}"),
+        )
+        .into()
+    })
 }
