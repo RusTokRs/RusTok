@@ -73,14 +73,29 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, SearchTransportError> {
-    if is_explicit_forum_category_scope(&filters) {
-        return fetch_forum_search_by_authors(query, locale, preset_key, filters, Vec::new()).await;
-    }
-
+    let forum_category_scope = is_explicit_forum_category_scope(&filters);
     let native_query = query.clone();
     let native_locale = locale.clone();
     let native_preset_key = preset_key.clone();
     let native_filters = filters.clone();
+
+    if forum_category_scope {
+        return execute_selected_transport(
+            "search",
+            selected_transport_path(),
+            move || {
+                forum_native_server_adapter::fetch_search(
+                    native_query,
+                    native_locale,
+                    native_preset_key,
+                    native_filters,
+                )
+            },
+            move || forum_graphql_adapter::fetch_search(query, locale, preset_key, filters),
+        )
+        .await;
+    }
+
     execute_selected_transport(
         "search",
         selected_transport_path(),
