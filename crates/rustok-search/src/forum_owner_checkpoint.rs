@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use rustok_api::PortError;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
@@ -146,7 +144,9 @@ impl ForumOwnerCheckpointReconciler {
         tenant_limit: usize,
         revision_limit: usize,
     ) -> Result<ForumOwnerCheckpointSweepReport> {
-        let recovered_processing_events = self.recover_abandoned_processing().await? as usize;
+        let recovered_processing_events = self
+            .recover_abandoned_processing(tenant_limit)
+            .await? as usize;
         let mut active_cursor = self.load_scan_cursor().await?;
         let mut heads = self.list_tenant_heads(active_cursor, tenant_limit).await?;
         if heads.is_empty() && active_cursor.is_some() {
@@ -308,28 +308,59 @@ impl ForumOwnerCheckpointReconciler {
         })
     }
 
-    async fn recover_abandoned_processing(&self) -> Result<u64> {
-        let result = self
+    async fn recover_abandoned_processing(&self, tenant_limit: usize) -> Result<u64> {
+        let rows = self
             .db
-            .execute(Statement::from_string(
+            .query_all(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 format!(
                     r#"
-                    UPDATE search_projection_inbox
-                    SET status = 'retryable_error',
-                        next_attempt_at = CURRENT_TIMESTAMP,
-                        last_error = 'processing_lease_expired',
-                        completed_at = NULL,
-                        updated_at = CURRENT_TIMESTAMP
+                    SELECT DISTINCT tenant_id
+                    FROM search_projection_inbox
                     WHERE source_module = 'forum'
                       AND status = 'processing'
                       AND updated_at <= CURRENT_TIMESTAMP - INTERVAL '{PROCESSING_LEASE_INTERVAL}'
+                    ORDER BY tenant_id ASC
+                    LIMIT $1
                     "#
                 ),
+                vec![(tenant_limit as i64).into()],
             ))
             .await
             .map_err(Error::Database)?;
-        Ok(result.rows_affected())
+
+        let mut recovered = 0;
+        for row in rows {
+            let tenant_id: Uuid = row.try_get("", "tenant_id").map_err(Error::Database)?;
+            let transaction = self.db.begin().await.map_err(Error::Database)?;
+            if !try_acquire_tenant_lock(&transaction, tenant_id).await? {
+                transaction.commit().await.map_err(Error::Database)?;
+                continue;
+            }
+            let result = transaction
+                .execute(Statement::from_string(
+                    DbBackend::Postgres,
+                    format!(
+                        r#"
+                        UPDATE search_projection_inbox
+                        SET status = 'retryable_error',
+                            next_attempt_at = CURRENT_TIMESTAMP,
+                            last_error = 'processing_lease_expired',
+                            completed_at = NULL,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE tenant_id = '{tenant_id}'
+                          AND source_module = 'forum'
+                          AND status = 'processing'
+                          AND updated_at <= CURRENT_TIMESTAMP - INTERVAL '{PROCESSING_LEASE_INTERVAL}'
+                        "#
+                    ),
+                ))
+                .await
+                .map_err(Error::Database)?;
+            recovered += result.rows_affected();
+            transaction.commit().await.map_err(Error::Database)?;
+        }
+        Ok(recovered)
     }
 
     async fn load_scan_cursor(&self) -> Result<Option<Uuid>> {
