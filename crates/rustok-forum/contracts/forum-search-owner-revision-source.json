@@ -4,6 +4,7 @@
   "status": "source_complete_consumer_checkpoint_pending",
   "scope": "Expose the append-only Forum projection revision ledger as a bounded neutral Search source without advancing Search owner-revision checkpoints",
   "predecessor": "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  "hardening_predecessor": "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
   "owner_note": "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
   "source_verifier": "scripts/verify/verify-forum-search-owner-revision-source.mjs",
   "owner_clock": {
@@ -14,6 +15,10 @@
     "positive": true,
     "strictly_increasing": true,
     "contiguous_committed_revisions": true,
+    "contiguity_enforced_by_upgrade_preflight": true,
+    "exact_increment_enforced": true,
+    "commit_requires_ledger_coverage": true,
+    "truncate_forbidden": true,
     "append_only": true,
     "event_identity": "event_id",
     "producer_clock_used": false,
