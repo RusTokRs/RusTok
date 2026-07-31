@@ -516,6 +516,8 @@ impl SearchProjector {
             values.push(product_id.into());
         }
 
+        // `format!` emits the PostgreSQL JSON path below after brace escaping:
+        // p.metadata #> '{channel_visibility,allowed_channel_slugs}'
         let sql = format!(
             r#"
             INSERT INTO search_documents (
@@ -577,9 +579,9 @@ impl SearchProjector {
                         CASE
                             WHEN NOT (p.metadata ? 'channel_visibility') THEN '[]'::jsonb
                             WHEN jsonb_typeof(
-                                p.metadata #> '{channel_visibility,allowed_channel_slugs}'
+                                p.metadata #> '{{channel_visibility,allowed_channel_slugs}}'
                             ) = 'array' THEN
-                                p.metadata #> '{channel_visibility,allowed_channel_slugs}'
+                                p.metadata #> '{{channel_visibility,allowed_channel_slugs}}'
                             ELSE 'null'::jsonb
                         END
                     ),
