@@ -12,6 +12,10 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 
 const wrapper = read('crates/rustok-order/src/checkout_owner_context.rs');
 const settlement = read('crates/rustok-order/src/checkout_payment_settlement.rs');
+const doc = read('crates/rustok-order/docs/checkout-payment-settlement-local-context.md');
+const evidence = JSON.parse(
+  read('crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json'),
+);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -34,118 +38,62 @@ const wrapperImpl = between(
   wrapper,
   'impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlementPort {',
   'pub fn in_process_checkout_order_payment_settlement_port(',
-  'payment settlement wrapper implementation',
+  'settlement wrapper',
 );
 const mapper = between(
   wrapper,
-  'fn map_checkout_order_payment_settlement_local_port_error(',
+  'fn checkout_order_payment_settlement_local_operation(',
   'fn require_order_checkout_write_admission(',
-  'payment settlement local mapper',
+  'settlement local mapper',
 );
-const ownerMapper = settlement.slice(settlement.indexOf('fn order_error_to_port_error('));
 
-for (const [value, label] of [
-  ['const ORDER_PAYMENT_SETTLEMENT_OWNER: &str = "rustok_order.checkout_payment_settlement";', 'truthful settlement owner'],
-  ['const ORDER_PAYMENT_SETTLEMENT_BOUNDARY: &str = "checkout_order_payment_settlement_port";', 'settlement boundary'],
-  ['const SETTLE_PAYMENT_OPERATION: &str = "settle_checkout_payment";', 'public settlement operation'],
-  ['let diagnostic_context = context.clone();', 'delegated context retention'],
-  ['let result = self.inner.settle_checkout_payment(context, request).await;', 'unchanged owner delegation'],
-  ['result.map_err(|error| {', 'post-delegation local mapping'],
-  ['map_checkout_order_payment_settlement_local_port_error(&diagnostic_context, error)', 'retained context mapper call'],
-]) requireText(wrapperImpl, value, label);
+for (const marker of [
+  'let diagnostic_context = context.clone();',
+  'let result = self.inner.settle_checkout_payment(context, request).await;',
+  'map_checkout_order_payment_settlement_local_port_error(&diagnostic_context, error)',
+]) requireText(wrapperImpl, marker, 'preserved settlement delegation');
 
-const delegationIndex = wrapperImpl.indexOf('self.inner.settle_checkout_payment(context, request).await');
-const mapperCallIndex = wrapperImpl.indexOf('map_checkout_order_payment_settlement_local_port_error(');
-if (!(delegationIndex >= 0 && delegationIndex < mapperCallIndex)) {
-  failures.push('settlement wrapper must delegate before mapping the returned local PortError');
-}
-
-for (const [code, message, localOperation, label] of [
-  [
-    'order.checkout_payment_request_invalid',
-    'checkout payment settlement request is invalid',
-    'validate_request',
-    'request validation outcome',
-  ],
-  [
-    'order.checkout_payment_identity_missing',
-    'checkout requires manual reconciliation',
-    'require_durable_checkout_identity',
-    'missing durable identity outcome',
-  ],
-  [
-    'order.checkout_payment_identity_conflict',
-    'checkout order identity conflicts with the payment settlement request',
-    'validate_durable_checkout_identity',
-    'durable identity conflict outcome',
-  ],
-  [
-    'order.checkout_payment_state_conflict',
-    'checkout order lifecycle does not allow payment settlement',
-    'validate_payment_settlement_lifecycle',
-    'local lifecycle conflict outcome',
-  ],
-  [
-    'order.checkout_payment_reference_conflict',
-    'checkout order is settled by another payment identity',
-    'validate_settled_payment_identity',
-    'settled payment identity outcome',
-  ],
+for (const [code, operation] of [
+  ['order.checkout_payment_request_invalid', 'validate_request'],
+  ['order.checkout_payment_identity_missing', 'require_durable_checkout_identity'],
+  ['order.checkout_payment_identity_conflict', 'validate_durable_checkout_identity'],
+  ['order.checkout_payment_state_conflict', 'validate_payment_settlement_lifecycle'],
+  ['order.checkout_payment_reference_conflict', 'validate_settled_payment_identity'],
 ]) {
-  requireText(mapper, `"${code}"`, `${label} code`);
-  requireText(mapper, `"${message}"`, `${label} message`);
-  requireText(mapper, `"${localOperation}"`, `${label} local operation`);
-  requireText(settlement, `"${code}"`, `${label} preserved owner code`);
-  requireText(settlement, `"${message}"`, `${label} preserved public message`);
+  requireText(mapper, `"${code}"`, `settlement code ${code}`);
+  requireText(mapper, `"${operation}"`, `settlement operation ${operation}`);
+  requireText(settlement, `"${code}"`, `owner code ${code}`);
 }
+for (const marker of [
+  'fn checkout_order_payment_settlement_local_operation(code: &str)',
+  'match code {',
+  'checkout_order_payment_settlement_local_operation(error.code.as_str())',
+  '_ => None,',
+  'let integrity_failure = matches!(',
+  'tracing::error!(',
+  'tracing::warn!(',
+  'error = ?error',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY',
+  '\n    error\n}',
+]) requireText(mapper, marker, 'safe stable-code settlement mapper');
 
-for (const [value, label] of [
-  ['match (error.code.as_str(), error.message.as_str()) {', 'exact code-and-message classification'],
-  ['_ => return error,', 'non-local error passthrough'],
-  ['let integrity_failure = matches!(', 'integrity severity classification'],
-  ['"require_durable_checkout_identity"', 'missing identity error severity'],
-  ['"validate_durable_checkout_identity"', 'identity conflict error severity'],
-  ['"validate_settled_payment_identity"', 'payment identity error severity'],
-  ['tracing::error!(', 'integrity error event'],
-  ['tracing::warn!(', 'ordinary rejection warning event'],
-  ['error = ?error', 'mapped error evidence'],
-  ['owner = ORDER_PAYMENT_SETTLEMENT_OWNER', 'truthful owner diagnostic'],
-  ['operation = SETTLE_PAYMENT_OPERATION', 'exact public operation diagnostic'],
-  ['local_operation,', 'exact local operation diagnostic'],
-  ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['internal_code = %error.code', 'stable code diagnostic'],
-  ['internal_message = %error.message', 'stable message diagnostic'],
-  ['error_kind = ?error.kind', 'typed error kind diagnostic'],
-  ['retryable = error.retryable', 'retryability diagnostic'],
-  ['boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY', 'exact boundary diagnostic'],
-  ['error\n}', 'same mapped error returned'],
-]) requireText(mapper, value, label);
-
-for (const [value, label] of [
-  ['"order.checkout_payment_state_conflict"', 'service transition code remains present'],
-  ['"order lifecycle conflicts with payment settlement"', 'service transition public message remains distinct'],
-  ['OrderError::InvalidTransition { from, to }', 'service transition cause mapping remains intact'],
-  ['order_error_to_port_error(&context, "mark_checkout_order_paid", error)', 'mark-paid service mapper remains intact'],
-]) requireText(settlement, value, label);
-
-requireText(
-  ownerMapper,
-  '"order lifecycle conflicts with payment settlement"',
-  'service transition envelope remains outside local mapper classification',
-);
-forbidText(
-  mapper,
-  '"order lifecycle conflicts with payment settlement"',
-  'service transition envelope must not be classified as a local lifecycle outcome',
-);
+for (const forbidden of [
+  'error.message.as_str()',
+  'match (error.code.as_str(), error.message.as_str())',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+]) forbidText(mapper, forbidden, 'settlement local unsafe diagnostic');
 
 for (const value of [
   'PortError::validation(',
@@ -153,26 +101,39 @@ for (const value of [
   'PortError::new(',
   'PortError::unavailable(',
   'PortError::invariant_violation(',
-]) forbidText(mapper, value, 'mapper must not construct a replacement public envelope');
+]) forbidText(mapper, value, 'mapper replacement envelope');
 
-for (const [pattern, expected, label] of [
-  [/map_checkout_order_payment_settlement_local_port_error\(/g, 2, 'local mapper definition/use count'],
-  [/"validate_request"/g, 1, 'request operation count'],
-  [/"require_durable_checkout_identity"/g, 2, 'missing identity operation classification/severity count'],
-  [/"validate_durable_checkout_identity"/g, 2, 'identity conflict operation classification/severity count'],
-  [/"validate_payment_settlement_lifecycle"/g, 1, 'lifecycle operation count'],
-  [/"validate_settled_payment_identity"/g, 2, 'payment identity operation classification/severity count'],
-]) {
-  const count = wrapper.match(pattern)?.length ?? 0;
-  if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
+for (const marker of [
+  'fn validate_request(',
+  'order_error_to_port_error(&context, "mark_checkout_order_paid", error)',
+  '"checkout payment settlement request is invalid"',
+  '"checkout requires manual reconciliation"',
+  '"checkout order identity conflicts with the payment settlement request"',
+  '"checkout order lifecycle does not allow payment settlement"',
+  '"checkout order is settled by another payment identity"',
+  '"order lifecycle conflicts with payment settlement"',
+]) requireText(settlement, marker, 'settlement business/public contract preserved');
+
+if (evidence.source_contract?.payment_settlement_business_source_changed !== false) {
+  failures.push('evidence payment_settlement_business_source_changed must be false');
+}
+if (evidence.validation?.tests_run !== false || evidence.validation?.compile_proven !== false) {
+  failures.push('settlement collateral evidence must remain unvalidated');
 }
 
+for (const marker of [
+  'Status: **source-ready / unvalidated**',
+  'Human-readable `PortError.message` is not used as control flow.',
+  '`checkout_payment_settlement.rs` is not modified by this slice.',
+  'Owner-local settlement diagnostics remain a separate cleanup.',
+]) requireText(doc, marker, 'settlement local documentation');
+
 if (failures.length > 0) {
-  console.error('Order payment settlement local context verification failed:');
-  for (const failure of failures) console.error(`✗ ${failure}`);
+  console.error('Order payment settlement local diagnostic-safety verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Order payment settlement local request, durable identity, lifecycle, and payment identity outcomes retain full delegated context and unchanged PortError envelopes',
+  'Order payment settlement local mapper uses stable-code attribution and safe context while preserving owner business behavior and the same PortError',
 );
