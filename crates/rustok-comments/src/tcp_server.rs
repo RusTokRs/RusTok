@@ -127,8 +127,11 @@ impl TcpJsonCommentsServerAdapter {
             Ok(response) => CommentsThreadTransportReply::Success(response),
             Err(error) => CommentsThreadTransportReply::Error(error),
         };
-        let reply_payload = serde_json::to_vec(&reply).map_err(|error| {
-            PortError::invariant_violation("comments.tcp_server_encode", error.to_string())
+        let reply_payload = serde_json::to_vec(&reply).map_err(|_| {
+            PortError::invariant_violation(
+                "comments.tcp_server_encode",
+                "comments TCP server reply could not be encoded",
+            )
         })?;
         write_frame(&mut stream, &reply_payload, self.max_frame_bytes).await
     }
@@ -140,8 +143,11 @@ impl TcpJsonCommentsServerAdapter {
     ) -> Result<CommentsThreadResponse, PortError> {
         let request_payload = read_frame(stream, self.max_frame_bytes).await?;
         let mut request = serde_json::from_slice::<CommentsThreadRequest>(&request_payload)
-            .map_err(|error| {
-                PortError::validation("comments.tcp_server_invalid_request", error.to_string())
+            .map_err(|_| {
+                PortError::validation(
+                    "comments.tcp_server_invalid_request",
+                    "comments TCP request is not valid typed JSON",
+                )
             })?;
         request.context().require_deadline_semantics()?;
 
