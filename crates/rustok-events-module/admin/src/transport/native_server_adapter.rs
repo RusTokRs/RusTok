@@ -33,15 +33,16 @@ pub async fn event_delivery_configuration_native()
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            AuthContext, Permission, SharedEventDeliveryControl, has_effective_permission,
+            HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
+            SharedEventDeliveryControl,
         };
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
-        let auth = leptos_axum::extract::<AuthContext>()
+        let authority = leptos_axum::extract::<HostAuthorityContext>()
             .await
-            .map_err(ServerFnError::new)?;
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(ServerFnError::new("settings:read required"));
+            .map_err(|_| ServerFnError::new(HOST_AUTHORITY_REQUIRED))?;
+        if !authority.allows(HostAuthority::Read) {
+            return Err(ServerFnError::new(HOST_AUTHORITY_REQUIRED));
         }
         let control = runtime
             .shared_get::<SharedEventDeliveryControl>()
@@ -75,22 +76,23 @@ pub async fn update_event_delivery_profile_native(
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            AuthContext, Permission, SharedEventDeliveryControl, has_effective_permission,
+            HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
+            SharedEventDeliveryControl,
         };
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
-        let auth = leptos_axum::extract::<AuthContext>()
+        let authority = leptos_axum::extract::<HostAuthorityContext>()
             .await
-            .map_err(ServerFnError::new)?;
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
-            return Err(ServerFnError::new("settings:manage required"));
+            .map_err(|_| ServerFnError::new(HOST_AUTHORITY_REQUIRED))?;
+        if !authority.allows(HostAuthority::Manage) {
+            return Err(ServerFnError::new(HOST_AUTHORITY_REQUIRED));
         }
         let control = runtime
             .shared_get::<SharedEventDeliveryControl>()
             .ok_or_else(|| ServerFnError::new("event delivery control is unavailable"))?;
         let outcome = control
             .0
-            .update_profile(profile, auth.user_id)
+            .update_profile(profile, uuid::Uuid::nil())
             .await
             .map_err(ServerFnError::new)?;
 
