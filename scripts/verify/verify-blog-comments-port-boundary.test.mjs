@@ -29,6 +29,10 @@ function fixture({
   missingDeadline = false,
   missingIdempotency = false,
   missingPublicRead = false,
+  missingAvailabilityField = false,
+  broadNativeFallback = false,
+  missingGraphqlAvailability = false,
+  missingUiState = false,
   statusDrift = false,
   fallbackPromoted = false,
 } = {}) {
@@ -36,6 +40,11 @@ function fixture({
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
   const fallbackEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
   const servicePath = 'crates/rustok-blog/src/services/comment.rs';
+  const graphqlOwnerPath = 'crates/rustok-blog/src/graphql/types.rs';
+  const storefrontModelPath = 'crates/rustok-blog/storefront/src/model.rs';
+  const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
+  const storefrontNativePath = 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
+  const storefrontUiPath = 'crates/rustok-blog/storefront/src/ui/leptos.rs';
   const providerRegistryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
   const consumerRegistryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 
@@ -75,6 +84,69 @@ DomainCreateCommentInput
 TARGET_TYPE_BLOG_POST
 post_id
 ${directBypass ? '.comments.get_comment(' : ''}
+`,
+  );
+
+  write(
+    root,
+    storefrontModelPath,
+    `
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BlogCommentsAvailability {
+Available,
+Unavailable,
+Timeout,
+}
+${missingAvailabilityField ? '' : 'pub availability: BlogCommentsAvailability'}
+`,
+  );
+  write(
+    root,
+    storefrontNativePath,
+    `
+fn comments_read_availability(
+rustok_core::error::ErrorKind::ExternalService
+Some(BlogCommentsAvailability::Unavailable)
+rustok_core::error::ErrorKind::Timeout
+Some(BlogCommentsAvailability::Timeout)
+let Some(availability) = comments_read_availability(&error) else
+return Err(ServerFnError::new(error));
+availability: BlogCommentsAvailability::Available
+items: Vec::new()
+total: 0
+${broadNativeFallback ? 'Err(_) => BlogCommentList' : ''}
+`,
+  );
+  write(
+    root,
+    graphqlOwnerPath,
+    `
+pub enum GqlBlogCommentsAvailability
+pub availability: GqlBlogCommentsAvailability
+fn graphql_comments_read_availability(error: &BlogError)
+ErrorKind::ExternalService => Some(GqlBlogCommentsAvailability::Unavailable)
+ErrorKind::Timeout => Some(GqlBlogCommentsAvailability::Timeout)
+${missingGraphqlAvailability ? '' : 'let Some(availability) = graphql_comments_read_availability(&error) else'}
+return Err(async_graphql::Error::new(error.to_string()));
+GqlBlogCommentsAvailability::Available
+`,
+  );
+  write(
+    root,
+    storefrontGraphqlPath,
+    'publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability total items',
+  );
+  write(
+    root,
+    storefrontUiPath,
+    missingUiState
+      ? ''
+      : `
+comments.availability != BlogCommentsAvailability::Available
+BlogCommentsAvailability::Unavailable
+BlogCommentsAvailability::Timeout
+Comments are temporarily unavailable. The article is still available.
+Comments took too long to load. The article is still available.
 `,
   );
 
@@ -118,7 +190,7 @@ ${directBypass ? '.comments.get_comment(' : ''}
     root,
     fallbackEvidencePath,
     JSON.stringify({
-      schema_version: 2,
+      schema_version: 3,
       module: 'blog',
       role: 'consumer',
       provider: 'comments',
@@ -131,6 +203,24 @@ ${directBypass ? '.comments.get_comment(' : ''}
         consumer_service: servicePath,
         consumer_error_mapping: servicePath,
         provider_port_registry: providerRegistryPath,
+        graphql_owner: graphqlOwnerPath,
+        storefront_model: storefrontModelPath,
+        storefront_graphql: storefrontGraphqlPath,
+        storefront_native: storefrontNativePath,
+        storefront_ui: storefrontUiPath,
+      },
+      storefront_read_degradation: {
+        status: 'source_verified_no_compile',
+        runtime_status: 'not_run',
+        operation: 'list_public_comments_for_target',
+        transports: ['graphql', 'native_ssr'],
+        availability_states: ['AVAILABLE', 'UNAVAILABLE', 'TIMEOUT'],
+        degraded_error_kinds: ['ExternalService', 'Timeout'],
+        propagated_error_policy: 'all_other_blog_errors',
+        degraded_payload: { items: [], total: 0 },
+        cached_thread_snapshot: 'planned',
+        comment_form_fallback: 'planned',
+        runtime_evidence: 'pending',
       },
       fallback_smoke: {
         status: 'planned',
@@ -155,13 +245,7 @@ ${directBypass ? '.comments.get_comment(' : ''}
     }),
   );
 
-  write(
-    root,
-    providerRegistryPath,
-    JSON.stringify({
-      ports: [{ name: 'CommentsThreadPort', operations }],
-    }),
-  );
+  write(root, providerRegistryPath, JSON.stringify({ ports: [{ name: 'CommentsThreadPort', operations }] }));
   write(
     root,
     consumerRegistryPath,
@@ -171,16 +255,14 @@ ${directBypass ? '.comments.get_comment(' : ''}
         status: 'source_verified_no_compile',
         runtime_status: 'pending',
         cases: operations.map((operation) => ({ operation })),
-        fallback_smoke: {
-          status: fallbackPromoted ? 'source_verified_no_compile' : 'planned',
-        },
+        fallback_smoke: { status: fallbackPromoted ? 'source_verified_no_compile' : 'planned' },
       },
     }),
   );
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile degraded UI modes remain planned',
+    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability cached snapshot and comment-form fallback remain planned',
   );
 
   return root;
@@ -229,13 +311,31 @@ test('rejects removal of the approved public-read port operation', () => {
   assert.notEqual(rejects({ missingPublicRead: true }).status, 0);
 });
 
+test('rejects a storefront model without typed availability', () => {
+  assert.notEqual(rejects({ missingAvailabilityField: true }).status, 0);
+});
+
+test('rejects broad native fallback for every error', () => {
+  const result = rejects({ broadNativeFallback: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /forbidden Err\(_\) => BlogCommentList/);
+});
+
+test('rejects GraphQL degradation without typed classification', () => {
+  assert.notEqual(rejects({ missingGraphqlAvailability: true }).status, 0);
+});
+
+test('rejects removal of the storefront unavailable and timeout state', () => {
+  assert.notEqual(rejects({ missingUiState: true }).status, 0);
+});
+
 test('rejects runtime status promotion without execution', () => {
   const result = rejects({ statusDrift: true });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /status drift/);
 });
 
-test('rejects source promotion of planned degraded UI modes', () => {
+test('rejects source promotion of planned cached snapshot and form fallback', () => {
   const result = rejects({ fallbackPromoted: true });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /contract-test status drift/);
