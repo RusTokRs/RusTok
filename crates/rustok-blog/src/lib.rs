@@ -74,6 +74,7 @@ pub use dto::{
 pub use entities::*;
 pub use error::{BlogError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
+pub use rustok_comments::CommentsThreadPort;
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,

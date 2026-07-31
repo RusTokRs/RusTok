@@ -8,6 +8,8 @@ use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
 };
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use std::sync::Arc;
 
 use super::{ApiError, configured_tenant_slug};
 
@@ -51,9 +53,7 @@ async fn storefront_blog_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
-        use rustok_blog::{
-            BlogPostStatus, CommentService, ListCommentsFilter, PostListQuery, PostService,
-        };
+        use rustok_blog::{BlogPostStatus, ListCommentsFilter, PostListQuery, PostService};
         use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
@@ -141,22 +141,19 @@ async fn storefront_blog_native(
             });
 
         let selected_post = if let Some(post) = selected_post {
-            let public_comments = match CommentService::new(
-                runtime_ctx.db_clone(),
-                event_bus.clone(),
-            )
-            .list_for_post_with_locale_fallback(
-                tenant_id,
-                SecurityContext::public_read(),
-                post.id,
-                ListCommentsFilter {
-                    locale: Some(requested_locale.clone()),
-                    page: comments_page.max(1),
-                    per_page: COMMENTS_PAGE_SIZE,
-                },
-                Some(fallback_locale.as_str()),
-            )
-            .await
+            let public_comments = match comment_service(&runtime_ctx, event_bus.clone())
+                .list_for_post_with_locale_fallback(
+                    tenant_id,
+                    SecurityContext::public_read(),
+                    post.id,
+                    ListCommentsFilter {
+                        locale: Some(requested_locale.clone()),
+                        page: comments_page.max(1),
+                        per_page: COMMENTS_PAGE_SIZE,
+                    },
+                    Some(fallback_locale.as_str()),
+                )
+                .await
             {
                 Ok((comments, total)) => BlogCommentList {
                     availability: BlogCommentsAvailability::Available,
@@ -214,6 +211,23 @@ async fn storefront_blog_native(
         Err(ServerFnError::new(
             "blog/storefront-data requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn comment_service(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> rustok_blog::CommentService {
+    if let Some(comments_thread_port) =
+        runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()
+    {
+        rustok_blog::CommentService::with_comments_thread_port(
+            runtime_ctx.db_clone(),
+            comments_thread_port,
+        )
+    } else {
+        rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)
     }
 }
 
@@ -312,5 +326,19 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         }
         .to_string(),
         published_at: post.published_at.map(|value| value.to_string()),
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn storefront_native_runtime_exposes_comments_port_selection() {
+        let selector: fn(
+            &rustok_api::HostRuntimeContext,
+            rustok_outbox::TransactionalEventBus,
+        ) -> rustok_blog::CommentService = comment_service;
+        let _ = selector;
     }
 }
