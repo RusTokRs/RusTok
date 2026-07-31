@@ -51,6 +51,7 @@ const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projec
 const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
 const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
 const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
+const retryLimitHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
@@ -163,6 +164,7 @@ if (retryLoopStart === -1 || retryLoopEnd === -1) {
 for (const marker of [
   'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
   'const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;',
+  'const EXPECTED_RETRY_LIMIT_ATTEMPTS: i64 = 8;',
   'struct PostgresBlogProjectionTestDb',
   'database_url: String',
   'async fn isolated_connection(&self)',
@@ -197,6 +199,22 @@ for (const marker of [
   'barrier.wait().await;',
   'CONCURRENT_PROJECTION_DELIVERIES as i32',
   'count_all_deliveries(&test_db.db).await?',
+  'async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears()',
+  'install_retry_limit_probe(&test_db.db).await?;',
+  'eight zero-row updates must reach the optimistic retry limit',
+  'after 8 concurrent attempts',
+  'load_retry_attempt_count(&test_db.db).await?',
+  'EXPECTED_RETRY_LIMIT_ATTEMPTS',
+  'remove_retry_limit_probe(&test_db.db).await?;',
+  'CREATE SEQUENCE blog_projection_retry_attempts START WITH 1;',
+  'CREATE FUNCTION force_blog_projection_retry_limit()',
+  "PERFORM nextval('blog_projection_retry_attempts');",
+  'RETURN NULL;',
+  'CREATE TRIGGER force_blog_projection_retry_limit',
+  'BEFORE UPDATE OF comment_count, version ON blog_posts',
+  'DROP TRIGGER force_blog_projection_retry_limit ON blog_posts;',
+  'DROP FUNCTION force_blog_projection_retry_limit();',
+  'SELECT last_value::bigint AS count FROM blog_projection_retry_attempts',
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'DomainEvent::CommentDeleted',
   'async fn missing_post_replay_commits_only_after_source_appears()',
@@ -419,6 +437,25 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: concurrency harness case drift`);
   }
+  const retryLimit = evidence.retry_limit_harness ?? {};
+  if (
+    retryLimit.status !== 'executable_no_run' ||
+    retryLimit.runtime_status !== 'not_run' ||
+    retryLimit.path !== postgresHarnessPath ||
+    retryLimit.environment !== postgresHarnessEnvironment ||
+    retryLimit.command !== retryLimitHarnessCommand ||
+    retryLimit.isolation !== 'unique_schema_one_connection_pool_before_update_skip_trigger_nontransactional_attempt_sequence' ||
+    retryLimit.scope !== 'real_handler_eight_zero_row_updates_terminal_error_atomic_rollback_and_same_envelope_replay' ||
+    retryLimit.non_claim !== 'does_not_measure_natural_postgresql_contention_frequency_or_record_execution'
+  ) {
+    failures.push(`${evidencePath}: retry-limit harness drift`);
+  }
+  if (
+    [...(retryLimit.cases ?? [])].join('|') !==
+    'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears'
+  ) {
+    failures.push(`${evidencePath}: retry-limit harness case drift`);
+  }
   const postgres = evidence.postgres_harness ?? {};
   if (
     postgres.status !== 'executable_no_run' ||
@@ -434,6 +471,7 @@ if (evidence) {
   if (
     postgresCases !== [
       'duplicate_delivery_updates_counter_and_outbox_once',
+      'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
       'delete_before_create_stays_non_negative_and_replays_in_order',
       'missing_post_replay_commits_only_after_source_appears',
       'outbox_failure_rolls_back_counter_and_delivery_before_retry',
@@ -494,6 +532,7 @@ if (evidence) {
     'atomic_counter_delivery_outbox',
     'tenant_scoped_optimistic_update',
     'bounded_optimistic_retry_policy',
+    'postgres_retry_limit_rollback_and_replay',
     'missing_post_retry',
     'non_negative_count',
     'host_registration_routing_harness',
@@ -574,6 +613,8 @@ for (const marker of [
   'tests::module_registers_comment_projection_handler_with_host_routing',
   'event_dispatcher_routes_registered_handler_and_commits_projection',
   'concurrent_created_events_converge_without_lost_updates',
+  'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
+  'eight zero-row',
   'restarted_process_reuses_delivery_ledger_without_reapplying_counter',
   'comment_projection_postgres_test',
   'comment_projection_restart_postgres_test',
@@ -581,6 +622,7 @@ for (const marker of [
   'EventBus',
   'EventDispatcher',
   'independent PostgreSQL connections',
+  'same envelope',
   'two sequential OS test processes',
   'server-host restart',
 ]) {
@@ -593,4 +635,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection classifier, retry policy, registration, dispatcher, concurrency, PostgreSQL, connection restart, and process restart harnesses are consistent');
+console.log('Blog comments event projection classifier, retry policy, registration, dispatcher, concurrency, PostgreSQL retry-limit, connection restart, and process restart harnesses are consistent');
