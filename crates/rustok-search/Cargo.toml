@@ -8,7 +8,7 @@ description = "Core search module for RusTok - Postgres-first search contracts, 
 [dependencies]
 async-graphql = { workspace = true, optional = true }
 rustok-core.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-content.workspace = true
 rustok-events.workspace = true
 rustok-outbox = { workspace = true, optional = true }

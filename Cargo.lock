@@ -12302,6 +12302,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "tracing",
  "uuid",
  "web-sys",
 ]
@@ -12311,11 +12312,9 @@ name = "rustok-auth-cli"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "rustok-api",
  "rustok-auth",
  "rustok-cli-core",
  "rustok-runtime",
- "rustok-tenant",
  "sea-orm",
  "serde_json",
  "tokio",
@@ -12584,6 +12583,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
  "web-sys",
 ]
@@ -13400,6 +13400,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
+ "tracing",
  "uuid",
 ]
 
@@ -14223,6 +14224,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
+ "tracing",
  "uuid",
 ]
 
@@ -14727,6 +14729,7 @@ dependencies = [
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -15381,12 +15384,15 @@ dependencies = [
  "leptos_axum",
  "rustok-api",
  "rustok-core",
+ "rustok-modules",
  "rustok-tenant",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

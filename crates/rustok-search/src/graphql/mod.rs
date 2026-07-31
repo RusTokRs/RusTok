@@ -39,7 +39,7 @@ async fn ensure_search_admin_permission(
 
     if !rustok_api::has_effective_permission(&auth.permissions, permission) {
         return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-            format!("{} required", permission.as_str()),
+            &format!("{permission} required"),
         ));
     }
 

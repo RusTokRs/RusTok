@@ -446,6 +446,7 @@ struct ReconciliationAcquireRequest {
 struct ReconciliationLease {
     tenant_id: Uuid,
     job_id: Uuid,
+    #[allow(dead_code)]
     schema: SchemaRef,
     source_name: String,
     worker_id: String,

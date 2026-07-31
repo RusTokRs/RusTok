@@ -10,7 +10,7 @@ use crate::engine::{SearchFacetBucket, SearchFacetGroup};
 use crate::{
     FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
     PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
-    SearchEngine, SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
+    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
     SearchRankingProfile, SearchResult, SearchResultItem, SearchSettingsService,
     SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
     StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,

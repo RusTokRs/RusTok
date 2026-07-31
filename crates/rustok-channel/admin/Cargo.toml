@@ -37,4 +37,5 @@ serde_json.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 sea-orm = { workspace = true, optional = true }
 uuid.workspace = true
+tracing.workspace = true
 web-sys = { version = "0.3", features = ["Window", "Location"] }

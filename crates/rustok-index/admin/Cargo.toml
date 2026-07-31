@@ -33,3 +33,4 @@ rustok-index = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
+tracing.workspace = true

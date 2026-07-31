@@ -123,6 +123,7 @@ fn transport_correlation_id(scope: &str, operation: &'static str) -> String {
     format!("{scope}:{operation}:{}", uuid::Uuid::new_v4())
 }
 
+#[allow(dead_code)]
 fn request_context_fields(
     request_context: Option<&rustok_api::RequestContext>,
 ) -> (
