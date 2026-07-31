@@ -220,7 +220,7 @@ fn comment_service(
     event_bus: rustok_outbox::TransactionalEventBus,
 ) -> rustok_blog::CommentService {
     if let Some(comments_thread_port) =
-        runtime_ctx.shared_get::<Arc<dyn rustok_comments::CommentsThreadPort>>()
+        runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()
     {
         rustok_blog::CommentService::with_comments_thread_port(
             runtime_ctx.db_clone(),
