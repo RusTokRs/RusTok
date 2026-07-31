@@ -71,12 +71,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - name: Anchor FTS patch target
+      - name: Anchor deterministic patch targets
         run: |
           python3 - <<'PY'
           from pathlib import Path
           target = Path("scripts/agent/patch-storefront-search-product-channel-23b2e2.py")
           text = target.read_text()
+
           section = text.index("# PostgreSQL Search uses one storefront-only base predicate")
           needle = '''replace_once(
               "crates/rustok-search/src/pg_engine.rs",
@@ -88,7 +89,22 @@ jobs:
               "crates/rustok-search/src/pg_engine.rs",
               "async fn run_fts_search(\\n",
               """    query: &SearchQuery,'''
-          target.write_text(text[:index] + replacement + text[index + len(needle):])
+          text = text[:index] + replacement + text[index + len(needle):]
+
+          section = text.index("# Storefront document suggestions share the exact Product predicate")
+          needle = '''replace_once(
+              "crates/rustok-search/src/suggestions.rs",
+              """            query.published_only,'''
+          index = text.find(needle, section)
+          if index < 0:
+              raise SystemExit("document suggestion replacement call not found")
+          replacement = '''replace_after(
+              "crates/rustok-search/src/suggestions.rs",
+              "let document_rows = fetch_document_suggestions(\\n",
+              """            query.published_only,'''
+          text = text[:index] + replacement + text[index + len(needle):]
+
+          target.write_text(text)
           PY
       - name: Apply deterministic Product channel patch
         run: python3 scripts/agent/patch-storefront-search-product-channel-23b2e2.py
