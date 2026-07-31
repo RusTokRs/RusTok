@@ -18,7 +18,7 @@ async fn update_search_settings_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         let active_engine = parse_engine(&active_engine, "active_engine")?;
         let fallback_engine = fallback_engine
@@ -84,7 +84,7 @@ async fn trigger_search_rebuild_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         let target_type = target_type
             .unwrap_or_else(|| "search".to_string())

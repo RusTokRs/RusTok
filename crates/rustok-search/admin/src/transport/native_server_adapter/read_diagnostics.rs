@@ -15,7 +15,7 @@ async fn search_admin_filter_presets_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let surface = normalize_surface(&surface)?;
         let settings =
@@ -65,7 +65,7 @@ async fn search_admin_lagging_documents_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let rows = rustok_search::SearchDiagnosticsService::lagging_documents(
             &app_ctx.db,
@@ -103,7 +103,7 @@ async fn search_admin_consistency_issues_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let rows = rustok_search::SearchDiagnosticsService::consistency_issues(
             &app_ctx.db,

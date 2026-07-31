@@ -16,7 +16,7 @@ async fn upsert_search_synonym_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         rustok_search::SearchDictionaryService::upsert_synonym(
             &app_ctx.db,
@@ -55,7 +55,7 @@ async fn delete_search_synonym_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         rustok_search::SearchDictionaryService::delete_synonym(
             &app_ctx.db,
@@ -93,7 +93,7 @@ async fn add_search_stop_word_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         rustok_search::SearchDictionaryService::add_stop_word(&app_ctx.db, tenant.id, &value)
             .await
@@ -127,7 +127,7 @@ async fn delete_search_stop_word_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         rustok_search::SearchDictionaryService::delete_stop_word(
             &app_ctx.db,
@@ -167,7 +167,7 @@ async fn upsert_search_pin_rule_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         rustok_search::SearchDictionaryService::upsert_pin_rule(
             &app_ctx.db,
@@ -207,7 +207,7 @@ async fn delete_search_query_rule_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_manage_permission(&auth.permissions)?;
+        ensure_settings_manage_permission(&auth, tenant.id)?;
 
         rustok_search::SearchDictionaryService::delete_query_rule(
             &app_ctx.db,

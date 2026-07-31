@@ -19,10 +19,34 @@ fn normalize_limit(value: Option<i32>, default: i32, max: i32) -> usize {
 }
 
 #[cfg(feature = "ssr")]
-fn ensure_settings_read_permission(
-    permissions: &[rustok_api::Permission],
+fn ensure_search_admin_tenant_scope(
+    auth: &rustok_api::AuthContext,
+    resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::SETTINGS_READ) {
+    if auth.tenant_id == resolved_tenant_id {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth.tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "search.admin_tenant_scope_mismatch",
+        boundary = "search_admin_native_transport",
+        "search admin permissions cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("Search admin access is denied"))
+}
+
+#[cfg(feature = "ssr")]
+fn ensure_settings_read_permission(
+    auth: &rustok_api::AuthContext,
+    resolved_tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    ensure_search_admin_tenant_scope(auth, resolved_tenant_id)?;
+    if !rustok_api::has_effective_permission(
+        &auth.permissions,
+        &rustok_api::Permission::SETTINGS_READ,
+    ) {
         return Err(ServerFnError::new("settings:read required"));
     }
     Ok(())
@@ -30,10 +54,14 @@ fn ensure_settings_read_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_settings_manage_permission(
-    permissions: &[rustok_api::Permission],
+    auth: &rustok_api::AuthContext,
+    resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::SETTINGS_MANAGE)
-    {
+    ensure_search_admin_tenant_scope(auth, resolved_tenant_id)?;
+    if !rustok_api::has_effective_permission(
+        &auth.permissions,
+        &rustok_api::Permission::SETTINGS_MANAGE,
+    ) {
         return Err(ServerFnError::new("settings:manage required"));
     }
     Ok(())

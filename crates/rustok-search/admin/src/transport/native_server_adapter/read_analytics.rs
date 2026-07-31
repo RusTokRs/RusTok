@@ -16,7 +16,7 @@ async fn search_admin_analytics_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let snapshot = rustok_search::SearchAnalyticsService::snapshot(
             &app_ctx.db,
@@ -54,7 +54,7 @@ async fn search_admin_dictionary_snapshot_native()
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_settings_read_permission(&auth.permissions)?;
+        ensure_settings_read_permission(&auth, tenant.id)?;
 
         let snapshot = rustok_search::SearchDictionaryService::snapshot(&app_ctx.db, tenant.id)
             .await
