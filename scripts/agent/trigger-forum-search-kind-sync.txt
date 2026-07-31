@@ -1,1 +1,2 @@
 Trigger the same-repository pull_request workflow for FORUM-23B2F4.
+Retry with the native helper signature anchored explicitly.
