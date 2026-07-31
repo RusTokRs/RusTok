@@ -1,0 +1,46 @@
+{
+  "status": "product_public_error_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "owner_source": "crates/rustok-product/src/public_error.rs",
+    "owner_error": "CommerceError",
+    "mapper": "map_product_public_error",
+    "shared_consumers": [
+      "commerce_graphql",
+      "product_admin_native",
+      "product_storefront_native"
+    ],
+    "focused_verifier": "scripts/verify/verify-product-public-error-diagnostic-safety.mjs",
+    "documentation": "crates/rustok-product/docs/product-public-error-diagnostic-safety.md"
+  },
+  "source_contract": {
+    "owner_error_variant_count": 8,
+    "complete_commerce_error_logged": false,
+    "database_error_payload_logged": false,
+    "core_error_payload_logged": false,
+    "handle_locale_text_logged": false,
+    "sku_validation_text_logged": false,
+    "product_uuid_logged": false,
+    "static_error_variant_logged": true,
+    "aggregate_text_shape_logged": true,
+    "aggregate_uuid_shape_logged": true,
+    "opaque_payload_presence_logged": true,
+    "public_message_changed": false,
+    "public_code_changed": false,
+    "public_retryability_changed": false,
+    "correlation_generation_changed": false,
+    "correlation_rendering_changed": false,
+    "shared_export_changed": false,
+    "shared_consumer_contracts_changed": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false
+  }
+}
