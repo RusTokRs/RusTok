@@ -35,18 +35,20 @@ const machineContractPath =
 const ownerNotePath =
   "crates/rustok-forum/docs/forum-23b2g2b3b1-causation-publication-api.md";
 
-const eventsContract = read(eventsContractPath);
-const eventsLib = read(eventsLibPath);
-const eventsApi = read(eventsApiPath);
-const outboxTransactional = read(outboxTransactionalPath);
-const outboxTransport = read(outboxTransportPath);
-const outboxApi = read(outboxApiPath);
-const forumPublisher = read(forumPublisherPath);
-const ownerNote = read(ownerNotePath);
+const sources = new Map([
+  [eventsContractPath, read(eventsContractPath)],
+  [eventsLibPath, read(eventsLibPath)],
+  [eventsApiPath, read(eventsApiPath)],
+  [outboxTransactionalPath, read(outboxTransactionalPath)],
+  [outboxTransportPath, read(outboxTransportPath)],
+  [outboxApiPath, read(outboxApiPath)],
+  [forumPublisherPath, read(forumPublisherPath)],
+  [ownerNotePath, read(ownerNotePath)],
+]);
 const digest = JSON.parse(read(digestPath));
 const contract = JSON.parse(read(machineContractPath));
 
-for (const [marker, label] of [
+for (const [marker, sourcePath] of [
   ["pub fn new_caused_by<E>(", eventsContractPath],
   ["Self::new_with_causation(tenant_id, actor_id, Some(causation_id), event)", eventsContractPath],
   ["pub fn causation_id(&self) -> Option<Uuid>", eventsContractPath],
@@ -65,32 +67,18 @@ for (const [marker, label] of [
   ["FORUM-23B2G2B3B1", ownerNotePath],
   ["FORUM-23B2G2B3B2", ownerNotePath],
 ]) {
-  requireMarker(
-    label === eventsContractPath
-      ? eventsContract
-      : label === eventsApiPath
-        ? eventsApi
-        : label === outboxTransactionalPath
-          ? outboxTransactional
-          : label === outboxTransportPath
-            ? outboxTransport
-            : label === outboxApiPath
-              ? outboxApi
-              : ownerNote,
-    marker,
-    label,
-  );
+  requireMarker(sources.get(sourcePath), marker, sourcePath);
 }
 
-for (const [marker, label, source] of [
-  ["ForumSearchProjectionEvent", eventsContractPath, eventsContract],
-  ["ForumSearchProjectionEvent", eventsLibPath, eventsLib],
-  ["forum_search_projection", eventsContractPath, eventsContract],
-  ["forum.search_projection.invalidation_issued", eventsLibPath, eventsLib],
-  ["ForumSearchProjectionEvent", forumPublisherPath, forumPublisher],
-  ["forum.search_projection.invalidation_issued", forumPublisherPath, forumPublisher],
+for (const [marker, sourcePath] of [
+  ["ForumSearchProjectionEvent", eventsContractPath],
+  ["ForumSearchProjectionEvent", eventsLibPath],
+  ["forum_search_projection", eventsContractPath],
+  ["forum.search_projection.invalidation_issued", eventsLibPath],
+  ["ForumSearchProjectionEvent", forumPublisherPath],
+  ["forum.search_projection.invalidation_issued", forumPublisherPath],
 ]) {
-  forbidMarker(source, marker, label);
+  forbidMarker(sources.get(sourcePath), marker, sourcePath);
 }
 
 const expectedDigest = {
@@ -141,8 +129,10 @@ if (contract.publication_api?.requires_live_owner_transaction !== true) {
 if (contract.publication_api?.creates_second_transport_path !== false) {
   throw new Error(`${machineContractPath} must forbid a second transport path`);
 }
-if (contract.compatibility?.ContractEventEnvelope::new_retained === false) {
-  throw new Error(`${machineContractPath} has an invalid compatibility key`);
+if (
+  contract.compatibility?.["ContractEventEnvelope::new_retained"] !== true
+) {
+  throw new Error(`${machineContractPath} must retain the existing constructor`);
 }
 if (contract.compatibility?.sealed_event_family_added !== false) {
   throw new Error(`${machineContractPath} must not claim the Forum family exists`);
