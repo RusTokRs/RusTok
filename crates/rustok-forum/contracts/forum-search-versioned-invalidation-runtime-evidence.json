@@ -7,7 +7,13 @@
   "rollout_decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
   "baseline": {
     "main_commit": "bd25ea3577b164225359beba86f973e907b74bef",
-    "merged_pull_requests": [2731, 2738, 2741, 2749, 2753],
+    "merged_pull_requests": [
+      2731,
+      2738,
+      2741,
+      2749,
+      2753
+    ],
     "owner_revision_checkpoint": "FORUM-23B2G2B2",
     "wire_contract": "FORUM-23B2G2B3A",
     "caused_publication_api": "FORUM-23B2G2B3B1",
@@ -72,6 +78,27 @@
         "dlq_publish_failure_or_publish_mark_ambiguity",
         "semantic_identity_conflict_poison",
         "projector_or_owner_checkpoint",
+        "multi_process_or_visibility_end_to_end"
+      ]
+    },
+    {
+      "task": "FORUM-23B2G2B3D5",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json",
+      "test": "crates/rustok-search/tests/forum_versioned_invalidation_semantic_poison_iggy.rs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-semantic-poison-evidence.json",
+      "covers": [
+        "non_retryable_semantic_identity_conflict",
+        "durable_conflict_row_preserved_and_unique",
+        "stable_connector_and_deterministic_dlq_identity_for_typed_bytes",
+        "published_receipt_before_source_acknowledgement",
+        "same_offset_redelivery_and_already_published_duplicate_suppression",
+        "acknowledged_receipt_and_group_advancement_to_valid_event"
+      ],
+      "does_not_cover": [
+        "server_worker_retry_backoff",
+        "dlq_publish_failure_or_publish_mark_ambiguity",
+        "projector_or_owner_checkpoint",
+        "missing_delivery_repair",
         "multi_process_or_visibility_end_to_end"
       ]
     }
@@ -205,6 +232,8 @@
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
     "node scripts/verify/verify-forum-search-versioned-invalidation-raw-poison-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_raw_poison_iggy -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-semantic-poison-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_semantic_poison_iggy -- --nocapture --test-threads=1",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
