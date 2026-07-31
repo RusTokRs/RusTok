@@ -38,9 +38,8 @@ impl ForumProjectionScope {
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
             | DomainEvent::TenantUpdated { .. } => Some(Self::Full),
-            DomainEvent::ProfileUpdated { user_id, .. } | DomainEvent::UserDeleted { user_id } => {
-                Some(Self::Author(*user_id))
-            }
+            DomainEvent::ProfileUpdated { user_id, .. }
+            | DomainEvent::UserDeleted { user_id } => Some(Self::Author(*user_id)),
             DomainEvent::TenantModuleToggled { module_slug, .. } if module_slug == "forum" => {
                 Some(Self::Full)
             }
@@ -186,9 +185,20 @@ impl ForumProjectionInbox {
 
             if let Some((watermark_at, watermark_event_id)) =
                 load_effective_watermark(&transaction, tenant_id, &scope_key).await?
-                && !is_newer_revision(&revision_at, event_id, &watermark_at, watermark_event_id)
+                && !is_newer_revision(
+                    &revision_at,
+                    event_id,
+                    &watermark_at,
+                    watermark_event_id,
+                )
             {
-                mark_terminal(&transaction, event_id, "skipped", Some("stale_revision")).await?;
+                mark_terminal(
+                    &transaction,
+                    event_id,
+                    "skipped",
+                    Some("stale_revision"),
+                )
+                .await?;
                 transaction.commit().await.map_err(Error::Database)?;
                 continue;
             }
@@ -553,11 +563,9 @@ mod tests {
                 Some(ForumProjectionScope::Author(user_id))
             );
         }
-        assert!(
-            ForumProjectionScope::Author(user_id)
-                .key()
-                .starts_with(AUTHOR_SCOPE_PREFIX)
-        );
+        assert!(ForumProjectionScope::Author(user_id)
+            .key()
+            .starts_with(AUTHOR_SCOPE_PREFIX));
     }
 
     #[test]

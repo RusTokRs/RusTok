@@ -136,9 +136,10 @@ pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         BLOG_ENTITY_TYPE if value.source_module == BLOG_SOURCE_MODULE => {
             canonical_blog_result_url(&value.payload)
         }
-        FORUM_CATEGORY_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => {
-            Some(format!("{FORUM_STOREFRONT_ROUTE}?category={}", value.id))
-        }
+        FORUM_CATEGORY_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => Some(format!(
+            "{FORUM_STOREFRONT_ROUTE}?category={}",
+            value.id
+        )),
         FORUM_TOPIC_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => {
             Some(format!("{FORUM_STOREFRONT_ROUTE}?topic={}", value.id))
         }
@@ -310,9 +311,7 @@ mod tests {
         );
         assert_eq!(
             canonical_search_result_url(&reply).as_deref(),
-            Some(
-                "/modules/forum?topic=00000000-0000-0000-0000-000000000002&reply=00000000-0000-0000-0000-000000000001"
-            )
+            Some("/modules/forum?topic=00000000-0000-0000-0000-000000000002&reply=00000000-0000-0000-0000-000000000001")
         );
     }
 
@@ -321,31 +320,19 @@ mod tests {
         for value in [
             item("forum_category", "content", json!({})),
             item("forum_topic", "blog", json!({})),
-            item(
-                "forum_reply",
-                "content",
-                json!({
-                    "reply_id": "00000000-0000-0000-0000-000000000001",
-                    "topic_id": "00000000-0000-0000-0000-000000000002"
-                }),
-            ),
+            item("forum_reply", "content", json!({
+                "reply_id": "00000000-0000-0000-0000-000000000001",
+                "topic_id": "00000000-0000-0000-0000-000000000002"
+            })),
             item("forum_reply", "forum", json!({})),
-            item(
-                "forum_reply",
-                "forum",
-                json!({
-                    "reply_id": "00000000-0000-0000-0000-000000000099",
-                    "topic_id": "00000000-0000-0000-0000-000000000002"
-                }),
-            ),
-            item(
-                "forum_reply",
-                "forum",
-                json!({
-                    "reply_id": "00000000-0000-0000-0000-000000000001",
-                    "topic_id": "00000000-0000-0000-0000-000000000000"
-                }),
-            ),
+            item("forum_reply", "forum", json!({
+                "reply_id": "00000000-0000-0000-0000-000000000099",
+                "topic_id": "00000000-0000-0000-0000-000000000002"
+            })),
+            item("forum_reply", "forum", json!({
+                "reply_id": "00000000-0000-0000-0000-000000000001",
+                "topic_id": "00000000-0000-0000-0000-000000000000"
+            })),
         ] {
             assert_eq!(canonical_search_result_url(&value), None);
         }
