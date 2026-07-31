@@ -1,0 +1,68 @@
+{
+  "contract": "forum_search_versioned_invalidation_postgres_ingress_proof_v1",
+  "task": "FORUM-23B2G2B3D2",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "crates/rustok-search/tests/forum_versioned_invalidation_postgres.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-postgres-ingress-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "migrations": "rustok_search::SearchModule",
+    "broker_required": false
+  },
+  "scenarios": [
+    {
+      "id": "typed_ingress_admission",
+      "proves": [
+        "a caused typed invalidation creates one durable shared Search inbox row",
+        "the inbox event identity is the exact legacy root causation id",
+        "the typed envelope id is not used as a projection identity",
+        "the allocated Search ingest sequence is positive"
+      ]
+    },
+    {
+      "id": "legacy_first_duplicate",
+      "proves": [
+        "a pre-existing exact legacy root row is recognized as the durable duplicate",
+        "typed admission does not allocate a second inbox row or ingest sequence",
+        "the original durable root envelope remains unchanged"
+      ]
+    },
+    {
+      "id": "typed_first_duplicate",
+      "proves": [
+        "typed admission may create the shared row before legacy delivery",
+        "later legacy delivery collapses through the event_id uniqueness boundary",
+        "the typed-created durable row and ingest sequence remain unchanged"
+      ]
+    },
+    {
+      "id": "semantic_identity_conflict",
+      "proves": [
+        "a UUID collision with different tenant/scope/root payload identity fails closed",
+        "the stable code is forum.search_projection.contract_inbox_identity_conflict",
+        "the conflicting durable row is not replaced or duplicated"
+      ]
+    }
+  ],
+  "identity_invariants": [
+    "ContractEventEnvelope.causation_id equals search_projection_inbox.event_id",
+    "search_projection_inbox.event_type remains index.reindex_requested",
+    "one event_id has one positive ingest_sequence",
+    "duplicate recognition validates complete durable identity rather than UUID alone"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_postgres -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this slice does not start Iggy or the server persistent consumer loop",
+    "this slice does not prove source acknowledgement, restart or cursor persistence",
+    "this slice does not prove poison receipts or DLQ publication",
+    "this slice does not run the projector or advance the owner checkpoint",
+    "this slice does not close FORUM-23B2G2B3D or LINK-FORUM-03"
+  ]
+}

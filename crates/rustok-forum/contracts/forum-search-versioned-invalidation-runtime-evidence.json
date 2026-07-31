@@ -16,6 +16,26 @@
     "runtime_evidence_protocol": "FORUM-23B2G2B3D0",
     "canonical_plan_sync": "FORUM-23B2G2B3D1"
   },
+  "source_ready_subproofs": [
+    {
+      "task": "FORUM-23B2G2B3D2",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-postgres-ingress-proof.json",
+      "test": "crates/rustok-search/tests/forum_versioned_invalidation_postgres.rs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-postgres-ingress-evidence.json",
+      "covers": [
+        "typed_ingress_admission",
+        "legacy_first_duplicate",
+        "typed_first_duplicate",
+        "semantic_identity_conflict_classification"
+      ],
+      "does_not_cover": [
+        "broker_acknowledgement_or_restart",
+        "poison_receipt_or_dlq_publication",
+        "projector_or_owner_checkpoint",
+        "multi_process_or_visibility_end_to_end"
+      ]
+    }
+  ],
   "required_runtime": {
     "database": "postgresql",
     "delivery_profile": "outbox_iggy",
@@ -139,6 +159,8 @@
   },
   "maintainer_commands": [
     "node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-postgres-ingress-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_postgres -- --nocapture --test-threads=1",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
