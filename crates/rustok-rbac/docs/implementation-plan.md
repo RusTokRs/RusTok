@@ -43,6 +43,12 @@ The ownership boundary is:
   A GraphQL/REST management path requires an approved remote or headless
   operator contract.
 
+PR #2747 merged as `75b67f877eb405abe4e6761a16d6b7ece98bc103` and
+made principal admission one owner-defined contract across GraphQL, REST and
+native RBAC Admin. The host-neutral `RbacControlPlanePrincipal` keeps the owner
+crate independent of Axum and `rustok-api/server`, while adapters supply only
+trusted authenticated facts.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -255,7 +261,9 @@ The ownership boundary is:
 
 ## Artifact permission and role-metadata control-plane correction (2026-07-31)
 
-- Status: `source_ready_unvalidated`.
+- Status: `merged_partially_compiled`.
+- Merge: PR #2747, commit
+  `75b67f877eb405abe4e6761a16d6b7ece98bc103`.
 - Severity: `P0` invalid authorization grant for REST mutation; `P1` cross-surface
   admission inconsistency for native role/permission metadata.
 - Root cause: the REST PUT/DELETE artifact-role permission adapter admitted any
@@ -266,8 +274,8 @@ The ownership boundary is:
   control-plane role metadata when their narrowed authority retained those
   permissions.
 - [x] Add one host-neutral owner policy over
-  `RbacControlPlanePrincipal`; `rustok-rbac` remains compilable without the
-  `rustok-api/server` feature or Axum context types.
+  `RbacControlPlanePrincipal`; `rustok-rbac` remains independent of the
+  `rustok-api/server` feature and Axum context types.
 - [x] Reuse that owner policy from GraphQL, REST and native RBAC Admin rather than
   maintaining transport-specific principal classifiers.
 - [x] Require direct grant, non-nil session and authenticated/routed tenant
@@ -280,9 +288,12 @@ The ownership boundary is:
   `rbac_artifact_permission_control_plane_guard` and the updated
   `verify-rbac-admin-tenant-scope.mjs` source verifier for OAuth denial, tenant
   mismatch, permission denial, shared-policy composition and admission order.
-- [ ] Same-SHA formatting, default/all-feature RBAC compile, RBAC Admin SSR
-  compile, server compile, focused unit/architecture/verifier execution and
-  transport-level negative requests are still required.
+- [x] The default `rustok-rbac` crate compiled on exact PR head
+  `3cf4b3a44980ca257f7f53849e905673141db289` inside Rust-host workflow run
+  `30650883159` before that workflow hit issue #2740.
+- [ ] Same-SHA formatting, all-feature RBAC compile, RBAC Admin SSR compile,
+  server compile, focused unit/architecture/verifier execution and transport-
+  level negative requests are still required.
 
 ## Verification commands
 
@@ -354,10 +365,10 @@ harness owns them.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-07-31`
-- Scope inspected: `principal classification and authoritative request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog, durable assignment owner, REST/GraphQL adapters and native RBAC Admin bootstrap`
+- Scope inspected: `principal classification and authoritative request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog, durable assignment owner, REST/GraphQL adapters, native RBAC Admin bootstrap, operational CLI repair and invalidation worker/gap-tracker composition`
 - Findings: `P0=1, P1=1, P2=0, P3=0`
-- Fixed in this pass: `one host-neutral rustok-rbac policy now requires a direct non-nil session and authenticated/routed tenant equality before GraphQL, REST and native RBAC control-plane permission admission; REST no longer treats modules:manage as sufficient principal authority, native bootstrap no longer treats settings:read as sufficient, the obsolete native tenant-only helper is removed and the durable actor remains derived from trusted AuthContext`
-- Remaining risks or blockers: `the P0/P1 corrections are source-ready but same-SHA format, default/all-feature RBAC compile, RBAC Admin SSR compile, server compile, focused unit/architecture/verifier tests and live negative transport requests have not run; all previously open PostgreSQL concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open`
-- Evidence: `source review confirms middleware builds request scope from authoritative DB permissions and OAuth only narrows authority; relation resolution tenant-filters role ids and generation-aware fills fail closed; role replacement and repair reserve durable generation in their owner transaction. PR #2747 adds owner, GraphQL, REST, native and architecture/source regressions. No successful execution result is claimed yet.`
-- Next action: `collect exact-head format/check/Clippy and focused evidence for PR #2747, fix branch-related failures, then continue the RBAC sweep across remaining CLI/event/worker surfaces and live recovery gates`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Fixed in this pass: `PR #2747 merged one host-neutral rustok-rbac policy requiring a direct non-nil session and authenticated/routed tenant equality before GraphQL, REST and native RBAC control-plane permission admission; REST no longer treats modules:manage as sufficient principal authority, native bootstrap no longer treats settings:read as sufficient, the obsolete native tenant-only helper is removed and the durable mutation actor remains derived from trusted AuthContext`
+- Remaining risks or blockers: `the merged P0/P1 corrections have only narrow default-crate compile evidence; same-SHA format, all-feature RBAC compile, RBAC Admin SSR compile, server compile, focused unit/architecture/verifier tests and live negative transport requests have not run. PostgreSQL mutation concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open. CI and Hardening runs for exact head remained pending without jobs, while issue #2740 stopped Rust-host before server build.`
+- Evidence: `source review confirms middleware builds request scope from authoritative DB permissions and OAuth only narrows authority; relation resolution tenant-filters role ids and generation-aware fills fail closed; role replacement and repair reserve durable generation in their owner transaction; local, Redis and reconciliation listeners share one bounded gap tracker. Exact PR head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159, then failed on the known PostgreSQL role fixture #2740 before rustok-server. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. No other queued or pending job is claimed as passed.`
+- Next action: `continue the RBAC P0/P1 sweep across remaining event/worker and management surfaces; obtain format/all-feature/admin/server/focused/module evidence on one reconciled revision, then run PostgreSQL concurrency and multi-replica Redis recovery before deciding completed versus blocked`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
