@@ -20,6 +20,64 @@ impl std::fmt::Display for ProductPublicError {
     }
 }
 
+struct ProductOwnerErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        CommerceError::Database(_) => ("database", 0, 0, 0, 0, true),
+        CommerceError::ProductNotFound(id) => (
+            "product_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        CommerceError::DuplicateHandle { handle, locale } => (
+            "duplicate_handle",
+            2,
+            handle.chars().count() + locale.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        CommerceError::DuplicateSku(sku) => {
+            ("duplicate_sku", 1, sku.chars().count(), 0, 0, false)
+        }
+        CommerceError::Validation(message) => {
+            ("validation", 1, message.chars().count(), 0, 0, false)
+        }
+        CommerceError::NoVariants => ("no_variants", 0, 0, 0, 0, false),
+        CommerceError::CannotDeletePublished => {
+            ("cannot_delete_published", 0, 0, 0, 0, false)
+        }
+        CommerceError::Core(_) => ("core", 0, 0, 0, 0, true),
+    };
+
+    ProductOwnerErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
 pub fn map_product_public_error(
     error: &CommerceError,
     operation: &'static str,
@@ -60,15 +118,21 @@ pub fn map_product_public_error(
         ),
     };
     let correlation_id = Uuid::new_v4();
+    let error_facts = product_owner_error_facts(error);
 
     tracing::error!(
-        error = ?error,
+        error_variant = error_facts.error_variant,
+        text_field_count = error_facts.text_field_count,
+        text_total_length = error_facts.text_total_length,
+        uuid_field_count = error_facts.uuid_field_count,
+        uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        opaque_payload_present = error_facts.opaque_payload_present,
         operation,
         public_code = code,
         retryable,
         boundary,
         %correlation_id,
-        "product service operation failed"
+        "product service operation failed with bounded diagnostics"
     );
 
     ProductPublicError {
