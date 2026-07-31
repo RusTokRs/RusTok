@@ -5,9 +5,11 @@ use rustok_outbox::TransactionalEventBus;
 use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::{SettingsService, ValidatorRegistry};
-use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
+use rustok_api::{
+    HostAuthority, Permission, graphql::GraphQLError, has_effective_permission,
+};
 
-use super::require_tenant_settings_scope;
+use super::{require_host_actor, require_host_authority, require_tenant_settings_scope};
 use super::types::{
     UpdateEventDeliveryConfigurationInput, UpdateEventDeliveryConfigurationPayload,
     UpdateIggyConnectorConfigurationInput, UpdateIggyConnectorConfigurationPayload,
@@ -24,19 +26,12 @@ impl SettingsMutation {
         ctx: &Context<'_>,
         input: UpdateIggyConnectorConfigurationInput,
     ) -> Result<UpdateIggyConnectorConfigurationPayload> {
+        let (authority, auth) = require_host_actor(ctx, HostAuthority::Manage)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "settings:manage required",
-            ));
-        }
         crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::save(
             runtime_ctx,
             input.into(),
-            auth.user_id,
+            authority.actor_id(),
             auth.tenant_id,
         )
         .await
@@ -58,16 +53,8 @@ impl SettingsMutation {
         ctx: &Context<'_>,
         input: UpdateEventDeliveryConfigurationInput,
     ) -> Result<UpdateEventDeliveryConfigurationPayload> {
+        let authority = require_host_authority(ctx, HostAuthority::Manage)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "settings:manage required",
-            ));
-        }
 
         let profile = crate::common::settings::EventDeliveryProfile::parse(&input.profile)
             .ok_or_else(|| {
@@ -76,7 +63,7 @@ impl SettingsMutation {
         crate::services::event_delivery_settings_service::EventDeliverySettingsService::save_profile(
             runtime_ctx,
             profile,
-            auth.user_id,
+            authority.actor_id(),
         )
         .await
         .map_err(|error| FieldError::new(error.to_string()))?;
