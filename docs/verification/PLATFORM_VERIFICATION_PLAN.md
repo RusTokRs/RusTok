@@ -38,13 +38,13 @@ This block is the first place an agent reads after `docs/index.md`.
 
 - Cycle: `cycle-001`
 - Cycle status: `active`
-- Current item: `core/tenant`
-- Next item: `core/tenant`
+- Current item: `core/rbac`
+- Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
 - Last handoff at (UTC): `2026-07-31`
-- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued; core/email P1: settings:read exposed runtime smtp.password and native admin returned raw email settings, with secret-safe fixes staged only in draft PR #2490; core/email P1: delivery lacks a durable receipt/outbox, auth uses a detached server-owned bypass, saved tenant settings do not drive runtime SMTP, and historical secret-bearing rows lack an owned scrub migration; core/index P1: one retained admitted real PostgreSQL partition packet and live PostgreSQL/reference query equivalence are absent, and no retained per-tenant freshness, outage/restart, backlog catch-up or replay-repair evidence authorizes consumer or partition cutover; core/search P1: public GraphQL/native storefront Search trust caller channel_id while PgSearchEngine does not enforce canonical product channel visibility on the base result set; core/search P1: Content/Product/Blog and shared Search projection events lack the durable inbox, retry/DLQ and automatic replay/rebuild contract currently implemented only for Forum; core/outbox P1: sys_events dispatched state proves transport acceptance only, while terminal local handler failure or broadcast lag lacks a durable consumer receipt, consumer DLQ, or automatic replay/rebuild contract and can leave Search or other projections stale; core/tenant cross-owner P1 release blocker: PR #2735 merged host-owned operator credential admission for Events native, Iggy native, System GraphQL and Settings GraphQL as 1ce83819b077ef6e0df009fd5675f556315ef63a, but same-SHA source/unit/compile and live HTTP/native denial, read/manage admission, audit identity, Iggy tenant-secret equality, rotation/revocation, WebSocket denial and multi-replica parity evidence remain absent for issue #2680`
+- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued; core/email P1: settings:read exposed runtime smtp.password and native admin returned raw email settings, with secret-safe fixes staged only in draft PR #2490; core/email P1: delivery lacks a durable receipt/outbox, auth uses a detached server-owned bypass, saved tenant settings do not drive runtime SMTP, and historical secret-bearing rows lack an owned scrub migration; core/index P1: one retained admitted real PostgreSQL partition packet and live PostgreSQL/reference query equivalence are absent, and no retained per-tenant freshness, outage/restart, backlog catch-up or replay-repair evidence authorizes consumer or partition cutover; core/search P1: public GraphQL/native storefront Search trust caller channel_id while PgSearchEngine does not enforce canonical product channel visibility on the base result set; core/search P1: Content/Product/Blog and shared Search projection events lack the durable inbox, retry/DLQ and automatic replay/rebuild contract currently implemented only for Forum; core/outbox P1: sys_events dispatched state proves transport acceptance only, while terminal local handler failure or broadcast lag lacks a durable consumer receipt, consumer DLQ, or automatic replay/rebuild contract and can leave Search or other projections stale; core/tenant cross-owner P1 release blocker: PR #2735 merged host-owned operator credential admission for Events native, Iggy native, System GraphQL and Settings GraphQL as 1ce83819b077ef6e0df009fd5675f556315ef63a, but same-SHA source/unit/server compile and live HTTP/native denial, read/manage admission, audit identity, Iggy tenant-secret equality, rotation/revocation, WebSocket denial and multi-replica parity evidence remain absent for issue #2680; execution infrastructure blocker #2740: Rust-host browser smoke reports successful bounded-role creation but the service PostgreSQL instance has no rustok_browser role, so the migration step fails before the server build on both the original run and rerun`
 - Release readiness: `not_assessed`
-- Environment notes: `Tenant owner and directly related P0/P1/P2 source corrections merged through PR #2665 at b4889de03d881c08e39dd1f933291bfd87d44b3d; later Channel, Index, Search, Email and Outbox Admin tenant-scope fixes are recorded in crates/rustok-tenant/docs/cycle-001-core-trust-supplement-20260731.md. The temporary Tenant workflow from superseded PR #2572 was not merged and is not current-SHA evidence. Historical provisioning and locale-policy PostgreSQL races passed on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 but must rerun on the final reconciled revision. PR #2720 merged a separate typed HostAuthorityContext and fail-closed guards for confirmed host-global Events/System/Settings operations as 35afdd3a5d4ae74e735a2963e7246e21a3031e5d. PR #2735 merged the replacement host-owned operator path as 1ce83819b077ef6e0df009fd5675f556315ef63a after rejecting an unsafe tenant-OAuth-client allowlist because tenant settings:manage can rotate app secrets. The merged path uses X-RusTok-Host-Token with SHA-256 digests and explicit read/manage actors in host-owned RUSTOK_HOST_AUTHORITY_CREDENTIALS, removes the raw header before dispatch, gives native Events/Iggy transports only typed authority, scopes the same typed authority across HTTP GraphQL, keeps WebSocket denied, and uses authenticated/resolved tenant equality only for Iggy secret ownership. The final surface sweep found and fixed the separate Iggy native SETTINGS_* admission path. Superseded PR #2726 is historical staging only. PR #2735 exact-head jobs were queued at merge and are not claimed as passed; Rust-host smoke remained in its pre-build migration phase, and no pull-request workflow runs are currently returned for the merge commit. Connector-only local checks still cannot run because github.com DNS resolution fails. Existing expired advisory exceptions, Cargo.lock/Athanor --locked migration blockage, PostgreSQL rustok_browser password fixture failures, Next Admin sessionStorage-before-origin failures and unrelated browser fixtures remain repository-wide blockers rather than Tenant-owner defects`
+- Environment notes: `Tenant owner and directly related P0/P1/P2 source corrections merged through PR #2665 at b4889de03d881c08e39dd1f933291bfd87d44b3d; later Channel, Index, Search, Email and Outbox Admin tenant-scope fixes are recorded in crates/rustok-tenant/docs/cycle-001-core-trust-supplement-20260731.md. Historical provisioning and locale-policy PostgreSQL races passed on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 but must rerun on the final reconciled revision. PR #2720 merged typed HostAuthorityContext fail-closed guards as 35afdd3a5d4ae74e735a2963e7246e21a3031e5d. PR #2735 merged the replacement host-owned operator path as 1ce83819b077ef6e0df009fd5675f556315ef63a after rejecting an unsafe tenant-OAuth-client allowlist. Exact PR head a95cb0a768bddde9df985a8538501f8dfea63865 was exercised by Rust-host workflow run 30644588800 and rerun job 91207769592. Both attempts failed before the server build because the PostgreSQL service logged Role "rustok_browser" does not exist even though the role-creation step reported success; issue #2740 records the deterministic wrong-container fixture. The cold migration dependency build compiled rustok-events, rustok-tenant and rustok-iggy-connector but did not compile rustok-server and is not sufficient authority evidence. CI and Hardening remained pending, while Migration Compatibility and Ecommerce Hardening remained queued. Browser E2E retained known unrelated Next Admin sessionStorage-before-origin failures while Next Frontend passed. Connector-only local checks still cannot run because github.com DNS resolution fails. AGENTS.md forbids automated workflow edits without an explicit request, so Tenant is visited/blocked and must be revisited at the closing gate. Existing expired advisory exceptions and unrelated browser fixtures remain repository-wide blockers rather than Tenant-owner defects.`
 
 Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
 `in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may
@@ -184,8 +184,8 @@ These are Core modules because the current `modules.toml` declares them with
 - [x] `core/index` — `crates/rustok-index` — blocked
 - [x] `core/search` — `crates/rustok-search` — blocked
 - [x] `core/outbox` — `crates/rustok-outbox` — blocked
-- [ ] `core/tenant` — `crates/rustok-tenant` — in_progress
-- [ ] `core/rbac` — `crates/rustok-rbac`
+- [x] `core/tenant` — `crates/rustok-tenant` — blocked
+- [ ] `core/rbac` — `crates/rustok-rbac` — in_progress
 - [ ] Core interaction sweep — auth/tenant/RBAC generation and caches; channel/locale
   cache dimensions; transactional events/outbox; index/search replay and rebuild;
   Core module lifecycle and migration ordering.
@@ -195,34 +195,32 @@ isolation defect. Outbox, Index, and Search must be revisited at the closing gat
 their consumer-durability, channel-visibility, freshness, replay, and retained-evidence
 blockers.
 
-`core/tenant` remains in progress after three fixed P0, eleven fixed P1 findings and one
-fixed P2 in the Tenant-owner scope. The source corrections bind Tenant Admin, Auth Admin
-user-list/detail reads and RBAC Admin bootstrap from `AuthContext.tenant_id` to the
-middleware-resolved `TenantContext.id` before permission admission; require mandatory
-owner-transaction lifecycle publication; preserve concurrent-idempotent tenant
-provisioning and locale-policy replay; backfill legacy locale policy; enforce explicit
-OAuth tenant selection; bind native storefront and commerce paths to typed tenant owner
-ports; resolve effective module policy through the control plane; return static native
-error envelopes; enforce one default locale on MySQL; and remove the public low-level
-module-state writer. Later Channel, Index, Search, Email and Outbox Admin tenant-scope
-corrections are recorded in the Tenant trust supplement. The cross-owner P0 discovery
-that ordinary tenant permissions admitted host-global Events/System/Settings resources
-was fail-closed in PR #2720 and merged as
-`35afdd3a5d4ae74e735a2963e7246e21a3031e5d` through a separate typed host read/manage
-context with a non-nil operator actor. PR #2735 deliberately does not use tenant OAuth
-client ids because tenant administrators can rotate their secrets; it merged a
-dedicated host-owned opaque token validated by SHA-256 digest, raw-header removal before
-dispatch, typed authority for Events and Iggy native transports, request-scoped typed
-authority for HTTP GraphQL, WebSocket denial, and authenticated/resolved tenant equality
-only for Iggy secret ownership as
-`1ce83819b077ef6e0df009fd5675f556315ef63a`. Its final surface sweep found and removed
-a second P0 tenant `SETTINGS_*` admission path in the standalone Iggy native adapter.
-Superseded PR #2726 is historical staging only. Issue #2680 remains open until same-SHA
-source/unit/compile and live denial, admission, audit, rotation/revocation and replica
-evidence exist. Final-SHA formatting, source guards, compilation, targeted
-admin/commerce/events/Iggy tests, both PostgreSQL races, PostgreSQL fixture, real MySQL,
-Redis recovery and deployed/native parity still gate completion. Source inspection and
-historical workflow runs are supporting evidence only.
+`core/tenant` was visited and is blocked after three fixed P0, eleven fixed P1
+findings and one fixed P2 in the Tenant-owner scope. The source corrections bind
+Tenant Admin, Auth Admin user-list/detail reads and RBAC Admin bootstrap from
+`AuthContext.tenant_id` to the middleware-resolved `TenantContext.id` before
+permission admission; require mandatory owner-transaction lifecycle publication;
+preserve concurrent-idempotent tenant provisioning and locale-policy replay;
+backfill legacy locale policy; enforce explicit OAuth tenant selection; bind
+native storefront and commerce paths to typed tenant owner ports; resolve
+effective module policy through the control plane; return static native error
+envelopes; enforce one default locale on MySQL; and remove the public low-level
+module-state writer. Later Channel, Index, Search, Email and Outbox Admin
+tenant-scope corrections are recorded in the Tenant trust supplement. PR #2720
+merged the typed host authority boundary as
+`35afdd3a5d4ae74e735a2963e7246e21a3031e5d`; PR #2735 merged host-owned
+credential issuance and the standalone Iggy native `SETTINGS_*` P0 correction as
+`1ce83819b077ef6e0df009fd5675f556315ef63a`. Issue #2680 retains the missing
+same-SHA and live host-authority evidence. Exact-head Rust-host workflow run
+`30644588800` and rerun job `91207769592` both failed before `rustok-server`
+was built because the service PostgreSQL instance reported that role
+`rustok_browser` does not exist after a nominally successful role-creation step.
+Issue #2740 owns that deterministic CI fixture. AGENTS.md forbids changing the
+workflow without an explicit request. Final-SHA formatting, source guards,
+server compilation, targeted tests, both PostgreSQL races, PostgreSQL fixture,
+real MySQL, Redis recovery and deployed/native parity remain closing-gate
+requirements. Source inspection, dependency compilation and historical workflow
+runs are supporting evidence only.
 
 For each manifest module, run at minimum:
 
