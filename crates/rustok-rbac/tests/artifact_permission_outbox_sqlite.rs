@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use rustok_core::events::MemoryTransport;
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_rbac::{
-    ArtifactRolePermissionAssignmentCommand, RbacArtifactPermissionAssignmentService,
+    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
+    RbacArtifactPermissionAssignmentService,
 };
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, EntityTrait, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -84,6 +86,18 @@ fn command(
 
 async fn outbox_rows(db: &DatabaseConnection) -> Vec<rustok_outbox::SysEvent> {
     SysEvents::find().all(db).await.expect("load outbox")
+}
+
+async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
+    db.query_one(Statement::from_string(
+        db.get_database_backend(),
+        format!("SELECT COUNT(*) AS count FROM {table}"),
+    ))
+    .await
+    .expect("count table")
+    .expect("count row")
+    .try_get("", "count")
+    .expect("decode count")
 }
 
 #[tokio::test]
@@ -191,4 +205,41 @@ async fn only_state_changes_publish_artifact_permission_events() {
         after_revoke_noop[1].payload["event"]["event"]["data"]["granted"],
         serde_json::json!(false)
     );
+}
+
+#[tokio::test]
+async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
+    let db = setup_database().await;
+    let tenant_id = Uuid::new_v4();
+    let role_id = Uuid::new_v4();
+    let installation_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let permission_key = "sample.events.handle";
+    insert_scope(&db, tenant_id, role_id, installation_id, permission_key).await;
+
+    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let service = RbacArtifactPermissionAssignmentService::new(db.clone(), event_bus);
+    let error = service
+        .assign(command(
+            tenant_id,
+            role_id,
+            installation_id,
+            actor_id,
+            permission_key,
+            true,
+            "grant-without-outbox",
+        ))
+        .await
+        .expect_err("non-Outbox transport must fail closed");
+
+    assert!(matches!(
+        error,
+        ArtifactPermissionAssignmentError::Database(_)
+    ));
+    assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 0);
+    assert_eq!(
+        table_count(&db, "rbac_artifact_role_permission_operations").await,
+        0
+    );
+    assert!(outbox_rows(&db).await.is_empty());
 }
