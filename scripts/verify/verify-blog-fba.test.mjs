@@ -51,6 +51,7 @@ function canonicalExistingPaths() {
       gate.self_test,
       gate.evidence,
       gate.unit_test,
+      gate.postgres_test,
     ].filter(Boolean)),
   ]);
 }
@@ -113,6 +114,17 @@ test('Blog FBA verification-chain policy rejects projection unit-test path drift
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.comments_event_projection.unit_test =
     'crates/rustok-blog/src/services/wrong_projection.rs';
+  assert.ok(
+    failures({ registry }).includes(
+      'registry source gate comments_event_projection path drift',
+    ),
+  );
+});
+
+test('Blog FBA verification-chain policy rejects projection PostgreSQL-test path drift', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.source_gates.comments_event_projection.postgres_test =
+    'crates/rustok-blog/tests/wrong_projection_postgres_test.rs';
   assert.ok(
     failures({ registry }).includes(
       'registry source gate comments_event_projection path drift',
@@ -189,6 +201,16 @@ test('Blog FBA verification-chain policy rejects a missing projection unit-test 
   assert.ok(
     failures({ existingPaths }).includes(
       `registry source gate comments_event_projection missing ${BLOG_FBA_SOURCE_GATES.comments_event_projection.unit_test}`,
+    ),
+  );
+});
+
+test('Blog FBA verification-chain policy rejects a missing projection PostgreSQL target', () => {
+  const existingPaths = canonicalExistingPaths();
+  existingPaths.delete(BLOG_FBA_SOURCE_GATES.comments_event_projection.postgres_test);
+  assert.ok(
+    failures({ existingPaths }).includes(
+      `registry source gate comments_event_projection missing ${BLOG_FBA_SOURCE_GATES.comments_event_projection.postgres_test}`,
     ),
   );
 });
