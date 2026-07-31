@@ -57,13 +57,17 @@ impl ForumStorefrontDocumentFilters {
         else {
             return false;
         };
+        let Some(projected_tags) = projected_tags
+            .iter()
+            .map(serde_json::Value::as_str)
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
 
-        self.tags.iter().all(|expected| {
-            projected_tags
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .any(|projected| projected == expected)
-        })
+        self.tags
+            .iter()
+            .all(|expected| projected_tags.contains(&expected.as_str()))
     }
 
     fn matches_solved(&self, item: &SearchResultItem) -> bool {
@@ -73,10 +77,14 @@ impl ForumStorefrontDocumentFilters {
 
         match item.entity_type.as_str() {
             "forum_topic" => {
-                item.payload
-                    .get("solution_reply_id")
-                    .map(|value| !value.is_null())
-                    == Some(expected)
+                let projected = match item.payload.get("solution_reply_id") {
+                    Some(serde_json::Value::Null) => Some(false),
+                    Some(serde_json::Value::String(value)) => {
+                        Uuid::parse_str(value).ok().map(|_| true)
+                    }
+                    _ => None,
+                };
+                projected == Some(expected)
             }
             "forum_reply" => {
                 item.payload
@@ -207,6 +215,25 @@ mod tests {
         assert!(unsolved.matches(&item("forum_topic", None, None, Some(false))));
         assert!(unsolved.matches(&item("forum_reply", None, None, Some(false))));
         assert!(!unsolved.matches(&item("forum_reply", None, None, None)));
+    }
+
+    #[test]
+    fn malformed_tag_or_solved_projection_fails_closed() {
+        let tag_filter = ForumStorefrontDocumentFilters {
+            tags: vec!["Rust".to_string()],
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let solved_filter = ForumStorefrontDocumentFilters {
+            solved: Some(true),
+            ..ForumStorefrontDocumentFilters::default()
+        };
+        let mut malformed_tags = item("forum_topic", None, Some(vec!["Rust"]), None);
+        malformed_tags.payload["tags"] = serde_json::json!(["Rust", 7]);
+        let mut malformed_solution = item("forum_topic", None, None, Some(true));
+        malformed_solution.payload["solution_reply_id"] = serde_json::json!(true);
+
+        assert!(!tag_filter.matches(&malformed_tags));
+        assert!(!solved_filter.matches(&malformed_solution));
     }
 
     #[test]
