@@ -68,6 +68,19 @@
       "concurrent_created_events_converge_without_lost_updates"
     ]
   },
+  "retry_limit_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact",
+    "isolation": "unique_schema_one_connection_pool_before_update_skip_trigger_nontransactional_attempt_sequence",
+    "scope": "real_handler_eight_zero_row_updates_terminal_error_atomic_rollback_and_same_envelope_replay",
+    "non_claim": "does_not_measure_natural_postgresql_contention_frequency_or_record_execution",
+    "cases": [
+      "optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears"
+    ]
+  },
   "postgres_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
@@ -77,6 +90,7 @@
     "isolation": "unique_schema_one_connection_pool",
     "cases": [
       "duplicate_delivery_updates_counter_and_outbox_once",
+      "optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears",
       "delete_before_create_stays_non_negative_and_replays_in_order",
       "missing_post_replay_commits_only_after_source_appears",
       "outbox_failure_rolls_back_counter_and_delivery_before_retry"
@@ -138,6 +152,10 @@
       "expected": "the production loop uses one decision helper, applies after one updated row, retries seven zero-row results, and reaches its limit on the eighth"
     },
     {
+      "name": "postgres_retry_limit_rollback_and_replay",
+      "expected": "a PostgreSQL trigger skips eight real handler updates while a sequence counts each attempt; the terminal error leaves post, delivery, and outbox unchanged, and the same envelope succeeds after the trigger is removed"
+    },
+    {
       "name": "missing_post_retry",
       "expected": "a missing tenant post returns an error before the delivery marker is committed so the event runtime can retry"
     },
@@ -191,13 +209,14 @@
     "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
     "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
     "execute the env-gated PostgreSQL concurrency case and retain four-connection convergence output",
+    "execute the env-gated PostgreSQL retry-limit case and retain its eight-attempt, rollback, and same-envelope recovery output",
     "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
     "execute the env-gated same-process restart case and retain its output",
     "execute the env-gated process-restart case and retain both child-process exits plus final durable assertions",
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
-    "retain PostgreSQL-observed retry count and limit evidence separately from the deterministic source policy",
+    "retain naturally contended PostgreSQL retry-frequency evidence separately from the deterministic zero-row retry-limit harness",
     "retain full server-host restart recovery evidence separately from the test-process harness"
   ]
 }
