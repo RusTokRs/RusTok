@@ -48,6 +48,6 @@ Database/core errors, product UUIDs, handles, locales, SKUs, validation messages
 
 ## Remaining gaps
 
-Compile, verifier execution, mounted GraphQL/native runtime evidence, and the broader ecommerce mapper cleanup remain open. This source slice does not promote Product FFA/FBA or transport status.
+Compile, verifier execution, and mounted GraphQL/native runtime evidence remain open. The broader ecommerce mapper cleanup remains open. This source slice does not promote Product FFA/FBA or transport status.
 
 No test, verifier, formatter, Cargo, workflow, or CI command was executed for this source slice.
