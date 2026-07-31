@@ -3,8 +3,8 @@
 Status: `source-complete / unvalidated`
 
 This slice hardens the mounted Commerce admin cart-promotion native server
-functions without changing their request/response contracts, permission policy,
-or cart promotion owner behavior.
+functions without changing request/response contracts, permission policy, owner
+calls, or cart-promotion behavior.
 
 ## Covered endpoints
 
@@ -12,76 +12,83 @@ or cart promotion owner behavior.
 - `commerce/admin/apply-cart-promotion`
 
 The client/hydrate server-function contract remains in
-`admin/src/transport/native_server_adapter.rs`. SSR routes through
-`admin/src/transport/native_server_adapter_ssr.rs`, where the promotion
-boundary is hardened. The order-change endpoints are retained in the SSR
-adapter for contract parity, but their remaining error cleanup is not claimed by
-this slice.
+`admin/src/transport/native_server_adapter.rs`. SSR continues to route through
+`admin/src/transport/native_server_adapter_ssr.rs`.
 
 ## Public boundary
 
-Auth and tenant extraction failures no longer serialize framework rejection
-text. They return static operation-independent availability envelopes:
+Auth and tenant extraction failures continue to return static availability
+envelopes:
 
 - `Commerce admin authentication context is temporarily unavailable`
 - `Commerce admin tenant context is temporarily unavailable`
 
-Transport-owned permission and promotion-input validation messages are
-unchanged. The cart owner already maps `CartError` into a sanitized typed
-`PortError`; the Commerce admin consumer forwards only that safe public
-`PortError.message`.
+Transport-owned permission and promotion-input validation messages are unchanged.
+The Cart owner still maps `CartError` into a sanitized typed `PortError`, and the
+Commerce admin consumer still returns only `PortError.message` through
+`ServerFnError`.
 
-## Port context
+## Framework diagnostics
 
-Each mounted promotion call creates a unique transport correlation id and keeps
-the two-second owner-port deadline. The write call also carries a non-empty
+Context-extraction diagnostics retain consumer operation, context kind,
+correlation id, stable code, boundary, and the Rust error type. The complete
+framework extraction errors are not logged, including their debug or display
+text.
+
+Optional `RequestContext` extraction remains attribution-only. Failure still
+falls back without changing permission or operation admission, but only the error
+type is retained in diagnostics.
+
+## Owner diagnostics
+
+Typed owner failures retain:
+
+- Cart promotion owner and Commerce admin consumer;
+- consumer and owner operation;
+- correlation id and transport boundary;
+- public error code, typed kind, retryability, and public-message presence/length;
+- tenant, actor, cart, request tenant/user/channel UUID non-nil facts;
+- request-context, channel, and locale presence/length facts;
+- effective channel presence and locale length.
+
+The complete `PortError` and identity values are not logged. Tenant, user, cart,
+request tenant/user/channel UUIDs, channel slug, locale, and public error message
+are not written as full structured values.
+
+Unavailable, timeout, and invariant failures retain error severity. Ordinary
+validation, not-found, conflict, and forbidden outcomes retain warning severity.
+
+## Preserved port context
+
+Each mounted promotion call still creates a unique transport correlation id and
+keeps the two-second owner-port deadline. Apply still carries a non-empty
 idempotency key.
 
 When `RequestContext` is available, its effective locale and resolved channel
-are propagated into `PortContext`. Tenant default locale remains the fallback.
-Request-context extraction is attribution-only: failure is logged and does not
-change permission or operation admission.
-
-## Diagnostics
-
-Framework extraction failures retain their original cause only in SSR logs with
-consumer operation, context kind, correlation id, stable code, and boundary.
-
-Typed owner failures are additionally logged at the Commerce admin consumer
-boundary with:
-
-- cart promotion owner and Commerce admin consumer;
-- consumer and owner operation;
-- correlation id, tenant, actor, and cart;
-- request tenant/user/channel/locale when available;
-- public error code, error kind, retryability, and boundary.
-
-Unavailable, timeout, and invariant failures use error severity. Ordinary
-validation, not-found, conflict, and forbidden outcomes use warning severity.
-Promotion source ids, metadata payloads, and raw owner/database causes are not
-added as structured fields.
+continue to cross the owner `PortContext`; tenant default locale remains the
+fallback.
 
 ## Source guard and evidence
 
-The focused guard is:
+Focused guard:
 
 ```text
 scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs
 ```
 
-Retained source evidence is:
+Retained source evidence:
 
 ```text
 crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source.json
 crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source-review.json
 ```
 
-The evidence remains explicitly unvalidated. No focused or aggregate verifier,
-Cargo command, test, formatting command, workflow, CI job, or runtime trace was
-executed for this slice.
+No test, verifier, Cargo command, formatting command, workflow, CI job, or runtime
+trace was executed for this source slice.
 
 ## Remaining work
 
-The ecommerce master mapper-cleanup item stays open. Commerce admin order-change
-errors, tax, and other remaining ecommerce adapters require separate source and
-runtime evidence before the broad invariant can be completed.
+Commerce admin order-change diagnostics in the same SSR adapter remain explicitly
+outside this slice. The broad ecommerce mapper-cleanup item stays open for that
+boundary and the remaining order, payment, fulfillment, inventory, customer, tax,
+promotion, adapter, and non-`PortError` envelopes.

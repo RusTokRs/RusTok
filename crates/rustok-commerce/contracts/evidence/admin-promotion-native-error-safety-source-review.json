@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
   "status": "commerce_admin_promotion_native_error_safety_source_reviewed_unvalidated",
-  "captured_at": "2026-07-30",
-  "base_main_sha": "94a037124840cd906a1f979cbb7eb90421c22ce4",
+  "captured_at": "2026-07-31",
+  "base_main_sha": "c4149652fa9c5835336daa29156b1d3e7ba68ac9",
   "review": {
     "mounted_endpoint_names_preserved": true,
     "public_function_signatures_preserved": true,
@@ -11,14 +11,13 @@
     "promotion_input_validation_preserved": true,
     "cart_promotion_owner_guard_reviewed": true,
     "port_error_public_sanitization_reviewed": true,
-    "request_context_fields_reviewed": [
-      "tenant_id",
-      "user_id",
-      "channel_id",
-      "channel_slug",
-      "channel_resolution_source",
-      "locale"
-    ],
+    "framework_error_text_removed": true,
+    "owner_port_error_text_removed": true,
+    "identity_values_removed": true,
+    "safe_shape_diagnostics_reviewed": true,
+    "public_envelopes_preserved": true,
+    "request_locale_and_channel_forwarding_preserved": true,
+    "write_idempotency_preserved": true,
     "client_hydrate_contract_remains_on_canonical_adapter": true,
     "ssr_routes_to_safe_adapter": true,
     "order_change_source_explicitly_not_claimed_safe": true
@@ -32,9 +31,9 @@
     "workflow_or_ci_run": false
   },
   "limitations": [
-    "No compiler evidence has been retained.",
-    "No runtime request or owner-failure trace has been retained.",
-    "The focused source guard has been added but not executed.",
-    "Commerce admin order-change failures remain a separate open mapper-cleanup slice."
+    "Compiler evidence is not retained.",
+    "Runtime request and owner-failure traces are not retained.",
+    "The focused source guard is updated but not executed.",
+    "Commerce admin order-change failures remain a separate mapper-cleanup slice."
   ]
 }
