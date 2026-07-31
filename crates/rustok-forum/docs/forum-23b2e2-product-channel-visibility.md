@@ -66,23 +66,29 @@ unscoped engine path.
 
 ## Existing document repair
 
-Older Product Search documents do not contain the projected allowlist. They are
-already hidden by the fail-closed predicate. During Search bootstrap,
-`SearchProjector` counts tenant Product documents whose projected value is missing
-or is not an array and runs the existing product-scope rebuild when drift exists.
-This is a Search-owned rebuild, not a database migration or a Product write.
+Older Product Search documents do not contain the projected allowlist and are
+already hidden by the fail-closed predicate. A Search-owned reconciler selects a
+bounded batch of tenant IDs whose Product projection path is absent. The host starts
+its background worker during server bootstrap; each batch runs the existing
+product-scope rebuild until no legacy tenant remains.
+
+Explicit malformed Product owner data projects JSON null. It remains hidden and is
+not selected repeatedly by the legacy repair worker; Product must correct the owner
+value. The repair is a Search-owned rebuild, not a database migration or Product
+write.
 
 ## Compatibility and degraded mode
 
 No database migration, public DTO, public `SearchQuery` field, dependency or
 `Cargo.lock` change is introduced. The Search-owned Product payload gains the
-channel visibility projection. Existing canonical Products are repaired through
-the product-scope rebuild; no manual backfill is required.
+channel visibility projection. Missing legacy projections are repaired through
+the bounded PostgreSQL startup worker; no manual backfill is required when background
+workers are enabled.
 
-If bootstrap repair has not run yet, old or malformed Product documents remain
-hidden rather than becoming visible in every channel. Admin preview/global Search
-keeps its previous operator semantics because it does not call the storefront-only
-engine method.
+Before repair, legacy documents remain hidden rather than becoming visible in every
+channel. Explicit malformed owner data also remains hidden until Product is fixed.
+Admin preview/global Search keeps its previous operator semantics because it does
+not call the storefront-only engine method.
 
 This slice does **not** claim completion of remaining Forum filters, durable
 non-Forum projection ordering, deletion/ACL cleanup, or runtime evidence.
@@ -93,7 +99,8 @@ The implementation agent did not run these commands:
 
 ```bash
 cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture
-cargo test -p rustok-search product_channel_visibility_drift_is_fail_closed -- --nocapture
+cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture
+cargo test -p rustok-search product_channel_reconciliation -- --nocapture
 node scripts/verify/verify-forum-search-product-channel-visibility.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets

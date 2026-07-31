@@ -55,8 +55,7 @@ pub fn start_product_channel_projection_reconciliation_if_ready(
         .expect("StopHandle must be registered before Product channel reconciliation startup")
         .subscribe();
 
-    let instance_id =
-        PRODUCT_CHANNEL_REPAIR_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    let instance_id = PRODUCT_CHANNEL_REPAIR_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
         instance_id,
         tenant_limit = DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT,
@@ -86,9 +85,7 @@ async fn product_channel_projection_reconciliation_loop(
             .await
         {
             Ok(report) if report.due_tenants == 0 => {
-                tracing::info!(
-                    "Product Search channel projection reconciliation completed"
-                );
+                tracing::info!("Product Search channel projection reconciliation completed");
                 return;
             }
             Ok(report) => {

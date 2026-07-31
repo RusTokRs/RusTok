@@ -86,8 +86,10 @@ assertion. Search projects Product-owned
 `metadata.channel_visibility.allowed_channel_slugs`, hides missing or malformed
 projections, and applies one storefront-only predicate before FTS or typo ranking.
 Rows, totals, facets, attribute-filtered queries, query-rule pins and document
-suggestions therefore share the trusted channel decision. Existing Product drift
-triggers the Search-owned product-scope rebuild, while admin preview/global Search
+suggestions therefore share the trusted channel decision. A Search-owned bounded
+reconciler and host startup worker repair missing legacy Product projections in
+PostgreSQL batches. Malformed explicit owner values remain hidden until Product is
+corrected instead of entering an endless rebuild loop. Admin preview/global Search
 retain the previous non-storefront path. Runtime evidence remains pending.
 
 The durable projection contract is also incomplete. The generic
@@ -239,10 +241,10 @@ rebuild behavior through replayable event transport.
 18. Added the Search-owned trusted storefront channel authority and bound ordinary
     plus Forum-only GraphQL/native Search to middleware `RequestContext`; the
     legacy public `channel_id` is assertion-only under `FORUM-23B2E1`.
-19. Projected canonical Product channel allowlists, added fail-closed product-scope
-    bootstrap repair, and applied one storefront predicate to FTS, typo fallback,
-    rows, totals, facets, query-rule pins and document suggestions under
-    `FORUM-23B2E2`.
+19. Projected canonical Product channel allowlists, added bounded startup repair
+    for missing legacy projections, and applied one storefront predicate to FTS,
+    typo fallback, rows, totals, facets, query-rule pins and document suggestions
+    under `FORUM-23B2E2`.
 
 ## Next results
 
@@ -288,7 +290,8 @@ should run the relevant subset, including:
 - `cargo test -p rustok-search storefront_category_scope -- --nocapture`
 - `cargo test -p rustok-search storefront_result_eligibility -- --nocapture`
 - `cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture`
-- `cargo test -p rustok-search product_channel_visibility_drift_is_fail_closed -- --nocapture`
+- `cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture`
+- `cargo test -p rustok-search product_channel_reconciliation -- --nocapture`
 - `cargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture`
 - `cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture`
 - `cargo test -p rustok-server --features mod-forum forum_search_category_scope -- --nocapture`

@@ -1774,9 +1774,11 @@ attachment presence.
   aggregate strings rather than Product result exposure;
 - ordinary and Forum-only GraphQL/native Search preserve the exact
   `TrustedStorefrontChannel` through every bounded page and post-query rule step;
-- Search bootstrap detects tenant Product documents with a missing or malformed
-  allowlist projection and runs the existing product-scope rebuild; legacy drift is
-  hidden before repair and does not require a database migration or manual backfill;
+- a Search-owned bounded reconciler discovers tenant Product documents whose
+  projection path is absent, and a host background worker runs product-scope rebuilds
+  at server startup until no legacy batch remains;
+- legacy missing projections are hidden before repair, while malformed explicit
+  owner values remain hidden and are not rebuilt forever without an owner fix;
 - admin preview/global Search retain their existing non-storefront execution path;
 - `forum-search-product-channel-visibility.json`,
   `forum-23b2e2-product-channel-visibility.md`, and
@@ -1788,8 +1790,8 @@ attachment presence.
 No database migration, manual backfill, Search query shape, Forum projection
 shape, dependency, public DTO or `Cargo.lock` change is required by
 `FORUM-23B2A/B2B/B2C/B2D/B2E1/B2E2`. The Search-owned Product payload gains the
-channel allowlist projection, and existing drift is repaired by an automatic
-product-scope rebuild during Search bootstrap.
+channel allowlist projection, and missing legacy projections are repaired by a
+bounded PostgreSQL background worker started during server bootstrap.
 The ordinary GraphQL `storefrontSearch` field and native
 `search/storefront-search` endpoint remain unchanged; exact category behavior
 remains available for mixed, unspecified and non-Forum-only requests.
@@ -1806,9 +1808,10 @@ category identifiers are never expanded or filtered through Forum policy. The
 legacy storefront `channel_id` remains accepted only when it matches the trusted
 request channel; missing, incomplete, foreign-tenant or mismatched trusted context
 fails closed. `FORUM-23B2E2` applies the trusted channel to Product rows,
-totals, facets, typo fallback, query-rule pins and document suggestions. Missing or
-malformed Product projections remain hidden until the Search-owned product rebuild
-repairs them; admin/global Search behavior remains unchanged.
+totals, facets, typo fallback, query-rule pins and document suggestions. Missing
+legacy projections remain hidden until the Search-owned startup worker repairs them;
+malformed explicit owner values remain hidden until Product is corrected. Admin/global
+Search behavior remains unchanged.
 
 ### Remaining scope
 
@@ -1834,7 +1837,8 @@ cargo test -p rustok-search storefront_category_scope -- --nocapture
 cargo test -p rustok-search storefront_result_eligibility -- --nocapture
 cargo test -p rustok-search storefront_channel_authority -- --nocapture
 cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture
-cargo test -p rustok-search product_channel_visibility_drift_is_fail_closed -- --nocapture
+cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture
+cargo test -p rustok-search product_channel_reconciliation -- --nocapture
 cargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture
 cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture
 cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture

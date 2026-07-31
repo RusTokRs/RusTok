@@ -51,8 +51,7 @@ impl ProductChannelProjectionReconciler {
             ));
         }
 
-        let tenant_limit = tenant_limit
-            .clamp(1, MAX_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT);
+        let tenant_limit = tenant_limit.clamp(1, MAX_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT);
         let statement = Statement::from_sql_and_values(
             DbBackend::Postgres,
             LEGACY_PRODUCT_CHANNEL_TENANTS_SQL,
@@ -64,7 +63,10 @@ impl ProductChannelProjectionReconciler {
             .await
             .map_err(Error::Database)?
             .into_iter()
-            .map(|row| row.try_get::<Uuid>("", "tenant_id").map_err(Error::Database))
+            .map(|row| {
+                row.try_get::<Uuid>("", "tenant_id")
+                    .map_err(Error::Database)
+            })
             .collect::<Result<Vec<_>>>()?;
 
         let mut report = ProductChannelProjectionSweepReport {
@@ -81,9 +83,7 @@ impl ProductChannelProjectionReconciler {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        LEGACY_PRODUCT_CHANNEL_TENANTS_SQL, MAX_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT,
-    };
+    use super::{LEGACY_PRODUCT_CHANNEL_TENANTS_SQL, MAX_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT};
 
     #[test]
     fn reconciliation_selects_only_missing_legacy_projection() {

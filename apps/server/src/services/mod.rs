@@ -302,6 +302,7 @@ pub mod release_backend;
 pub mod runtime_guardrails;
 #[cfg(feature = "mod-seo")]
 pub mod seo_redirect_cache_reconciliation;
+pub mod search_product_channel_reconciliation;
 pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;

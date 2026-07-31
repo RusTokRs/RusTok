@@ -17,6 +17,11 @@ const paths = {
   predicate: "crates/rustok-search/src/storefront_product_channel_visibility.rs",
   projector: "crates/rustok-search/src/projector_legacy.rs",
   bootstrap: "crates/rustok-search/src/projector.rs",
+  reconciler: "crates/rustok-search/src/product_channel_reconciliation.rs",
+  serverWorker:
+    "apps/server/src/services/search_product_channel_reconciliation.rs",
+  serverServices: "apps/server/src/services/mod.rs",
+  serverBootstrap: "apps/server/src/services/server_bootstrap.rs",
   engine: "crates/rustok-search/src/pg_engine.rs",
   dictionaries: "crates/rustok-search/src/dictionaries.rs",
   suggestions: "crates/rustok-search/src/suggestions.rs",
@@ -65,6 +70,10 @@ const note = read(paths.note);
 const predicate = read(paths.predicate);
 const projector = read(paths.projector);
 const bootstrap = read(paths.bootstrap);
+const reconciler = read(paths.reconciler);
+const serverWorker = read(paths.serverWorker);
+const serverServices = read(paths.serverServices);
+const serverBootstrap = read(paths.serverBootstrap);
 const engine = read(paths.engine);
 const dictionaries = read(paths.dictionaries);
 const suggestions = read(paths.suggestions);
@@ -110,13 +119,46 @@ requireAll(
 requireAll(
   bootstrap,
   [
-    "PRODUCT_CHANNEL_VISIBILITY_DRIFT_COUNT_SQL",
+    "PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL",
     "entity_type = 'product'",
-    "IS DISTINCT FROM 'array'",
+    "IS NULL",
     "self.rebuild_product_scope(tenant_id).await?",
-    "product_channel_visibility_drift_is_fail_closed",
+    "product_channel_visibility_legacy_projection_is_detected",
   ],
   paths.bootstrap,
+);
+
+requireAll(
+  reconciler,
+  [
+    "pub struct ProductChannelProjectionReconciler",
+    "DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT",
+    "LEGACY_PRODUCT_CHANNEL_TENANTS_SQL",
+    "allowed_channel_slugs}' IS NULL",
+    "self.projector.rebuild_product_scope(tenant_id).await?",
+    "reconciliation_selects_only_missing_legacy_projection",
+  ],
+  paths.reconciler,
+);
+requireAll(
+  serverWorker,
+  [
+    "start_product_channel_projection_reconciliation_if_ready",
+    "ProductChannelProjectionReconciler::new",
+    "sweep_due(DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT)",
+    "Product Search channel projection reconciliation completed",
+  ],
+  paths.serverWorker,
+);
+requireAll(
+  serverServices,
+  ["pub mod search_product_channel_reconciliation;"],
+  paths.serverServices,
+);
+requireAll(
+  serverBootstrap,
+  ["start_product_channel_projection_reconciliation_if_ready"],
+  paths.serverBootstrap,
 );
 
 requireAll(
@@ -191,7 +233,11 @@ requireAll(
 
 requireAll(
   searchLib,
-  ["mod storefront_product_channel_visibility;"],
+  [
+    "mod product_channel_reconciliation;",
+    "mod storefront_product_channel_visibility;",
+    "ProductChannelProjectionReconciler",
+  ],
   paths.searchLib,
 );
 
@@ -244,6 +290,12 @@ if (contract) {
   }
   if (contract.compatibility?.database_schema_changed !== false) {
     failures.push(`${paths.contract}: database schema claim drift`);
+  }
+  if (!contract.reconciliation?.startup_worker_detects_missing_legacy_projection) {
+    failures.push(`${paths.contract}: startup repair invariant is missing`);
+  }
+  if (!contract.reconciliation?.malformed_explicit_owner_projection_is_not_rebuilt_forever) {
+    failures.push(`${paths.contract}: malformed owner loop guard is missing`);
   }
   if (contract.reconciliation?.manual_backfill_required !== false) {
     failures.push(`${paths.contract}: manual backfill claim drift`);
