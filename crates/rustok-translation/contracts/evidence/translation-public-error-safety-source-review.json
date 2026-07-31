@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "status": "translation_public_error_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-translation/src/public_error.rs",
+    "crates/rustok-translation/src/error.rs",
+    "crates/rustok-translation/src/graphql/context.rs",
+    "crates/rustok-translation/admin/src/transport/native_server_adapter.rs",
+    "scripts/verify/verify-translation-public-error-safety.mjs",
+    "crates/rustok-translation/contracts/evidence/translation-public-error-safety-source.json"
+  ],
+  "review_findings": {
+    "public_structs_preserved": true,
+    "public_kind_classification_preserved": true,
+    "public_codes_preserved": true,
+    "public_retryability_preserved": true,
+    "correlation_envelope_preserved": true,
+    "forbidden_message_preserved": true,
+    "not_found_payload_redacted": true,
+    "bad_input_payload_redacted": true,
+    "internal_messages_preserved": true,
+    "complete_translation_error_logging_removed": true,
+    "provider_database_payload_removed": true,
+    "workflow_locale_revision_reason_payload_removed": true,
+    "static_error_class_retained": true,
+    "graphql_consumer_preserved": true,
+    "native_consumer_preserved": true,
+    "shared_export_preserved": true,
+    "broad_ecommerce_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, GraphQL runtime, or native runtime validation was executed."
+}
