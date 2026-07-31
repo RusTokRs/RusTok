@@ -26,9 +26,11 @@
     "public_manual_reconciliation_envelope_preserved": true,
     "typed_reconciliation_reason_variant_count": 16,
     "all_checkout_execution_reconciliation_call_sites_typed": true,
-    "provider_checkpoint_diagnostics_changed": false,
-    "request_result_encoding_diagnostics_changed": false,
-    "remaining_provider_checkpoint_diagnostics_open": true,
+    "provider_checkpoint_diagnostics_changed": true,
+    "request_result_encoding_diagnostics_changed": true,
+    "companion_checkpoint_encoding_contract_present": true,
+    "remaining_provider_checkpoint_diagnostics_open": false,
+    "checkout_execution_payload_diagnostic_cleanup_closed": true,
     "payment_lifecycle_changed": false,
     "provider_execution_changed": false,
     "journal_mutation_changed": false,
@@ -49,8 +51,9 @@
     "Both events retain only the static PaymentError variant and aggregate text, UUID, and opaque-payload shape facts.",
     "Complete database, validation, identity, provider, transition, and other PaymentError payloads are not logged.",
     "Both routes still return the existing public manual-reconciliation conflict envelope.",
-    "The companion reconciliation-reason contract now covers all sixteen checkout execution call sites.",
-    "Provider checkpoint and request/result encoding payload diagnostics remain a separate open slice.",
+    "The companion reconciliation-reason contract covers all sixteen checkout execution call sites.",
+    "Provider checkpoint and request/result encoding diagnostics are sanitized in the companion checkpoint/encoding source contract.",
+    "Checkout execution payload-diagnostic cleanup is source-closed but unvalidated; the broad ecommerce item remains open.",
     "No payment FFA or FBA status is promoted from source inspection."
   ]
 }

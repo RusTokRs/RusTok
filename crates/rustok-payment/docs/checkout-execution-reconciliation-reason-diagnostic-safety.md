@@ -50,13 +50,20 @@ This source contract does not change:
 Authorization and capture local-persistence `PaymentError` payload logging is sanitized
 in `checkout-execution-local-persistence-diagnostic-safety.md`.
 
-Separate cleanup remains open for provider checkpoint and request/result encoding error
-diagnostics. The canonical ecommerce correlation-safe mapper-cleanup item remains open.
+Provider checkpoint and request/result encoding diagnostics are sanitized in
+`checkout-execution-checkpoint-encoding-diagnostic-safety.md`. The currently identified
+checkout execution payload-diagnostic sites are therefore source-closed, while all
+execution, compilation, workflow, CI, and production evidence remains unvalidated.
+
+The canonical ecommerce correlation-safe mapper-cleanup item remains open across other
+modules and public envelopes.
 
 ## Evidence
 
 - `contracts/evidence/checkout-execution-reconciliation-reason-diagnostic-safety-source.json`
 - `scripts/verify/verify-payment-checkout-execution-reconciliation-reason-diagnostic-safety.mjs`
+- `docs/checkout-execution-local-persistence-diagnostic-safety.md`
+- `docs/checkout-execution-checkpoint-encoding-diagnostic-safety.md`
 
 ## Validation still required
 

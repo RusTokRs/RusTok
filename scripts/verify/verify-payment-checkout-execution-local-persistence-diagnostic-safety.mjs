@@ -73,6 +73,8 @@ const paths = {
     "crates/rustok-payment/contracts/evidence/checkout-execution-local-persistence-diagnostic-safety-source.json",
   reasonEvidence:
     "crates/rustok-payment/contracts/evidence/checkout-execution-reconciliation-reason-diagnostic-safety-source.json",
+  checkpointEvidence:
+    "crates/rustok-payment/contracts/evidence/checkout-execution-checkpoint-encoding-diagnostic-safety-source.json",
   doc:
     "crates/rustok-payment/docs/checkout-execution-local-persistence-diagnostic-safety.md",
   plan: "crates/rustok-commerce/docs/implementation-plan.md",
@@ -87,6 +89,7 @@ const capture = functionBody(captureSource, "capture");
 const localSites = `${authorize}\n${capture}`;
 const evidence = JSON.parse(read(paths.evidence));
 const reasonEvidence = JSON.parse(read(paths.reasonEvidence));
+const checkpointEvidence = JSON.parse(read(paths.checkpointEvidence));
 const doc = read(paths.doc);
 const plan = read(paths.plan);
 
@@ -186,18 +189,34 @@ for (const marker of [
 for (const marker of [
   'code = "payment.checkout_execution_commit_checkpoint_failed"',
   'code = "payment.checkout_execution_reconciliation_checkpoint_failed"',
-  "error = ?error",
+  "commit_checkpoint_error_variant = error_facts.error_variant",
+  "reconciliation_checkpoint_error_variant = error_facts.error_variant",
 ]) {
-  requireText(helpers, marker, `${paths.helpers}: checkpoint diagnostics remain separate`);
+  requireText(helpers, marker, `${paths.helpers}: sanitized checkpoint diagnostics`);
 }
+for (const forbidden of ["error = ?error", "error = %error"]) {
+  forbidText(helpers, forbidden, `${paths.helpers}: checkpoint payload logging`);
+}
+
 for (const marker of [
   'code = "payment.provider_request_encoding_failed"',
+  "request_encoding_failed = true",
   'code = "payment.checkout_execution_provider_failure_checkpoint_failed"',
+  "provider_failure_checkpoint_error_variant = error_facts.error_variant",
   'code = "payment.provider_result_encoding_failed"',
+  "result_encoding_failed = true",
   'code = "payment.checkout_execution_provider_checkpoint_failed"',
-  "error = ?checkpoint_error",
+  "provider_success_checkpoint_error_variant = error_facts.error_variant",
 ]) {
-  requireText(captureSource, marker, `${paths.capture}: provider checkpoint slice remains open`);
+  requireText(captureSource, marker, `${paths.capture}: sanitized checkpoint/encoding diagnostics`);
+}
+for (const forbidden of [
+  "error = ?error",
+  "error = %error",
+  "error = ?checkpoint_error",
+  "error = %checkpoint_error",
+]) {
+  forbidText(captureSource, forbidden, `${paths.capture}: checkpoint/encoding payload logging`);
 }
 
 if (
@@ -228,9 +247,11 @@ const expectedContract = {
   public_manual_reconciliation_envelope_preserved: true,
   typed_reconciliation_reason_variant_count: 16,
   all_checkout_execution_reconciliation_call_sites_typed: true,
-  provider_checkpoint_diagnostics_changed: false,
-  request_result_encoding_diagnostics_changed: false,
-  remaining_provider_checkpoint_diagnostics_open: true,
+  provider_checkpoint_diagnostics_changed: true,
+  request_result_encoding_diagnostics_changed: true,
+  companion_checkpoint_encoding_contract_present: true,
+  remaining_provider_checkpoint_diagnostics_open: false,
+  checkout_execution_payload_diagnostic_cleanup_closed: true,
   payment_lifecycle_changed: false,
   provider_execution_changed: false,
   journal_mutation_changed: false,
@@ -262,10 +283,26 @@ if (reasonEvidence.source_contract?.reconciliation_reason_variant_count !== 16) 
 if (reasonEvidence.source_contract?.all_checkout_execution_call_sites_typed !== true) {
   failures.push(`${paths.reasonEvidence}: all checkout execution call sites must be typed`);
 }
+if (
+  checkpointEvidence.status !==
+  "payment_checkout_execution_checkpoint_encoding_diagnostic_safety_source_reviewed_unvalidated"
+) {
+  failures.push(`${paths.checkpointEvidence}: unexpected status ${checkpointEvidence.status}`);
+}
+if (checkpointEvidence.source_contract?.diagnostic_site_count !== 6) {
+  failures.push(`${paths.checkpointEvidence}: diagnostic_site_count must be 6`);
+}
+if (checkpointEvidence.source_contract?.remaining_checkout_execution_payload_diagnostics_open !== false) {
+  failures.push(`${paths.checkpointEvidence}: checkout execution payload diagnostics must be source-closed`);
+}
 
 requireText(doc, "Status: **source-ready / unvalidated**", `${paths.doc}: status`);
 requireText(doc, "They do not record the complete `PaymentError`", `${paths.doc}: payload policy`);
-requireText(doc, "Separate cleanup remains open for provider checkpoint", `${paths.doc}: remaining work`);
+requireText(
+  doc,
+  "Provider checkpoint and request/result encoding diagnostics are sanitized",
+  `${paths.doc}: companion closure`,
+);
 requireText(
   plan,
   "Finish correlation-safe mapper cleanup",
@@ -281,5 +318,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Payment checkout execution authorization and capture local-persistence diagnostics retain only stable PaymentError shape facts; checkpoint and runtime evidence remain open",
+  "Payment checkout execution local-persistence diagnostics retain only stable PaymentError shape facts; companion checkpoint and encoding diagnostics are source-closed while execution evidence remains open",
 );

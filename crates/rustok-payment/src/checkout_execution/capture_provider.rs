@@ -169,10 +169,10 @@ impl InProcessCheckoutPaymentExecutionPort {
                 )
             })?
             .to_string();
-        let request_payload = serde_json::to_value(&request).map_err(|error| {
+        let request_payload = serde_json::to_value(&request).map_err(|_| {
             let context_facts = checkout_payment_execution_context_facts(context);
             tracing::error!(
-                error = ?error,
+                request_encoding_failed = true,
                 provider_operation,
                 provider_id_length = provider_id.chars().count(),
                 correlation_id = %context.correlation_id,
@@ -272,11 +272,18 @@ impl InProcessCheckoutPaymentExecutionPort {
                 };
                 if let Err(checkpoint_error) = checkpoint {
                     let context_facts = checkout_payment_execution_context_facts(context);
+                    let error_facts =
+                        checkout_payment_execution_payment_error_facts(&checkpoint_error);
                     tracing::error!(
                         operation_id_non_nil = !journal_operation.id.is_nil(),
                         provider_operation,
                         provider_id_length = provider_id.chars().count(),
-                        error = ?checkpoint_error,
+                        provider_failure_checkpoint_error_variant = error_facts.error_variant,
+                        provider_failure_checkpoint_error_text_field_count = error_facts.text_field_count,
+                        provider_failure_checkpoint_error_text_total_length = error_facts.text_total_length,
+                        provider_failure_checkpoint_error_uuid_field_count = error_facts.uuid_field_count,
+                        provider_failure_checkpoint_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+                        provider_failure_checkpoint_error_opaque_payload_present = error_facts.opaque_payload_present,
                         correlation_id = %context.correlation_id,
                         tenant_id_length = context_facts.tenant_id_length,
                         actor_kind = context_facts.actor_kind,
@@ -302,13 +309,13 @@ impl InProcessCheckoutPaymentExecutionPort {
                 ));
             }
         };
-        let result_payload = serde_json::to_value(&provider_result).map_err(|error| {
+        let result_payload = serde_json::to_value(&provider_result).map_err(|_| {
             let context_facts = checkout_payment_execution_context_facts(context);
             tracing::error!(
                 operation_id_non_nil = !journal_operation.id.is_nil(),
                 provider_operation,
                 provider_id_length = provider_id.chars().count(),
-                error = ?error,
+                result_encoding_failed = true,
                 correlation_id = %context.correlation_id,
                 tenant_id_length = context_facts.tenant_id_length,
                 actor_kind = context_facts.actor_kind,
@@ -336,11 +343,17 @@ impl InProcessCheckoutPaymentExecutionPort {
             .await
             .map_err(|error| {
                 let context_facts = checkout_payment_execution_context_facts(context);
+                let error_facts = checkout_payment_execution_payment_error_facts(&error);
                 tracing::error!(
                     operation_id_non_nil = !journal_operation.id.is_nil(),
                     provider_operation,
                     provider_id_length = provider_id.chars().count(),
-                    error = ?error,
+                    provider_success_checkpoint_error_variant = error_facts.error_variant,
+                    provider_success_checkpoint_error_text_field_count = error_facts.text_field_count,
+                    provider_success_checkpoint_error_text_total_length = error_facts.text_total_length,
+                    provider_success_checkpoint_error_uuid_field_count = error_facts.uuid_field_count,
+                    provider_success_checkpoint_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+                    provider_success_checkpoint_error_opaque_payload_present = error_facts.opaque_payload_present,
                     correlation_id = %context.correlation_id,
                     tenant_id_length = context_facts.tenant_id_length,
                     actor_kind = context_facts.actor_kind,

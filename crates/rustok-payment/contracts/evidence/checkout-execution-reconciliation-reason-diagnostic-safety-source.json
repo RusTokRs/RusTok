@@ -26,8 +26,11 @@
     "provider_execution_changed": false,
     "payment_lifecycle_changed": false,
     "local_persistence_diagnostics_changed": true,
-    "provider_checkpoint_diagnostics_changed": false,
-    "remaining_provider_checkpoint_diagnostics_open": true,
+    "provider_checkpoint_diagnostics_changed": true,
+    "request_result_encoding_diagnostics_changed": true,
+    "companion_checkpoint_encoding_contract_present": true,
+    "remaining_provider_checkpoint_diagnostics_open": false,
+    "checkout_execution_payload_diagnostic_cleanup_closed": true,
     "broad_ecommerce_cleanup_closed": false
   },
   "validation": {
@@ -44,8 +47,9 @@
     "The reconciliation helper accepts a closed sixteen-variant enum instead of a free-form static string.",
     "All checkout execution call sites in validation, provider helper, authorization, and capture sources select stable snake-case labels.",
     "The public conflict code, message, kind, retryability, and all existing routing remain unchanged.",
-    "Authorization and capture local-persistence diagnostics are sanitized in the companion local-persistence source slice.",
-    "Provider checkpoint and request/result encoding payload diagnostics remain a separate open slice.",
+    "Authorization and capture local-persistence diagnostics are sanitized in the companion local-persistence source contract.",
+    "Provider checkpoint and request/result encoding diagnostics are sanitized in the companion checkpoint/encoding source contract.",
+    "Checkout execution payload-diagnostic cleanup is source-closed but unvalidated; broad ecommerce cleanup remains open.",
     "No payment FFA or FBA status is promoted from source inspection."
   ]
 }
