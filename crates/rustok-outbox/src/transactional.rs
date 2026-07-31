@@ -56,6 +56,34 @@ impl TransactionalEventBus {
         Ok(envelope_id)
     }
 
+    /// Publishes one sealed typed contract through an owner transaction that
+    /// does not carry a separately composed transport handle.
+    ///
+    /// The typed envelope retains the exact predecessor envelope identity in
+    /// `causation_id`. The canonical outbox row is written in the supplied
+    /// transaction and its own envelope identity is returned for diagnostics.
+    pub async fn publish_contract_direct_in_tx_with_causation_and_envelope_id<C, E>(
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Uuid,
+        event: E,
+    ) -> Result<Uuid>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        let envelope = build_contract_envelope(
+            tenant_id,
+            actor_id,
+            Some(causation_id),
+            event,
+        )?;
+        let envelope_id = envelope.id();
+        OutboxTransport::write_contract_envelope_in_tx(txn, envelope).await?;
+        Ok(envelope_id)
+    }
+
     pub async fn publish_in_tx<C>(
         &self,
         txn: &C,
@@ -132,19 +160,57 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
-        let event_type = event.event_type();
-        let envelope = ContractEventEnvelope::new(tenant_id, actor_id, event).map_err(|error| {
-            tracing::error!(event_type, error = %error, "Event contract encoding failed");
-            rustok_core::Error::Validation(format!("Event contract encoding failed: {error}"))
-        })?;
-        let envelope_id = envelope.id();
-        let outbox = self
-            .transport
-            .as_any()
-            .downcast_ref::<OutboxTransport>()
-            .ok_or_else(|| transactional_transport_required(&*self.transport))?;
-        outbox.write_contract_to_outbox(txn, envelope).await?;
-        Ok(envelope_id)
+        let envelope = build_contract_envelope(tenant_id, actor_id, None, event)?;
+        self.write_contract_envelope_in_tx(txn, envelope).await
+    }
+
+    /// Publishes a sealed typed contract caused by one exact predecessor
+    /// envelope and discards only the new typed envelope identity.
+    pub async fn publish_contract_in_tx_with_causation<C, E>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Uuid,
+        event: E,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        self.publish_contract_in_tx_with_causation_and_envelope_id(
+            txn,
+            tenant_id,
+            actor_id,
+            causation_id,
+            event,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Publishes a sealed typed contract caused by one exact predecessor
+    /// envelope and returns the typed envelope identity written by the same
+    /// transaction.
+    pub async fn publish_contract_in_tx_with_causation_and_envelope_id<C, E>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Uuid,
+        event: E,
+    ) -> Result<Uuid>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        let envelope = build_contract_envelope(
+            tenant_id,
+            actor_id,
+            Some(causation_id),
+            event,
+        )?;
+        self.write_contract_envelope_in_tx(txn, envelope).await
     }
 
     pub async fn publish(
@@ -179,6 +245,46 @@ impl TransactionalEventBus {
         validate_event(&event)?;
         Ok(EventEnvelope::new(tenant_id, actor_id, event))
     }
+
+    async fn write_contract_envelope_in_tx<C>(
+        &self,
+        txn: &C,
+        envelope: ContractEventEnvelope,
+    ) -> Result<Uuid>
+    where
+        C: ConnectionTrait,
+    {
+        let envelope_id = envelope.id();
+        let outbox = self
+            .transport
+            .as_any()
+            .downcast_ref::<OutboxTransport>()
+            .ok_or_else(|| transactional_transport_required(&*self.transport))?;
+        outbox.write_contract_to_outbox(txn, envelope).await?;
+        Ok(envelope_id)
+    }
+}
+
+fn build_contract_envelope<E>(
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    causation_id: Option<Uuid>,
+    event: E,
+) -> Result<ContractEventEnvelope>
+where
+    E: EventContract,
+{
+    let event_type = event.event_type();
+    let envelope = match causation_id {
+        Some(causation_id) => {
+            ContractEventEnvelope::new_caused_by(tenant_id, actor_id, causation_id, event)
+        }
+        None => ContractEventEnvelope::new(tenant_id, actor_id, event),
+    };
+    envelope.map_err(|error| {
+        tracing::error!(event_type, error = %error, "Event contract encoding failed");
+        rustok_core::Error::Validation(format!("Event contract encoding failed: {error}"))
+    })
 }
 
 fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
