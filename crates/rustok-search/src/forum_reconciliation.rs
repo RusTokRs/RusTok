@@ -6,11 +6,11 @@ use uuid::Uuid;
 use rustok_core::{Error, Result};
 use rustok_events::{DomainEvent, EventEnvelope};
 
+use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::ForumProjectionInbox;
 use crate::forum_projector::ForumSearchProjector;
 use crate::projector::SearchProjector;
-use crate::SearchProjectionSource;
 
 pub const DEFAULT_FORUM_SWEEP_TENANT_LIMIT: usize = 32;
 pub const DEFAULT_FORUM_SWEEP_EVENT_LIMIT: usize = 64;
@@ -87,19 +87,18 @@ impl ForumProjectionReconciler {
                         tenant_id,
                         status,
                         next_attempt_at,
-                        revision_at,
-                        event_id
+                        ingest_sequence
                     FROM search_projection_inbox
                     WHERE source_module = 'forum'
                       AND status IN ('pending', 'retryable_error')
-                    ORDER BY tenant_id, revision_at ASC, event_id ASC
+                    ORDER BY tenant_id, ingest_sequence ASC
                 )
                 SELECT tenant_id
                 FROM oldest
                 WHERE status = 'pending'
                    OR next_attempt_at IS NULL
                    OR next_attempt_at <= CURRENT_TIMESTAMP
-                ORDER BY revision_at ASC, event_id ASC
+                ORDER BY ingest_sequence ASC
                 LIMIT $1
                 "#,
                 vec![(limit as i64).into()],
@@ -154,7 +153,9 @@ impl ForumProjectionReconciler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. } => {
-                self.forum_projector.rebuild_tenant(envelope.tenant_id).await
+                self.forum_projector
+                    .rebuild_tenant(envelope.tenant_id)
+                    .await
             }
             DomainEvent::TenantModuleToggled {
                 module_slug,
@@ -162,7 +163,9 @@ impl ForumProjectionReconciler {
                 ..
             } if module_slug == "forum" => {
                 if *enabled {
-                    self.forum_projector.rebuild_tenant(envelope.tenant_id).await
+                    self.forum_projector
+                        .rebuild_tenant(envelope.tenant_id)
+                        .await
                 } else {
                     self.forum_projector.delete_tenant(envelope.tenant_id).await
                 }
@@ -177,7 +180,9 @@ impl ForumProjectionReconciler {
             } => match (target_type.as_str(), target_id) {
                 ("search", _) => self.rebuild_tenant(envelope.tenant_id).await,
                 ("forum", _) | ("forum_topic", Some(_)) => {
-                    self.forum_projector.rebuild_tenant(envelope.tenant_id).await
+                    self.forum_projector
+                        .rebuild_tenant(envelope.tenant_id)
+                        .await
                 }
                 ("forum_category", Some(category_id)) => {
                     self.forum_projector

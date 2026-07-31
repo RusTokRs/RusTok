@@ -1,45 +1,62 @@
-name: Agent Forum Search durable ingest sequence sync
+name: Cache Redis status
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rustok-cache/src/redis_status.rs"
+      - "crates/rustok-cache/Cargo.toml"
+      - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
+      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
+      - ".github/workflows/cache-redis-status.yml"
   pull_request:
-    branches:
-      - agent/forum-search-durable-ingest-sequence-23b2g1
+    paths:
+      - "crates/rustok-cache/src/redis_status.rs"
+      - "crates/rustok-cache/Cargo.toml"
+      - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
+      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
+      - ".github/workflows/cache-redis-status.yml"
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: agent-forum-search-durable-ingest-sequence-23b2g1
+  group: cache-redis-status-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  synchronize:
-    runs-on: macos-latest
-    timeout-minutes: 15
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: agent/forum-search-durable-ingest-sequence-23b2g1
-          fetch-depth: 2
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
-          components: rustfmt
-      - name: Apply exact B2G1 source and plan changes
-        run: python3 scripts/agent/run_forum_search_durable_ingest_sequence.py
-      - name: Format changed Rust files only
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-redis-status
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile
         run: |
-          rustfmt --edition 2024 crates/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs
-          rustfmt --edition 2024 crates/rustok-search/src/forum_inbox.rs
-          rustfmt --edition 2024 crates/rustok-search/src/forum_reconciliation.rs
-      - name: Commit synchronization and restore workflow
+          cargo check -p rustok-cache --lib
+          cargo check -p rustok-server --lib
+      - name: Redis status tests
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main --depth=1
-          git show origin/main:.github/workflows/cache-redis-status.yml > .github/workflows/cache-redis-status.yml
-          rm -f scripts/agent/apply_forum_search_durable_ingest_sequence.py
-          rm -f scripts/agent/run_forum_search_durable_ingest_sequence.py
-          git add -A
-          git commit -m "feat(search): add durable Forum inbox ingest sequence"
-          git push origin HEAD:agent/forum-search-durable-ingest-sequence-23b2g1
+          cargo test -p rustok-cache redis_status --lib
+          cargo test -p rustok-server --test cache_redis_status_architecture_guard --test cache_redis_monitor_architecture_guard
+      - name: Clippy
+        run: |
+          cargo clippy -p rustok-cache --lib -- -D warnings
+          cargo clippy -p rustok-server --lib -- -D warnings

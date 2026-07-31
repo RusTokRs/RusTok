@@ -114,6 +114,16 @@ Forum Search reindex. Neutral DTOs, `SearchQuery`, mixed/Product/admin Search an
 existing wire signatures remain unchanged. Runtime and reindex evidence remain
 pending.
 
+`FORUM-23B2G1` adds a durable PostgreSQL-issued Forum inbox ingest sequence.
+Existing rows are deterministically backfilled, new successful inserts receive a
+positive unique sequence, and claim, retry blocking, due-tenant order plus scope
+watermarks use that value instead of producer timestamps and event UUIDs.
+Envelope `revision_at` and `event_id` remain identity/diagnostic fields, author
+redaction barriers remain unskippable, and event schemas, Forum writes, rebuilds,
+public APIs and storefront query behavior remain unchanged. This is not the final
+Forum-owner-issued projection revision; that owner contract and rollout
+reconciliation remain pending. Runtime evidence remains pending.
+
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
 server-wide generic `platform_settings` service no longer admits a `search`
@@ -221,6 +231,11 @@ projection can remain stale after recovery.
 - Exact Forum locale/date contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-locale-date-filter.json` and
   `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
+- Durable Forum inbox ingest-sequence status:
+  `source_complete_execution_pending` under `FORUM-23B2G1`.
+- Durable ingest-sequence contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json` and
+  `scripts/verify/verify-forum-search-durable-ingest-sequence.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -242,6 +257,8 @@ projection can remain stale after recovery.
   `FORUM-23B2F2`.
 - Exact Forum locale and date filtering is `source_complete_execution_pending` under
   `FORUM-23B2F3`.
+- Durable Forum inbox ingest ordering is `source_complete_execution_pending` under
+  `FORUM-23B2G1`; Forum-owner-issued revisions remain pending.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -322,6 +339,9 @@ rebuild behavior through replayable event transport.
     published date-window filtering through an additive Forum-only execution owner,
     Forum-owned topic/reply timestamp projection, post-scan locale assertion and
     fail-closed legacy projection behavior under `FORUM-23B2F3`.
+23. Added a PostgreSQL-issued immutable Forum inbox ingest sequence, deterministic
+    existing-row backfill, sequence-based claims/due-tenant ordering and completed
+    sequence watermarks under `FORUM-23B2G1`.
 
 ## Next results
 
@@ -330,29 +350,33 @@ rebuild behavior through replayable event transport.
    authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
    the same bounded filter contract and every owner-sensitive result still passes
    exact post-retrieval eligibility.
-2. **Generalize durable Search projection recovery.** Use the existing generic
+2. **Add owner-issued Forum projection revisions.** Carry a monotonic Forum-owned
+   revision in versioned invalidation events and reconcile it with the delivered
+   Search ingest sequence during rolling deployment. **Done when:** source revision
+   watermarks reject stale owner state independently of delivery order.
+3. **Generalize durable Search projection recovery.** Use the existing generic
    inbox/watermark schema for Content, Product, Blog, locale, tenant, and reindex
    events; add bounded retry, dead-letter diagnostics, ordered replay, restart and
    lag recovery, and source-of-truth rebuild evidence.
    **Done when:** terminal handler failure, transport lag, duplicate/out-of-order
    delivery, and process restart cannot leave a stale projection without an
    observable durable recovery action.
-3. **Execute Forum Search eligibility evidence.** Run the neutral port tests,
+4. **Execute Forum Search eligibility evidence.** Run the neutral port tests,
    Forum owner scenarios, GraphQL/native composition, PostgreSQL candidate/result
    proof, denied topic/reply cases, broad-query failure, and `LINK-FORUM-03` after
    projection ordering is stable.
-4. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
+5. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
    storefront Search, native storefront Search, Search admin preview, and admin
    global search against projected product, content, Blog, and Forum documents.
    Retain proof that malformed owner payloads remain non-navigable everywhere.
-5. **Verify click analytics.** Confirm every Search surface records the canonical
+6. **Verify click analytics.** Confirm every Search surface records the canonical
    href without reconstructing routes in analytics code.
-6. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
+7. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
    and retain migration/`pg_trgm`, event-delivery, targeted missing-post cleanup,
    module-disable cleanup, and category reindex results.
-7. **Execute live provider evidence.** Run query and suggestion providers under
+8. **Execute live provider evidence.** Run query and suggestion providers under
    deadline, error, locale, tenant, channel, ranking, and catalog-filter conditions.
-8. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
+9. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
    connectors must not bypass Search ports, owner URL mapping, or PostgreSQL
    baseline selection.
 
