@@ -17,8 +17,8 @@ historical migration that would never rerun.
 The canonical Forum and Search plans already record `FORUM-23B2G1` as
 `source_complete_execution_pending`, with owner-issued revisions and maintainer
 runtime evidence still pending. This access-path correction does not change that
-milestone status or remaining scope. `G1A` is therefore retained as a focused
-machine contract and owner note rather than a duplicate roadmap milestone.
+milestone status or remaining scope. `G1A` is therefore retained as a focused machine contract and owner note
+rather than a duplicate roadmap milestone.
 
 ## Query ownership
 
