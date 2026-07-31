@@ -67,7 +67,7 @@ impl TopicService {
         input: UpdateTopicInput,
     ) -> ForumResult<TopicResponse> {
         self.inner
-            .update_with_relations(tenant_id, topic_id, security, input)
+            .update_with_inline_relations(tenant_id, topic_id, security, input.into())
             .await
     }
 
