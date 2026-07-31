@@ -48,6 +48,9 @@
   "transport_parity": {
     "graphql": true,
     "native_server_function": true,
+    "existing_graphql_operation": "ForumStorefrontSearch",
+    "existing_graphql_operation_changed": false,
+    "additive_author_graphql_operation": "ForumStorefrontSearchByAuthors",
     "existing_native_endpoint": "search/forum-storefront-search",
     "existing_native_endpoint_signature_changed": false,
     "additive_author_native_endpoint": "search/forum-storefront-search-by-authors",
