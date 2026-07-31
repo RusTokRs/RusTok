@@ -47,7 +47,7 @@
     "facets": true,
     "query_rule_pins": true,
     "document_suggestions": true,
-    "query_text_suggestions_are_not_product_documents": true,
+    "storefront_query_text_suggestions_disabled": true,
     "admin_preview_changed": false,
     "admin_global_search_changed": false
   },
@@ -84,6 +84,6 @@
     "This slice does not execute tests, verifiers, Cargo checks, Clippy or runtime evidence",
     "This slice does not add remaining Forum query filters",
     "This slice does not complete durable non-Forum projection ordering or deletion cleanup",
-    "Query-text suggestions are aggregate strings and are not Product result exposure"
+    "Storefront query-text suggestions are disabled because aggregate logs cannot be channel-authorized; admin/global query suggestions remain unchanged"
   ]
 }

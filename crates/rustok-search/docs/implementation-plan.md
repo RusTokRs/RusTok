@@ -86,7 +86,9 @@ assertion. Search projects Product-owned
 `metadata.channel_visibility.allowed_channel_slugs`, hides missing or malformed
 projections, and applies one storefront-only predicate before FTS or typo ranking.
 Rows, totals, facets, attribute-filtered queries, query-rule pins and document
-suggestions therefore share the trusted channel decision. A Search-owned bounded
+suggestions therefore share the trusted channel decision. Storefront query-text
+suggestions are disabled because aggregate logs cannot be channel-authorized;
+admin/global query suggestions remain unchanged. A Search-owned bounded
 reconciler and host startup worker repair missing legacy Product projections in
 PostgreSQL batches. Malformed explicit owner values remain hidden until Product is
 corrected instead of entering an endless rebuild loop. Admin preview/global Search

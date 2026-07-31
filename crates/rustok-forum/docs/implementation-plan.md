@@ -1770,8 +1770,9 @@ attachment presence.
   typo ranking, so result rows, totals, facets and attribute-filtered queries use
   the same trusted channel decision;
 - storefront query-rule pins recheck Product payload eligibility and document
-  suggestions reuse the SQL predicate, while query-text suggestions remain
-  aggregate strings rather than Product result exposure;
+  suggestions reuse the SQL predicate; storefront query-text suggestions are
+  disabled because aggregate logs cannot be channel-authorized, while
+  admin/global query suggestions remain unchanged;
 - ordinary and Forum-only GraphQL/native Search preserve the exact
   `TrustedStorefrontChannel` through every bounded page and post-query rule step;
 - a Search-owned bounded reconciler discovers tenant Product documents whose

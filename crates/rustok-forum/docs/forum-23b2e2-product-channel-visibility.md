@@ -55,9 +55,10 @@ A query rule can load a pinned document after the ranked query. The storefront
 query-rule path therefore rechecks Product payload visibility with the same owner
 helper before inserting a pin.
 
-Document suggestions use the same SQL predicate. Query-text suggestions are
-aggregated search strings, do not expose a Product document or URL and are not
-subject to Product allowlist filtering.
+Document suggestions use the same SQL predicate. Storefront query-text
+suggestions are disabled because aggregate search logs cannot be attributed to an
+authorized Product/channel decision. Admin/global query-text suggestions retain
+their previous behavior.
 
 Ordinary GraphQL and native storefront Search, plus the explicit Forum-only
 GraphQL/native execution path, retain the exact trusted channel throughout the

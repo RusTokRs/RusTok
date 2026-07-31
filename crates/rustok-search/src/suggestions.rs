@@ -75,15 +75,19 @@ impl SearchSuggestionService {
         }
 
         let limit = query.limit.clamp(1, 10);
-        let query_rows = fetch_query_suggestions(
-            db,
-            query.tenant_id,
-            &normalized_query,
-            query.locale.as_deref(),
-            query.published_only,
-            limit,
-        )
-        .await?;
+        let query_rows = if storefront_channel.is_some() {
+            Vec::new()
+        } else {
+            fetch_query_suggestions(
+                db,
+                query.tenant_id,
+                &normalized_query,
+                query.locale.as_deref(),
+                query.published_only,
+                limit,
+            )
+            .await?
+        };
         let document_rows = fetch_document_suggestions(
             db,
             query.tenant_id,

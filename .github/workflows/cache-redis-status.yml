@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-redis-status-${{ github.ref }}
@@ -35,7 +35,6 @@ concurrency:
 
 jobs:
   contract:
-    if: github.head_ref != 'agent/storefront-search-product-channel-23b2e2'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -61,137 +60,3 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
-
-  agent-storefront-search-query-suggestion-safety:
-    if: github.head_ref == 'agent/storefront-search-product-channel-23b2e2'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.96.0"
-          components: rustfmt
-      - name: Disable unauthorizable storefront query-text suggestions
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              target = Path(path)
-              text = target.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement, found {count}\n{old}")
-              target.write_text(text.replace(old, new, 1))
-
-          replace_once(
-              "crates/rustok-search/src/suggestions.rs",
-              '''        let query_rows = fetch_query_suggestions(
-                      db,
-                      query.tenant_id,
-                      &normalized_query,
-                      query.locale.as_deref(),
-                      query.published_only,
-                      limit,
-                  )
-                  .await?;
-          ''',
-              '''        let query_rows = if storefront_channel.is_some() {
-                      Vec::new()
-                  } else {
-                      fetch_query_suggestions(
-                          db,
-                          query.tenant_id,
-                          &normalized_query,
-                          query.locale.as_deref(),
-                          query.published_only,
-                          limit,
-                      )
-                      .await?
-                  };
-          ''',
-          )
-          replace_once(
-              "crates/rustok-forum/contracts/forum-search-product-channel-visibility.json",
-              '    "query_text_suggestions_are_not_product_documents": true,\n',
-              '    "storefront_query_text_suggestions_disabled": true,\n',
-          )
-          replace_once(
-              "crates/rustok-forum/contracts/forum-search-product-channel-visibility.json",
-              '    "Query-text suggestions are aggregate strings and are not Product result exposure"\n',
-              '    "Storefront query-text suggestions are disabled because aggregate logs cannot be channel-authorized; admin/global query suggestions remain unchanged"\n',
-          )
-          replace_once(
-              "crates/rustok-forum/docs/implementation-plan.md",
-              '''- storefront query-rule pins recheck Product payload eligibility and document
-            suggestions reuse the SQL predicate, while query-text suggestions remain
-            aggregate strings rather than Product result exposure;
-          ''',
-              '''- storefront query-rule pins recheck Product payload eligibility and document
-            suggestions reuse the SQL predicate; storefront query-text suggestions are
-            disabled because aggregate logs cannot be channel-authorized, while
-            admin/global query suggestions remain unchanged;
-          ''',
-          )
-          replace_once(
-              "crates/rustok-forum/docs/forum-23b2e2-product-channel-visibility.md",
-              '''Document suggestions use the same SQL predicate. Query-text suggestions are
-          aggregated search strings, do not expose a Product document or URL and are not
-          subject to Product allowlist filtering.
-          ''',
-              '''Document suggestions use the same SQL predicate. Storefront query-text
-          suggestions are disabled because aggregate search logs cannot be attributed to an
-          authorized Product/channel decision. Admin/global query-text suggestions retain
-          their previous behavior.
-          ''',
-          )
-          replace_once(
-              "crates/rustok-search/docs/implementation-plan.md",
-              '''Rows, totals, facets, attribute-filtered queries, query-rule pins and document
-          suggestions therefore share the trusted channel decision. A Search-owned bounded
-          ''',
-              '''Rows, totals, facets, attribute-filtered queries, query-rule pins and document
-          suggestions therefore share the trusted channel decision. Storefront query-text
-          suggestions are disabled because aggregate logs cannot be channel-authorized;
-          admin/global query suggestions remain unchanged. A Search-owned bounded
-          ''',
-          )
-          replace_once(
-              "scripts/verify/verify-forum-search-product-channel-visibility.mjs",
-              '''    "let document_rows = fetch_document_suggestions(",
-              "product_channel_visibility_sql(",
-          ''',
-              '''    "let query_rows = if storefront_channel.is_some()",
-              "let document_rows = fetch_document_suggestions(",
-              "product_channel_visibility_sql(",
-          ''',
-          )
-          replace_once(
-              "scripts/verify/verify-forum-search-product-channel-visibility.mjs",
-              '''  if (!contract.covered_surfaces?.document_suggestions) {
-              failures.push(`${paths.contract}: document suggestion coverage is missing`);
-            }
-          ''',
-              '''  if (!contract.covered_surfaces?.document_suggestions) {
-              failures.push(`${paths.contract}: document suggestion coverage is missing`);
-            }
-            if (!contract.covered_surfaces?.storefront_query_text_suggestions_disabled) {
-              failures.push(`${paths.contract}: storefront query suggestion fail-closed invariant is missing`);
-            }
-          ''',
-          )
-          PY
-      - name: Format suggestion source only
-        run: rustfmt --edition 2024 crates/rustok-search/src/suggestions.rs
-      - name: Commit safety correction and restore workflow
-        run: |
-          git checkout origin/main -- .github/workflows/cache-redis-status.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/rustok-search crates/rustok-forum scripts/verify .github/workflows/cache-redis-status.yml
-          git commit -m "fix(search): disable unscoped storefront query suggestions"
-          git push origin HEAD:${{ github.head_ref }}

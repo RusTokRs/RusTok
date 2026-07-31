@@ -191,6 +191,7 @@ requireAll(
   [
     "pub async fn storefront_suggestions(",
     "suggestions_with_storefront_channel",
+    "let query_rows = if storefront_channel.is_some()",
     "let document_rows = fetch_document_suggestions(",
     "product_channel_visibility_sql(",
     "AND {product_scope}",
@@ -284,6 +285,9 @@ if (contract) {
   }
   if (!contract.covered_surfaces?.document_suggestions) {
     failures.push(`${paths.contract}: document suggestion coverage is missing`);
+  }
+  if (!contract.covered_surfaces?.storefront_query_text_suggestions_disabled) {
+    failures.push(`${paths.contract}: storefront query suggestion fail-closed invariant is missing`);
   }
   if (contract.covered_surfaces?.admin_preview_changed !== false) {
     failures.push(`${paths.contract}: admin preview must remain unchanged`);
