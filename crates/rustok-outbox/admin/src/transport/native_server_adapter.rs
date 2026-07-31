@@ -8,6 +8,25 @@ pub async fn fetch_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnEr
     outbox_bootstrap_native().await
 }
 
+#[cfg(feature = "ssr")]
+fn require_outbox_admin_tenant_scope(
+    auth_tenant_id: uuid::Uuid,
+    resolved_tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    if auth_tenant_id == resolved_tenant_id {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth_tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "outbox.admin_tenant_scope_mismatch",
+        boundary = "outbox_admin_native_transport",
+        "outbox admin permissions cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("Outbox admin access is denied"))
+}
+
 #[server(prefix = "/api/fn", endpoint = "outbox/bootstrap")]
 async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -27,6 +46,7 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
             .map_err(ServerFnError::new)?
             .0
             .ok_or_else(|| ServerFnError::new("tenant context is required for outbox inspection"))?;
+        require_outbox_admin_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::LOGS_READ) {
             return Err(ServerFnError::new(
