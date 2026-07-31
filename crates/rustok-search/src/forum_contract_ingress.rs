@@ -301,9 +301,9 @@ mod tests {
         )
         .expect("uncausated envelope remains schema-valid");
 
-        assert_eq!(
+        assert!(matches!(
             adapt_forum_invalidation(&envelope),
             Err(ForumSearchContractIngressError::MissingCausation)
-        );
+        ));
     }
 }
