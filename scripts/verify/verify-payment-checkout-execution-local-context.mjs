@@ -45,6 +45,11 @@ const review = JSON.parse(
     'crates/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source-review.json',
   ),
 );
+const compensationOwnerEvidence = JSON.parse(
+  read(
+    'crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json',
+  ),
+);
 
 const failures = [];
 const requireText = (content, value, label) => {
@@ -169,7 +174,7 @@ for (const marker of [
   'internal_message = %error.message',
   'boundary = PAYMENT_EXECUTION_BOUNDARY',
   '\n    error\n}',
-]) requireText(portImpl, marker, 'safe delegated execution outcome mapping');
+]) requireText(portImpl, marker, 'safe delegated execution mapping');
 
 for (const marker of [
   'fn log_checkout_payment_execution_admission_rejection(',
@@ -185,12 +190,7 @@ for (const marker of [
   'causation_matches = false',
   'operation_id_non_nil = !operation.id.is_nil()',
   'boundary = PAYMENT_EXECUTION_BOUNDARY',
-  'PortError::validation(',
-  'PortError::unavailable(',
-  'PortError::not_found(',
-  'PortError::conflict(',
-  'PortError::invariant_violation(',
-]) requireText(validationErrors, marker, 'safe execution admission and owner mapping');
+]) requireText(validationErrors, marker, 'safe execution admission/owner source');
 
 const providerDiagnosticSource = `${prepareAuthorize}\n${captureProvider}\n${providerHelpers}`;
 for (const marker of [
@@ -210,11 +210,11 @@ for (const marker of [
   'payment.checkout_execution_reconciliation_checkpoint_failed',
   'payment.checkout_execution_provider_failure_checkpoint_failed',
   'payment.checkout_execution_provider_checkpoint_failed',
-]) requireText(providerDiagnosticSource, marker, 'safe execution provider diagnostics');
+]) requireText(providerDiagnosticSource, marker, 'safe execution provider source');
 
 for (const [content, label] of [
   [portImpl, 'execution delegated outcomes'],
-  [validationErrors, 'execution admission and owner diagnostics'],
+  [validationErrors, 'execution admission/owner diagnostics'],
   [providerDiagnosticSource, 'execution provider diagnostics'],
 ]) {
   for (const forbidden of [
@@ -246,18 +246,36 @@ for (const marker of [
   'checkout_operation_id_non_nil = facts.checkout_operation_id_non_nil',
   'collection_id_present = facts.collection_id_present',
   'boundary = PAYMENT_COMPENSATION_BOUNDARY',
-]) requireText(compensationWrapper, marker, 'current compensation wrapper safety');
-for (const forbidden of [
-  'match (error.code.as_str(), error.message.as_str())',
-  'tenant_id = %context.tenant_id',
-  'actor = ?context.actor',
-  'checkout_operation_id = %facts.checkout_operation_id',
-  'collection_id = ?facts.collection_id',
-]) forbidText(compensationWrapper, forbidden, 'current compensation wrapper raw diagnostics');
+]) requireText(compensationWrapper, marker, 'related compensation wrapper safety');
+
 for (const marker of [
-  'tenant_id = %context.tenant_id',
-  'operation_id = %operation.id',
-]) requireText(compensationOwner, marker, 'persistent compensation cleanup remains open');
+  'struct CheckoutPaymentCompensationOwnerContextFacts',
+  'fn checkout_payment_compensation_owner_context_facts(',
+  'fn log_checkout_payment_compensation_owner_error<',
+  'operation_id_non_nil = operation_id.map(|value| !value.is_nil())',
+  'checkout_operation_id_non_nil = ?checkout_operation_id_non_nil',
+  'causation_matches = ?causation_matches',
+  'boundary = PAYMENT_COMPENSATION_BOUNDARY',
+]) requireText(compensationOwner, marker, 'related compensation owner safety');
+
+for (const [content, label] of [
+  [compensationWrapper, 'compensation wrapper raw diagnostics'],
+  [compensationOwner, 'compensation owner raw diagnostics'],
+]) {
+  for (const forbidden of [
+    'match (error.code.as_str(), error.message.as_str())',
+    'tenant_id = %context.tenant_id',
+    'internal_tenant_id = %context.tenant_id',
+    'actor = ?context.actor',
+    'channel = ?context.channel',
+    'locale = %context.locale',
+    'causation_id = ?context.causation_id',
+    'traceparent = ?context.traceparent',
+    'idempotency_key = ?context.idempotency_key',
+    'checkout_operation_id = %',
+    'operation_id = %',
+  ]) forbidText(content, forbidden, label);
+}
 
 if (evidence.status !== 'payment_checkout_execution_diagnostic_safety_source_unvalidated') {
   failures.push(`unexpected execution evidence status: ${evidence.status}`);
@@ -268,6 +286,15 @@ if (
 ) {
   failures.push(`unexpected execution review status: ${review.status}`);
 }
+if (
+  compensationOwnerEvidence.status !==
+  'payment_checkout_compensation_owner_diagnostic_safety_source_unvalidated'
+) {
+  failures.push(
+    `unexpected compensation owner evidence status: ${compensationOwnerEvidence.status}`,
+  );
+}
+
 for (const [key, expected] of Object.entries({
   stable_code_only_local_classification: true,
   human_message_control_flow: false,
@@ -325,10 +352,10 @@ for (const key of [
 for (const marker of [
   'Status: **source-ready / unvalidated**',
   'Human-readable `PortError.message` is not used as control flow.',
-  'The public Payment checkout compensation wrapper now also uses stable-code-only',
-  'The private persistent compensation owner still contains raw owner-local identifier',
+  'The public Payment checkout compensation wrapper and its private persistent owner now both',
+  'without raw',
   'No FBA or FFA',
-]) requireText(doc, marker, 'execution diagnostic documentation');
+]) requireText(doc, marker, 'execution documentation');
 requireText(
   paymentPlan,
   'Payment checkout execution diagnostic safety: `source_ready_unvalidated`',
@@ -336,8 +363,8 @@ requireText(
 );
 requireText(
   paymentPlan,
-  'Payment checkout compensation wrapper diagnostic safety:',
-  'related compensation wrapper status',
+  'Payment checkout compensation diagnostic safety: `source_ready_unvalidated`',
+  'related compensation status',
 );
 requireText(
   commercePlan,
@@ -352,5 +379,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'Payment checkout execution diagnostics remain stable-code and safe-shape; the compensation wrapper is also safe while persistent compensation diagnostics and runtime evidence remain open',
+  'Payment checkout execution diagnostics remain stable-code and safe-shape; Payment compensation wrapper and owner diagnostics are also source-safe while runtime evidence remains open',
 );
