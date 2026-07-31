@@ -202,7 +202,7 @@ requireAll(
   [
     "FORUM-23B2F4",
     "source_complete_execution_pending",
-    "topic/reply kind filter",
+    "topic/reply document-kind filtering",
   ],
   paths.searchPlan,
 );
