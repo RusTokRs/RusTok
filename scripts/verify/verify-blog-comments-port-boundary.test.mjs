@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import './verify-blog-comments-http-port-injection.test.mjs';
+import './verify-blog-comments-graphql-port-injection.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
