@@ -33,9 +33,17 @@ pub struct CommentService {
 
 impl CommentService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        let comments_thread_port = in_process_comments_thread_port(db.clone(), event_bus);
+        Self::with_comments_thread_port(db, comments_thread_port)
+    }
+
+    pub fn with_comments_thread_port(
+        db: DatabaseConnection,
+        comments_thread_port: Arc<dyn CommentsThreadPort>,
+    ) -> Self {
         Self {
-            comments_thread_port: in_process_comments_thread_port(db.clone(), event_bus),
             db,
+            comments_thread_port,
         }
     }
 
@@ -474,6 +482,20 @@ fn comments_port_error_to_blog_error(error: PortError) -> BlogError {
     BlogError::Rich(Box::new(
         rustok_core::error::RichError::new(kind, error.message).with_error_code(error.code),
     ))
+}
+
+#[cfg(test)]
+mod port_injection_tests {
+    use super::*;
+
+    #[test]
+    fn comment_service_accepts_an_injected_comments_thread_port() {
+        let constructor: fn(
+            DatabaseConnection,
+            Arc<dyn CommentsThreadPort>,
+        ) -> CommentService = CommentService::with_comments_thread_port;
+        let _ = constructor;
+    }
 }
 
 #[cfg(test)]

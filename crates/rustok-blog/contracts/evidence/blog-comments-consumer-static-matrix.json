@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "blog",
   "surface": "comments_port_boundary",
   "role": "consumer",
@@ -10,11 +10,23 @@
   "source_contract": {
     "consumer_service": "crates/rustok-blog/src/services/comment.rs",
     "provider_registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
-    "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json"
+    "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json",
+    "injection_constructor": "CommentService::with_comments_thread_port"
   },
   "profiles": {
     "source_verified": ["in_process"],
     "pending": ["remote_adapter_placeholder"]
+  },
+  "adapter_injection": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "source": "crates/rustok-blog/src/services/comment.rs",
+    "constructor": "CommentService::with_comments_thread_port",
+    "signature": "fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService",
+    "test": "services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port",
+    "command": "cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact",
+    "default_profile": "in_process",
+    "remote_transport_implementation": "pending"
   },
   "cases": [
     {

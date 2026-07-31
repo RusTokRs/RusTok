@@ -244,6 +244,16 @@
     "pending_profiles": [
       "remote_adapter_placeholder"
     ],
+    "adapter_injection": {
+      "status": "executable_no_run",
+      "runtime_status": "not_run",
+      "source": "crates/rustok-blog/src/services/comment.rs",
+      "constructor": "CommentService::with_comments_thread_port",
+      "signature": "fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService",
+      "test": "services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port",
+      "command": "cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact",
+      "remote_transport_implementation": "pending"
+    },
     "cases": [
       {
         "provider": "comments",
