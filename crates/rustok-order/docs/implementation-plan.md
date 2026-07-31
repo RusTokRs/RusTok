@@ -58,9 +58,16 @@ The currently identified checkout payment-settlement post-delegation mapper and
 canonical owner payload-diagnostic sites are source-closed / unvalidated. Wrapper
 events retain only stable `PortError` kind and message shape. Owner events retain
 only static `OrderError` variant, aggregate text/UUID/opaque-payload shape, static
-parse-failure facts, and a closed lifecycle status label. Shared checkout
-admission/context payload diagnostics remain open as a separate Order slice.
-Public envelopes, identity policy, settlement, replay, and payment-identity routing
+parse-failure facts, and a closed lifecycle status label. Public envelopes,
+identity policy, settlement, replay, and payment-identity routing are unchanged.
+
+The shared checkout write-admission and context-rejection diagnostics used by both
+compensation and settlement are source-closed / unvalidated. Admission events
+retain stable code, static `PortErrorKind`, message presence/length, retryability,
+and safe context shape. Tenant, actor, and causation rejections retain only static
+parse-failure, expected-operation presence/non-nil, and mismatch facts plus the same
+bounded error shape. Complete `PortError`, message text, debug kind, and UUID parser
+payloads are not retained. Admission severity and tenant/actor/causation ordering
 are unchanged.
 
 Legacy order metadata remains a temporary compatibility input only inside
@@ -157,6 +164,9 @@ compile and mounted-parity validation permits their removal.
   mapper and canonical owner payload-diagnostic sites at source level without
   changing public envelopes, identity policy, settlement, replay, or payment
   identity behavior.
+- [x] Close shared checkout write-admission and tenant/actor/causation rejection
+  payload diagnostics at source level without changing admission severity,
+  validation order, returned `PortError`, or owner delegation.
 - [x] Remove direct `orders` SQL and direct `OrderService` construction from the
   staged order stage, mounted pipeline, compensation, and fulfillment settlement
   source.
