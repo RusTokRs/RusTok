@@ -29,30 +29,31 @@ evolves in its owning crates.
   dependency, while server translations are resolved by the host route and
   passed into the package boundary.
 
-## Host-global authority blocker
+## Host-global authority boundary
 
-The native Events Admin surface controls host-global event delivery state, but
-currently authorizes it with an ordinary tenant-scoped permission snapshot:
+The native Events Admin surface controls host-global event delivery state. It
+must never infer authority from a routed tenant, tenant `SETTINGS_*` permission,
+OAuth wildcard, built-in tenant role, default tenant, or magic UUID.
 
-- `event_delivery_configuration_native` accepts `SETTINGS_READ`, then reads the
-  host-global `SharedEventDeliveryControl` configuration;
-- `update_event_delivery_profile_native` accepts `SETTINGS_MANAGE`, then changes
-  the host-global desired delivery profile.
+The immediate cross-owner P0 exposure is source-mitigated:
 
-There is no routed tenant because this resource is not tenant-owned. The current
-`rustok_api::AuthContext` contains one tenant id and tenant permission snapshot,
-but no typed host/platform/root authority. A tenant equality check therefore
-cannot close this boundary, and inferring authority from the first/default
-active tenant, a nil UUID, OAuth `*:*`, or an ordinary tenant settings role
-would recreate the wrong-authority pattern removed from other admin adapters.
+- `rustok_api::HostAuthorityContext` is a separate typed request context with
+  explicit `Read` and `Manage` levels and a required non-nil operator actor;
+- ordinary tenant authentication does not issue this context;
+- `event_delivery_configuration_native` requires host read authority before
+  resolving `SharedEventDeliveryControl`;
+- `update_event_delivery_profile_native` requires host manage authority and
+  writes the bound operator actor to the update audit path;
+- matching host-global System and Settings GraphQL operations use the same
+  authority contract;
+- `scripts/verify/verify-host-global-authority-boundary.mjs` locks the separation
+  from tenant RBAC and the required guard-before-resource ordering.
 
-GitHub issue #2680 records the cross-owner P0 decision and the matching System
-GraphQL diagnostics (`system_health`, `cache_health`, and `events_status`) that
-expose host-global state through tenant-scoped `LOGS_READ`. Until Auth/RBAC owns
-a typed host-global principal and deny-by-default helper, these transports are
-not release-ready. If that authority model cannot land before release, the safe
-temporary action is to disable the host-global admin transports rather than
-admit ordinary tenant administrators.
+No operator issuance path exists yet. The transports therefore fail closed in
+normal tenant requests. GitHub issue #2680 remains open for the Auth/RBAC-owned
+operator credential, issuance, refresh/revocation, GraphQL/native composition,
+and live admission evidence. This is intentional: unavailable host controls are
+safer than tenant administrators receiving process-wide authority.
 
 ## FFA/FBA status
 
@@ -66,18 +67,17 @@ admit ordinary tenant administrators.
     shell composition, so server-only page exports cannot enter the client
     module graph;
   - canonical event/runtime verification remains tracked by `rustok-events`;
-  - source inspection proves the native delivery-profile endpoints operate on
-    one host-global control while authorization remains tenant-scoped.
+  - source inspection proves host-global delivery controls require a separate
+    authority context that ordinary tenant authentication does not issue.
 - Last verified at (UTC): 2026-07-31
 - Owner: Events module maintainers
 
 ## Milestones
 
-1. **Define host-global read/manage authority with Auth/RBAC.** Add a typed
-   authority that cannot be granted by an ordinary tenant role, propagate it
-   through issuance and refresh, and require it before reading or changing
-   `SharedEventDeliveryControl`. Add equivalent protection to System GraphQL
-   diagnostics. Track the cross-owner contract in issue #2680.
+1. **Complete host-operator issuance with Auth/RBAC.** Issue the typed host
+   context only from an approved operator credential, propagate it through
+   refresh/revocation and GraphQL/native composition, and retain ordinary
+   tenant denial. Track the cross-owner contract in issue #2680.
 2. Keep adapter metadata and module-owned UI placement synchronized with the
    canonical Events capability.
 3. Complete native/GraphQL/Next transport parity in the canonical Events plan.
@@ -86,6 +86,7 @@ admit ordinary tenant administrators.
 
 ## Verification
 
+- `node scripts/verify/verify-host-global-authority-boundary.mjs`
 - Source audit: ordinary tenant `SETTINGS_READ`/`SETTINGS_MANAGE` must not admit
   host-global Events Admin operations.
 - Source audit: ordinary tenant `LOGS_READ` must not admit host-global System
@@ -94,6 +95,7 @@ admit ordinary tenant administrators.
   principal admitted for configuration read/profile update.
 - GraphQL regressions: ordinary tenant admin denied; explicitly issued host
   principal admitted for system/cache/events diagnostics.
+- `cargo test -p rustok-api host_authority -- --nocapture`
 - `cargo check -p rustok-events-module`
 - `cargo test -p rustok-events-module`
 - `cargo xtask module validate events`
@@ -104,7 +106,9 @@ admit ordinary tenant administrators.
 - Do not move canonical event schemas into this adapter.
 - Do not move outbox or Iggy delivery persistence into this adapter.
 - Do not infer host-global authority from a default tenant, magic tenant UUID,
-  tenant `SETTINGS_*`/`LOGS_*` permission, or OAuth wildcard alone.
+  tenant `SETTINGS_*`/`LOGS_*` permission, built-in tenant role, or OAuth
+  wildcard.
+- Do not insert `HostAuthorityContext` from ordinary tenant authentication.
 - Keep local FFA/FBA status synchronized with the central readiness board.
 - Track event-contract and delivery milestones in the canonical
   `rustok-events` plan rather than duplicating them here.
@@ -114,10 +118,10 @@ admit ordinary tenant administrators.
 - Cycle: `cycle-001`
 - Status: `blocked`
 - Last verified at (UTC): `2026-07-31`
-- Scope inspected: `Events Admin native delivery-profile configuration/update authority; SharedEventDeliveryControl ownership; AuthContext and Permission authority shape; matching host-global System GraphQL diagnostics`
+- Scope inspected: `Events Admin native delivery-profile configuration/update authority; SharedEventDeliveryControl ownership; host-global System and Settings GraphQL operations; AuthContext, OAuth app and manifest issuance paths`
 - Findings: `P0=1, P1=0, P2=0, P3=0`
-- Fixed in this pass: `no safe component-local fix; created issue #2680 with the exact cross-owner Auth/RBAC contract and fail-closed temporary option`
-- Remaining risks or blockers: `tenant-scoped SETTINGS_READ/SETTINGS_MANAGE currently admit host-global event delivery configuration and mutation; tenant-scoped LOGS_READ admits host-global system/cache/events diagnostics; AuthContext has no platform/root authority discriminator`
-- Evidence: `crates/rustok-events-module/admin/src/transport/native_server_adapter.rs reads and mutates SharedEventDeliveryControl without a routed tenant; apps/server/src/graphql/system.rs exposes host-global diagnostics and all-tenant event counts; crates/rustok-api/src/context/auth.rs carries only tenant_id plus tenant permission snapshot; crates/rustok-api/src/permissions.rs defines resource/action permissions without authority scope`
-- Next action: `Auth/RBAC owners define and issue typed host-global authority, add deny-by-default helpers, bind Events Admin and System GraphQL to them, and retain ordinary-tenant denial plus explicit-host-principal admission regressions; otherwise disable the host-global transports before release`
-- Resume command: `cargo check -p rustok-events-module && cargo test -p rustok-events-module && cargo test -p rustok-server system --lib`
+- Fixed in this pass: `added a typed host authority context independent of tenant RBAC; required host read/manage authority before every confirmed host-global Events/System/Settings operation; bound mutations to a non-nil operator actor; kept ordinary tenant authentication from issuing the context; added a source boundary verifier`
+- Remaining risks or blockers: `operator credential issuance, refresh/revocation and host composition are not implemented, so host-global admin transports intentionally fail closed; same-SHA formatting, compile, unit, source-verifier and live ordinary-tenant-denial evidence remain pending`
+- Evidence: `crates/rustok-api/src/context/host_authority.rs; crates/rustok-events-module/admin/src/transport/native_server_adapter.rs; apps/server/src/graphql/system.rs; apps/server/src/graphql/settings/{mod,query,mutation}.rs; scripts/verify/verify-host-global-authority-boundary.mjs; connector-only local execution remains unavailable because github.com DNS resolution fails`
+- Next action: `run the source verifier and targeted Rust checks on the same SHA; then implement an Auth/RBAC-owned operator issuance path for issue #2680 and prove ordinary tenant denial plus explicit host-principal admission in native and GraphQL transports`
+- Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo check -p rustok-events-module && cargo test -p rustok-events-module`
