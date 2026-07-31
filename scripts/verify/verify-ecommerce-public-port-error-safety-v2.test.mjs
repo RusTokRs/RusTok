@@ -60,6 +60,32 @@ PortError::validation("payment.validation", "payment request is invalid");
 `;
 }
 
+function canonicalPaymentCompensation() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation = owner_operation,
+  code = "payment.checkout_compensation_manual_reconciliation",
+);
+tracing::error!(code = "payment.checkout_compensation_encoding_failed");
+"payment storage is temporarily unavailable";
+"payment provider rejected the requested operation";
+"payment provider response could not be applied safely";
+"payment request context is invalid";
+"payment checkout compensation requires manual reconciliation";
+let owner_operation = COMPENSATE_CHECKOUT_PAYMENT_OPERATION;
+parse_tenant_id(&context, owner_operation);
+require_operation_context(&context, owner_operation, operation_context);
+payment_error_to_port_error(&context, owner_operation, error);
+payment_error_to_port_error(context, owner_operation, error);
+persisted_cancel_result(context, owner_operation, payment);
+fn manual_reconciliation(
+    context: &PortContext,
+) {}
+`;
+}
+
 function canonicalFulfillment() {
   return `
 struct FulfillmentPortContextFacts {}
@@ -98,15 +124,30 @@ parse_port_tenant_id(&context, "select_shipping_option");
 
 function canonicalCustomer() {
   return `
+struct CustomerReadContextFacts {}
+struct CustomerOwnerErrorFacts {}
+struct CustomerListRequestFacts {}
+fn customer_port_error_kind() {}
 tracing::error!(
   correlation_id = %context.correlation_id,
-  tenant_id = %context.tenant_id,
+  tenant_id_length = context_facts.tenant_id_length,
+  actor_kind = context_facts.actor_kind,
+  claim_count = context_facts.claim_count,
+  role_count = context_facts.role_count,
+  tenant_id_parse_failed = true,
+  error_kind = customer_port_error_kind(&error.kind),
+  error_message_present = !error.message.is_empty(),
+  search_present = request_facts.search_present,
+  search_length = ?request_facts.search_length,
+  boundary = CUSTOMER_READ_PORT_BOUNDARY,
   operation = owner_operation,
-  code = "customer.database_unavailable",
 );
-tracing::warn!(code = "customer.context_invalid");
-tracing::warn!(code = "customer.validation");
-tracing::error!(code = "customer.profile_unavailable");
+"customer.context_invalid";
+"customer.page_invalid";
+"customer.per_page_invalid";
+"customer.database_unavailable";
+"customer.validation";
+"customer.profile_unavailable";
 PortError::validation("customer.context_invalid", "customer request context is invalid");
 PortError::unavailable("customer.database_unavailable", "customer storage is temporarily unavailable");
 PortError::validation("customer.validation", "customer request is invalid");
@@ -121,17 +162,30 @@ let owner_operation = "list_profile_enrichment";
 
 function canonicalInventory() {
   return `
+struct InventoryPortContextFacts {}
+struct InventoryOwnerErrorFacts {}
+fn inventory_owner_error_facts() {}
 tracing::error!(
   correlation_id = %context.correlation_id,
-  tenant_id = %context.tenant_id,
+  tenant_id_length = context_facts.tenant_id_length,
+  actor_kind = context_facts.actor_kind,
+  claim_count = context_facts.claim_count,
+  role_count = context_facts.role_count,
+  tenant_id_parse_failed = true,
+  error_variant = error_facts.error_variant,
+  text_field_count = error_facts.text_field_count,
+  uuid_field_count = error_facts.uuid_field_count,
+  numeric_field_count = error_facts.numeric_field_count,
+  opaque_payload_present = error_facts.opaque_payload_present,
+  boundary = INVENTORY_PORT_BOUNDARY,
   operation = owner_operation,
-  code = "inventory.database_unavailable",
 );
-tracing::warn!(code = "inventory.context_invalid");
-tracing::warn!(code = "inventory.variant_not_found");
-tracing::warn!(code = "inventory.insufficient_inventory");
-tracing::warn!(code = "inventory.validation");
-tracing::error!(code = "inventory.invariant_violation");
+"inventory.context_invalid";
+"inventory.database_unavailable";
+"inventory.variant_not_found";
+"inventory.insufficient_inventory";
+"inventory.validation";
+"inventory.invariant_violation";
 PortError::validation("inventory.context_invalid", "inventory request context is invalid");
 PortError::unavailable("inventory.database_unavailable", "inventory storage is temporarily unavailable");
 PortError::new(NotFound, "inventory.variant_not_found", "inventory variant was not found", false);
@@ -271,6 +325,13 @@ function fixture(options = {}) {
     payment = payment.replace('operation = owner_operation', 'operation = omitted');
   }
   put(root, 'crates/rustok-payment/src/ports.rs', payment);
+
+  const paymentCompensation = `${canonicalPaymentCompensation()}${options.paymentCompensationAppend ?? ''}`;
+  put(
+    root,
+    'crates/rustok-payment/src/checkout_compensation.rs',
+    paymentCompensation,
+  );
 
   let fulfillment = `${canonicalFulfillment()}${options.fulfillmentAppend ?? ''}`;
   if (options.removeFulfillmentCorrelation) {
@@ -504,6 +565,20 @@ test('public port error verifier rejects customer email disclosure', () => {
   );
 });
 
+test('public port error verifier rejects complete customer error diagnostics', () => {
+  expectFailure(
+    { customerAppend: 'tracing::error!(error = ?error);' },
+    /customer payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw customer tenant diagnostics', () => {
+  expectFailure(
+    { customerAppend: 'tenant_id = %context.tenant_id;' },
+    /customer payload diagnostics: forbidden/,
+  );
+});
+
 test('public port error verifier rejects raw inventory validation cause', () => {
   expectFailure(
     {
@@ -529,6 +604,51 @@ test('public port error verifier rejects inventory variant id disclosure', () =>
       inventoryAppend: 'format!("variant {id} not found");',
     },
     /inventory public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects complete inventory error diagnostics', () => {
+  expectFailure(
+    { inventoryAppend: 'tracing::error!(error = ?error);' },
+    /inventory payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects fallback inventory error diagnostics', () => {
+  expectFailure(
+    { inventoryAppend: 'tracing::error!(error = ?other);' },
+    /inventory payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw inventory validation diagnostics', () => {
+  expectFailure(
+    { inventoryAppend: 'internal_message = %message;' },
+    /inventory payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw inventory tenant diagnostics', () => {
+  expectFailure(
+    { inventoryAppend: 'tenant_id = %context.tenant_id;' },
+    /inventory payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects inventory variant diagnostic identity', () => {
+  expectFailure(
+    { inventoryAppend: 'variant_id = %variant_id;' },
+    /inventory payload diagnostics: forbidden/,
+  );
+});
+
+test('public port error verifier rejects exact inventory stock diagnostics', () => {
+  expectFailure(
+    {
+      inventoryAppend:
+        'code = "inventory.insufficient_inventory",\n                requested,\n                available,',
+    },
+    /inventory payload diagnostics: forbidden/,
   );
 });
 
