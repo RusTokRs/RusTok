@@ -17,9 +17,9 @@ The authoritative revision is:
 forum_domain_events.sequence_no
 ```
 
-`FORUM-09` already owns this append-only BIGINT sequence. It is globally
-monotonic across the Forum journal. Search reads remain tenant-scoped, so gaps
-between successive rows for one tenant are expected and valid.
+`FORUM-09` already owns this append-only BIGINT sequence. The sequence is global
+while reads are tenant-scoped, so gaps between successive rows for one tenant
+are expected and valid.
 
 No migration, sequence, timestamp ordering rule, UUID ordering rule or new
 `DomainEvent` field is introduced.
