@@ -71,7 +71,7 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
     assert!(listener.contains("pub fn is_running(&self) -> bool"));
 
     let tenant_init = middleware
-        .find("super::tenant_legacy::init_tenant_cache_infrastructure")
+        .find("super::tenant_runtime::init_tenant_cache_infrastructure")
         .expect("tenant cache infrastructure must initialize");
     let locale_start = middleware
         .find("start_tenant_locale_generation_listener")
