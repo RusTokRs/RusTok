@@ -42,6 +42,7 @@ const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
+const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const postgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
@@ -126,6 +127,24 @@ for (const marker of [
   'SET search_path TO',
   'async fn duplicate_delivery_updates_counter_and_outbox_once()',
   'handler.handle(&envelope).await?;',
+  'async fn event_dispatcher_routes_registered_handler_and_commits_projection()',
+  'let extensions = ModuleRuntimeExtensions::default();',
+  'BlogModule.register_event_listeners(&mut registry, &context);',
+  'let bus = EventBus::new();',
+  'let mut dispatcher = EventDispatcher::with_config(',
+  'fail_fast: true',
+  'max_concurrent: 1',
+  'retry_count: 0',
+  'dispatcher.register_boxed(handler);',
+  'assert_eq!(dispatcher.handler_count(), 1);',
+  'let running = dispatcher.start();',
+  'running.bus().publish_envelope(envelope.clone())?;',
+  'wait_for_dispatch_commit(&test_db.db, envelope.id).await?;',
+  'running.stop();',
+  'async fn wait_for_dispatch_commit(db: &DatabaseConnection, event_id: Uuid)',
+  'tokio::time::timeout(Duration::from_secs(5)',
+  'count_delivery(db, event_id).await? == 1',
+  'event dispatcher did not commit delivery',
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'DomainEvent::CommentDeleted',
   'async fn missing_post_replay_commits_only_after_source_appears()',
@@ -276,6 +295,24 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: host registration harness case drift`);
   }
+  const dispatcher = evidence.dispatcher_harness ?? {};
+  if (
+    dispatcher.status !== 'executable_no_run' ||
+    dispatcher.runtime_status !== 'not_run' ||
+    dispatcher.path !== postgresHarnessPath ||
+    dispatcher.environment !== postgresHarnessEnvironment ||
+    dispatcher.command !== dispatcherHarnessCommand ||
+    dispatcher.isolation !== 'unique_schema_one_connection_pool' ||
+    dispatcher.scope !== 'event_bus_dispatcher_module_registered_handler_transactional_commit'
+  ) {
+    failures.push(`${evidencePath}: dispatcher harness drift`);
+  }
+  if (
+    [...(dispatcher.cases ?? [])].join('|') !==
+    'event_dispatcher_routes_registered_handler_and_commits_projection'
+  ) {
+    failures.push(`${evidencePath}: dispatcher harness case drift`);
+  }
   const postgres = evidence.postgres_harness ?? {};
   if (
     postgres.status !== 'executable_no_run' ||
@@ -330,6 +367,7 @@ if (evidence) {
     'missing_post_retry',
     'non_negative_count',
     'host_registration_routing_harness',
+    'postgres_event_dispatcher_delivery',
     'postgres_duplicate_delivery',
     'postgres_out_of_order_delete_create',
     'postgres_missing_post_recovery',
@@ -400,10 +438,12 @@ for (const marker of [
   'source_verified_no_compile',
   'services::comment_projection::tests',
   'tests::module_registers_comment_projection_handler_with_host_routing',
+  'event_dispatcher_routes_registered_handler_and_commits_projection',
   'comment_projection_postgres_test',
   'comment_projection_restart_postgres_test',
   'RUSTOK_BLOG_TEST_DATABASE_URL',
-  'actual host EventDispatcher delivery',
+  'EventBus',
+  'EventDispatcher',
   'process-level restart recovery',
 ]) {
   requireMarker(plan, marker, planPath);
@@ -415,4 +455,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection source contract, classifier, host registration, PostgreSQL, and restart harnesses are consistent');
+console.log('Blog comments event projection classifier, registration, dispatcher, PostgreSQL, and restart harnesses are consistent');
