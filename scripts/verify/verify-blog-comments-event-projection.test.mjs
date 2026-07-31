@@ -23,6 +23,8 @@ function fixture({
   missingHostHarness = false,
   missingDispatcherCase = false,
   missingDispatcherWait = false,
+  missingConcurrencyCase = false,
+  missingConcurrencyBarrier = false,
   missingSharedClassifier = false,
   directHandlesClassifier = false,
   missingCounterHarness = false,
@@ -36,6 +38,7 @@ function fixture({
   harnessStatusDrift = false,
   hostHarnessStatusDrift = false,
   dispatcherStatusDrift = false,
+  concurrencyStatusDrift = false,
   postgresStatusDrift = false,
   restartStatusDrift = false,
 } = {}) {
@@ -53,6 +56,7 @@ function fixture({
   const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
   const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
   const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
+  const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
   const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
   const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 
@@ -120,6 +124,20 @@ tokio::time::timeout(Duration::from_secs(5)
 count_delivery(db, event_id).await? == 1
 event dispatcher did not commit delivery
 `;
+    const concurrencySource = missingConcurrencyCase
+      ? ''
+      : `
+const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;
+database_url: String
+async fn isolated_connection(&self)
+async fn concurrent_created_events_converge_without_lost_updates()
+${missingConcurrencyBarrier ? '' : 'Arc::new(Barrier::new(envelopes.len()))'}
+let db = test_db.isolated_connection().await?;
+tasks.push(tokio::spawn(async move {
+barrier.wait().await;
+CONCURRENT_PROJECTION_DELIVERIES as i32
+count_all_deliveries(&test_db.db).await?
+`;
     write(
       root,
       postgresHarnessPath,
@@ -133,6 +151,7 @@ SET search_path TO
 async fn duplicate_delivery_updates_counter_and_outbox_once()
 handler.handle(&envelope).await?;
 ${dispatcherSource}
+${concurrencySource}
 async fn delete_before_create_stays_non_negative_and_replays_in_order()
 DomainEvent::CommentDeleted
 async fn missing_post_replay_commits_only_after_source_appears()
@@ -280,6 +299,16 @@ assert!(!handler.handles(&forum_created));
         scope: 'event_bus_dispatcher_module_registered_handler_transactional_commit',
         cases: ['event_dispatcher_routes_registered_handler_and_commits_projection'],
       },
+      concurrency_harness: {
+        status: concurrencyStatusDrift ? 'executed' : 'executable_no_run',
+        runtime_status: concurrencyStatusDrift ? 'passed' : 'not_run',
+        path: postgresHarnessPath,
+        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+        command: concurrencyHarnessCommand,
+        isolation: 'unique_schema_four_independent_connections_barrier',
+        scope: 'concurrent_unique_envelopes_same_post_final_counter_delivery_outbox',
+        cases: ['concurrent_created_events_converge_without_lost_updates'],
+      },
       postgres_harness: {
         status: postgresStatusDrift ? 'executed' : 'executable_no_run',
         runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
@@ -314,6 +343,7 @@ assert!(!handler.handles(&forum_created));
         { name: 'non_negative_count' },
         { name: 'host_registration_routing_harness' },
         { name: 'postgres_event_dispatcher_delivery' },
+        { name: 'postgres_concurrent_unique_deliveries' },
         { name: 'postgres_duplicate_delivery' },
         { name: 'postgres_out_of_order_delete_create' },
         { name: 'postgres_missing_post_recovery' },
@@ -369,7 +399,7 @@ assert!(!handler.handles(&forum_created));
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher process-level restart recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections process-level restart recovery',
   );
 
   return root;
@@ -441,6 +471,20 @@ test('rejects EventDispatcher coverage without durable delivery wait', () => {
   );
 });
 
+test('rejects a missing concurrent projection case', () => {
+  expectRejected(
+    { missingConcurrencyCase: true },
+    /missing async fn concurrent_created_events_converge_without_lost_updates/,
+  );
+});
+
+test('rejects concurrent projection coverage without a shared barrier', () => {
+  expectRejected(
+    { missingConcurrencyBarrier: true },
+    /missing Arc::new\(Barrier::new\(envelopes.len\(\)\)\)/,
+  );
+});
+
 test('rejects project without the shared event classifier', () => {
   expectRejected({ missingSharedClassifier: true }, /missing fn comment_projection_change/);
 });
@@ -500,6 +544,10 @@ test('rejects host registration harness execution promotion without execution', 
 
 test('rejects dispatcher harness execution promotion without execution', () => {
   expectRejected({ dispatcherStatusDrift: true }, /dispatcher harness drift/);
+});
+
+test('rejects concurrency harness execution promotion without execution', () => {
+  expectRejected({ concurrencyStatusDrift: true }, /concurrency harness drift/);
 });
 
 test('rejects PostgreSQL harness execution promotion without execution', () => {
