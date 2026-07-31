@@ -49,15 +49,20 @@ for (const marker of [
   'struct ObservedProjectionHandler',
   'inner: Arc<dyn EventHandler>',
   'completed: Arc<AtomicUsize>',
+  'failed: Arc<AtomicUsize>',
   'impl EventHandler for ObservedProjectionHandler',
   'self.inner.handles(event)',
   'let result = self.inner.handle(envelope).await;',
+  'if result.is_err()',
+  'self.failed.fetch_add(1, Ordering::SeqCst);',
   'self.completed.fetch_add(1, Ordering::SeqCst);',
   'async fn event_dispatcher_replays_duplicate_envelope_without_double_commit()',
   'BlogModule.register_event_listeners(&mut registry, &context);',
   'let mut handlers = registry.into_handlers();',
   'assert_eq!(handlers.len(), 1);',
   'assert_eq!(projection.name(), "blog_comment_projection");',
+  'let failed = Arc::new(AtomicUsize::new(0));',
+  'Arc::clone(&failed)',
   'let mut dispatcher = EventDispatcher::with_config(',
   'fail_fast: true',
   'max_concurrent: 1',
@@ -68,6 +73,7 @@ for (const marker of [
   'wait_for_completed_dispatches(&completed).await?;',
   'completed.load(Ordering::SeqCst)',
   'DISPATCHER_DUPLICATE_DELIVERIES',
+  'assert_eq!(failed.load(Ordering::SeqCst), 0);',
   'load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)',
   'count_delivery(&test_db.db, envelope.id).await?, 1',
   'count_outbox_events(&test_db.db).await?, 1',
@@ -149,5 +155,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'Blog dispatcher duplicate delivery routing, observation, and single-commit source contract is consistent',
+  'Blog dispatcher duplicate delivery routing, successful acknowledgement, observation, and single-commit source contract is consistent',
 );
