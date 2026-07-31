@@ -44,7 +44,7 @@ function fixture({
   missingAvailability = false,
   missingHarness = false,
   runtimePromoted = false,
-  adminPromoted = false,
+  adminStillPending = false,
   remotePromoted = false,
   registrationPromoted = false,
   planDrift = false,
@@ -136,11 +136,8 @@ PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR)
   );
 
   const sourceVerified = ['in_process_fallback', 'host_injected_port_selection'];
-  const pending = ['admin_native_ssr_composition', 'remote_transport_implementation'];
-  if (adminPromoted) {
-    sourceVerified.push('admin_native_ssr_composition');
-    pending.splice(pending.indexOf('admin_native_ssr_composition'), 1);
-  }
+  const pending = ['remote_transport_implementation'];
+  if (adminStillPending) pending.unshift('admin_native_ssr_composition');
   if (remotePromoted) {
     sourceVerified.push('remote_transport_implementation');
     pending.splice(pending.indexOf('remote_transport_implementation'), 1);
@@ -207,7 +204,7 @@ PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR)
     planPath,
     planDrift
       ? ''
-      : 'blog-comments-storefront-native-port-injection.json verify-blog-comments-storefront-native-port-injection.mjs verify-blog-comments-storefront-native-port-injection.test.mjs storefront native SSR Comments host selection is source-locked admin native SSR composition remains pending Blog FBA package-chain registration remains pending remote network transport remains pending Slice 63',
+      : 'blog-comments-storefront-native-port-injection.json verify-blog-comments-storefront-native-port-injection.mjs verify-blog-comments-storefront-native-port-injection.test.mjs storefront native SSR Comments host selection is source-locked Blog FBA package-chain registration remains pending remote network transport remains pending Slice 63',
   );
 
   return root;
@@ -284,8 +281,8 @@ test('rejects runtime promotion without execution', () => {
   assert.notEqual(rejects({ runtimePromoted: true }).status, 0);
 });
 
-test('rejects admin native SSR promotion without implementation', () => {
-  assert.notEqual(rejects({ adminPromoted: true }).status, 0);
+test('rejects stale admin native SSR pending status after composition', () => {
+  assert.notEqual(rejects({ adminStillPending: true }).status, 0);
 });
 
 test('rejects remote transport promotion without implementation', () => {
