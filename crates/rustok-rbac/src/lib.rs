@@ -19,9 +19,9 @@ mod repair;
 pub mod services;
 
 pub use artifact_permission_assignment::{
-    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
-    ArtifactRolePermissionAssignmentResult, RbacArtifactPermissionAssignmentService,
-    SeaOrmArtifactPermissionAuthorizer,
+    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
+    ArtifactRolePermissionAssignmentCommand, ArtifactRolePermissionAssignmentResult,
+    RbacArtifactPermissionAssignmentService, SeaOrmArtifactPermissionAuthorizer,
 };
 pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
@@ -52,7 +52,7 @@ pub use services::permission_authorizer::{
     authorize_permission,
 };
 pub use services::permission_evaluator::{
-    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
+    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permissions,
     evaluate_single_permission,
 };
 pub use services::permission_policy::{
