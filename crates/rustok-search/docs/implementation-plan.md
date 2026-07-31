@@ -114,6 +114,24 @@ Forum Search reindex. Neutral DTOs, `SearchQuery`, mixed/Product/admin Search an
 existing wire signatures remain unchanged. Runtime and reindex evidence remain
 pending.
 
+`FORUM-23B2F4` adds an additive trusted current-channel narrowing to the same
+explicit Forum-only execution owner without accepting an arbitrary channel slug.
+`currentChannelOnly: true` requires the complete trusted channel from
+`RequestContext`, excludes categories and global topics, matches topic
+`payload.channel_slugs` and approved-reply parent
+`payload.topic_channel_slugs`, and fails closed for missing or malformed legacy
+reply projections. The stable raw 100-candidate cap remains before narrowing;
+locale, author, tag, solved, date and current-channel predicates intersect before
+Forum owner eligibility and visible totals/facets/pagination. Query-rule pins are
+disabled while the filter is active. Public topic updates now route through the
+existing transactional inline owner command, which emits one `forum_topic`
+reindex before commit; the Search inbox maps that target to the Full Forum scope
+and the projector rebuilds the tenant so parent-derived reply channel projections
+refresh with the topic. Existing GraphQL/native operations retain their
+signatures, while `ForumStorefrontSearchByCurrentChannel` and
+`search/forum-storefront-search-by-current-channel` are additive. Runtime and
+reindex evidence remain pending.
+
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
 server-wide generic `platform_settings` service no longer admits a `search`
@@ -221,6 +239,11 @@ projection can remain stale after recovery.
 - Exact Forum locale/date contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-locale-date-filter.json` and
   `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
+- Trusted current-channel Forum filter status:
+  `source_complete_execution_pending` under `FORUM-23B2F4`.
+- Trusted current-channel contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-current-channel-filter.json` and
+  `scripts/verify/verify-forum-search-current-channel-filter.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -242,6 +265,8 @@ projection can remain stale after recovery.
   `FORUM-23B2F2`.
 - Exact Forum locale and date filtering is `source_complete_execution_pending` under
   `FORUM-23B2F3`.
+- Trusted current-channel Forum filtering is `source_complete_execution_pending`
+  under `FORUM-23B2F4`.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -322,14 +347,18 @@ rebuild behavior through replayable event transport.
     published date-window filtering through an additive Forum-only execution owner,
     Forum-owned topic/reply timestamp projection, post-scan locale assertion and
     fail-closed legacy projection behavior under `FORUM-23B2F3`.
+23. Added trusted current-channel-only Forum narrowing, parent-topic channel
+    projection for approved replies, additive GraphQL/native parity, fail-closed
+    legacy handling, and transactional topic-update invalidation that rebuilds the
+    tenant Forum projection under `FORUM-23B2F4`.
 
 ## Next results
 
-1. **Complete remaining Forum storefront query filters.** Add kind,
-   channel/group and attachment-presence filters without moving owner
-   authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
-   the same bounded filter contract and every owner-sensitive result still passes
-   exact post-retrieval eligibility.
+1. **Complete remaining Forum storefront query filters.** Add topic kind,
+   owner-authorized arbitrary channel/group and attachment-presence filters without
+   moving owner authorization or membership facts into Search. **Done when:**
+   GraphQL/native Forum-only Search expose the same bounded filter contract and every
+   owner-sensitive result still passes exact post-retrieval eligibility.
 2. **Generalize durable Search projection recovery.** Use the existing generic
    inbox/watermark schema for Content, Product, Blog, locale, tenant, and reindex
    events; add bounded retry, dead-letter diagnostics, ordered replay, restart and
@@ -339,8 +368,8 @@ rebuild behavior through replayable event transport.
    observable durable recovery action.
 3. **Execute Forum Search eligibility evidence.** Run the neutral port tests,
    Forum owner scenarios, GraphQL/native composition, PostgreSQL candidate/result
-   proof, denied topic/reply cases, broad-query failure, and `LINK-FORUM-03` after
-   projection ordering is stable.
+   proof, denied topic/reply cases, broad-query failure, current-channel topic
+   update/reindex proof, and `LINK-FORUM-03` after projection ordering is stable.
 4. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
    storefront Search, native storefront Search, Search admin preview, and admin
    global search against projected product, content, Blog, and Forum documents.
@@ -368,6 +397,9 @@ should run the relevant subset, including:
 - `cargo test -p rustok-search storefront_result_eligibility -- --nocapture`
 - `cargo test -p rustok-search forum_document_filters -- --nocapture`
 - `cargo test -p rustok-search forum_storefront_locale_date_filters -- --nocapture`
+- `cargo test -p rustok-search forum_current_channel_filter -- --nocapture`
+- `cargo test -p rustok-search current_channel_only -- --nocapture`
+- `cargo test -p rustok-search forum_projection -- --nocapture`
 - `cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture`
 - `cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture`
 - `cargo test -p rustok-search product_channel_reconciliation -- --nocapture`
@@ -382,6 +414,8 @@ should run the relevant subset, including:
 - `node scripts/verify/verify-forum-search-author-filter.mjs`
 - `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
 - `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
+- `node scripts/verify/verify-forum-search-current-channel-filter.mjs`
+- `node scripts/verify/verify-forum-projection-invalidation.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
 - `npm run verify:search:blog-projection`
@@ -403,3 +437,4 @@ should run the relevant subset, including:
 - [Forum author-filter contract](../../rustok-forum/contracts/forum-search-author-filter.json)
 - [Forum tag/solved contract](../../rustok-forum/contracts/forum-search-tag-solved-filter.json)
 - [Forum locale/date contract](../../rustok-forum/contracts/forum-search-locale-date-filter.json)
+- [Forum trusted current-channel contract](../../rustok-forum/contracts/forum-search-current-channel-filter.json)
