@@ -1,0 +1,58 @@
+{
+  "status": "fulfillment_lifecycle_read_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "owner_source": "crates/rustok-fulfillment/src/fulfillment_read.rs",
+    "trait": "FulfillmentReadPort",
+    "operations": [
+      "read_fulfillment_projection",
+      "list_fulfillment_projections",
+      "find_latest_fulfillment_by_order_projection"
+    ],
+    "focused_verifier": "scripts/verify/verify-fulfillment-lifecycle-read-diagnostic-safety.mjs",
+    "documentation": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-diagnostic-safety.md"
+  },
+  "source_contract": {
+    "owner_error_variant_count": 5,
+    "complete_fulfillment_error_logged": false,
+    "database_error_payload_logged": false,
+    "uuid_parser_payload_logged": false,
+    "validation_text_logged": false,
+    "transition_text_logged": false,
+    "resource_uuid_logged": false,
+    "raw_context_values_logged": false,
+    "static_error_variant_logged": true,
+    "aggregate_error_shape_logged": true,
+    "safe_context_shape_logged": true,
+    "request_identity_shape_logged": true,
+    "status_shape_logged": true,
+    "tenant_parse_failure_logged": true,
+    "database_severity_changed": false,
+    "ordinary_severity_changed": false,
+    "read_policy_order_changed": false,
+    "tenant_parse_order_changed": false,
+    "owner_delegation_changed": false,
+    "public_trait_changed": false,
+    "request_response_dtos_changed": false,
+    "pagination_filter_semantics_changed": false,
+    "optional_latest_semantics_changed": false,
+    "public_code_changed": false,
+    "public_message_changed": false,
+    "public_kind_changed": false,
+    "public_retryability_changed": false,
+    "shipping_selection_diagnostic_cleanup_closed": true,
+    "shipping_option_read_diagnostic_cleanup_closed": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false,
+    "restart_proven": false,
+    "remote_adapter_proven": false
+  }
+}

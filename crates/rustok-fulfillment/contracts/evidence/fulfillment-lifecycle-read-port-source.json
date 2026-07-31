@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-28",
+  "generated_at": "2026-07-31",
   "status": "source_cutover_unvalidated",
-  "source_base_revision": "606408363aceae770ffeb2af63a5c4644ee1e31e",
+  "source_base_revision": "2e7e14a04a885f4ed6b88c1a687729c0bc94f601",
   "scope": "fulfillment lifecycle projection reads for mounted Commerce queries",
   "owner": {
     "crate": "rustok-fulfillment",
@@ -41,13 +41,30 @@
     "read_policy_required": true,
     "tenant_parsed_from_port_context": true,
     "deadline_required_by_policy": true,
-    "diagnostics_retain_actor_channel_locale_correlation": true
+    "diagnostics_retain_actor_channel_locale_correlation": false,
+    "diagnostics_retain_correlation_id": true,
+    "diagnostics_retain_bounded_context_shape": true,
+    "raw_tenant_actor_channel_locale_logged": false,
+    "tenant_parser_payload_logged": false
   },
   "errors": {
     "type": "PortError",
     "owner_message_control_flow": false,
     "database_retryable": true,
-    "all_current_fulfillment_error_variants_mapped": true
+    "all_current_fulfillment_error_variants_mapped": true,
+    "complete_owner_error_logged": false,
+    "database_error_payload_logged": false,
+    "resource_uuid_logged": false,
+    "validation_transition_text_logged": false,
+    "bounded_owner_error_shape_logged": true,
+    "bounded_request_identity_shape_logged": true
+  },
+  "diagnostic_safety": {
+    "status": "source_closed_unvalidated",
+    "evidence": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source.json",
+    "review": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source-review.json",
+    "verifier": "scripts/verify/verify-fulfillment-lifecycle-read-diagnostic-safety.mjs",
+    "runbook": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-diagnostic-safety.md"
   },
   "runtime_publication": {
     "runtime": "CommerceFulfillmentLifecycleReadRuntime",
