@@ -116,10 +116,11 @@ impl HostAuthorityPolicy {
 
         let presented_hash: [u8; 32] = Sha256::digest(token.as_bytes()).into();
         self.credentials.iter().find_map(|credential| {
-            bool::from(presented_hash.ct_eq(&credential.token_sha256)).then(|| {
+            if bool::from(presented_hash.ct_eq(&credential.token_sha256)) {
                 HostAuthorityContext::for_actor(credential.authority, credential.actor_id)
-                    .expect("validated non-nil host operator actor")
-            })
+            } else {
+                None
+            }
         })
     }
 
