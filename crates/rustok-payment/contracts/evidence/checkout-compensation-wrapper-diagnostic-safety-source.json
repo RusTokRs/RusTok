@@ -25,7 +25,7 @@
     "local_operation_mapping_changed": false,
     "owner_delegation_changed": false,
     "request_response_dto_changed": false,
-    "persistent_owner_source_changed": false,
+    "persistent_owner_source_changed": true,
     "provider_cancel_policy_changed": false,
     "provider_journal_policy_changed": false,
     "raw_tenant_id_logged_by_wrapper": false,
@@ -42,7 +42,8 @@
     "safe_context_shape_logged": true,
     "safe_request_shape_logged": true,
     "correlation_id_logged": true,
-    "persistent_owner_diagnostic_cleanup_complete": false,
+    "persistent_owner_diagnostic_cleanup_complete": true,
+    "checkout_compensation_payload_diagnostic_cleanup_closed": true,
     "broad_ecommerce_cleanup_closed": false
   },
   "validation": {
@@ -59,10 +60,11 @@
     "mounted_runtime_proven": false
   },
   "notes": [
-    "Known local outcomes are still classified only by stable PortError code.",
-    "Both error and warning events retain a static PortError kind plus message presence and character length.",
+    "Known local outcomes are classified only by stable PortError code.",
+    "Both wrapper severity branches retain a static PortError kind plus message presence and character length.",
     "Complete PortError debug payloads and PortError message text are not logged by the wrapper.",
     "The original PortError is returned unchanged after diagnostics.",
-    "Persistent compensation owner payload diagnostics remain a separate open source slice."
+    "Persistent owner PaymentError, codec, tenant-parse, and manual-reconciliation payload diagnostics are sanitized in the companion owner contract.",
+    "Checkout compensation payload diagnostics are source-closed but unvalidated; broad ecommerce cleanup remains open."
   ]
 }

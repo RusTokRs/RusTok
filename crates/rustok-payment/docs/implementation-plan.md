@@ -107,20 +107,24 @@ human-readable public messages. Public `PortError` envelopes and all execution
 semantics remain unchanged.
 
 Payment checkout compensation diagnostic safety: `source_ready_unvalidated`. The
-public wrapper uses stable-code-only local attribution and safe context/request shape.
-The private persistent owner now applies the same safe-context policy to tenant and
-causation rejection, owner error mapping, manual reconciliation, provider
-serialization, persisted-result decoding, and journal checkpoint failures. Raw
-context, checkout/payment, provider-operation, reason, metadata, and financial values
-are not written by these diagnostics. Public `PortError`, provider cancel/replay,
-journal, lifecycle, and local-cancellation semantics remain unchanged. Compile,
-provider replay, restart, mounted-runtime, and production evidence remain open.
+public wrapper uses stable-code-only local attribution, a closed `PortErrorKind`
+label, message shape, and safe context/request facts while returning the same public
+error. The private persistent owner retains only bounded `PaymentError` variant/shape,
+static codec failure kinds, a tenant-parse failure flag, and manual-reconciliation
+reason shape. Complete `PortError`, `PaymentError`, serde/UUID parser text, database
+payloads, manual-reconciliation reason text, and raw context/request/provider/financial
+values are not written by these diagnostics. Public `PortError`, provider cancel/replay,
+journal, lifecycle, and local-cancellation semantics remain unchanged. The currently identified checkout compensation payload-diagnostic sites are source-closed but
+compile, provider replay, restart, mounted-runtime, workflow, CI, and production
+evidence remain open.
 
 Boundary guards:
 
 - `npm run verify:payment:storefront-boundary`
 - `node scripts/verify/verify-payment-storefront-native-client-error-safety.mjs`
 - `node scripts/verify/verify-payment-checkout-execution-local-context.mjs`
+- `node scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs`
+- `node scripts/verify/verify-payment-checkout-compensation-owner-payload-diagnostic-safety.mjs`
 - `node scripts/verify/verify-payment-checkout-compensation-local-context.mjs`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`

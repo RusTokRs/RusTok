@@ -32,20 +32,20 @@ UUID non-nil facts, reason length, metadata kind, and metadata entry count. They
 tenant, actor, channel, locale, causation, traceparent, idempotency, checkout-operation, collection,
 reason, or metadata values.
 
-The wrapper error and warning events now also retain only:
+Wrapper error and warning events retain only:
 
 - stable `PortError.code`;
 - a closed static `PortErrorKind` label;
 - message presence and character length;
 - retryability.
 
-They no longer record the complete `PortError`, debug representation, or human-readable message text.
-The same original `PortError` is returned after the private event, so public code, message, kind, and
+They do not record the complete `PortError`, debug representation, or human-readable message text. The
+same original `PortError` is returned after the private event, so public code, message, kind, and
 retryability are unchanged.
 
 ## Persistent owner diagnostics
 
-The private owner now uses one shared safe-context model for:
+The private owner uses one bounded context model for:
 
 - invalid tenant context;
 - checkout-operation causation mismatch;
@@ -55,32 +55,29 @@ The private owner now uses one shared safe-context model for:
 - recovered, success, failure, reconciliation, and final commit checkpoint failures;
 - malformed persisted provider cancel results.
 
-Owner events retain:
+Five `PaymentError` event sites retain only:
 
-- truthful owner and operation;
-- stable code and local operation;
-- per-call correlation id;
-- tenant, actor-id, channel, locale, causation-id, traceparent, and idempotency-key lengths;
-- actor kind, claim count, role count, presence flags, and deadline;
-- provider-journal operation presence/non-nil facts;
-- checkout-operation non-nil and causation-match facts where applicable;
-- the original internal error only inside private structured tracing.
+- a stable error variant;
+- text-field count and aggregate character length;
+- UUID-field count and non-nil count;
+- whether an opaque database payload is present.
 
-The owner no longer writes raw tenant, actor, channel, locale, causation, traceparent, idempotency,
-checkout-operation, collection, provider-journal operation, reason, metadata, provider identity, or
-financial values into these diagnostic fields.
+Three codec event sites retain only static request-encoding, result-encoding, or result-decoding
+failure labels. Tenant UUID parsing retains only a failure flag. Manual reconciliation retains only
+whether the private reason is present and its character length.
 
-This wrapper-only slice does not change the persistent owner. Stricter payload-shape replacement for
-complete owner, checkpoint, serialization, and reconciliation error payloads remains a separate open
-source slice.
+Owner events also retain truthful owner/operation, stable code/local operation, per-call correlation,
+safe context shape, and provider-journal operation presence/non-nil facts. They do not record complete
+`PaymentError`, serde or UUID parser text, manual-reconciliation reason text, database payloads,
+validation/provider strings, UUID values, or raw context/request/provider/financial values.
 
 ## Preserved behavior
 
-This slice does not change:
+This source cleanup does not change:
 
 - public trait, request, response, wrapper, factory, or module exports;
 - stable-code local-operation mapping;
-- technical/integrity severity classification;
+- wrapper technical/integrity severity classification;
 - unknown-code passthrough;
 - write policy, deadline, idempotency, tenant, or causation admission order;
 - optional missing-collection no-op behavior;
@@ -96,8 +93,17 @@ This slice does not change:
 - final provider-operation commit checkpoint;
 - `PaymentError` to public `PortError` mapping;
 - public error code, message, kind, or retryability;
-- manual-reconciliation public envelope;
+- manual-reconciliation public conflict envelope;
 - Payment FFA/FBA status.
+
+## Source status
+
+Together, the wrapper and persistent-owner contracts close the currently identified checkout payment
+compensation payload-diagnostic sites at source level.
+
+This is not compile, test, provider-replay, process-exit, restart, contention, mounted-transport,
+remote-profile, workflow, CI, production, FFA, or FBA evidence. The broad ecommerce
+correlation-safe mapper and non-`PortError` envelope item remains open across other modules.
 
 ## Static evidence
 
@@ -106,22 +112,23 @@ This slice does not change:
 - `crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json`
 - `crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs`
+- `scripts/verify/verify-payment-checkout-compensation-owner-payload-diagnostic-safety.mjs`
 - `scripts/verify/verify-payment-checkout-compensation-local-context.mjs`
 
-The focused wrapper verifier guards stable-code attribution, closed error-kind labels, message-shape
-facts, absence of complete `PortError` and message text, unchanged severity routing, same-error return,
-and source-only validation flags. The broader compensation verifier continues to guard facade wiring,
-owner context shape, provider/journal/lifecycle markers, and public envelopes.
+The focused wrapper guard checks stable-code attribution, closed error-kind labels, message shape,
+absence of complete `PortError` payloads, unchanged severity routing, and same-error return. The
+focused owner guard checks all eight owner error sites, payment-error shape, static codec/parse facts,
+manual-reconciliation reason shape, preserved journal/lifecycle markers, and source-only validation
+flags. The broader compensation guard retains facade and owner-boundary coverage.
 
 ## Remaining gaps
 
-Persistent owner payload-shape cleanup remains open. Compile, provider replay, process-exit, restart,
-contention, mounted transport, remote-profile, workflow, CI, and production evidence remain
-unexecuted.
+Compile, provider replay, process-exit, restart, contention, mounted transport, remote profile,
+workflow, CI, and production evidence remain unexecuted.
 
-The broad ecommerce correlation-safe mapper item remains open for remaining payment compensation,
-order, fulfillment, inventory, customer, tax, promotion, ecommerce adapter, and non-`PortError`
-public envelopes. No FBA or FFA status is promoted from source inspection.
+The broad ecommerce correlation-safe mapper item remains open for order, fulfillment, inventory,
+customer, tax, promotion, remaining ecommerce adapters, and non-`PortError` public envelopes. No FBA
+or FFA status is promoted from source inspection.
 
 ## Suggested maintainer checks
 
@@ -129,6 +136,7 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs
+node scripts/verify/verify-payment-checkout-compensation-owner-payload-diagnostic-safety.mjs
 node scripts/verify/verify-payment-checkout-compensation-local-context.mjs
 node scripts/verify/verify-payment-checkout-execution-local-context.mjs
 node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs

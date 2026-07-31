@@ -6,10 +6,9 @@
     "crates/rustok-payment/src/checkout_compensation_api.rs",
     "crates/rustok-payment/src/lib.rs",
     "crates/rustok-payment/docs/checkout-compensation-local-context.md",
-    "crates/rustok-payment/docs/checkout-execution-local-context.md",
     "crates/rustok-payment/docs/implementation-plan.md",
-    "scripts/verify/verify-payment-checkout-compensation-local-context.mjs",
-    "scripts/verify/verify-payment-checkout-execution-local-context.mjs"
+    "scripts/verify/verify-payment-checkout-compensation-owner-payload-diagnostic-safety.mjs",
+    "scripts/verify/verify-payment-checkout-compensation-local-context.mjs"
   ],
   "review_findings": {
     "public_wrapper_construction_preserved": true,
@@ -30,6 +29,15 @@
     "safe_context_shape_only": true,
     "raw_owner_identifiers_removed": true,
     "operation_identifiers_represented_as_non_nil_facts": true,
+    "complete_internal_error_logging_removed": true,
+    "payment_error_payload_shape_only": true,
+    "codec_error_text_logging_removed": true,
+    "tenant_parse_error_text_logging_removed": true,
+    "manual_reconciliation_reason_text_logging_removed": true,
+    "persistent_owner_diagnostic_cleanup_complete": true,
+    "checkout_compensation_payload_diagnostic_cleanup_closed": true,
+    "focused_owner_guard_added": true,
+    "broad_commerce_cleanup_remains_open": true,
     "runtime_evidence_claimed": false
   },
   "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
