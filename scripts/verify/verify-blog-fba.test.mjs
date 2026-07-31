@@ -89,6 +89,14 @@ test('Blog FBA verification-chain policy rejects removal of the duplicate-delive
   assert.ok(failures({ registry }).includes('registry verification chain steps drift'));
 });
 
+test('Blog FBA verification-chain policy rejects removal of the dispatcher duplicate-delivery verify step', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.steps = registry.verification_chain.steps.filter(
+    (step) => step !== 'npm run verify:blog:comments-dispatcher-duplicate-delivery',
+  );
+  assert.ok(failures({ registry }).includes('registry verification chain steps drift'));
+});
+
 test('Blog FBA verification-chain policy rejects package verify-chain drift', () => {
   const packageJson = canonicalPackageJson();
   packageJson.scripts['verify:blog:fba'] = BLOG_FBA_VERIFICATION_STEPS
@@ -163,6 +171,17 @@ test('Blog FBA verification-chain policy rejects duplicate-delivery PostgreSQL-t
   );
 });
 
+test('Blog FBA verification-chain policy rejects dispatcher duplicate-delivery PostgreSQL-test path drift', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.source_gates.comments_dispatcher_duplicate_delivery.postgres_test =
+    'crates/rustok-blog/tests/wrong_dispatcher_duplicate_postgres_test.rs';
+  assert.ok(
+    failures({ registry }).includes(
+      'registry source gate comments_dispatcher_duplicate_delivery path drift',
+    ),
+  );
+});
+
 test('Blog FBA verification-chain policy rejects registry leaf-script drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.storefront_boundary.package_script = 'verify:blog:wrong-storefront';
@@ -216,6 +235,16 @@ test('Blog FBA verification-chain policy rejects a missing duplicate-delivery le
   );
 });
 
+test('Blog FBA verification-chain policy rejects a missing dispatcher duplicate-delivery leaf verifier script', () => {
+  const packageJson = canonicalPackageJson();
+  delete packageJson.scripts['verify:blog:comments-dispatcher-duplicate-delivery'];
+  assert.ok(
+    failures({ packageJson }).includes(
+      'package.json missing source gate script verify:blog:comments-dispatcher-duplicate-delivery',
+    ),
+  );
+});
+
 test('Blog FBA verification-chain policy rejects a missing registered verifier file', () => {
   const existingPaths = canonicalExistingPaths();
   existingPaths.delete(BLOG_FBA_SOURCE_GATES.storefront_boundary.verifier);
@@ -262,6 +291,16 @@ test('Blog FBA verification-chain policy rejects a missing duplicate-delivery Po
   assert.ok(
     failures({ existingPaths }).includes(
       `registry source gate comments_duplicate_delivery_race missing ${BLOG_FBA_SOURCE_GATES.comments_duplicate_delivery_race.postgres_test}`,
+    ),
+  );
+});
+
+test('Blog FBA verification-chain policy rejects a missing dispatcher duplicate-delivery PostgreSQL target', () => {
+  const existingPaths = canonicalExistingPaths();
+  existingPaths.delete(BLOG_FBA_SOURCE_GATES.comments_dispatcher_duplicate_delivery.postgres_test);
+  assert.ok(
+    failures({ existingPaths }).includes(
+      `registry source gate comments_dispatcher_duplicate_delivery missing ${BLOG_FBA_SOURCE_GATES.comments_dispatcher_duplicate_delivery.postgres_test}`,
     ),
   );
 });
