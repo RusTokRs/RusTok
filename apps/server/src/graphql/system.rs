@@ -69,17 +69,15 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
-fn require_host_authority<'a>(
-    ctx: &'a Context<'_>,
+fn require_host_authority(
+    _ctx: &Context<'_>,
     required: HostAuthority,
-) -> Result<&'a HostAuthorityContext> {
-    let authority = ctx
-        .data_opt::<HostAuthorityContext>()
+) -> Result<HostAuthorityContext> {
+    crate::host_authority::current_host_authority()
         .filter(|authority| authority.allows(required))
         .ok_or_else(|| {
             <FieldError as GraphQLError>::permission_denied("host-global authority required")
-        })?;
-    Ok(authority)
+        })
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────

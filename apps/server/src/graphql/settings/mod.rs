@@ -28,13 +28,13 @@ pub(super) fn require_tenant_settings_scope(
     ))
 }
 
-pub(super) fn require_host_authority<'a>(
-    ctx: &'a async_graphql::Context<'_>,
+pub(super) fn require_host_authority(
+    _ctx: &async_graphql::Context<'_>,
     required: rustok_api::HostAuthority,
-) -> async_graphql::Result<&'a rustok_api::HostAuthorityContext> {
+) -> async_graphql::Result<rustok_api::HostAuthorityContext> {
     use rustok_api::graphql::GraphQLError;
 
-    ctx.data_opt::<rustok_api::HostAuthorityContext>()
+    crate::host_authority::current_host_authority()
         .filter(|authority| authority.allows(required))
         .ok_or_else(|| {
             <async_graphql::FieldError as GraphQLError>::permission_denied(
@@ -43,11 +43,14 @@ pub(super) fn require_host_authority<'a>(
         })
 }
 
+/// Iggy connector secrets are still stored under a routed tenant owner. The
+/// host credential grants process-wide mutation authority, while ordinary
+/// authentication supplies only the tenant secret-owner boundary.
 pub(super) fn require_host_actor<'a>(
     ctx: &'a async_graphql::Context<'_>,
     required: rustok_api::HostAuthority,
 ) -> async_graphql::Result<(
-    &'a rustok_api::HostAuthorityContext,
+    rustok_api::HostAuthorityContext,
     &'a crate::context::AuthContext,
 )> {
     use rustok_api::graphql::GraphQLError;
@@ -56,10 +59,7 @@ pub(super) fn require_host_actor<'a>(
     let auth = ctx
         .data::<crate::context::AuthContext>()
         .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
-    if authority.actor_id() != auth.user_id {
-        return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-            "host-global authority required",
-        ));
-    }
+    let tenant = ctx.data::<crate::context::TenantContext>()?;
+    require_tenant_settings_scope(auth, tenant.id)?;
     Ok((authority, auth))
 }
