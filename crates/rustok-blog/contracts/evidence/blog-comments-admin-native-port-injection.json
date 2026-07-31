@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "comments_admin_native_port_injection",
+  "role": "consumer",
+  "provider": "comments",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "source_contract": {
+    "admin_adapter": "crates/rustok-blog/admin/src/transport/native_server_adapter.rs",
+    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
+    "consumer_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+  },
+  "profiles": {
+    "source_verified": [
+      "in_process_fallback",
+      "host_injected_port_selection"
+    ],
+    "pending": [
+      "remote_transport_implementation"
+    ]
+  },
+  "composition": {
+    "host_context": "rustok_api::HostRuntimeContext",
+    "native_context": "NativeContext",
+    "shared_value": "Arc<dyn rustok_blog::CommentsThreadPort>",
+    "lookup": "HostRuntimeContext::shared_get",
+    "selector": "comment_service",
+    "injected_constructor": "CommentService::with_comments_thread_port",
+    "fallback_constructor": "CommentService::new",
+    "native_endpoints": [
+      "blog/admin/moderation-comments",
+      "blog/admin/moderate-comment"
+    ],
+    "port_operations": [
+      "list_comments_for_target",
+      "get_comment",
+      "set_comment_status"
+    ]
+  },
+  "authorization": {
+    "tenant_binding": "AuthContext.tenant_id == TenantContext.id",
+    "permission": "blog_posts:manage",
+    "checked_before_port_call": true
+  },
+  "moderation_policy": {
+    "read_pagination": "page >= 1; 1 <= per_page <= 100",
+    "error_policy": "all_blog_errors_propagated",
+    "storefront_degradation_reused": false
+  },
+  "harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "source": "crates/rustok-blog/admin/src/transport/native_server_adapter.rs",
+    "test": "transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection",
+    "command": "cargo test -p rustok-blog-admin --features ssr transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection -- --exact"
+  },
+  "registration": {
+    "standalone_verifier": "scripts/verify/verify-blog-comments-admin-native-port-injection.mjs",
+    "focused_fixture": "scripts/verify/verify-blog-comments-admin-native-port-injection.test.mjs",
+    "blog_fba_package_chain": "pending"
+  },
+  "non_claims": [
+    "no remote network transport is implemented",
+    "no admin moderation error is degraded to an empty success payload",
+    "no Rust or JavaScript test was run",
+    "no compile, database, browser, workflow, CI, or production result is recorded"
+  ]
+}
