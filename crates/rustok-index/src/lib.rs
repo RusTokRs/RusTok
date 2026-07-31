@@ -3,14 +3,15 @@
 //! The active implementation contains the database-independent generic engine
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
 //! storage-schema migrations, atomic mutation persistence, tenant-scoped source
-//! schema registration, bounded source replay/load contracts, one-page replay
-//! orchestration with durable fenced checkpoint progression, bounded multi-page
-//! replay coordination with heartbeat/yield/cancellation semantics, bounded
-//! multi-pass source reconciliation with durable pass/cursor progression,
-//! host-published replay and query capabilities, host-database-aware source factory
-//! composition, durable replay-job and schema-application leases, schema-derived
-//! secondary-index lifecycle, fail-closed measured partition admission, and the
-//! PostgreSQL execution adapter for structured Index queries.
+//! schema registration, bounded source replay/load contracts, bounded side-effect-free
+//! replay dry-run validation, one-page replay orchestration with durable fenced
+//! checkpoint progression, bounded multi-page replay coordination with
+//! heartbeat/yield/cancellation semantics, bounded multi-pass source reconciliation
+//! with durable pass/cursor progression, host-published replay and query capabilities,
+//! host-database-aware source factory composition, durable replay-job and
+//! schema-application leases, schema-derived secondary-index lifecycle, fail-closed
+//! measured partition admission, and the PostgreSQL execution adapter for structured
+//! Index queries.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -23,9 +24,11 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod migrations;
+pub mod replay_dry_run;
 
 pub use application::*;
 pub use domain::*;
+pub use replay_dry_run::*;
 pub use infrastructure::postgres::{
     evaluate_partition_admission, materialize_postgres_index_query_runtime,
     materialize_postgres_index_replay_runtime, materialize_postgres_index_sources,
