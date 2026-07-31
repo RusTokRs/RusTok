@@ -5,7 +5,8 @@ use std::time::Duration;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_search::{
     DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
-    ForumProjectionReconciler, search_projection_source_registry_from_extensions,
+    ForumProjectionReconciler, SharedForumProjectionOwnerRevisionSourcePort,
+    search_projection_source_registry_from_extensions,
 };
 use tokio::task::JoinHandle;
 
@@ -54,8 +55,20 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
         );
         return Ok(());
     };
+    let owner_source = extensions
+        .get::<SharedForumProjectionOwnerRevisionSourcePort>()
+        .cloned()
+        .ok_or_else(|| {
+            Error::Message(
+                "Forum Search inbox worker requires the Forum owner revision source".to_string(),
+            )
+        })?;
 
-    let reconciler = ForumProjectionReconciler::new(ctx.db_clone(), forum_source);
+    let reconciler = ForumProjectionReconciler::with_owner_revision_source(
+        ctx.db_clone(),
+        forum_source,
+        owner_source,
+    );
     if !reconciler.supports_background_reconciliation() {
         tracing::info!(
             "Forum Search inbox worker not started: PostgreSQL backend is required"
@@ -78,7 +91,7 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
         tenant_limit = DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
         event_limit = DEFAULT_FORUM_SWEEP_EVENT_LIMIT,
         poll_interval_seconds = FORUM_SEARCH_INBOX_POLL_INTERVAL.as_secs(),
-        "Starting Forum Search inbox worker"
+        "Starting Forum Search inbox and owner checkpoint worker"
     );
     ctx.shared_insert(ForumSearchInboxWorkerHandle {
         instance_id,
@@ -104,17 +117,30 @@ async fn forum_search_inbox_worker_loop(
             )
             .await
         {
-            Ok(report) if report.due_tenants > 0 => tracing::debug!(
-                due_tenants = report.due_tenants,
-                claimed_events = report.claimed_events,
-                completed_events = report.completed_events,
-                failed_events = report.failed_events,
-                "Forum Search inbox sweep completed"
-            ),
+            Ok(report)
+                if report.due_tenants > 0
+                    || report.owner_tenants_scanned > 0
+                    || report.recovered_processing_events > 0 =>
+            {
+                tracing::debug!(
+                    due_tenants = report.due_tenants,
+                    claimed_events = report.claimed_events,
+                    completed_events = report.completed_events,
+                    failed_events = report.failed_events,
+                    recovered_processing_events = report.recovered_processing_events,
+                    owner_tenants_scanned = report.owner_tenants_scanned,
+                    owner_tenants_reconciled = report.owner_tenants_reconciled,
+                    owner_tenants_blocked = report.owner_tenants_blocked,
+                    owner_tenants_failed = report.owner_tenants_failed,
+                    owner_revisions_checkpointed = report.owner_revisions_checkpointed,
+                    owner_rebuilds = report.owner_rebuilds,
+                    "Forum Search inbox and owner checkpoint sweep completed"
+                )
+            }
             Ok(_) => {}
             Err(error) => tracing::warn!(
                 error = %error,
-                "Forum Search inbox sweep failed"
+                "Forum Search inbox and owner checkpoint sweep failed"
             ),
         }
 
