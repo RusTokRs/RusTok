@@ -39,10 +39,10 @@ const admission = requireMarkers(admissionPath, [
   'derive_index_source_event_id(',
   'Some(&locale)',
   'epoch.get()',
-  'canonical_membership_and_retry_identity_are_stable',
-  'relation_change_requires_a_strictly_larger_epoch',
-  'invalid_identity_and_duplicate_membership_fail_closed',
-  'empty_membership_is_valid_but_scope_cannot_change',
+  'product_sales_channel_relation_canonical_membership_and_retry_identity_are_stable',
+  'product_sales_channel_relation_change_requires_a_strictly_larger_epoch',
+  'product_sales_channel_relation_invalid_identity_and_duplicates_fail_closed',
+  'product_sales_channel_relation_empty_membership_is_valid_but_scope_cannot_change',
 ]);
 
 for (const forbidden of [
