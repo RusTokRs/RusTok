@@ -22,10 +22,13 @@ a counter write.
 First-thread creation has a separate owner identity lock. Before a transactional
 thread insert, `comment_thread::ActiveModelBehavior` upserts a persistent
 `comment_thread_identity_locks` row with `ON CONFLICT DO NOTHING`, locks that row,
-and checks for the canonical thread. A concurrent creator receives an intentional
-application `DbErr` before its SQL INSERT, leaving the PostgreSQL transaction
-usable by the existing `find_or_create_thread_in_tx` fallback. This prevents the
-old unique-violation/aborted-transaction failure mode without transport retries.
+and checks for the canonical thread. A concurrent creator receives an owner-
+classified application `DbErr` before its SQL INSERT, leaving the PostgreSQL
+transaction usable. `find_or_create_thread_in_tx` performs canonical lookup only
+for the exact tenant/target identity marker followed by one valid canonical thread
+UUID; malformed or wrong-scope markers are rejected. Unrelated storage errors
+propagate through `CommentsError::Database` instead of becoming
+`CommentThreadNotFound`.
 
 Append-only migrations repair historical counters, deterministically renumber
 historical positions, enforce `UNIQUE(thread_id, position)`, and create the unique
@@ -48,24 +51,47 @@ before the schema column is dropped.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CommentsThreadPort` / `comments.thread.v1` in
   `crates/rustok-comments/contracts/comments-fba-registry.json`.
-- Comments FBA registry schema v2 locks the exact verify/test package order,
-  thread-invariant leaf commands, verifier, focused self-test, evidence path,
-  and the shared owner runtime-order gate.
-- Static and runtime-order evidence:
+- Comments FBA registry schema v4 locks the exact verify/test package order,
+  the provider port-boundary leaf, thread-invariant leaf commands, focused
+  self-tests, evidence paths, strict classifier unit harness, and shared owner
+  runtime-order gate.
+- Provider port source evidence schema v2:
   `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
-  and `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
-- Thread write invariant evidence:
+  with status `source_verified_no_compile`, compile policy `not_run_by_request`,
+  runtime status `pending`, source-verified `in_process`, and pending
+  `remote_adapter_placeholder`.
+- Provider port source gate:
+  `scripts/verify/verify-comments-port-boundary.mjs` with focused self-test
+  `scripts/verify/verify-comments-port-boundary.test.mjs`. It locks all seven
+  operations, shared read/write policy, typed error mapping, owner-selected
+  comment richtext, tenant-scoped approved-only public reads, and rejects source
+  or runtime promotion of the remote placeholder.
+- Exact provider leaf commands: `verify:comments:port-boundary` and
+  `test:verify:comments:port-boundary`; both are registered in
+  `verify:comments:fba` / `test:verify:comments:fba` before thread invariants.
+- Runtime-order evidence:
+  `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
+  Its executable source ordering remains uncompiled and unexecuted.
+- Thread write invariant evidence schema v3:
   `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
   with status `executable_no_run`.
 - Thread invariant source gate:
   `scripts/verify/verify-comments-thread-write-invariants.mjs` with focused
   self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`.
-- Exact leaf commands: `verify:comments:thread-write-invariants` and
-  `test:verify:comments:thread-write-invariants`; both are registered in
-  `verify:comments:fba` / `test:verify:comments:fba` before the shared owner
-  runtime-order gate.
+  It locks the identity-conflict-only fallback, requires a valid canonical thread
+  UUID suffix, verifies that unrelated storage errors propagate, and forbids broad
+  `Err(_)` fallback or prefix-only classification.
+- Classifier unit harness:
+  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`, registered by
+  `#[cfg(test)] mod thread_insert_error_tests;` in the entities module. It records
+  exact-scope acceptance, malformed-owner rejection, wrong-scope rejection, and
+  unrelated `DbErr` preservation as database failure. It is written but not run.
+- Exact thread leaf commands: `verify:comments:thread-write-invariants` and
+  `test:verify:comments:thread-write-invariants`; both run after the provider leaf
+  and before the shared owner runtime-order gate.
 - Executable targets:
-  `crates/rustok-comments/tests/thread_write_invariants.rs` and
+  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`,
+  `crates/rustok-comments/tests/thread_write_invariants.rs`, and
   `crates/rustok-comments/tests/thread_creation_concurrency.rs`.
 - Both PostgreSQL targets use two independent one-connection pools, an isolated
   schema, and `RUSTOK_COMMENTS_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
@@ -74,6 +100,9 @@ before the schema column is dropped.
   projection is implemented statically under
   `DECISIONS/2026-07-16-comments-blog-event-projection.md`; runtime delivery,
   retry, and recovery evidence remain open.
+- The remote adapter remains pending. Consumer degraded modes
+  `hide_comment_form` and `show_cached_thread_snapshot` remain planned; this
+  source-only slice does not claim fallback UI implementation.
 
 ## 2026-07-30 source continuation audit
 
@@ -85,8 +114,31 @@ verification-chain contract; the root package had no named leaf commands and no
 Comments FBA test chain. Slice 11 registers those source assets without changing
 the owner behavior or promoting `executable_no_run` to executed evidence.
 
-No verifier, Rust test, PostgreSQL target, compile, workflow, or CI execution is
-recorded by this source-only slice.
+The continuation audit at `6b5cd3f94265ff7ba382ca89916a73065806a0b5`
+found that `find_or_create_thread_in_tx` still reloaded the canonical thread after
+every insert `DbErr`. Slice 12 adds a tenant/target-scoped owner marker and
+classifier, narrows fallback to that exact identity conflict, propagates unrelated
+storage errors, upgrades retained evidence to schema v2, and adds focused negative
+guards without recording Rust or PostgreSQL execution.
+
+The continuation audit at `48d478dc2e4ef55dc6015ba8038dde59c908990a`
+found that the new classifier accepted any custom error beginning with the expected
+scope prefix, including a malformed or empty canonical-thread suffix, and had no
+Rust unit harness retained by the FBA source gate. Slice 13 requires one valid UUID
+suffix, adds and registers `thread_insert_error_tests`, upgrades registry and
+evidence to schema v3, and adds focused regressions for prefix-only parsing,
+missing test source, and missing test-module registration. No unit test, verifier,
+compile, database, workflow, or CI execution is recorded.
+
+The continuation audit at `7082e47699c7ec3c81d786d26fbea8c57800bc1b`
+found that the implemented `InProcessCommentsThreadProvider`, all seven operations,
+shared policy checks, typed error mapper, typed richtext DTOs, and approved-only
+public projection were still represented by a schema-v1 matrix and registry status
+`planned_cases_locked`. Slice 14 splits source-verified `in_process` from the
+pending remote placeholder, promotes only source metadata, adds a dedicated
+fail-closed verifier and focused fixture, upgrades registry schema v4, and registers
+exact provider leaf commands. No verifier, self-test, Rust test, compile, database,
+workflow, browser, or CI execution is recorded.
 
 ## Completed implementation slices
 
@@ -116,6 +168,19 @@ recorded by this source-only slice.
     Comments FBA source gate, added exact verify/test npm commands, and locked
     registry schema v2 plus aggregate order while preserving runtime execution as
     maintainer-owned.
+12. Added an owner-classified first-thread identity marker, narrowed the service
+    fallback to that exact tenant/target conflict, propagated every unrelated
+    insert `DbErr`, upgraded thread evidence to schema v2, and added focused
+    regression guards for the classifier, broad catch, and propagation branch.
+13. Hardened the identity classifier from prefix-only matching to exact scope plus
+    a valid canonical thread UUID, added and registered a four-case Rust unit
+    harness, upgraded registry/evidence schema v3, and retained the harness in the
+    existing FBA leaf.
+14. Promoted the implemented in-process `CommentsThreadPort` source boundary from
+    `planned_cases_locked`, split the pending remote adapter, added a focused
+    provider verifier/self-test and exact npm leaf commands, upgraded registry
+    schema v4 and provider matrix schema v2, and retained all runtime/fallback
+    evidence as pending.
 
 ## Open results
 
@@ -125,18 +190,27 @@ recorded by this source-only slice.
    **Done when:** runtime evidence confirms the owner locks under real concurrent
    PostgreSQL transactions.
 
-2. **Narrow the service fallback error class.** `find_or_create_thread_in_tx`
-   currently retries canonical lookup for every thread insert error. Preserve the
-   identity-conflict fallback while propagating unrelated infrastructure errors.
-   **Done when:** typed storage errors cannot be converted into a misleading
-   `CommentThreadNotFound`.
+2. **Execute fallback-class runtime evidence.** The strict source classifier and
+   pure Rust harness are written but not executed. Run the classifier harness,
+   inject or reproduce an unrelated thread insert `DbErr`, and retain evidence that
+   it propagates as a database failure rather than becoming
+   `CommentThreadNotFound`; also retain the canonical concurrent identity-conflict
+   lookup path.
+   **Done when:** executed evidence proves exact marker parsing, unrelated storage
+   error propagation, and one canonical thread for the expected first-thread race.
 
 3. **Implement and execute the Blog reply-count event projection.** Consume
    `comment.created` and `comment.deleted` idempotently, publish the Blog-owned
    update event in the projection transaction, and prove retry/degraded behavior.
 
-4. **Execute CommentsThreadPort runtime and consumer evidence.** Cover read/write
-   policy, idempotency, typed errors, fallback profiles, and Blog compatibility.
+4. **Execute CommentsThreadPort runtime and remote-profile evidence.** The
+   `in_process` source profile, seven operations, owner policy calls, typed error
+   mapping, typed richtext, and approved-only public read are source-verified. Run
+   the provider leaf, shared owner runtime-order verifier, consumer compatibility,
+   and real calls; implement and cover the remote adapter separately.
+   **Done when:** retained execution proves read/write policy, idempotency,
+   deadlines, typed errors, pagination, public visibility, remote parity, and Blog
+   compatibility without promoting planned fallback UI.
 
 5. **Extend moderation and opt-in integrations through comment ownership.**
    Add a new commentable surface only with explicit target binding, moderation,
@@ -170,13 +244,17 @@ recorded by this source-only slice.
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
+- `npm run verify:comments:port-boundary`
+- `npm run test:verify:comments:port-boundary`
 - `npm run verify:comments:thread-write-invariants`
 - `npm run test:verify:comments:thread-write-invariants`
 - `npm run verify:comments:fba`
 - `npm run test:verify:comments:fba`
+- `cargo test -p rustok-comments --lib thread_insert_error_tests`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_write_invariants postgres_concurrent_creates_and_delete_preserve_thread_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_creation_concurrency`
+- Targeted injected storage-error coverage for `find_or_create_thread_in_tx`
 - `npm run verify:comments:admin-boundary`
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
@@ -193,5 +271,11 @@ should run the relevant subset, including:
 3. Status-only and metadata-only thread updates must not set `comment_count`.
 4. Preserve the identity-lock before first-thread insert and keep its unique
    `(tenant_id, target_type, target_id)` key.
-5. Keep migrations append-only and preserve both database uniqueness invariants.
-6. Update local/central contracts when the Comments boundary changes.
+5. Keep the owner-classified identity marker scoped to tenant and target, require
+   exactly one valid canonical thread UUID suffix, and never restore prefix-only or
+   broad insert-error fallback.
+6. Keep the source-verified provider profile limited to `in_process` until a remote
+   adapter exists and retains equivalent policy, error, richtext, and public-read
+   evidence.
+7. Keep migrations append-only and preserve both database uniqueness invariants.
+8. Update local/central contracts when the Comments boundary changes.

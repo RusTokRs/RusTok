@@ -29,6 +29,7 @@ const CAPTURE_CHECKOUT_COLLECTION_OPERATION: &str = "capture_checkout_collection
 const READ_CHECKOUT_COLLECTION_OPERATION: &str = "read_checkout_collection";
 
 include!("checkout_execution/types.rs");
+include!("checkout_execution/diagnostic_safety.rs");
 include!("checkout_execution/prepare_authorize.rs");
 include!("checkout_execution/capture_provider.rs");
 include!("checkout_execution/provider_helpers.rs");

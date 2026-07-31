@@ -1,0 +1,53 @@
+{
+  "status": "payment_checkout_compensation_wrapper_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "owner": "rustok_payment",
+    "operation": "compensate_checkout_payment",
+    "boundary": "checkout_payment_compensation_port",
+    "layer": "public_context_wrapper"
+  },
+  "source_contract": {
+    "stable_code_only_local_classification": true,
+    "human_message_control_flow": false,
+    "delegated_port_error_changed": false,
+    "public_code_changed": false,
+    "public_message_changed": false,
+    "public_kind_changed": false,
+    "public_retryability_changed": false,
+    "owner_delegation_changed": false,
+    "request_response_dto_changed": false,
+    "persistent_owner_source_changed": false,
+    "provider_cancel_policy_changed": false,
+    "provider_journal_policy_changed": false,
+    "raw_tenant_id_logged_by_wrapper": false,
+    "raw_actor_id_logged_by_wrapper": false,
+    "raw_channel_logged_by_wrapper": false,
+    "raw_locale_logged_by_wrapper": false,
+    "raw_causation_id_logged_by_wrapper": false,
+    "raw_traceparent_logged_by_wrapper": false,
+    "raw_idempotency_key_logged_by_wrapper": false,
+    "raw_checkout_operation_id_logged_by_wrapper": false,
+    "raw_collection_id_logged_by_wrapper": false,
+    "raw_reason_logged_by_wrapper": false,
+    "raw_metadata_logged_by_wrapper": false,
+    "safe_context_shape_logged": true,
+    "safe_request_shape_logged": true,
+    "correlation_id_logged": true,
+    "original_port_error_private": true,
+    "persistent_owner_diagnostic_cleanup_complete": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "provider_replay_proven": false,
+    "restart_proven": false,
+    "remote_port_proven": false,
+    "mounted_runtime_proven": false
+  }
+}

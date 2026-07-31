@@ -157,6 +157,9 @@ impl MigrationSource for BlogModule {
 mod tests {
     use super::*;
     use rustok_api::{Action, Resource};
+    use rustok_events::DomainEvent;
+    use rustok_test_utils::setup_test_db;
+    use uuid::Uuid;
 
     #[test]
     fn module_metadata() {
@@ -209,6 +212,49 @@ mod tests {
     fn module_has_owned_migrations() {
         let module = BlogModule;
         assert!(!module.migrations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn module_registers_comment_projection_handler_with_host_routing() {
+        let db = setup_test_db().await;
+        let extensions = ModuleRuntimeExtensions::default();
+        let context = ModuleEventListenerContext {
+            db,
+            extensions: &extensions,
+        };
+        let mut registry = ModuleEventListenerRegistry::new();
+
+        BlogModule.register_event_listeners(&mut registry, &context);
+
+        let handlers = registry.into_handlers();
+        assert_eq!(handlers.len(), 1);
+        let handler = handlers
+            .first()
+            .expect("Blog must register its Comments projection handler");
+        assert_eq!(handler.name(), "blog_comment_projection");
+
+        let blog_created = DomainEvent::CommentCreated {
+            comment_id: Uuid::from_u128(1),
+            target_type: "blog_post".to_string(),
+            target_id: Uuid::from_u128(2),
+            author_id: Uuid::from_u128(3),
+        };
+        let blog_deleted = DomainEvent::CommentDeleted {
+            comment_id: Uuid::from_u128(4),
+            target_type: "blog_post".to_string(),
+            target_id: Uuid::from_u128(5),
+            author_id: Uuid::from_u128(6),
+        };
+        let forum_created = DomainEvent::CommentCreated {
+            comment_id: Uuid::from_u128(7),
+            target_type: "forum_topic".to_string(),
+            target_id: Uuid::from_u128(8),
+            author_id: Uuid::from_u128(9),
+        };
+
+        assert!(handler.handles(&blog_created));
+        assert!(handler.handles(&blog_deleted));
+        assert!(!handler.handles(&forum_created));
     }
 }
 

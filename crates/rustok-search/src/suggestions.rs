@@ -1,8 +1,11 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
 use std::collections::HashSet;
 use uuid::Uuid;
 
 use rustok_core::{Error, Result};
+
+use crate::TrustedStorefrontChannel;
+use crate::storefront_product_channel_visibility::product_channel_visibility_sql;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,6 +51,22 @@ impl SearchSuggestionService {
         db: &DatabaseConnection,
         query: SearchSuggestionQuery,
     ) -> Result<Vec<SearchSuggestion>> {
+        Self::suggestions_with_storefront_channel(db, query, None).await
+    }
+
+    pub async fn storefront_suggestions(
+        db: &DatabaseConnection,
+        query: SearchSuggestionQuery,
+        channel: &TrustedStorefrontChannel,
+    ) -> Result<Vec<SearchSuggestion>> {
+        Self::suggestions_with_storefront_channel(db, query, Some(channel)).await
+    }
+
+    async fn suggestions_with_storefront_channel(
+        db: &DatabaseConnection,
+        query: SearchSuggestionQuery,
+        storefront_channel: Option<&TrustedStorefrontChannel>,
+    ) -> Result<Vec<SearchSuggestion>> {
         ensure_postgres(db)?;
 
         let normalized_query = normalize_suggestion_query(&query.query);
@@ -56,15 +75,19 @@ impl SearchSuggestionService {
         }
 
         let limit = query.limit.clamp(1, 10);
-        let query_rows = fetch_query_suggestions(
-            db,
-            query.tenant_id,
-            &normalized_query,
-            query.locale.as_deref(),
-            query.published_only,
-            limit,
-        )
-        .await?;
+        let query_rows = if storefront_channel.is_some() {
+            Vec::new()
+        } else {
+            fetch_query_suggestions(
+                db,
+                query.tenant_id,
+                &normalized_query,
+                query.locale.as_deref(),
+                query.published_only,
+                limit,
+            )
+            .await?
+        };
         let document_rows = fetch_document_suggestions(
             db,
             query.tenant_id,
@@ -72,6 +95,7 @@ impl SearchSuggestionService {
             query.locale.as_deref(),
             query.published_only,
             limit,
+            storefront_channel,
         )
         .await?;
 
@@ -148,10 +172,35 @@ async fn fetch_document_suggestions(
     locale: Option<&str>,
     published_only: bool,
     limit: usize,
+    storefront_channel: Option<&TrustedStorefrontChannel>,
 ) -> Result<Vec<SearchSuggestion>> {
+    let mut values = vec![
+        tenant_id.into(),
+        normalized_query.to_string().into(),
+        format!("{normalized_query}%").into(),
+        format!("%{normalized_query}%").into(),
+        locale.unwrap_or("").to_string().into(),
+        published_only.into(),
+    ];
+    let mut next_param = 7;
+    let product_scope = storefront_channel
+        .map(|channel| {
+            product_channel_visibility_sql(
+                "entity_type",
+                "payload",
+                channel,
+                &mut values,
+                &mut next_param,
+            )
+        })
+        .unwrap_or_else(|| "TRUE".to_string());
+    let limit_param = next_param;
+    values.push(Value::from(limit as i64));
+
     let stmt = Statement::from_sql_and_values(
         DbBackend::Postgres,
-        r#"
+        format!(
+            r#"
         SELECT
             document_id,
             entity_type,
@@ -170,23 +219,17 @@ async fn fetch_document_suggestions(
         WHERE tenant_id = $1
           AND ($5 = '' OR locale = $5)
           AND ($6 = FALSE OR is_public = TRUE)
+          AND {product_scope}
           AND (
               lower(title) LIKE $4
               OR lower(COALESCE(slug, '')) LIKE $4
               OR lower(COALESCE(handle, '')) LIKE $4
           )
         ORDER BY suggestion_score DESC, updated_at DESC, title ASC
-        LIMIT $7
-        "#,
-        vec![
-            tenant_id.into(),
-            normalized_query.to_string().into(),
-            format!("{normalized_query}%").into(),
-            format!("%{normalized_query}%").into(),
-            locale.unwrap_or("").to_string().into(),
-            published_only.into(),
-            (limit as i64).into(),
-        ],
+        LIMIT ${limit_param}
+        "#
+        ),
+        values,
     );
 
     db.query_all(stmt)

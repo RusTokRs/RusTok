@@ -89,27 +89,28 @@ pub use services::{
     ForumPublicDiscoveryService, ForumQuoteCommandService, ForumReadModelService,
     ForumRelationReadService, ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
     ForumReplyCreateAudienceAuthorizationService, ForumReplyCreatesWindowFactPort,
-    ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
-    ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,
-    ForumTopicAudiencePolicyService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
-    ForumTopicAudienceVisibilityService, ForumTopicCreateAudienceAuthorization,
-    ForumTopicCreateAudienceAuthorizationService, ForumTopicCreatesWindowFactPort,
-    ForumTopicReadPostingFactPort, ForumTopicReadState, ForumTopicReadStateService,
-    ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
-    ForumTopicUnreadSummary, ForumTopicVisibilityScope, ForumTopicVisibilityService,
-    ForumUserTrustAudienceFactsPort, ForumUserTrustChange, ForumUserTrustRevision,
-    ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
+    ForumSearchResultEligibilityService, ForumStorefrontReadStateService,
+    ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage, ForumTopicAudienceListService,
+    ForumTopicAudiencePage, ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService,
+    ForumTopicAudienceReadService, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
+    ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
+    ForumTopicCreatesWindowFactPort, ForumTopicReadPostingFactPort, ForumTopicReadState,
+    ForumTopicReadStateService, ForumTopicReplyCreateAudiencePolicy,
+    ForumTopicReplyCreateAudiencePolicyService, ForumTopicUnreadSummary, ForumTopicVisibilityScope,
+    ForumTopicVisibilityService, ForumUserTrustAudienceFactsPort, ForumUserTrustChange,
+    ForumUserTrustRevision, ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
     ForumVisibilityScopedReadStateService, ForumWidgetContractService,
     MAX_FORUM_POSTING_POLICY_FACTS, MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
-    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
-    MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
-    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
-    SetForumCategoryAudiencePolicyInput, SetForumCategoryModerationAudiencePolicyInput,
-    SetForumCategoryReplyCreateAudiencePolicyInput, SetForumCategoryTopicCreateAudiencePolicyInput,
-    SetForumCategoryVisibilityPolicyInput, SetForumTopicAudiencePolicyInput,
-    SetForumTopicReplyCreateAudiencePolicyInput, SetForumUserTrustInput,
-    SharedForumPostingPolicyOwnerFactPort, SubscriptionService, TopicService, UserStatsService,
-    VoteService,
+    MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
+    MAX_FORUM_USER_TRUST_HISTORY_PAGE, MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput,
+    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
+    RevisionService, SetForumCategoryAudiencePolicyInput,
+    SetForumCategoryModerationAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
+    SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
+    SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
+    SetForumUserTrustInput, SharedForumPostingPolicyOwnerFactPort, SubscriptionService,
+    TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
@@ -171,12 +172,13 @@ impl RusToKModule for ForumModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        register_search_projection_source(extensions, ForumSearchProjectionSourceFactory)
-            .map_err(|error| {
+        register_search_projection_source(extensions, ForumSearchProjectionSourceFactory).map_err(
+            |error| {
                 rustok_core::Error::Validation(format!(
                     "forum Search projection source registration failed: {error}"
                 ))
-            })?;
+            },
+        )?;
         register_seo_target_provider(
             extensions,
             seo_audience_targets::ForumCategorySeoTargetProvider,

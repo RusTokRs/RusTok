@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
+  "runtime_status": "pending",
   "owner": "rustok-blog",
   "provider": "rustok-comments",
   "events": [
@@ -19,7 +20,113 @@
     "module_registration": "crates/rustok-blog/src/lib.rs",
     "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json"
   },
+  "source_harness": {
+    "status": "executable_no_run",
+    "path": "crates/rustok-blog/src/services/comment_projection.rs",
+    "module": "services::comment_projection::tests",
+    "command": "cargo test -p rustok-blog --lib services::comment_projection::tests",
+    "cases": [
+      "shared_created_deleted_classifier",
+      "non_blog_target_rejection",
+      "non_negative_saturating_counter_transition",
+      "optimistic_retry_policy_applies_success_without_retry",
+      "optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict"
+    ]
+  },
+  "host_registration_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/src/lib.rs",
+    "module": "tests",
+    "command": "cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
+    "scope": "module_registry_handler_identity_and_routing_only",
+    "cases": [
+      "module_registers_comment_projection_handler_with_host_routing"
+    ]
+  },
+  "dispatcher_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact",
+    "isolation": "unique_schema_one_connection_pool",
+    "scope": "event_bus_dispatcher_module_registered_handler_transactional_commit",
+    "cases": [
+      "event_dispatcher_routes_registered_handler_and_commits_projection"
+    ]
+  },
+  "concurrency_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact",
+    "isolation": "unique_schema_four_independent_connections_barrier",
+    "scope": "concurrent_unique_envelopes_same_post_final_counter_delivery_outbox",
+    "cases": [
+      "concurrent_created_events_converge_without_lost_updates"
+    ]
+  },
+  "retry_limit_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact",
+    "isolation": "unique_schema_one_connection_pool_before_update_skip_trigger_nontransactional_attempt_sequence",
+    "scope": "real_handler_eight_zero_row_updates_terminal_error_atomic_rollback_and_same_envelope_replay",
+    "non_claim": "does_not_measure_natural_postgresql_contention_frequency_or_record_execution",
+    "cases": [
+      "optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears"
+    ]
+  },
+  "postgres_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test",
+    "isolation": "unique_schema_one_connection_pool",
+    "cases": [
+      "duplicate_delivery_updates_counter_and_outbox_once",
+      "optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears",
+      "delete_before_create_stays_non_negative_and_replays_in_order",
+      "missing_post_replay_commits_only_after_source_appears",
+      "outbox_failure_rolls_back_counter_and_delivery_before_retry"
+    ]
+  },
+  "restart_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test",
+    "isolation": "unique_schema_new_connection",
+    "scope": "same_process_new_connection_and_handler",
+    "cases": [
+      "restarted_handler_reuses_delivery_ledger_without_reapplying_counter"
+    ]
+  },
+  "process_restart_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact",
+    "isolation": "unique_schema_two_sequential_test_processes_same_envelope",
+    "scope": "os_process_reinstantiation_durable_delivery_replay",
+    "non_claim": "does_not_prove_full_server_host_restart_or_record_execution",
+    "cases": [
+      "restarted_process_reuses_delivery_ledger_without_reapplying_counter",
+      "process_restart_worker_applies_envelope_from_env"
+    ]
+  },
   "cases": [
+    {
+      "name": "shared_event_classifier",
+      "expected": "project and EventHandler::handles use the same pure classifier for Comments lifecycle events"
+    },
     {
       "name": "blog_post_target_filter",
       "expected": "only Comments lifecycle events whose target_type is blog_post are projected"
@@ -41,12 +148,56 @@
       "expected": "the post lookup and update require tenant identity and the observed post version, with a bounded retry loop"
     },
     {
+      "name": "bounded_optimistic_retry_policy",
+      "expected": "the production loop uses one decision helper, applies after one updated row, retries seven zero-row results, and reaches its limit on the eighth"
+    },
+    {
+      "name": "postgres_retry_limit_rollback_and_replay",
+      "expected": "a PostgreSQL trigger skips eight real handler updates while a sequence counts each attempt; the terminal error leaves post, delivery, and outbox unchanged, and the same envelope succeeds after the trigger is removed"
+    },
+    {
       "name": "missing_post_retry",
       "expected": "a missing tenant post returns an error before the delivery marker is committed so the event runtime can retry"
     },
     {
       "name": "non_negative_count",
-      "expected": "delete projection floors the Blog-owned comment count at zero"
+      "expected": "the pure counter transition floors deletes at zero and saturates count and version overflow"
+    },
+    {
+      "name": "host_registration_routing_harness",
+      "expected": "the retained module test invokes BlogModule::register_event_listeners, extracts one blog_comment_projection handler, accepts Blog comment created/deleted events, and rejects a non-Blog target"
+    },
+    {
+      "name": "postgres_event_dispatcher_delivery",
+      "expected": "the retained PostgreSQL dispatcher case registers the Blog handler through BlogModule, publishes one envelope through EventBus and EventDispatcher, then expects the counter, delivery ledger, and outbox row to commit"
+    },
+    {
+      "name": "postgres_concurrent_unique_deliveries",
+      "expected": "four handler instances start behind one barrier on four independent PostgreSQL connections, deliver unique envelopes to one post, and require count four, version five, four ledger rows, and four outbox rows without claiming observed retry count"
+    },
+    {
+      "name": "postgres_duplicate_delivery",
+      "expected": "the retained PostgreSQL target replays one envelope id and expects one counter transition, one delivery row, and one outbox row"
+    },
+    {
+      "name": "postgres_out_of_order_delete_create",
+      "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count with monotonic versions"
+    },
+    {
+      "name": "postgres_missing_post_recovery",
+      "expected": "the retained PostgreSQL target expects no delivery or outbox commit while the post is missing, then replays the same envelope after source creation"
+    },
+    {
+      "name": "postgres_outbox_rollback_recovery",
+      "expected": "the retained PostgreSQL target removes the outbox table, expects counter and delivery rollback, recreates the table, and replays the same envelope"
+    },
+    {
+      "name": "postgres_restart_replay",
+      "expected": "the retained restart target opens a new database connection and handler over the same schema, replays the same envelope, and expects one durable application"
+    },
+    {
+      "name": "postgres_process_restart_replay",
+      "expected": "the retained process target launches the integration-test executable twice in sequence, reconstructs the same envelope id in each child process, and expects one counter transition, one delivery row, and one outbox row"
     },
     {
       "name": "module_listener_registration",
@@ -54,10 +205,18 @@
     }
   ],
   "runtime_promotion_requirements": [
-    "execute duplicate and out-of-order comment.created/comment.deleted deliveries against PostgreSQL",
+    "execute cargo test -p rustok-blog --lib services::comment_projection::tests and retain classifier, counter, and deterministic retry-policy output",
+    "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
+    "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
+    "execute the env-gated PostgreSQL concurrency case and retain four-connection convergence output",
+    "execute the env-gated PostgreSQL retry-limit case and retain its eight-attempt, rollback, and same-envelope recovery output",
+    "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
+    "execute the env-gated same-process restart case and retain its output",
+    "execute the env-gated process-restart case and retain both child-process exits plus final durable assertions",
+    "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
-    "retain concurrent optimistic-update exhaustion and retry evidence",
-    "retain host event-dispatch registration and restart recovery evidence"
+    "retain naturally contended PostgreSQL retry-frequency evidence separately from the deterministic zero-row retry-limit harness",
+    "retain full server-host restart recovery evidence separately from the test-process harness"
   ]
 }

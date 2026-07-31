@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "module": "comments",
   "role": "provider",
   "status": "boundary_ready",
@@ -60,11 +60,14 @@
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-comments-fba.mjs",
     "static_matrix": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json",
+    "port_boundary_runner": "scripts/verify/verify-comments-port-boundary.mjs",
+    "port_boundary_self_test": "scripts/verify/verify-comments-port-boundary.test.mjs",
     "runtime_order_smoke": "crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
     "thread_write_invariants": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
     "thread_write_invariants_runner": "scripts/verify/verify-comments-thread-write-invariants.mjs",
     "thread_write_invariants_self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
+    "thread_insert_error_classifier_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
     "thread_write_invariants_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
     "thread_creation_concurrency_test": "crates/rustok-comments/tests/thread_creation_concurrency.rs"
   },
@@ -73,19 +76,29 @@
     "test_package_script": "test:verify:comments:fba",
     "steps": [
       "node scripts/verify/verify-comments-fba.mjs",
+      "npm run verify:comments:port-boundary",
       "npm run verify:comments:thread-write-invariants",
       "npm run verify:owner:fba-runtime-order"
     ],
     "test_steps": [
+      "npm run test:verify:comments:port-boundary",
       "npm run test:verify:comments:thread-write-invariants",
       "npm run test:verify:owner:fba-runtime-order"
     ],
     "source_gates": {
+      "comments_port_boundary": {
+        "package_script": "verify:comments:port-boundary",
+        "test_package_script": "test:verify:comments:port-boundary",
+        "verifier": "scripts/verify/verify-comments-port-boundary.mjs",
+        "self_test": "scripts/verify/verify-comments-port-boundary.test.mjs",
+        "evidence": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json"
+      },
       "thread_write_invariants": {
         "package_script": "verify:comments:thread-write-invariants",
         "test_package_script": "test:verify:comments:thread-write-invariants",
         "verifier": "scripts/verify/verify-comments-thread-write-invariants.mjs",
         "self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
+        "unit_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
         "evidence": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json"
       }
     }
@@ -113,54 +126,62 @@
     }
   ],
   "contract_tests": {
-    "status": "planned_cases_locked",
+    "status": "source_verified_no_compile",
+    "runtime_status": "pending",
     "source": "crates/rustok-comments/contracts/comments-fba-registry.json",
-    "runner": "scripts/verify/verify-comments-fba.mjs",
+    "runner": "scripts/verify/verify-comments-port-boundary.mjs",
     "profiles": [
       "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "source_profiles": [
+      "in_process"
+    ],
+    "pending_profiles": [
       "remote_adapter_placeholder"
     ],
     "cases": [
       {
         "operation": "create_comment",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+        "runtime_evidence": "pending"
       },
       {
         "operation": "get_comment",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"],
+        "runtime_evidence": "pending"
       },
       {
         "operation": "list_comments_for_target",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"],
+        "runtime_evidence": "pending"
       },
       {
         "operation": "list_public_comments_for_target",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"],
+        "runtime_evidence": "pending"
       },
       {
         "operation": "update_comment",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+        "runtime_evidence": "pending"
       },
       {
         "operation": "set_comment_status",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+        "runtime_evidence": "pending"
       },
       {
         "operation": "delete_comment",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+        "runtime_evidence": "pending"
       }
     ],
     "fallback_smoke": {
       "status": "planned",
       "profiles": ["embedded_native"],
-      "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"]
+      "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
+      "runtime_evidence": "pending"
     }
   }
 }

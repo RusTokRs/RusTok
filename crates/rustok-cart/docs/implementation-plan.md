@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-cart`
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-31
 
 ## Current state
 
@@ -51,6 +51,10 @@ transport `status` fields remain strings for backward compatibility.
 - Storefront repricing calls the pricing-owned `PricingReadPort` with a
   variant-first request and full resolved-price projection; it no longer calls
   `PricingService::resolve_variant_price` directly.
+- Storefront native client error safety: `source_ready_unvalidated` — fetch,
+  decrement, and remove preserve validation messages while technical native
+  failures are remapped before `UiTransportError` aggregation to one static
+  public envelope with correlation-aware, shape-only private diagnostics.
 - The compiled commerce checkout channel-inventory regression executes the
   in-process cart checkout provider before product and inventory preflight.
   It is bounded provider-consumer evidence; lifecycle recovery and fallback
@@ -66,10 +70,14 @@ transport `status` fields remain strings for backward compatibility.
 - Storefront REST and GraphQL cart reads and mutations consume
   `CartStorefrontPort`; the port preserves tenant, actor, channel, locale,
   deadline, and write-idempotency context at the owner boundary.
-- Admin cart-promotion preview and application consume `CartPromotionPort`,
-  with scope validation and owner-side typed error mapping.
+- Admin cart-promotion preview and application consume `CartPromotionPort`.
+  Promotion target validation, tenant parsing, policy rejection, and owner
+  mapping now retain correlation plus context/request/error shape only; raw
+  tenant, actor, channel, cart/line-item identities, source, amount, metadata,
+  lifecycle, tax, validation, and database values are not written by the
+  guarded boundary. Status: `source_ready_unvalidated`.
 - No new compile, lifecycle, restart, contention, or remote evidence is claimed
-  by the typed source cutover.
+  by the typed source cutover or promotion diagnostic hardening.
 
 ## Checkout lifecycle source checklist
 
@@ -106,10 +114,12 @@ transport `status` fields remain strings for backward compatibility.
 3. **Prove cart ports through live provider-consumer execution.**
    Commerce production adapters use `CartCheckoutPort`, `CartStorefrontPort`,
    and `CartPromotionPort`; static evidence confirms no direct
-   `CartService` construction outside owner-side composition.
+   `CartService` construction outside owner-side composition and locks safe
+   promotion diagnostics without claiming execution.
    **Depends on:** compiled or live provider-consumer execution.
    **Done when:** transport execution covers checkout, storefront writes,
-   promotion application, fallback, recovery, and unknown lifecycle behavior.
+   promotion preview/application and failure mapping, fallback, recovery, and
+   unknown lifecycle behavior.
 
 4. **Document operational changes with checkout changes.** Add diagnostics only
    where runtime pressure identifies a concrete cart or snapshot failure mode,
@@ -121,12 +131,13 @@ transport `status` fields remain strings for backward compatibility.
 ## Verification
 
 - `npm run verify:cart:storefront-boundary`
+- `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo xtask module validate cart`
 - `cargo xtask module test cart`
 - Targeted cart lifecycle, atomic checkout, finalization, compensation,
-  repricing, shipping-selection, and checkout-preflight tests.
+  repricing, shipping-selection, promotion, and checkout-preflight tests.
 
 No verification command was executed in this source wave.
 

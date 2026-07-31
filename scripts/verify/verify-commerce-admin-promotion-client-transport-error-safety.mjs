@@ -23,7 +23,7 @@ const requireCount = (source, value, expected, label) => {
 };
 
 function functionBody(source, functionName) {
-  const match = new RegExp(`pub\\s+async\\s+fn\\s+${functionName}\\s*\\(`).exec(source);
+  const match = new RegExp(`(?:pub\\(super\\)\\s+)?(?:pub\\s+)?(?:async\\s+)?fn\\s+${functionName}\\s*\\(`).exec(source);
   if (!match) {
     failures.push(`missing function ${functionName}`);
     return "";
@@ -130,10 +130,14 @@ for (const marker of [
   'const COMMERCE_ADMIN_PROMOTION_CLIENT_BOUNDARY: &str =',
   '"commerce_admin_promotion_client_transport"',
   '"Commerce admin promotion request could not be completed"',
+  "struct PromotionClientErrorFacts",
   "pub(super) struct PromotionClientErrorContext",
   'Self::new("preview_cart_promotion", cart_id)',
   'Self::new("apply_cart_promotion", cart_id)',
-  "raw_error = ?error",
+  "let error_facts = promotion_client_error_facts(&error);",
+  "error_variant = error_facts.error_variant",
+  "error_message_present = error_facts.message_present",
+  "error_message_length = error_facts.message_length",
   "owner_operation = self.operation",
   "correlation_id = %self.correlation_id",
   "cart_id_present = self.cart_id_length > 0",
@@ -142,11 +146,26 @@ for (const marker of [
   'code = "commerce.admin_promotion_client_transport_failed"',
   "boundary = COMMERCE_ADMIN_PROMOTION_CLIENT_BOUNDARY",
   "ApiError::ServerFn(COMMERCE_ADMIN_PROMOTION_CLIENT_PUBLIC_MESSAGE.to_string())",
+  "fn promotion_client_error_facts(error: &ApiError)",
+  'ApiError::Graphql(message) => ("graphql", message)',
+  'ApiError::ServerFn(message) => ("server_fn", message)',
+  "message_present: !message.trim().is_empty()",
+  "message_length: message.chars().count()",
 ]) {
   requireText(safety, marker, `${paths.safety}: safe final mapping`);
 }
 
+const mapperBody = functionBody(safety, "map_error");
+requireText(
+  mapperBody,
+  "promotion_client_error_facts(&error)",
+  `${paths.safety}: error shape must be captured before logging`,
+);
 for (const forbidden of [
+  "raw_error = ?error",
+  "error = ?error",
+  "error = %error",
+  "message = %",
   "cart_id = %",
   "cart_id = ?",
   "payload = ?",
@@ -213,7 +232,11 @@ for (const [key, expected] of Object.entries({
   context_created_before_native_call: true,
   raw_native_error_public: false,
   static_public_message: true,
-  original_error_logged_privately: true,
+  original_error_logged_privately: false,
+  original_error_shape_logged: true,
+  error_variant_logged: true,
+  error_message_length_only: true,
+  raw_native_error_logged: false,
   per_call_correlation_logging: true,
   safe_request_shape_only: true,
   cart_id_values_logged: false,
@@ -247,6 +270,11 @@ requireText(
   `${paths.doc}: static public message`,
 );
 requireText(
+  doc,
+  "The complete native error and its message are not logged",
+  `${paths.doc}: raw diagnostic removal`,
+);
+requireText(
   commercePlan,
   "Finish correlation-safe mapper cleanup",
   `${paths.commercePlan}: broad ecommerce cleanup remains open`,
@@ -259,5 +287,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Commerce Admin promotion preview/apply failures use a correlation-safe static final envelope; execution evidence remains open",
+  "Commerce Admin promotion preview/apply failures use a correlation-safe static final envelope and shape-only diagnostics; execution evidence remains open",
 );

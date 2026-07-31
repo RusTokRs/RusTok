@@ -11,11 +11,12 @@ This module has no module-owned UI. `calculate_tax` is a read-like port with a
 required deadline and typed `PortError` mapping; it must not require write
 idempotency.
 
-The canonical root in-process factory now retains the complete delegated
-`PortContext` and safe request-shape facts for exact stable validation and
-result-invariant outcomes. Policy admission remains owned by the original port
-implementation, public errors are unchanged, and direct construction through the
-legacy `ports` module remains an explicit compatibility bypass.
+The canonical root wrapper and the owner `TaxService` port implementation now retain
+correlation plus safe context, request, and detail shape. Local attribution uses stable
+error codes only. Raw tenant, actor, channel, causation, provider, identifier,
+financial, and validation-detail values are not written by the hardened tax
+calculation diagnostics. Public error envelopes, provider behavior, and validation
+order remain unchanged.
 
 ## FFA/FBA boundary
 
@@ -27,11 +28,17 @@ legacy `ports` module remains an explicit compatibility bypass.
 - Static and executable no-compile evidence:
   `crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json`
   and `crates/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json`.
+- Diagnostic source evidence:
+  `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json`
+  and
+  `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source-review.json`.
 - `scripts/verify/verify-tax-fba.mjs` locks provider metadata, root construction,
   port semantics, plan/registry evidence, and fallback metadata.
-- `scripts/verify/verify-tax-calculation-policy-context.mjs` and
-  `scripts/verify/verify-tax-calculation-local-context.mjs` lock owner policy and
-  post-delegation local context retention without promoting runtime evidence.
+- `scripts/verify/verify-tax-calculation-policy-context.mjs`,
+  `scripts/verify/verify-tax-calculation-error-context.mjs`, and
+  `scripts/verify/verify-tax-calculation-local-context.mjs` lock safe owner policy,
+  owner mapper, and post-delegation context retention without promoting runtime
+  evidence.
 
 ## Open results
 
@@ -48,7 +55,7 @@ legacy `ports` module remains an explicit compatibility bypass.
    boundaries.
    **Depends on:** mounted consumer inventory and transport ownership.
    **Done when:** production callers cannot bypass canonical construction and
-   transport diagnostics retain the same request context without raw tax payloads.
+   transport diagnostics retain safe request shape without raw tax payloads.
 
 3. **Extend tax rules without bypassing the provider boundary.** Add
    jurisdiction metadata and rules beyond flat regional rates through the
@@ -68,6 +75,8 @@ legacy `ports` module remains an explicit compatibility bypass.
 
 - `node scripts/verify/verify-tax-calculation-local-context.mjs`
 - `node scripts/verify/verify-tax-calculation-policy-context.mjs`
+- `node scripts/verify/verify-tax-calculation-error-context.mjs`
+- `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `npm run verify:tax:fba`
 - `cargo xtask module validate tax`
 - `cargo xtask module test tax`
@@ -80,3 +89,5 @@ legacy `ports` module remains an explicit compatibility bypass.
    with any calculation or provider change.
 3. Update this status block and `docs/modules/registry.md` with an FBA boundary
    change.
+4. Keep diagnostics correlation-aware and shape-only; never route on public messages
+   or log raw tax identities, values, provider payloads, or internal validation text.

@@ -20,6 +20,24 @@ const ORDER_PAYMENT_SETTLEMENT_OWNER: &str = "rustok_order.checkout_payment_sett
 const ORDER_PAYMENT_SETTLEMENT_BOUNDARY: &str = "checkout_order_payment_settlement_port";
 const SETTLE_PAYMENT_OPERATION: &str = "settle_checkout_payment";
 
+struct OrderCheckoutContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
 pub struct InProcessCheckoutOrderCompensationPort {
     inner: Arc<dyn CheckoutOrderCompensationPort>,
 }
@@ -174,31 +192,63 @@ pub fn in_process_checkout_order_payment_settlement_port(
     ))
 }
 
+fn order_checkout_context_facts(context: &PortContext) -> OrderCheckoutContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    OrderCheckoutContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn checkout_order_payment_settlement_local_operation(code: &str) -> Option<&'static str> {
+    match code {
+        "order.checkout_payment_request_invalid" => Some("validate_request"),
+        "order.checkout_payment_identity_missing" => Some("require_durable_checkout_identity"),
+        "order.checkout_payment_identity_conflict" => {
+            Some("validate_durable_checkout_identity")
+        }
+        "order.checkout_payment_state_conflict" => Some("validate_payment_settlement_lifecycle"),
+        "order.checkout_payment_reference_conflict" => {
+            Some("validate_settled_payment_identity")
+        }
+        _ => None,
+    }
+}
+
 fn map_checkout_order_payment_settlement_local_port_error(
     context: &PortContext,
     error: PortError,
 ) -> PortError {
-    let local_operation = match (error.code.as_str(), error.message.as_str()) {
-        (
-            "order.checkout_payment_request_invalid",
-            "checkout payment settlement request is invalid",
-        ) => "validate_request",
-        ("order.checkout_payment_identity_missing", "checkout requires manual reconciliation") => {
-            "require_durable_checkout_identity"
-        }
-        (
-            "order.checkout_payment_identity_conflict",
-            "checkout order identity conflicts with the payment settlement request",
-        ) => "validate_durable_checkout_identity",
-        (
-            "order.checkout_payment_state_conflict",
-            "checkout order lifecycle does not allow payment settlement",
-        ) => "validate_payment_settlement_lifecycle",
-        (
-            "order.checkout_payment_reference_conflict",
-            "checkout order is settled by another payment identity",
-        ) => "validate_settled_payment_identity",
-        _ => return error,
+    let Some(local_operation) =
+        checkout_order_payment_settlement_local_operation(error.code.as_str())
+    else {
+        return error;
     };
     let integrity_failure = matches!(
         local_operation,
@@ -206,6 +256,7 @@ fn map_checkout_order_payment_settlement_local_port_error(
             | "validate_durable_checkout_identity"
             | "validate_settled_payment_identity"
     );
+    let context_facts = order_checkout_context_facts(context);
     if integrity_failure {
         tracing::error!(
             error = ?error,
@@ -213,20 +264,27 @@ fn map_checkout_order_payment_settlement_local_port_error(
             operation = SETTLE_PAYMENT_OPERATION,
             local_operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
             internal_message = %error.message,
             error_kind = ?error.kind,
             retryable = error.retryable,
             boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
-            "order checkout payment settlement local integrity outcome retained delegated context"
+            "order checkout payment settlement local integrity outcome retained safe context"
         );
     } else {
         tracing::warn!(
@@ -235,20 +293,27 @@ fn map_checkout_order_payment_settlement_local_port_error(
             operation = SETTLE_PAYMENT_OPERATION,
             local_operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
             internal_code = %error.code,
             internal_message = %error.message,
             error_kind = ?error.kind,
             retryable = error.retryable,
             boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
-            "order checkout payment settlement local outcome retained delegated context"
+            "order checkout payment settlement local outcome retained safe context"
         );
     }
     error
@@ -292,6 +357,7 @@ fn log_order_checkout_admission_rejection(
     admission_phase: &'static str,
     error: &PortError,
 ) {
+    let context_facts = order_checkout_context_facts(context);
     match &error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
             tracing::error!(
@@ -300,14 +366,21 @@ fn log_order_checkout_admission_rejection(
                 operation,
                 admission_phase,
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                actor_id_length = context_facts.actor_id_length,
+                claim_count = context_facts.claim_count,
+                role_count = context_facts.role_count,
+                channel_present = context_facts.channel_present,
+                channel_length = ?context_facts.channel_length,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                causation_id_length = ?context_facts.causation_id_length,
+                traceparent_present = context_facts.traceparent_present,
+                traceparent_length = ?context_facts.traceparent_length,
+                idempotency_key_present = context_facts.idempotency_key_present,
+                idempotency_key_length = ?context_facts.idempotency_key_length,
+                deadline_ms = ?context_facts.deadline_ms,
                 internal_code = %error.code,
                 internal_message = %error.message,
                 error_kind = ?error.kind,
@@ -323,14 +396,21 @@ fn log_order_checkout_admission_rejection(
                 operation,
                 admission_phase,
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                actor_id_length = context_facts.actor_id_length,
+                claim_count = context_facts.claim_count,
+                role_count = context_facts.role_count,
+                channel_present = context_facts.channel_present,
+                channel_length = ?context_facts.channel_length,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                causation_id_length = ?context_facts.causation_id_length,
+                traceparent_present = context_facts.traceparent_present,
+                traceparent_length = ?context_facts.traceparent_length,
+                idempotency_key_present = context_facts.idempotency_key_present,
+                idempotency_key_length = ?context_facts.idempotency_key_length,
+                deadline_ms = ?context_facts.deadline_ms,
                 internal_code = %error.code,
                 internal_message = %error.message,
                 error_kind = ?error.kind,
@@ -434,6 +514,11 @@ fn log_order_checkout_context_rejection(
     error: &PortError,
     evidence: CheckoutContextRejectionEvidence<'_>,
 ) {
+    let context_facts = order_checkout_context_facts(context);
+    let expected_checkout_operation_id_present = evidence.expected_checkout_operation_id.is_some();
+    let expected_checkout_operation_id_non_nil = evidence
+        .expected_checkout_operation_id
+        .map(|value| !value.is_nil());
     tracing::warn!(
         parse_cause = ?evidence.parse_cause,
         error = ?error,
@@ -441,15 +526,24 @@ fn log_order_checkout_context_rejection(
         operation,
         validation_phase,
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        actor = ?context.actor,
-        channel = ?context.channel,
-        locale = %context.locale,
-        causation_id = ?context.causation_id,
-        traceparent = ?context.traceparent,
-        idempotency_key = ?context.idempotency_key,
-        deadline_ms = ?context.deadline_ms,
-        expected_checkout_operation_id = ?evidence.expected_checkout_operation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        expected_checkout_operation_id_present,
+        expected_checkout_operation_id_non_nil = ?expected_checkout_operation_id_non_nil,
+        causation_matches = false,
         internal_code = %error.code,
         internal_message = %error.message,
         error_kind = ?error.kind,

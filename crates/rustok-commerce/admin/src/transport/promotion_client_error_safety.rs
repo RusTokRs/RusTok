@@ -9,6 +9,12 @@ const COMMERCE_ADMIN_PROMOTION_CLIENT_BOUNDARY: &str =
 const COMMERCE_ADMIN_PROMOTION_CLIENT_PUBLIC_MESSAGE: &str =
     "Commerce admin promotion request could not be completed";
 
+struct PromotionClientErrorFacts {
+    error_variant: &'static str,
+    message_present: bool,
+    message_length: usize,
+}
+
 pub(super) struct PromotionClientErrorContext {
     operation: &'static str,
     correlation_id: String,
@@ -35,8 +41,11 @@ impl PromotionClientErrorContext {
     }
 
     pub(super) fn map_error(&self, error: ApiError) -> ApiError {
+        let error_facts = promotion_client_error_facts(&error);
         tracing::error!(
-            raw_error = ?error,
+            error_variant = error_facts.error_variant,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
             owner = COMMERCE_ADMIN_PROMOTION_CLIENT_OWNER,
             owner_operation = self.operation,
             correlation_id = %self.correlation_id,
@@ -49,6 +58,19 @@ impl PromotionClientErrorContext {
         );
 
         ApiError::ServerFn(COMMERCE_ADMIN_PROMOTION_CLIENT_PUBLIC_MESSAGE.to_string())
+    }
+}
+
+fn promotion_client_error_facts(error: &ApiError) -> PromotionClientErrorFacts {
+    let (error_variant, message) = match error {
+        ApiError::Graphql(message) => ("graphql", message),
+        ApiError::ServerFn(message) => ("server_fn", message),
+    };
+
+    PromotionClientErrorFacts {
+        error_variant,
+        message_present: !message.trim().is_empty(),
+        message_length: message.chars().count(),
     }
 }
 

@@ -4,7 +4,8 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{
-    BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostListItem, StorefrontBlogData,
+    BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail,
+    BlogPostListItem, StorefrontBlogData,
 };
 use crate::{comments_pagination, core, transport};
 
@@ -242,6 +243,32 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let query_writer = use_route_query_writer();
     let title = t(locale.as_deref(), "blog.comments.title", "Comments");
+
+    if comments.availability != BlogCommentsAvailability::Available {
+        let message = match comments.availability {
+            BlogCommentsAvailability::Unavailable => t(
+                locale.as_deref(),
+                "blog.comments.unavailable",
+                "Comments are temporarily unavailable. The article is still available.",
+            ),
+            BlogCommentsAvailability::Timeout => t(
+                locale.as_deref(),
+                "blog.comments.timeout",
+                "Comments took too long to load. The article is still available.",
+            ),
+            BlogCommentsAvailability::Available => unreachable!(),
+        };
+        return view! {
+            <section class="mt-8 border-t border-border pt-6">
+                <h4 class="text-lg font-semibold text-foreground">{title}</h4>
+                <p class="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    {message}
+                </p>
+            </section>
+        }
+        .into_any();
+    }
+
     let total_label = core::count_label(
         comments.total,
         &t(locale.as_deref(), "blog.comments.total", "total"),

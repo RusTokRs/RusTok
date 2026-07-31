@@ -84,8 +84,8 @@ request payload values:
 
 An upgraded retry therefore adopts the existing provider-operation journal row
 instead of executing a second provider effect. Provider success is checkpointed
-before local collection mutation; a local persistence failure after provider
-success is classified as reconciliation-required.
+before local collection mutation; a local persistence failure after provider success
+is classified as reconciliation-required.
 
 The payment storefront owner transport continues to use
 `execute_selected_transport` for `create_payment_collection`,
@@ -93,9 +93,35 @@ The payment storefront owner transport continues to use
 status for that boundary is maintained only in the payment workstream of the main
 commerce plan.
 
+Payment storefront native client error safety: `source_ready_unvalidated`. The final
+native client mapper preserves validation messages, keeps technical compatibility
+errors in correlation-aware private diagnostics, and returns a static public envelope
+before `UiTransportError` aggregation. Hydrate, SSR, browser, and mounted runtime
+evidence remain open.
+
+Payment checkout execution diagnostic safety: `source_ready_unvalidated`. Admission,
+tenant/causation, provider-result, owner-error, manual-reconciliation, and delegated
+outcome diagnostics retain correlation plus safe context/request shape only.
+Local-operation attribution uses stable `PortError.code` and does not depend on
+human-readable public messages. Public `PortError` envelopes and all execution
+semantics remain unchanged.
+
+Payment checkout compensation diagnostic safety: `source_ready_unvalidated`. The
+public wrapper uses stable-code-only local attribution and safe context/request shape.
+The private persistent owner now applies the same safe-context policy to tenant and
+causation rejection, owner error mapping, manual reconciliation, provider
+serialization, persisted-result decoding, and journal checkpoint failures. Raw
+context, checkout/payment, provider-operation, reason, metadata, and financial values
+are not written by these diagnostics. Public `PortError`, provider cancel/replay,
+journal, lifecycle, and local-cancellation semantics remain unchanged. Compile,
+provider replay, restart, mounted-runtime, and production evidence remain open.
+
 Boundary guards:
 
 - `npm run verify:payment:storefront-boundary`
+- `node scripts/verify/verify-payment-storefront-native-client-error-safety.mjs`
+- `node scripts/verify/verify-payment-checkout-execution-local-context.mjs`
+- `node scripts/verify/verify-payment-checkout-compensation-local-context.mjs`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-payment-typed-lifecycle-statuses.mjs`

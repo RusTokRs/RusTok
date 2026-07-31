@@ -37,9 +37,3 @@ pub struct TenantModuleResponse {
     pub enabled: bool,
     pub settings: serde_json::Value,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToggleModuleInput {
-    pub module_slug: String,
-    pub enabled: bool,
-}

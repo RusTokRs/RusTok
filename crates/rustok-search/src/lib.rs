@@ -10,9 +10,12 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+pub mod forum_document_filters;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
+pub mod forum_storefront_execution;
+mod forum_storefront_execution_public;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod ingestion;
@@ -21,13 +24,18 @@ pub mod models;
 pub mod pg_engine;
 pub mod ports;
 pub mod presets;
+mod product_channel_reconciliation;
 pub mod projection_source;
+pub mod projector;
 #[allow(dead_code)]
 #[path = "projector_legacy.rs"]
 mod projector_legacy;
-pub mod projector;
 pub mod ranking;
 pub mod search_settings;
+pub mod storefront_category_scope;
+pub mod storefront_channel_authority;
+mod storefront_product_channel_visibility;
+pub mod storefront_result_eligibility;
 pub mod suggestions;
 
 pub use analytics::{
@@ -48,15 +56,25 @@ pub use engine::{
     canonical_search_result_url,
 };
 pub use engine::{SearchResult, SearchResultItem};
+pub use forum_document_filters::ForumStorefrontDocumentFilters;
 pub use forum_reconciliation::{
-    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
-    ForumProjectionReconciler, ForumProjectionSweepReport,
+    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionReconciler,
+    ForumProjectionSweepReport,
+};
+pub use forum_storefront_execution::{
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,
+    ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
+    execute_forum_storefront_search,
 };
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
 pub use ports::*;
 pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
+pub use product_channel_reconciliation::{
+    DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
+    ProductChannelProjectionSweepReport,
+};
 pub use projection_source::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory, SearchProjectionSourceRegistry,
@@ -65,6 +83,21 @@ pub use projection_source::{
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;
 pub use search_settings::SearchSettingsService;
+pub use storefront_category_scope::{
+    FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchTransport, resolve_storefront_search_category_ids,
+};
+pub use storefront_channel_authority::{
+    StorefrontChannelAuthorityError, TrustedStorefrontChannel, resolve_trusted_storefront_channel,
+    resolve_trusted_storefront_channel_input,
+};
+pub use storefront_result_eligibility::{
+    MAX_FORUM_SEARCH_RESULT_CANDIDATES, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
+    resolve_storefront_search_result_candidates,
+};
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
 };

@@ -28,6 +28,11 @@
 - the module is registered in the workspace, `modules.toml` and optional server wiring;
 - module-owned schema `comment_threads`, `comments`, `comment_bodies` is implemented;
 - `rustok-blog` has already been migrated to `rustok-comments` for the comment read/write path;
+- the in-process `CommentsThreadPort` source profile is retained as
+  `source_verified_no_compile` by
+  `scripts/verify/verify-comments-port-boundary.mjs`; all seven operations, shared
+  read/write policy, typed errors, richtext, and approved-only public reads are
+  locked while the remote adapter and runtime evidence remain pending;
 - shared rich-text/body-format and locale fallback contract are aligned with `rustok-content`;
 - thread status contract is no longer decorative: `closed` actually blocks new
   create-path, and terminal comment statuses (`spam`, `trash`) require moderation scope;
@@ -107,6 +112,10 @@ Operator action plan:
 
 ## Verification
 
+- `npm run verify:comments:port-boundary`
+- `npm run test:verify:comments:port-boundary`
+- `npm run verify:comments:fba`
+- `npm run test:verify:comments:fba`
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
 - `node scripts/verify/verify-comments-admin-boundary.mjs`

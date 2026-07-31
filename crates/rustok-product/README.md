@@ -37,19 +37,39 @@
 - Own positive monotonic `index_revision` storage columns for Product and
   ProductVariant. Product updates and Product-translation changes advance the
   Product revision; every ProductVariant update advances the variant revision.
-  Both values are storage-internal and are not exposed through Product DTOs or
-  SeaORM write models.
+  Variant insert/delete/move membership also advances the affected parent
+  Product revision so versioned Product graph links cannot reuse a stale source
+  version. Both values remain storage-internal and are not exposed through
+  Product DTOs or SeaORM write models.
+- Own retained hard-delete replay state in `product_index_tombstones` and
+  `product_variant_index_tombstones`. Physical Product deletion retains every
+  current translation locale, direct translation deletion retains the exact
+  removed locale, and ProductVariant deletion retains its non-localized key.
+  Recreated identities must receive an `index_revision` strictly above the
+  retained delete before the tombstone is cleared.
 - Publish only a neutral `ProductRuntimeSelected` marker for selected
   cross-module composition. The Product crate does not depend on `rustok-index`
   and does not construct generic Index mutations.
-- The selected `rustok-distribution` bridge publishes two bounded current-state
-  sources. Product replay is locale-aware and enumerates stable
-  `(product_id, locale)` identities. ProductVariant replay is non-localized and
-  enumerates stable `variant_id` identities. Each source uses only its own
-  `index_revision` as generic mutation `source_version`.
-- Product/ProductVariant hard-delete tombstones, incremental event ingestion,
-  localized variant titles, and versioned Product-to-variant links remain later
-  Index/reconciliation slices.
+- The selected `rustok-distribution` bridge keeps two stable bounded replay
+  source identities across schema versions. Product replay is locale-aware and
+  enumerates stable `(product_id, locale)` identities. ProductVariant replay is
+  non-localized and enumerates stable `variant_id` identities. Each source uses
+  only its owner `index_revision` as generic mutation `source_version`.
+- Preserve Product/ProductVariant v1 schema fingerprints while publishing v2
+  identity-ready schemas. Product v2 exposes normalized channel visibility
+  scalars and a many-cardinality Product-to-ProductVariant link; ProductVariant
+  v2 adds its stable UUID identity field.
+- The selected bridge emits `IndexMutation::Upsert` for live owner rows and
+  `IndexMutation::Delete` for retained hard-delete identities without changing
+  schema fingerprints, source names, cursor shapes, or replay event domains.
+- The Index-owned bounded multi-pass reconciliation runner can restart these
+  unchanged sources from the beginning and catch live or retained identities
+  inserted behind an earlier cursor. It is explicit and crash-resumable, but it
+  does not establish a repeatable-read owner snapshot or close the final-pass
+  concurrent-write window.
+  Incremental event ingestion, snapshot/watermark admission, tombstone
+  retention/purge admission, durable Product/ProductVariant-to-SalesChannel
+  relations, and authoritative Index consumer cutover remain later slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -147,5 +167,8 @@
 - `storefront::ProductView`
 
 See also `docs/README.md`, the Index
-[M7 Product source contract](../rustok-index/docs/m7-product-source.md), and the
-[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md).
+[M7 Product source contract](../rustok-index/docs/m7-product-source.md),
+[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md),
+[M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md),
+[M7 Product tombstone replay contract](../rustok-index/docs/m7-product-tombstone-source.md), and
+[M7 bounded Product reconciliation contract](../rustok-index/docs/m7-product-reconciliation.md).

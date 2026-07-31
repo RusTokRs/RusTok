@@ -516,6 +516,8 @@ impl SearchProjector {
             values.push(product_id.into());
         }
 
+        // `format!` emits the PostgreSQL JSON path below after brace escaping:
+        // p.metadata #> '{channel_visibility,allowed_channel_slugs}'
         let sql = format!(
             r#"
             INSERT INTO search_documents (
@@ -572,6 +574,17 @@ impl SearchProjector {
                     'price_max', agg.price_max,
                     'in_stock', COALESCE(agg.in_stock, false),
                     'variant_count', COALESCE(agg.variant_count, 0),
+                    'channel_visibility', jsonb_build_object(
+                        'allowed_channel_slugs',
+                        CASE
+                            WHEN NOT (p.metadata ? 'channel_visibility') THEN '[]'::jsonb
+                            WHEN jsonb_typeof(
+                                p.metadata #> '{{channel_visibility,allowed_channel_slugs}}'
+                            ) = 'array' THEN
+                                p.metadata #> '{{channel_visibility,allowed_channel_slugs}}'
+                            ELSE 'null'::jsonb
+                        END
+                    ),
                     'published_at', p.published_at
                 ) AS payload,
                 p.published_at,

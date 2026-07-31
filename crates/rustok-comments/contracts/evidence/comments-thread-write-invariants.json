@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "module": "comments",
   "surface": "thread_write_invariants",
   "status": "executable_no_run",
@@ -8,6 +8,9 @@
   "production_contract": {
     "position_owner": "crates/rustok-comments/src/entities/comment.rs",
     "counter_and_identity_owner": "crates/rustok-comments/src/entities/comment_thread.rs",
+    "thread_service": "crates/rustok-comments/src/services.rs",
+    "entities_module": "crates/rustok-comments/src/entities/mod.rs",
+    "classifier_unit_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
     "identity_lock_entity": "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs",
     "counter_repair_migration": "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs",
     "identity_lock_migration": "crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs",
@@ -42,6 +45,14 @@
       "expected": "a unique thread_id plus position index rejects direct Entity insert paths that bypass ActiveModelBehavior"
     },
     {
+      "name": "identity_conflict_only_fallback",
+      "expected": "find_or_create_thread_in_tx reloads the canonical thread only for the owner-classified tenant and target identity conflict and propagates every unrelated insert DbErr as CommentsError::Database"
+    },
+    {
+      "name": "identity_conflict_marker_structure",
+      "expected": "the owner classifier accepts only the exact tenant and target scope followed by one valid canonical thread UUID; malformed, wrong-scope, and unrelated custom errors are rejected"
+    },
+    {
       "name": "postgres_concurrent_create_delete",
       "expected": "two independent PostgreSQL connections preserve positions 1..3 and an exact active count across concurrent create/create and create/soft-delete phases"
     },
@@ -51,11 +62,14 @@
     }
   ],
   "runtime_promotion_requirements": [
+    "execute cargo test -p rustok-comments --lib thread_insert_error_tests",
     "execute cargo test -p rustok-comments --test thread_write_invariants",
     "execute cargo test -p rustok-comments --test thread_creation_concurrency",
     "execute both env-gated PostgreSQL targets with RUSTOK_COMMENTS_TEST_DATABASE_URL",
+    "retain exact-scope and malformed-marker classifier output",
     "retain final active-row count and gap-free unique position evidence",
     "retain one-thread evidence for concurrent first comments",
+    "retain unrelated insert DbErr propagation without CommentThreadNotFound remapping",
     "retain migration output for stale counters, duplicate positions, and identity-lock storage"
   ]
 }

@@ -87,6 +87,16 @@ pub mod module_event_dispatcher {
     use crate::error::{Error, Result};
     use crate::services::server_runtime_context::ServerRuntimeContext;
 
+    #[cfg(feature = "mod-forum")]
+    mod forum_search_category_scope {
+        include!("forum_search_category_scope.rs");
+    }
+
+    #[cfg(feature = "mod-forum")]
+    mod forum_search_result_eligibility {
+        include!("forum_search_result_eligibility.rs");
+    }
+
     pub use super::module_event_dispatcher_base::{
         build_module_event_dispatcher, build_shared_runtime_extensions,
         spawn_module_event_dispatcher,
@@ -109,9 +119,30 @@ pub mod module_event_dispatcher {
             auth_config,
         )?;
         let mut extensions = base.as_ref().clone();
-        rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone()).map_err(
-            |error| Error::Message(format!("Index query runtime composition failed: {error}")),
-        )?;
+
+        #[cfg(feature = "mod-forum")]
+        {
+            let audience_facts = extensions
+                .get::<rustok_forum::SharedForumAudienceFactsPort>()
+                .cloned();
+            let category_scope =
+                forum_search_category_scope::ServerForumSearchCategoryScopePort::shared(
+                    db.clone(),
+                    audience_facts.clone(),
+                );
+            let result_eligibility =
+                forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
+                    db.clone(),
+                    audience_facts,
+                );
+            extensions.insert(category_scope);
+            extensions.insert(result_eligibility);
+        }
+
+        rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone())
+            .map_err(|error| {
+                Error::Message(format!("Index query runtime composition failed: {error}"))
+            })?;
         super::index_replay_runtime_composition::materialize_index_replay_runtime(
             &mut extensions,
             db.clone(),
@@ -187,11 +218,31 @@ pub mod module_event_dispatcher {
             assert!(extensions.contains::<SharedIndexSchemaRegistry>());
             assert!(extensions.contains::<SharedIndexQueryRuntime>());
             assert!(!extensions.contains::<SharedIndexReplayRuntime>());
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                extensions.contains::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
+            );
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
+            );
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
-            assert!(extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>());
+            assert!(
+                extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>()
+            );
             let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
             assert!(host.shared_get::<SharedIndexQueryRuntime>().is_some());
             assert!(host.shared_get::<SharedIndexReplayRuntime>().is_none());
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                host.shared_get::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
+                    .is_some()
+            );
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
+                    .is_some()
+            );
         }
 
         #[test]
@@ -251,6 +302,7 @@ pub mod release_backend;
 pub mod runtime_guardrails;
 #[cfg(feature = "mod-seo")]
 pub mod seo_redirect_cache_reconciliation;
+pub mod search_product_channel_reconciliation;
 pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;

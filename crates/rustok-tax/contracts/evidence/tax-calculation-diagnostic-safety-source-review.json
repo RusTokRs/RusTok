@@ -1,0 +1,37 @@
+{
+  "status": "tax_calculation_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-tax/src/calculation_context.rs",
+    "crates/rustok-tax/src/ports.rs",
+    "crates/rustok-tax/docs/calculation-local-context.md",
+    "crates/rustok-tax/docs/calculation-port-policy-context.md",
+    "crates/rustok-tax/docs/implementation-plan.md",
+    "scripts/verify/verify-tax-calculation-local-context.mjs",
+    "scripts/verify/verify-tax-calculation-policy-context.mjs",
+    "scripts/verify/verify-tax-calculation-error-context.mjs",
+    "crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json"
+  ],
+  "review_findings": {
+    "public_api_preserved": true,
+    "read_policy_and_deadline_semantics_preserved": true,
+    "request_validation_order_preserved": true,
+    "provider_selection_and_delegation_preserved": true,
+    "result_validation_preserved": true,
+    "all_public_port_errors_preserved": true,
+    "wrapper_uses_stable_code_only": true,
+    "wrapper_context_logs_safe_shape_only": true,
+    "wrapper_request_logs_safe_shape_only": true,
+    "owner_policy_logs_safe_shape_only": true,
+    "owner_validation_details_reduced_to_presence_and_length": true,
+    "owner_result_details_reduced_to_presence_and_length": true,
+    "raw_context_values_removed": true,
+    "raw_channel_uuid_removed": true,
+    "raw_provider_and_country_values_removed": true,
+    "raw_financial_values_removed": true,
+    "raw_taxable_target_identifiers_removed": true,
+    "tax_status_not_promoted": true,
+    "broad_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}

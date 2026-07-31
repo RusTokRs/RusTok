@@ -4,134 +4,91 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice retains stable local outcome context for the canonical root tax calculation construction:
+This source slice hardens diagnostics across both tax calculation layers:
 
-- `TaxCalculationPort::calculate_tax`;
-- root `InProcessTaxCalculationPort`;
-- root `in_process_tax_calculation_port`.
+- the canonical root `InProcessTaxCalculationPort` wrapper;
+- the owner `TaxCalculationPort for TaxService` implementation in `ports.rs`.
 
-The existing owner implementation in `ports.rs` remains unchanged. A root wrapper retains the delegated `PortContext` and safe request-shape facts, calls the existing `TaxService` port implementation, classifies only exact stable returned `PortError` envelopes, and returns the same error unchanged.
+The public trait, DTOs, constructors, provider selection, validation policy, result policy,
+public `PortError` envelopes, and return paths are unchanged.
 
-## Canonical root cutover
+## Stable attribution
 
-The crate keeps `pub mod ports`, so the existing module-path trait and factory remain available for compatibility. Root exports now separate the contract from canonical construction:
+The canonical wrapper now derives its local operation from `PortError.code` only.
+Human-readable public messages are no longer used as routing control. The shared
+`tax.currency_code_invalid` code uses the truthful generic local label
+`validate_currency_code`, covering both request and provider-result currency checks.
+Unknown codes pass through without an additional wrapper event.
 
-- root `TaxCalculationPort` continues to come from `ports`;
-- root `InProcessTaxCalculationPort` and `in_process_tax_calculation_port` come from `calculation_context`.
+## Safe context shape
 
-Current cart consumers import the root factory and therefore receive the wrapper without source changes. Hosts with a custom `TaxService` may use `InProcessTaxCalculationPort::from_service`. Direct callers that deliberately construct through `rustok_tax::ports` remain an explicit compatibility bypass.
+Both layers retain the per-call correlation id. All other `PortContext` information is
+represented only through safe shape:
 
-## Delegation order
+- tenant and actor-id character lengths;
+- actor kind;
+- claim and role counts;
+- channel, causation, traceparent, and idempotency presence plus lengths;
+- locale length;
+- deadline.
 
-The wrapper performs no new admission, request validation, provider selection, or result validation. Its source order is:
+Raw tenant, actor id, channel, locale, causation id, traceparent, and idempotency key
+values are not written by these tax diagnostics.
 
-1. clone the incoming `PortContext` for diagnostics;
-2. retain safe request-shape facts;
-3. delegate the original context and request to the unchanged owner port;
-4. inspect only a returned `PortError`;
-5. emit a local event only when the exact stable code and message are covered;
-6. return the same `PortError` unchanged.
+## Safe request and result shape
 
-Policy admission remains inside the existing owner implementation. Policy failures already retain complete owner context and are intentionally passed through without a second local event.
+The wrapper records only:
 
-## Retained request facts
-
-Covered diagnostics retain only typed identifiers, booleans, lengths, and counts:
-
-- currency-code character length;
-- optional channel id;
+- currency-code length;
+- channel-id presence and UUID non-nil fact;
 - tax-exempt flag;
-- taxable amount count;
-- line-item target count;
-- shipping target count;
-- dual-target count;
-- country-rule count;
-- configured provider-id character length;
-- configured channel-provider-id character length;
-- configured country-code character length.
+- taxable, line-target, shipping-target, dual-target, and country-rule counts;
+- provider-id, channel-provider-id, and country-code lengths.
 
-The wrapper does not record raw currency, provider ids, country codes, tax rates, monetary amounts, tax classes, descriptions, policy rows, or provider result metadata.
+The owner validation and invariant mappers retain only the presence and character
+length of their internal detail text. Provider validation text is likewise reduced to
+presence and length.
 
-## Covered stable outcomes
-
-The mapper requires exact `code + message` pairs. Code-only matching is forbidden.
-
-Request and owner validation outcomes use warning severity:
-
-- `tax.currency_code_invalid` / `tax request is invalid`;
-- `tax.negative_policy_rate` / `tax request is invalid`;
-- `tax.country_code_invalid` / `tax request is invalid`;
-- `tax.negative_country_rate` / `tax request is invalid`;
-- `tax.duplicate_country_rule` / `tax request is invalid`;
-- `tax.negative_taxable_amount` / `tax request is invalid`;
-- `tax.validation` / `tax request is invalid`.
-
-Provider-result invariant outcomes use error severity:
-
-- `tax.negative_total` / `tax calculation result is invalid`;
-- `tax.exempt_customer_charged` / `tax calculation result is invalid`;
-- `tax.total_overflow` / `tax calculation result is invalid`;
-- `tax.total_mismatch` / `tax calculation result is invalid`;
-- `tax.provider_id_invalid` / `tax calculation result is invalid`;
-- `tax.negative_line` / `tax calculation result is invalid`;
-- `tax.currency_code_invalid` / `tax calculation result is invalid`;
-- `tax.currency_mismatch` / `tax calculation result is invalid`;
-- `tax.unknown_taxable_target` / `tax calculation result is invalid`.
-
-Unavailable and timeout kinds also use error severity if a future owner implementation returns a covered stable envelope with those kinds.
-
-## Retained diagnostic context
-
-Covered outcomes record:
-
-- truthful owner `rustok_tax`;
-- public operation `calculate_tax`;
-- operation-specific local label;
-- boundary `tax_calculation_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- safe request-shape facts described above;
-- exact stable internal code and public-safe message;
-- typed error kind and retryability;
-- the complete delegated `PortError`.
+The diagnostic boundary does not write raw currency, provider ids, country codes,
+rates, monetary amounts, line-item or shipping-option UUIDs, tax classes,
+descriptions, policy rows, or provider metadata.
 
 ## Preserved behavior
 
-This work does not change:
+The following remain unchanged:
 
-- `PortCallPolicy::read()` admission;
-- request or result DTOs;
-- currency, policy, taxable-target, exempt-customer, line, or total validation;
-- provider resolution and `region_default` behavior;
-- custom provider composition through `TaxService`;
-- stable public codes, messages, kinds, or retryability;
-- the original owner error return;
-- FBA, FFA, or ecommerce audit status.
+- `PortCallPolicy::read()` admission and deadline semantics;
+- request and result DTOs;
+- currency, policy-rate, country-rule, taxable-amount, exempt-customer, provider-id,
+  line, target, currency, and total validation;
+- `TaxService::calculate` delegation and provider selection;
+- canonical root and legacy module-path construction;
+- every public error code, message, kind, retryability value, and returned error;
+- Tax FFA/FBA status and the broad ecommerce cleanup state.
 
 ## Static evidence
 
-`scripts/verify/verify-tax-calculation-local-context.mjs` guards:
+The focused guards lock the new source contract:
 
-- legacy module compatibility plus canonical root factory cutover;
-- context and safe-fact retention before unchanged owner delegation;
-- post-delegation-only mapping and same delegated error return;
-- exact stable code-and-message classification;
-- technical versus ordinary severity;
-- complete available `PortContext`, safe request facts, and original `PortError` fields;
-- absence of raw currency, provider, country, monetary, tax-class, description, and metadata fields in wrapper diagnostics;
-- unchanged policy-admission and public request/result envelopes in `ports.rs`.
+- `scripts/verify/verify-tax-calculation-local-context.mjs`;
+- `scripts/verify/verify-tax-calculation-policy-context.mjs`;
+- `scripts/verify/verify-tax-calculation-error-context.mjs`.
+
+They require stable-code-only local attribution, safe context/request/detail shape, the
+same delegated error return, and unchanged public envelopes. They forbid raw context,
+raw channel UUIDs, raw detail text, and message-based local routing.
+
+Machine-readable source evidence is retained in:
+
+- `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json`;
+- `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source-review.json`.
 
 ## Remaining gaps
 
-The master ecommerce correlation-safe mapper task remains open for:
-
-- direct callers that deliberately bypass the root wrapper through `rustok_tax::ports`;
-- consumer-side tax transport context retention;
-- external-provider runtime, timeout, retry, and remote-profile evidence;
-- remaining customer, promotion, ecommerce, and non-`PortError` adapters;
-- compile and cross-transport verification.
+Direct construction through `rustok_tax::ports` remains a compatibility path, although
+its owner diagnostics are now safe. Consumer-side transport context, external-provider
+runtime behavior, timeout/retry evidence, remote profiles, compile evidence, and the
+remaining ecommerce mapper cleanup stay open.
 
 No architecture status is promoted from source-only evidence.
 

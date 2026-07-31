@@ -3,11 +3,13 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, State
 
 use rustok_core::{Error, Result};
 
+use crate::TrustedStorefrontChannel;
 use crate::engine::{
     SearchConnectorDescriptor, SearchEngine, SearchEngineKind, SearchFacetBucket, SearchFacetGroup,
     SearchQuery, SearchResult, SearchResultItem,
 };
 use crate::ranking::SearchRankingProfile;
+use crate::storefront_product_channel_visibility::product_channel_visibility_sql;
 pub struct PgSearchEngine {
     db: DatabaseConnection,
 }
@@ -20,19 +22,21 @@ impl PgSearchEngine {
     pub(crate) fn connection(&self) -> &DatabaseConnection {
         &self.db
     }
-}
 
-#[async_trait]
-impl SearchEngine for PgSearchEngine {
-    fn kind(&self) -> SearchEngineKind {
-        SearchEngineKind::Postgres
+    pub async fn search_storefront(
+        &self,
+        query: SearchQuery,
+        channel: &TrustedStorefrontChannel,
+    ) -> Result<SearchResult> {
+        self.search_with_storefront_channel(query, Some(channel))
+            .await
     }
 
-    fn descriptor(&self) -> SearchConnectorDescriptor {
-        SearchConnectorDescriptor::postgres_default()
-    }
-
-    async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
+    async fn search_with_storefront_channel(
+        &self,
+        query: SearchQuery,
+        storefront_channel: Option<&TrustedStorefrontChannel>,
+    ) -> Result<SearchResult> {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
                 "PgSearchEngine requires PostgreSQL backend".to_string(),
@@ -64,6 +68,7 @@ impl SearchEngine for PgSearchEngine {
             &locale,
             &trimmed_query,
             &query,
+            storefront_channel,
             offset,
             limit,
         )
@@ -76,6 +81,7 @@ impl SearchEngine for PgSearchEngine {
                 &locale,
                 &trimmed_query,
                 &query,
+                storefront_channel,
                 offset,
                 limit,
             )
@@ -87,18 +93,47 @@ impl SearchEngine for PgSearchEngine {
     }
 }
 
+#[async_trait]
+impl SearchEngine for PgSearchEngine {
+    fn kind(&self) -> SearchEngineKind {
+        SearchEngineKind::Postgres
+    }
+
+    fn descriptor(&self) -> SearchConnectorDescriptor {
+        SearchConnectorDescriptor::postgres_default()
+    }
+
+    async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
+        self.search_with_storefront_channel(query, None).await
+    }
+}
+
 struct FilterClause {
     clause: String,
     values: Vec<Value>,
 }
 
-fn build_filter_clause(query: &SearchQuery, starting_param: usize) -> FilterClause {
+fn build_filter_clause(
+    query: &SearchQuery,
+    starting_param: usize,
+    storefront_channel: Option<&TrustedStorefrontChannel>,
+) -> FilterClause {
     let mut clauses = Vec::new();
     let mut values = Vec::new();
     let mut next_param = starting_param;
 
     if query.published_only {
         clauses.push("is_public = TRUE".to_string());
+    }
+
+    if let Some(channel) = storefront_channel {
+        clauses.push(product_channel_visibility_sql(
+            "entity_type",
+            "payload",
+            channel,
+            &mut values,
+            &mut next_param,
+        ));
     }
 
     if !query.entity_types.is_empty() {
@@ -120,15 +155,13 @@ fn build_filter_clause(query: &SearchQuery, starting_param: usize) -> FilterClau
         ));
     }
     if !query.category_ids.is_empty() {
-        let category_params =
-            bind_uuid_list(&query.category_ids, &mut values, &mut next_param);
+        let category_params = bind_uuid_list(&query.category_ids, &mut values, &mut next_param);
         let category_facet_values = query
             .category_ids
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
-        let category_facet_params =
-            bind_list(&category_facet_values, &mut values, &mut next_param);
+        let category_facet_params = bind_list(&category_facet_values, &mut values, &mut next_param);
         clauses.push(format!(
             "(
                 (
@@ -225,10 +258,11 @@ async fn run_fts_search(
     locale: &str,
     trimmed_query: &str,
     query: &SearchQuery,
+    storefront_channel: Option<&TrustedStorefrontChannel>,
     offset: i64,
     limit: i64,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(query, 4);
+    let filters = build_filter_clause(query, 4, storefront_channel);
     let cte = build_fts_cte(query.ranking_profile);
 
     finalize_ranked_search(
@@ -252,10 +286,11 @@ async fn run_typo_tolerant_search(
     locale: &str,
     trimmed_query: &str,
     query: &SearchQuery,
+    storefront_channel: Option<&TrustedStorefrontChannel>,
     offset: i64,
     limit: i64,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(query, 4);
+    let filters = build_filter_clause(query, 4, storefront_channel);
     let cte = build_typo_cte(query.ranking_profile);
 
     finalize_ranked_search(

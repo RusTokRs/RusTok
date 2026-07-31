@@ -29,6 +29,7 @@ pub enum ForumCategoryReadOperation {
     CategoryList,
     SelectedCategory,
     CategoryTree,
+    SearchResultEligibility,
 }
 
 impl ForumCategoryReadOperation {
@@ -37,6 +38,7 @@ impl ForumCategoryReadOperation {
             Self::CategoryList => "category-list",
             Self::SelectedCategory => "selected-category",
             Self::CategoryTree => "category-tree",
+            Self::SearchResultEligibility => "search-result-eligibility",
         }
     }
 }
@@ -147,7 +149,7 @@ mod tests {
 
         let context = category_read_audience_port_context(
             ForumCategoryReadTransport::NativeServer,
-            ForumCategoryReadOperation::CategoryTree,
+            ForumCategoryReadOperation::SearchResultEligibility,
             tenant_id,
             &auth,
             Some(&request),
@@ -168,7 +170,7 @@ mod tests {
         assert!(
             context
                 .correlation_id
-                .starts_with("forum-native-category-tree-")
+                .starts_with("forum-native-search-result-eligibility-")
         );
     }
 

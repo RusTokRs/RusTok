@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31",
+  "status": "fulfillment_storefront_native_client_error_safety_source_unvalidated",
+  "scope": "fulfillment storefront select-shipping-option native client adapter final error boundary",
+  "source_contract": {
+    "operation_count": 1,
+    "transport_facade_changed": false,
+    "graphql_transport_changed": false,
+    "server_functions_changed": false,
+    "request_response_dto_changed": false,
+    "shipping_selection_policy_changed": false,
+    "native_adapter_final_mapping": true,
+    "validation_preflight_preserved": true,
+    "validation_order_preserved": true,
+    "cart_uuid_validation_message_preserved": true,
+    "selection_plan_validation_messages_preserved": true,
+    "shipping_option_uuid_validation_message_preserved": true,
+    "technical_native_error_public": false,
+    "static_technical_public_message": true,
+    "context_created_before_server_function_call": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "cart_id_values_logged": false,
+    "shipping_profile_slug_values_logged": false,
+    "seller_id_values_logged": false,
+    "shipping_option_id_values_logged": false,
+    "delivery_group_values_logged": false,
+    "fallback_enabled": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "stable_public_message": "Shipping selection request could not be completed",
+  "suggested_execution": [
+    "node scripts/verify/verify-fulfillment-storefront-native-client-error-safety.mjs",
+    "node scripts/verify/verify-fulfillment-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-fulfillment-storefront-graphql-error-safety.mjs",
+    "npm run verify:fulfillment:storefront-boundary",
+    "cargo check -p rustok-fulfillment-storefront --all-features"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_runtime_proven": false
+  }
+}

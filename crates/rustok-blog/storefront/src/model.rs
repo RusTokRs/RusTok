@@ -26,8 +26,19 @@ pub struct BlogPostListItem {
     pub published_at: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BlogCommentsAvailability {
+    #[default]
+    Available,
+    Unavailable,
+    Timeout,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BlogCommentList {
+    #[serde(default)]
+    pub availability: BlogCommentsAvailability,
     pub items: Vec<BlogCommentListItem>,
     pub total: u64,
 }

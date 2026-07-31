@@ -1,5 +1,6 @@
 mod graphql_adapter;
 mod graphql_error_safety;
+mod native_client_error_safety;
 mod native_server_adapter;
 
 use std::fmt::{Display, Formatter};
@@ -108,7 +109,15 @@ pub async fn create_payment_collection(
     execute_selected_transport(
         "payment",
         selected_transport_path(),
-        move || native_server_adapter::create_payment_collection(native_request),
+        move || async move {
+            let native_context =
+                native_client_error_safety::NativeClientErrorContext::create_payment_collection(
+                    &native_request,
+                );
+            native_server_adapter::create_payment_collection(native_request)
+                .await
+                .map_err(|error| native_context.map_error(error))
+        },
         move || async move {
             let context = graphql_error_safety::GraphqlCallContext::new(
                 "create_storefront_payment_collection",
@@ -128,7 +137,15 @@ pub async fn fetch_payment_collection(
     execute_selected_transport(
         "payment",
         selected_transport_path(),
-        move || native_server_adapter::fetch_payment_collection(native_request),
+        move || async move {
+            let native_context =
+                native_client_error_safety::NativeClientErrorContext::fetch_payment_collection(
+                    &native_request,
+                );
+            native_server_adapter::fetch_payment_collection(native_request)
+                .await
+                .map_err(|error| native_context.map_error(error))
+        },
         move || async move {
             let context = graphql_error_safety::GraphqlCallContext::new(
                 "read_storefront_payment_collection",
@@ -148,7 +165,15 @@ pub async fn fetch_refund_summary(
     execute_selected_transport(
         "payment",
         selected_transport_path(),
-        move || native_server_adapter::fetch_refund_summary(native_request),
+        move || async move {
+            let native_context =
+                native_client_error_safety::NativeClientErrorContext::fetch_refund_summary(
+                    &native_request,
+                );
+            native_server_adapter::fetch_refund_summary(native_request)
+                .await
+                .map_err(|error| native_context.map_error(error))
+        },
         move || async move {
             let context = graphql_error_safety::GraphqlCallContext::new(
                 "read_storefront_order_refunds",

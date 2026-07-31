@@ -1,0 +1,33 @@
+{
+  "status": "order_storefront_native_client_diagnostics_source_reviewed_unvalidated",
+  "reviewed_boundary": "complete_checkout native compatibility wrapper",
+  "reviewed_files": [
+    "crates/rustok-order/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-order/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
+    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-order/storefront/src/transport.rs",
+    "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs",
+    "scripts/verify/verify-order-storefront-runtime-error-diagnostics.mjs",
+    "scripts/verify/verify-order-storefront-graphql-error-safety.mjs"
+  ],
+  "review_findings": {
+    "context_precedes_server_function_call": true,
+    "raw_error_is_private_diagnostic_only": true,
+    "public_message_is_unchanged": true,
+    "request_values_are_not_logged": true,
+    "transport_facade_is_outside_diff": true,
+    "graphql_policy_is_outside_diff": true,
+    "mounted_endpoint_and_runtime_mapper_are_preserved": true,
+    "checkout_command_and_dto_are_preserved": true,
+    "existing_source_guards_remain_applicable": true,
+    "runtime_validation_is_not_claimed": true
+  },
+  "execution": {
+    "commands_run": [],
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "ci_run": false
+  }
+}

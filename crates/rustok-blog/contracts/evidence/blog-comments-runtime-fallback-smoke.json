@@ -11,7 +11,42 @@
   "source_contract": {
     "consumer_service": "crates/rustok-blog/src/services/comment.rs",
     "consumer_error_mapping": "crates/rustok-blog/src/services/comment.rs",
-    "provider_port_registry": "crates/rustok-comments/contracts/comments-fba-registry.json"
+    "provider_port_registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
+    "graphql_owner": "crates/rustok-blog/src/graphql/types.rs",
+    "storefront_model": "crates/rustok-blog/storefront/src/model.rs",
+    "storefront_graphql": "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+    "storefront_native": "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+    "storefront_ui": "crates/rustok-blog/storefront/src/ui/leptos.rs"
+  },
+  "storefront_read_degradation": {
+    "status": "source_verified_no_compile",
+    "runtime_status": "not_run",
+    "operation": "list_public_comments_for_target",
+    "transports": [
+      "graphql",
+      "native_ssr"
+    ],
+    "availability_states": [
+      "AVAILABLE",
+      "UNAVAILABLE",
+      "TIMEOUT"
+    ],
+    "degraded_error_kinds": [
+      "ExternalService",
+      "Timeout"
+    ],
+    "propagated_error_policy": "all_other_blog_errors",
+    "degraded_payload": {
+      "items": [],
+      "total": 0
+    },
+    "ui_states": [
+      "comments_temporarily_unavailable_article_still_available",
+      "comments_timeout_article_still_available"
+    ],
+    "cached_thread_snapshot": "planned",
+    "comment_form_fallback": "planned",
+    "runtime_evidence": "pending"
   },
   "fallback_smoke": {
     "status": "planned",
@@ -60,7 +95,7 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "show_cached_thread_snapshot",
-        "expected_consumer_behavior": "planned UI branch; source contract preserves typed unavailable/timeout/not-found errors while runtime fallback evidence remains pending"
+        "expected_consumer_behavior": "typed unavailable/timeout storefront state is source-verified; cached snapshot runtime fallback remains planned and not executed"
       }
     ],
     "runtime_evidence": "pending"

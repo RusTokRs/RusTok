@@ -4,61 +4,56 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the owner-side policy-admission context gap in the canonical
-`TaxCalculationPort::calculate_tax` implementation.
+The canonical `TaxCalculationPort::calculate_tax` implementation assigns the truthful
+`calculate_tax` operation before applying `PortCallPolicy::read()`. Admission failures
+are inspected, diagnosed, and returned unchanged.
 
-Before this change, `PortContext::require_policy(PortCallPolicy::read())` ran before
-the tax owner operation was assigned. A deadline or policy rejection therefore left
-the tax owner without a dedicated structured event containing the full available
-request context.
+This slice keeps that ordering while hardening the diagnostic payload.
 
-The port now:
+## Safe policy diagnostics
 
-- assigns `calculate_tax` before policy admission;
-- delegates admission to one tax-owned helper using the unchanged read policy;
-- records the truthful `rustok_tax` owner and stable `tax_calculation_port` boundary;
-- retains correlation id, tenant, actor, channel, locale, causation id, traceparent,
-  idempotency key, and deadline;
-- retains the exact owner operation and original `PortError` code, kind, and
-  retryability;
-- emits error severity for unavailable, timeout, and invariant failures and warning
-  severity for ordinary policy or validation rejection;
-- returns the original `PortError` unchanged after diagnostics.
+Policy rejection events retain:
 
-The canonical root factory now additionally wraps post-delegation stable validation
-and result-invariant outcomes. That separate contract is documented in
-[`calculation-local-context.md`](./calculation-local-context.md). Policy admission
-continues to run only in the owner implementation and is not duplicated by the root
-wrapper.
+- owner `rustok_tax`;
+- operation `calculate_tax`;
+- boundary `tax_calculation_port`;
+- correlation id;
+- stable error code, typed kind, and retryability;
+- tenant and actor-id lengths;
+- actor kind, claim count, and role count;
+- channel, causation, traceparent, and idempotency presence plus lengths;
+- locale length and deadline.
+
+They do not record raw tenant, actor id, channel, locale, causation id, traceparent, or
+idempotency key values. The original typed `PortError` remains available as structured
+technical evidence and is returned unchanged.
+
+Unavailable, timeout, and invariant failures retain error severity. Ordinary policy or
+validation rejections retain warning severity.
 
 ## Preserved behavior
 
 The change does not alter:
 
-- `PortCallPolicy::read()` admission semantics;
+- read/deadline admission semantics;
 - tax request or result DTOs;
-- currency, rate, taxable-target, exempt-customer, or total validation;
+- validation order;
 - `TaxService::calculate` delegation;
-- stable public validation and invariant messages;
-- provider result validation or existing unit-test source;
+- provider selection or result validation;
+- public error codes, messages, kinds, retryability, or return paths;
 - runtime composition, FBA, or FFA status.
 
 ## Static evidence
 
-`scripts/verify/verify-tax-calculation-policy-context.mjs` fixes the following source
-contract:
+`scripts/verify/verify-tax-calculation-policy-context.mjs` requires operation assignment
+before policy admission, the unchanged read policy, safe context-shape diagnostics,
+original typed error fields, and unchanged public envelopes. It forbids raw context
+values.
 
-- owner operation assignment precedes policy admission;
-- the shared helper performs the unchanged read-policy check;
-- rejected admission logs the complete available `PortContext` and original typed
-  error fields;
-- the original error is rethrown;
-- existing tax service mapping and public validation/result envelopes remain intact;
-- direct admission before owner-operation assignment is forbidden.
+The owner and wrapper result paths are guarded by:
 
-`scripts/verify/verify-tax-calculation-local-context.mjs` separately guards the
-canonical root wrapper, safe request-shape facts, exact stable post-delegation
-classification, same-error return, and the legacy module-path compatibility boundary.
+- `scripts/verify/verify-tax-calculation-error-context.mjs`;
+- `scripts/verify/verify-tax-calculation-local-context.mjs`.
 
 ## Validation status
 
@@ -78,7 +73,6 @@ cargo check -p rustok-cart --lib
 
 ## Remaining work
 
-This does not close direct legacy-module callers, consumer-side tax transport context
-retention, promotion cleanup, mounted checkout compensation, external-provider runtime
-evidence, or the remaining customer, promotion, and ecommerce adapter mapper work.
-Architecture status must not be promoted from source inspection alone.
+Consumer-side transport context, external-provider runtime evidence, remote profiles,
+compile evidence, and the remaining ecommerce mapper cleanup stay open. Architecture
+status is not promoted from source inspection alone.

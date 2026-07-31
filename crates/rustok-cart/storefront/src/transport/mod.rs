@@ -1,5 +1,6 @@
 mod graphql_adapter;
 mod graphql_error_safety;
+mod native_client_error_safety;
 #[cfg(not(feature = "ssr"))]
 mod native_server_adapter;
 #[cfg(feature = "ssr")]
@@ -33,7 +34,13 @@ pub async fn fetch_cart(request: CartFetchRequest) -> TransportResult<Storefront
     execute_selected_transport(
         "cart",
         selected_transport_path(),
-        move || native_server_adapter::fetch_cart(native_request),
+        move || async move {
+            let context =
+                native_client_error_safety::NativeClientErrorContext::fetch_cart(&native_request);
+            native_server_adapter::fetch_cart(native_request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
         move || async move {
             let context = graphql_error_safety::GraphqlCallContext::fetch_cart(&request);
             graphql_adapter::fetch_cart(request)
@@ -49,7 +56,14 @@ pub async fn decrement_line_item(request: CartLineItemDecrementRequest) -> Trans
     execute_selected_transport(
         "cart",
         selected_transport_path(),
-        move || native_server_adapter::decrement_line_item(native_request),
+        move || async move {
+            let context = native_client_error_safety::NativeClientErrorContext::decrement_line_item(
+                &native_request,
+            );
+            native_server_adapter::decrement_line_item(native_request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
         move || async move {
             let context = graphql_error_safety::GraphqlCallContext::decrement_line_item(&request);
             graphql_adapter::decrement_line_item(request)
@@ -65,7 +79,14 @@ pub async fn remove_line_item(request: CartLineItemMutationRequest) -> Transport
     execute_selected_transport(
         "cart",
         selected_transport_path(),
-        move || native_server_adapter::remove_line_item(native_request),
+        move || async move {
+            let context = native_client_error_safety::NativeClientErrorContext::remove_line_item(
+                &native_request,
+            );
+            native_server_adapter::remove_line_item(native_request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
         move || async move {
             let context = graphql_error_safety::GraphqlCallContext::remove_line_item(&request);
             graphql_adapter::remove_line_item(request)

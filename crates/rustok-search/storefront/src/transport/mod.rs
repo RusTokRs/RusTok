@@ -1,3 +1,5 @@
+pub mod forum_graphql_adapter;
+pub mod forum_native_server_adapter;
 pub mod graphql_adapter;
 pub mod native_server_adapter;
 
@@ -71,10 +73,29 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let forum_category_scope = is_explicit_forum_category_scope(&filters);
     let native_query = query.clone();
     let native_locale = locale.clone();
     let native_preset_key = preset_key.clone();
     let native_filters = filters.clone();
+
+    if forum_category_scope {
+        return execute_selected_transport(
+            "search",
+            selected_transport_path(),
+            move || {
+                forum_native_server_adapter::fetch_search(
+                    native_query,
+                    native_locale,
+                    native_preset_key,
+                    native_filters,
+                )
+            },
+            move || forum_graphql_adapter::fetch_search(query, locale, preset_key, filters),
+        )
+        .await;
+    }
+
     execute_selected_transport(
         "search",
         selected_transport_path(),
@@ -89,6 +110,87 @@ pub async fn fetch_search(
         move || graphql_adapter::fetch_search(query, locale, preset_key, filters),
     )
     .await
+}
+
+pub async fn fetch_forum_search_by_authors(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native_query = query.clone();
+    let native_locale = locale.clone();
+    let native_preset_key = preset_key.clone();
+    let native_filters = filters.clone();
+    let native_author_ids = author_ids.clone();
+
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || {
+            forum_native_server_adapter::fetch_search_with_authors(
+                native_query,
+                native_locale,
+                native_preset_key,
+                native_filters,
+                native_author_ids,
+            )
+        },
+        move || {
+            forum_graphql_adapter::fetch_search_with_authors(
+                query, locale, preset_key, filters, author_ids,
+            )
+        },
+    )
+    .await
+}
+
+pub async fn fetch_forum_search_with_filters(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native_query = query.clone();
+    let native_locale = locale.clone();
+    let native_preset_key = preset_key.clone();
+    let native_filters = filters.clone();
+    let native_author_ids = author_ids.clone();
+    let native_tags = tags.clone();
+
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || {
+            forum_native_server_adapter::fetch_search_with_filters(
+                native_query,
+                native_locale,
+                native_preset_key,
+                native_filters,
+                native_author_ids,
+                native_tags,
+                solved,
+            )
+        },
+        move || {
+            forum_graphql_adapter::fetch_search_with_filters(
+                query, locale, preset_key, filters, author_ids, tags, solved,
+            )
+        },
+    )
+    .await
+}
+
+fn is_explicit_forum_category_scope(filters: &SearchPreviewFilters) -> bool {
+    !filters.category_ids.is_empty()
+        && filters.source_modules.len() == 1
+        && filters.source_modules[0]
+            .trim()
+            .eq_ignore_ascii_case("forum")
 }
 
 pub async fn fetch_suggestions(
@@ -148,5 +250,22 @@ mod tests {
     #[test]
     fn default_test_profile_uses_graphql_transport() {
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+    }
+
+    #[test]
+    fn only_explicit_forum_category_scope_selects_owner_path() {
+        let mut filters = SearchPreviewFilters {
+            source_modules: vec!["forum".to_string()],
+            category_ids: vec![uuid::Uuid::new_v4().to_string()],
+            ..SearchPreviewFilters::default()
+        };
+        assert!(is_explicit_forum_category_scope(&filters));
+
+        filters.source_modules.push("product".to_string());
+        assert!(!is_explicit_forum_category_scope(&filters));
+
+        filters.source_modules = vec!["forum".to_string()];
+        filters.category_ids.clear();
+        assert!(!is_explicit_forum_category_scope(&filters));
     }
 }

@@ -42,6 +42,9 @@ export const BLOG_FBA_SOURCE_GATES = {
     test_package_script: 'test:verify:blog:comments-event-projection',
     verifier: 'scripts/verify/verify-blog-comments-event-projection.mjs',
     self_test: 'scripts/verify/verify-blog-comments-event-projection.test.mjs',
+    unit_test: 'crates/rustok-blog/src/services/comment_projection.rs',
+    postgres_test: 'crates/rustok-blog/tests/comment_projection_postgres_test.rs',
+    restart_test: 'crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json',
   },
   category_search_reindex: {
@@ -168,7 +171,10 @@ export function collectBlogFbaVerificationChainFailures({
     if (
       gate?.verifier !== expectedGate.verifier ||
       gate?.self_test !== expectedGate.self_test ||
-      gate?.evidence !== expectedGate.evidence
+      gate?.evidence !== expectedGate.evidence ||
+      gate?.unit_test !== expectedGate.unit_test ||
+      gate?.postgres_test !== expectedGate.postgres_test ||
+      gate?.restart_test !== expectedGate.restart_test
     ) {
       failures.push(`registry source gate ${gateName} path drift`);
     }
@@ -189,7 +195,14 @@ export function collectBlogFbaVerificationChainFailures({
       failures.push(`package source gate ${gateName} test command drift`);
     }
 
-    for (const filePath of [expectedGate.verifier, expectedGate.self_test, expectedGate.evidence]) {
+    for (const filePath of [
+      expectedGate.verifier,
+      expectedGate.self_test,
+      expectedGate.evidence,
+      expectedGate.unit_test,
+      expectedGate.postgres_test,
+      expectedGate.restart_test,
+    ].filter(Boolean)) {
       if (!existsSync(filePath)) {
         failures.push(`registry source gate ${gateName} missing ${filePath}`);
       }

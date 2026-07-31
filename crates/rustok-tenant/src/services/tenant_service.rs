@@ -12,15 +12,13 @@ use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{
-    CreateTenantInput, TenantModuleResponse, TenantResponse, ToggleModuleInput, UpdateTenantInput,
-};
+use crate::dto::{CreateTenantInput, TenantModuleResponse, TenantResponse, UpdateTenantInput};
 use crate::entities::tenant::{self, ActiveModel as TenantActiveModel};
 use crate::entities::tenant_locale::{self, ActiveModel as TenantLocaleActiveModel};
 use crate::entities::tenant_locale_policy_receipt::{
     self, ActiveModel as TenantLocalePolicyReceiptActiveModel,
 };
-use crate::entities::tenant_module::{self, ActiveModel as TenantModuleActiveModel};
+use crate::entities::tenant_module;
 use crate::error::TenantError;
 use crate::ports::{
     ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyProjection,
@@ -93,23 +91,29 @@ impl TenantService {
     ///
     /// Bootstrap and installer flows need idempotent tenant provisioning, while
     /// ordinary tenant creation must continue to reject duplicate slugs through
-    /// [`Self::create_tenant`].  Keeping both operations in the tenant owner
+    /// [`Self::create_tenant`]. Keeping both operations in the tenant owner
     /// avoids host-side copies of the tenant persistence policy.
     #[instrument(skip(self, input), fields(slug = %input.slug))]
     pub async fn ensure_tenant(
         &self,
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
+        let slug = input.slug.clone();
         if let Some(existing) = tenant::Entity::find()
-            .filter(tenant::Column::Slug.eq(&input.slug))
+            .filter(tenant::Column::Slug.eq(&slug))
             .one(&self.db)
             .await?
         {
             return Ok((to_tenant_response(existing), false));
         }
 
-        let tenant = self.create_tenant(input).await?;
-        Ok((tenant, true))
+        match self.create_tenant(input).await {
+            Ok(tenant) => Ok((tenant, true)),
+            Err(error) => match self.get_tenant_by_slug(&slug).await {
+                Ok(existing) => Ok((existing, false)),
+                Err(_) => Err(error),
+            },
+        }
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
@@ -202,75 +206,6 @@ impl TenantService {
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
         let items = models.into_iter().map(to_tenant_response).collect();
         Ok((items, total))
-    }
-
-    /// Deprecated low-level tenant override writer.
-    ///
-    /// Runtime module enable/disable paths must go through the host
-    /// `ModuleLifecycleService` so policy resolution, dependency checks, hooks,
-    /// and operation journaling stay consistent.
-    #[deprecated(
-        note = "use the host ModuleLifecycleService for runtime module enable/disable paths"
-    )]
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, module_slug = %input.module_slug))]
-    pub async fn toggle_module(
-        &self,
-        tenant_id: Uuid,
-        input: ToggleModuleInput,
-    ) -> TenantResult<TenantModuleResponse> {
-        let txn = self.db.begin().await?;
-
-        tenant::Entity::find_by_id(tenant_id)
-            .one(&txn)
-            .await?
-            .ok_or(TenantError::NotFound)?;
-
-        let existing = tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(&input.module_slug))
-            .one(&txn)
-            .await?;
-
-        let now = chrono::Utc::now().into();
-        let module_slug = input.module_slug;
-        let enabled = input.enabled;
-
-        let model = match existing {
-            Some(m) => {
-                let mut active: tenant_module::ActiveModel = m.into();
-                active.enabled = Set(enabled);
-                active.updated_at = Set(now);
-                active.update(&txn).await?
-            }
-            None => {
-                TenantModuleActiveModel {
-                    id: Set(generate_id()),
-                    tenant_id: Set(tenant_id),
-                    module_slug: Set(module_slug.clone()),
-                    enabled: Set(enabled),
-                    settings: Set(serde_json::json!({})),
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                }
-                .insert(&txn)
-                .await?
-            }
-        };
-
-        self.publish_event_in_tx(
-            &txn,
-            tenant_id,
-            DomainEvent::TenantModuleToggled {
-                tenant_id,
-                module_slug,
-                enabled,
-            },
-        )
-        .await?;
-
-        txn.commit().await?;
-
-        Ok(to_module_response(model))
     }
 
     pub async fn list_tenant_modules(

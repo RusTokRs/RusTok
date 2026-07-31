@@ -387,6 +387,7 @@ impl ForumSearchProjectionSource {
         let author_handle = public_author_handle(author.as_ref());
         let author_keywords = public_author_keywords(author.as_ref());
         let author_payload = public_author_payload(author.as_ref());
+        let topic_tags = topic.tags.clone();
 
         let created_at = parse_timestamp(&reply.created_at, "reply.created_at")?;
         let updated_at = parse_timestamp(&reply.updated_at, "reply.updated_at")?;
@@ -424,6 +425,7 @@ impl ForumSearchProjectionSource {
                 "topic_id": topic.id,
                 "category_id": topic.category_id,
                 "author": author_payload,
+                "topic_tags": topic_tags,
                 "parent_reply_id": reply.parent_reply_id,
                 "is_solution": is_solution,
                 "route": route

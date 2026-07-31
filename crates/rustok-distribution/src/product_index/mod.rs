@@ -1,3 +1,4 @@
+pub(crate) mod graph;
 mod product;
 #[path = "../product_variant_index.rs"]
 mod variant;
@@ -16,7 +17,7 @@ mod tests {
     use super::{product::PRODUCT_INDEX_SOURCE, register, variant::PRODUCT_VARIANT_INDEX_SOURCE};
 
     #[test]
-    fn selected_product_bridge_set_registers_two_schemas_and_two_factories() {
+    fn selected_product_bridge_set_registers_four_schemas_and_two_stable_factories() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
@@ -29,7 +30,7 @@ mod tests {
                 .get::<rustok_index::IndexSchemaSourceCatalog>()
                 .unwrap()
                 .len(),
-            2
+            4
         );
         let factories = extensions
             .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()

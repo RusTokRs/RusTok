@@ -21,7 +21,27 @@ use crate::{
     PaymentCollectionResponse, PaymentCollectionStatusKind, PaymentCollectionStatusSnapshot,
 };
 
+const PAYMENT_OWNER: &str = "rustok_payment";
 const COMPENSATE_CHECKOUT_PAYMENT_OPERATION: &str = "compensate_checkout_payment";
+const PAYMENT_COMPENSATION_BOUNDARY: &str = "checkout_payment_compensation_port";
+
+struct CheckoutPaymentCompensationOwnerContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
 
 #[async_trait]
 pub trait CheckoutPaymentCompensationPort: Send + Sync {
@@ -116,14 +136,14 @@ impl InProcessCheckoutPaymentCompensationPort {
                     .mark_committed(operation.id)
                     .await
                     .map_err(|error| {
-                        tracing::error!(
-                            operation_id = %operation.id,
-                            error = ?error,
-                            correlation_id = %context.correlation_id,
-                            tenant_id = %context.tenant_id,
-                            operation = owner_operation,
-                            code = "payment.checkout_compensation_commit_checkpoint_failed",
-                            "payment compensation could not commit recovered cancel operation"
+                        log_checkout_payment_compensation_owner_error(
+                            context,
+                            owner_operation,
+                            "commit_recovered_cancel_checkpoint",
+                            "payment.checkout_compensation_commit_checkpoint_failed",
+                            "payment compensation could not commit recovered cancel operation",
+                            Some(operation.id),
+                            &error,
                         );
                         manual_reconciliation(
                             context,
@@ -183,13 +203,14 @@ impl InProcessCheckoutPaymentCompensationPort {
             metadata: provider_metadata,
         };
         let request_payload = serde_json::to_value(&provider_request).map_err(|error| {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.checkout_compensation_encoding_failed",
-                "payment compensation request encoding failed"
+            log_checkout_payment_compensation_owner_error(
+                context,
+                owner_operation,
+                "encode_provider_cancel_request",
+                "payment.checkout_compensation_encoding_failed",
+                "payment compensation request encoding failed",
+                None,
+                &error,
             );
             PortError::invariant_violation(
                 "payment.checkout_compensation_encoding_failed",
@@ -269,14 +290,14 @@ impl InProcessCheckoutPaymentCompensationPort {
                         .await
                 };
                 if let Err(checkpoint_error) = checkpoint {
-                    tracing::error!(
-                        operation_id = %operation.id,
-                        error = ?checkpoint_error,
-                        correlation_id = %context.correlation_id,
-                        tenant_id = %context.tenant_id,
-                        operation = owner_operation,
-                        code = "payment.checkout_compensation_provider_failure_checkpoint_failed",
-                        "payment compensation provider failure checkpoint failed"
+                    log_checkout_payment_compensation_owner_error(
+                        context,
+                        owner_operation,
+                        "checkpoint_provider_cancel_failure",
+                        "payment.checkout_compensation_provider_failure_checkpoint_failed",
+                        "payment compensation provider failure checkpoint failed",
+                        Some(operation.id),
+                        &checkpoint_error,
                     );
                     return Err(manual_reconciliation(
                         context,
@@ -288,14 +309,14 @@ impl InProcessCheckoutPaymentCompensationPort {
             }
         };
         let result_payload = serde_json::to_value(&provider_result).map_err(|error| {
-            tracing::error!(
-                operation_id = %operation.id,
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.checkout_compensation_provider_result_encoding_failed",
-                "payment compensation provider result encoding failed"
+            log_checkout_payment_compensation_owner_error(
+                context,
+                owner_operation,
+                "encode_provider_cancel_result",
+                "payment.checkout_compensation_provider_result_encoding_failed",
+                "payment compensation provider result encoding failed",
+                Some(operation.id),
+                &error,
             );
             manual_reconciliation(
                 context,
@@ -311,14 +332,14 @@ impl InProcessCheckoutPaymentCompensationPort {
             )
             .await
             .map_err(|error| {
-                tracing::error!(
-                    operation_id = %operation.id,
-                    error = ?error,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    operation = owner_operation,
-                    code = "payment.checkout_compensation_provider_checkpoint_failed",
-                    "payment compensation provider success checkpoint failed"
+                log_checkout_payment_compensation_owner_error(
+                    context,
+                    owner_operation,
+                    "checkpoint_provider_cancel_success",
+                    "payment.checkout_compensation_provider_checkpoint_failed",
+                    "payment compensation provider success checkpoint failed",
+                    Some(operation.id),
+                    &error,
                 );
                 manual_reconciliation(
                     context,
@@ -533,14 +554,14 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
                 .mark_committed(outcome.operation_id)
                 .await
                 .map_err(|error| {
-                    tracing::error!(
-                        operation_id = %outcome.operation_id,
-                        error = ?error,
-                        correlation_id = %context.correlation_id,
-                        tenant_id = %context.tenant_id,
-                        operation = owner_operation,
-                        code = "payment.checkout_compensation_commit_checkpoint_failed",
-                        "payment compensation local commit checkpoint failed"
+                    log_checkout_payment_compensation_owner_error(
+                        &context,
+                        owner_operation,
+                        "commit_provider_cancel_checkpoint",
+                        "payment.checkout_compensation_commit_checkpoint_failed",
+                        "payment compensation local commit checkpoint failed",
+                        Some(outcome.operation_id),
+                        &error,
                     );
                     manual_reconciliation(
                         &context,
@@ -575,14 +596,14 @@ fn persisted_cancel_result(
                 )
             })?;
             serde_json::from_value(value).map(Some).map_err(|error| {
-                tracing::error!(
-                    operation_id = %operation.id,
-                    error = ?error,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    operation = owner_operation,
-                    code = "payment.provider_invalid_response",
-                    "payment compensation provider checkpoint is malformed"
+                log_checkout_payment_compensation_owner_error(
+                    context,
+                    owner_operation,
+                    "decode_provider_cancel_checkpoint",
+                    "payment.provider_invalid_response",
+                    "payment compensation provider checkpoint is malformed",
+                    Some(operation.id),
+                    &error,
                 );
                 manual_reconciliation(
                     context,
@@ -657,6 +678,158 @@ fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Res
     Ok(())
 }
 
+fn checkout_payment_compensation_owner_context_facts(
+    context: &PortContext,
+) -> CheckoutPaymentCompensationOwnerContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    CheckoutPaymentCompensationOwnerContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn log_checkout_payment_compensation_owner_error<E: std::fmt::Debug>(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    code: &'static str,
+    event: &'static str,
+    operation_id: Option<Uuid>,
+    error: &E,
+) {
+    let context_facts = checkout_payment_compensation_owner_context_facts(context);
+    let operation_id_present = operation_id.is_some();
+    let operation_id_non_nil = operation_id.map(|value| !value.is_nil());
+    tracing::error!(
+        error = ?error,
+        owner = PAYMENT_OWNER,
+        operation = owner_operation,
+        local_operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        operation_id_present,
+        operation_id_non_nil = ?operation_id_non_nil,
+        code,
+        event,
+        boundary = PAYMENT_COMPENSATION_BOUNDARY,
+        "payment checkout compensation owner technical outcome retained safe context"
+    );
+}
+
+fn log_checkout_payment_compensation_owner_warning<E: std::fmt::Debug>(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    code: &'static str,
+    event: &'static str,
+    error: &E,
+) {
+    let context_facts = checkout_payment_compensation_owner_context_facts(context);
+    tracing::warn!(
+        error = ?error,
+        owner = PAYMENT_OWNER,
+        operation = owner_operation,
+        local_operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        code,
+        event,
+        boundary = PAYMENT_COMPENSATION_BOUNDARY,
+        "payment checkout compensation owner rejection retained safe context"
+    );
+}
+
+fn log_checkout_payment_compensation_context_warning(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    code: &'static str,
+    checkout_operation_id_non_nil: Option<bool>,
+    causation_matches: Option<bool>,
+) {
+    let context_facts = checkout_payment_compensation_owner_context_facts(context);
+    tracing::warn!(
+        owner = PAYMENT_OWNER,
+        operation = owner_operation,
+        local_operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        checkout_operation_id_non_nil = ?checkout_operation_id_non_nil,
+        causation_matches = ?causation_matches,
+        code,
+        boundary = PAYMENT_COMPENSATION_BOUNDARY,
+        "payment checkout compensation owner context was rejected safely"
+    );
+}
+
 fn require_operation_context(
     context: &PortContext,
     owner_operation: &'static str,
@@ -667,14 +840,13 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
-        tracing::warn!(
-            causation_id = ?context.causation_id,
-            checkout_operation_id = %checkout_operation_id,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "payment.checkout_compensation_causation_invalid",
-            "payment checkout compensation causation context is invalid"
+        log_checkout_payment_compensation_context_warning(
+            context,
+            owner_operation,
+            "validate_causation_context",
+            "payment.checkout_compensation_causation_invalid",
+            Some(!checkout_operation_id.is_nil()),
+            Some(false),
         );
         return Err(PortError::validation(
             "payment.checkout_compensation_causation_invalid",
@@ -689,14 +861,13 @@ fn parse_tenant_id(
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            internal_tenant_id = %context.tenant_id,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "payment.tenant_id_invalid",
-            "payment checkout compensation tenant context is invalid"
+        log_checkout_payment_compensation_owner_warning(
+            context,
+            owner_operation,
+            "parse_tenant_context",
+            "payment.tenant_id_invalid",
+            "payment checkout compensation tenant context is invalid",
+            &error,
         );
         PortError::validation(
             "payment.tenant_id_invalid",
@@ -710,12 +881,30 @@ fn manual_reconciliation(
     owner_operation: &'static str,
     internal_message: &'static str,
 ) -> PortError {
+    let context_facts = checkout_payment_compensation_owner_context_facts(context);
     tracing::error!(
         internal_message,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        owner = PAYMENT_OWNER,
         operation = owner_operation,
+        local_operation = "require_manual_reconciliation",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
         code = "payment.checkout_compensation_manual_reconciliation",
+        boundary = PAYMENT_COMPENSATION_BOUNDARY,
         "payment checkout compensation requires manual reconciliation"
     );
     PortError::new(
@@ -748,13 +937,14 @@ fn payment_error_to_port_error(
     error: PaymentError,
 ) -> PortError {
     let code = stable_payment_error_code(&error);
-    tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        operation = owner_operation,
+    log_checkout_payment_compensation_owner_error(
+        context,
+        owner_operation,
+        "map_payment_owner_error",
         code,
-        "payment checkout compensation owner operation failed"
+        "payment checkout compensation owner operation failed",
+        None,
+        &error,
     );
     match error {
         PaymentError::Database(_) => PortError::unavailable(

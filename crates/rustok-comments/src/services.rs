@@ -850,16 +850,26 @@ impl CommentsService {
 
         match thread.insert(txn).await {
             Ok(thread) => Ok(thread),
-            Err(_) => comment_thread::Entity::find()
-                .filter(comment_thread::Column::TenantId.eq(tenant_id))
-                .filter(comment_thread::Column::TargetType.eq(target_type))
-                .filter(comment_thread::Column::TargetId.eq(target_id))
-                .one(txn)
-                .await?
-                .ok_or_else(|| CommentsError::CommentThreadNotFound {
-                    target_type: target_type.to_string(),
+            Err(error)
+                if comment_thread::is_thread_identity_conflict(
+                    &error,
+                    tenant_id,
+                    target_type,
                     target_id,
-                }),
+                ) =>
+            {
+                comment_thread::Entity::find()
+                    .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                    .filter(comment_thread::Column::TargetType.eq(target_type))
+                    .filter(comment_thread::Column::TargetId.eq(target_id))
+                    .one(txn)
+                    .await?
+                    .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                        target_type: target_type.to_string(),
+                        target_id,
+                    })
+            }
+            Err(error) => Err(error.into()),
         }
     }
 

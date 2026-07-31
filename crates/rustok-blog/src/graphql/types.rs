@@ -3,14 +3,14 @@ use rustok_api::{
     AuthContext, Permission, RichTextDocument, RichTextView, TenantContext, graphql::GraphQLError,
     has_any_effective_permission,
 };
-use rustok_core::SecurityContext;
+use rustok_core::{SecurityContext, error::ErrorKind};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    BlogPostStatus, CommentListItem as DomainCommentListItem, CommentService,
+    BlogError, BlogPostStatus, CommentListItem as DomainCommentListItem, CommentService,
     CreatePostInput as DomainCreatePostInput, ListCommentsFilter,
     ModerateCommentStatus as DomainModerateCommentStatus, PostResponse, PostSummary,
     UpdatePostInput as DomainUpdatePostInput,
@@ -65,6 +65,17 @@ impl From<GqlModerateCommentStatus> for DomainModerateCommentStatus {
     }
 }
 
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(
+    name = "BlogCommentsAvailability",
+    rename_items = "SCREAMING_SNAKE_CASE"
+)]
+pub enum GqlBlogCommentsAvailability {
+    Available,
+    Unavailable,
+    Timeout,
+}
+
 #[derive(SimpleObject)]
 #[graphql(complex)]
 pub struct GqlPost {
@@ -104,6 +115,7 @@ pub struct GqlPublicCommentListItem {
 
 #[derive(SimpleObject)]
 pub struct GqlPublicCommentList {
+    pub availability: GqlBlogCommentsAvailability,
     pub items: Vec<GqlPublicCommentListItem>,
     pub total: u64,
 }
@@ -142,22 +154,34 @@ impl GqlPost {
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
         let fallback_locale = post_comment_fallback_locale(request_tenant, self);
 
-        let (items, total) = CommentService::new(db.clone(), event_bus.clone())
-            .list_for_post_with_locale_fallback(
-                self.tenant_id,
-                SecurityContext::public_read(),
-                self.id,
-                ListCommentsFilter {
-                    locale: Some(requested_locale),
-                    page: page.unwrap_or(1).max(1),
-                    per_page: per_page.unwrap_or(20).clamp(1, 100),
-                },
-                Some(fallback_locale),
-            )
-            .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let (items, total, availability) = match CommentService::new(
+            db.clone(),
+            event_bus.clone(),
+        )
+        .list_for_post_with_locale_fallback(
+            self.tenant_id,
+            SecurityContext::public_read(),
+            self.id,
+            ListCommentsFilter {
+                locale: Some(requested_locale),
+                page: page.unwrap_or(1).max(1),
+                per_page: per_page.unwrap_or(20).clamp(1, 100),
+            },
+            Some(fallback_locale),
+        )
+        .await
+        {
+            Ok((items, total)) => (items, total, GqlBlogCommentsAvailability::Available),
+            Err(error) => {
+                let Some(availability) = graphql_comments_read_availability(&error) else {
+                    return Err(async_graphql::Error::new(error.to_string()));
+                };
+                (Vec::new(), 0, availability)
+            }
+        };
 
         Ok(GqlPublicCommentList {
+            availability,
             items: items.into_iter().map(Into::into).collect(),
             total,
         })
@@ -198,6 +222,17 @@ impl GqlPost {
             items: items.into_iter().map(Into::into).collect(),
             total,
         })
+    }
+}
+
+fn graphql_comments_read_availability(error: &BlogError) -> Option<GqlBlogCommentsAvailability> {
+    let BlogError::Rich(error) = error else {
+        return None;
+    };
+    match error.kind {
+        ErrorKind::ExternalService => Some(GqlBlogCommentsAvailability::Unavailable),
+        ErrorKind::Timeout => Some(GqlBlogCommentsAvailability::Timeout),
+        _ => None,
     }
 }
 

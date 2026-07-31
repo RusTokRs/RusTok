@@ -13,6 +13,7 @@ category = "commerce"
 tags = ["commerce", "catalog", "checkout"]
 
 [dependencies]
+tenant = { version_req = ">=0.1.0" }
 cart = { version_req = ">=0.1.0" }
 customer = { version_req = ">=0.1.0" }
 product = { version_req = ">=0.1.0" }

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "status": "commerce_admin_order_change_native_error_safety_source_unvalidated",
-  "captured_at": "2026-07-30",
+  "captured_at": "2026-07-31",
   "scope": {
     "package": "rustok-commerce-admin",
     "boundary": "commerce_admin_order_change_native_transport",
@@ -24,11 +24,18 @@
     "permissions_preserved": true,
     "tenant_match_and_input_validation_preserved": true,
     "framework_extraction_errors_use_static_public_envelopes": true,
+    "framework_error_type_only": true,
+    "complete_framework_error_logged": false,
     "request_context_is_diagnostic_only": true,
     "correlation_is_unique_per_transport_call": true,
     "missing_transactional_event_bus_detail_is_internal_only": true,
+    "runtime_identity_shape_only": true,
     "typed_order_errors_use_static_public_envelopes": true,
-    "typed_order_errors_retain_internal_route_context": true,
+    "owner_error_shape_only": true,
+    "complete_order_error_logged": false,
+    "raw_identity_values_logged": false,
+    "order_error_detail_presence_length_non_nil_only": true,
+    "severity_policy_preserved": true,
     "promotion_safety_contract_is_preserved": true
   },
   "validation": {
@@ -60,6 +67,5 @@
     "This slice does not replace direct OrderService composition with a host-selected owner port.",
     "This slice does not change order-change orchestration policy or persisted state.",
     "Remaining ecommerce mapper cleanup and non-PortError envelopes stay open."
-  ],
-  "promotion_gate": "No FFA, FBA, transport, runtime, or production status is promoted from source inspection."
+  ]
 }
