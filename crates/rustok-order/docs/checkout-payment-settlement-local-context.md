@@ -1,17 +1,34 @@
 # Order checkout payment settlement diagnostic safety
 
-Status: **wrapper and owner source-closed / shared admission open / unvalidated**
+Status: **wrapper, shared admission, and owner source-closed / unvalidated**
 
 ## Scope
 
 This source slice completes the currently identified payload-diagnostic cleanup for
-the two payment-settlement layers:
+the payment-settlement path:
 
+- shared write admission and context rejection in `checkout_owner_context.rs`;
 - the post-delegation mapper in `checkout_owner_context.rs`;
 - the canonical owner in `checkout_payment_settlement.rs`.
 
 The public trait, request/response DTOs, constructors, factories, admission order,
 owner delegation, lifecycle behavior, and Commerce composition remain unchanged.
+
+## Shared admission and context rejection
+
+Write-admission events retain only stable code, a closed static `PortErrorKind`,
+message presence/character length, retryability, correlation id, and safe context
+shape. They do not record the complete `PortError`, its debug representation, or
+message text.
+
+Tenant and actor UUID parse rejections retain only the static validation phase,
+input length, and `parse_failed = true` together with bounded `PortError` facts.
+Checkout causation rejection retains only causation presence/length, static parse
+failure, expected-operation presence/non-nil state, and mismatch. UUID parser error
+payloads and complete mapped errors are not recorded.
+
+Unavailable, timeout, and invariant admission failures remain error severity. Other
+admission and all context-validation rejections remain warning severity.
 
 ## Local settlement mapper
 
@@ -75,12 +92,9 @@ This diagnostic-only change does not alter:
 
 ## Source status and remaining gaps
 
-The currently identified payment-settlement post-delegation mapper and canonical
-owner payload sites are **source-closed / unvalidated**.
-
-Shared checkout admission/context events still retain complete `PortError` and UUID
-parse-cause payloads. That shared layer affects both settlement and compensation and
-remains a separate bounded Order slice.
+The currently identified shared admission/context, payment-settlement
+post-delegation mapper, and canonical owner payload sites are **source-closed /
+unvalidated**.
 
 The broad ecommerce correlation-safe mapper cleanup remains open. Compile, replay,
 concurrency, restart, mounted-runtime, remote-port, workflow, and CI evidence are

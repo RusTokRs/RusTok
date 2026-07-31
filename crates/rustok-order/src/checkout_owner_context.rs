@@ -368,8 +368,8 @@ fn require_order_checkout_write_admission(
     })
 }
 
-struct CheckoutContextRejectionEvidence<'a> {
-    parse_cause: Option<&'a dyn std::fmt::Debug>,
+struct CheckoutContextRejectionEvidence {
+    parse_failed: bool,
     expected_checkout_operation_id: Option<Uuid>,
 }
 
@@ -381,68 +381,70 @@ fn log_order_checkout_admission_rejection(
     admission_phase: &'static str,
     error: &PortError,
 ) {
+    let technical_failure = matches!(
+        &error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    );
     let context_facts = order_checkout_context_facts(context);
-    match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
-            tracing::error!(
-                error = ?error,
-                owner,
-                operation,
-                admission_phase,
-                correlation_id = %context.correlation_id,
-                tenant_id_length = context_facts.tenant_id_length,
-                actor_kind = context_facts.actor_kind,
-                actor_id_length = context_facts.actor_id_length,
-                claim_count = context_facts.claim_count,
-                role_count = context_facts.role_count,
-                channel_present = context_facts.channel_present,
-                channel_length = ?context_facts.channel_length,
-                locale_length = context_facts.locale_length,
-                causation_id_present = context_facts.causation_id_present,
-                causation_id_length = ?context_facts.causation_id_length,
-                traceparent_present = context_facts.traceparent_present,
-                traceparent_length = ?context_facts.traceparent_length,
-                idempotency_key_present = context_facts.idempotency_key_present,
-                idempotency_key_length = ?context_facts.idempotency_key_length,
-                deadline_ms = ?context_facts.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary,
-                "order checkout owner admission failed"
-            );
-        }
-        _ => {
-            tracing::warn!(
-                error = ?error,
-                owner,
-                operation,
-                admission_phase,
-                correlation_id = %context.correlation_id,
-                tenant_id_length = context_facts.tenant_id_length,
-                actor_kind = context_facts.actor_kind,
-                actor_id_length = context_facts.actor_id_length,
-                claim_count = context_facts.claim_count,
-                role_count = context_facts.role_count,
-                channel_present = context_facts.channel_present,
-                channel_length = ?context_facts.channel_length,
-                locale_length = context_facts.locale_length,
-                causation_id_present = context_facts.causation_id_present,
-                causation_id_length = ?context_facts.causation_id_length,
-                traceparent_present = context_facts.traceparent_present,
-                traceparent_length = ?context_facts.traceparent_length,
-                idempotency_key_present = context_facts.idempotency_key_present,
-                idempotency_key_length = ?context_facts.idempotency_key_length,
-                deadline_ms = ?context_facts.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary,
-                "order checkout owner admission was rejected"
-            );
-        }
+    let error_facts = order_checkout_port_error_facts(error);
+    if technical_failure {
+        tracing::error!(
+            owner,
+            operation,
+            admission_phase,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            internal_code = %error.code,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
+            retryable = error.retryable,
+            boundary,
+            "order checkout owner admission failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner,
+            operation,
+            admission_phase,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            internal_code = %error.code,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            error_kind = error_facts.error_kind,
+            retryable = error.retryable,
+            boundary,
+            "order checkout owner admission was rejected with bounded diagnostics"
+        );
     }
 }
 
@@ -452,7 +454,7 @@ fn parse_order_tenant_id(
     boundary: &'static str,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|cause| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "order.tenant_id_invalid",
             "order request context is invalid",
@@ -465,7 +467,7 @@ fn parse_order_tenant_id(
             "tenant_id",
             &error,
             CheckoutContextRejectionEvidence {
-                parse_cause: Some(&cause),
+                parse_failed: true,
                 expected_checkout_operation_id: None,
             },
         );
@@ -479,7 +481,7 @@ fn parse_order_actor_id(
     boundary: &'static str,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|cause| {
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
         let error =
             PortError::validation("order.actor_id_invalid", "order request context is invalid");
         log_order_checkout_context_rejection(
@@ -490,7 +492,7 @@ fn parse_order_actor_id(
             "actor_id",
             &error,
             CheckoutContextRejectionEvidence {
-                parse_cause: Some(&cause),
+                parse_failed: true,
                 expected_checkout_operation_id: None,
             },
         );
@@ -506,10 +508,13 @@ fn require_order_checkout_causation(
     code: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
-    let context_operation = context
-        .causation_id
-        .as_deref()
-        .and_then(|value| Uuid::parse_str(value).ok());
+    let (context_operation, parse_failed) = match context.causation_id.as_deref() {
+        Some(value) => match Uuid::parse_str(value) {
+            Ok(value) => (Some(value), false),
+            Err(_) => (None, true),
+        },
+        None => (None, false),
+    };
     if context_operation != Some(checkout_operation_id) {
         let error = PortError::validation(code, "checkout operation context is invalid");
         log_order_checkout_context_rejection(
@@ -520,7 +525,7 @@ fn require_order_checkout_causation(
             "causation_id",
             &error,
             CheckoutContextRejectionEvidence {
-                parse_cause: None,
+                parse_failed,
                 expected_checkout_operation_id: Some(checkout_operation_id),
             },
         );
@@ -536,16 +541,16 @@ fn log_order_checkout_context_rejection(
     operation: &'static str,
     validation_phase: &'static str,
     error: &PortError,
-    evidence: CheckoutContextRejectionEvidence<'_>,
+    evidence: CheckoutContextRejectionEvidence,
 ) {
     let context_facts = order_checkout_context_facts(context);
+    let error_facts = order_checkout_port_error_facts(error);
     let expected_checkout_operation_id_present = evidence.expected_checkout_operation_id.is_some();
     let expected_checkout_operation_id_non_nil = evidence
         .expected_checkout_operation_id
         .map(|value| !value.is_nil());
     tracing::warn!(
-        parse_cause = ?evidence.parse_cause,
-        error = ?error,
+        parse_failed = evidence.parse_failed,
         owner,
         operation,
         validation_phase,
@@ -569,10 +574,11 @@ fn log_order_checkout_context_rejection(
         expected_checkout_operation_id_non_nil = ?expected_checkout_operation_id_non_nil,
         causation_matches = false,
         internal_code = %error.code,
-        internal_message = %error.message,
-        error_kind = ?error.kind,
+        error_message_present = error_facts.message_present,
+        error_message_length = error_facts.message_length,
+        error_kind = error_facts.error_kind,
         retryable = error.retryable,
         boundary,
-        "order checkout owner context validation was rejected"
+        "order checkout owner context validation was rejected with bounded diagnostics"
     );
 }

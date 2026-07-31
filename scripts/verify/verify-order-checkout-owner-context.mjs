@@ -100,14 +100,57 @@ for (const forbidden of ["error = ?error", "internal_message", "error_kind = ?er
   forbidText(localMapper, forbidden, `${paths.shared}: complete settlement wrapper payload`);
 }
 
-for (const openMarker of [
-  "fn log_order_checkout_admission_rejection(",
-  "fn log_order_checkout_context_rejection(",
-  "parse_cause = ?evidence.parse_cause",
-  "internal_message = %error.message",
-  "error_kind = ?error.kind",
+const admissionLogger = functionBody(shared, "log_order_checkout_admission_rejection");
+for (const marker of [
+  "let technical_failure = matches!(",
+  "let error_facts = order_checkout_port_error_facts(error);",
+  "error_message_present = error_facts.message_present",
+  "error_message_length = error_facts.message_length",
+  "error_kind = error_facts.error_kind",
+  "tracing::error!(",
+  "tracing::warn!(",
+]) requireText(admissionLogger, marker, `${paths.shared}: bounded shared admission diagnostics`);
+for (const forbidden of ["error = ?error", "internal_message", "error_kind = ?error.kind"]) {
+  forbidText(admissionLogger, forbidden, `${paths.shared}: complete shared admission payload`);
+}
+
+const tenantParser = functionBody(shared, "parse_order_tenant_id");
+const actorParser = functionBody(shared, "parse_order_actor_id");
+const causationValidator = functionBody(shared, "require_order_checkout_causation");
+for (const [body, label] of [
+  [tenantParser, "tenant parser"],
+  [actorParser, "actor parser"],
+]) {
+  requireText(body, "map_err(|_|", `${paths.shared}: ${label}`);
+  requireText(body, "parse_failed: true", `${paths.shared}: ${label}`);
+  forbidText(body, "|cause|", `${paths.shared}: ${label} parser payload`);
+}
+for (const marker of [
+  "let (context_operation, parse_failed) =",
+  "Err(_) => (None, true)",
+  "parse_failed,",
+]) requireText(causationValidator, marker, `${paths.shared}: bounded causation validation`);
+
+const contextLogger = functionBody(shared, "log_order_checkout_context_rejection");
+for (const marker of [
+  "let error_facts = order_checkout_port_error_facts(error);",
+  "parse_failed = evidence.parse_failed",
+  "expected_checkout_operation_id_present",
+  "expected_checkout_operation_id_non_nil",
+  "error_message_present = error_facts.message_present",
+  "error_message_length = error_facts.message_length",
+  "error_kind = error_facts.error_kind",
+]) requireText(contextLogger, marker, `${paths.shared}: bounded shared context diagnostics`);
+for (const forbidden of [
+  "parse_cause",
   "error = ?error",
-]) requireText(shared, openMarker, `${paths.shared}: retained shared admission/context gap`);
+  "internal_message",
+  "error_kind = ?error.kind",
+]) forbidText(contextLogger, forbidden, `${paths.shared}: complete shared context payload`);
+for (const forbidden of [
+  "parse_cause:",
+  "dyn std::fmt::Debug",
+]) forbidText(shared, forbidden, `${paths.shared}: parser payload type`);
 
 for (const marker of [
   "struct OrderPaymentSettlementOwnerErrorFacts",
@@ -139,8 +182,14 @@ for (const forbidden of ["error = ?error", "internal_message = %error.message"])
 
 for (const [key, expected] of Object.entries({
   local_mapper_payload_diagnostic_cleanup_closed: true,
+  shared_admission_context_payload_diagnostic_cleanup_closed: true,
   canonical_owner_payload_diagnostic_cleanup_closed: true,
-  shared_admission_context_payload_diagnostic_cleanup_closed: false,
+  complete_port_error_logged_by_shared_admission: false,
+  port_error_message_text_logged_by_shared_admission: false,
+  uuid_parse_error_payload_logged_by_shared_context: false,
+  complete_port_error_logged_by_shared_context: false,
+  shared_admission_static_port_error_kind_logged: true,
+  shared_context_static_parse_failure_logged: true,
   write_admission_order_changed: false,
   public_code_changed: false,
   public_message_changed: false,
@@ -157,10 +206,10 @@ if (settlementEvidence.validation?.compile_proven !== false) {
 }
 
 for (const marker of [
-  "Status: **partial source-ready / unvalidated**",
-  "The shared admission/context diagnostic payload itself is not yet closed",
+  "Status: **source-ready / unvalidated**",
+  "The shared admission/context diagnostic payload is source-closed",
   "The payment-settlement post-delegation mapper and canonical owner payload-diagnostic",
-  "Only the shared checkout admission/context payload diagnostics remain open",
+  "No shared checkout wrapper payload-diagnostic gap remains",
 ]) requireText(doc, marker, `${paths.doc}: truthful source status`);
 
 if (failures.length > 0) {
@@ -170,5 +219,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Order checkout wrappers preserve admission and delegation order; settlement and compensation payload diagnostics are source-closed while shared admission/context cleanup remains open",
+  "Order checkout wrappers preserve admission and delegation order; shared admission/context, settlement, and compensation payload diagnostics are source-closed and unvalidated",
 );
