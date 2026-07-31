@@ -1,0 +1,78 @@
+{
+  "contract": "forum_search_versioned_invalidation_poison_recovery_source_proof_v1",
+  "task": "FORUM-23B2G2B3D4",
+  "status": "source_ready_maintainer_execution_pending",
+  "predecessor": "FORUM-23B2G2B3D3",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "source_test": "apps/server/tests/forum_search_poison_protocol.rs",
+  "covered_scenarios": {
+    "raw_poison_dlq_redelivery": [
+      "raw poison uses exact source coordinates and bytes for ConsumerPoisonIdentity",
+      "DLQ publication uses the deterministic connector delivery UUID as broker message id",
+      "receipt state becomes published before source acknowledgement",
+      "acknowledgement failure leaves the receipt published",
+      "redelivery returns AlreadyPublished and is acknowledgement-only",
+      "receipt bookkeeping advances to acknowledged only after source acknowledgement"
+    ],
+    "semantic_poison_identity_conflict": [
+      "forum.search_projection.contract_inbox_identity_conflict uses the same receipt protocol",
+      "semantic poison uses deterministic source-coordinate and byte identity",
+      "redelivery after durable published state does not require a second application-level DLQ publication"
+    ],
+    "dlq_publication_failure": [
+      "failed publication releases the durable claim",
+      "the receipt remains reserved and reclaimable",
+      "a restarted publisher may claim, publish, mark published and then acknowledge"
+    ]
+  },
+  "durable_order": [
+    "reserve_and_claim",
+    "publish deterministic DLQ entry",
+    "mark_published",
+    "acknowledge exact source position",
+    "mark_acknowledged"
+  ],
+  "production_sources": [
+    "apps/server/src/services/forum_search_contract_consumer.rs",
+    "crates/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/rustok-iggy/src/dlq.rs",
+    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs"
+  ],
+  "identity_invariants": [
+    "failure kind, retry count, time and process identity do not redefine the connector delivery UUID",
+    "the connector delivery UUID is not a decoded Forum event or tenant identity",
+    "one durable published receipt suppresses application-level republish on redelivery",
+    "source acknowledgement never precedes the durable terminal result",
+    "mark_acknowledged is receipt bookkeeping after the source position commits"
+  ],
+  "compatibility": {
+    "production_migration": false,
+    "event_schema_or_digest_change": false,
+    "runtime_flag_change": false,
+    "broker_topic_or_consumer_group_change": false,
+    "public_api_change": false,
+    "dependency_or_cargo_lock_change": false,
+    "second_inbox_or_projector": false
+  },
+  "not_claimed": [
+    "tests or source verifiers executed",
+    "external Iggy poison publication or server worker process restart",
+    "physical broker duplicate suppression after publish success before durable mark_published",
+    "multi-process poison claim contention or lease expiry",
+    "owner checkpoint repair",
+    "deletion or ACL ordering",
+    "Search-disabled runtime correlation",
+    "FORUM-23B2G2B3D completion",
+    "LINK-FORUM-03 closure"
+  ],
+  "maintainer_commands": [
+    "cargo test -p rustok-server --test forum_search_poison_protocol -- --nocapture",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-d4-poison-recovery.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs",
+    "cargo check -p rustok-server --features mod-forum --all-targets",
+    "cargo xtask module validate forum",
+    "cargo xtask module validate search"
+  ],
+  "remaining_task": "FORUM-23B2G2B3D",
+  "remaining_scope": "Maintainer-executed PostgreSQL and external-Iggy poison/DLQ evidence, publish-mark confirmation ambiguity, multi-process claim contention, owner-checkpoint repair, multi-process projection serialization, deletion/ACL/Search-disabled correlation and LINK-FORUM-03"
+}

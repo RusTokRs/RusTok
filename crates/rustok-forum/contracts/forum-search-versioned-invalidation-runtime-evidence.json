@@ -53,6 +53,24 @@
         "projector_or_owner_checkpoint",
         "multi_process_or_visibility_end_to_end"
       ]
+    },
+    {
+      "task": "FORUM-23B2G2B3D4",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-d4-poison-recovery-source-proof.json",
+      "test": "apps/server/tests/forum_search_poison_protocol.rs",
+      "covers": [
+        "raw_poison_durable_published_before_ack",
+        "semantic_poison_shared_receipt_protocol",
+        "acknowledgement_only_redelivery_after_published",
+        "failed_dlq_publication_claim_release"
+      ],
+      "does_not_cover": [
+        "external_iggy_poison_or_server_worker_restart",
+        "publish_success_before_mark_published_confirmation_ambiguity",
+        "multi_process_claim_contention",
+        "projector_or_owner_checkpoint",
+        "visibility_end_to_end"
+      ]
     }
   ],
   "required_runtime": {
@@ -182,6 +200,8 @@
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_postgres -- --nocapture --test-threads=1",
     "node scripts/verify/verify-forum-search-versioned-invalidation-ack-restart-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-d4-poison-recovery.mjs",
+    "cargo test -p rustok-server --test forum_search_poison_protocol -- --nocapture",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
