@@ -2,6 +2,7 @@ mod artifact_permission_assignment;
 mod artifact_permission_catalog;
 pub mod bootstrap;
 pub mod catalog;
+mod control_plane;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -26,6 +27,10 @@ pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
 pub use consistency::{RbacConsistencyStats, load_consistency_stats};
+pub use control_plane::{
+    RbacControlPlaneAdmissionError, RbacControlPlanePrincipal,
+    require_direct_control_plane_user,
+};
 pub use error::RbacError;
 pub use integration::{
     RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED, RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED,

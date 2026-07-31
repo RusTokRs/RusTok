@@ -82,6 +82,34 @@ staging only. Issue #2680 remains open until same-SHA source/unit/compile
 evidence and retained live denial, admission, rotation, revocation and
 multi-replica parity evidence exist.
 
+## RBAC artifact permission control-plane composition
+
+Artifact role-permission grants and role/permission metadata are tenant RBAC
+control-plane state. Server and native adapters may authenticate and map
+transport errors, but they must not define a second principal policy or treat an
+effective permission as sufficient proof of principal eligibility.
+
+The correction staged during `core/rbac` uses the owner-provided
+`RbacControlPlanePrincipal` policy for GraphQL, REST and native RBAC Admin:
+
+- only a direct grant with a non-nil session may enter the control plane;
+- the authenticated tenant must equal the middleware-routed tenant before
+  permission admission;
+- OAuth authorization-code and client-credentials principals remain denied even
+  when their effective scoped permissions include `modules:manage` or
+  `settings:read`;
+- permission admission occurs only after principal and tenant admission;
+- the durable REST operation actor is always `AuthContext.user_id`; request
+  payloads cannot supply or replace the audit identity;
+- native RBAC Admin uses the same owner policy and no longer retains a separate
+  generic tenant-only helper;
+- adapters compose neutral authenticated facts into the owner policy, while the
+  owner crate remains independent of Axum and the `rustok-api/server` feature.
+
+Same-SHA formatting, default/all-feature owner compilation, RBAC Admin SSR
+compilation, server compilation, focused tests and live negative transport
+evidence remain required before this correction is considered verified.
+
 ## Improvements
 
 ### Architecture debt
@@ -109,6 +137,7 @@ multi-replica parity evidence exist.
 - Introduce regular security review for sensitive endpoints (auth, tenant, admin operations).
 - Expand security event audit (login, privilege changes, tenant boundary violations).
 - Retain host-global operator credential denial/admission, rotation and replica-parity evidence without moving credential ownership into tenant OAuth or RBAC.
+- Keep role/permission control-plane principal admission owner-defined and ahead of effective permission checks on every transport.
 
 ### Test coverage
 
@@ -116,16 +145,17 @@ multi-replica parity evidence exist.
 - Add contract tests for API response stability for frontends.
 - Include negative tests for RBAC/tenant isolation and failure-mode tests for event transport.
 - Add live HTTP/native host-authority tests for no header, wrong token, read/manage hierarchy, audit identity, Iggy authenticated/resolved tenant ownership, rotation/revocation and WebSocket denial.
+- Retain REST artifact-role permission and native RBAC Admin tests/verifiers for OAuth delegated/service denial, tenant mismatch, missing permission and trusted actor propagation.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `pending`
 - Last verified at (UTC): `2026-07-31`
-- Scope inspected: `cross-owner Tenant trust sweep only: host-global Events native, Iggy native, System GraphQL and Settings GraphQL authority; tenant OAuth administration; credential middleware and HTTP GraphQL/WebSocket composition`
-- Findings: `P0=2, P1=1, P2=1, P3=0` (the two P0 findings and one P1 raw-credential-lifetime defect belong to the cross-owner Tenant/Events interaction; the existing P2 is the earlier module-control-plane construction finding)
-- Fixed in this pass: `the earlier fail-closed host context is retained; a rejected OAuth-client allowlist design was removed before merge after proving tenant settings:manage can rotate OAuth app secrets; the replacement authenticates a dedicated host-owned opaque token by SHA-256 digest, removes the raw header before dispatch, inserts typed native authority, scopes typed authority across HTTP GraphQL, leaves WebSocket denied, moves the separate Iggy native read/write adapter from tenant SETTINGS_* to host Read/Manage, uses the host audit actor, and retains authenticated/resolved tenant equality for Iggy secret ownership; PR #2735 merged the result as 1ce83819b077ef6e0df009fd5675f556315ef63a`
-- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; host-authority formatting, source guard, server/API unit tests, server/events/Iggy-admin compile checks and live denial/admission/rotation/revocation/replica evidence are pending; issue #2680 remains open`
-- Evidence: `source files, unit regressions, the boundary verifier and runbook are merged at 1ce83819b077ef6e0df009fd5675f556315ef63a; PR #2735 exact-head jobs were queued at merge and are not claimed as passed; Rust-host smoke remained in its pre-build migration phase; no pull-request workflow runs are currently returned for the merge commit; local execution remains unavailable because github.com DNS resolution fails; superseded PR #2726 is not merge-SHA evidence`
-- Next action: `finish the current core/tenant item; collect any completed PR #2735 exact-head evidence without upgrading queued jobs, run the host-authority source/unit/compile gates on one reconciled revision, then resume the full server composition audit in Wave 2`
-- Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo check -p rustok-iggy-connector-admin --features ssr && cargo check -p rustok-server --lib`
+- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority, followed by the active core/rbac review of authoritative request scope, artifact role-permission REST adapter and native RBAC Admin bootstrap`
+- Findings: `P0=3, P1=2, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the RBAC REST invalid principal grant; the second P1 is native role-metadata admission inconsistency; the existing P2 is the earlier module-control-plane construction finding)
+- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 now stages one owner host-neutral direct-session policy for REST, GraphQL and native RBAC Admin, authenticated/routed tenant equality before modules:manage or settings:read, trusted AuthContext actor propagation and removal of the obsolete native tenant-only helper.`
+- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC P0/P1 corrections still lack same-SHA format, owner/admin/server compile, focused unit/architecture/verifier tests and live transport evidence; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
+- Evidence: `source audit confirms middleware builds AuthContext and request scope from authoritative DB permissions, with OAuth scopes only narrowing authority. PR #2747 contains the owner principal policy, REST/GraphQL/native composition, unit regressions, rbac_artifact_permission_control_plane_guard and the updated native verifier. No successful branch execution result is claimed yet. Host-authority source is merged at 1ce83819b077ef6e0df009fd5675f556315ef63a; its exact-head Rust-host path is blocked before server build by issue #2740.`
+- Next action: `collect exact-head format/check/Clippy and focused evidence for PR #2747, continue the core/rbac P0/P1 sweep, and leave the full server composition audit for its Wave 2 cursor visit`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs`

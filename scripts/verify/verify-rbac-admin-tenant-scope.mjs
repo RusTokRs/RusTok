@@ -7,6 +7,10 @@ const source = readFileSync(
   new URL('crates/rustok-rbac/admin/src/transport/native_server_adapter.rs', root),
   'utf8',
 );
+const owner = readFileSync(
+  new URL('crates/rustok-rbac/src/control_plane.rs', root),
+  'utf8',
+);
 const cargo = readFileSync(
   new URL('crates/rustok-rbac/admin/Cargo.toml', root),
   'utf8',
@@ -17,37 +21,54 @@ const fail = (message) => {
 };
 
 for (const marker of [
-  'fn require_rbac_admin_tenant_scope<T>(',
-  'rbac_admin_scope_matches(auth_tenant_id, resolved_tenant_id)',
-  'code = "rbac.admin_tenant_scope_mismatch"',
+  'RbacControlPlanePrincipal',
+  'require_direct_control_plane_user(principal, tenant.id)',
+  'tenant_id: auth.tenant_id',
+  'session_id: auth.session_id',
+  'client_id: auth.client_id',
+  'grant_type: &auth.grant_type',
+  'code = "rbac.admin_control_plane_denied"',
   'boundary = RBAC_ADMIN_BOUNDARY',
-  'Err(ServerFnError::new("RBAC admin access is denied"))',
-  'require_rbac_admin_tenant_scope(&auth.tenant_id, &tenant.id)?;',
-  'fn rbac_admin_scope_requires_matching_tenant()',
+  'ServerFnError::new("RBAC admin access is denied")',
   'RBAC authentication context is temporarily unavailable',
   'RBAC tenant context is temporarily unavailable',
   'fn rbac_admin_context_error<E: std::fmt::Debug>(',
 ]) {
-  if (!source.includes(marker)) fail(`RBAC Admin tenant/error guard missing ${marker}`);
+  if (!source.includes(marker)) fail(`RBAC Admin principal/error guard missing ${marker}`);
 }
 
-const scopeIndex = source.indexOf('require_rbac_admin_tenant_scope(&auth.tenant_id, &tenant.id)?;');
+const principalIndex = source.indexOf('require_direct_control_plane_user(principal, tenant.id)');
 const permissionIndex = source.indexOf('Permission::SETTINGS_READ');
-if (scopeIndex < 0 || permissionIndex < 0 || scopeIndex >= permissionIndex) {
-  fail('RBAC Admin must bind authenticated and resolved tenants before SETTINGS_READ admission');
+if (principalIndex < 0 || permissionIndex < 0 || principalIndex >= permissionIndex) {
+  fail('RBAC Admin must admit a direct matching principal before SETTINGS_READ');
 }
 
 for (const forbidden of [
+  'fn require_rbac_admin_tenant_scope<T>(',
+  'fn rbac_admin_scope_matches<T: PartialEq>(',
   '.map_err(ServerFnError::new)?',
   '.map_err(|error| ServerFnError::new(error))?',
 ]) {
-  if (source.includes(forbidden)) fail(`RBAC Admin exposes raw context errors through ${forbidden}`);
+  if (source.includes(forbidden)) fail(`RBAC Admin retains obsolete or unsafe path ${forbidden}`);
+}
+
+for (const marker of [
+  'pub struct RbacControlPlanePrincipal',
+  'principal.client_id.is_some()',
+  'principal.grant_type != "direct"',
+  'principal.session_id.is_nil()',
+  'principal.tenant_id != tenant_id',
+]) {
+  if (!owner.includes(marker)) fail(`RBAC owner control-plane policy missing ${marker}`);
 }
 
 if (!cargo.includes('tracing.workspace = true')) {
-  fail('RBAC Admin structured tenant-scope diagnostics require direct tracing dependency');
+  fail('RBAC Admin structured control-plane diagnostics require direct tracing dependency');
+}
+if (!cargo.includes('"dep:rustok-rbac"')) {
+  fail('RBAC Admin SSR feature must activate the RBAC owner policy dependency');
 }
 
 console.log(
-  '[verify-rbac-admin-tenant-scope] RBAC Admin binds authenticated permissions to the resolved tenant and keeps context failures static publicly',
+  '[verify-rbac-admin-tenant-scope] RBAC Admin requires a direct matching principal before permission admission and keeps context failures static publicly',
 );

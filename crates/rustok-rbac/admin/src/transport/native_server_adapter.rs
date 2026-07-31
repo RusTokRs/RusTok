@@ -8,33 +8,6 @@ use crate::model::{RbacModulePermissionGroup, RbacRoleInfo};
 const RBAC_ADMIN_BOUNDARY: &str = "rbac_admin_native_transport";
 
 #[cfg(feature = "ssr")]
-fn rbac_admin_scope_matches<T: PartialEq>(auth_tenant_id: &T, resolved_tenant_id: &T) -> bool {
-    auth_tenant_id == resolved_tenant_id
-}
-
-#[cfg(feature = "ssr")]
-fn require_rbac_admin_tenant_scope<T>(
-    auth_tenant_id: &T,
-    resolved_tenant_id: &T,
-) -> Result<(), ServerFnError>
-where
-    T: PartialEq + std::fmt::Display,
-{
-    if rbac_admin_scope_matches(auth_tenant_id, resolved_tenant_id) {
-        return Ok(());
-    }
-
-    tracing::warn!(
-        auth_tenant_id = %auth_tenant_id,
-        resolved_tenant_id = %resolved_tenant_id,
-        code = "rbac.admin_tenant_scope_mismatch",
-        boundary = RBAC_ADMIN_BOUNDARY,
-        "RBAC admin permissions cannot cross the resolved tenant boundary"
-    );
-    Err(ServerFnError::new("RBAC admin access is denied"))
-}
-
-#[cfg(feature = "ssr")]
 fn rbac_admin_context_error<E: std::fmt::Debug>(
     error: E,
     context_kind: &'static str,
@@ -56,6 +29,9 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
     {
         use rustok_api::{AuthContext, Permission, TenantContext, has_effective_permission};
         use rustok_core::{ModuleRegistry, Rbac, UserRole, infer_user_role_from_permissions};
+        use rustok_rbac::{
+            RbacControlPlanePrincipal, require_direct_control_plane_user,
+        };
 
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -76,7 +52,23 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
                     "RBAC tenant context is temporarily unavailable",
                 )
             })?;
-        require_rbac_admin_tenant_scope(&auth.tenant_id, &tenant.id)?;
+        let principal = RbacControlPlanePrincipal {
+            tenant_id: auth.tenant_id,
+            session_id: auth.session_id,
+            client_id: auth.client_id,
+            grant_type: &auth.grant_type,
+        };
+        require_direct_control_plane_user(principal, tenant.id).map_err(|error| {
+            tracing::warn!(
+                reason = ?error,
+                auth_tenant_id = %auth.tenant_id,
+                resolved_tenant_id = %tenant.id,
+                code = "rbac.admin_control_plane_denied",
+                boundary = RBAC_ADMIN_BOUNDARY,
+                "RBAC admin bootstrap principal is not eligible for control-plane access"
+            );
+            ServerFnError::new("RBAC admin access is denied")
+        })?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new(
@@ -156,18 +148,5 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
         Err(ServerFnError::new(
             "rustok-rbac-admin requires the `ssr` feature for native bootstrap",
         ))
-    }
-}
-
-#[cfg(all(test, feature = "ssr"))]
-mod tests {
-    use super::{rbac_admin_scope_matches, require_rbac_admin_tenant_scope};
-
-    #[test]
-    fn rbac_admin_scope_requires_matching_tenant() {
-        assert!(rbac_admin_scope_matches(&"tenant-a", &"tenant-a"));
-        assert!(!rbac_admin_scope_matches(&"tenant-a", &"tenant-b"));
-        assert!(require_rbac_admin_tenant_scope(&"tenant-a", &"tenant-a").is_ok());
-        assert!(require_rbac_admin_tenant_scope(&"tenant-a", &"tenant-b").is_err());
     }
 }

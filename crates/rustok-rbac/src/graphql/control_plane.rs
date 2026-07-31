@@ -3,19 +3,16 @@ use rustok_api::{AuthContext, graphql::GraphQLError};
 use uuid::Uuid;
 
 pub(super) fn require_direct_control_plane_user(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
-    if auth.client_id.is_some() || auth.grant_type != "direct" || auth.session_id.is_nil() {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "RBAC control plane requires a direct, session-bound user principal",
-        ));
-    }
-
-    if auth.tenant_id != tenant_id {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "authenticated principal belongs to another tenant",
-        ));
-    }
-
-    Ok(())
+    let principal = crate::RbacControlPlanePrincipal {
+        tenant_id: auth.tenant_id,
+        session_id: auth.session_id,
+        client_id: auth.client_id,
+        grant_type: &auth.grant_type,
+    };
+    crate::require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
+        let message = error.to_string();
+        <FieldError as GraphQLError>::permission_denied(&message)
+    })
 }
 
 #[cfg(test)]

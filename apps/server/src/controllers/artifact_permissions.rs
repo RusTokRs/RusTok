@@ -7,10 +7,11 @@ use axum::{
     response::Response,
     routing::put,
 };
-use rustok_api::{Permission, has_effective_permission};
+use rustok_api::{AuthContext, Permission, has_effective_permission};
 use rustok_rbac::{
     ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
-    RbacArtifactPermissionAssignmentService,
+    RbacArtifactPermissionAssignmentService, RbacControlPlanePrincipal,
+    require_direct_control_plane_user,
 };
 use rustok_web::json_response;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ use uuid::Uuid;
 
 use crate::{
     error::{Error, Result, http_error},
-    extractors::{auth::CurrentUser, tenant::CurrentTenant},
+    extractors::tenant::CurrentTenant,
     services::server_runtime_context::ServerRuntimeContext,
 };
 
@@ -47,7 +48,7 @@ pub(crate) struct ArtifactRolePermissionAssignmentResponse {
         (status = 200, description = "Artifact permission granted", body = ArtifactRolePermissionAssignmentResponse),
         (status = 400, description = "Invalid command"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "modules:manage permission required"),
+        (status = 403, description = "Direct session user with modules:manage required"),
         (status = 404, description = "Role or registered artifact permission not found"),
         (status = 409, description = "Idempotency command conflict")
     )
@@ -55,12 +56,12 @@ pub(crate) struct ArtifactRolePermissionAssignmentResponse {
 async fn grant_artifact_permission(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    current: CurrentUser,
+    auth: AuthContext,
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
-    ensure_modules_manage(&current)?;
-    assign(&ctx, tenant.id, current.user.id, role_id, input, true).await
+    ensure_artifact_permission_control_plane(&auth, tenant.id)?;
+    assign(&ctx, tenant.id, auth.user_id, role_id, input, true).await
 }
 
 #[utoipa::path(
@@ -74,7 +75,7 @@ async fn grant_artifact_permission(
         (status = 200, description = "Artifact permission revoked", body = ArtifactRolePermissionAssignmentResponse),
         (status = 400, description = "Invalid command"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "modules:manage permission required"),
+        (status = 403, description = "Direct session user with modules:manage required"),
         (status = 404, description = "Role or registered artifact permission not found"),
         (status = 409, description = "Idempotency command conflict")
     )
@@ -82,12 +83,12 @@ async fn grant_artifact_permission(
 async fn revoke_artifact_permission(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    current: CurrentUser,
+    auth: AuthContext,
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
-    ensure_modules_manage(&current)?;
-    assign(&ctx, tenant.id, current.user.id, role_id, input, false).await
+    ensure_artifact_permission_control_plane(&auth, tenant.id)?;
+    assign(&ctx, tenant.id, auth.user_id, role_id, input, false).await
 }
 
 async fn assign(
@@ -116,8 +117,24 @@ async fn assign(
     }))
 }
 
-fn ensure_modules_manage(current: &CurrentUser) -> Result<()> {
-    if has_effective_permission(&current.permissions, &Permission::MODULES_MANAGE) {
+fn ensure_artifact_permission_control_plane(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
+    let principal = RbacControlPlanePrincipal {
+        tenant_id: auth.tenant_id,
+        session_id: auth.session_id,
+        client_id: auth.client_id,
+        grant_type: &auth.grant_type,
+    };
+    require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
+        http_error(rustok_web::HttpError::forbidden(
+            "forbidden",
+            error.to_string(),
+        ))
+    })?;
+    ensure_modules_manage(&auth.permissions)
+}
+
+fn ensure_modules_manage(permissions: &[Permission]) -> Result<()> {
+    if has_effective_permission(permissions, &Permission::MODULES_MANAGE) {
         return Ok(());
     }
     Err(http_error(rustok_web::HttpError::forbidden(
@@ -152,4 +169,86 @@ pub fn router() -> crate::routes::ServerRouter {
         "/api/rbac/artifact-permissions/roles/{role_id}",
         put(grant_artifact_permission).delete(revoke_artifact_permission),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_artifact_permission_control_plane;
+    use rustok_api::{AuthContext, Permission};
+    use uuid::Uuid;
+
+    fn auth_context(
+        tenant_id: Uuid,
+        session_id: Uuid,
+        client_id: Option<Uuid>,
+        grant_type: &str,
+        permissions: Vec<Permission>,
+    ) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id,
+            tenant_id,
+            permissions,
+            client_id,
+            scopes: Vec::new(),
+            grant_type: grant_type.to_string(),
+        }
+    }
+
+    #[test]
+    fn direct_session_manager_is_admitted() {
+        let tenant_id = Uuid::new_v4();
+        let auth = auth_context(
+            tenant_id,
+            Uuid::new_v4(),
+            None,
+            "direct",
+            vec![Permission::MODULES_MANAGE],
+        );
+
+        assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_ok());
+    }
+
+    #[test]
+    fn oauth_principals_are_denied_even_with_modules_manage() {
+        for grant_type in ["authorization_code", "client_credentials"] {
+            let tenant_id = Uuid::new_v4();
+            let auth = auth_context(
+                tenant_id,
+                Uuid::nil(),
+                Some(Uuid::new_v4()),
+                grant_type,
+                vec![Permission::MODULES_MANAGE],
+            );
+
+            assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
+        }
+    }
+
+    #[test]
+    fn direct_user_from_another_tenant_is_denied() {
+        let auth = auth_context(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            None,
+            "direct",
+            vec![Permission::MODULES_MANAGE],
+        );
+
+        assert!(ensure_artifact_permission_control_plane(&auth, Uuid::new_v4()).is_err());
+    }
+
+    #[test]
+    fn direct_user_without_modules_manage_is_denied() {
+        let tenant_id = Uuid::new_v4();
+        let auth = auth_context(
+            tenant_id,
+            Uuid::new_v4(),
+            None,
+            "direct",
+            vec![Permission::MODULES_READ],
+        );
+
+        assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
+    }
 }
