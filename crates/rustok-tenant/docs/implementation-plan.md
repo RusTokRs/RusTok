@@ -46,13 +46,24 @@ state adapter extracts `TenantContext` and never accepts a client tenant slug.
 The cross-owner trust sweep also found host-global Events/System/Settings
 operations that had accepted ordinary tenant `settings:*` or `logs:*`
 permissions. Commit `35afdd3a5d4ae74e735a2963e7246e21a3031e5d` (PR #2720)
-source-mitigates that exposure through the separate typed
-`rustok_api::HostAuthorityContext`: normal tenant authentication does not issue
-it, global reads require host `Read`, global writes require host `Manage`, and
-mutations are bound to a non-nil operator actor. No operator credential issuance
-path exists yet, so these operations intentionally fail closed. Issue #2680
-remains open for Auth/RBAC issuance, refresh/revocation and live composition.
-This cross-owner finding does not change the Tenant-owner count.
+source-mitigated that exposure through the separate typed
+`rustok_api::HostAuthorityContext`: global reads require host `Read`, global
+writes require host `Manage`, and mutations are bound to a non-nil operator
+actor.
+
+The current source follow-up implements issuance without trusting tenant OAuth
+or RBAC. A rejected design that allowlisted tenant OAuth client ids was removed
+before PR after the audit confirmed tenant `settings:manage` can rotate OAuth
+app secrets. The replacement uses a dedicated high-entropy
+`X-RusTok-Host-Token`; deployments store only SHA-256 digests, explicit
+read/manage levels and non-nil audit actors in host-owned
+`RUSTOK_HOST_AUTHORITY_CREDENTIALS`. Native middleware and HTTP GraphQL validate
+the same credential independently from tenant auth; GraphQL WebSocket remains
+fail-closed. Iggy mutation additionally requires authenticated/resolved tenant
+equality because encrypted connector secrets remain tenant-owned. Issue #2680
+remains open until same-SHA compile/unit/source evidence and retained live
+ordinary-tenant denial, host admission, rotation/revocation and multi-replica
+parity exist. This cross-owner finding does not change the Tenant-owner count.
 
 Detailed post-handoff evidence is retained in
 [`cycle-001-core-trust-supplement-20260731.md`](./cycle-001-core-trust-supplement-20260731.md).
@@ -105,11 +116,12 @@ Detailed post-handoff evidence is retained in
    mismatched routes, disabled/not-found tenants, module policy, locale selection,
    static public errors and cache invalidation in a composed host.
 
-7. **Complete host-operator authority.** Keep ordinary tenant requests denied and
-   implement the approved operator credential/issuance path from issue #2680.
-   **Done when:** issuance, refresh/revocation, native/GraphQL composition and
-   explicit-host-principal admission tests pass while ordinary tenant admins stay
-   denied.
+7. **Retain host-operator execution evidence.** Keep ordinary tenant requests and
+   WebSocket host operations denied; prove the host-owned credential over HTTP
+   GraphQL and native transports.
+   **Done when:** no-header/wrong-token denial, read/manage hierarchy, audit
+   identity, Iggy tenant secret ownership, overlap rotation, revocation and
+   multi-replica parity pass on one reconciled SHA and issue #2680 can close.
 
 8. **Keep ownership closed.** New runtime, admin, Translation, commerce or
    installer consumers must use the typed owner ports; direct `tenant_locales`
@@ -128,6 +140,7 @@ node scripts/verify/verify-tenant-admin-native-error-safety.mjs
 node scripts/verify/verify-tenant-locale-policy-migration.mjs
 node scripts/verify/verify-host-global-authority-boundary.mjs
 cargo test -p rustok-api host_authority -- --nocapture
+cargo test -p rustok-server host_authority --lib -- --nocapture
 cargo xtask module validate tenant
 cargo xtask module test tenant
 cargo xtask module validate commerce
@@ -141,6 +154,7 @@ cargo check -p rustok-commerce --all-features
 cargo test -p rustok-commerce --test context_service_test -- --nocapture
 cargo check -p rustok-events-module
 cargo test -p rustok-events-module
+cargo check -p rustok-server --lib
 cargo check -p rustok-storefront
 cargo test -p rustok-auth-cli oauth_create_app -- --nocapture
 cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture
@@ -166,7 +180,8 @@ is still required; source inspection is not a substitute.
 - [Commerce tenant-locale owner cutover](../../rustok-commerce/docs/tenant-locale-owner-cutover.md)
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Events runtime adapter plan](../../rustok-events-module/docs/implementation-plan.md)
-- GitHub issue #2680 for host-operator authority issuance
+- [Host-global operator runbook](../../../apps/server/docs/host-authority.md)
+- GitHub issue #2680 for retained host-operator authority evidence
 
 ## Change rules
 
@@ -176,9 +191,11 @@ is still required; source inspection is not a substitute.
    `ModuleControlPlane`.
 3. Treat tenant equality as mandatory before tenant permission admission, but do
    not disguise host-global resources as tenant-owned.
-4. Do not infer authority from a default tenant, first active tenant, OAuth
-   wildcard, built-in tenant role or magic UUID.
-5. Update this plan and the master verification cursor with every contract or
+4. Do not infer host authority from a default tenant, first active tenant, OAuth
+   application, scope, metadata, wildcard, built-in tenant role or magic UUID.
+5. Do not store raw host tokens in tenant rows, OAuth rows, repository files,
+   logs, URLs or browser storage.
+6. Update this plan and the master verification cursor with every contract or
    status change. Never claim source, compile or live evidence that did not run.
 
 ## Periodic release verification handoff
@@ -186,10 +203,10 @@ is still required; source inspection is not a substitute.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-07-31`
-- Scope inspected: `tenant owner CRUD and provisioning concurrency; locale-policy CAS/idempotency and migration invariants; lifecycle outbox; cache generation; storefront and commerce owner scope; Tenant/Auth/RBAC Admin authenticated-resolved tenant equality; host-global Events/System/Settings authority; OAuth and manifest issuance paths`
+- Scope inspected: `tenant owner CRUD and provisioning concurrency; locale-policy CAS/idempotency and migration invariants; lifecycle outbox; cache generation; storefront and commerce owner scope; Tenant/Auth/RBAC Admin authenticated-resolved tenant equality; host-global Events/System/Settings authority; tenant OAuth administration; native/HTTP GraphQL/WebSocket composition`
 - Findings: `P0=3, P1=11, P2=1, P3=0` (Tenant-owner count; cross-owner issue #2680 is tracked separately)
-- Fixed in this pass: `Tenant owner and directly related P0/P1/P2 corrections are merged in main through PR #2665; subsequent Channel, Index, Search, Email and Outbox Admin tenant-scope corrections are recorded in the cycle supplement; PR #2720 merged the separate typed host authority contract as 35afdd3a5d4ae74e735a2963e7246e21a3031e5d and moved confirmed host-global Events/System/Settings transports from tenant permissions to fail-closed host read/manage guards with non-nil operator audit identity`
-- Remaining risks or blockers: `same-SHA formatting, source guard, Rust compile/test and module validation are pending; both PostgreSQL races must rerun on the final revision; live Redis recovery, PostgreSQL backfill, real MySQL 8, deployed/native parity and remaining cache/RBAC inspection are required; issue #2680 still needs an approved operator issuance/refresh/revocation path before host-global controls are functional`
-- Evidence: `source files and focused regressions are merged at 35afdd3a5d4ae74e735a2963e7246e21a3031e5d; standard PR checks were still queued at merge and are not claimed as passed; the old temporary Tenant workflow was not merged and is not evidence for the current SHA; historical PostgreSQL race passes occurred on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 and must be rerun; connector-only local execution remains unavailable because github.com DNS resolution fails`
-- Next action: `inspect merge-commit and PR same-SHA checks and fix every branch-related failure; run the host-authority source/unit/compile gates, then execute the retained Tenant PostgreSQL, Redis and migration evidence before advancing the cursor`
-- Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo check -p rustok-events-module && cargo check -p rustok-server --lib && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture`
+- Fixed in this pass: `Tenant owner and directly related P0/P1/P2 corrections are merged in main through PR #2665; subsequent Channel, Index, Search, Email and Outbox Admin tenant-scope corrections are recorded in the cycle supplement; PR #2720 merged the typed fail-closed host authority contract; the current branch replaces the rejected tenant-OAuth client allowlist design with a host-owned opaque token digest policy, independent native/HTTP GraphQL admission, WebSocket denial, overlap rotation support and separate Iggy tenant secret ownership`
+- Remaining risks or blockers: `same-SHA formatting, source guard, Rust compile/test and module validation are pending; both PostgreSQL races must rerun on the final revision; live Redis recovery, PostgreSQL backfill, real MySQL 8, deployed/native parity and remaining cache/RBAC inspection are required; issue #2680 needs retained live host credential denial/admission, audit actor, rotation/revocation and replica parity evidence`
+- Evidence: `source files, unit regressions and the operator runbook are present on agent/host-operator-issuance-20260731; no execution claim is made because connector-only local execution remains unavailable while github.com DNS resolution fails; the old temporary Tenant workflow was not merged and is not evidence for the current SHA; historical PostgreSQL race passes occurred on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 and must be rerun`
+- Next action: `open the host-operator issuance PR, inspect every same-SHA check and fix branch-related failures; then execute retained Tenant PostgreSQL, Redis and migration evidence before advancing the cursor`
+- Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo check -p rustok-server --lib && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture`
