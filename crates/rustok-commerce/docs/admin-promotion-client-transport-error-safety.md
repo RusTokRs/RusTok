@@ -5,7 +5,9 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice covers the final Commerce Admin promotion facade in
-`crates/rustok-commerce/admin/src/transport/promotion.rs`.
+`crates/rustok-commerce/admin/src/transport/promotion.rs` and its client error
+policy in
+`crates/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs`.
 
 Covered operations:
 
@@ -14,31 +16,36 @@ Covered operations:
 
 ## Confirmed gap
 
-The mounted SSR promotion adapter already owns correlation-aware context and cart
-promotion `PortError` mapping. The public facade nevertheless returned the shared
-native `ApiError` directly. That type stores `ServerFn(String)`, so framework,
-serialization, transport, or unexpected server-function text could still become
-the displayed Admin error after leaving the native adapter.
+The mounted SSR promotion adapter owns context and cart-promotion `PortError`
+mapping. The public facade then converts a final returned `ApiError` to one static
+Admin message. Before this follow-up, that final mapping also wrote the complete
+`ApiError` into structured diagnostics.
+
+Both `ApiError::Graphql(String)` and `ApiError::ServerFn(String)` can contain
+framework, serialization, transport, GraphQL, or unexpected server-function text.
+That text is not required to correlate or classify the facade failure.
 
 ## Source policy
 
-Each promotion facade operation now creates a `PromotionClientErrorContext` before
-the unchanged native adapter call and maps only a final returned `ApiError`.
+Each promotion facade operation creates a `PromotionClientErrorContext` before the
+unchanged native adapter call and maps only a final returned `ApiError`.
 
-The original typed native error is retained only in structured diagnostics with:
+The client diagnostic now records only:
 
 - the Commerce Admin promotion consumer and exact operation;
 - a per-call correlation id;
-- the client transport boundary and a stable error code;
+- the client transport boundary and stable error code;
 - cart-id presence and character length;
-- promotion-payload presence.
+- promotion-payload presence;
+- the typed native error variant (`graphql` or `server_fn`);
+- native error-message presence and character length.
 
-The cart id and promotion draft values, including scope, kind, source id, line item,
-discount, amount, metadata, and any other payload fields, are not logged by this
-client boundary.
+The complete native error and its message are not logged. Cart-id and promotion
+draft values, including scope, kind, source id, line item, discount, amount,
+metadata, and any other payload fields, are also not logged by this boundary.
 
-The existing public error contract remains `ApiError`, but preview and apply now
-return the same static final message:
+The existing public error contract remains `ApiError`, and preview/apply continue
+to return the same static final message:
 
 `Commerce admin promotion request could not be completed`
 
@@ -62,6 +69,11 @@ formatting, workflows, CI, hydrate compilation, SSR compilation, browser behavio
 and mounted preview/apply failure behavior were not executed by this implementation
 agent.
 
-The broad ecommerce mapper-cleanup item remains open for tax, payment,
-fulfillment, order, remaining promotion paths, and other non-`PortError` public
-envelopes.
+The SSR promotion consumer still records raw framework extraction and owner
+`PortError` values together with full tenant, user, cart, channel, and locale
+identities. That server-side diagnostic cleanup is explicitly outside this
+client-only slice and remains open.
+
+The broad ecommerce mapper-cleanup item remains open for the SSR promotion
+consumer, payment, fulfillment, order, inventory, customer, remaining tax and
+promotion paths, and other non-`PortError` public envelopes.
