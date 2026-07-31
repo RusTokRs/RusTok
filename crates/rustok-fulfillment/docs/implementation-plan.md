@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-fulfillment`
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-07-31
 
 ## Current state
 
@@ -105,6 +105,15 @@ The native FFA surface remains seller/cart selection through
 `ShippingSelectionPort`; it does not publish complete projection list or lookup
 operations. No projection API should be added without a concrete consumer.
 
+Shipping-selection owner payload diagnostics are source-closed / unvalidated.
+Tenant parsing retains only a static failure fact and bounded context shape. All
+five `FulfillmentError` variants retain only a static variant plus aggregate
+text/UUID/opaque-payload shape. Raw tenant, parser, validation, transition,
+resource UUID, and database payloads are not recorded. Read/write admission,
+seller/profile filtering, owner delegation, severity, and public `PortError`
+envelopes are unchanged. Shipping-option projection and fulfillment lifecycle
+read diagnostic payloads remain separate open slices.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -122,6 +131,8 @@ operations. No projection API should be added without a concrete consumer.
   provider contracts.
 - Contract/provider evidence remains in the existing fulfillment evidence
   matrices and live-adapter files.
+- Shipping-selection diagnostic source evidence:
+  `crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json`.
 - Shipping-option source evidence:
   `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`.
 - Fulfillment lifecycle read source evidence:
@@ -134,11 +145,26 @@ operations. No projection API should be added without a concrete consumer.
   status.
 - Focused guards cover owner boundaries, application-host runtime composition,
   shared GraphQL resolver scope, GraphQL/admin REST lifecycle consumer cutover,
-  typed public envelopes, the projection-parity capture boundary, the
-  deterministic deadline/failure harness, and the separate native selection
-  surface.
+  typed public envelopes, bounded shipping-selection diagnostics, the
+  projection-parity capture boundary, the deterministic deadline/failure harness,
+  and the separate native selection surface.
 - Compile, migrated database, mounted capture, failure-harness execution, restart,
   contention, and remote evidence remain missing.
+
+## Shipping-selection diagnostic source checklist
+
+- [x] Preserve the public `ShippingSelectionPort` trait, request/response DTOs,
+  read/write admission order, seller/profile filtering, and owner delegation.
+- [x] Replace tenant UUID parser payloads with a static parse-failure fact and
+  bounded context shape.
+- [x] Replace all five `FulfillmentError` payload diagnostics with a static variant
+  plus aggregate text, UUID, and opaque-payload shape.
+- [x] Preserve stable public code, message, kind, retryability, and error/warning
+  severity.
+- [x] Retain focused evidence and broad ecommerce guard coverage without claiming
+  compile or runtime validation.
+- [ ] Execute the focused verifier, broad verifier/self-test, fulfillment compile,
+  native/GraphQL selection parity, restart, and remote-adapter evidence.
 
 ## Checkout execution source checklist
 
@@ -296,6 +322,9 @@ operations. No projection API should be added without a concrete consumer.
 
 - `npm run verify:fulfillment:admin-boundary`
 - `npm run verify:fulfillment:storefront-boundary`
+- `node scripts/verify/verify-fulfillment-shipping-selection-diagnostic-safety.mjs`
+- `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
+- `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
