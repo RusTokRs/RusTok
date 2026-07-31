@@ -188,12 +188,27 @@ requireAll(
   transportFacade,
   [
     "pub async fn fetch_forum_search_by_authors",
+    "forum_native_server_adapter::fetch_search(",
+    "forum_graphql_adapter::fetch_search(",
     "forum_native_server_adapter::fetch_search_with_authors",
     "forum_graphql_adapter::fetch_search_with_authors",
-    "Vec::new()",
   ],
   paths.transportFacade,
 );
+const legacyForumBranch = transportFacade.indexOf("if forum_category_scope");
+const additiveAuthorFunction = transportFacade.indexOf(
+  "pub async fn fetch_forum_search_by_authors",
+);
+if (legacyForumBranch < 0 || additiveAuthorFunction < 0) {
+  failures.push(`${paths.transportFacade}: Forum transport functions are incomplete`);
+} else {
+  const legacySection = transportFacade.slice(legacyForumBranch, additiveAuthorFunction);
+  if (legacySection.includes("fetch_search_with_authors")) {
+    failures.push(
+      `${paths.transportFacade}: existing Forum search must keep the legacy adapter path`,
+    );
+  }
+}
 
 rejectAll(
   graphqlTypes,
@@ -267,7 +282,10 @@ if (contract) {
   if (contract.transport_parity?.existing_native_endpoint_signature_changed !== false) {
     failures.push(`${paths.contract}: existing native endpoint signature changed`);
   }
-  if (contract.transport_parity?.additive_author_native_endpoint !== "search/forum-storefront-search-by-authors") {
+  if (
+    contract.transport_parity?.additive_author_native_endpoint !==
+    "search/forum-storefront-search-by-authors"
+  ) {
     failures.push(`${paths.contract}: additive native author endpoint is missing`);
   }
 }
