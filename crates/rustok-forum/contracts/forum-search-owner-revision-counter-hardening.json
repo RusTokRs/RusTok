@@ -2,7 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-23B2G2A1",
   "status": "source_complete_execution_pending",
-  "scope": "Harden the merged Forum projection revision counter and ledger against direct non-monotonic row mutation and table truncation without editing the delivered G2A baseline migration",
+  "scope": "Harden the merged Forum projection revision counter and ledger against direct non-monotonic row mutation, uncovered committed revisions and table truncation without editing the delivered G2A baseline migration",
   "predecessor_task": "FORUM-23B2G2A",
   "predecessor_contract": "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
   "baseline_migration": "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
@@ -17,6 +17,8 @@
     "tenant_key_immutable": true,
     "row_delete_forbidden": true,
     "table_truncate_forbidden": true,
+    "committed_revision_requires_matching_ledger_row": true,
+    "ledger_coverage_check": "deferred constraint trigger at transaction commit",
     "positive_check_from_baseline_retained": true,
     "allocator_insert_or_increment_compatible": true
   },
@@ -48,6 +50,7 @@
   "non_claims": [
     "This slice does not add the G2B versioned wire event or Search owner-revision consumer",
     "This slice does not validate the sys_events JSON envelope from a Forum migration",
+    "This slice does not add a cross-module foreign key from the Forum ledger to sys_events",
     "This slice does not add PostgreSQL runtime evidence",
     "Tests, verifiers, formatting, Cargo checks and Clippy were not run by the implementation agent"
   ],
@@ -55,6 +58,6 @@
     "publish and consume a versioned Forum projection invalidation carrying owner revision",
     "store owner revision independently from Search ingest_sequence",
     "reconcile pending retryable missing and stale delivery without advancing early",
-    "capture concurrent writer direct SQL rollback truncate and LINK-FORUM-03 PostgreSQL evidence"
+    "capture concurrent writer direct SQL rollback deferred-constraint truncate and LINK-FORUM-03 PostgreSQL evidence"
   ]
 }
