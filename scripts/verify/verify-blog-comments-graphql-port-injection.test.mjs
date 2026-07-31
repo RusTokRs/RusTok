@@ -20,6 +20,8 @@ const commentMutationPath = 'crates/rustok-blog/src/graphql/mutation.rs';
 const servicePath = 'crates/rustok-blog/src/services/comment.rs';
 const consumerMatrixPath =
   'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+const serverCodegenPath = 'apps/server/build.rs';
+const serverSchemaPath = 'apps/server/src/graphql/schema.rs';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
 const harnessTest =
   'graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection';
@@ -33,6 +35,7 @@ function write(root, relativePath, content) {
 
 function fixture({
   missingManifestFactory = false,
+  missingHostAttachment = false,
   missingHostLookup = false,
   missingInjectedBranch = false,
   missingFallback = false,
@@ -57,6 +60,20 @@ function fixture({
     root,
     graphqlModulePath,
     'mod runtime_data;\npub use runtime_data::{BlogGraphqlRuntimeData, attach_schema_data};',
+  );
+  write(
+    root,
+    serverCodegenPath,
+    missingHostAttachment
+      ? 'graphql_runtime_data_factory: Option<String> graphql_runtime_data_factory_expr'
+      : 'graphql_runtime_data_factory: Option<String> graphql_runtime_data_factory_expr builder = builder.data({factory}(inputs)?);',
+  );
+  write(
+    root,
+    serverSchemaPath,
+    missingHostAttachment
+      ? ''
+      : 'schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)',
   );
 
   write(
@@ -145,6 +162,8 @@ ${
         comment_mutation: commentMutationPath,
         consumer_service: servicePath,
         consumer_matrix: consumerMatrixPath,
+        server_codegen: serverCodegenPath,
+        server_schema: serverSchemaPath,
       },
       profiles: {
         source_verified: remotePromoted
@@ -155,6 +174,7 @@ ${
       composition: {
         host_inputs: 'rustok_api::graphql::GraphqlRuntimeInputs',
         manifest_factory: 'graphql::attach_schema_data',
+        schema_attachment: 'schema_codegen::attach_module_graphql_data',
         schema_data: 'BlogGraphqlRuntimeData',
         shared_value: 'Arc<dyn CommentsThreadPort>',
         lookup: 'GraphqlRuntimeInputs::shared_get',
@@ -185,7 +205,7 @@ ${
     planPath,
     planDrift
       ? ''
-      : 'blog-comments-graphql-port-injection.json verify-blog-comments-graphql-port-injection.mjs verify-blog-comments-graphql-port-injection.test.mjs BlogGraphqlRuntimeData graphql::attach_schema_data GraphQL Comments host selection is source-locked Blog FBA package-chain registration remains pending remote network transport remains pending Slice 61',
+      : 'blog-comments-graphql-port-injection.json verify-blog-comments-graphql-port-injection.mjs verify-blog-comments-graphql-port-injection.test.mjs BlogGraphqlRuntimeData graphql::attach_schema_data schema_codegen::attach_module_graphql_data GraphQL Comments host selection is source-locked Blog FBA package-chain registration remains pending remote network transport remains pending Slice 61',
   );
 
   return root;
@@ -220,6 +240,10 @@ test('accepts canonical Blog GraphQL Comments port injection source', () => {
 
 test('rejects removal of the manifest runtime-data factory', () => {
   assert.notEqual(rejects({ missingManifestFactory: true }).status, 0);
+});
+
+test('rejects removal of the generated schema attachment path', () => {
+  assert.notEqual(rejects({ missingHostAttachment: true }).status, 0);
 });
 
 test('rejects removal of the host shared-value lookup', () => {
