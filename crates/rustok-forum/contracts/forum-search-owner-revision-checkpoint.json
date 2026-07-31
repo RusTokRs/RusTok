@@ -64,6 +64,8 @@
   "processing_recovery": {
     "lease_age": "1 hour",
     "bounded_by_tenant_page_limit": true,
+    "bounded_by_event_page_limit": true,
+    "oldest_ingest_sequence_first": true,
     "same_tenant_advisory_lock_required": true,
     "active_projector_cannot_be_recovered": true,
     "recovered_status": "retryable_error",
