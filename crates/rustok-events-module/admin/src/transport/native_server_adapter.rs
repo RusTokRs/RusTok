@@ -92,7 +92,7 @@ pub async fn update_event_delivery_profile_native(
             .ok_or_else(|| ServerFnError::new("event delivery control is unavailable"))?;
         let outcome = control
             .0
-            .update_profile(profile, uuid::Uuid::nil())
+            .update_profile(profile, authority.actor_id())
             .await
             .map_err(ServerFnError::new)?;
 
