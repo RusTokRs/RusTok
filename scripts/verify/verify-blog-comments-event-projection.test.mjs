@@ -34,6 +34,9 @@ function fixture({
   missingRestartHarness = false,
   missingRestartConnection = false,
   missingRestartRegistration = false,
+  missingProcessRestartCase = false,
+  missingProcessWorker = false,
+  singleProcessWorkerInvocation = false,
   statusDrift = false,
   harnessStatusDrift = false,
   hostHarnessStatusDrift = false,
@@ -41,6 +44,7 @@ function fixture({
   concurrencyStatusDrift = false,
   postgresStatusDrift = false,
   restartStatusDrift = false,
+  processRestartStatusDrift = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
@@ -59,6 +63,7 @@ function fixture({
   const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
   const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
   const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
+  const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
 
   write(
     root,
@@ -169,11 +174,32 @@ count_outbox_events(&test_db.db)
   }
 
   if (!missingRestartHarness) {
+    const processParentSource = missingProcessRestartCase
+      ? ''
+      : `
+async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter()
+run_projection_worker(
+${singleProcessWorkerInvocation ? '' : 'run_projection_worker('}
+load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)
+count_delivery(&test_db.db, envelope.id).await?, 1
+count_outbox_events(&test_db.db).await?, 1
+`;
+    const processWorkerSource = missingProcessWorker
+      ? ''
+      : `
+async fn process_restart_worker_applies_envelope_from_env()
+if env::var_os(PROCESS_WORKER_ENV).is_none()
+let event_id = required_uuid(PROCESS_EVENT_ENV)?;
+envelope.id = event_id;
+envelope.correlation_id = event_id;
+`;
     write(
       root,
       restartHarnessPath,
       `
 const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+const PROCESS_WORKER_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_WORKER";
+const PROCESS_EVENT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_EVENT_ID";
 struct PostgresBlogProjectionRestartTestDb
 database_url: String
 async fn restarted_connection(&self)
@@ -188,6 +214,14 @@ restarted_handler.handle(&envelope).await?;
 load_post_state(&restarted_db, tenant_id, post_id).await?, (1, 2)
 count_delivery(&restarted_db, envelope.id).await?, 1
 count_outbox_events(&restarted_db).await?, 1
+${processParentSource}
+${processWorkerSource}
+fn run_projection_worker(
+Command::new(env::current_exe()?)
+.arg("--exact")
+.arg("process_restart_worker_applies_envelope_from_env")
+.env(PROCESS_WORKER_ENV, "1")
+Blog projection restart worker exited with status
 CREATE TABLE blog_comment_projection_deliveries
 CREATE TABLE sys_events
 `,
@@ -330,7 +364,22 @@ assert!(!handler.handles(&forum_created));
         environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
         command: restartHarnessCommand,
         isolation: 'unique_schema_new_connection',
+        scope: 'same_process_new_connection_and_handler',
         cases: ['restarted_handler_reuses_delivery_ledger_without_reapplying_counter'],
+      },
+      process_restart_harness: {
+        status: processRestartStatusDrift ? 'executed' : 'executable_no_run',
+        runtime_status: processRestartStatusDrift ? 'passed' : 'not_run',
+        path: restartHarnessPath,
+        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+        command: processRestartHarnessCommand,
+        isolation: 'unique_schema_two_sequential_test_processes_same_envelope',
+        scope: 'os_process_reinstantiation_durable_delivery_replay',
+        non_claim: 'does_not_prove_full_server_host_restart_or_record_execution',
+        cases: [
+          'restarted_process_reuses_delivery_ledger_without_reapplying_counter',
+          'process_restart_worker_applies_envelope_from_env',
+        ],
       },
       cases: [
         { name: 'shared_event_classifier' },
@@ -349,6 +398,7 @@ assert!(!handler.handles(&forum_created));
         { name: 'postgres_missing_post_recovery' },
         { name: 'postgres_outbox_rollback_recovery' },
         { name: 'postgres_restart_replay' },
+        { name: 'postgres_process_restart_replay' },
         { name: 'module_listener_registration' },
       ],
     }),
@@ -399,7 +449,7 @@ assert!(!handler.handles(&forum_created));
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections process-level restart recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates restarted_process_reuses_delivery_ledger_without_reapplying_counter comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections two sequential OS test processes server-host restart',
   );
 
   return root;
@@ -526,6 +576,27 @@ test('rejects restart coverage that reuses the original connection', () => {
   );
 });
 
+test('rejects a missing process restart parent case', () => {
+  expectRejected(
+    { missingProcessRestartCase: true },
+    /missing async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter/,
+  );
+});
+
+test('rejects a missing process restart worker', () => {
+  expectRejected(
+    { missingProcessWorker: true },
+    /missing async fn process_restart_worker_applies_envelope_from_env/,
+  );
+});
+
+test('rejects process restart coverage with only one child process', () => {
+  expectRejected(
+    { singleProcessWorkerInvocation: true },
+    /expected 2 occurrences of run_projection_worker\(/,
+  );
+});
+
 test('rejects a registry without the restart target', () => {
   expectRejected({ missingRestartRegistration: true }, /restart test path drift/);
 });
@@ -556,4 +627,8 @@ test('rejects PostgreSQL harness execution promotion without execution', () => {
 
 test('rejects restart harness execution promotion without execution', () => {
   expectRejected({ restartStatusDrift: true }, /restart harness drift/);
+});
+
+test('rejects process restart harness execution promotion without execution', () => {
+  expectRejected({ processRestartStatusDrift: true }, /process restart harness drift/);
 });
