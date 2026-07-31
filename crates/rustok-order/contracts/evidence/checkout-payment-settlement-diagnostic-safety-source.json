@@ -6,10 +6,13 @@
     "canonical_owner": "crates/rustok-order/src/checkout_payment_settlement.rs",
     "documentation": "crates/rustok-order/docs/checkout-payment-settlement-local-context.md",
     "local_mapper_verifier": "scripts/verify/verify-order-payment-settlement-local-context.mjs",
-    "owner_verifier": "scripts/verify/verify-order-payment-settlement-error-context.mjs"
+    "owner_verifier": "scripts/verify/verify-order-payment-settlement-error-context.mjs",
+    "shared_wrapper_verifier": "scripts/verify/verify-order-checkout-owner-context.mjs"
   },
   "source_contract": {
     "local_mapper_event_branch_count": 2,
+    "shared_admission_event_branch_count": 2,
+    "shared_context_rejection_event_count": 3,
     "owner_context_parse_event_count": 2,
     "order_error_variant_count": 7,
     "owner_technical_variant_count": 2,
@@ -22,7 +25,17 @@
     "port_error_message_shape_logged_by_local_mapper": true,
     "same_port_error_returned": true,
     "local_mapper_payload_diagnostic_cleanup_closed": true,
-    "shared_admission_context_payload_diagnostic_cleanup_closed": false,
+    "complete_port_error_logged_by_shared_admission": false,
+    "port_error_message_text_logged_by_shared_admission": false,
+    "shared_admission_static_port_error_kind_logged": true,
+    "shared_admission_port_error_message_shape_logged": true,
+    "uuid_parse_error_payload_logged_by_shared_context": false,
+    "complete_port_error_logged_by_shared_context": false,
+    "port_error_message_text_logged_by_shared_context": false,
+    "shared_context_static_parse_failure_logged": true,
+    "shared_context_static_port_error_kind_logged": true,
+    "shared_context_port_error_message_shape_logged": true,
+    "shared_admission_context_payload_diagnostic_cleanup_closed": true,
     "canonical_owner_payload_diagnostic_cleanup_closed": true,
     "canonical_owner_safe_context_shape": true,
     "canonical_owner_safe_request_shape": true,
@@ -95,10 +108,12 @@
     "mounted_runtime_proven": false
   },
   "notes": [
+    "Shared write-admission events record only stable PortError kind, message presence and character length, retryability, code, and safe context shape.",
+    "Shared tenant, actor, and causation rejection events retain static parse-failure, expected-operation presence/non-nil, mismatch, PortError kind, and message-shape facts without parser or complete error payloads.",
     "The settlement post-delegation mapper records only stable PortError kind plus message presence and character length.",
     "The canonical owner records static OrderError variant and aggregate text, UUID, and opaque-payload shape without complete internal payloads.",
     "Owner tenant and actor UUID parse failures retain only static field, value length, and parse_failed facts.",
     "Lifecycle diagnostics use a closed static OrderStatusKind label.",
-    "Shared admission/context payload diagnostics, runtime validation, and the broad ecommerce mapper cleanup remain open."
+    "Runtime validation and the broad ecommerce mapper cleanup remain open."
   ]
 }
