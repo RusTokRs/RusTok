@@ -68,7 +68,7 @@ requireMarkers("target", [
 ]);
 
 requireMarkers("source", [
-  "MutationFailureSource::",
+  "pub enum MutationFailureSource",
   "InvalidRecord",
   "BlockingValid",
   "entered.wait().await",
@@ -96,6 +96,7 @@ requireMarkers("evidence", [
 requireMarkers("database", [
   "RUSTOK_INDEX_TEST_DATABASE_URL",
   "CREATE SCHEMA",
+  "rustok_idx_recon_mut_fail_",
   "IndexModule.migrations()",
   "persist_schema",
   "ALTER TABLE index_entities RENAME TO index_entities_temporarily_unavailable",
