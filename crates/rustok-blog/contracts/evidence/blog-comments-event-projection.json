@@ -54,6 +54,18 @@
       "event_dispatcher_routes_registered_handler_and_commits_projection"
     ]
   },
+  "concurrency_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact",
+    "isolation": "unique_schema_four_independent_connections_barrier",
+    "scope": "concurrent_unique_envelopes_same_post_final_counter_delivery_outbox",
+    "cases": [
+      "concurrent_created_events_converge_without_lost_updates"
+    ]
+  },
   "postgres_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
@@ -121,6 +133,10 @@
       "expected": "the retained PostgreSQL dispatcher case registers the Blog handler through BlogModule, publishes one envelope through EventBus and EventDispatcher, then expects the counter, delivery ledger, and outbox row to commit"
     },
     {
+      "name": "postgres_concurrent_unique_deliveries",
+      "expected": "four handler instances start behind one barrier on four independent PostgreSQL connections, deliver unique envelopes to one post, and require count four, version five, four ledger rows, and four outbox rows without claiming observed retry count"
+    },
+    {
       "name": "postgres_duplicate_delivery",
       "expected": "the retained PostgreSQL target replays one envelope id and expects one counter transition, one delivery row, and one outbox row"
     },
@@ -149,13 +165,14 @@
     "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
     "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
     "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
+    "execute the env-gated PostgreSQL concurrency case and retain four-connection convergence output",
     "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
     "execute the env-gated PostgreSQL comment_projection_restart_postgres_test target and retain its output",
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
     "retain restarted-handler replay evidence across a new database connection",
-    "retain concurrent optimistic-update exhaustion and retry evidence",
+    "retain explicit optimistic retry-count and exhaustion evidence",
     "retain process restart recovery evidence"
   ]
 }
