@@ -7,6 +7,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::{SettingsService, ValidatorRegistry};
 use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 
+use super::require_tenant_settings_scope;
 use super::types::{
     UpdateEventDeliveryConfigurationInput, UpdateEventDeliveryConfigurationPayload,
     UpdateIggyConnectorConfigurationInput, UpdateIggyConnectorConfigurationPayload,
@@ -102,6 +103,7 @@ impl SettingsMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
+        require_tenant_settings_scope(auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
             return Err(<FieldError as GraphQLError>::permission_denied(
