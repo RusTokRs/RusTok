@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
+use std::sync::Arc;
+
+#[cfg(feature = "ssr")]
 use crate::model::{BlogModerationComment, BlogPostListItem};
 use crate::model::{
     BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
@@ -74,6 +77,7 @@ pub(super) async fn moderate_comment(
 struct NativeContext {
     db: sea_orm::DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
+    comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>,
     auth: rustok_api::AuthContext,
     tenant: rustok_api::TenantContext,
 }
@@ -101,13 +105,28 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
         .ok_or_else(|| {
             ServerFnError::new("blog/admin requires TransactionalEventBus in host runtime context")
         })?;
+    let comments_thread_port =
+        runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
 
     Ok(NativeContext {
         db: runtime.db_clone(),
         event_bus,
+        comments_thread_port,
         auth,
         tenant,
     })
+}
+
+#[cfg(feature = "ssr")]
+fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
+    if let Some(comments_thread_port) = context.comments_thread_port.clone() {
+        rustok_blog::CommentService::with_comments_thread_port(
+            context.db.clone(),
+            comments_thread_port,
+        )
+    } else {
+        rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -475,13 +494,13 @@ async fn blog_admin_moderation_comments_native(
 ) -> Result<BlogModerationCommentList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CommentService, ListCommentsFilter};
+        use rustok_blog::ListCommentsFilter;
 
         let context = native_context().await?;
         require_manage_permission(&context.auth)?;
         let post_id = parse_uuid(&post_id, "post_id")?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
-        let (items, total) = CommentService::new(context.db, context.event_bus)
+        let (items, total) = comment_service(&context)
             .list_for_post_with_locale_fallback(
                 context.tenant.id,
                 security_context(&context.auth),
@@ -518,7 +537,7 @@ async fn blog_admin_moderate_comment_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CommentService, ModerateCommentInput, ModerateCommentStatus};
+        use rustok_blog::{ModerateCommentInput, ModerateCommentStatus};
 
         let context = native_context().await?;
         require_manage_permission(&context.auth)?;
@@ -528,7 +547,7 @@ async fn blog_admin_moderate_comment_native(
             BlogModerationStatus::Spam => ModerateCommentStatus::Spam,
             BlogModerationStatus::Trash => ModerateCommentStatus::Trash,
         };
-        CommentService::new(context.db, context.event_bus)
+        comment_service(&context)
             .moderate_comment(
                 context.tenant.id,
                 comment_id,
@@ -612,5 +631,16 @@ fn map_moderation_comment(comment: rustok_blog::CommentListItem) -> BlogModerati
         status: comment.status,
         parent_comment_id: comment.parent_comment_id.map(|value| value.to_string()),
         created_at: comment.created_at,
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admin_native_runtime_exposes_comments_port_selection() {
+        let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;
+        let _ = selector;
     }
 }
