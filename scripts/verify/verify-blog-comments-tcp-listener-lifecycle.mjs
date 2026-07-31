@@ -157,7 +157,7 @@ for (const fragment of [
   'comments.tcp_server_idle_timeout',
   'timeout(duration, read_frame(stream, self.max_frame_bytes))',
   'request.context().require_deadline_semantics()',
-  '.authority\n                .authorize(peer_addr, operation, request.context())',
+  '.authorize(peer_addr, operation, request.context())',
 ]) {
   requireText(adapter, fragment, adapterPath);
 }
