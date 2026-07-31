@@ -114,12 +114,9 @@ async fn storefront_search_native(
             .await
             .map_err(ServerFnError::new)?;
         let input = normalize_search_input(query, locale, preset_key, filters)?;
-        let trusted_channel = resolve_trusted_storefront_channel(
-            &request_context,
-            tenant.id,
-            input.channel_id,
-        )
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        let trusted_channel =
+            resolve_trusted_storefront_channel(&request_context, tenant.id, input.channel_id)
+                .map_err(|error| ServerFnError::new(error.to_string()))?;
         let started_at = Instant::now();
         let transform = SearchDictionaryService::transform_query(&db, tenant.id, &input.query)
             .await

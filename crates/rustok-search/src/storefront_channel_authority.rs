@@ -164,7 +164,10 @@ mod tests {
         )
         .expect_err("caller channel override must fail closed");
 
-        assert_eq!(error, StorefrontChannelAuthorityError::RequestedChannelMismatch);
+        assert_eq!(
+            error,
+            StorefrontChannelAuthorityError::RequestedChannelMismatch
+        );
     }
 
     #[test]
@@ -176,7 +179,10 @@ mod tests {
         )
         .expect_err("foreign request context must fail closed");
 
-        assert_eq!(error, StorefrontChannelAuthorityError::RequestTenantMismatch);
+        assert_eq!(
+            error,
+            StorefrontChannelAuthorityError::RequestTenantMismatch
+        );
     }
 
     #[test]

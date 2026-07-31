@@ -81,8 +81,8 @@ pub use storefront_category_scope::{
     StorefrontSearchTransport, resolve_storefront_search_category_ids,
 };
 pub use storefront_channel_authority::{
-    StorefrontChannelAuthorityError, TrustedStorefrontChannel,
-    resolve_trusted_storefront_channel, resolve_trusted_storefront_channel_input,
+    StorefrontChannelAuthorityError, TrustedStorefrontChannel, resolve_trusted_storefront_channel,
+    resolve_trusted_storefront_channel_input,
 };
 pub use storefront_result_eligibility::{
     MAX_FORUM_SEARCH_RESULT_CANDIDATES, SharedStorefrontSearchResultEligibilityPort,

@@ -426,12 +426,9 @@ impl SearchQueryRoot {
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
         let request_context = ctx.data::<RequestContext>()?;
-        let trusted_channel = resolve_trusted_storefront_channel(
-            request_context,
-            tenant.id,
-            input.channel_id,
-        )
-        .map_err(|error| FieldError::new(error.to_string()))?;
+        let trusted_channel =
+            resolve_trusted_storefront_channel(request_context, tenant.id, input.channel_id)
+                .map_err(|error| FieldError::new(error.to_string()))?;
         enforce_storefront_rate_limit(ctx, policy.surface).await?;
         let engine = PgSearchEngine::new(db.clone());
         let requested_limit = input.limit;

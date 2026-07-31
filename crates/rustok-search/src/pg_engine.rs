@@ -120,15 +120,13 @@ fn build_filter_clause(query: &SearchQuery, starting_param: usize) -> FilterClau
         ));
     }
     if !query.category_ids.is_empty() {
-        let category_params =
-            bind_uuid_list(&query.category_ids, &mut values, &mut next_param);
+        let category_params = bind_uuid_list(&query.category_ids, &mut values, &mut next_param);
         let category_facet_values = query
             .category_ids
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
-        let category_facet_params =
-            bind_list(&category_facet_values, &mut values, &mut next_param);
+        let category_facet_params = bind_list(&category_facet_values, &mut values, &mut next_param);
         clauses.push(format!(
             "(
                 (
