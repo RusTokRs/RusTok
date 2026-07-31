@@ -14,7 +14,9 @@
     "comment_reads": "crates/rustok-blog/src/graphql/types.rs",
     "comment_mutation": "crates/rustok-blog/src/graphql/mutation.rs",
     "consumer_service": "crates/rustok-blog/src/services/comment.rs",
-    "consumer_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+    "consumer_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
+    "server_codegen": "apps/server/build.rs",
+    "server_schema": "apps/server/src/graphql/schema.rs"
   },
   "profiles": {
     "source_verified": [
@@ -28,6 +30,7 @@
   "composition": {
     "host_inputs": "rustok_api::graphql::GraphqlRuntimeInputs",
     "manifest_factory": "graphql::attach_schema_data",
+    "schema_attachment": "schema_codegen::attach_module_graphql_data",
     "schema_data": "BlogGraphqlRuntimeData",
     "shared_value": "Arc<dyn CommentsThreadPort>",
     "lookup": "GraphqlRuntimeInputs::shared_get",
