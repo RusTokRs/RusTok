@@ -20,7 +20,11 @@ function fixture({
   missingDeliveryLookup = false,
   missingOutbox = false,
   missingRegistration = false,
+  missingSharedClassifier = false,
+  directHandlesClassifier = false,
+  missingCounterHarness = false,
   statusDrift = false,
+  harnessStatusDrift = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
@@ -31,6 +35,7 @@ function fixture({
   const migrationRegistryPath = 'crates/rustok-blog/src/migrations/mod.rs';
   const modulePath = 'crates/rustok-blog/src/lib.rs';
   const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
+  const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 
   write(
     root,
@@ -38,22 +43,38 @@ function fixture({
     `
 const BLOG_POST_TARGET_TYPE: &str = "blog_post";
 const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;
-DomainEvent::CommentCreated if target_type == BLOG_POST_TARGET_TYPE => (*comment_id, *target_id, 1)
-DomainEvent::CommentDeleted if target_type == BLOG_POST_TARGET_TYPE => (*comment_id, *target_id, -1)
-_ => return Ok(())
+struct CommentProjectionChange
+${missingSharedClassifier ? '' : 'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>'}
+DomainEvent::CommentCreated
+delta: 1
+DomainEvent::CommentDeleted
+delta: -1
+fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32)
+comment_count.saturating_add(delta).max(0)
+version.saturating_add(1)
+${missingSharedClassifier ? '' : 'let Some(change) = comment_projection_change(&envelope.event) else'}
 let txn = self.db.begin().await?;
 ${missingDeliveryLookup ? '' : 'blog_comment_projection_delivery::Entity::find_by_id(envelope.id)'}
-update_comment_count_in_tx(&txn, envelope.tenant_id, post_id, delta).await?;
+update_comment_count_in_tx(&txn, envelope.tenant_id, change.post_id, change.delta).await?;
 event_id: Set(envelope.id)
+comment_id: Set(change.comment_id)
 .insert(&txn)
 ${missingOutbox ? '' : '.publish_in_tx( DomainEvent::BlogPostUpdated'}
 txn.commit().await?;
 ${missingTenantScope ? '' : 'Column::TenantId.eq(tenant_id)'}
 Column::Version.eq(post.version)
-post.comment_count.saturating_add(delta).max(0)
+next_comment_projection_state(post.comment_count, post.version, delta)
 if result.rows_affected == 1
 Error::NotFound
 impl EventHandler for BlogCommentProjectionHandler
+fn handles(&self, event: &DomainEvent) -> bool {
+  ${directHandlesClassifier ? 'matches!(event, DomainEvent::CommentCreated { .. })' : 'comment_projection_change(event).is_some()'}
+}
+async fn handle(&self, envelope: &EventEnvelope)
+#[cfg(test)]
+fn classifies_blog_comment_lifecycle_events()
+fn ignores_non_blog_targets_and_unrelated_events()
+${missingCounterHarness ? '' : 'fn counter_transition_is_non_negative_and_saturating()'}
 `,
   );
   write(root, serviceExportPath, 'pub use comment_projection::BlogCommentProjectionHandler;');
@@ -101,7 +122,7 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       module: 'blog',
       surface: 'comments_event_projection',
       status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
@@ -118,7 +139,19 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
         module_registration: modulePath,
         consumer_registry: registryPath,
       },
+      source_harness: {
+        status: harnessStatusDrift ? 'executed' : 'executable_no_run',
+        path: handlerPath,
+        module: 'services::comment_projection::tests',
+        command: harnessCommand,
+        cases: [
+          'shared_created_deleted_classifier',
+          'non_blog_target_rejection',
+          'non_negative_saturating_counter_transition',
+        ],
+      },
       cases: [
+        { name: 'shared_event_classifier' },
         { name: 'blog_post_target_filter' },
         { name: 'created_deleted_delta' },
         { name: 'envelope_idempotency' },
@@ -135,18 +168,29 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
     registryPath,
     JSON.stringify({
       evidence: { comments_event_projection: evidencePath },
+      verification_chain: {
+        source_gates: {
+          comments_event_projection: { unit_test: handlerPath },
+        },
+      },
       event_projection: {
         provider: 'comments',
         handler: 'BlogCommentProjectionHandler',
         delivery_ledger: 'blog_comment_projection_deliveries',
         status: 'implemented_static_only',
+        runtime_status: 'pending',
+        source_harness: {
+          path: handlerPath,
+          status: 'executable_no_run',
+          command: harnessCommand,
+        },
       },
     }),
   );
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile runtime delivery and recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests runtime delivery and recovery',
   );
 
   return root;
@@ -206,12 +250,56 @@ test('rejects missing module event-listener registration', () => {
   }
 });
 
+test('rejects project without the shared event classifier', () => {
+  const root = fixture({ missingSharedClassifier: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing fn comment_projection_change/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a separate EventHandler classifier', () => {
+  const root = fixture({ directHandlesClassifier: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /forbidden matches!/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a missing counter transition harness', () => {
+  const root = fixture({ missingCounterHarness: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing fn counter_transition_is_non_negative_and_saturating/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects runtime status promotion without execution', () => {
   const root = fixture({ statusDrift: true });
   try {
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /status drift/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects source harness execution promotion without execution', () => {
+  const root = fixture({ harnessStatusDrift: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /source harness drift/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
