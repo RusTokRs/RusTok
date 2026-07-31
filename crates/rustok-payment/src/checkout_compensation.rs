@@ -756,6 +756,43 @@ fn log_checkout_payment_compensation_owner_error<E: std::fmt::Debug>(
     );
 }
 
+fn log_checkout_payment_compensation_owner_warning<E: std::fmt::Debug>(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    code: &'static str,
+    event: &'static str,
+    error: &E,
+) {
+    let context_facts = checkout_payment_compensation_owner_context_facts(context);
+    tracing::warn!(
+        error = ?error,
+        owner = PAYMENT_OWNER,
+        operation = owner_operation,
+        local_operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        code,
+        event,
+        boundary = PAYMENT_COMPENSATION_BOUNDARY,
+        "payment checkout compensation owner rejection retained safe context"
+    );
+}
+
 fn log_checkout_payment_compensation_context_warning(
     context: &PortContext,
     owner_operation: &'static str,
@@ -824,13 +861,12 @@ fn parse_tenant_id(
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|error| {
-        log_checkout_payment_compensation_owner_error(
+        log_checkout_payment_compensation_owner_warning(
             context,
             owner_operation,
             "parse_tenant_context",
             "payment.tenant_id_invalid",
             "payment checkout compensation tenant context is invalid",
-            None,
             &error,
         );
         PortError::validation(
