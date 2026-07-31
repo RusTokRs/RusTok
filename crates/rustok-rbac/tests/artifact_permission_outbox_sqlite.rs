@@ -1,14 +1,66 @@
 use std::sync::Arc;
 
-use rustok_core::events::MemoryTransport;
-use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
+use async_trait::async_trait;
+use rustok_events::RbacArtifactPermissionEvent;
 use rustok_rbac::{
-    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
-    RbacArtifactPermissionAssignmentService,
+    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
+    ArtifactRolePermissionAssignmentCommand, RbacArtifactPermissionAssignmentService,
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, EntityTrait, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, Statement,
+};
 use uuid::Uuid;
+
+#[derive(Clone)]
+struct SqliteArtifactPermissionEventPublisher {
+    fail: bool,
+}
+
+#[async_trait]
+impl ArtifactPermissionEventPublisher for SqliteArtifactPermissionEventPublisher {
+    async fn publish_assignment_changed(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        event: RbacArtifactPermissionEvent,
+    ) -> Result<(), ArtifactPermissionAssignmentError> {
+        if self.fail {
+            return Err(ArtifactPermissionAssignmentError::Database(
+                "test publisher rejected the event".to_string(),
+            ));
+        }
+
+        let event_type = event.event_type();
+        let schema_version = event.schema_version();
+        let RbacArtifactPermissionEvent::AssignmentChanged {
+            operation_id,
+            role_id,
+            installation_id,
+            permission_key,
+            granted,
+        } = event;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                transaction.get_database_backend(),
+                "INSERT INTO rbac_artifact_permission_events (operation_id, tenant_id, actor_id, role_id, installation_id, permission_key, granted, event_type, schema_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                vec![
+                    operation_id.into(),
+                    tenant_id.into(),
+                    actor_id.into(),
+                    role_id.into(),
+                    installation_id.into(),
+                    permission_key.into(),
+                    granted.into(),
+                    event_type.into(),
+                    i32::from(schema_version).into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ArtifactPermissionAssignmentError::Database(error.to_string()))?;
+        Ok(())
+    }
+}
 
 async fn setup_database() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
@@ -19,15 +71,12 @@ async fn setup_database() -> DatabaseConnection {
         "CREATE TABLE rbac_artifact_permission_catalog (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, locale TEXT NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (scope_key, installation_id, permission_key, locale))",
         "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, role_id, installation_id, permission_key))",
         "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, idempotency_key))",
+        "CREATE TABLE rbac_artifact_permission_events (operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted BOOLEAN NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL)",
     ] {
         db.execute_unprepared(statement)
             .await
             .expect("create RBAC fixture table");
     }
-    SysEventsMigration
-        .up(&SchemaManager::new(&db))
-        .await
-        .expect("create outbox table");
     db
 }
 
@@ -84,10 +133,6 @@ fn command(
     }
 }
 
-async fn outbox_rows(db: &DatabaseConnection) -> Vec<rustok_outbox::SysEvent> {
-    SysEvents::find().all(db).await.expect("load outbox")
-}
-
 async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
     db.query_one(Statement::from_string(
         db.get_database_backend(),
@@ -100,6 +145,18 @@ async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
     .expect("decode count")
 }
 
+async fn event_grants(db: &DatabaseConnection) -> Vec<bool> {
+    db.query_all(Statement::from_string(
+        db.get_database_backend(),
+        "SELECT granted FROM rbac_artifact_permission_events ORDER BY rowid".to_string(),
+    ))
+    .await
+    .expect("load published events")
+    .into_iter()
+    .map(|row| row.try_get("", "granted").expect("decode granted"))
+    .collect()
+}
+
 #[tokio::test]
 async fn only_state_changes_publish_artifact_permission_events() {
     let db = setup_database().await;
@@ -110,8 +167,10 @@ async fn only_state_changes_publish_artifact_permission_events() {
     let permission_key = "sample.events.handle";
     insert_scope(&db, tenant_id, role_id, installation_id, permission_key).await;
 
-    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
-    let service = RbacArtifactPermissionAssignmentService::new(db.clone(), event_bus);
+    let service = RbacArtifactPermissionAssignmentService::new(
+        db.clone(),
+        Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
+    );
     let grant = command(
         tenant_id,
         role_id,
@@ -139,30 +198,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .expect("grant state confirmation")
             .applied
     );
-
-    let after_grant_noops = outbox_rows(&db).await;
-    assert_eq!(
-        after_grant_noops.len(),
-        1,
-        "exact retry and state confirmation must not emit false changes"
-    );
-    assert_eq!(
-        after_grant_noops[0].event_type,
-        "rbac.artifact_role_permission.assignment_changed"
-    );
-    assert_eq!(after_grant_noops[0].schema_version, 1);
-    assert_eq!(
-        after_grant_noops[0].payload["tenant_id"],
-        serde_json::json!(tenant_id)
-    );
-    assert_eq!(
-        after_grant_noops[0].payload["actor_id"],
-        serde_json::json!(actor_id)
-    );
-    assert_eq!(
-        after_grant_noops[0].payload["event"]["event"]["data"]["granted"],
-        serde_json::json!(true)
-    );
+    assert_eq!(event_grants(&db).await, vec![true]);
 
     assert!(
         service
@@ -194,17 +230,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .expect("revoke state confirmation")
             .applied
     );
-
-    let after_revoke_noop = outbox_rows(&db).await;
-    assert_eq!(
-        after_revoke_noop.len(),
-        2,
-        "missing-grant confirmation must not emit a false revoke change"
-    );
-    assert_eq!(
-        after_revoke_noop[1].payload["event"]["event"]["data"]["granted"],
-        serde_json::json!(false)
-    );
+    assert_eq!(event_grants(&db).await, vec![true, false]);
 }
 
 #[tokio::test]
@@ -217,8 +243,10 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
     let permission_key = "sample.events.handle";
     insert_scope(&db, tenant_id, role_id, installation_id, permission_key).await;
 
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
-    let service = RbacArtifactPermissionAssignmentService::new(db.clone(), event_bus);
+    let service = RbacArtifactPermissionAssignmentService::new(
+        db.clone(),
+        Arc::new(SqliteArtifactPermissionEventPublisher { fail: true }),
+    );
     let error = service
         .assign(command(
             tenant_id,
@@ -227,10 +255,10 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
             actor_id,
             permission_key,
             true,
-            "grant-without-outbox",
+            "grant-without-publication",
         ))
         .await
-        .expect_err("non-Outbox transport must fail closed");
+        .expect_err("publisher failure must fail closed");
 
     assert!(matches!(
         error,
@@ -241,5 +269,5 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
         table_count(&db, "rbac_artifact_role_permission_operations").await,
         0
     );
-    assert!(outbox_rows(&db).await.is_empty());
+    assert_eq!(table_count(&db, "rbac_artifact_permission_events").await, 0);
 }
