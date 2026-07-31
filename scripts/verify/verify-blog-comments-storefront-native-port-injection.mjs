@@ -69,6 +69,7 @@ const facade = read(facadePath);
 const nativeAdapter = read(nativeAdapterPath);
 const service = read(servicePath);
 const plan = read(planPath);
+const normalizedPlan = plan.replace(/\s+/g, ' ');
 
 if (evidence) {
   if (evidence.schema_version !== 1) failures.push(`${evidencePath}: schema_version drift`);
@@ -236,11 +237,11 @@ for (const marker of [
   'verify-blog-comments-storefront-native-port-injection.mjs',
   'verify-blog-comments-storefront-native-port-injection.test.mjs',
   'storefront native SSR Comments host selection is source-locked',
-  'admin native SSR composition remains pending',
+  'admin native SSR composition',
   'Blog FBA package-chain registration remains pending',
   'remote network transport remains pending',
   'Slice 63',
-]) requireMarker(plan, marker, planPath);
+]) requireMarker(normalizedPlan, marker, planPath);
 
 if (failures.length > 0) {
   console.error('Blog storefront native Comments port injection verification failed:');
