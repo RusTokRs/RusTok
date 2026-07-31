@@ -38,3 +38,9 @@ pub struct ForumProjectionOwnerRevisionResponse {
     pub event_type: String,
     pub impact: ForumProjectionOwnerRevisionImpact,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForumProjectionOwnerTenantHeadResponse {
+    pub tenant_id: Uuid,
+    pub latest_owner_revision: i64,
+}
