@@ -2,12 +2,14 @@
 
 ## Purpose
 
-`rustok-tenant` owns tenant lifecycle and per-tenant module enablement for RusToK.
+`rustok-tenant` owns tenant lifecycle and tenant-scoped module-state projections for RusToK.
 
 ## Responsibilities
 
 - Provide `TenantModule` metadata for the runtime registry.
-- Manage tenant CRUD, domain lookup, and legacy low-level module override state.
+- Manage tenant CRUD, domain lookup, and read-only tenant-module projections.
+- Own concurrent-idempotent installer/bootstrap tenant provisioning through
+  `TenantService::ensure_tenant`.
 - Own the revisioned enabled/default/fallback locale-policy aggregate, including
   canonical tags, exactly one enabled default, valid enabled fallbacks, and
   cycle prevention.
@@ -34,16 +36,16 @@
   query `tenant_locales` directly.
 - `apps/server` tenant resolver consumes that owner port for cache-miss loads while retaining host-owned cache/coalescing/invalidation concerns.
 - Installer/bootstrap calls to `TenantService::ensure_tenant` use the same creation
-  transaction and `tenant.created` outbox contract as ordinary tenant creation.
+  transaction and `tenant.created` outbox contract as ordinary tenant creation;
+  concurrent unique-slug losers replay the committed tenant.
 - Tenant provisioning/deprovisioning flows in the host use `TenantReadPort` for read-fact inspection/verification and are expected to invalidate tenant cache keys
   (`uuid` / `slug` / `host`) to avoid stale resolver state beyond TTL windows.
 - Exposes a module-owned Leptos admin overview through `rustok-tenant-admin`.
 - Declares permissions via `rustok-core::Permission`.
 - `apps/server` enforces those permissions through `RbacService` and GraphQL/REST RBAC guards.
-- Module lifecycle orchestration lives in `apps/server`, while `rustok-tenant` owns the
-  tenant-side state and DTO contracts. Runtime enable/disable must use
-  `ModuleLifecycleService::toggle_module_with_actor()`; `TenantService::toggle_module` is deprecated
-  and reserved for legacy backfill/tests that intentionally bypass host lifecycle hooks.
+- Runtime module enable/disable is owned by `ModuleLifecycleService` / `ModuleControlPlane`,
+  which apply policy, dependency checks, hooks and journaling. `TenantService` exposes
+  no low-level module-state writer; only read projections remain public.
 
 ## Entry points
 
@@ -54,7 +56,6 @@
 - `ReplaceTenantLocalePolicyRequest`
 - `CreateTenantInput`
 - `UpdateTenantInput`
-- `ToggleModuleInput`
 
 ## Docs
 

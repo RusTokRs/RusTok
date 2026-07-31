@@ -53,9 +53,11 @@
     {
       "id": "tenant-locale-policy-invariants",
       "migration": "m20260726_000001_enforce_tenant_locale_policy",
-      "mode": "none",
+      "mode": "fixture",
       "owner": "rustok-tenant",
-      "reason": "Adds revision metadata, row-local policy constraints, and durable idempotency receipts without changing existing locale values; legacy rows receive revision 0 and a SQLite-safe epoch updated_at sentinel until the next owner write"
+      "reason": "Existing tenants can predate the tenant_locales table and therefore require one truthful enabled default-locale row before policy constraints are installed; existing locale rows retain their values and receive revision 0 metadata",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('33000000-0000-0000-0000-000000000001', 'Tenant locale fixture', 'tenant-locale-fixture')",
+      "assertion_sql": "SELECT ((SELECT COUNT(*) FROM tenant_locales WHERE tenant_id = '33000000-0000-0000-0000-000000000001'::uuid) = 1 AND EXISTS (SELECT 1 FROM tenant_locales WHERE tenant_id = '33000000-0000-0000-0000-000000000001'::uuid AND locale = 'en' AND is_default = TRUE AND is_enabled = TRUE AND policy_revision = 0)) AS passed"
     },
     {
       "id": "media-translation-revision",
@@ -118,7 +120,7 @@
       "migration": "m20260721_000009_expand_profile_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-profiles",
-      "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no semantic backfill"
+      "reason": "DDL-only widening of profile preference and translation locale columns; existing locale values require no semantic backfill"
     },
     {
       "id": "profiles-display-name-translations",

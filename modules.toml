@@ -58,7 +58,7 @@ inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok
 order = { crate = "rustok-order", source = "path", path = "crates/rustok-order" }
 payment = { crate = "rustok-payment", source = "path", path = "crates/rustok-payment" }
 fulfillment = { crate = "rustok-fulfillment", source = "path", path = "crates/rustok-fulfillment" }
-commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"] }
+commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["tenant", "cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"] }
 marketplace_seller = { crate = "rustok-marketplace-seller", source = "path", path = "crates/rustok-marketplace-seller" }
 marketplace_listing = { crate = "rustok-marketplace-listing", source = "path", path = "crates/rustok-marketplace-listing", depends_on = ["marketplace_seller", "product"] }
 marketplace_allocation = { crate = "rustok-marketplace-allocation", source = "path", path = "crates/rustok-marketplace-allocation", depends_on = ["order", "marketplace_seller", "marketplace_listing"] }

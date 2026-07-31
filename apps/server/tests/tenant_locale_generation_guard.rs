@@ -71,16 +71,23 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
     assert!(listener.contains("pub fn is_running(&self) -> bool"));
 
     let tenant_init = middleware
-        .find("super::tenant_legacy::init_tenant_cache_infrastructure")
+        .find("super::tenant_runtime::init_tenant_cache_infrastructure")
         .expect("tenant cache infrastructure must initialize");
     let locale_start = middleware
         .find("start_tenant_locale_generation_listener")
         .expect("tenant middleware must start locale generation recovery");
     assert!(tenant_init < locale_start);
 
-    assert!(middleware.contains(
-        "let invalidation_key = tenant_id\n            .map(|tenant_id| tenant_id.to_string())\n            .unwrap_or_else(|| \"*\".to_string())"
-    ));
+    for required in [
+        "let invalidation_key = tenant_id",
+        ".map(|tenant_id| tenant_id.to_string())",
+        ".unwrap_or_else(|| \"*\".to_string())",
+    ] {
+        assert!(
+            middleware.contains(required),
+            "tenant invalidation key contract must retain {required}"
+        );
+    }
     assert!(!middleware.contains("\"tenant-manual-invalidation\","));
 
     assert!(guardrails.contains("TenantLocaleGenerationListenerHandle"));

@@ -43,8 +43,8 @@ export const foundationFbaRuntimeSmokeModules = [
       ]],
       ['apps/server/src/middleware/tenant.rs', [
         'TenantReadPort',
-        'tenant_read_request(&identifier)',
-        'tenant_read_context(&identifier)',
+        'tenant_read_request(identifier)',
+        'tenant_read_context(identifier)',
         '.read_tenant(tenant_port_context, tenant_request)',
         'include_inactive: true',
         'set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)',

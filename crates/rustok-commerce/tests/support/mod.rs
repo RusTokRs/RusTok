@@ -424,7 +424,9 @@ async fn ensure_tenant_tables(db: &DatabaseConnection) {
             is_default INTEGER NOT NULL DEFAULT 0,
             is_enabled INTEGER NOT NULL DEFAULT 1,
             fallback_locale TEXT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            policy_revision INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
     ] {
         db.execute(Statement::from_string(

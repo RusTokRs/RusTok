@@ -131,6 +131,7 @@ impl RusToKModule for CommerceModule {
 
     fn dependencies(&self) -> &[&'static str] {
         &[
+            "tenant",
             "cart",
             "customer",
             "product",

@@ -88,6 +88,50 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // `tenant_locales` was introduced after `tenants`, so an incremental
+        // installation can contain tenant rows with no locale-policy row. Seed
+        // one enabled default before the new constraints are installed. Reusing
+        // the tenant UUID is deterministic and safe because IDs are scoped by
+        // table; the owner will generate independent locale IDs on later writes.
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+INSERT INTO tenant_locales (
+    id,
+    tenant_id,
+    locale,
+    name,
+    native_name,
+    is_default,
+    is_enabled,
+    fallback_locale,
+    policy_revision,
+    created_at,
+    updated_at
+)
+SELECT
+    t.id,
+    t.id,
+    t.default_locale,
+    t.default_locale,
+    t.default_locale,
+    TRUE,
+    TRUE,
+    NULL,
+    0,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM tenants t
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM tenant_locales tl
+    WHERE tl.tenant_id = t.id
+);
+"#,
+            )
+            .await?;
+
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
                 manager
@@ -139,6 +183,11 @@ END;
                     .execute_unprepared(
                         r#"
 ALTER TABLE tenant_locales
+    ADD COLUMN default_tenant_guard BINARY(16)
+        GENERATED ALWAYS AS (
+            CASE WHEN is_default THEN tenant_id ELSE NULL END
+        ) STORED,
+    ADD UNIQUE INDEX uq_tenant_locales_one_default (default_tenant_guard),
     ADD CONSTRAINT ck_tenant_locales_default_enabled
     CHECK (NOT is_default OR is_enabled),
     ADD CONSTRAINT ck_tenant_locales_no_self_fallback
