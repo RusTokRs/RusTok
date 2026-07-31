@@ -1,6 +1,6 @@
 # Order checkout owner admission and context validation
 
-Status: **partial source-ready / unvalidated**
+Status: **source-ready / unvalidated**
 
 ## Scope
 
@@ -31,10 +31,17 @@ Events retain the correlation id. Other `PortContext` values are represented by
 lengths, presence flags, actor kind, claim/role counts, and deadline milliseconds;
 raw context values are not recorded.
 
-The shared admission/context diagnostic payload itself is not yet closed: admission
-branches still retain the complete `PortError`, and context rejection still retains
-the mapped `PortError` plus UUID parse-cause payload. That work remains a separate
-bounded source slice affecting both public operations.
+The shared admission/context diagnostic payload is source-closed and unvalidated.
+Write-admission events retain only stable code, a closed static `PortErrorKind`,
+message presence/character length, retryability, and safe context shape. They do
+not retain the complete `PortError`, its debug representation, or message text.
+
+Tenant and actor parse rejections retain only the static validation phase,
+`parse_failed = true`, supplied value length, stable code, static error kind, and
+message shape. Checkout-causation rejection retains only causation presence/length,
+static parse-failure state, expected-operation presence/non-nil state, mismatch,
+and the same bounded error facts. UUID parser error payloads and complete mapped
+errors are not retained.
 
 Unavailable, timeout, and invariant admission failures remain error severity. Other
 admission and all context-validation rejections remain warning severity.
@@ -81,9 +88,9 @@ This slice does not change:
 
 ## Remaining gaps
 
-Only the shared checkout admission/context payload diagnostics remain open inside
-this Order checkout wrapper layer. The broad ecommerce cleanup remains open for
-remaining owners, adapters, non-`PortError` envelopes, and runtime evidence.
+No shared checkout wrapper payload-diagnostic gap remains inside this Order layer.
+The broad ecommerce cleanup remains open for remaining owners, adapters,
+non-`PortError` envelopes, and runtime evidence.
 
 ## Suggested maintainer checks
 
