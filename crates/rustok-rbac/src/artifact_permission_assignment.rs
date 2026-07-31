@@ -54,7 +54,8 @@ pub enum ArtifactPermissionAssignmentError {
 /// This service never writes the static `role_permissions` relation. Dynamic
 /// permissions remain bound to the admitted installation that declared them.
 /// The idempotency receipt, grant/revocation, and typed integration event are
-/// committed by one owner transaction.
+/// committed by one owner transaction. State no-ops commit their receipt but
+/// do not publish a false change event.
 #[derive(Clone)]
 pub struct RbacArtifactPermissionAssignmentService {
     db: DatabaseConnection,
@@ -100,20 +101,22 @@ impl RbacArtifactPermissionAssignmentService {
             return Err(ArtifactPermissionAssignmentError::PermissionNotRegistered);
         }
 
-        if command.granted {
-            grant_permission(&transaction, &command).await?;
+        let changed = if command.granted {
+            grant_permission(&transaction, &command).await?
         } else {
-            revoke_permission(&transaction, &command).await?;
+            revoke_permission(&transaction, &command).await?
+        };
+        if changed {
+            self.event_bus
+                .publish_contract_in_tx(
+                    &transaction,
+                    command.tenant_id,
+                    Some(command.actor_id),
+                    assignment_event(operation_id, &command),
+                )
+                .await
+                .map_err(database_error)?;
         }
-        self.event_bus
-            .publish_contract_in_tx(
-                &transaction,
-                command.tenant_id,
-                Some(command.actor_id),
-                assignment_event(operation_id, &command),
-            )
-            .await
-            .map_err(database_error)?;
         transaction.commit().await.map_err(database_error)?;
 
         Ok(ArtifactRolePermissionAssignmentResult { applied: true })
@@ -350,13 +353,13 @@ async fn permission_is_registered(
 async fn grant_permission(
     transaction: &DatabaseTransaction,
     command: &ArtifactRolePermissionAssignmentCommand,
-) -> Result<(), ArtifactPermissionAssignmentError> {
+) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     let sql = placeholders(
         backend,
         "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({id}, {tenant_id}, {role_id}, {installation_id}, {permission_key}, {actor_id}) ON CONFLICT (tenant_id, role_id, installation_id, permission_key) DO NOTHING",
     );
-    transaction
+    let result = transaction
         .execute(Statement::from_sql_and_values(
             backend,
             sql,
@@ -371,19 +374,19 @@ async fn grant_permission(
         ))
         .await
         .map_err(database_error)?;
-    Ok(())
+    Ok(result.rows_affected() == 1)
 }
 
 async fn revoke_permission(
     transaction: &DatabaseTransaction,
     command: &ArtifactRolePermissionAssignmentCommand,
-) -> Result<(), ArtifactPermissionAssignmentError> {
+) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     let sql = placeholders(
         backend,
         "DELETE FROM rbac_artifact_role_permissions WHERE tenant_id = {tenant_id} AND role_id = {role_id} AND installation_id = {installation_id} AND permission_key = {permission_key}",
     );
-    transaction
+    let result = transaction
         .execute(Statement::from_sql_and_values(
             backend,
             sql,
@@ -396,7 +399,7 @@ async fn revoke_permission(
         ))
         .await
         .map_err(database_error)?;
-    Ok(())
+    Ok(result.rows_affected() == 1)
 }
 
 fn assignment_event(
