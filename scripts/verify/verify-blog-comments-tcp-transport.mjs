@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json';
 const manifestPath = 'crates/rustok-comments/Cargo.toml';
 const exportPath = 'crates/rustok-comments/src/lib.rs';
+const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
 const remotePath = 'crates/rustok-comments/src/remote.rs';
 const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
 const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-68.md';
@@ -38,13 +39,22 @@ function sameSet(actual, expected, label) {
   if (left !== right) fail(`${label} drift: expected ${right}, got ${left}`);
 }
 
-for (const path of [evidencePath, manifestPath, exportPath, remotePath, transportPath, planPath]) {
+for (const path of [
+  evidencePath,
+  manifestPath,
+  exportPath,
+  protocolPath,
+  remotePath,
+  transportPath,
+  planPath,
+]) {
   if (!fs.existsSync(path)) fail(`missing source artifact ${path}`);
 }
 
 const evidence = json(evidencePath);
 const manifest = read(manifestPath);
 const exports = read(exportPath);
+const protocol = read(protocolPath);
 const remote = read(remotePath);
 const transport = read(transportPath);
 const plan = read(planPath);
@@ -111,7 +121,7 @@ sameSet(
     'in_process_remote_runtime_parity',
     'runtime_execution',
   ],
-  'pending transport scope',
+  'historical slice 68 pending scope',
 );
 
 hasAll(
@@ -127,6 +137,7 @@ hasAll(
   exports,
   [
     '#[cfg(feature = "tcp-transport")]',
+    'mod tcp_protocol;',
     'pub mod tcp_transport;',
     'pub use tcp_transport::TcpJsonCommentsTransport;',
   ],
@@ -150,25 +161,34 @@ for (const operation of expectedOperations) {
 }
 
 hasAll(
-  transport,
+  protocol,
   [
     'pub const DEFAULT_MAX_COMMENTS_FRAME_BYTES: usize = 8 * 1024 * 1024;',
+    'length.to_be_bytes()',
+    'u32::from_be_bytes(length_bytes)',
+    'comments.tcp_invalid_frame_limit',
+    'comments.tcp_frame_too_large',
+    'comments.tcp_unavailable',
+    'comments.tcp_timeout',
+  ],
+  'shared TCP protocol',
+);
+
+hasAll(
+  transport,
+  [
     'pub struct TcpJsonCommentsTransport',
     'impl CommentsThreadTransport for TcpJsonCommentsTransport',
     'TcpStream::connect(self.endpoint)',
     'request.context().require_deadline_semantics()?;',
     'Duration::from_millis(deadline_ms)',
     'self.exchange(&request_payload)',
-    'length.to_be_bytes()',
-    'u32::from_be_bytes(length_bytes)',
+    'write_frame(&mut stream, request_payload, self.max_frame_bytes).await?;',
+    'read_frame(&mut stream, self.max_frame_bytes).await?;',
     'CommentsThreadTransportReply::Success(response)',
     'CommentsThreadTransportReply::Error(error)',
-    'comments.tcp_invalid_frame_limit',
-    'comments.tcp_frame_too_large',
     'comments.tcp_encode',
     'comments.tcp_decode',
-    'comments.tcp_unavailable',
-    'comments.tcp_timeout',
     'provider_error_reply_is_preserved',
     'tcp_transport_is_injectable_without_connecting',
   ],
