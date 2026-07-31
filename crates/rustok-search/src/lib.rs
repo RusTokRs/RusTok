@@ -14,8 +14,10 @@ pub mod forum_document_filters;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
+pub mod forum_storefront_date_execution;
 pub mod forum_storefront_execution;
 mod forum_storefront_execution_public;
+pub mod forum_storefront_locale_date_filters;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod ingestion;
@@ -61,11 +63,15 @@ pub use forum_reconciliation::{
     DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionReconciler,
     ForumProjectionSweepReport,
 };
+pub use forum_storefront_date_execution::{
+    ForumStorefrontSearchDateWindowRequest, execute_forum_storefront_search_with_date_window,
+};
 pub use forum_storefront_execution::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,
     ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
     execute_forum_storefront_search,
 };
+pub use forum_storefront_locale_date_filters::ForumStorefrontLocaleDateFilters;
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;

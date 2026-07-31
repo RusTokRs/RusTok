@@ -86,8 +86,6 @@ async fn forum_storefront_search_native(
         Vec::new(),
         Vec::new(),
         None,
-        None,
-        None,
     )
     .await
 }
@@ -111,8 +109,6 @@ async fn forum_storefront_search_by_authors_native(
         author_ids,
         Vec::new(),
         None,
-        None,
-        None,
     )
     .await
 }
@@ -131,15 +127,7 @@ async fn forum_storefront_search_by_filters_native(
     solved: Option<bool>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     execute_forum_storefront_search_native(
-        query,
-        locale,
-        preset_key,
-        filters,
-        author_ids,
-        tags,
-        solved,
-        None,
-        None,
+        query, locale, preset_key, filters, author_ids, tags, solved,
     )
     .await
 }
@@ -159,7 +147,7 @@ async fn forum_storefront_search_by_date_window_native(
     published_from: Option<String>,
     published_to: Option<String>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
-    execute_forum_storefront_search_native(
+    execute_forum_storefront_search_date_window_native(
         query,
         locale,
         preset_key,
@@ -181,6 +169,21 @@ async fn execute_forum_storefront_search_native(
     author_ids: Vec<String>,
     tags: Vec<String>,
     solved: Option<bool>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_date_window_native(
+        query, locale, preset_key, filters, author_ids, tags, solved, None, None,
+    )
+    .await
+}
+
+async fn execute_forum_storefront_search_date_window_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
     published_from: Option<String>,
     published_to: Option<String>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
@@ -189,9 +192,10 @@ async fn execute_forum_storefront_search_native(
         use leptos::prelude::expect_context;
         use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_search::{
-            ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest,
-            SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
-            StorefrontSearchTransport, execute_forum_storefront_search,
+            ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchDateWindowRequest,
+            ForumStorefrontSearchRequest, SharedStorefrontSearchCategoryScopePort,
+            SharedStorefrontSearchResultEligibilityPort, StorefrontSearchTransport,
+            execute_forum_storefront_search_with_date_window,
             resolve_trusted_storefront_channel_input,
         };
 
@@ -233,8 +237,6 @@ async fn execute_forum_storefront_search_native(
             author_ids,
             tags,
             solved,
-            published_from,
-            published_to,
             attribute_filters: filters
                 .attribute_filters
                 .into_iter()
@@ -251,15 +253,18 @@ async fn execute_forum_storefront_search_native(
             request_context: Some(request_context),
             transport: StorefrontSearchTransport::NativeServer,
         };
-        let execution = execute_forum_storefront_search(
+        let execution = execute_forum_storefront_search_with_date_window(
             &db,
             category_scope_port,
             result_eligibility_port,
-            request,
+            ForumStorefrontSearchDateWindowRequest {
+                request,
+                published_from,
+                published_to,
+            },
         )
         .await
         .map_err(|error| ServerFnError::new(error.public_message()))?;
-
         Ok(map_search_result(
             execution.result,
             execution.query_log_id.map(|value| value.to_string()),

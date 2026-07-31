@@ -12,10 +12,11 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecutionError,
-    ForumStorefrontSearchRequest, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchTransport,
-    execute_forum_storefront_search, resolve_trusted_storefront_channel_input,
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchDateWindowRequest,
+    ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchTransport, execute_forum_storefront_search_with_date_window,
+    resolve_trusted_storefront_channel_input,
 };
 
 use super::{
@@ -102,8 +103,6 @@ impl ForumStorefrontSearchQuery {
             author_ids: author_ids.unwrap_or_default(),
             tags: tags.unwrap_or_default(),
             solved,
-            published_from,
-            published_to,
             attribute_filters: input
                 .attribute_filters
                 .unwrap_or_default()
@@ -122,11 +121,15 @@ impl ForumStorefrontSearchQuery {
             transport: StorefrontSearchTransport::Graphql,
         };
 
-        let execution = execute_forum_storefront_search(
+        let execution = execute_forum_storefront_search_with_date_window(
             db,
             category_scope_port,
             result_eligibility_port,
-            request,
+            ForumStorefrontSearchDateWindowRequest {
+                request,
+                published_from,
+                published_to,
+            },
         )
         .await
         .map_err(map_execution_error)?;

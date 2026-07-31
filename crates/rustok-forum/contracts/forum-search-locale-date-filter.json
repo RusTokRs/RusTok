@@ -2,23 +2,18 @@
   "schema_version": 1,
   "task": "FORUM-23B2F3",
   "status": "source_complete_execution_pending",
-  "scope": "Lock explicit Forum-only storefront Search to one effective locale and add inclusive RFC3339 published-date filtering before Forum owner eligibility, visible totals, facets and pagination",
+  "scope": "Lock exact Forum result locale and add inclusive published RFC3339 date-window filtering to explicit Forum-only storefront Search before owner eligibility, visible totals, facets and pagination",
   "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
   "projection_owner": "crates/rustok-forum/src/search_projection.rs",
-  "filter_owner": "crates/rustok-search/src/forum_document_filters.rs",
-  "execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "filter_owner": "crates/rustok-search/src/forum_storefront_locale_date_filters.rs",
+  "execution_owner": "crates/rustok-search/src/forum_storefront_date_execution.rs",
   "graphql_transport": "crates/rustok-search/src/graphql/forum_storefront.rs",
   "storefront_graphql_adapter": "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
   "storefront_native_adapter": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
   "storefront_transport_facade": "crates/rustok-search/storefront/src/transport/mod.rs",
   "owner_note": "crates/rustok-forum/docs/forum-23b2f3-search-locale-date-filter.md",
   "verifier": "scripts/verify/verify-forum-search-locale-date-filter.mjs",
-  "architecture": {
-    "single_execution_owner": true,
-    "single_normalization_owner": true,
-    "separate_date_execution_module_allowed": false,
-    "legacy_parallel_execution_path_allowed": false
-  },
   "input": {
     "locale_source": "existing SearchPreviewInput.locale with tenant fallback",
     "locale_match": "normalized_case_insensitive_exact",
@@ -32,7 +27,7 @@
   "projection": {
     "topic_published_path": "payload.published_at",
     "reply_published_path": "payload.published_at",
-    "published_value_owner": "Forum source created_at serialized as RFC3339",
+    "published_value_owner": "Forum source created_at normalized to UTC RFC3339",
     "legacy_topic_or_reply_without_published_at_fails_closed_when_date_filter_active": true,
     "malformed_published_at_fails_closed": true,
     "projection_reindex_required_for_date_matches": true
@@ -85,12 +80,12 @@
   },
   "remaining_scope": [
     "add kind, channel or group and attachment-presence Forum filters",
-    "complete owner-issued monotonic projection revisions and durable inbox ordering",
+    "complete owner-issued monotonic projection revisions and durable non-Forum inbox ordering",
     "complete reconciliation and deletion or ACL-change document cleanup",
     "capture maintainer-executed PostgreSQL, reindex and LINK-FORUM-03 runtime evidence"
   ],
   "non_claims": [
-    "Tests, verifiers, Cargo checks, Clippy and runtime evidence were not executed by the implementation agent",
+    "This slice does not execute tests, verifiers, Cargo checks, Clippy or runtime evidence",
     "This slice does not expose a new storefront UI control",
     "This slice does not reduce the existing pre-authorization raw candidate bound",
     "This slice does not claim legacy topic or reply documents match date filters before reindex"

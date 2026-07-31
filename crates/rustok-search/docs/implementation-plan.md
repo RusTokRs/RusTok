@@ -99,6 +99,21 @@ a Forum Search reindex. Existing GraphQL/native legacy and author-only operation
 neutral DTOs, mixed/Product/admin Search and unfiltered behavior remain unchanged.
 Runtime and reindex evidence remain pending.
 
+`FORUM-23B2F3` adds a shared Forum-only locale/date execution owner while
+preserving the legacy, author-only and B2F2 GraphQL/native wire operations. The requested
+locale or tenant fallback is normalized once and becomes the exact PostgreSQL
+FTS/typo locale, category-scope locale, owner-eligibility locale and post-scan
+result assertion. Optional inclusive RFC3339 `published_from` / `published_to`
+bounds use Forum-projected `payload.published_at` on topics and approved replies.
+The stable raw 100-candidate cap remains before date narrowing; exact locale and
+active author/tag/solved/date predicates intersect before owner eligibility and
+visible totals/facets/pagination. Locale-only execution retains categories and
+query-rule pins, while an active date window excludes categories and suppresses
+pins. Legacy topic/reply documents without the new timestamp fail closed until a
+Forum Search reindex. Neutral DTOs, `SearchQuery`, mixed/Product/admin Search and
+existing wire signatures remain unchanged. Runtime and reindex evidence remain
+pending.
+
 Search settings have one owner boundary. Tenant-effective settings are read and
 written through `SearchSettingsService` and the `search_settings` table. The
 server-wide generic `platform_settings` service no longer admits a `search`
@@ -201,6 +216,11 @@ projection can remain stale after recovery.
 - Exact Forum tag and solved contract and guardrail:
   `crates/rustok-forum/contracts/forum-search-tag-solved-filter.json` and
   `scripts/verify/verify-forum-search-tag-solved-filter.mjs`.
+- Exact Forum locale and date filter status:
+  `source_complete_execution_pending` under `FORUM-23B2F3`.
+- Exact Forum locale/date contract and guardrail:
+  `crates/rustok-forum/contracts/forum-search-locale-date-filter.json` and
+  `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the
   canonical URL guardrail.
@@ -220,6 +240,8 @@ projection can remain stale after recovery.
   `FORUM-23B2F1`.
 - Exact Forum tag and solved filtering is `source_complete_execution_pending` under
   `FORUM-23B2F2`.
+- Exact Forum locale and date filtering is `source_complete_execution_pending` under
+  `FORUM-23B2F3`.
 - Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
@@ -296,10 +318,14 @@ rebuild behavior through replayable event transport.
     projection for approved replies, additive GraphQL/native filter operations,
     pre-eligibility intersection, post-authorization totals/facets/pagination, and
     fail-closed legacy reply behavior under `FORUM-23B2F2`.
+22. Added exact requested/fallback locale enforcement and inclusive RFC3339
+    published date-window filtering through an additive Forum-only execution owner,
+    Forum-owned topic/reply timestamp projection, post-scan locale assertion and
+    fail-closed legacy projection behavior under `FORUM-23B2F3`.
 
 ## Next results
 
-1. **Complete remaining Forum storefront query filters.** Add locale, date, kind,
+1. **Complete remaining Forum storefront query filters.** Add kind,
    channel/group and attachment-presence filters without moving owner
    authorization into Search. **Done when:** GraphQL/native Forum-only Search expose
    the same bounded filter contract and every owner-sensitive result still passes
@@ -341,6 +367,7 @@ should run the relevant subset, including:
 - `cargo test -p rustok-search storefront_category_scope -- --nocapture`
 - `cargo test -p rustok-search storefront_result_eligibility -- --nocapture`
 - `cargo test -p rustok-search forum_document_filters -- --nocapture`
+- `cargo test -p rustok-search forum_storefront_locale_date_filters -- --nocapture`
 - `cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture`
 - `cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture`
 - `cargo test -p rustok-search product_channel_reconciliation -- --nocapture`
@@ -353,6 +380,8 @@ should run the relevant subset, including:
 - `node scripts/verify/verify-forum-search-result-eligibility.mjs`
 - `node scripts/verify/verify-forum-search-product-channel-visibility.mjs`
 - `node scripts/verify/verify-forum-search-author-filter.mjs`
+- `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
+- `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
 - `npm run verify:search:blog-projection`
@@ -372,3 +401,5 @@ should run the relevant subset, including:
 - [Forum exact-category contract](../../rustok-forum/contracts/forum-search-exact-category-filter.json)
 - [Forum result-eligibility contract](../../rustok-forum/contracts/forum-search-result-eligibility.json)
 - [Forum author-filter contract](../../rustok-forum/contracts/forum-search-author-filter.json)
+- [Forum tag/solved contract](../../rustok-forum/contracts/forum-search-tag-solved-filter.json)
+- [Forum locale/date contract](../../rustok-forum/contracts/forum-search-locale-date-filter.json)

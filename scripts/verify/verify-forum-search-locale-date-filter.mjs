@@ -8,11 +8,19 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 const paths = {
+  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
   contract: "crates/rustok-forum/contracts/forum-search-locale-date-filter.json",
   note: "crates/rustok-forum/docs/forum-23b2f3-search-locale-date-filter.md",
   projection: "crates/rustok-forum/src/search_projection.rs",
-  filters: "crates/rustok-search/src/forum_document_filters.rs",
-  execution: "crates/rustok-search/src/forum_storefront_execution.rs",
+  filter: "crates/rustok-search/src/forum_storefront_locale_date_filters.rs",
+  execution: "crates/rustok-search/src/forum_storefront_date_execution.rs",
+  executionTypes:
+    "crates/rustok-search/src/forum_storefront_date_execution/types_and_execute.rs",
+  executionScan:
+    "crates/rustok-search/src/forum_storefront_date_execution/result_scan.rs",
+  executionNormalization:
+    "crates/rustok-search/src/forum_storefront_date_execution/normalization.rs",
   searchLib: "crates/rustok-search/src/lib.rs",
   graphqlOwner: "crates/rustok-search/src/graphql/forum_storefront.rs",
   graphqlTypes: "crates/rustok-search/src/graphql/types.rs",
@@ -24,13 +32,6 @@ const paths = {
   transportFacade: "crates/rustok-search/storefront/src/transport/mod.rs",
   engine: "crates/rustok-search/src/engine.rs",
 };
-const forbiddenParallelPaths = [
-  "crates/rustok-search/src/forum_storefront_date_execution.rs",
-  "crates/rustok-search/src/forum_storefront_date_execution/types_and_execute.rs",
-  "crates/rustok-search/src/forum_storefront_date_execution/result_scan.rs",
-  "crates/rustok-search/src/forum_storefront_date_execution/normalization.rs",
-  "crates/rustok-search/src/forum_storefront_locale_date_filters.rs",
-];
 
 function read(relativePath) {
   const target = path.join(root, relativePath);
@@ -59,17 +60,18 @@ function parseJson(relativePath) {
   }
 }
 
-for (const relativePath of forbiddenParallelPaths) {
-  if (existsSync(path.join(root, relativePath))) {
-    failures.push(`${relativePath}: parallel Forum date execution path is forbidden`);
-  }
-}
-
+const forumPlan = read(paths.forumPlan);
+const searchPlan = read(paths.searchPlan);
 const contract = parseJson(paths.contract);
 const note = read(paths.note);
 const projection = read(paths.projection);
-const filters = read(paths.filters);
-const execution = read(paths.execution);
+const filter = read(paths.filter);
+const executionMain = read(paths.execution);
+const execution = [
+  read(paths.executionTypes),
+  read(paths.executionScan),
+  read(paths.executionNormalization),
+].join("\n");
 const searchLib = read(paths.searchLib);
 const graphqlOwner = read(paths.graphqlOwner);
 const graphqlTypes = read(paths.graphqlTypes);
@@ -87,51 +89,51 @@ requireAll(projection, [
 if (projection.split('"published_at": created_at.to_rfc3339()').length - 1 !== 2) {
   failures.push(`${paths.projection}: topic and reply timestamp projections are required`);
 }
-requireAll(filters, [
-  "pub exact_locale: Option<String>",
+requireAll(filter, [
+  "pub exact_locale: String",
   "pub published_from: Option<DateTime<Utc>>",
   "pub published_to: Option<DateTime<Utc>>",
   "has_date_window",
   "DateTime::parse_from_rfc3339",
-  "exact_locale_preserves_categories_and_fails_closed_on_missing_locale",
+  "exact_locale_preserves_categories_without_date_window",
   "published_window_is_inclusive_and_excludes_categories",
-  "malformed_or_missing_published_projection_fails_closed",
-], paths.filters);
-rejectAll(filters, ["rustok_forum", "forum_topic::", "forum_reply::"], paths.filters);
+  "malformed_or_missing_projection_fails_closed",
+], paths.filter);
+rejectAll(filter, ["rustok_forum", "forum_topic::", "forum_reply::"], paths.filter);
+requireAll(executionMain, [
+  'include!("forum_storefront_date_execution/types_and_execute.rs")',
+  'include!("forum_storefront_date_execution/result_scan.rs")',
+  'include!("forum_storefront_date_execution/normalization.rs")',
+], paths.execution);
 requireAll(execution, [
-  "pub published_from: Option<String>",
-  "pub published_to: Option<String>",
-  "pub async fn execute_forum_storefront_search",
+  "pub struct ForumStorefrontSearchDateWindowRequest",
+  "pub async fn execute_forum_storefront_search_with_date_window",
   "locale: Some(effective_locale.clone())",
-  "all_items.retain(|item| document_filters.matches(item))",
+  "locale_date_filters.matches(item) && document_filters.matches(item)",
   "let raw_total =",
   "let candidates = all_items",
   "let total = visible_items.len() as u64",
-  'normalize_optional_rfc3339("published_from"',
-  'normalize_optional_rfc3339("published_to"',
+  'normalize_optional_date_window_rfc3339("published_from"',
+  'normalize_optional_date_window_rfc3339("published_to"',
   "published_from must not be after published_to",
-], paths.execution);
-if (execution.indexOf("let raw_total =") > execution.indexOf("document_filters.matches(item)")) {
-  failures.push(`${paths.execution}: raw bound must precede document narrowing`);
+], "B2F3 execution owner");
+if (execution.indexOf("let raw_total =") > execution.indexOf("locale_date_filters.matches(item)")) {
+  failures.push("B2F3 execution owner: raw bound must precede date narrowing");
 }
-rejectAll(execution, [
-  "execute_forum_storefront_search_with_date_window",
-  "ForumStorefrontSearchDateWindowRequest",
-], paths.execution);
-rejectAll(searchLib, [
-  "forum_storefront_date_execution",
-  "forum_storefront_locale_date_filters",
+requireAll(searchLib, [
+  "pub mod forum_storefront_date_execution;",
+  "pub mod forum_storefront_locale_date_filters;",
   "execute_forum_storefront_search_with_date_window",
 ], paths.searchLib);
 requireAll(graphqlOwner, [
   "published_from: Option<String>",
   "published_to: Option<String>",
-  "execute_forum_storefront_search",
-], paths.graphqlOwner);
-rejectAll(graphqlOwner, [
   "ForumStorefrontSearchDateWindowRequest",
   "execute_forum_storefront_search_with_date_window",
 ], paths.graphqlOwner);
+if (graphqlOwner.includes("execute_forum_storefront_search(")) {
+  failures.push(`${paths.graphqlOwner}: GraphQL Forum transport must use the exact-locale owner`);
+}
 requireAll(graphqlAdapter, [
   "ForumStorefrontSearchByDateWindow",
   "$publishedFrom: String",
@@ -140,12 +142,9 @@ requireAll(graphqlAdapter, [
 ], paths.graphqlAdapter);
 requireAll(nativeAdapter, [
   'endpoint = "search/forum-storefront-search-by-date-window"',
-  "fetch_search_with_date_window",
-  "execute_forum_storefront_search_native",
-], paths.nativeAdapter);
-rejectAll(nativeAdapter, [
   "execute_forum_storefront_search_date_window_native",
   "ForumStorefrontSearchDateWindowRequest",
+  "execute_forum_storefront_search_date_window_native(",
 ], paths.nativeAdapter);
 requireAll(transportFacade, [
   "pub async fn fetch_forum_search_with_date_window",
@@ -165,9 +164,10 @@ requireAll(nativeAdapter, [
 rejectAll(graphqlTypes, ["published_from", "published_to", "publishedFrom", "publishedTo"], paths.graphqlTypes);
 rejectAll(storefrontModel, ["published_from", "published_to", "publishedFrom", "publishedTo"], paths.storefrontModel);
 rejectAll(engine, ["published_from", "published_to", "ForumStorefrontLocaleDateFilters"], paths.engine);
+requireAll(forumPlan, ["FORUM-23B2F3", "locale", "date", "verify-forum-search-locale-date-filter.mjs"], paths.forumPlan);
+requireAll(searchPlan, ["FORUM-23B2F3", "source_complete_execution_pending", "published date-window"], paths.searchPlan);
 requireAll(note, [
   "# FORUM-23B2F3 exact Forum Search locale and date filters",
-  "does not create a second execution",
   "Locale-only execution preserves Forum categories",
   "does **not** add storefront UI controls",
 ], paths.note);
@@ -175,8 +175,6 @@ requireAll(note, [
 if (contract) {
   if (contract.task !== "FORUM-23B2F3") failures.push(`${paths.contract}: unexpected task`);
   if (contract.status !== "source_complete_execution_pending") failures.push(`${paths.contract}: unexpected status`);
-  if (contract.architecture?.single_execution_owner !== true) failures.push(`${paths.contract}: single execution owner is not locked`);
-  if (contract.architecture?.separate_date_execution_module_allowed !== false) failures.push(`${paths.contract}: duplicate date owner is not forbidden`);
   if (contract.input?.date_format !== "RFC3339") failures.push(`${paths.contract}: date format drift`);
   if (!contract.evaluation?.raw_candidate_limit_is_checked_before_date_narrowing) failures.push(`${paths.contract}: raw ordering invariant missing`);
   if (contract.transport_compatibility?.existing_wire_signatures_changed !== false) failures.push(`${paths.contract}: legacy wire signatures changed`);
