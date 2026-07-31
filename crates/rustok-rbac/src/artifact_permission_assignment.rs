@@ -95,9 +95,11 @@ impl RbacArtifactPermissionAssignmentService {
         };
 
         if !role_exists(&transaction, &command).await? {
+            transaction.rollback().await.map_err(database_error)?;
             return Err(ArtifactPermissionAssignmentError::RoleNotFound);
         }
         if !permission_is_registered(&transaction, &command).await? {
+            transaction.rollback().await.map_err(database_error)?;
             return Err(ArtifactPermissionAssignmentError::PermissionNotRegistered);
         }
 
@@ -106,8 +108,9 @@ impl RbacArtifactPermissionAssignmentService {
         } else {
             revoke_permission(&transaction, &command).await?
         };
-        if changed {
-            self.event_bus
+        if changed
+            && let Err(error) = self
+                .event_bus
                 .publish_contract_in_tx(
                     &transaction,
                     command.tenant_id,
@@ -115,7 +118,9 @@ impl RbacArtifactPermissionAssignmentService {
                     assignment_event(operation_id, &command),
                 )
                 .await
-                .map_err(database_error)?;
+        {
+            transaction.rollback().await.map_err(database_error)?;
+            return Err(database_error(error));
         }
         transaction.commit().await.map_err(database_error)?;
 
