@@ -31,50 +31,27 @@ pub(super) fn require_tenant_settings_scope(
 pub(super) fn require_host_authority(
     ctx: &async_graphql::Context<'_>,
     required: rustok_api::HostAuthority,
-) -> async_graphql::Result<rustok_api::HostAuthorityContext> {
+) -> async_graphql::Result<&rustok_api::HostAuthorityContext> {
     use rustok_api::graphql::GraphQLError;
-    use rustok_core::SecurityActorKind;
 
-    let auth = ctx
-        .data::<crate::context::AuthContext>()
-        .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
-    let actor_kind = if auth.grant_type == "client_credentials" {
-        SecurityActorKind::Service
-    } else {
-        SecurityActorKind::User
-    };
-    crate::auth::host_authority_context_for_authenticated_actor(
-        actor_kind,
-        auth.user_id,
-        auth.client_id,
-        &auth.grant_type,
-    )
-    .map_err(|error| {
-        tracing::error!(
-            actor_id = %auth.user_id,
-            client_id = ?auth.client_id,
-            error = %error,
-            code = "host_authority.graphql_resolve_failed",
-            "host authority resolution failed for Settings GraphQL"
-        );
-        <async_graphql::FieldError as GraphQLError>::internal_error(
-            "Host authority configuration is invalid",
-        )
-    })?
-    .filter(|authority| authority.allows(required))
-    .ok_or_else(|| {
-        <async_graphql::FieldError as GraphQLError>::permission_denied(
-            "host-global authority required",
-        )
-    })
+    ctx.data_opt::<rustok_api::HostAuthorityContext>()
+        .filter(|authority| authority.allows(required))
+        .ok_or_else(|| {
+            <async_graphql::FieldError as GraphQLError>::permission_denied(
+                "host-global authority required",
+            )
+        })
 }
 
-pub(super) fn require_host_actor(
-    ctx: &async_graphql::Context<'_>,
+/// Iggy connector secrets are still stored under a routed tenant owner. The
+/// host credential grants process-wide mutation authority, while ordinary
+/// authentication supplies only the tenant secret-owner boundary.
+pub(super) fn require_host_actor<'a>(
+    ctx: &'a async_graphql::Context<'_>,
     required: rustok_api::HostAuthority,
 ) -> async_graphql::Result<(
-    rustok_api::HostAuthorityContext,
-    &crate::context::AuthContext,
+    &'a rustok_api::HostAuthorityContext,
+    &'a crate::context::AuthContext,
 )> {
     use rustok_api::graphql::GraphQLError;
 
@@ -82,10 +59,7 @@ pub(super) fn require_host_actor(
     let auth = ctx
         .data::<crate::context::AuthContext>()
         .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
-    if authority.actor_id() != auth.user_id {
-        return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-            "host-global authority required",
-        ));
-    }
+    let tenant = ctx.data::<crate::context::TenantContext>()?;
+    require_tenant_settings_scope(auth, tenant.id)?;
     Ok((authority, auth))
 }
