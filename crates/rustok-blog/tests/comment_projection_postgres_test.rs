@@ -1,7 +1,10 @@
-use std::error::Error;
+use std::{error::Error, io, time::Duration};
 
-use rustok_blog::services::BlogCommentProjectionHandler;
-use rustok_core::events::EventHandler;
+use rustok_blog::{BlogModule, services::BlogCommentProjectionHandler};
+use rustok_core::{
+    ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleRuntimeExtensions, RusToKModule,
+    events::{DispatcherConfig, EventBus, EventDispatcher, EventHandler},
+};
 use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -86,6 +89,55 @@ async fn duplicate_delivery_updates_counter_and_outbox_once() -> TestResult<()> 
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
+    test_db.cleanup().await
+}
+
+#[tokio::test]
+async fn event_dispatcher_routes_registered_handler_and_commits_projection() -> TestResult<()> {
+    let Some(test_db) = PostgresBlogProjectionTestDb::setup("dispatcher").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let comment_id = Uuid::new_v4();
+    insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
+
+    let extensions = ModuleRuntimeExtensions::default();
+    let context = ModuleEventListenerContext {
+        db: test_db.db.clone(),
+        extensions: &extensions,
+    };
+    let mut registry = ModuleEventListenerRegistry::new();
+    BlogModule.register_event_listeners(&mut registry, &context);
+
+    let bus = EventBus::new();
+    let mut dispatcher = EventDispatcher::with_config(
+        bus,
+        DispatcherConfig {
+            fail_fast: true,
+            max_concurrent: 1,
+            retry_count: 0,
+            retry_delay_ms: 0,
+            max_queue_depth: 128,
+        },
+    );
+    for handler in registry.into_handlers() {
+        dispatcher.register_boxed(handler);
+    }
+    assert_eq!(dispatcher.handler_count(), 1);
+
+    let envelope = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
+    let running = dispatcher.start();
+    running.bus().publish_envelope(envelope.clone())?;
+    wait_for_dispatch_commit(&test_db.db, envelope.id).await?;
+
+    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 1);
+
+    running.stop();
     test_db.cleanup().await
 }
 
@@ -219,6 +271,25 @@ fn comment_created_envelope(
             author_id: actor_id,
         },
     )
+}
+
+async fn wait_for_dispatch_commit(db: &DatabaseConnection, event_id: Uuid) -> TestResult<()> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if count_delivery(db, event_id).await? == 1 {
+                return Ok::<(), sea_orm::DbErr>(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("event dispatcher did not commit delivery {event_id}"),
+        )
+    })??;
+    Ok(())
 }
 
 async fn create_projection_tables(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
