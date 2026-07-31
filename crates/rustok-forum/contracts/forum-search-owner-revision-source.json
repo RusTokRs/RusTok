@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G2A",
+  "status": "source_complete_consumer_reconciliation_pending",
+  "scope": "Expose the immutable Forum owner journal as a bounded neutral Search projection revision source without advancing Search watermarks",
+  "owner_clock": {
+    "table": "forum_domain_events",
+    "field": "sequence_no",
+    "owner": "rustok-forum",
+    "strictly_increasing": true,
+    "append_only": true,
+    "global_sequence_tenant_scoped_reads": true,
+    "gaps_between_tenant_rows_are_valid": true,
+    "new_counter_added": false,
+    "migration_added": false
+  },
+  "forum_owner": {
+    "dto": "crates/rustok-forum/src/dto/event.rs",
+    "service": "crates/rustok-forum/src/services/event.rs",
+    "method": "ForumEventService::list_projection_owner_revisions",
+    "payload_exposed": false,
+    "actor_exposed": false,
+    "rbac_facing_journal_dto_reused": false,
+    "max_page_size": 100,
+    "ordering": "owner_revision ASC",
+    "cursor": "exclusive after_owner_revision"
+  },
+  "impact_classification": {
+    "full_rebuild_default": true,
+    "future_unknown_event_fails_safe": true,
+    "no_projection_change_event_types": [
+      "forum.topic.vote_changed",
+      "forum.reply.vote_changed",
+      "forum.category.subscription_changed",
+      "forum.topic.subscription_changed",
+      "forum.mention.user_added",
+      "forum.mention.audience_added"
+    ]
+  },
+  "search_contract": {
+    "owner": "crates/rustok-search/src/forum_reconciliation.rs",
+    "trait": "ForumProjectionOwnerRevisionSourcePort",
+    "shared_type": "SharedForumProjectionOwnerRevisionSourcePort",
+    "resolver": "resolve_forum_projection_owner_revisions",
+    "tenant_required": true,
+    "non_negative_cursor_required": true,
+    "strictly_increasing_page_required": true,
+    "non_nil_event_identity_required": true,
+    "bounded_event_type_required": true,
+    "missing_port_fails_closed": true,
+    "independent_from_search_ingest_sequence": true
+  },
+  "host_composition": {
+    "adapter": "apps/server/src/services/forum_search_owner_revision.rs",
+    "registration": "apps/server/src/services/mod.rs",
+    "direct_search_read_of_forum_domain_events": false,
+    "runtime_extension_registered": true
+  },
+  "non_claims": [
+    "The current Forum projection sweeper does not consume owner revisions in this slice",
+    "No Search owner-revision watermark is created or advanced",
+    "No lost-delivery gap is repaired automatically",
+    "No PostgreSQL, restart, retry or LINK-FORUM-03 runtime evidence was executed",
+    "Tests, verifiers, formatting, Cargo checks and Clippy were not run by the implementation agent"
+  ],
+  "remaining_scope": [
+    "persist a Search-owned per-tenant Forum owner-revision cursor separately from ingest_sequence",
+    "compare the owner journal with completed Search projection state without skipping pending inbox work",
+    "schedule a bounded tenant rebuild when a projection-impacting owner revision is not covered by durable delivery",
+    "advance owner revision only after the rebuild and Search state commit succeed",
+    "prove deletion, ACL, topic/reply parent-derived refresh, restart, retry and LINK-FORUM-03 behavior in PostgreSQL"
+  ]
+}
