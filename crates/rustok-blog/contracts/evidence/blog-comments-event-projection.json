@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
@@ -19,7 +19,22 @@
     "module_registration": "crates/rustok-blog/src/lib.rs",
     "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json"
   },
+  "source_harness": {
+    "status": "executable_no_run",
+    "path": "crates/rustok-blog/src/services/comment_projection.rs",
+    "module": "services::comment_projection::tests",
+    "command": "cargo test -p rustok-blog --lib services::comment_projection::tests",
+    "cases": [
+      "shared_created_deleted_classifier",
+      "non_blog_target_rejection",
+      "non_negative_saturating_counter_transition"
+    ]
+  },
   "cases": [
+    {
+      "name": "shared_event_classifier",
+      "expected": "project and EventHandler::handles use the same pure classifier for Comments lifecycle events"
+    },
     {
       "name": "blog_post_target_filter",
       "expected": "only Comments lifecycle events whose target_type is blog_post are projected"
@@ -46,7 +61,7 @@
     },
     {
       "name": "non_negative_count",
-      "expected": "delete projection floors the Blog-owned comment count at zero"
+      "expected": "the pure counter transition floors deletes at zero and saturates count and version overflow"
     },
     {
       "name": "module_listener_registration",
@@ -54,6 +69,7 @@
     }
   ],
   "runtime_promotion_requirements": [
+    "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
     "execute duplicate and out-of-order comment.created/comment.deleted deliveries against PostgreSQL",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
