@@ -8,9 +8,11 @@
     "crates/rustok-order/src/lib.rs",
     "crates/rustok-order/docs/checkout-compensation-local-context.md",
     "crates/rustok-order/docs/checkout-owner-context.md",
+    "crates/rustok-order/docs/checkout-payment-settlement-local-context.md",
     "scripts/verify/verify-order-compensation-local-context.mjs",
     "scripts/verify/verify-order-checkout-compensation-error-context.mjs",
-    "scripts/verify/verify-order-checkout-owner-context.mjs"
+    "scripts/verify/verify-order-checkout-owner-context.mjs",
+    "scripts/verify/verify-order-payment-settlement-local-context.mjs"
   ],
   "review_findings": {
     "public_facade_preserved": true,
@@ -18,6 +20,7 @@
     "shared_admission_order_preserved": true,
     "stable_code_only_wrapper_classifier_present": true,
     "message_pair_classifier_removed_from_compensation_wrapper": true,
+    "shared_settlement_mapper_code_only": true,
     "same_port_error_returned": true,
     "safe_context_shape_only": true,
     "safe_request_shape_only": true,
