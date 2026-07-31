@@ -8,10 +8,7 @@ use crate::model::{RbacModulePermissionGroup, RbacRoleInfo};
 const RBAC_ADMIN_BOUNDARY: &str = "rbac_admin_native_transport";
 
 #[cfg(feature = "ssr")]
-fn rbac_admin_scope_matches<T: PartialEq>(
-    auth_tenant_id: &T,
-    resolved_tenant_id: &T,
-) -> bool {
+fn rbac_admin_scope_matches<T: PartialEq>(auth_tenant_id: &T, resolved_tenant_id: &T) -> bool {
     auth_tenant_id == resolved_tenant_id
 }
 
