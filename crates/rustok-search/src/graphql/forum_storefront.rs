@@ -35,8 +35,9 @@ pub struct ForumStorefrontSearchQuery;
 impl ForumStorefrontSearchQuery {
     /// Executes published Search through the Forum-owned richer category scope,
     /// exact topic/reply result eligibility and optional exact author, tag,
-    /// solved-state and inclusive published-date scope. The input must explicitly
-    /// select only the `forum` source and at least one category root.
+    /// solved-state, inclusive published-date and trusted current-channel scope.
+    /// The input must explicitly select only the `forum` source and at least one
+    /// category root.
     async fn forum_storefront_search(
         &self,
         ctx: &Context<'_>,
@@ -46,6 +47,7 @@ impl ForumStorefrontSearchQuery {
         solved: Option<bool>,
         published_from: Option<String>,
         published_to: Option<String>,
+        current_channel_only: Option<bool>,
     ) -> Result<SearchPreviewPayload> {
         require_module_enabled(ctx, FORUM_MODULE_SLUG).await?;
         enforce_rate_limit(ctx).await?;
@@ -91,6 +93,7 @@ impl ForumStorefrontSearchQuery {
             locale: input.locale,
             fallback_locale: tenant.default_locale.clone(),
             channel_id: trusted_channel.channel_id.map(|value| value.to_string()),
+            current_channel_only,
             limit: input.limit,
             offset: input.offset,
             ranking_profile: input.ranking_profile,
@@ -133,7 +136,7 @@ impl ForumStorefrontSearchQuery {
         metrics::record_read_path_query(
             "graphql",
             FORUM_STOREFRONT_SEARCH_SURFACE,
-            "forum_category_scope_document_filters_result_eligibility_then_fts",
+            "forum_category_scope_document_and_current_channel_filters_result_eligibility_then_fts",
             execution.elapsed_ms as f64 / 1000.0,
             execution.result.total,
         );

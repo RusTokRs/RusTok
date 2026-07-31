@@ -8,16 +8,17 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::engine::{SearchFacetBucket, SearchFacetGroup};
+use crate::forum_current_channel_filter::ForumStorefrontCurrentChannelFilter;
 use crate::{
     FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
     PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
-    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
-    SearchRankingProfile, SearchResult, SearchResultItem, SearchSettingsService,
-    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
-    StorefrontSearchTransport, TrustedStorefrontChannel, resolve_storefront_search_category_ids,
-    resolve_storefront_search_result_candidates, resolve_trusted_storefront_channel,
+    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchResult,
+    SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
+    resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
+    resolve_trusted_storefront_channel,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -45,6 +46,7 @@ pub struct ForumStorefrontSearchRequest {
     pub locale: Option<String>,
     pub fallback_locale: String,
     pub channel_id: Option<String>,
+    pub current_channel_only: Option<bool>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
     pub ranking_profile: Option<String>,
@@ -121,6 +123,7 @@ struct NormalizedForumStorefrontSearchRequest {
     locale: Option<String>,
     fallback_locale: String,
     channel_id: Option<Uuid>,
+    current_channel_filter: ForumStorefrontCurrentChannelFilter,
     limit: usize,
     offset: usize,
     ranking_profile: Option<String>,
@@ -148,6 +151,7 @@ pub async fn execute_forum_storefront_search(
     let input = normalize_request(request)?;
     let trusted_channel = input.trusted_channel.clone();
     let document_filters = input.document_filters.clone();
+    let current_channel_filter = input.current_channel_filter.clone();
     let started_at = Instant::now();
     let transform =
         SearchDictionaryService::transform_query(db, input.tenant_id, &input.query).await?;
@@ -220,10 +224,11 @@ pub async fn execute_forum_storefront_search(
         request_context,
         &trusted_channel,
         &document_filters,
+        &current_channel_filter,
         input.transport,
     )
     .await?;
-    let result = if document_filters.is_empty() {
+    let result = if document_filters.is_empty() && current_channel_filter.is_empty() {
         SearchDictionaryService::apply_storefront_query_rules(
             db,
             &search_query,
@@ -271,6 +276,7 @@ async fn execute_result_eligible_search(
     request_context: Option<RequestContext>,
     trusted_channel: &TrustedStorefrontChannel,
     document_filters: &ForumStorefrontDocumentFilters,
+    current_channel_filter: &ForumStorefrontCurrentChannelFilter,
     transport: StorefrontSearchTransport,
 ) -> Result<SearchResult, ForumStorefrontSearchExecutionError> {
     let started_at = Instant::now();
@@ -322,7 +328,9 @@ async fn execute_result_eligible_search(
         ));
     }
 
-    all_items.retain(|item| document_filters.matches(item));
+    all_items.retain(|item| {
+        document_filters.matches(item) && current_channel_filter.matches(item)
+    });
 
     let mut seen_candidates = HashSet::new();
     let candidates = all_items
@@ -468,8 +476,10 @@ fn normalize_request(
     let exact_locale = locale
         .clone()
         .unwrap_or_else(|| fallback_locale.clone());
-    let published_from = normalize_optional_rfc3339("published_from", request.published_from.as_deref())?;
-    let published_to = normalize_optional_rfc3339("published_to", request.published_to.as_deref())?;
+    let published_from =
+        normalize_optional_rfc3339("published_from", request.published_from.as_deref())?;
+    let published_to =
+        normalize_optional_rfc3339("published_to", request.published_to.as_deref())?;
     if published_from
         .as_ref()
         .zip(published_to.as_ref())
@@ -489,6 +499,8 @@ fn normalize_request(
         requested_channel_id,
     )
     .map_err(|error| ForumStorefrontSearchExecutionError::Validation(error.to_string()))?;
+    let current_channel_filter =
+        resolve_current_channel_filter(request.current_channel_only, &trusted_channel)?;
     let source_modules = normalize_filter_values("source_modules", request.source_modules)?;
     if source_modules.as_slice() != [FORUM_SEARCH_SOURCE_MODULE] {
         return validation("Forum storefront Search requires source_modules: [forum]");
@@ -513,6 +525,7 @@ fn normalize_request(
         locale,
         fallback_locale,
         channel_id: trusted_channel.channel_id,
+        current_channel_filter,
         limit: request.limit.unwrap_or(12).clamp(1, 50) as usize,
         offset: request.offset.unwrap_or(0).max(0) as usize,
         ranking_profile,
@@ -536,6 +549,23 @@ fn normalize_request(
         request_context: Some(request_context),
         trusted_channel,
         transport: request.transport,
+    })
+}
+
+fn resolve_current_channel_filter(
+    requested: Option<bool>,
+    trusted_channel: &TrustedStorefrontChannel,
+) -> Result<ForumStorefrontCurrentChannelFilter, ForumStorefrontSearchExecutionError> {
+    if requested != Some(true) {
+        return Ok(ForumStorefrontCurrentChannelFilter::default());
+    }
+    let channel_slug = trusted_channel.channel_slug.clone().ok_or_else(|| {
+        ForumStorefrontSearchExecutionError::Validation(
+            "current_channel_only requires a trusted storefront channel".to_string(),
+        )
+    })?;
+    Ok(ForumStorefrontCurrentChannelFilter {
+        channel_slug: Some(channel_slug),
     })
 }
 
@@ -770,7 +800,8 @@ fn validation<T>(message: impl Into<String>) -> Result<T, ForumStorefrontSearchE
 
 #[cfg(test)]
 mod tests {
-    use super::{forum_visible_status, normalize_optional_rfc3339};
+    use super::{forum_visible_status, normalize_optional_rfc3339, resolve_current_channel_filter};
+    use crate::TrustedStorefrontChannel;
 
     #[test]
     fn visible_forum_statuses_match_owner_eligibility() {
@@ -782,7 +813,52 @@ mod tests {
 
     #[test]
     fn date_bounds_require_rfc3339() {
-        assert!(normalize_optional_rfc3339("published_from", Some("2026-07-31T00:00:00Z")).is_ok());
+        assert!(
+            normalize_optional_rfc3339("published_from", Some("2026-07-31T00:00:00Z"))
+                .is_ok()
+        );
         assert!(normalize_optional_rfc3339("published_from", Some("2026-07-31")).is_err());
+    }
+
+    #[test]
+    fn current_channel_only_resolves_exact_trusted_slug() {
+        let filter = resolve_current_channel_filter(
+            Some(true),
+            &TrustedStorefrontChannel {
+                channel_id: Some(uuid::Uuid::new_v4()),
+                channel_slug: Some("web".to_string()),
+            },
+        )
+        .expect("trusted current channel should resolve");
+        assert_eq!(filter.channel_slug.as_deref(), Some("web"));
+    }
+
+    #[test]
+    fn current_channel_only_rejects_unscoped_request() {
+        let error = resolve_current_channel_filter(
+            Some(true),
+            &TrustedStorefrontChannel {
+                channel_id: None,
+                channel_slug: None,
+            },
+        )
+        .expect_err("unscoped request must not select a channel");
+        assert_eq!(
+            error.to_string(),
+            "current_channel_only requires a trusted storefront channel"
+        );
+    }
+
+    #[test]
+    fn false_current_channel_filter_preserves_existing_behavior() {
+        let filter = resolve_current_channel_filter(
+            Some(false),
+            &TrustedStorefrontChannel {
+                channel_id: None,
+                channel_slug: None,
+            },
+        )
+        .expect("false must preserve existing behavior");
+        assert!(filter.is_empty());
     }
 }

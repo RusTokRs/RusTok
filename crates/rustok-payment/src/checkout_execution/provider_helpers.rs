@@ -23,7 +23,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment capture has no durable authorize provider identity",
+                    CheckoutPaymentExecutionReconciliationReason::MissingDurableAuthorizeProviderIdentity,
                 )
             })?;
         if !matches!(
@@ -35,7 +35,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             return Err(manual_reconciliation(
                 context,
                 owner_operation,
-                "payment capture cannot use an incomplete authorize operation",
+                CheckoutPaymentExecutionReconciliationReason::IncompleteAuthorizeOperation,
             ));
         }
         let provider_payment_id = authorize
@@ -58,7 +58,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment authorize operation has no durable provider payment identity",
+                    CheckoutPaymentExecutionReconciliationReason::MissingDurableProviderPaymentIdentity,
                 )
             })?;
         insert_metadata_string(
@@ -103,10 +103,16 @@ impl InProcessCheckoutPaymentExecutionPort {
     ) -> Result<(), PortError> {
         if let Err(error) = self.operation_journal.mark_committed(operation_id).await {
             let context_facts = checkout_payment_execution_context_facts(context);
+            let error_facts = checkout_payment_execution_payment_error_facts(&error);
             tracing::error!(
                 operation_id_non_nil = !operation_id.is_nil(),
                 provider_operation,
-                error = ?error,
+                commit_checkpoint_error_variant = error_facts.error_variant,
+                commit_checkpoint_error_text_field_count = error_facts.text_field_count,
+                commit_checkpoint_error_text_total_length = error_facts.text_total_length,
+                commit_checkpoint_error_uuid_field_count = error_facts.uuid_field_count,
+                commit_checkpoint_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+                commit_checkpoint_error_opaque_payload_present = error_facts.opaque_payload_present,
                 correlation_id = %context.correlation_id,
                 tenant_id_length = context_facts.tenant_id_length,
                 actor_kind = context_facts.actor_kind,
@@ -129,7 +135,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             return Err(manual_reconciliation(
                 context,
                 owner_operation,
-                "payment provider result was applied but its commit checkpoint failed",
+                CheckoutPaymentExecutionReconciliationReason::CommitCheckpointFailed,
             ));
         }
         Ok(())
@@ -151,10 +157,16 @@ impl InProcessCheckoutPaymentExecutionPort {
             .await
         {
             let context_facts = checkout_payment_execution_context_facts(context);
+            let error_facts = checkout_payment_execution_payment_error_facts(&error);
             tracing::error!(
                 operation_id_non_nil = !operation_id.is_nil(),
                 provider_operation,
-                error = ?error,
+                reconciliation_checkpoint_error_variant = error_facts.error_variant,
+                reconciliation_checkpoint_error_text_field_count = error_facts.text_field_count,
+                reconciliation_checkpoint_error_text_total_length = error_facts.text_total_length,
+                reconciliation_checkpoint_error_uuid_field_count = error_facts.uuid_field_count,
+                reconciliation_checkpoint_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+                reconciliation_checkpoint_error_opaque_payload_present = error_facts.opaque_payload_present,
                 correlation_id = %context.correlation_id,
                 tenant_id_length = context_facts.tenant_id_length,
                 actor_kind = context_facts.actor_kind,

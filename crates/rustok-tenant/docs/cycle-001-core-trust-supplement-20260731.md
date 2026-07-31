@@ -14,7 +14,8 @@ complete or replace its required same-SHA gates.
 - Commerce store-context owner error mapping and focused all-features compile.
 - Migration Compatibility blockers before the retained Tenant PostgreSQL
   backfill and incremental-upgrade fixtures can execute.
-- Host-global Events/System operational authority versus tenant-scoped RBAC.
+- Host-global Events/System/Settings operational authority versus tenant-scoped
+  RBAC and OAuth application issuance.
 
 ## Tenant-owner findings
 
@@ -47,18 +48,33 @@ Each fix returns a static denial on mismatch and keeps both tenant ids only in
 structured private diagnostics. Focused source-contract regressions retain the
 extractor counts and equality-before-permission ordering.
 
-## Open cross-owner P0 blocker
+## Host-global authority P0 mitigation
 
-Events Admin reads and mutates host-global `SharedEventDeliveryControl` through
-ordinary tenant-scoped `settings:read`/`settings:manage`. System GraphQL also
-exposes host-global system, cache and all-tenant event diagnostics through
-ordinary tenant-scoped `logs:read`.
+The cross-owner audit confirmed that Events Admin, System GraphQL and global
+Settings GraphQL operated on process-wide state while accepting ordinary tenant
+`settings:*` or `logs:*` permissions. A tenant equality check could not repair
+that mismatch because the resources are not tenant-owned.
 
-`rustok_api::AuthContext` has no typed host/platform/root authority claim, so a
-tenant equality check cannot safely authorize these host-global resources.
-Issue #2680 owns the required Auth/RBAC authority contract and the fail-closed
-release option. The Events module handoff is `blocked` in
-`crates/rustok-events-module/docs/implementation-plan.md`.
+The immediate exposure is source-mitigated in this change:
+
+- `rustok_api::HostAuthorityContext` defines explicit host `Read` and `Manage`
+  levels independently from tenant RBAC;
+- every issued context must carry a non-nil operator actor;
+- ordinary tenant authentication does not insert the host context;
+- native Events delivery configuration/update, System health/cache/events
+  diagnostics, and global Iggy/event Settings query/mutation paths require host
+  authority before resolving or mutating their singleton resources;
+- global mutations use the bound operator actor; Iggy additionally retains the
+  authenticated tenant only as the secret-owner input and requires the same
+  actor in both contexts;
+- `scripts/verify/verify-host-global-authority-boundary.mjs` forbids returning to
+  tenant permissions, OAuth wildcard inference, or guard-after-resource order.
+
+No host-operator credential issuance path is composed yet. These operations
+therefore fail closed for normal tenant requests. Issue #2680 remains open for
+Auth/RBAC-owned operator issuance, refresh/revocation, transport composition and
+live admission evidence. The Events module remains `blocked`, but ordinary
+tenant administrators no longer have a source path to host-global authority.
 
 ## Same-SHA workflow evidence
 
@@ -76,6 +92,9 @@ release option. The Events module handoff is `blocked` in
 - Existing expired advisory exceptions, cache timeout assertions, browser
   fixture failures and unrelated Payment/Order verifier markers remain separate
   repository-wide blockers, not Tenant-owner defects.
+- The host-authority source guard and targeted Rust checks have not executed on
+  the branch SHA because the connector environment still cannot resolve
+  `github.com`; no compile/runtime claim is made here.
 
 ## Remaining Tenant blockers
 
@@ -89,7 +108,9 @@ release option. The Events module handoff is `blocked` in
 - Deployed/native parity with representative tenant identities.
 - Resolution of the base Cargo.lock/Athanor `--locked` blocker so Migration
   Compatibility can reach the Tenant fixtures.
-- Resolution of host-global authority issue #2680 before platform release.
+- Same-SHA host-authority source/compile evidence, followed by an approved
+  operator issuance path for issue #2680 before host-global controls can be
+  released as functional operator surfaces.
 
 ## Resume commands
 
@@ -100,13 +121,16 @@ node scripts/verify/verify-commerce-tenant-locale-boundary.mjs
 node scripts/verify/verify-tenant-admin-native-error-safety.mjs
 node scripts/verify/verify-tenant-locale-policy-migration.mjs
 node scripts/verify/verify-email-admin-tenant-scope.mjs
+node scripts/verify/verify-host-global-authority-boundary.mjs
 npm run verify:tenant:fba
+cargo test -p rustok-api host_authority -- --nocapture
 cargo test -p rustok-channel-admin --test tenant_scope_contract
 cargo test -p rustok-index-admin --test tenant_scope_contract
 cargo test -p rustok-search-admin --test tenant_scope_contract
 cargo test -p rustok-outbox-admin --test tenant_scope_contract
 cargo check -p rustok-commerce --all-features
 cargo check -p rustok-order-storefront --all-features
+cargo check -p rustok-events-module
 cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture
 cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture
 cargo test -p rustok-server tenant_locale_generation --lib

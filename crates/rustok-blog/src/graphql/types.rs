@@ -10,11 +10,13 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    BlogError, BlogPostStatus, CommentListItem as DomainCommentListItem, CommentService,
+    BlogError, BlogPostStatus, CommentListItem as DomainCommentListItem,
     CreatePostInput as DomainCreatePostInput, ListCommentsFilter,
     ModerateCommentStatus as DomainModerateCommentStatus, PostResponse, PostSummary,
     UpdatePostInput as DomainUpdatePostInput,
 };
+
+use super::runtime_data::BlogGraphqlRuntimeData;
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 #[graphql(name = "BlogPostStatus", rename_items = "SCREAMING_SNAKE_CASE")]
@@ -150,26 +152,25 @@ impl GqlPost {
     ) -> Result<GqlPublicCommentList> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
         let fallback_locale = post_comment_fallback_locale(request_tenant, self);
+        let service = runtime.comment_service(db.clone(), event_bus.clone());
 
-        let (items, total, availability) = match CommentService::new(
-            db.clone(),
-            event_bus.clone(),
-        )
-        .list_for_post_with_locale_fallback(
-            self.tenant_id,
-            SecurityContext::public_read(),
-            self.id,
-            ListCommentsFilter {
-                locale: Some(requested_locale),
-                page: page.unwrap_or(1).max(1),
-                per_page: per_page.unwrap_or(20).clamp(1, 100),
-            },
-            Some(fallback_locale),
-        )
-        .await
+        let (items, total, availability) = match service
+            .list_for_post_with_locale_fallback(
+                self.tenant_id,
+                SecurityContext::public_read(),
+                self.id,
+                ListCommentsFilter {
+                    locale: Some(requested_locale),
+                    page: page.unwrap_or(1).max(1),
+                    per_page: per_page.unwrap_or(20).clamp(1, 100),
+                },
+                Some(fallback_locale),
+            )
+            .await
         {
             Ok((items, total)) => (items, total, GqlBlogCommentsAvailability::Available),
             Err(error) => {
@@ -199,11 +200,13 @@ impl GqlPost {
         let auth = require_comment_moderator(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
         ensure_comment_tenant_binding(request_tenant, &auth, self.tenant_id)?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
+        let service = runtime.comment_service(db.clone(), event_bus.clone());
 
-        let (items, total) = CommentService::new(db.clone(), event_bus.clone())
+        let (items, total) = service
             .list_for_post_with_locale_fallback(
                 self.tenant_id,
                 SecurityContext::system(),

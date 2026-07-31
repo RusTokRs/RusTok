@@ -4,7 +4,7 @@
   "upstream_task": "FORUM-20BJ",
   "scope": "Publish durable owner-transactional invalidations on the supported PostgreSQL Forum Search runtime for every canonical Forum mutation that can change exact public category topic or approved reply projections",
   "root_event": "rustok_events::DomainEvent::ReindexRequested",
-  "event_type": "search.reindex_requested",
+  "event_type": "index.reindex_requested",
   "outbox_transaction_api": "crates/rustok-outbox/src/transactional.rs",
   "outbox_storage_api": "crates/rustok-outbox/src/transport.rs",
   "forum_invalidation_owner": "crates/rustok-forum/src/services/projection_invalidation.rs",

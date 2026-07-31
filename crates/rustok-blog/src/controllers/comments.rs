@@ -8,7 +8,7 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{BlogHttpRuntime, posts::ensure_blog_permission};
-use crate::{CommentResponse, CommentService, ModerateCommentInput};
+use crate::{CommentResponse, ModerateCommentInput};
 
 #[utoipa::path(
     post,
@@ -49,7 +49,7 @@ pub async fn moderate_comment(
         .unwrap_or_else(|| request_context.locale.clone());
     input.locale = Some(locale);
 
-    let service = CommentService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.comment_service();
     let comment = service
         .moderate_comment(
             tenant.id,

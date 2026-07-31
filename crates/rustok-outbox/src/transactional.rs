@@ -33,12 +33,27 @@ impl TransactionalEventBus {
     where
         C: ConnectionTrait,
     {
+        Self::publish_root_in_tx_with_envelope_id(txn, tenant_id, actor_id, event)
+            .await
+            .map(|_| ())
+    }
+
+    /// Publishes a validated registered root event and returns the exact durable
+    /// envelope identity written by the same owner transaction.
+    pub async fn publish_root_in_tx_with_envelope_id<C>(
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: DomainEvent,
+    ) -> Result<Uuid>
+    where
+        C: ConnectionTrait,
+    {
         validate_event(&event)?;
-        OutboxTransport::write_envelope_in_tx(
-            txn,
-            EventEnvelope::new(tenant_id, actor_id, event),
-        )
-        .await
+        let envelope = EventEnvelope::new(tenant_id, actor_id, event);
+        let envelope_id = envelope.id;
+        OutboxTransport::write_envelope_in_tx(txn, envelope).await?;
+        Ok(envelope_id)
     }
 
     pub async fn publish_in_tx<C>(

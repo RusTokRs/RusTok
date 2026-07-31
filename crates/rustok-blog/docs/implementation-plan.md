@@ -79,7 +79,15 @@ provider only through `in_process_comments_thread_port`, and routes all seven
 operations through typed `PortContext` / `PortError` contracts. Reads and writes
 carry a two-second deadline; writes add command-scoped idempotency keys; public
 lists use the dedicated approved-only operation and service actor; richtext input,
-view, and plain-text projections remain typed. Evidence schema v2 lives at
+view, and plain-text projections remain typed. `CommentService::new` remains the
+in-process convenience constructor, while public
+`CommentService::with_comments_thread_port` accepts a host-owned
+`Arc<dyn CommentsThreadPort>` without changing the owner service API. The retained
+compile-only harness is
+`services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port`
+in `crates/rustok-blog/src/services/comment.rs`, with suggested command
+`cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact`.
+Evidence schema v3 lives at
 `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`.
 The active fallback/error source evidence is
 `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
@@ -93,8 +101,52 @@ projection. Typed storefront comments availability is source-verified across the
 owner GraphQL resolver, GraphQL client, native SSR adapter, shared DTO, and Leptos
 UI. Only `ExternalService` and `Timeout` become empty `UNAVAILABLE` or `TIMEOUT`
 comment payloads; every other `BlogError` remains fail-closed. The in-process
-source profile is verified. The remote adapter and degraded UI modes remain planned.
-Cached snapshot and comment-form fallback remain planned, and runtime evidence is pending.
+source profile and transport-neutral injection seam are source-locked. The remote
+transport remains pending; degraded UI modes remain planned. Cached snapshot and
+comment-form fallback remain planned, and runtime evidence is pending.
+
+HTTP moderation composition is retained separately. `BlogHttpRuntime::from_host`
+reads an optional `Arc<dyn CommentsThreadPort>` through
+`HostRuntimeContext::shared_get`, and `BlogHttpRuntime::comment_service` selects
+`CommentService::with_comments_thread_port` when the host supplies one while
+preserving `CommentService::new` as the in-process fallback. The moderation
+controller delegates only to that selector. Schema-v1 evidence lives at
+`crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`,
+guarded by `scripts/verify/verify-blog-comments-http-port-injection.mjs` and
+focused fixture
+`scripts/verify/verify-blog-comments-http-port-injection.test.mjs`. The registered
+`verify:blog:comments-port-boundary` verifier imports the standalone HTTP verifier,
+and the registered `test:verify:blog:comments-port-boundary` self-test imports its
+focused fixture. `scripts/verify/verify-blog-fba.test.mjs` locks both imports, so
+the existing first-class Comments port leaf cannot silently drop HTTP composition
+coverage. The retained compile-only harness is
+`controllers::tests::blog_http_runtime_exposes_comments_port_selection`, with
+suggested command
+`cargo test -p rustok-blog --lib controllers::tests::blog_http_runtime_exposes_comments_port_selection -- --exact`.
+HTTP moderation host selection is source-locked; native SSR composition plus the
+remote network transport remains pending.
+
+GraphQL Comments composition is manifest-attached. The Blog package declares
+`runtime_data_factory = "graphql::attach_schema_data"`; generated server code
+passes `GraphqlRuntimeInputs` through
+`schema_codegen::attach_module_graphql_data`, and `BlogGraphqlRuntimeData` reads an
+optional `Arc<dyn CommentsThreadPort>` with `GraphqlRuntimeInputs::shared_get`.
+Its single `BlogGraphqlRuntimeData::comment_service` selector chooses
+`CommentService::with_comments_thread_port` or the existing in-process
+`CommentService::new` fallback. Public comments, moderation comments, and the
+moderation mutation all consume that schema data rather than constructing a
+provider in resolver source. Schema-v1 evidence lives at
+`crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json`,
+guarded by `scripts/verify/verify-blog-comments-graphql-port-injection.mjs` and
+focused fixture
+`scripts/verify/verify-blog-comments-graphql-port-injection.test.mjs`. The retained
+compile-only harness is
+`graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection`,
+with suggested command
+`cargo test -p rustok-blog --lib graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection -- --exact`.
+GraphQL Comments host selection is source-locked. Blog FBA package-chain
+registration remains pending, storefront/admin native SSR composition remains
+pending, and the remote network transport remains pending.
 
 Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
@@ -534,6 +586,65 @@ code, the dispatcher target, and its standalone verifier are unchanged. No Rust
 test, JavaScript verifier, compile, PostgreSQL, browser, workflow, CI, or
 production execution is recorded.
 
+The continuation audit at `bef0ffcce06551914175c00fa5e540aa4ceed720`
+found that `CommentService` stored a transport-neutral `Arc<dyn CommentsThreadPort>`
+but exposed only `new(db, event_bus)`, which always constructed the in-process
+provider. A future host-owned remote adapter therefore had no public composition
+seam even though all seven calls already routed through the trait boundary.
+
+Slice 58 adds public `CommentService::with_comments_thread_port`, keeps `new` as
+the in-process convenience path, and adds a compile-only exact-signature harness.
+Comments consumer evidence advances to schema v3 and Blog registry schema v13
+retains the harness under `contract_tests.adapter_injection`. The existing
+fail-closed verifier now rejects constructor, harness, metadata, and unearned
+runtime-status drift. No remote transport implementation, Rust/JavaScript test,
+compile, database, browser, workflow, CI, or production execution is recorded.
+
+The continuation audit at `99418b0ea424dbb56835ee61105de4294cb75337`
+found that the new public injection seam was not yet consumed by the Blog HTTP
+moderation runtime. `BlogHttpRuntime` retained only database and event-bus handles,
+and the controller still constructed the in-process service directly, so a
+host-provided Comments port could not reach the HTTP moderation surface.
+
+Slice 59 adds optional `Arc<dyn CommentsThreadPort>` lookup from
+`HostRuntimeContext`, centralizes injected/in-process selection in
+`BlogHttpRuntime::comment_service`, and removes direct provider construction from
+the moderation controller. New schema-v1 evidence, a standalone verifier, focused
+negative fixtures, and a compile-only selector harness retain the HTTP composition
+contract. GraphQL/native SSR wiring, package-chain registration, the remote
+network transport, and all execution remain pending.
+
+The continuation audit at `c1870d5473f0cecc2d95fa19fcd9377118a9a2d2`
+found that the HTTP composition evidence, standalone verifier, focused fixture,
+and compile-only selector harness were complete, but the registered
+`comments_port_boundary` leaf did not execute either standalone JavaScript asset.
+The HTTP contract could therefore drift while both Blog FBA package chains still
+passed their existing source order.
+
+Slice 60 imports the standalone HTTP verifier from the registered Comments port
+verifier and imports its focused fixture from the registered Comments port
+self-test. The aggregate Blog FBA self-test locks both import statements. Registry
+schema v13, package scripts, and verify/test order remain unchanged because HTTP
+composition is now a required sub-contract of the existing first-class Comments
+port leaf rather than a parallel duplicate leaf. Runtime source, evidence, remote
+transport status, and all execution claims remain unchanged.
+
+The continuation audit at `8853b4431536ceb86dbe1d5be2090977105878af`
+found that GraphQL public reads, moderation reads, and moderation mutation still
+constructed `CommentService::new` directly. Blog also had no manifest runtime-data
+factory, so host shared values could not enter the Blog GraphQL schema even though
+the transport-neutral service constructor and generic server attachment mechanism
+already existed.
+
+Slice 61 adds manifest-declared `graphql::attach_schema_data`, materializes
+`BlogGraphqlRuntimeData` from `GraphqlRuntimeInputs`, and centralizes injected or
+in-process selection in `BlogGraphqlRuntimeData::comment_service`. All three
+GraphQL Comments operations consume that schema data. New schema-v1 evidence, a
+standalone verifier, twelve focused positive/negative cases, and a compile-only
+factory/selector harness retain the complete host→generated-schema→resolver path.
+Blog FBA package-chain integration, native SSR wiring, the remote network
+transport, and all execution remain pending.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -547,16 +658,28 @@ production execution is recorded.
   plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
   Comments event projection, category Search reindex, GraphQL rate limiting,
   GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
-  order.
+  order. The existing Comments port leaf requires the HTTP composition verifier
+  and focused fixture through aggregate-locked imports. The standalone GraphQL
+  Comments composition guard remains outside registry package order in Slice 61.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
-  the in-process profile; all seven operations, approved public read, typed
-  richtext projection, two-second deadlines, write idempotency, active typed
-  `PortErrorKind` mapping, exact npm leaf commands, focused fixture, and Blog FBA
-  ordering are locked. Typed storefront comments availability is retained across
+  the in-process profile; evidence schema v3, all seven operations, approved public
+  read, typed richtext projection, two-second deadlines, write idempotency, active
+  typed `PortErrorKind` mapping, public transport-neutral injection constructor,
+  compile-only exact-signature harness, exact npm leaf commands, focused fixture,
+  and Blog FBA ordering are locked. HTTP moderation selects an optional
+  host-provided port through `BlogHttpRuntime::comment_service` with an in-process
+  fallback; schema-v1 evidence, standalone verification, all focused HTTP
+  negatives, and both parent imports are retained inside the registered Comments
+  port gate. GraphQL public reads, moderation reads, and moderation mutation now
+  select the same optional host port through manifest-attached
+  `BlogGraphqlRuntimeData`; schema-v1 evidence, the generated schema attachment,
+  twelve focused cases, and a compile-only selector harness retain that standalone
+  source contract. Typed storefront comments availability remains across
   GraphQL/native DTOs and Leptos UI; only external-service and timeout errors
-  degrade, while other errors propagate. The remote adapter, cached snapshot,
-  comment-form fallback, browser/runtime evidence, and broader degraded UI modes
-  remain planned or pending.
+  degrade, while other errors propagate. GraphQL package-chain integration,
+  storefront/admin native SSR composition, the remote network transport, remote
+  adapter runtime parity, cached snapshot, comment-form fallback, browser/runtime
+  evidence, and broader degraded UI modes remain planned or pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence
   schema v4, shared classifier/counter/retry-decision helpers, `executable_no_run`
   source harness, deterministic PostgreSQL retry-limit target, module-registration,
@@ -603,11 +726,22 @@ production execution is recorded.
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json`
+- `crates/rustok-blog/rustok-module.toml`
 - `crates/rustok-blog/src/lib.rs`
+- `crates/rustok-blog/src/controllers/mod.rs`
+- `crates/rustok-blog/src/controllers/comments.rs`
+- `crates/rustok-blog/src/services/comment.rs`
+- `crates/rustok-blog/src/graphql/mod.rs`
+- `crates/rustok-blog/src/graphql/runtime_data.rs`
 - `crates/rustok-blog/src/graphql/types.rs`
+- `crates/rustok-blog/src/graphql/mutation.rs`
+- `apps/server/build.rs`
+- `apps/server/src/graphql/schema.rs`
 - `crates/rustok-blog/storefront/src/model.rs`
 - `crates/rustok-blog/storefront/src/transport/graphql_adapter.rs`
 - `crates/rustok-blog/storefront/src/transport/native_server_adapter.rs`
@@ -633,6 +767,10 @@ production execution is recorded.
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-comments-port-boundary.mjs`
 - `scripts/verify/verify-blog-comments-port-boundary.test.mjs`
+- `scripts/verify/verify-blog-comments-http-port-injection.mjs`
+- `scripts/verify/verify-blog-comments-http-port-injection.test.mjs`
+- `scripts/verify/verify-blog-comments-graphql-port-injection.mjs`
+- `scripts/verify/verify-blog-comments-graphql-port-injection.test.mjs`
 - `scripts/verify/verify-blog-comments-event-projection.mjs`
 - `scripts/verify/verify-blog-comments-event-projection.test.mjs`
 - `scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs`
@@ -810,6 +948,29 @@ production execution is recorded.
     duplicate-delivery race gate, bound its evidence and PostgreSQL target in
     registry schema v13, and locked aggregate verify/test order without changing
     runtime code or recording execution.
+58. Added a public transport-neutral Comments port injection constructor while
+    preserving the in-process convenience path, retained its exact trait-object
+    signature in an executable-no-run Rust harness, advanced consumer evidence to
+    schema v3, registered the harness in Blog registry schema v13, and extended the
+    existing fail-closed verifier and focused fixture without implementing or
+    claiming a remote transport.
+59. Wired optional host-provided `CommentsThreadPort` selection into Blog HTTP
+    moderation, centralized injected/in-process construction in
+    `BlogHttpRuntime::comment_service`, retained the selector in schema-v1 evidence
+    plus a standalone verifier, focused negative fixture, and compile-only harness,
+    and kept GraphQL/native SSR composition, package registration, remote transport,
+    and all execution pending.
+60. Bound the standalone HTTP composition verifier and focused fixture into the
+    already registered `comments-port-boundary` verify/test leaf, added aggregate
+    regressions for both required imports, preserved registry schema v13 and exact
+    package order, and changed no runtime source or execution status.
+61. Added manifest-attached `BlogGraphqlRuntimeData`, carried the optional
+    host-owned `CommentsThreadPort` through generated schema data, routed public
+    and moderation reads plus moderation mutation through one injected/in-process
+    selector, retained the full host attachment path in schema-v1 evidence,
+    standalone verification, twelve focused cases, and a compile-only harness,
+    and kept package registration, native SSR wiring, remote transport, and all
+    execution pending.
 
 ## Next results
 
@@ -826,10 +987,14 @@ production execution is recorded.
 4. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
-5. **Close comments runtime evidence.** Run the Comments port boundary fixture,
-   shared consumer runtime-order verifier, Blog projection classifier and
-   deterministic retry-policy harness, module registration/routing harness, the
-   filtered `event_dispatcher_routes_registered_handler_and_commits_projection`,
+5. **Close comments runtime evidence.** Run the registered Comments port boundary
+   verifier and self-test, which include the standalone HTTP composition verifier
+   and all focused HTTP negatives, plus the standalone GraphQL composition verifier
+   and focused fixture, the compile-only injection-signature, HTTP selection, and
+   GraphQL runtime-data harnesses, shared consumer runtime-order verifier, Blog
+   projection classifier and deterministic retry-policy harness, module
+   registration/routing harness, the filtered
+   `event_dispatcher_routes_registered_handler_and_commits_projection`,
    `event_dispatcher_replays_duplicate_envelope_without_double_commit`,
    `concurrent_created_events_converge_without_lost_updates`,
    `optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears`,
@@ -848,11 +1013,15 @@ production execution is recorded.
    duplicate replay, dispatcher delivery output, four-connection convergence,
    both child process exits, the written duplicate, delete-before-create,
    missing-post replay, outbox rollback/retry, and same-process/new-connection
-   assertions; then retain naturally contended PostgreSQL retry-frequency
-   evidence, full server-host restart recovery, remote adapter parity, browser
-   parity for typed unavailable/timeout article rendering, cached thread
-   snapshots, comment-form fallback, approved-only reads, moderation, pagination,
-   first-thread identity, and unrelated insert storage error propagation.
+   assertions; then register the GraphQL source guard in the Blog FBA package chain,
+   wire storefront native SSR and admin native SSR to the host-owned Comments port,
+   implement the remote network transport through
+   `CommentService::with_comments_thread_port`, and retain all-seven-operation
+   adapter parity, naturally contended PostgreSQL retry-frequency evidence, full
+   server-host restart recovery, browser parity for typed unavailable/timeout
+   article rendering, cached thread snapshots, comment-form fallback,
+   approved-only reads, moderation, pagination, first-thread identity, and
+   unrelated insert storage error propagation.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -866,6 +1035,13 @@ should run the relevant subset, including:
 
 - `npm run verify:blog:comments-port-boundary`
 - `npm run test:verify:blog:comments-port-boundary`
+- `cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact`
+- `node scripts/verify/verify-blog-comments-http-port-injection.mjs`
+- `node --test scripts/verify/verify-blog-comments-http-port-injection.test.mjs`
+- `cargo test -p rustok-blog --lib controllers::tests::blog_http_runtime_exposes_comments_port_selection -- --exact`
+- `node scripts/verify/verify-blog-comments-graphql-port-injection.mjs`
+- `node --test scripts/verify/verify-blog-comments-graphql-port-injection.test.mjs`
+- `cargo test -p rustok-blog --lib graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection -- --exact`
 - `npm run verify:blog:comments-event-projection`
 - `npm run test:verify:blog:comments-event-projection`
 - `npm run verify:blog:comments-duplicate-delivery-race`

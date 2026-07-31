@@ -93,6 +93,11 @@ pub mod module_event_dispatcher {
     }
 
     #[cfg(feature = "mod-forum")]
+    mod forum_search_owner_revision {
+        include!("forum_search_owner_revision.rs");
+    }
+
+    #[cfg(feature = "mod-forum")]
     mod forum_search_result_eligibility {
         include!("forum_search_result_eligibility.rs");
     }
@@ -130,12 +135,17 @@ pub mod module_event_dispatcher {
                     db.clone(),
                     audience_facts.clone(),
                 );
+            let owner_revision =
+                forum_search_owner_revision::ServerForumProjectionOwnerRevisionSourcePort::shared(
+                    db.clone(),
+                );
             let result_eligibility =
                 forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
                     db.clone(),
                     audience_facts,
                 );
             extensions.insert(category_scope);
+            extensions.insert(owner_revision);
             extensions.insert(result_eligibility);
         }
 
@@ -224,6 +234,10 @@ pub mod module_event_dispatcher {
             );
             #[cfg(feature = "mod-forum")]
             assert!(
+                extensions.contains::<rustok_search::SharedForumProjectionOwnerRevisionSourcePort>()
+            );
+            #[cfg(feature = "mod-forum")]
+            assert!(
                 extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
             );
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
@@ -236,6 +250,11 @@ pub mod module_event_dispatcher {
             #[cfg(feature = "mod-forum")]
             assert!(
                 host.shared_get::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
+                    .is_some()
+            );
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                host.shared_get::<rustok_search::SharedForumProjectionOwnerRevisionSourcePort>()
                     .is_some()
             );
             #[cfg(feature = "mod-forum")]

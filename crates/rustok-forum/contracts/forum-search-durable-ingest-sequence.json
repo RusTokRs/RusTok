@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G1",
+  "status": "source_complete_execution_pending",
+  "scope": "Replace wall-clock and UUID Forum Search inbox execution ordering with a PostgreSQL-issued immutable ingest sequence while retaining envelope timestamps for identity and diagnostics",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "search_migration": "crates/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
+  "inbox_owner": "crates/rustok-search/src/forum_inbox.rs",
+  "reconciliation_owner": "crates/rustok-search/src/forum_reconciliation.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2g1-search-durable-ingest-sequence.md",
+  "verifier": "scripts/verify/verify-forum-search-durable-ingest-sequence.mjs",
+  "ordering": {
+    "database_backend": "postgresql",
+    "inbox_column": "ingest_sequence",
+    "column_type": "bigint",
+    "allocation": "database_sequence_at_successful_insert",
+    "immutable_after_insert": true,
+    "strictly_increasing_for_distinct_inserted_rows": true,
+    "gaps_allowed": true,
+    "duplicate_event_insert_is_idempotent": true,
+    "claim_order": "ingest_sequence_ascending",
+    "due_tenant_order": "oldest_ingest_sequence_ascending",
+    "watermark_order": "maximum_completed_ingest_sequence",
+    "wall_clock_used_for_execution_order": false,
+    "event_uuid_used_for_execution_order": false
+  },
+  "migration": {
+    "existing_inbox_rows_backfilled": true,
+    "backfill_order": ["created_at", "revision_at", "event_id"],
+    "existing_watermarks_start_at_sequence_zero": true,
+    "new_inbox_column_not_null": true,
+    "unique_index_added": true,
+    "watermark_column_not_null": true,
+    "sqlite_schema_changed": false,
+    "sqlite_background_reconciliation_supported": false
+  },
+  "compatibility": {
+    "event_schema_changed": false,
+    "forum_owner_write_changed": false,
+    "reindex_target_strings_changed": false,
+    "envelope_revision_at_retained": true,
+    "envelope_event_id_retained": true,
+    "author_redaction_barrier_behavior_changed": false,
+    "retry_and_dead_letter_behavior_changed": false,
+    "projection_rebuild_behavior_changed": false,
+    "public_api_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "add Forum-owner-issued monotonic projection revisions to versioned invalidation events",
+    "reconcile owner revision watermarks with Search ingest sequence watermarks during rollout",
+    "complete deletion and ACL-change runtime evidence",
+    "capture maintainer-executed PostgreSQL ordering, restart, retry and LINK-FORUM-03 evidence"
+  ],
+  "non_claims": [
+    "This Search-issued ingest sequence is not an owner-issued Forum projection revision",
+    "This slice does not execute tests, verifiers, Cargo checks, Clippy or runtime evidence",
+    "This slice does not change Forum projection documents or storefront query behavior",
+    "This slice does not claim SQLite background reconciliation"
+  ]
+}

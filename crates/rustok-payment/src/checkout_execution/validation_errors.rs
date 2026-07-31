@@ -18,14 +18,24 @@ fn persisted_provider_result(
         manual_reconciliation(
             context,
             owner_operation,
-            "payment provider operation has no normalized durable result",
+            CheckoutPaymentExecutionReconciliationReason::MissingNormalizedDurableResult,
         )
     })?;
-    serde_json::from_value(value).map(Some).map_err(|error| {
+    let (provider_result_kind, provider_result_collection_length) = match &value {
+        Value::Null => ("null", None),
+        Value::Bool(_) => ("bool", None),
+        Value::Number(_) => ("number", None),
+        Value::String(_) => ("string", None),
+        Value::Array(items) => ("array", Some(items.len())),
+        Value::Object(fields) => ("object", Some(fields.len())),
+    };
+    serde_json::from_value(value).map(Some).map_err(|_| {
         let context_facts = checkout_payment_execution_context_facts(context);
         tracing::error!(
             operation_id_non_nil = !operation.id.is_nil(),
-            error = ?error,
+            provider_result_decode_failed = true,
+            provider_result_kind,
+            provider_result_collection_length = ?provider_result_collection_length,
             correlation_id = %context.correlation_id,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
@@ -41,7 +51,7 @@ fn persisted_provider_result(
         manual_reconciliation(
             context,
             owner_operation,
-            "payment provider operation result is malformed",
+            CheckoutPaymentExecutionReconciliationReason::MalformedDurableResult,
         )
     })
 }
@@ -237,10 +247,10 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let context_facts = checkout_payment_execution_context_facts(context);
         tracing::warn!(
-            error = ?error,
+            tenant_id_parse_failed = true,
             tenant_id_length = context_facts.tenant_id_length,
             correlation_id = %context.correlation_id,
             operation = owner_operation,
@@ -255,14 +265,70 @@ fn parse_tenant_id(
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+enum CheckoutPaymentExecutionReconciliationReason {
+    MissingNormalizedDurableResult,
+    MalformedDurableResult,
+    InvalidSuccessfulProviderResponse,
+    UnknownProviderOutcome,
+    MissingDurableAuthorizeProviderIdentity,
+    IncompleteAuthorizeOperation,
+    MissingDurableProviderPaymentIdentity,
+    CommitCheckpointFailed,
+    UnknownCollectionLifecycleBeforeAuthorization,
+    AuthorizationLocalPersistenceIncomplete,
+    UnknownCollectionLifecycleBeforeCapture,
+    CaptureLocalPersistenceIncomplete,
+    ProviderOperationInProgressOrReconciliationRequired,
+    ProviderFailureCheckpointFailed,
+    ProviderResultEncodingFailed,
+    ProviderSuccessCheckpointFailed,
+}
+
+impl CheckoutPaymentExecutionReconciliationReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::MissingNormalizedDurableResult => "missing_normalized_durable_result",
+            Self::MalformedDurableResult => "malformed_durable_result",
+            Self::InvalidSuccessfulProviderResponse => "invalid_successful_provider_response",
+            Self::UnknownProviderOutcome => "unknown_provider_outcome",
+            Self::MissingDurableAuthorizeProviderIdentity => {
+                "missing_durable_authorize_provider_identity"
+            }
+            Self::IncompleteAuthorizeOperation => "incomplete_authorize_operation",
+            Self::MissingDurableProviderPaymentIdentity => {
+                "missing_durable_provider_payment_identity"
+            }
+            Self::CommitCheckpointFailed => "commit_checkpoint_failed",
+            Self::UnknownCollectionLifecycleBeforeAuthorization => {
+                "unknown_collection_lifecycle_before_authorization"
+            }
+            Self::AuthorizationLocalPersistenceIncomplete => {
+                "authorization_local_persistence_incomplete"
+            }
+            Self::UnknownCollectionLifecycleBeforeCapture => {
+                "unknown_collection_lifecycle_before_capture"
+            }
+            Self::CaptureLocalPersistenceIncomplete => "capture_local_persistence_incomplete",
+            Self::ProviderOperationInProgressOrReconciliationRequired => {
+                "provider_operation_in_progress_or_reconciliation_required"
+            }
+            Self::ProviderFailureCheckpointFailed => "provider_failure_checkpoint_failed",
+            Self::ProviderResultEncodingFailed => "provider_result_encoding_failed",
+            Self::ProviderSuccessCheckpointFailed => "provider_success_checkpoint_failed",
+        }
+    }
+}
+
 fn manual_reconciliation(
     context: &PortContext,
     owner_operation: &'static str,
-    internal_message: &'static str,
+    reason: CheckoutPaymentExecutionReconciliationReason,
 ) -> PortError {
     let context_facts = checkout_payment_execution_context_facts(context);
+    let reconciliation_reason = reason.label();
     tracing::error!(
-        internal_message,
+        reconciliation_reason,
         correlation_id = %context.correlation_id,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
@@ -487,12 +553,12 @@ fn payment_error_to_port_error(
         PaymentError::ProviderInvalidResponse { .. } => manual_reconciliation(
             context,
             owner_operation,
-            "payment provider returned an invalid successful response",
+            CheckoutPaymentExecutionReconciliationReason::InvalidSuccessfulProviderResponse,
         ),
         PaymentError::ProviderOutcomeUnknown { .. } => manual_reconciliation(
             context,
             owner_operation,
-            "payment provider operation outcome is unknown",
+            CheckoutPaymentExecutionReconciliationReason::UnknownProviderOutcome,
         ),
         PaymentError::ProviderConfiguration { .. } => PortError::invariant_violation(
             "payment.provider_not_configured",

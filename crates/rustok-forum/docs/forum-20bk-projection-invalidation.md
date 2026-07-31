@@ -2,9 +2,13 @@
 
 `FORUM-20BK` closes the canonical mutation-to-Search gap left by the initial
 Forum projection consumer. On the supported PostgreSQL Search runtime, Forum
-owner transactions now insert durable `search.reindex_requested` events for
+owner transactions now insert durable `index.reindex_requested` events for
 every canonical mutation that can change an exact public category or topic
 document.
+
+The former documentation label `search.reindex_requested` was incorrect. The
+registered `DomainEvent::ReindexRequested` type has always emitted
+`index.reindex_requested`; this correction changes no runtime payload.
 
 ## Existing event contract
 

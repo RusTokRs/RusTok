@@ -1,6 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
-use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
+use rustok_api::{
+    HostAuthority, HostAuthorityContext, Permission, graphql::GraphQLError,
+    has_effective_permission,
+};
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
@@ -66,12 +69,17 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
-fn require_logs_read<'a>(ctx: &'a Context<'_>) -> Result<&'a AuthContext> {
-    require_permission(
-        ctx,
-        &Permission::LOGS_READ,
-        "logs:read required to inspect system diagnostics",
-    )
+fn require_host_authority(
+    ctx: &Context<'_>,
+    required: HostAuthority,
+) -> Result<&HostAuthorityContext> {
+    let authority = ctx
+        .data_opt::<HostAuthorityContext>()
+        .filter(|authority| authority.allows(required))
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::permission_denied("host-global authority required")
+        })?;
+    Ok(authority)
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
@@ -81,10 +89,10 @@ pub struct SystemQuery;
 
 #[Object]
 impl SystemQuery {
-    /// Detailed system health is an administrative diagnostic surface. Public
+    /// Detailed system health is a host-operator diagnostic surface. Public
     /// liveness/readiness checks must use the dedicated HTTP health endpoints.
     async fn system_health(&self, ctx: &Context<'_>) -> Result<SystemHealthSummary> {
-        require_logs_read(ctx)?;
+        require_host_authority(ctx, HostAuthority::Read)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let mut components = Vec::new();
         let mut overall = "ok";
@@ -144,11 +152,11 @@ impl SystemQuery {
         })
     }
 
-    /// Cache topology and backend failures are administrative diagnostics.
+    /// Cache topology and backend failures are host-operator diagnostics.
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
-        require_logs_read(ctx)?;
+        require_host_authority(ctx, HostAuthority::Read)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {
@@ -176,9 +184,9 @@ impl SystemQuery {
         })
     }
 
-    /// Event transport topology and queue counts require operational log access.
+    /// Event transport topology and all-tenant queue counts require host read authority.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        require_logs_read(ctx)?;
+        require_host_authority(ctx, HostAuthority::Read)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
         let ev = &runtime_ctx.settings().events;
@@ -279,14 +287,10 @@ async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{Action, Permission, Resource, has_effective_permission};
+    use rustok_api::{Permission, has_effective_permission};
 
     #[test]
-    fn manage_permissions_satisfy_diagnostic_read_requirements() {
-        assert!(has_effective_permission(
-            &[Permission::new(Resource::Logs, Action::Manage)],
-            &Permission::LOGS_READ,
-        ));
+    fn tenant_manage_permission_still_satisfies_tenant_session_read() {
         assert!(has_effective_permission(
             &[Permission::USERS_MANAGE],
             &Permission::USERS_READ,

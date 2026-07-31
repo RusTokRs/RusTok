@@ -1,15 +1,23 @@
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement,
+};
 use uuid::Uuid;
 
-use crate::dto::{ForumDomainEventQuery, ForumDomainEventResponse};
+use crate::dto::{
+    ForumDomainEventQuery, ForumDomainEventResponse, ForumProjectionOwnerRevisionImpact,
+    ForumProjectionOwnerRevisionResponse,
+};
 use crate::entities::forum_domain_event;
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 
 const DEFAULT_EVENT_LIMIT: u64 = 50;
 const MAX_EVENT_LIMIT: u64 = 100;
+pub const MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE: usize = 100;
+const FORUM_PROJECTION_INVALIDATION_EVENT_TYPE: &str = "index.reindex_requested";
 
 #[derive(Clone)]
 pub struct ForumEventService {
@@ -76,6 +84,70 @@ impl ForumEventService {
                 created_at: event.created_at.to_rfc3339(),
             })
             .collect())
+    }
+
+    /// Reads the append-only Forum projection revision ledger through a bounded
+    /// owner API. The boundary exposes only causal revision and durable envelope
+    /// identity; ledger targets, timestamps, actors and outbox payloads remain
+    /// Forum-private.
+    pub async fn list_projection_owner_revisions(
+        &self,
+        tenant_id: Uuid,
+        after_owner_revision: i64,
+        limit: usize,
+    ) -> ForumResult<Vec<ForumProjectionOwnerRevisionResponse>> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "projection owner revision tenant must not be nil".to_string(),
+            ));
+        }
+        if after_owner_revision < 0 {
+            return Err(ForumError::Validation(
+                "after_owner_revision must not be negative".to_string(),
+            ));
+        }
+        if !(1..=MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE).contains(&limit) {
+            return Err(ForumError::Validation(format!(
+                "projection owner revision limit must be between 1 and {MAX_FORUM_PROJECTION_OWNER_REVISION_PAGE}"
+            )));
+        }
+        if self.db.get_database_backend() != DbBackend::Postgres {
+            return Err(ForumError::capability_unavailable(
+                "forum_projection_revision_source",
+                "FORUM_PROJECTION_REVISION_SOURCE_UNAVAILABLE",
+            ));
+        }
+
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"
+                SELECT revision, event_id
+                FROM forum_projection_revision_ledger
+                WHERE tenant_id = $1
+                  AND revision > $2
+                ORDER BY revision ASC
+                LIMIT $3
+                "#,
+                vec![
+                    tenant_id.into(),
+                    after_owner_revision.into(),
+                    (limit as i64).into(),
+                ],
+            ))
+            .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(ForumProjectionOwnerRevisionResponse {
+                    owner_revision: row.try_get("", "revision")?,
+                    event_id: row.try_get("", "event_id")?,
+                    event_type: FORUM_PROJECTION_INVALIDATION_EVENT_TYPE.to_string(),
+                    impact: ForumProjectionOwnerRevisionImpact::FullRebuild,
+                })
+            })
+            .collect()
     }
 }
 

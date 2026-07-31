@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2G2A",
+  "status": "source_complete_execution_pending",
+  "scope": "Issue a positive tenant-monotonic Forum-owned projection revision in the same PostgreSQL transaction as each canonical Forum Search invalidation and bind it to the exact durable legacy outbox envelope identity",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "predecessor_contract": "crates/rustok-forum/contracts/forum-projection-invalidation.json",
+  "predecessor_ingest_contract": "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
+  "forum_migration": "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
+  "forum_owner": "crates/rustok-forum/src/services/projection_invalidation.rs",
+  "outbox_api": "crates/rustok-outbox/src/transactional.rs",
+  "outbox_api_documentation": "crates/rustok-outbox/CRATE_API.md",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2g2a-search-owner-revision-ledger.md",
+  "verifier": "scripts/verify/verify-forum-search-owner-revision-ledger.mjs",
+  "revision_owner": {
+    "module": "forum",
+    "scope": "tenant",
+    "storage": "forum_projection_revision_counters",
+    "column_type": "postgresql_bigint",
+    "first_revision": 1,
+    "positive": true,
+    "allocation": "atomic insert-or-increment returning revision",
+    "serialized_by": "PostgreSQL primary-key conflict row lock",
+    "producer_clock_used": false,
+    "event_uuid_used_for_revision": false,
+    "search_ingest_sequence_used_for_revision": false
+  },
+  "ledger": {
+    "table": "forum_projection_revision_ledger",
+    "primary_key": ["tenant_id", "revision"],
+    "event_id_unique": true,
+    "target_types": ["forum", "forum_category", "forum_topic"],
+    "forum_target_requires_null_id": true,
+    "category_and_topic_targets_require_id": true,
+    "append_only_update_trigger": true,
+    "append_only_delete_trigger": true,
+    "target_lookup_index": true
+  },
+  "transaction": {
+    "step_1": "allocate Forum owner revision",
+    "step_2": "write validated legacy ReindexRequested envelope to canonical outbox and retain its ID",
+    "step_3": "append ledger row binding revision to envelope ID and exact target",
+    "step_4": "commit owner mutation invalidation revision and outbox record together",
+    "partial_commit_allowed": false,
+    "direct_postgresql_helper_covered": true,
+    "injected_event_bus_helper_covered": true
+  },
+  "compatibility": {
+    "legacy_root_event_retained": true,
+    "legacy_event_type_retained": "index.reindex_requested",
+    "legacy_target_strings_changed": false,
+    "search_ingestion_changed": false,
+    "search_inbox_schema_changed": false,
+    "search_watermark_semantics_changed": false,
+    "new_root_domain_event_added": false,
+    "new_sealed_event_family_added": false,
+    "event_contract_digest_changed": false,
+    "existing_public_api_signature_changed": false,
+    "additive_outbox_envelope_identity_api_added": true,
+    "sqlite_schema_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "canonical_plan_boundary": {
+    "forum_23_status_changed": false,
+    "remaining_owner_revision_reconciliation_scope_changed": false,
+    "reason": "The canonical plans already require owner-issued revisions and Search reconciliation. G2A establishes issuance and audit identity but does not yet carry the revision on the wire or apply it in Search."
+  },
+  "remaining_scope": [
+    "publish a sealed versioned Forum projection invalidation event carrying the owner revision while retaining rolling legacy compatibility",
+    "start an explicit persistent contract consumer for Search with durable poison and acknowledgement policy",
+    "store owner revision on Search inbox rows and completed scope watermarks",
+    "reconcile owner revision order independently from Search ingest delivery order",
+    "capture maintainer-executed PostgreSQL concurrency rollback outbox and LINK-FORUM-03 evidence"
+  ],
+  "non_claims": [
+    "Search does not read or enforce the owner revision in this slice",
+    "The legacy root invalidation payload does not carry the revision",
+    "This slice does not add a second Search execution or projection path",
+    "Tests, verifiers, formatting, Cargo checks, Clippy and runtime evidence were not executed by the implementation agent"
+  ]
+}

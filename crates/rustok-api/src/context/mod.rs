@@ -2,6 +2,8 @@
 mod auth;
 mod channel;
 #[cfg(feature = "server")]
+mod host_authority;
+#[cfg(feature = "server")]
 mod oauth_scope;
 #[cfg(feature = "server")]
 mod principal;
@@ -19,6 +21,10 @@ pub use channel::{
 };
 #[cfg(feature = "server")]
 pub use channel::{ChannelContextExt, ChannelContextExtension, OptionalChannel};
+#[cfg(feature = "server")]
+pub use host_authority::{
+    HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
+};
 #[cfg(feature = "server")]
 pub use oauth_scope::scope_matches;
 #[cfg(feature = "server")]

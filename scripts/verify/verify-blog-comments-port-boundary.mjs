@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import './verify-blog-comments-http-port-injection.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -53,6 +54,12 @@ const storefrontUiPath = 'crates/rustok-blog/storefront/src/ui/leptos.rs';
 const providerRegistryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
 const consumerRegistryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+const injectionConstructor = 'CommentService::with_comments_thread_port';
+const injectionSignature = 'fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService';
+const injectionTest =
+  'services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port';
+const injectionCommand =
+  `cargo test -p rustok-blog --lib ${injectionTest} -- --exact`;
 const expectedOperations = [
   'create_comment',
   'get_comment',
@@ -76,7 +83,7 @@ const storefrontUi = read(storefrontUiPath);
 const plan = read(planPath);
 
 if (evidence) {
-  if (evidence.schema_version !== 2) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 3) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== 'blog' ||
     evidence.surface !== 'comments_port_boundary' ||
@@ -88,7 +95,8 @@ if (evidence) {
   if (
     evidence.source_contract?.consumer_service !== servicePath ||
     evidence.source_contract?.provider_registry !== providerRegistryPath ||
-    evidence.source_contract?.consumer_registry !== consumerRegistryPath
+    evidence.source_contract?.consumer_registry !== consumerRegistryPath ||
+    evidence.source_contract?.injection_constructor !== injectionConstructor
   ) failures.push(`${evidencePath}: source contract path drift`);
   if (!sameSet(evidence.profiles?.source_verified ?? [], ['in_process'])) {
     failures.push(`${evidencePath}: source-verified profile drift`);
@@ -96,6 +104,18 @@ if (evidence) {
   if (!sameSet(evidence.profiles?.pending ?? [], ['remote_adapter_placeholder'])) {
     failures.push(`${evidencePath}: pending profile drift`);
   }
+  const injection = evidence.adapter_injection ?? {};
+  if (
+    injection.status !== 'executable_no_run' ||
+    injection.runtime_status !== 'not_run' ||
+    injection.source !== servicePath ||
+    injection.constructor !== injectionConstructor ||
+    injection.signature !== injectionSignature ||
+    injection.test !== injectionTest ||
+    injection.command !== injectionCommand ||
+    injection.default_profile !== 'in_process' ||
+    injection.remote_transport_implementation !== 'pending'
+  ) failures.push(`${evidencePath}: adapter injection drift`);
   if (!sameSet((evidence.cases ?? []).map((entry) => entry.operation), expectedOperations)) {
     failures.push(`${evidencePath}: operation set drift`);
   }
@@ -177,6 +197,17 @@ if (!sameSet(dependency?.operations ?? [], expectedOperations)) failures.push(`$
 if (!sameSet((consumerRegistry?.contract_tests?.cases ?? []).map((entry) => entry.operation), expectedOperations)) {
   failures.push(`${consumerRegistryPath}: contract-test operation drift`);
 }
+const registryInjection = consumerRegistry?.contract_tests?.adapter_injection ?? {};
+if (
+  registryInjection.status !== 'executable_no_run' ||
+  registryInjection.runtime_status !== 'not_run' ||
+  registryInjection.source !== servicePath ||
+  registryInjection.constructor !== injectionConstructor ||
+  registryInjection.signature !== injectionSignature ||
+  registryInjection.test !== injectionTest ||
+  registryInjection.command !== injectionCommand ||
+  registryInjection.remote_transport_implementation !== 'pending'
+) failures.push(`${consumerRegistryPath}: adapter injection drift`);
 if (
   consumerRegistry?.contract_tests?.status !== 'source_verified_no_compile' ||
   consumerRegistry?.contract_tests?.runtime_status !== 'pending' ||
@@ -185,7 +216,14 @@ if (
 
 for (const marker of [
   'comments_thread_port: Arc<dyn CommentsThreadPort>',
-  'comments_thread_port: in_process_comments_thread_port(db.clone(), event_bus)',
+  'let comments_thread_port = in_process_comments_thread_port(db.clone(), event_bus);',
+  'Self::with_comments_thread_port(db, comments_thread_port)',
+  'pub fn with_comments_thread_port(',
+  'comments_thread_port: Arc<dyn CommentsThreadPort>,',
+  'Self {\n            db,\n            comments_thread_port,\n        }',
+  'mod port_injection_tests',
+  'fn comment_service_accepts_an_injected_comments_thread_port()',
+  ') -> CommentService = CommentService::with_comments_thread_port;',
   '.comments_thread_port',
   '.create_comment(',
   '.get_comment(',
@@ -280,6 +318,8 @@ for (const marker of [
   'test:verify:blog:comments-port-boundary',
   'source_verified_no_compile',
   'typed storefront comments availability',
+  'CommentService::with_comments_thread_port',
+  'remote transport remains pending',
   'cached snapshot and comment-form fallback remain planned',
 ]) requireMarker(plan, marker, planPath);
 
@@ -289,4 +329,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog Comments consumer port and storefront read-degradation source boundary is consistent');
+console.log('Blog Comments consumer port, injection seam, and storefront read-degradation source boundary is consistent');

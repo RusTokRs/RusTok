@@ -3,9 +3,11 @@ use async_graphql::{Context, FieldError, Object, Result};
 use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::SettingsService;
-use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
+use rustok_api::{
+    HostAuthority, Permission, graphql::GraphQLError, has_effective_permission,
+};
 
-use super::require_tenant_settings_scope;
+use super::{require_host_authority, require_tenant_settings_scope};
 use super::types::{
     EventDeliveryConfigurationPayload, IggyConnectorConfigurationPayload, PlatformSettingsPayload,
 };
@@ -19,15 +21,8 @@ impl SettingsQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<IggyConnectorConfigurationPayload> {
+        require_host_authority(ctx, HostAuthority::Read)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "settings:read required",
-            ));
-        }
         let snapshot = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::configuration(runtime_ctx)
             .await
             .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
@@ -40,16 +35,8 @@ impl SettingsQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<EventDeliveryConfigurationPayload> {
+        require_host_authority(ctx, HostAuthority::Read)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "settings:read required",
-            ));
-        }
 
         let configuration = crate::services::event_delivery_settings_service::EventDeliverySettingsService::configuration(runtime_ctx)
             .await
