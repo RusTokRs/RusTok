@@ -66,7 +66,7 @@ requireMarkers("source", [
 
 requireMarkers("runner", [
   "heartbeat-takeover-primary",
-  "heartbeat-worker",
+  "IndexReconciliationRunRequest::new",
   "Duration::from_secs(3_600)",
   "        2,",
   "        1,",
@@ -76,6 +76,7 @@ requireMarkers("job", [
   "CURRENT_TIMESTAMP + INTERVAL '30 minutes'",
   "CURRENT_TIMESTAMP + INTERVAL '50 minutes'",
   "CURRENT_TIMESTAMP - INTERVAL '1 second'",
+  "COALESCE(lease_expires_at",
   "lease_owner = 'heartbeat-worker-a'",
   "attempt_count = 1",
 ]);
@@ -92,7 +93,7 @@ requireMarkers("docs", [
   "Status: executable target retained, not run.",
   "No sleep, polling delay, or wall-clock race is used.",
   "a competing invocation returns `Busy`",
-  "Worker A returns `LeaseLost` for attempt 1",
+  "worker A returns `LeaseLost` for attempt 1",
   "The canonical M6 reconciliation and drift-repair item therefore remains open.",
 ]);
 
