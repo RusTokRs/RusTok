@@ -144,6 +144,10 @@ impl RusToKModule for RbacModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &["outbox"]
+    }
+
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
     }
