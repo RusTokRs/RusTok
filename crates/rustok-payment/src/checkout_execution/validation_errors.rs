@@ -21,11 +21,21 @@ fn persisted_provider_result(
             "payment provider operation has no normalized durable result",
         )
     })?;
-    serde_json::from_value(value).map(Some).map_err(|error| {
+    let (provider_result_kind, provider_result_collection_length) = match &value {
+        Value::Null => ("null", None),
+        Value::Bool(_) => ("bool", None),
+        Value::Number(_) => ("number", None),
+        Value::String(_) => ("string", None),
+        Value::Array(items) => ("array", Some(items.len())),
+        Value::Object(fields) => ("object", Some(fields.len())),
+    };
+    serde_json::from_value(value).map(Some).map_err(|_| {
         let context_facts = checkout_payment_execution_context_facts(context);
         tracing::error!(
             operation_id_non_nil = !operation.id.is_nil(),
-            error = ?error,
+            provider_result_decode_failed = true,
+            provider_result_kind,
+            provider_result_collection_length = ?provider_result_collection_length,
             correlation_id = %context.correlation_id,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
@@ -237,10 +247,10 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let context_facts = checkout_payment_execution_context_facts(context);
         tracing::warn!(
-            error = ?error,
+            tenant_id_parse_failed = true,
             tenant_id_length = context_facts.tenant_id_length,
             correlation_id = %context.correlation_id,
             operation = owner_operation,
