@@ -167,6 +167,26 @@ suggested command is
 The target is `executable_no_run`. It records a written convergence contract, not
 an observed retry count or optimistic-exhaustion result.
 
+The retained concurrent duplicate-delivery target is
+`concurrent_duplicate_envelope_commits_once_and_replays_cleanly` in
+`crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs`.
+A control transaction locks the Blog post before two named one-connection workers
+start with the same envelope. The harness waits until `pg_stat_activity` reports
+both workers blocked on a lock, proving both initial delivery-ledger lookups have
+completed before the row lock is released. The written assertions require exactly
+one successful handler, one failed losing transaction, final `comment_count = 1`
+and `version = 2`, one delivery row, one outbox row, and a clean replay of the same
+envelope. Evidence schema v1 is retained at
+`crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`,
+guarded by `scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs` and
+focused fixture
+`scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs`. Its
+suggested command is
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact`.
+The target and focused guard are `executable_no_run` / source-only; no PostgreSQL
+or dispatcher-level duplicate result is recorded, and the standalone guard is not
+added to registry-owned package order in this slice.
+
 The retained PostgreSQL target is
 `crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It uses
 `RUSTOK_BLOG_TEST_DATABASE_URL` (or PostgreSQL `DATABASE_URL`), a unique schema,
@@ -203,9 +223,11 @@ full application server-host restart, and no execution result is recorded.
 Exact commands `verify:blog:comments-event-projection` and
 `test:verify:blog:comments-event-projection` run after the Comments port gate in
 the Blog FBA chains. Overall status remains `source_verified_no_compile`;
-the deterministic retry policy and retry-limit PostgreSQL harness are source-
-locked, while all target execution, naturally contended retry-frequency evidence,
-full server-host restart recovery, and all other runtime evidence remain pending.
+the deterministic retry policy, retry-limit target, and separately guarded
+concurrent duplicate-delivery target are source-locked, while all target
+execution, naturally contended retry-frequency evidence, dispatcher-level
+duplicate delivery, full server-host restart recovery, and all other runtime
+evidence remain pending.
 
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
@@ -415,6 +437,24 @@ same envelope. Evidence schema v4 and Blog registry schema v13 remain compatible
 focused source verification is updated, while execution and naturally contended
 retry-frequency evidence remain pending.
 
+The continuation audit at `e7224d7deecaecc8d8f0a10ca9423b2ee8b5c16c`
+found that duplicate idempotency was retained only as sequential replay, while the
+concurrency target used four different envelope identities. The production comment
+explicitly relies on the delivery-ledger unique insert to roll back a losing
+concurrent duplicate transaction, but no retained target forced two handlers past
+the initial ledger lookup with the same envelope.
+
+Slice 54 adds the env-gated
+`concurrent_duplicate_envelope_commits_once_and_replays_cleanly` target. A control
+transaction holds the Blog post row, two named workers pass the initial delivery
+lookup and block on the optimistic update, and `pg_stat_activity` is used to prove
+both are waiting before release. The written contract requires one winner, one
+failed losing transaction, one post transition, one delivery row, one outbox row,
+and a clean same-envelope replay. New schema-v1 evidence, a standalone fail-closed
+verifier, and a focused negative fixture retain the source contract. Blog registry
+schema v13 and its package order remain unchanged; no Rust, JavaScript,
+PostgreSQL, dispatcher, workflow, or CI execution is recorded.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -427,7 +467,8 @@ retry-frequency evidence remain pending.
   and aggregate/consumer bindings for admin, storefront, Comments port boundary,
   Comments event projection, category Search reindex, GraphQL rate limiting,
   GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
-  order.
+  order. The separately guarded duplicate-delivery race target is source-ready but
+  intentionally not added to the registry-owned package order in slice 54.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; all seven operations, approved public read, typed
   richtext projection, two-second deadlines, write idempotency, active typed
@@ -443,18 +484,13 @@ retry-frequency evidence remain pending.
   dispatcher, concurrency, PostgreSQL transaction, same-process restart, and
   process-restart targets, verifier, focused self-test, exact npm leaf commands,
   delivery-ledger identity, transactional outbox markers, and Blog FBA ordering
-  are locked. The source policy records immediate success, seven retry decisions,
-  and the eighth-attempt terminal limit. The retry-limit target forces eight
-  zero-row results through the real handler and requires atomic rollback followed
-  by successful replay of the same envelope. The registration target verifies
-  identity/routing only. The dispatcher target passes one envelope through
-  `EventBus` and `EventDispatcher` into the module-registered handler and waits
-  for the durable commit. The concurrency target starts four independent
-  PostgreSQL connections behind one barrier and requires a four-count/five-version
-  result with four delivery and outbox rows. The process target launches two
-  sequential OS test processes against the same schema and envelope ID. None of
-  these targets has been run. Naturally contended PostgreSQL retry frequency,
-  full server-host restart recovery, and all execution evidence remain pending.
+  are locked. Separate schema-v1 evidence and a standalone fail-closed verifier
+  retain the concurrent same-envelope target: both named workers must be observed
+  blocked after their initial ledger lookups, then one transaction commits and the
+  loser rolls back before clean replay. None of these targets has been run.
+  Naturally contended PostgreSQL retry frequency, dispatcher-level duplicate
+  delivery, full server-host restart recovery, and all execution evidence remain
+  pending.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
@@ -487,6 +523,7 @@ retry-frequency evidence remain pending.
 - `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`
 - `crates/rustok-blog/src/lib.rs`
 - `crates/rustok-blog/src/graphql/types.rs`
 - `crates/rustok-blog/storefront/src/model.rs`
@@ -495,6 +532,7 @@ retry-frequency evidence remain pending.
 - `crates/rustok-blog/storefront/src/ui/leptos.rs`
 - `crates/rustok-blog/src/services/comment_projection.rs`
 - `crates/rustok-blog/tests/comment_projection_postgres_test.rs`
+- `crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs`
 - `crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs`
 - `crates/rustok-comments/contracts/comments-fba-registry.json`
 - `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
@@ -514,6 +552,8 @@ retry-frequency evidence remain pending.
 - `scripts/verify/verify-blog-comments-port-boundary.test.mjs`
 - `scripts/verify/verify-blog-comments-event-projection.mjs`
 - `scripts/verify/verify-blog-comments-event-projection.test.mjs`
+- `scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs`
+- `scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `scripts/verify/verify-blog-graphql-rate-limit.test.mjs`
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
@@ -665,6 +705,11 @@ retry-frequency evidence remain pending.
     PostgreSQL retry-limit target that forces eight real zero-row handler updates,
     retained atomic rollback and same-envelope recovery in evidence and the focused
     guard, and kept natural contention frequency plus all execution pending.
+54. Added an env-gated same-envelope concurrent delivery target with a controlled
+    row lock and two named workers, retained one winner, losing-transaction
+    rollback, final ledger/outbox cardinality, and clean replay in schema-v1
+    evidence plus a standalone verifier and focused negative fixture, and kept
+    registry package order plus all execution unchanged or pending.
 
 ## Next results
 
@@ -686,21 +731,26 @@ retry-frequency evidence remain pending.
    deterministic retry-policy harness, module registration/routing harness, the
    filtered `event_dispatcher_routes_registered_handler_and_commits_projection`,
    `concurrent_created_events_converge_without_lost_updates`,
-   `optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears`, and
+   `optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears`,
+   `concurrent_duplicate_envelope_commits_once_and_replays_cleanly`, and
    `restarted_process_reuses_delivery_ledger_without_reapplying_counter` cases,
-   the complete `comment_projection_postgres_test` and
+   the complete `comment_projection_postgres_test`,
+   `comment_projection_duplicate_race_postgres_test`, and
    `comment_projection_restart_postgres_test` targets, both thread invariant
    concurrency targets, and concurrent PostgreSQL create/delete transactions.
-   Retain deterministic immediate-success/seven-retry/eighth-limit output,
-   the deterministic eight-zero-row terminal error, rollback and same-envelope
-   recovery output, dispatcher delivery output, four-connection convergence, both
-   child process exits, the written duplicate, delete-before-create, missing-post
-   replay, outbox rollback/retry, and same-process/new-connection assertions;
-   then retain naturally contended PostgreSQL retry-frequency evidence, full
-   server-host restart recovery, remote adapter parity, browser parity for typed
-   unavailable/timeout article rendering, cached thread snapshots, comment-form
-   fallback, approved-only reads, moderation, pagination, first-thread identity,
-   and unrelated insert storage error propagation.
+   Retain deterministic immediate-success/seven-retry/eighth-limit output, the
+   deterministic eight-zero-row terminal error, rollback and same-envelope
+   recovery output, both blocked duplicate workers, the one-winner/one-loser
+   outcome, final single delivery/outbox cardinality, clean duplicate replay,
+   dispatcher delivery output, four-connection convergence, both child process
+   exits, the written duplicate, delete-before-create, missing-post replay,
+   outbox rollback/retry, and same-process/new-connection assertions; then retain
+   dispatcher-level duplicate delivery, naturally contended PostgreSQL
+   retry-frequency evidence, full server-host restart recovery, remote adapter
+   parity, browser parity for typed unavailable/timeout article rendering, cached
+   thread snapshots, comment-form fallback, approved-only reads, moderation,
+   pagination, first-thread identity, and unrelated insert storage error
+   propagation.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -716,6 +766,8 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:comments-port-boundary`
 - `npm run verify:blog:comments-event-projection`
 - `npm run test:verify:blog:comments-event-projection`
+- `node scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs`
+- `node --test scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests::optimistic_retry_policy_applies_success_without_retry -- --exact`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests::optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict -- --exact`
@@ -723,6 +775,7 @@ should run the relevant subset, including:
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact`
 - `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test`
