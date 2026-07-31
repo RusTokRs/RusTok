@@ -17,6 +17,12 @@ const operations = [
   'set_comment_status',
   'delete_comment',
 ];
+const injectionConstructor = 'CommentService::with_comments_thread_port';
+const injectionSignature = 'fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService';
+const injectionTest =
+  'services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port';
+const injectionCommand =
+  `cargo test -p rustok-blog --lib ${injectionTest} -- --exact`;
 
 function write(root, relativePath, content) {
   const target = path.join(root, relativePath);
@@ -33,6 +39,9 @@ function fixture({
   broadNativeFallback = false,
   missingGraphqlAvailability = false,
   missingUiState = false,
+  missingInjectionConstructor = false,
+  missingInjectionHarness = false,
+  injectionRuntimePromoted = false,
   statusDrift = false,
   fallbackPromoted = false,
 } = {}) {
@@ -53,7 +62,21 @@ function fixture({
     servicePath,
     `
 comments_thread_port: Arc<dyn CommentsThreadPort>
-comments_thread_port: in_process_comments_thread_port(db.clone(), event_bus)
+${missingInjectionConstructor ? '' : `
+let comments_thread_port = in_process_comments_thread_port(db.clone(), event_bus);
+Self::with_comments_thread_port(db, comments_thread_port)
+pub fn with_comments_thread_port(
+comments_thread_port: Arc<dyn CommentsThreadPort>,
+Self {
+            db,
+            comments_thread_port,
+        }
+`}
+${missingInjectionHarness ? '' : `
+mod port_injection_tests
+fn comment_service_accepts_an_injected_comments_thread_port()
+) -> CommentService = CommentService::with_comments_thread_port;
+`}
 .comments_thread_port
 .create_comment(
 .get_comment(
@@ -159,7 +182,7 @@ Comments took too long to load. The article is still available.
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 2,
+      schema_version: 3,
       module: 'blog',
       surface: 'comments_port_boundary',
       role: 'consumer',
@@ -171,10 +194,22 @@ Comments took too long to load. The article is still available.
         consumer_service: servicePath,
         provider_registry: providerRegistryPath,
         consumer_registry: consumerRegistryPath,
+        injection_constructor: injectionConstructor,
       },
       profiles: {
         source_verified: ['in_process'],
         pending: ['remote_adapter_placeholder'],
+      },
+      adapter_injection: {
+        status: 'executable_no_run',
+        runtime_status: injectionRuntimePromoted ? 'passed' : 'not_run',
+        source: servicePath,
+        constructor: injectionConstructor,
+        signature: injectionSignature,
+        test: injectionTest,
+        command: injectionCommand,
+        default_profile: 'in_process',
+        remote_transport_implementation: 'pending',
       },
       cases,
       fallback_smoke: {
@@ -254,6 +289,16 @@ Comments took too long to load. The article is still available.
       contract_tests: {
         status: 'source_verified_no_compile',
         runtime_status: 'pending',
+        adapter_injection: {
+          status: 'executable_no_run',
+          runtime_status: injectionRuntimePromoted ? 'passed' : 'not_run',
+          source: servicePath,
+          constructor: injectionConstructor,
+          signature: injectionSignature,
+          test: injectionTest,
+          command: injectionCommand,
+          remote_transport_implementation: 'pending',
+        },
         cases: operations.map((operation) => ({ operation })),
         fallback_smoke: { status: fallbackPromoted ? 'source_verified_no_compile' : 'planned' },
       },
@@ -262,7 +307,7 @@ Comments took too long to load. The article is still available.
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability cached snapshot and comment-form fallback remain planned',
+    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port remote transport remains pending cached snapshot and comment-form fallback remain planned',
   );
 
   return root;
@@ -309,6 +354,24 @@ test('rejects writes without idempotency keys', () => {
 
 test('rejects removal of the approved public-read port operation', () => {
   assert.notEqual(rejects({ missingPublicRead: true }).status, 0);
+});
+
+test('rejects removal of the Comments port injection constructor', () => {
+  const result = rejects({ missingInjectionConstructor: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /with_comments_thread_port/);
+});
+
+test('rejects removal of the compile-only injection harness', () => {
+  const result = rejects({ missingInjectionHarness: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /port_injection_tests|injected_comments_thread_port/);
+});
+
+test('rejects runtime promotion of the unexecuted injection harness', () => {
+  const result = rejects({ injectionRuntimePromoted: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /adapter injection drift/);
 });
 
 test('rejects a storefront model without typed availability', () => {
