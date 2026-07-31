@@ -12,7 +12,9 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    fetch_search_with_authors(query, locale, preset_key, filters, Vec::new()).await
+    forum_storefront_search_native(query, locale, preset_key, filters)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_search_with_authors(
@@ -22,13 +24,36 @@ pub async fn fetch_search_with_authors(
     filters: SearchPreviewFilters,
     author_ids: Vec<String>,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    forum_storefront_search_native(query, locale, preset_key, filters, author_ids)
+    forum_storefront_search_by_authors_native(query, locale, preset_key, filters, author_ids)
         .await
         .map_err(ApiError::from)
 }
 
 #[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search")]
 async fn forum_storefront_search_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(query, locale, preset_key, filters, Vec::new()).await
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-authors"
+)]
+async fn forum_storefront_search_by_authors_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(query, locale, preset_key, filters, author_ids).await
+}
+
+async fn execute_forum_storefront_search_native(
     query: String,
     locale: Option<String>,
     preset_key: Option<String>,
@@ -118,7 +143,7 @@ async fn forum_storefront_search_native(
     {
         let _ = (query, locale, preset_key, filters, author_ids);
         Err(ServerFnError::new(
-            "search/forum-storefront-search requires the `ssr` feature",
+            "Forum storefront Search requires the `ssr` feature",
         ))
     }
 }
