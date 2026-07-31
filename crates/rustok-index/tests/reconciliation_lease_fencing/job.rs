@@ -1,3 +1,5 @@
+use std::io;
+
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
@@ -21,7 +23,7 @@ pub async fn read_job(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<Du
             vec![tenant_id.into()],
         ))
         .await?
-        .ok_or("reconciliation job row is missing")?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "reconciliation job row is missing"))?;
     Ok(DurableJob {
         job_id: row.try_get("", "job_id")?,
         state: row.try_get("", "state")?,
@@ -58,6 +60,6 @@ pub async fn count(db: &DatabaseConnection, table: &str) -> TestResult<i64> {
     Ok(db
         .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
         .await?
-        .ok_or("count query returned no row")?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "count query returned no row"))?
         .try_get("", "value")?)
 }
