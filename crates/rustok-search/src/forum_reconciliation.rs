@@ -24,7 +24,6 @@ const MAX_FORUM_SWEEP_EVENT_LIMIT: usize = 256;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ForumProjectionOwnerRevisionImpact {
     FullRebuild,
-    NoProjectionChange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,11 +52,10 @@ pub trait ForumProjectionOwnerRevisionSourcePort: Send + Sync {
 pub type SharedForumProjectionOwnerRevisionSourcePort =
     Arc<dyn ForumProjectionOwnerRevisionSourcePort>;
 
-/// Resolves a bounded page from the Forum owner journal and verifies the neutral
-/// revision contract before any reconciliation logic can consume it. Owner
-/// revisions are independent from Search-owned inbox ingest sequences; gaps are
-/// valid because the Forum journal sequence is global while reads are tenant
-/// scoped.
+/// Resolves a bounded page from the Forum-owned projection revision ledger and
+/// verifies the neutral contract before reconciliation can consume it. Owner
+/// revisions are an independent causal clock and are never compared numerically
+/// with Search-owned inbox ingest sequences.
 pub async fn resolve_forum_projection_owner_revisions(
     port: Option<SharedForumProjectionOwnerRevisionSourcePort>,
     request: ForumProjectionOwnerRevisionRequest,
@@ -110,11 +108,14 @@ fn validate_owner_revision_page(
         ));
     }
 
-    let mut previous_revision = request.after_owner_revision;
-    for revision in revisions {
-        if revision.owner_revision <= previous_revision {
+    let mut expected_revision = request
+        .after_owner_revision
+        .checked_add(1)
+        .ok_or_else(|| owner_revision_invariant("owner revision cursor is exhausted"))?;
+    for (index, revision) in revisions.iter().enumerate() {
+        if revision.owner_revision != expected_revision {
             return Err(owner_revision_invariant(
-                "owner revisions must be strictly increasing after the requested cursor",
+                "owner revisions must be contiguous and strictly ordered after the requested cursor",
             ));
         }
         if revision.event_id.is_nil() {
@@ -123,12 +124,21 @@ fn validate_owner_revision_page(
             ));
         }
         let event_type = revision.event_type.trim();
-        if event_type.is_empty() || event_type.len() > 96 {
+        if event_type != "index.reindex_requested" {
             return Err(owner_revision_invariant(
-                "owner revision event type is outside the published Forum journal bounds",
+                "owner revision event type must be the registered Forum projection invalidation",
             ));
         }
-        previous_revision = revision.owner_revision;
+        if revision.impact != ForumProjectionOwnerRevisionImpact::FullRebuild {
+            return Err(owner_revision_invariant(
+                "owner revision ledger rows must require projection reconciliation",
+            ));
+        }
+        if index + 1 < revisions.len() {
+            expected_revision = expected_revision
+                .checked_add(1)
+                .ok_or_else(|| owner_revision_invariant("owner revision page overflowed"))?;
+        }
     }
     Ok(())
 }
@@ -381,7 +391,7 @@ mod owner_revision_tests {
         ForumProjectionOwnerRevisionRecord {
             owner_revision,
             event_id: Uuid::new_v4(),
-            event_type: "forum.topic.updated".to_string(),
+            event_type: "index.reindex_requested".to_string(),
             impact: ForumProjectionOwnerRevisionImpact::FullRebuild,
         }
     }
@@ -395,27 +405,27 @@ mod owner_revision_tests {
     }
 
     #[tokio::test]
-    async fn owner_revision_page_accepts_strictly_increasing_global_sequence() {
+    async fn owner_revision_page_accepts_contiguous_tenant_ledger_sequence() {
         let port: SharedForumProjectionOwnerRevisionSourcePort =
             Arc::new(FixedRevisionSource {
-                revisions: vec![record(4), record(9)],
+                revisions: vec![record(4), record(5)],
             });
         let revisions = resolve_forum_projection_owner_revisions(Some(port), request(3))
             .await
             .expect("valid owner revisions should resolve");
         assert_eq!(revisions.len(), 2);
-        assert_eq!(revisions[1].owner_revision, 9);
+        assert_eq!(revisions[1].owner_revision, 5);
     }
 
     #[tokio::test]
-    async fn owner_revision_page_rejects_reordered_or_replayed_rows() {
+    async fn owner_revision_page_rejects_gap_or_replay() {
         let port: SharedForumProjectionOwnerRevisionSourcePort =
             Arc::new(FixedRevisionSource {
-                revisions: vec![record(8), record(8)],
+                revisions: vec![record(8), record(10)],
             });
         let error = resolve_forum_projection_owner_revisions(Some(port), request(7))
             .await
-            .expect_err("duplicate owner revisions must fail closed");
+            .expect_err("owner revision gaps must fail closed");
         assert_eq!(error.kind, PortErrorKind::InvariantViolation);
     }
 }
