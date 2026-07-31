@@ -34,6 +34,25 @@
         "projector_or_owner_checkpoint",
         "multi_process_or_visibility_end_to_end"
       ]
+    },
+    {
+      "task": "FORUM-23B2G2B3D3",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json",
+      "test": "crates/rustok-search/tests/forum_versioned_invalidation_ack_restart_iggy.rs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-ack-restart-evidence.json",
+      "covers": [
+        "durable_ingress_before_acknowledgement",
+        "injected_acknowledgement_token_failure",
+        "same_offset_redelivery_after_consumer_restart",
+        "one_inbox_row_and_stable_ingest_sequence_after_redelivery",
+        "successful_restart_acknowledgement_advances_to_next_event"
+      ],
+      "does_not_cover": [
+        "server_worker_retry_backoff",
+        "poison_receipt_or_dlq_publication",
+        "projector_or_owner_checkpoint",
+        "multi_process_or_visibility_end_to_end"
+      ]
     }
   ],
   "required_runtime": {
@@ -161,6 +180,8 @@
     "node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs",
     "node scripts/verify/verify-forum-search-versioned-invalidation-postgres-ingress-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_postgres -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-ack-restart-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-search --test forum_versioned_invalidation_ack_restart_iggy -- --nocapture --test-threads=1",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
