@@ -1,5 +1,6 @@
-use sea_orm::Value;
 use uuid::Uuid;
+
+use crate::SearchResultItem;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ForumStorefrontDocumentFilters {
@@ -10,83 +11,78 @@ impl ForumStorefrontDocumentFilters {
     pub fn is_empty(&self) -> bool {
         self.author_ids.is_empty()
     }
-}
 
-pub(crate) fn forum_document_filter_sql(
-    filters: &ForumStorefrontDocumentFilters,
-    bound_values: &mut Vec<Value>,
-    next_param: &mut usize,
-) -> Option<String> {
-    if filters.author_ids.is_empty() {
-        return None;
+    pub fn matches(&self, item: &SearchResultItem) -> bool {
+        if self.author_ids.is_empty() {
+            return true;
+        }
+        if item.source_module != "forum"
+            || !matches!(item.entity_type.as_str(), "forum_topic" | "forum_reply")
+        {
+            return false;
+        }
+
+        item.payload
+            .get("author")
+            .and_then(|author| author.get("user_id"))
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .is_some_and(|author_id| self.author_ids.contains(&author_id))
     }
-
-    let author_params = filters
-        .author_ids
-        .iter()
-        .map(|author_id| {
-            let placeholder = format!("${}", *next_param);
-            bound_values.push(author_id.to_string().into());
-            *next_param += 1;
-            placeholder
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    Some(format!(
-        "(
-            source_module = 'forum'
-            AND entity_type IN ('forum_topic', 'forum_reply')
-            AND facets ->> 'author_id' IN ({author_params})
-        )"
-    ))
 }
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::Value;
     use uuid::Uuid;
 
-    use super::{
-        ForumStorefrontDocumentFilters, forum_document_filter_sql,
-    };
+    use super::ForumStorefrontDocumentFilters;
+    use crate::{SearchResultItem, SearchRankingProfile};
 
-    #[test]
-    fn empty_filter_does_not_change_search_scope() {
-        let mut values = Vec::<Value>::new();
-        let mut next_param = 4;
-
-        assert!(
-            forum_document_filter_sql(
-                &ForumStorefrontDocumentFilters::default(),
-                &mut values,
-                &mut next_param,
-            )
-            .is_none()
-        );
-        assert!(values.is_empty());
-        assert_eq!(next_param, 4);
+    fn item(entity_type: &str, author_id: Option<Uuid>) -> SearchResultItem {
+        SearchResultItem {
+            id: Uuid::new_v4(),
+            entity_type: entity_type.to_string(),
+            source_module: "forum".to_string(),
+            title: "Result".to_string(),
+            snippet: None,
+            score: 1.0,
+            locale: Some("en".to_string()),
+            payload: serde_json::json!({
+                "author": author_id.map(|user_id| serde_json::json!({ "user_id": user_id }))
+            }),
+        }
     }
 
     #[test]
-    fn author_filter_matches_only_forum_topics_and_replies() {
-        let first = Uuid::new_v4();
-        let second = Uuid::new_v4();
-        let mut values = Vec::<Value>::new();
-        let mut next_param = 7;
-        let sql = forum_document_filter_sql(
-            &ForumStorefrontDocumentFilters {
-                author_ids: vec![first, second],
-            },
-            &mut values,
-            &mut next_param,
-        )
-        .expect("author filter SQL");
+    fn empty_filter_preserves_all_items() {
+        let filters = ForumStorefrontDocumentFilters::default();
+        assert!(filters.matches(&item("forum_category", None)));
+        assert!(filters.matches(&item("forum_topic", None)));
+    }
 
-        assert!(sql.contains("source_module = 'forum'"));
-        assert!(sql.contains("entity_type IN ('forum_topic', 'forum_reply')"));
-        assert!(sql.contains("facets ->> 'author_id' IN ($7, $8)"));
-        assert_eq!(values.len(), 2);
-        assert_eq!(next_param, 9);
+    #[test]
+    fn author_filter_matches_exact_public_topic_or_reply_author() {
+        let expected = Uuid::new_v4();
+        let filters = ForumStorefrontDocumentFilters {
+            author_ids: vec![expected],
+        };
+
+        assert!(filters.matches(&item("forum_topic", Some(expected))));
+        assert!(filters.matches(&item("forum_reply", Some(expected))));
+        assert!(!filters.matches(&item("forum_topic", Some(Uuid::new_v4()))));
+        assert!(!filters.matches(&item("forum_category", None)));
+        assert!(!filters.matches(&item("forum_reply", None)));
+    }
+
+    #[test]
+    fn non_forum_items_never_match_active_author_filter() {
+        let expected = Uuid::new_v4();
+        let filters = ForumStorefrontDocumentFilters {
+            author_ids: vec![expected],
+        };
+        let mut product = item("product", Some(expected));
+        product.source_module = "product".to_string();
+
+        assert!(!filters.matches(&product));
     }
 }
