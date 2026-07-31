@@ -89,8 +89,9 @@ control-plane state. Server and native adapters may authenticate and map
 transport errors, but they must not define a second principal policy or treat an
 effective permission as sufficient proof of principal eligibility.
 
-The correction staged during `core/rbac` uses the owner-provided
-`RbacControlPlanePrincipal` policy for GraphQL, REST and native RBAC Admin:
+PR #2747 merged the owner-provided `RbacControlPlanePrincipal` policy as
+`75b67f877eb405abe4e6761a16d6b7ece98bc103` for GraphQL, REST and native
+RBAC Admin:
 
 - only a direct grant with a non-nil session may enter the control plane;
 - the authenticated tenant must equal the middleware-routed tenant before
@@ -106,9 +107,12 @@ The correction staged during `core/rbac` uses the owner-provided
 - adapters compose neutral authenticated facts into the owner policy, while the
   owner crate remains independent of Axum and the `rustok-api/server` feature.
 
-Same-SHA formatting, default/all-feature owner compilation, RBAC Admin SSR
-compilation, server compilation, focused tests and live negative transport
-evidence remain required before this correction is considered verified.
+The default `rustok-rbac` crate compiled on exact PR head
+`3cf4b3a44980ca257f7f53849e905673141db289` inside Rust-host workflow run
+`30650883159`. That workflow then reproduced issue #2740 before building
+`rustok-server`. Same-SHA formatting, all-feature owner compilation, RBAC Admin
+SSR compilation, server compilation, focused tests, verifier execution and live
+negative transport evidence remain required before this correction is verified.
 
 ## Improvements
 
@@ -154,8 +158,8 @@ evidence remain required before this correction is considered verified.
 - Last verified at (UTC): `2026-07-31`
 - Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority, followed by the active core/rbac review of authoritative request scope, artifact role-permission REST adapter and native RBAC Admin bootstrap`
 - Findings: `P0=3, P1=2, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the RBAC REST invalid principal grant; the second P1 is native role-metadata admission inconsistency; the existing P2 is the earlier module-control-plane construction finding)
-- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 now stages one owner host-neutral direct-session policy for REST, GraphQL and native RBAC Admin, authenticated/routed tenant equality before modules:manage or settings:read, trusted AuthContext actor propagation and removal of the obsolete native tenant-only helper.`
-- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC P0/P1 corrections still lack same-SHA format, owner/admin/server compile, focused unit/architecture/verifier tests and live transport evidence; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
-- Evidence: `source audit confirms middleware builds AuthContext and request scope from authoritative DB permissions, with OAuth scopes only narrowing authority. PR #2747 contains the owner principal policy, REST/GraphQL/native composition, unit regressions, rbac_artifact_permission_control_plane_guard and the updated native verifier. No successful branch execution result is claimed yet. Host-authority source is merged at 1ce83819b077ef6e0df009fd5675f556315ef63a; its exact-head Rust-host path is blocked before server build by issue #2740.`
-- Next action: `collect exact-head format/check/Clippy and focused evidence for PR #2747, continue the core/rbac P0/P1 sweep, and leave the full server composition audit for its Wave 2 cursor visit`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs`
+- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner host-neutral direct-session policy for REST, GraphQL and native RBAC Admin as 75b67f877eb405abe4e6761a16d6b7ece98bc103, with authenticated/routed tenant equality before modules:manage or settings:read, trusted AuthContext actor propagation and removal of the obsolete native tenant-only helper.`
+- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC P0/P1 corrections still lack same-SHA format, all-feature owner compile, admin SSR/server compile, focused unit/architecture/verifier tests and live transport evidence; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
+- Evidence: `source audit confirms middleware builds AuthContext and request scope from authoritative DB permissions, with OAuth scopes only narrowing authority. Exact PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159; issue #2740 then stopped the job before rustok-server. Standard CI and Hardening remained pending without jobs. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. No other queued or pending result is claimed. Host-authority source remains merged at 1ce83819b077ef6e0df009fd5675f556315ef63a.`
+- Next action: `continue the core/rbac P0/P1 sweep and obtain exact-SHA format/all-feature/admin/server/focused/module/live evidence; leave the complete server composition audit for its Wave 2 cursor visit`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs`
