@@ -102,13 +102,21 @@ impl InProcessCheckoutPaymentExecutionPort {
         provider_operation: &'static str,
     ) -> Result<(), PortError> {
         if let Err(error) = self.operation_journal.mark_committed(operation_id).await {
+            let context_facts = checkout_payment_execution_context_facts(context);
             tracing::error!(
-                operation_id = %operation_id,
+                operation_id_non_nil = !operation_id.is_nil(),
+                provider_operation,
                 error = ?error,
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                channel_present = context_facts.channel_present,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                idempotency_key_present = context_facts.idempotency_key_present,
                 operation = owner_operation,
                 code = "payment.checkout_execution_commit_checkpoint_failed",
+                boundary = PAYMENT_EXECUTION_BOUNDARY,
                 "payment local commit checkpoint failed"
             );
             let _ = self
@@ -142,13 +150,21 @@ impl InProcessCheckoutPaymentExecutionPort {
             )
             .await
         {
+            let context_facts = checkout_payment_execution_context_facts(context);
             tracing::error!(
-                operation_id = %operation_id,
+                operation_id_non_nil = !operation_id.is_nil(),
+                provider_operation,
                 error = ?error,
                 correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                channel_present = context_facts.channel_present,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                idempotency_key_present = context_facts.idempotency_key_present,
                 operation = owner_operation,
                 code = "payment.checkout_execution_reconciliation_checkpoint_failed",
+                boundary = PAYMENT_EXECUTION_BOUNDARY,
                 "payment local persistence failure checkpoint failed"
             );
         }
