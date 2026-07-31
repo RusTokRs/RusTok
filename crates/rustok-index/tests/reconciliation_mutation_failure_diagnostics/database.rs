@@ -26,7 +26,7 @@ impl TestDatabase {
         };
         let control = connect(&database_url).await?;
         let schema_name = format!(
-            "rustok_index_reconciliation_mutation_failure_{}_{}",
+            "rustok_idx_recon_mut_fail_{}_{}",
             case,
             Uuid::new_v4().simple()
         );
