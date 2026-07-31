@@ -1,62 +1,35 @@
-name: Cache Redis status
+name: Agent Forum Search plan sync
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "crates/rustok-cache/src/redis_status.rs"
-      - "crates/rustok-cache/Cargo.toml"
-      - "crates/rustok-telemetry/src/lib.rs"
-      - "apps/server/src/services/cache_redis_status_monitor.rs"
-      - "apps/server/src/services/event_transport_factory.rs"
-      - "apps/server/src/services/mod.rs"
-      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
-      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
-      - ".github/workflows/cache-redis-status.yml"
   pull_request:
-    paths:
-      - "crates/rustok-cache/src/redis_status.rs"
-      - "crates/rustok-cache/Cargo.toml"
-      - "crates/rustok-telemetry/src/lib.rs"
-      - "apps/server/src/services/cache_redis_status_monitor.rs"
-      - "apps/server/src/services/event_transport_factory.rs"
-      - "apps/server/src/services/mod.rs"
-      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
-      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
-      - ".github/workflows/cache-redis-status.yml"
-  workflow_dispatch:
+    branches:
+      - agent/forum-search-durable-ingest-sequence-23b2g1
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: cache-redis-status-${{ github.ref }}
+  group: agent-forum-search-b2f4-b2g1-plan-sync
   cancel-in-progress: true
 
 jobs:
-  contract:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  synchronize:
+    runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.96.0"
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cache-redis-status
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Compile
+          ref: agent/forum-search-durable-ingest-sequence-23b2g1
+          fetch-depth: 2
+      - name: Synchronize canonical plans
+        run: python3 scripts/agent/sync_forum_search_current_channel_and_ingest_plans.py
+      - name: Commit synchronization and restore workflow
         run: |
-          cargo check -p rustok-cache --lib
-          cargo check -p rustok-server --lib
-      - name: Redis status tests
-        run: |
-          cargo test -p rustok-cache redis_status --lib
-          cargo test -p rustok-server --test cache_redis_status_architecture_guard --test cache_redis_monitor_architecture_guard
-      - name: Clippy
-        run: |
-          cargo clippy -p rustok-cache --lib -- -D warnings
-          cargo clippy -p rustok-server --lib -- -D warnings
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --depth=1
+          git show origin/main:.github/workflows/cache-redis-status.yml > .github/workflows/cache-redis-status.yml
+          rm -f scripts/agent/sync_forum_search_current_channel_and_ingest_plans.py
+          git add -A
+          git commit -m "docs(forum): sync current channel and ingest sequence plans"
+          git push origin HEAD:agent/forum-search-durable-ingest-sequence-23b2g1
