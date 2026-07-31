@@ -1,0 +1,66 @@
+{
+  "format_version": 1,
+  "task": "FORUM-23B2G2B3D2",
+  "status": "source_ready_maintainer_execution_pending",
+  "predecessors": [
+    "FORUM-23B2G2B3D0",
+    "FORUM-23B2G2B3D1"
+  ],
+  "postgresql_ingress": {
+    "test_target": "crates/rustok-search/tests/forum_contract_ingress_postgres_test.rs",
+    "environment": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "database_url_fallback": "DATABASE_URL",
+    "isolated_schema_per_case": true,
+    "real_search_module_migrations": true,
+    "legacy_first_then_typed": true,
+    "typed_first_then_legacy": true,
+    "new_ingress_instance_redelivery": true,
+    "single_root_row": true,
+    "first_ingest_sequence_retained": true,
+    "owner_revision_is_not_ingest_sequence": true,
+    "identity_conflict_is_non_retryable_semantic_poison": true
+  },
+  "persistent_cursor_restart": {
+    "source_target": "crates/rustok-iggy/src/contract_consumer_restart_tests.rs",
+    "event_ack_failure_leaves_offset_uncommitted": true,
+    "event_redelivery_after_group_reconstruction": true,
+    "event_exact_bytes_offset_and_identity_retained": true,
+    "decode_failure_ack_failure_leaves_offset_uncommitted": true,
+    "decode_failure_redelivery_after_group_reconstruction": true,
+    "decode_failure_exact_bytes_offset_and_delivery_id_retained": true,
+    "successful_restarted_ack_commits_exact_offset": true
+  },
+  "single_execution_path": {
+    "search_inbox": "search_projection_inbox",
+    "projection_identity": "legacy root envelope id / typed causation_id",
+    "second_inbox": false,
+    "second_projector": false,
+    "second_reconciler": false,
+    "second_ordering_clock": false
+  },
+  "compatibility": {
+    "production_migration_changed": false,
+    "event_schema_or_digest_changed": false,
+    "runtime_flag_changed": false,
+    "broker_topic_or_consumer_group_changed": false,
+    "public_api_changed": false,
+    "cargo_lock_changed": false
+  },
+  "not_claimed": {
+    "tests_executed": false,
+    "postgresql_output_captured": false,
+    "external_iggy_restart_executed": false,
+    "server_worker_restart_executed": false,
+    "raw_poison_receipt_or_dlq_executed": false,
+    "semantic_poison_receipt_or_dlq_executed": false,
+    "dlq_duplicate_suppression_executed": false,
+    "owner_checkpoint_repair_executed": false,
+    "multi_process_serialization_executed": false,
+    "deletion_acl_search_disabled_evidence_executed": false,
+    "link_forum_03_closed": false
+  },
+  "follow_up": {
+    "task": "FORUM-23B2G2B3D3",
+    "scope": "Durable connector-owned poison receipt, deterministic DLQ publication, acknowledgement failure and redelivery evidence before the remaining D0 runtime scenarios"
+  }
+}

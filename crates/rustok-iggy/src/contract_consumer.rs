@@ -250,3 +250,7 @@ impl ConsumedContractEvent {
         .with_connector_metadata(self.connector_metadata)
     }
 }
+
+#[cfg(test)]
+#[path = "contract_consumer_restart_tests.rs"]
+mod restart_tests;
