@@ -64,11 +64,12 @@ guarded by `scripts/verify/verify-comments-thread-write-invariants.mjs` and focu
 self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`. Exact
 commands `verify:comments:thread-write-invariants` and
 `test:verify:comments:thread-write-invariants` are registered in Comments registry
-schema v2 and the Comments FBA verify/test chains. Evidence schema v2 also locks
-an owner-classified tenant/target identity marker: canonical lookup occurs only
-for that expected first-thread conflict, while unrelated insert storage errors
-propagate as typed database failures. Blog consumes the owner result and does not
-duplicate thread locking, counter policy, or error classification.
+schema v4 and the Comments FBA verify/test chains. Evidence schema v3 locks an
+owner-classified tenant/target identity marker with a valid canonical thread UUID,
+the registered Rust classifier harness, canonical lookup only for the expected
+first-thread conflict, and typed propagation of unrelated insert storage errors.
+Blog consumes the owner result and does not duplicate thread locking, counter
+policy, or error classification.
 
 The Comments consumer call surface is now a first-class Blog source boundary.
 `CommentService` depends on `Arc<dyn CommentsThreadPort>`, uses the in-process
@@ -93,14 +94,22 @@ Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
 `comment.deleted` for `blog_post`, uses the envelope id as the durable delivery
 identity, and commits the tenant-scoped optimistic count update, delivery row,
-and `BlogPostUpdated` outbox publication in one transaction. The retained source
-evidence is `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`,
+and `BlogPostUpdated` outbox publication in one transaction. `project()` and
+`EventHandler::handles()` share the pure `comment_projection_change` classifier,
+and the pure counter transition floors deletes at zero while saturating count and
+version overflow. Evidence schema v2 is retained at
+`crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`,
 guarded by `scripts/verify/verify-blog-comments-event-projection.mjs` and focused
-fixture `scripts/verify/verify-blog-comments-event-projection.test.mjs`. Exact
+fixture `scripts/verify/verify-blog-comments-event-projection.test.mjs`. The Rust
+source harness is the `services::comment_projection::tests` module in
+`crates/rustok-blog/src/services/comment_projection.rs`, with status
+`executable_no_run` and suggested command
+`cargo test -p rustok-blog --lib services::comment_projection::tests`. Exact
 commands `verify:blog:comments-event-projection` and
 `test:verify:blog:comments-event-projection` run after the Comments port gate in
-the Blog FBA chains. Status remains `source_verified_no_compile`; runtime delivery
-and recovery evidence is not recorded.
+the Blog FBA chains. Overall status remains `source_verified_no_compile`;
+runtime delivery and recovery, duplicate ledger behavior, rollback, restart, and
+PostgreSQL evidence are not recorded.
 
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
@@ -209,26 +218,40 @@ race, propagates unrelated storage errors, upgrades its retained invariant
 evidence to schema v2, and adds focused negatives. Blog receives the corrected
 typed provider result without adding a consumer-side classifier.
 
+## 2026-07-31 source continuation audit
+
+The continuation audit at `ea72eb8679ccecc16fcfd3ae895e14333fa33232`
+found that the Comments event projection had a static transaction/ledger gate but
+no executable Rust harness for event classification or counter transition policy.
+`project()` and `EventHandler::handles()` also encoded classification separately,
+allowing future source drift between dispatch and projection. Slice 44 extracts a
+shared pure classifier and counter transition, adds three unit cases, upgrades the
+evidence to schema v2 and Blog registry schema v11, and extends both the focused
+and aggregate fail-closed guards. No Rust test, verifier, compile, database,
+workflow, browser, or CI execution is recorded.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v10
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v11
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
-  self-tests, and aggregate/consumer bindings for admin, storefront, Comments
-  port boundary, Comments event projection, category Search reindex, GraphQL rate
-  limiting, GraphQL richtext, AI richtext, offline backfill, Forum ownership, and
-  runtime order.
+  self-tests, the Comments projection unit harness, and aggregate/consumer
+  bindings for admin, storefront, Comments port boundary, Comments event
+  projection, category Search reindex, GraphQL rate limiting, GraphQL richtext,
+  AI richtext, offline backfill, Forum ownership, and runtime order.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; all seven operations, approved public read, typed
   richtext projection, two-second deadlines, write idempotency, active typed
   `PortErrorKind` mapping, exact npm leaf commands, focused fixture, and Blog FBA
   ordering are locked. The remote adapter and degraded UI modes remain planned;
   runtime evidence is pending.
-- Comments event projection: Blog-owned `source_verified_no_compile`; evidence,
-  verifier, focused self-test, exact npm leaf commands, delivery-ledger identity,
-  transactional outbox markers, and Blog FBA ordering are locked. Duplicate,
-  out-of-order, retry, rollback, restart, and PostgreSQL execution remain pending.
+- Comments event projection: Blog-owned `source_verified_no_compile`; evidence
+  schema v2, shared classifier/counter helpers, `executable_no_run` Rust unit
+  harness, verifier, focused self-test, exact npm leaf commands, delivery-ledger
+  identity, transactional outbox markers, and Blog FBA ordering are locked.
+  Duplicate, out-of-order, retry, rollback, restart, and PostgreSQL execution
+  remain pending.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
@@ -244,7 +267,7 @@ typed provider result without adding a consumer-side classifier.
 - Blog storefront richtext boundary: `source_verified_no_compile`.
 - AI Blog draft owner writes and shim: `source_verified_no_compile`.
 - Comments thread write invariants: Comments-owned `executable_no_run`; registry
-  schema v2, evidence schema v2, owner identity classifier, guarded canonical
+  schema v4, evidence schema v3, owner identity classifier, guarded canonical
   fallback, unrelated-storage propagation, verifier, focused self-test, exact npm
   leaf commands, Rust targets, and Comments FBA ordering are locked. PostgreSQL
   and injected storage-error execution remain maintainer-owned.
@@ -384,6 +407,10 @@ typed provider result without adding a consumer-side classifier.
     tenant/target-scoped identity-conflict classifier, narrowed canonical fallback,
     propagated unrelated storage errors, upgraded owner evidence to schema v2, and
     retained all runtime and PostgreSQL proof as maintainer-owned.
+44. Extracted a shared pure Comments event classifier and saturating counter
+    transition, added three Rust unit cases, upgraded event evidence to schema v2
+    and Blog registry schema v11, and extended focused/aggregate source guards
+    without recording execution.
 
 ## Next results
 
@@ -401,12 +428,12 @@ typed provider result without adding a consumer-side classifier.
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
 5. **Close comments runtime evidence.** Run the Comments port boundary fixture,
-   shared consumer runtime-order verifier, both thread invariant concurrency
-   targets, and concurrent PostgreSQL create/delete transactions; cover the
-   remote adapter, degraded UI modes, approved-only reads, moderation, pagination,
-   duplicate delivery, counters, first-thread identity, unrelated insert storage
-   error propagation, missing-post retry, rollback, outbox publication, and restart
-   recovery.
+   shared consumer runtime-order verifier, the Blog projection unit harness, both
+   thread invariant concurrency targets, and concurrent PostgreSQL create/delete
+   transactions; cover the remote adapter, degraded UI modes, approved-only reads,
+   moderation, pagination, duplicate delivery, counters, first-thread identity,
+   unrelated insert storage error propagation, missing-post retry, rollback,
+   outbox publication, and restart recovery.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -422,6 +449,7 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:comments-port-boundary`
 - `npm run verify:blog:comments-event-projection`
 - `npm run test:verify:blog:comments-event-projection`
+- `cargo test -p rustok-blog --lib services::comment_projection::tests`
 - `npm run verify:blog:category-search-reindex`
 - `npm run test:verify:blog:category-search-reindex`
 - `npm run verify:blog:graphql-rate-limit`

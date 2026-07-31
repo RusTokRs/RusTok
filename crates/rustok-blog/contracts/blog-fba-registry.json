@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -111,6 +111,7 @@
         "test_package_script": "test:verify:blog:comments-event-projection",
         "verifier": "scripts/verify/verify-blog-comments-event-projection.mjs",
         "self_test": "scripts/verify/verify-blog-comments-event-projection.test.mjs",
+        "unit_test": "crates/rustok-blog/src/services/comment_projection.rs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json"
       },
       "category_search_reindex": {
@@ -159,11 +160,20 @@
   },
   "event_projection": {
     "provider": "comments",
-    "events": ["comment.created", "comment.deleted"],
+    "events": [
+      "comment.created",
+      "comment.deleted"
+    ],
     "handler": "BlogCommentProjectionHandler",
     "delivery_ledger": "blog_comment_projection_deliveries",
     "publication": "BlogPostUpdated through rustok_outbox::TransactionalEventBus::publish_in_tx",
-    "status": "implemented_static_only"
+    "status": "implemented_static_only",
+    "runtime_status": "pending",
+    "source_harness": {
+      "path": "crates/rustok-blog/src/services/comment_projection.rs",
+      "status": "executable_no_run",
+      "command": "cargo test -p rustok-blog --lib services::comment_projection::tests"
+    }
   },
   "contract_tests": {
     "status": "source_verified_no_compile",

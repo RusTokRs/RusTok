@@ -9,12 +9,53 @@ use sea_orm::{
     QueryFilter, Set, TransactionTrait, sea_query::Expr,
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::entities::{blog_comment_projection_delivery, blog_post};
 
 const BLOG_POST_TARGET_TYPE: &str = "blog_post";
 const FALLBACK_LOCALE: &str = "en";
 const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CommentProjectionChange {
+    comment_id: Uuid,
+    post_id: Uuid,
+    delta: i32,
+}
+
+fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange> {
+    match event {
+        DomainEvent::CommentCreated {
+            comment_id,
+            target_type,
+            target_id,
+            ..
+        } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
+            comment_id: *comment_id,
+            post_id: *target_id,
+            delta: 1,
+        }),
+        DomainEvent::CommentDeleted {
+            comment_id,
+            target_type,
+            target_id,
+            ..
+        } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
+            comment_id: *comment_id,
+            post_id: *target_id,
+            delta: -1,
+        }),
+        _ => None,
+    }
+}
+
+fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32) -> (i32, i32) {
+    (
+        comment_count.saturating_add(delta).max(0),
+        version.saturating_add(1),
+    )
+}
 
 /// Projects Comments lifecycle events into Blog-owned reply-count state.
 ///
@@ -33,20 +74,8 @@ impl BlogCommentProjectionHandler {
     }
 
     async fn project(&self, envelope: &EventEnvelope) -> HandlerResult {
-        let (comment_id, post_id, delta) = match &envelope.event {
-            DomainEvent::CommentCreated {
-                comment_id,
-                target_type,
-                target_id,
-                ..
-            } if target_type == BLOG_POST_TARGET_TYPE => (*comment_id, *target_id, 1),
-            DomainEvent::CommentDeleted {
-                comment_id,
-                target_type,
-                target_id,
-                ..
-            } if target_type == BLOG_POST_TARGET_TYPE => (*comment_id, *target_id, -1),
-            _ => return Ok(()),
+        let Some(change) = comment_projection_change(&envelope.event) else {
+            return Ok(());
         };
 
         let txn = self.db.begin().await?;
@@ -59,7 +88,13 @@ impl BlogCommentProjectionHandler {
             return Ok(());
         }
 
-        update_comment_count_in_tx(&txn, envelope.tenant_id, post_id, delta).await?;
+        update_comment_count_in_tx(
+            &txn,
+            envelope.tenant_id,
+            change.post_id,
+            change.delta,
+        )
+        .await?;
 
         // The delivery marker is committed with the counter and outbox event. If
         // a concurrent duplicate wins this unique insert, this transaction rolls
@@ -67,9 +102,9 @@ impl BlogCommentProjectionHandler {
         blog_comment_projection_delivery::ActiveModel {
             event_id: Set(envelope.id),
             tenant_id: Set(envelope.tenant_id),
-            comment_id: Set(comment_id),
-            post_id: Set(post_id),
-            delta: Set(delta),
+            comment_id: Set(change.comment_id),
+            post_id: Set(change.post_id),
+            delta: Set(change.delta),
             processed_at: Set(Utc::now().into()),
         }
         .insert(&txn)
@@ -81,7 +116,7 @@ impl BlogCommentProjectionHandler {
                 envelope.tenant_id,
                 envelope.actor_id,
                 DomainEvent::BlogPostUpdated {
-                    post_id,
+                    post_id: change.post_id,
                     locale: FALLBACK_LOCALE.to_string(),
                 },
             )
@@ -93,8 +128,8 @@ impl BlogCommentProjectionHandler {
 
 async fn update_comment_count_in_tx(
     txn: &DatabaseTransaction,
-    tenant_id: uuid::Uuid,
-    post_id: uuid::Uuid,
+    tenant_id: Uuid,
+    post_id: Uuid,
     delta: i32,
 ) -> HandlerResult {
     for _ in 0..MAX_PROJECTION_UPDATE_ATTEMPTS {
@@ -108,8 +143,8 @@ async fn update_comment_count_in_tx(
             )));
         };
 
-        let next_comment_count = post.comment_count.saturating_add(delta).max(0);
-        let next_version = post.version.saturating_add(1);
+        let (next_comment_count, next_version) =
+            next_comment_projection_state(post.comment_count, post.version, delta);
         let result = blog_post::Entity::update_many()
             .col_expr(
                 blog_post::Column::CommentCount,
@@ -143,15 +178,79 @@ impl EventHandler for BlogCommentProjectionHandler {
     }
 
     fn handles(&self, event: &DomainEvent) -> bool {
-        matches!(
-            event,
-            DomainEvent::CommentCreated { target_type, .. }
-                | DomainEvent::CommentDeleted { target_type, .. }
-                if target_type == BLOG_POST_TARGET_TYPE
-        )
+        comment_projection_change(event).is_some()
     }
 
     async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult {
         self.project(envelope).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn id(value: u128) -> Uuid {
+        Uuid::from_u128(value)
+    }
+
+    #[test]
+    fn classifies_blog_comment_lifecycle_events() {
+        let created = DomainEvent::CommentCreated {
+            comment_id: id(1),
+            target_type: BLOG_POST_TARGET_TYPE.to_string(),
+            target_id: id(2),
+            author_id: id(3),
+        };
+        let deleted = DomainEvent::CommentDeleted {
+            comment_id: id(4),
+            target_type: BLOG_POST_TARGET_TYPE.to_string(),
+            target_id: id(5),
+            author_id: id(6),
+        };
+
+        assert_eq!(
+            comment_projection_change(&created),
+            Some(CommentProjectionChange {
+                comment_id: id(1),
+                post_id: id(2),
+                delta: 1,
+            })
+        );
+        assert_eq!(
+            comment_projection_change(&deleted),
+            Some(CommentProjectionChange {
+                comment_id: id(4),
+                post_id: id(5),
+                delta: -1,
+            })
+        );
+    }
+
+    #[test]
+    fn ignores_non_blog_targets_and_unrelated_events() {
+        let other_target = DomainEvent::CommentCreated {
+            comment_id: id(7),
+            target_type: "forum_topic".to_string(),
+            target_id: id(8),
+            author_id: id(9),
+        };
+        let unrelated = DomainEvent::BlogPostUpdated {
+            post_id: id(10),
+            locale: "en".to_string(),
+        };
+
+        assert_eq!(comment_projection_change(&other_target), None);
+        assert_eq!(comment_projection_change(&unrelated), None);
+    }
+
+    #[test]
+    fn counter_transition_is_non_negative_and_saturating() {
+        assert_eq!(next_comment_projection_state(4, 11, 1), (5, 12));
+        assert_eq!(next_comment_projection_state(0, 11, -1), (0, 12));
+        assert_eq!(
+            next_comment_projection_state(i32::MAX, i32::MAX, 1),
+            (i32::MAX, i32::MAX)
+        );
     }
 }

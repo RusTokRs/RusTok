@@ -50,7 +50,8 @@ function canonicalExistingPaths() {
       gate.verifier,
       gate.self_test,
       gate.evidence,
-    ]),
+      gate.unit_test,
+    ].filter(Boolean)),
   ]);
 }
 
@@ -106,6 +107,17 @@ test('Blog FBA verification-chain policy rejects source-gate path drift', () => 
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.storefront_boundary.evidence = 'wrong/storefront-evidence.json';
   assert.ok(failures({ registry }).includes('registry source gate storefront_boundary path drift'));
+});
+
+test('Blog FBA verification-chain policy rejects projection unit-test path drift', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.source_gates.comments_event_projection.unit_test =
+    'crates/rustok-blog/src/services/wrong_projection.rs';
+  assert.ok(
+    failures({ registry }).includes(
+      'registry source gate comments_event_projection path drift',
+    ),
+  );
 });
 
 test('Blog FBA verification-chain policy rejects registry leaf-script drift', () => {
@@ -167,6 +179,16 @@ test('Blog FBA verification-chain policy rejects a missing leaf self-test file',
   assert.ok(
     failures({ existingPaths }).includes(
       `registry source gate richtext_offline_backfill missing ${BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test}`,
+    ),
+  );
+});
+
+test('Blog FBA verification-chain policy rejects a missing projection unit-test source', () => {
+  const existingPaths = canonicalExistingPaths();
+  existingPaths.delete(BLOG_FBA_SOURCE_GATES.comments_event_projection.unit_test);
+  assert.ok(
+    failures({ existingPaths }).includes(
+      `registry source gate comments_event_projection missing ${BLOG_FBA_SOURCE_GATES.comments_event_projection.unit_test}`,
     ),
   );
 });

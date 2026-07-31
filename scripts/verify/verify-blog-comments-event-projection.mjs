@@ -38,6 +38,7 @@ const migrationRegistryPath = 'crates/rustok-blog/src/migrations/mod.rs';
 const modulePath = 'crates/rustok-blog/src/lib.rs';
 const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 
 const handler = read(handlerPath);
 const serviceExport = read(serviceExportPath);
@@ -62,29 +63,51 @@ try {
 for (const marker of [
   'const BLOG_POST_TARGET_TYPE: &str = "blog_post";',
   'const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;',
+  'struct CommentProjectionChange',
+  'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>',
   'DomainEvent::CommentCreated',
-  'if target_type == BLOG_POST_TARGET_TYPE => (*comment_id, *target_id, 1)',
+  'delta: 1',
   'DomainEvent::CommentDeleted',
-  'if target_type == BLOG_POST_TARGET_TYPE => (*comment_id, *target_id, -1)',
-  '_ => return Ok(())',
+  'delta: -1',
+  'fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32)',
+  'comment_count.saturating_add(delta).max(0)',
+  'version.saturating_add(1)',
+  'let Some(change) = comment_projection_change(&envelope.event) else',
   'let txn = self.db.begin().await?;',
   'blog_comment_projection_delivery::Entity::find_by_id(envelope.id)',
-  'update_comment_count_in_tx(&txn, envelope.tenant_id, post_id, delta).await?;',
+  'change.post_id',
+  'change.delta',
   'event_id: Set(envelope.id)',
+  'comment_id: Set(change.comment_id)',
   '.insert(&txn)',
   '.publish_in_tx(',
   'DomainEvent::BlogPostUpdated',
   'txn.commit().await?;',
   'Column::TenantId.eq(tenant_id)',
   'Column::Version.eq(post.version)',
-  'post.comment_count.saturating_add(delta).max(0)',
+  'next_comment_projection_state(post.comment_count, post.version, delta)',
   'if result.rows_affected == 1',
   'Error::NotFound',
   'impl EventHandler for BlogCommentProjectionHandler',
+  'comment_projection_change(event).is_some()',
+  '#[cfg(test)]',
+  'fn classifies_blog_comment_lifecycle_events()',
+  'fn ignores_non_blog_targets_and_unrelated_events()',
+  'fn counter_transition_is_non_negative_and_saturating()',
 ]) {
   requireMarker(handler, marker, handlerPath);
 }
 requireNoMarker(handler, 'public.blog_posts', handlerPath);
+
+const handlesStart = handler.indexOf('fn handles(&self, event: &DomainEvent) -> bool');
+const handleStart = handler.indexOf('async fn handle(&self, envelope: &EventEnvelope)', handlesStart);
+if (handlesStart === -1 || handleStart === -1) {
+  failures.push(`${handlerPath}: missing EventHandler handles/handle boundary`);
+} else {
+  const handlesBody = handler.slice(handlesStart, handleStart);
+  requireMarker(handlesBody, 'comment_projection_change(event).is_some()', `${handlerPath}: handles`);
+  requireNoMarker(handlesBody, 'matches!(', `${handlerPath}: handles`);
+}
 
 for (const marker of [
   '#[sea_orm(table_name = "blog_comment_projection_deliveries")]',
@@ -123,7 +146,7 @@ for (const marker of [
 }
 
 if (evidence) {
-  if (evidence.schema_version !== 1) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 2) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== 'blog' ||
     evidence.surface !== 'comments_event_projection' ||
@@ -146,12 +169,32 @@ if (evidence) {
   })) {
     if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} drift`);
   }
+  const sourceHarness = evidence.source_harness ?? {};
+  if (
+    sourceHarness.status !== 'executable_no_run' ||
+    sourceHarness.path !== handlerPath ||
+    sourceHarness.module !== 'services::comment_projection::tests' ||
+    sourceHarness.command !== harnessCommand
+  ) {
+    failures.push(`${evidencePath}: source harness drift`);
+  }
+  const harnessCases = [...(sourceHarness.cases ?? [])].sort().join('|');
+  if (
+    harnessCases !== [
+      'shared_created_deleted_classifier',
+      'non_blog_target_rejection',
+      'non_negative_saturating_counter_transition',
+    ].sort().join('|')
+  ) {
+    failures.push(`${evidencePath}: source harness case drift`);
+  }
   const events = [...(evidence.events ?? [])].sort().join('|');
   if (events !== ['comment.created', 'comment.deleted'].sort().join('|')) {
     failures.push(`${evidencePath}: event set drift`);
   }
   const cases = new Set((evidence.cases ?? []).map((entry) => entry.name));
   for (const requiredCase of [
+    'shared_event_classifier',
     'blog_post_target_filter',
     'created_deleted_delta',
     'envelope_idempotency',
@@ -174,9 +217,21 @@ if (registry) {
     projection.provider !== 'comments' ||
     projection.handler !== 'BlogCommentProjectionHandler' ||
     projection.delivery_ledger !== 'blog_comment_projection_deliveries' ||
-    projection.status !== 'implemented_static_only'
+    projection.status !== 'implemented_static_only' ||
+    projection.runtime_status !== 'pending'
   ) {
     failures.push(`${registryPath}: event projection metadata drift`);
+  }
+  if (
+    projection.source_harness?.path !== handlerPath ||
+    projection.source_harness?.status !== 'executable_no_run' ||
+    projection.source_harness?.command !== harnessCommand
+  ) {
+    failures.push(`${registryPath}: event projection source harness drift`);
+  }
+  const sourceGate = registry.verification_chain?.source_gates?.comments_event_projection;
+  if (sourceGate?.unit_test !== handlerPath) {
+    failures.push(`${registryPath}: comments event projection unit test path drift`);
   }
 }
 
@@ -185,6 +240,7 @@ for (const marker of [
   'verify:blog:comments-event-projection',
   'test:verify:blog:comments-event-projection',
   'source_verified_no_compile',
+  'services::comment_projection::tests',
   'runtime delivery and recovery',
 ]) {
   requireMarker(plan, marker, planPath);
@@ -196,4 +252,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection source contract is consistent');
+console.log('Blog comments event projection source contract and unit harness are consistent');
