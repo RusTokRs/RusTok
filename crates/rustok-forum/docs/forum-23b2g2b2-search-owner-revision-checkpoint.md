@@ -87,8 +87,10 @@ revision page and checks exact `(tenant_id, event_id)` coverage:
 - a non-terminal row blocks the page even if it appeared after the first barrier
   check.
 
-This second status check closes the enqueue race without comparing owner and
-ingest counters.
+This second status check catches deliveries that arrived after the first barrier
+read. A delivery that arrives after the exact coverage read remains safe: the
+current-state repair already covers its revision, and the ordinary inbox path may
+later repeat that projection without moving the owner checkpoint backwards.
 
 ## Repair and commit protocol
 
