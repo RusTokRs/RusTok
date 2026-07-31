@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::time::Instant;
 
+use chrono::{DateTime, Utc};
 use rustok_api::{AuthContext, PortError, RequestContext};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -55,6 +56,8 @@ pub struct ForumStorefrontSearchRequest {
     pub author_ids: Vec<String>,
     pub tags: Vec<String>,
     pub solved: Option<bool>,
+    pub published_from: Option<String>,
+    pub published_to: Option<String>,
     pub attribute_filters: Vec<ForumStorefrontSearchAttributeFilter>,
     pub sort_attribute_code: Option<String>,
     pub sort_desc: bool,
@@ -191,7 +194,7 @@ pub async fn execute_forum_storefront_search(
     .await?;
     let search_query = SearchQuery {
         tenant_id: Some(input.tenant_id),
-        locale: input.locale,
+        locale: Some(effective_locale.clone()),
         channel_id: input.channel_id,
         original_query: transform.original_query,
         query: transform.effective_query,
@@ -462,6 +465,18 @@ fn normalize_request(
     let query = normalize_query(&request.query)?;
     let locale = normalize_locale(request.locale.as_deref())?;
     let fallback_locale = normalize_required_locale(&request.fallback_locale)?;
+    let exact_locale = locale
+        .clone()
+        .unwrap_or_else(|| fallback_locale.clone());
+    let published_from = normalize_optional_rfc3339("published_from", request.published_from.as_deref())?;
+    let published_to = normalize_optional_rfc3339("published_to", request.published_to.as_deref())?;
+    if published_from
+        .as_ref()
+        .zip(published_to.as_ref())
+        .is_some_and(|(from, to)| from > to)
+    {
+        return validation("published_from must not be after published_to");
+    }
     let requested_channel_id = parse_optional_uuid("channel_id", request.channel_id.as_deref())?;
     let request_context = request.request_context.ok_or_else(|| {
         ForumStorefrontSearchExecutionError::Validation(
@@ -507,9 +522,12 @@ fn normalize_request(
         statuses: normalize_filter_values("statuses", request.statuses)?,
         category_ids,
         document_filters: ForumStorefrontDocumentFilters {
+            exact_locale: Some(exact_locale),
             author_ids: normalize_uuid_values("author_ids", request.author_ids)?,
             tags: normalize_tag_values("tags", request.tags)?,
             solved: request.solved,
+            published_from,
+            published_to,
         },
         attribute_filters: normalize_attribute_filters(request.attribute_filters)?,
         sort_attribute_code: normalize_attribute_code(request.sort_attribute_code)?,
@@ -553,6 +571,25 @@ fn normalize_required_locale(value: &str) -> Result<String, ForumStorefrontSearc
         return validation("Invalid locale format");
     }
     Ok(value.to_ascii_lowercase())
+}
+
+fn normalize_optional_rfc3339(
+    field: &str,
+    value: Option<&str>,
+) -> Result<Option<DateTime<Utc>>, ForumStorefrontSearchExecutionError> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            DateTime::parse_from_rfc3339(value)
+                .map(|timestamp| timestamp.with_timezone(&Utc))
+                .map_err(|_| {
+                    ForumStorefrontSearchExecutionError::Validation(format!(
+                        "{field} must be RFC3339"
+                    ))
+                })
+        })
+        .transpose()
 }
 
 fn normalize_filter_values(
@@ -733,7 +770,7 @@ fn validation<T>(message: impl Into<String>) -> Result<T, ForumStorefrontSearchE
 
 #[cfg(test)]
 mod tests {
-    use super::forum_visible_status;
+    use super::{forum_visible_status, normalize_optional_rfc3339};
 
     #[test]
     fn visible_forum_statuses_match_owner_eligibility() {
@@ -741,5 +778,11 @@ mod tests {
         assert_eq!(forum_visible_status("forum_topic"), Some("open"));
         assert_eq!(forum_visible_status("forum_reply"), Some("approved"));
         assert_eq!(forum_visible_status("product"), None);
+    }
+
+    #[test]
+    fn date_bounds_require_rfc3339() {
+        assert!(normalize_optional_rfc3339("published_from", Some("2026-07-31T00:00:00Z")).is_ok());
+        assert!(normalize_optional_rfc3339("published_from", Some("2026-07-31")).is_err());
     }
 }

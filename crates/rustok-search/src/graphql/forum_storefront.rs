@@ -34,9 +34,9 @@ pub struct ForumStorefrontSearchQuery;
 #[Object]
 impl ForumStorefrontSearchQuery {
     /// Executes published Search through the Forum-owned richer category scope,
-    /// exact topic/reply result eligibility and optional exact author, tag and
-    /// solved-state scope. The input must explicitly select only the `forum` source
-    /// and at least one category root.
+    /// exact topic/reply result eligibility and optional exact author, tag,
+    /// solved-state and inclusive published-date scope. The input must explicitly
+    /// select only the `forum` source and at least one category root.
     async fn forum_storefront_search(
         &self,
         ctx: &Context<'_>,
@@ -44,6 +44,8 @@ impl ForumStorefrontSearchQuery {
         author_ids: Option<Vec<String>>,
         tags: Option<Vec<String>>,
         solved: Option<bool>,
+        published_from: Option<String>,
+        published_to: Option<String>,
     ) -> Result<SearchPreviewPayload> {
         require_module_enabled(ctx, FORUM_MODULE_SLUG).await?;
         enforce_rate_limit(ctx).await?;
@@ -100,6 +102,8 @@ impl ForumStorefrontSearchQuery {
             author_ids: author_ids.unwrap_or_default(),
             tags: tags.unwrap_or_default(),
             solved,
+            published_from,
+            published_to,
             attribute_filters: input
                 .attribute_filters
                 .unwrap_or_default()
