@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import './verify-blog-comments-http-port-injection.test.mjs';
+import './verify-blog-comments-graphql-port-injection.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,6 +27,10 @@ const injectionCommand =
   `cargo test -p rustok-blog --lib ${injectionTest} -- --exact`;
 const httpHarnessTest = 'controllers::tests::blog_http_runtime_exposes_comments_port_selection';
 const httpHarnessCommand = `cargo test -p rustok-blog --lib ${httpHarnessTest} -- --exact`;
+const graphqlHarnessTest =
+  'graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection';
+const graphqlHarnessCommand =
+  `cargo test -p rustok-blog --lib ${graphqlHarnessTest} -- --exact`;
 
 function write(root, relativePath, content) {
   const target = path.join(root, relativePath);
@@ -52,10 +57,18 @@ function fixture({
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
   const fallbackEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
   const httpEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json';
+  const graphqlEvidencePath =
+    'crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json';
   const servicePath = 'crates/rustok-blog/src/services/comment.rs';
   const httpRuntimePath = 'crates/rustok-blog/src/controllers/mod.rs';
   const httpControllerPath = 'crates/rustok-blog/src/controllers/comments.rs';
+  const manifestPath = 'crates/rustok-blog/rustok-module.toml';
+  const graphqlModulePath = 'crates/rustok-blog/src/graphql/mod.rs';
+  const graphqlRuntimeDataPath = 'crates/rustok-blog/src/graphql/runtime_data.rs';
   const graphqlOwnerPath = 'crates/rustok-blog/src/graphql/types.rs';
+  const graphqlMutationPath = 'crates/rustok-blog/src/graphql/mutation.rs';
+  const serverCodegenPath = 'apps/server/build.rs';
+  const serverSchemaPath = 'apps/server/src/graphql/schema.rs';
   const storefrontModelPath = 'crates/rustok-blog/storefront/src/model.rs';
   const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
   const storefrontNativePath = 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
@@ -140,6 +153,46 @@ let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_
 
   write(
     root,
+    manifestPath,
+    '[provides.graphql]\nquery = "graphql::BlogQuery"\nmutation = "graphql::BlogMutation"\nruntime_data_factory = "graphql::attach_schema_data"',
+  );
+  write(
+    root,
+    graphqlModulePath,
+    'mod runtime_data;\npub use runtime_data::{BlogGraphqlRuntimeData, attach_schema_data};',
+  );
+  write(
+    root,
+    serverCodegenPath,
+    'graphql_runtime_data_factory: Option<String> graphql_runtime_data_factory_expr builder = builder.data({factory}(inputs)?);',
+  );
+  write(
+    root,
+    serverSchemaPath,
+    'schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)',
+  );
+  write(
+    root,
+    graphqlRuntimeDataPath,
+    `
+use rustok_api::graphql::GraphqlRuntimeInputs;
+use rustok_comments::CommentsThreadPort;
+comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
+pub fn attach_schema_data(
+inputs.shared_get::<Arc<dyn CommentsThreadPort>>()
+pub(crate) fn comment_service(
+match self.comments_thread_port.clone()
+Some(comments_thread_port)
+CommentService::with_comments_thread_port(db, comments_thread_port)
+None => CommentService::new(db, event_bus)
+fn graphql_runtime_data_exposes_comments_port_selection()
+let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String>
+BlogGraphqlRuntimeData::comment_service;
+`,
+  );
+
+  write(
+    root,
     storefrontModelPath,
     `
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -172,6 +225,13 @@ ${broadNativeFallback ? 'Err(_) => BlogCommentList' : ''}
     root,
     graphqlOwnerPath,
     `
+use super::runtime_data::BlogGraphqlRuntimeData;
+async fn public_comments(
+let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+let service = runtime.comment_service(db.clone(), event_bus.clone());
+async fn moderation_comments(
+let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+let service = runtime.comment_service(db.clone(), event_bus.clone());
 pub enum GqlBlogCommentsAvailability
 pub availability: GqlBlogCommentsAvailability
 fn graphql_comments_read_availability(error: &BlogError)
@@ -180,6 +240,17 @@ ErrorKind::Timeout => Some(GqlBlogCommentsAvailability::Timeout)
 ${missingGraphqlAvailability ? '' : 'let Some(availability) = graphql_comments_read_availability(&error) else'}
 return Err(async_graphql::Error::new(error.to_string()));
 GqlBlogCommentsAvailability::Available
+`,
+  );
+  write(
+    root,
+    graphqlMutationPath,
+    `
+use super::runtime_data::BlogGraphqlRuntimeData;
+async fn moderate_comment(
+let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+runtime
+.comment_service(db.clone(), event_bus.clone())
 `,
   );
   write(
@@ -293,6 +364,62 @@ Comments took too long to load. The article is still available.
 
   write(
     root,
+    graphqlEvidencePath,
+    JSON.stringify({
+      schema_version: 1,
+      module: 'blog',
+      surface: 'comments_graphql_port_injection',
+      role: 'consumer',
+      provider: 'comments',
+      status: 'source_verified_no_compile',
+      compile_policy: 'not_run_by_request',
+      runtime_status: 'not_run',
+      source_contract: {
+        module_manifest: manifestPath,
+        graphql_module: graphqlModulePath,
+        runtime_data: graphqlRuntimeDataPath,
+        comment_reads: graphqlOwnerPath,
+        comment_mutation: graphqlMutationPath,
+        consumer_service: servicePath,
+        consumer_matrix: evidencePath,
+        server_codegen: serverCodegenPath,
+        server_schema: serverSchemaPath,
+      },
+      profiles: {
+        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
+        pending: ['remote_transport_implementation'],
+      },
+      composition: {
+        host_inputs: 'rustok_api::graphql::GraphqlRuntimeInputs',
+        manifest_factory: 'graphql::attach_schema_data',
+        schema_attachment: 'schema_codegen::attach_module_graphql_data',
+        schema_data: 'BlogGraphqlRuntimeData',
+        shared_value: 'Arc<dyn CommentsThreadPort>',
+        lookup: 'GraphqlRuntimeInputs::shared_get',
+        selector: 'BlogGraphqlRuntimeData::comment_service',
+        injected_constructor: 'CommentService::with_comments_thread_port',
+        fallback_constructor: 'CommentService::new',
+        graphql_operations: ['public_comments', 'moderation_comments', 'moderate_comment'],
+      },
+      harness: {
+        status: 'executable_no_run',
+        runtime_status: 'not_run',
+        source: graphqlRuntimeDataPath,
+        test: graphqlHarnessTest,
+        command: graphqlHarnessCommand,
+      },
+      registration: {
+        standalone_verifier:
+          'scripts/verify/verify-blog-comments-graphql-port-injection.mjs',
+        focused_fixture:
+          'scripts/verify/verify-blog-comments-graphql-port-injection.test.mjs',
+        blog_fba_package_chain: 'pending',
+      },
+    }),
+  );
+
+  write(
+    root,
     fallbackEvidencePath,
     JSON.stringify({
       schema_version: 2,
@@ -377,7 +504,7 @@ Comments took too long to load. The article is still available.
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json blog-comments-http-port-injection.json verify-blog-comments-http-port-injection.mjs verify-blog-comments-http-port-injection.test.mjs verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port BlogHttpRuntime::comment_service HTTP moderation remote transport remains pending remote network transport remains pending cached snapshot and comment-form fallback remain planned Slice 59 Slice 60',
+    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json blog-comments-http-port-injection.json verify-blog-comments-http-port-injection.mjs verify-blog-comments-http-port-injection.test.mjs blog-comments-graphql-port-injection.json verify-blog-comments-graphql-port-injection.mjs verify-blog-comments-graphql-port-injection.test.mjs BlogGraphqlRuntimeData graphql::attach_schema_data schema_codegen::attach_module_graphql_data GraphQL Comments host selection is source-locked Blog FBA package-chain registration remains pending verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port BlogHttpRuntime::comment_service HTTP moderation remote transport remains pending remote network transport remains pending cached snapshot and comment-form fallback remain planned Slice 59 Slice 60 Slice 61 Slice 62',
   );
 
   return root;

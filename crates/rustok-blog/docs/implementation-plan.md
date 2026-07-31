@@ -144,9 +144,15 @@ compile-only harness is
 `graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection`,
 with suggested command
 `cargo test -p rustok-blog --lib graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection -- --exact`.
-GraphQL Comments host selection is source-locked. Blog FBA package-chain
-registration remains pending, storefront/admin native SSR composition remains
-pending, and the remote network transport remains pending.
+The registered `verify:blog:comments-port-boundary` verifier now imports the
+standalone GraphQL verifier, and the registered
+`test:verify:blog:comments-port-boundary` self-test imports all twelve focused
+cases. `scripts/verify/verify-blog-fba.test.mjs` locks both imports alongside the
+HTTP composition imports. GraphQL Comments host selection is source-locked and
+mandatory inside the existing first-class Comments port leaf. Blog FBA
+package-chain registration remains pending only as a dedicated parallel leaf;
+that duplicate leaf is intentionally not added. Storefront/admin native SSR
+composition and the remote network transport remain pending.
 
 Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
@@ -645,6 +651,21 @@ factory/selector harness retain the complete host→generated-schema→resolver 
 Blog FBA package-chain integration, native SSR wiring, the remote network
 transport, and all execution remain pending.
 
+The continuation audit at `f0a342a8713fd9a29ce485e6e1481a7099810b77`
+found that slice 61's GraphQL composition evidence, standalone verifier, focused
+fixture, and compile-only harness were complete, but the registered
+`comments_port_boundary` verifier and self-test still executed only their HTTP
+composition sub-contracts. Both aggregate package chains could therefore omit the
+GraphQL host→schema→resolver guard while retaining the same registry order.
+
+Slice 62 imports the standalone GraphQL verifier from the registered Comments port
+verifier and imports all twelve focused GraphQL cases from the registered Comments
+port self-test. The aggregate Blog FBA self-test locks both imports beside the
+existing HTTP assertions. Registry schema v13, package scripts, verify/test order,
+runtime source, evidence statuses, remote transport status, and all execution
+claims remain unchanged. GraphQL composition is now a mandatory sub-contract of
+the existing first-class Comments port leaf rather than a parallel duplicate leaf.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -658,9 +679,9 @@ transport, and all execution remain pending.
   plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
   Comments event projection, category Search reindex, GraphQL rate limiting,
   GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
-  order. The existing Comments port leaf requires the HTTP composition verifier
-  and focused fixture through aggregate-locked imports. The standalone GraphQL
-  Comments composition guard remains outside registry package order in Slice 61.
+  order. The existing Comments port leaf requires both HTTP and GraphQL
+  composition verifiers and focused fixtures through aggregate-locked imports;
+  package order remains unchanged.
 - Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
   the in-process profile; evidence schema v3, all seven operations, approved public
   read, typed richtext projection, two-second deadlines, write idempotency, active
@@ -670,16 +691,18 @@ transport, and all execution remain pending.
   host-provided port through `BlogHttpRuntime::comment_service` with an in-process
   fallback; schema-v1 evidence, standalone verification, all focused HTTP
   negatives, and both parent imports are retained inside the registered Comments
-  port gate. GraphQL public reads, moderation reads, and moderation mutation now
-  select the same optional host port through manifest-attached
-  `BlogGraphqlRuntimeData`; schema-v1 evidence, the generated schema attachment,
-  twelve focused cases, and a compile-only selector harness retain that standalone
-  source contract. Typed storefront comments availability remains across
-  GraphQL/native DTOs and Leptos UI; only external-service and timeout errors
-  degrade, while other errors propagate. GraphQL package-chain integration,
-  storefront/admin native SSR composition, the remote network transport, remote
-  adapter runtime parity, cached snapshot, comment-form fallback, browser/runtime
-  evidence, and broader degraded UI modes remain planned or pending.
+  port gate. GraphQL public reads, moderation reads, and moderation mutation select
+  the same optional host port through manifest-attached `BlogGraphqlRuntimeData`;
+  schema-v1 evidence, generated schema attachment, all twelve focused cases, the
+  compile-only selector harness, both parent imports, and aggregate assertions are
+  retained inside the same registered Comments port gate. Typed storefront
+  comments availability remains across GraphQL/native DTOs and Leptos UI; only
+  external-service and timeout errors degrade, while other errors propagate.
+  Dedicated Blog FBA package-chain registration remains pending only as an
+  intentionally absent parallel leaf. Storefront/admin native SSR composition,
+  the remote network transport, remote adapter runtime parity, cached snapshot,
+  comment-form fallback, browser/runtime evidence, and broader degraded UI modes
+  remain planned or pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence
   schema v4, shared classifier/counter/retry-decision helpers, `executable_no_run`
   source harness, deterministic PostgreSQL retry-limit target, module-registration,
@@ -971,6 +994,10 @@ transport, and all execution remain pending.
     standalone verification, twelve focused cases, and a compile-only harness,
     and kept package registration, native SSR wiring, remote transport, and all
     execution pending.
+62. Bound the standalone GraphQL composition verifier and all twelve focused cases
+    into the already registered `comments-port-boundary` verify/test leaf, added
+    aggregate regressions for both required imports, preserved registry schema v13
+    and exact package order, and changed no runtime source or execution status.
 
 ## Next results
 
@@ -1013,9 +1040,8 @@ transport, and all execution remain pending.
    duplicate replay, dispatcher delivery output, four-connection convergence,
    both child process exits, the written duplicate, delete-before-create,
    missing-post replay, outbox rollback/retry, and same-process/new-connection
-   assertions; then register the GraphQL source guard in the Blog FBA package chain,
-   wire storefront native SSR and admin native SSR to the host-owned Comments port,
-   implement the remote network transport through
+   assertions; then wire storefront native SSR and admin native SSR to the
+   host-owned Comments port, implement the remote network transport through
    `CommentService::with_comments_thread_port`, and retain all-seven-operation
    adapter parity, naturally contended PostgreSQL retry-frequency evidence, full
    server-host restart recovery, browser parity for typed unavailable/timeout

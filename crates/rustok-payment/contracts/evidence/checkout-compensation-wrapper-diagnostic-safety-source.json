@@ -9,11 +9,20 @@
   "source_contract": {
     "stable_code_only_local_classification": true,
     "human_message_control_flow": false,
+    "complete_port_error_logged_by_wrapper": false,
+    "port_error_message_text_logged_by_wrapper": false,
+    "static_error_kind_logged_by_wrapper": true,
+    "error_message_presence_logged_by_wrapper": true,
+    "error_message_length_logged_by_wrapper": true,
+    "retryability_logged_by_wrapper": true,
     "delegated_port_error_changed": false,
+    "same_port_error_returned": true,
     "public_code_changed": false,
     "public_message_changed": false,
     "public_kind_changed": false,
     "public_retryability_changed": false,
+    "severity_classification_changed": false,
+    "local_operation_mapping_changed": false,
     "owner_delegation_changed": false,
     "request_response_dto_changed": false,
     "persistent_owner_source_changed": false,
@@ -33,7 +42,6 @@
     "safe_context_shape_logged": true,
     "safe_request_shape_logged": true,
     "correlation_id_logged": true,
-    "original_port_error_private": true,
     "persistent_owner_diagnostic_cleanup_complete": false,
     "broad_ecommerce_cleanup_closed": false
   },
@@ -49,5 +57,12 @@
     "restart_proven": false,
     "remote_port_proven": false,
     "mounted_runtime_proven": false
-  }
+  },
+  "notes": [
+    "Known local outcomes are still classified only by stable PortError code.",
+    "Both error and warning events retain a static PortError kind plus message presence and character length.",
+    "Complete PortError debug payloads and PortError message text are not logged by the wrapper.",
+    "The original PortError is returned unchanged after diagnostics.",
+    "Persistent compensation owner payload diagnostics remain a separate open source slice."
+  ]
 }
