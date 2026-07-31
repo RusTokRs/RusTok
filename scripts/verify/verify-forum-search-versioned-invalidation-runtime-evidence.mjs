@@ -42,13 +42,15 @@ assert.equal(contract.task, "FORUM-23B2G2B3D0");
 assert.equal(contract.status, "source_ready_maintainer_execution_pending");
 assert.equal(
   contract.canonical_plan_reconciliation,
-  "required_before_runtime_completion_claim",
+  "completed_by_FORUM-23B2G2B3D1",
 );
 assert.equal(
   contract.baseline.main_commit,
   "bd25ea3577b164225359beba86f973e907b74bef",
 );
 assert.deepEqual(contract.baseline.merged_pull_requests, [2731, 2738, 2741, 2749, 2753]);
+assert.equal(contract.baseline.runtime_evidence_protocol, "FORUM-23B2G2B3D0");
+assert.equal(contract.baseline.canonical_plan_sync, "FORUM-23B2G2B3D1");
 assert.equal(contract.required_runtime.database, "postgresql");
 assert.equal(contract.required_runtime.delivery_profile, "outbox_iggy");
 assert.equal(
@@ -86,12 +88,41 @@ const plan = read(planPath);
 const forum23Start = plan.indexOf("## `FORUM-23` — search/index integration");
 const forum24Start = plan.indexOf("## `FORUM-24` — localized routes", forum23Start);
 assert.ok(forum23Start >= 0 && forum24Start > forum23Start);
+const forum23 = plan.slice(forum23Start, forum24Start);
 requireAll(
-  plan.slice(forum23Start, forum24Start),
+  forum23,
   [
     "**Status:** `in_progress`",
+    "FORUM-23B2G2A",
+    "FORUM-23B2G2A1",
+    "FORUM-23B2G2B1",
+    "FORUM-23B2G2B2",
+    "FORUM-23B2G2B3A",
+    "FORUM-23B2G2B3B1",
+    "FORUM-23B2G2B3B2",
+    "FORUM-23B2G2B3C",
+    "FORUM-23B2G2B3D0",
+    "FORUM-23B2G2B3D1",
+    "source_ready_maintainer_execution_pending",
     "owner/index revisions reconcile",
     "`LINK-FORUM-03` cross-module runtime proof",
+    "verify-forum-search-owner-revision-ledger.mjs",
+    "verify-forum-search-owner-revision-counter-hardening.mjs",
+    "verify-forum-search-owner-revision-source.mjs",
+    "verify-forum-search-owner-revision-checkpoint.mjs",
+    "verify-forum-search-versioned-invalidation-wire.mjs",
+    "verify-forum-search-versioned-invalidation-causation-api.mjs",
+    "verify-forum-search-versioned-invalidation-publisher.mjs",
+    "verify-forum-search-versioned-invalidation-consumer.mjs",
+    "verify-forum-search-versioned-invalidation-runtime-evidence.mjs",
+  ],
+  "FORUM-23 canonical plan boundary",
+);
+forbidAll(
+  forum23,
+  [
+    "owner-issued revision reconciliation plus maintainer runtime evidence remain",
+    "add Forum-owner-issued monotonic projection revisions and reconcile them",
   ],
   "FORUM-23 canonical plan boundary",
 );
@@ -193,7 +224,9 @@ requireAll(
     "PR #2741",
     "PR #2749",
     "PR #2753",
-    "remaining canonical-ledger gap",
+    "## Delivered canonical plan reconciliation",
+    "FORUM-23B2G2B3D1",
+    "completed_by_FORUM-23B2G2B3D1",
     "target/forum-search-versioned-invalidation-runtime-evidence.json",
     "No command above was run by the implementation agent",
   ],
@@ -247,5 +280,5 @@ requireAll(
 );
 
 console.log(
-  "Forum Search versioned invalidation handoffs and runtime-evidence protocol are synchronized.",
+  "Forum Search versioned invalidation handoffs, canonical plan, and runtime-evidence protocol are synchronized.",
 );
