@@ -11,6 +11,7 @@ const failures = [];
 
 const paths = {
   event: "crates/rustok-events/src/forum_search_projection.rs",
+  eventTest: "crates/rustok-events/tests/forum_search_projection_contracts.rs",
   eventLib: "crates/rustok-events/src/lib.rs",
   eventPayload: "crates/rustok-events/src/contract.rs",
   eventApi: "crates/rustok-events/CRATE_API.md",
@@ -83,6 +84,7 @@ function requireOrder(source, markers, label) {
 }
 
 const event = read(paths.event);
+const eventTest = read(paths.eventTest);
 const eventLib = read(paths.eventLib);
 const eventPayload = read(paths.eventPayload);
 const eventApi = read(paths.eventApi);
@@ -119,6 +121,13 @@ rejectAll(event, [
   "claims",
   "roles",
 ], `${paths.event} bounded payload`);
+requireAll(eventTest, [
+  "forum_search_projection_contract_roundtrips_with_root_causation",
+  "ContractEventEnvelope::new_caused_by",
+  "ContractEventPayload::ForumSearchProjection",
+  "forum_search_projection_registry_and_scope_validation_are_fail_closed",
+  "event_schema(\"forum.search_projection.invalidation_issued\")",
+], paths.eventTest);
 
 requireAll(eventLib, [
   "mod forum_search_projection;",
@@ -262,7 +271,7 @@ requireAll(note, [
   "# FORUM-23B2G2B3B2 versioned invalidation publisher",
   "source_complete_consumer_pending",
   "forum.search_projection.invalidation_issued",
-  "legacy root envelope id remains the canonical identity",
+  "The legacy root envelope id remains the canonical identity",
   "FORUM-23B2G2B3C",
   "did not execute the Cargo example",
 ], paths.note);
