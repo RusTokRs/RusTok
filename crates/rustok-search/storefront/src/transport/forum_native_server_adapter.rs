@@ -71,6 +71,32 @@ pub async fn fetch_search_with_date_window(
     .map_err(ApiError::from)
 }
 
+pub async fn fetch_search_with_current_channel(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_current_channel_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        tags,
+        solved,
+        published_from,
+        published_to,
+    )
+    .await
+    .map_err(ApiError::from)
+}
+
 #[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search")]
 async fn forum_storefront_search_native(
     query: String,
@@ -85,6 +111,7 @@ async fn forum_storefront_search_native(
         filters,
         Vec::new(),
         Vec::new(),
+        None,
         None,
         None,
         None,
@@ -113,6 +140,7 @@ async fn forum_storefront_search_by_authors_native(
         None,
         None,
         None,
+        None,
     )
     .await
 }
@@ -138,6 +166,7 @@ async fn forum_storefront_search_by_filters_native(
         author_ids,
         tags,
         solved,
+        None,
         None,
         None,
     )
@@ -169,6 +198,37 @@ async fn forum_storefront_search_by_date_window_native(
         solved,
         published_from,
         published_to,
+        None,
+    )
+    .await
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-current-channel"
+)]
+async fn forum_storefront_search_by_current_channel_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+    tags: Vec<String>,
+    solved: Option<bool>,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        tags,
+        solved,
+        published_from,
+        published_to,
+        Some(true),
     )
     .await
 }
@@ -183,6 +243,7 @@ async fn execute_forum_storefront_search_native(
     solved: Option<bool>,
     published_from: Option<String>,
     published_to: Option<String>,
+    current_channel_only: Option<bool>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -222,6 +283,7 @@ async fn execute_forum_storefront_search_native(
             locale,
             fallback_locale: tenant.default_locale,
             channel_id: trusted_channel.channel_id.map(|value| value.to_string()),
+            current_channel_only,
             limit: Some(12),
             offset: Some(0),
             ranking_profile: None,
@@ -279,6 +341,7 @@ async fn execute_forum_storefront_search_native(
             solved,
             published_from,
             published_to,
+            current_channel_only,
         );
         Err(ServerFnError::new(
             "Forum storefront Search requires the `ssr` feature",

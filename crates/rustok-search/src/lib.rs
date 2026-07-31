@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+mod forum_current_channel_filter;
 pub mod forum_document_filters;
 mod forum_inbox;
 mod forum_projector;

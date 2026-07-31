@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2F4",
+  "status": "source_complete_execution_pending",
+  "scope": "Narrow explicit Forum-only storefront Search to topics and approved replies explicitly assigned to the trusted current request channel",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "projection_owner": "crates/rustok-forum/src/search_projection.rs",
+  "filter_owner": "crates/rustok-search/src/forum_current_channel_filter.rs",
+  "execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "graphql_transport": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "storefront_graphql_adapter": "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+  "storefront_native_adapter": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "storefront_transport_facade": "crates/rustok-search/storefront/src/transport/mod.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2f4-search-current-channel-filter.md",
+  "verifier": "scripts/verify/verify-forum-search-current-channel-filter.mjs",
+  "input": {
+    "graphql_argument": "currentChannelOnly",
+    "native_endpoint": "search/forum-storefront-search-by-current-channel",
+    "arbitrary_channel_slug_input_allowed": false,
+    "trusted_channel_source": "RequestContext channel ID and slug",
+    "unscoped_request_with_active_filter": "validation_error",
+    "false_or_absent_preserves_existing_behavior": true
+  },
+  "projection": {
+    "topic_channel_path": "payload.channel_slugs",
+    "reply_parent_channel_path": "payload.topic_channel_slugs",
+    "reply_value_owner": "Forum parent topic channel_slugs",
+    "legacy_reply_without_parent_channels_fails_closed": true,
+    "reindex_required_for_legacy_reply_matches": true
+  },
+  "projection_refresh": {
+    "public_topic_update_path": "TopicService::update -> update_with_inline_relations",
+    "topic_update_invalidation_is_transactional": true,
+    "topic_reindex_event_target": "forum_topic",
+    "topic_reindex_inbox_scope": "Full",
+    "topic_refresh_operation": "rebuild_tenant",
+    "parent_derived_reply_channels_refresh_with_topic": true,
+    "legacy_update_with_relations_used_by_public_owner": false
+  },
+  "evaluation": {
+    "explicit_forum_only_category_scope_required": true,
+    "raw_candidate_scan_limit": 100,
+    "raw_candidate_limit_checked_before_channel_narrowing": true,
+    "global_topics_excluded_when_active": true,
+    "categories_excluded_when_active": true,
+    "topics_require_exact_trusted_slug": true,
+    "replies_require_exact_parent_topic_trusted_slug": true,
+    "filter_runs_before_forum_owner_eligibility": true,
+    "filter_runs_before_visible_totals": true,
+    "filter_runs_before_visible_facets": true,
+    "filter_runs_before_offset_and_limit": true,
+    "ranking_order_preserved": true,
+    "query_rule_pins_disabled_when_active": true
+  },
+  "transport_compatibility": {
+    "existing_graphql_operations": [
+      "ForumStorefrontSearch",
+      "ForumStorefrontSearchByAuthors",
+      "ForumStorefrontSearchByFilters",
+      "ForumStorefrontSearchByDateWindow"
+    ],
+    "additive_graphql_operation": "ForumStorefrontSearchByCurrentChannel",
+    "existing_native_endpoints": [
+      "search/forum-storefront-search",
+      "search/forum-storefront-search-by-authors",
+      "search/forum-storefront-search-by-filters",
+      "search/forum-storefront-search-by-date-window"
+    ],
+    "additive_native_endpoint": "search/forum-storefront-search-by-current-channel",
+    "existing_wire_signatures_changed": false,
+    "single_execution_owner": true
+  },
+  "compatibility": {
+    "database_migration_required": false,
+    "neutral_search_query_changed": false,
+    "public_search_preview_input_changed": false,
+    "shared_storefront_filter_dto_changed": false,
+    "ordinary_storefront_search_changed": false,
+    "mixed_source_search_changed": false,
+    "product_search_changed": false,
+    "admin_search_changed": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "deferred_boundaries": {
+    "arbitrary_channel_selection": "requires a separately authorized owner contract",
+    "group_filtering": "must remain Forum owner policy and must not copy membership into Search payloads",
+    "kind_filtering": "blocked on FORUM-22 topic-kind owner model",
+    "attachment_presence_filtering": "blocked on FORUM-14 attachment owner model"
+  },
+  "remaining_scope": [
+    "synchronize the canonical Forum ledger with FORUM-23B2F4 without replacing unrelated concurrent plan changes",
+    "add owner-safe arbitrary channel or group filtering only after an exact authorized owner contract exists",
+    "add kind and attachment-presence filters after their owner models exist",
+    "complete owner-issued monotonic projection revisions, durable inbox ordering and reconciliation",
+    "capture maintainer-executed PostgreSQL, topic-update reindex and LINK-FORUM-03 runtime evidence"
+  ],
+  "non_claims": [
+    "Tests, verifiers, Cargo checks, formatting, Clippy and runtime evidence were not executed by the implementation agent",
+    "This slice does not expose a storefront UI control",
+    "This slice does not let callers select another channel",
+    "This slice does not claim legacy reply documents match before reindex",
+    "This slice does not claim the topic-update reindex chain has been executed",
+    "This slice does not complete the full channel/group filter roadmap"
+  ]
+}
