@@ -1,15 +1,24 @@
 {
-  "status": "order_checkout_payment_settlement_diagnostic_safety_source_unvalidated",
+  "status": "order_checkout_payment_settlement_wrapper_diagnostic_safety_source_unvalidated",
   "scope": {
     "public_operation": "settle_checkout_payment",
     "shared_wrapper": "crates/rustok-order/src/checkout_owner_context.rs",
     "canonical_owner": "crates/rustok-order/src/checkout_payment_settlement.rs",
     "documentation": "crates/rustok-order/docs/checkout-payment-settlement-local-context.md",
-    "verifier": "scripts/verify/verify-order-payment-settlement-error-context.mjs"
+    "verifier": "scripts/verify/verify-order-payment-settlement-local-context.mjs"
   },
   "source_contract": {
+    "local_mapper_event_branch_count": 2,
     "shared_wrapper_stable_code_only_attribution": true,
     "shared_wrapper_safe_context_shape": true,
+    "complete_port_error_logged_by_local_mapper": false,
+    "port_error_message_text_logged_by_local_mapper": false,
+    "static_port_error_kind_logged_by_local_mapper": true,
+    "port_error_message_shape_logged_by_local_mapper": true,
+    "same_port_error_returned": true,
+    "local_mapper_payload_diagnostic_cleanup_closed": true,
+    "shared_admission_context_payload_diagnostic_cleanup_closed": false,
+    "canonical_owner_payload_diagnostic_cleanup_closed": false,
     "canonical_owner_safe_context_shape": true,
     "canonical_owner_safe_request_shape": true,
     "canonical_owner_safe_identity_shape": true,
@@ -20,8 +29,6 @@
     "request_uuid_non_nil_facts_logged": true,
     "identity_comparison_facts_logged": true,
     "payment_reference_and_method_equality_facts_logged": true,
-    "typed_lifecycle_state_logged": true,
-    "technical_errors_retained_privately": true,
     "raw_tenant_id_logged": false,
     "raw_actor_id_logged": false,
     "raw_channel_logged": false,
@@ -37,7 +44,6 @@
     "raw_payment_method_logged": false,
     "raw_durable_identity_values_logged": false,
     "raw_related_resource_id_logged": false,
-    "raw_owner_validation_cause_logged": false,
     "public_trait_changed": false,
     "request_response_dto_changed": false,
     "constructor_or_factory_changed": false,
@@ -72,5 +78,11 @@
     "restart_proven": false,
     "remote_port_proven": false,
     "mounted_runtime_proven": false
-  }
+  },
+  "notes": [
+    "The settlement post-delegation mapper records only stable PortError kind plus message presence and character length.",
+    "The original PortError is returned unchanged and stable-code routing and severity are preserved.",
+    "Shared admission/context payload diagnostics and canonical settlement-owner payload diagnostics remain open separate slices.",
+    "Runtime validation and the broad ecommerce mapper cleanup remain open."
+  ]
 }
