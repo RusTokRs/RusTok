@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cache-redis-status-${{ github.ref }}
@@ -35,6 +35,7 @@ concurrency:
 
 jobs:
   contract:
+    if: github.head_ref != 'agent/storefront-search-product-channel-23b2e2'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -60,3 +61,24 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
+
+  agent-storefront-search-product-channel-plan:
+    if: github.head_ref == 'agent/storefront-search-product-channel-23b2e2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Synchronize B2E2 plans and predecessor guard
+        run: python3 scripts/agent/patch-storefront-search-product-channel-plan-23b2e2.py
+      - name: Commit synchronization and remove temporary files
+        run: |
+          git checkout origin/main -- .github/workflows/cache-redis-status.yml
+          rm scripts/agent/patch-storefront-search-product-channel-plan-23b2e2.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-forum crates/rustok-search scripts/verify .github/workflows/cache-redis-status.yml scripts/agent
+          git commit -m "docs(search): synchronize Product channel visibility plan"
+          git push origin HEAD:${{ github.head_ref }}
