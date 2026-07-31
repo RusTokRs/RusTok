@@ -130,6 +130,12 @@ pub async fn bootstrap_application_router(
         bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
+    #[cfg(feature = "mod-comments")]
+    crate::services::comments_provider_runtime::start_comments_tcp_listener_if_enabled(
+        &runtime_ctx,
+    )
+    .await?;
+
     crate::services::event_dlq_duplicate_alert_observer::start_event_dlq_duplicate_alert_observer(
         &runtime_ctx,
     )
