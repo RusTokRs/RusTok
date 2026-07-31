@@ -2,8 +2,12 @@ use anyhow::Context;
 use axum::Router;
 use axum::routing::{get, post};
 use rustok_api::HostRuntimeContext;
+use rustok_comments::CommentsThreadPort;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
+
+use crate::CommentService;
 
 pub mod categories;
 pub mod comments;
@@ -13,6 +17,7 @@ pub mod posts;
 pub struct BlogHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
 }
 
 impl BlogHttpRuntime {
@@ -22,6 +27,14 @@ impl BlogHttpRuntime {
 
     fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
+    }
+
+    fn comment_service(&self) -> CommentService {
+        if let Some(comments_thread_port) = self.comments_thread_port.clone() {
+            CommentService::with_comments_thread_port(self.db_clone(), comments_thread_port)
+        } else {
+            CommentService::new(self.db_clone(), self.event_bus())
+        }
     }
 }
 
@@ -33,6 +46,7 @@ impl BlogHttpRuntime {
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
+            comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>(),
         })
     }
 }
@@ -70,4 +84,15 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             post(comments::moderate_comment),
         )
         .with_state(state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blog_http_runtime_exposes_comments_port_selection() {
+        let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_service;
+        let _ = selector;
+    }
 }
