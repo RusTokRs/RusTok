@@ -19,6 +19,8 @@ pub mod channel_cache_invalidation;
 mod channel_cache_invalidation_resolved_value_tests;
 #[cfg(test)]
 mod channel_cache_invalidation_runtime_tests;
+#[cfg(feature = "mod-comments")]
+pub mod comments_provider_runtime;
 pub mod commerce_provider_runtime;
 pub mod dashboard_user_activity;
 pub mod effective_module_policy;
@@ -124,6 +126,10 @@ pub mod module_event_dispatcher {
             auth_config,
         )?;
         let mut extensions = base.as_ref().clone();
+
+        #[cfg(feature = "mod-comments")]
+        super::comments_provider_runtime::register_comments_provider_runtime(&mut extensions)
+            .map_err(Error::BadRequest)?;
 
         #[cfg(feature = "mod-forum")]
         {
