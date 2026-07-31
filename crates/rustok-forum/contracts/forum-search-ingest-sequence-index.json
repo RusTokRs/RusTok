@@ -5,6 +5,12 @@
   "scope": "Add an upgrade-safe PostgreSQL lookup index for Forum Search inbox ingest-sequence claim and due-tenant ordering without rewriting the already delivered ingest-sequence migration",
   "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "canonical_plan": {
+    "predecessor_milestone": "FORUM-23B2G1",
+    "milestone_status_changed": false,
+    "remaining_scope_changed": false,
+    "predecessor_entry_remains_authoritative": true
+  },
   "predecessor_contract": "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
   "predecessor_migration": "crates/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
   "additive_migration": "crates/rustok-search/src/migrations/m20260731_000011_add_forum_projection_ingest_sequence_lookup.rs",
