@@ -45,9 +45,12 @@ The source contract now separates authority and issuance from tenant identity:
   `RUSTOK_HOST_AUTHORITY_CREDENTIALS` configuration;
 - tenant OAuth applications, scopes, metadata, roles and permissions do not
   participate in that credential policy;
-- native `#[server]` requests receive the typed context from Axum middleware;
-- HTTP GraphQL validates the same header from request data; GraphQL WebSocket
-  intentionally retains no host authority and fails closed;
+- Axum middleware removes the raw header on success and denial before
+  downstream dispatch;
+- native `#[server]` requests receive only the typed request extension;
+- HTTP GraphQL consumes the same already authenticated typed authority from a
+  request-task-local scope and never re-reads the header or host configuration;
+- GraphQL WebSocket upgrade tasks inherit no host authority and fail closed;
 - `event_delivery_configuration_native` requires host read authority before
   resolving `SharedEventDeliveryControl`;
 - `update_event_delivery_profile_native` requires host manage authority and
@@ -58,12 +61,14 @@ The source contract now separates authority and issuance from tenant identity:
   matching the routed tenant because encrypted connector secrets remain owned
   by that tenant; its audit actor remains the host operator;
 - `scripts/verify/verify-host-global-authority-boundary.mjs` locks credential
-  ownership, transport scope and guard-before-resource ordering.
+  ownership, one-shot removal, typed transport scope and guard-before-resource
+  ordering.
 
 The operational format, token-generation guidance and overlap rotation procedure
-are documented in `apps/server/docs/host-authority.md`. Issue #2680 remains open
-until same-SHA compile/unit/source evidence and live denial/admission, rotation,
-revocation and replica-parity evidence are retained.
+are documented in `apps/server/docs/host-authority.md`. PR #2726 contains the
+current source implementation. Issue #2680 remains open until same-SHA
+compile/unit/source evidence and live denial/admission, rotation, revocation and
+replica-parity evidence are retained.
 
 ## FFA/FBA status
 
@@ -118,6 +123,8 @@ revocation and replica-parity evidence are retained.
   scope, metadata or wildcard.
 - Do not store raw host tokens in repository files, application settings, tenant
   rows, logs, URLs, browser storage or issue comments.
+- Remove the raw host credential before downstream handlers and expose only the
+  typed authority context after admission.
 - Keep GraphQL WebSocket host authority deny-by-default unless a separately
   reviewed revocation-safe handshake/revalidation contract is added.
 - Keep local FFA/FBA status synchronized with the central readiness board.
@@ -130,9 +137,9 @@ revocation and replica-parity evidence are retained.
 - Status: `blocked`
 - Last verified at (UTC): `2026-07-31`
 - Scope inspected: `Events Admin native delivery-profile configuration/update authority; SharedEventDeliveryControl ownership; host-global System and Settings HTTP GraphQL operations; tenant OAuth app administration and secret rotation; middleware and GraphQL WebSocket composition`
-- Findings: `P0=1, P1=0, P2=0, P3=0`
-- Fixed in this pass: `retained the typed host read/manage context; replaced the unsafe tenant-OAuth-client allowlist design before PR with a server-owned opaque credential whose raw token is supplied only in X-RusTok-Host-Token and whose SHA-256 digest, non-nil audit actor and level live only in RUSTOK_HOST_AUTHORITY_CREDENTIALS; added constant-time comparison, bounded parsing, duplicate-hash rejection, overlap rotation, independent native/HTTP GraphQL composition, WebSocket denial and tenant equality for Iggy secret ownership`
+- Findings: `P0=1, P1=1, P2=0, P3=0`
+- Fixed in this pass: `retained the typed host read/manage context; replaced the unsafe tenant-OAuth-client allowlist design before PR with a server-owned opaque credential whose raw token is supplied only in X-RusTok-Host-Token and whose SHA-256 digest, non-nil audit actor and level live only in RUSTOK_HOST_AUTHORITY_CREDENTIALS; added constant-time comparison, bounded parsing, duplicate-hash rejection, overlap rotation, native/HTTP GraphQL composition, WebSocket denial and tenant equality for Iggy secret ownership; manual PR review then removed the raw host header before downstream dispatch and replaced GraphQL credential revalidation with request-scoped typed authority`
 - Remaining risks or blockers: `same-SHA formatting, compile, unit and source-verifier evidence are pending; live ordinary-tenant denial, explicit read/manage admission, audit actor, rotation/revocation and multi-replica parity are not retained; issue #2680 remains open until those gates pass`
-- Evidence: `crates/rustok-api/src/context/host_authority.rs; apps/server/src/host_authority.rs; apps/server/src/middleware/auth_context.rs; apps/server/src/graphql/system.rs; apps/server/src/graphql/settings/{mod,query,mutation}.rs; crates/rustok-events-module/admin/src/transport/native_server_adapter.rs; scripts/verify/verify-host-global-authority-boundary.mjs; apps/server/docs/host-authority.md; connector-only local execution remains unavailable because github.com DNS resolution fails`
-- Next action: `run the source guard and targeted Rust checks on the branch SHA, fix every branch-related failure, then retain live HTTP/native admission, denial, rotation, revocation, audit and replica evidence before closing issue #2680`
+- Evidence: `PR #2726 head; crates/rustok-api/src/context/host_authority.rs; apps/server/src/host_authority.rs; apps/server/src/middleware/auth_context.rs; apps/server/src/graphql/system.rs; apps/server/src/graphql/settings/{mod,query,mutation}.rs; crates/rustok-events-module/admin/src/transport/native_server_adapter.rs; scripts/verify/verify-host-global-authority-boundary.mjs; apps/server/docs/host-authority.md; connector-only local execution remains unavailable because github.com DNS resolution fails`
+- Next action: `inspect every exact-head PR check and fix branch-related failures, then retain live HTTP/native admission, denial, rotation, revocation, audit and replica evidence before closing issue #2680`
 - Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo test -p rustok-events-module && cargo check -p rustok-server --lib`
