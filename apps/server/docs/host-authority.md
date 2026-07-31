@@ -49,13 +49,17 @@ logs, issue comments, GraphQL variables, URLs or browser storage.
 
 ## Admission and transport behavior
 
-- Axum middleware validates the dedicated header independently from ordinary
-  tenant authentication and inserts a typed `HostAuthorityContext` for native
-  `#[server]` transports.
-- HTTP GraphQL validates the same header from request data before resolving a
-  host-global resource.
-- GraphQL WebSocket connection data intentionally does not retain host
-  authority. Host-global queries and mutations are denied over WebSocket.
+- Axum middleware removes and validates the dedicated header independently from
+  ordinary tenant authentication. The raw value is gone before downstream
+  handlers, GraphQL request data, tracing, and module transports run.
+- Native `#[server]` transports receive only a typed `HostAuthorityContext`
+  request extension.
+- HTTP GraphQL receives the same already authenticated typed authority through
+  a request-task-local scope; resolvers never re-read the header or credential
+  configuration.
+- GraphQL WebSocket upgrade tasks intentionally do not inherit the HTTP request
+  scope and connection data does not retain host authority. Host-global queries
+  and mutations are denied over WebSocket.
 - `read` can inspect System health/cache/events and global delivery/Iggy
   configuration; `manage` includes reads and can update global delivery/Iggy
   configuration.
@@ -65,8 +69,7 @@ logs, issue comments, GraphQL variables, URLs or browser storage.
   operator from the dedicated credential.
 - Invalid credentials receive a static denial. Invalid credential
   configuration is logged without the presented token and returns a static
-  internal error only when a host credential is presented or a host-global
-  GraphQL operation is attempted.
+  internal error only when a host credential is presented.
 
 ## Rotation and revocation
 
@@ -98,6 +101,8 @@ cargo check -p rustok-server --lib
 Live evidence must cover:
 
 - no header, wrong token, short token and malformed configuration denial;
+- removal of the raw header before downstream request handling on both success
+  and denial paths;
 - `read` admitted for reads and denied for writes;
 - `manage` admitted for reads and writes with the configured audit actor;
 - ordinary tenant admin and tenant OAuth credentials denied without the
