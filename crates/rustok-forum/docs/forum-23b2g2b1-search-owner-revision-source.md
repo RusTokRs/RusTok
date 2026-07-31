@@ -20,9 +20,11 @@ forum_projection_revision_ledger.revision
 `FORUM-23B2G2A` owns this positive tenant-scoped counter and binds each committed
 revision to the exact legacy `index.reindex_requested` outbox envelope identity.
 Allocation, outbox persistence and ledger append occur in one owner transaction.
-Consequently committed rows for one tenant are contiguous and ordered from
-revision 1; a gap, replay or reorder is an invariant failure rather than normal
-paging behavior.
+`FORUM-23B2G2A1` additionally enforces upgrade preflight, initial revision `1`,
+exact `+1` counter updates, deferred commit-time ledger coverage and truncate
+rejection. Consequently committed rows for one tenant are contiguous and ordered
+from revision 1; a gap, replay or reorder is an invariant failure rather than
+normal paging behavior.
 
 The revision is not derived from producer time, an event UUID,
 `forum_domain_events.sequence_no` or Search `ingest_sequence`.
