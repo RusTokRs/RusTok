@@ -68,7 +68,14 @@ CREATE OR REPLACE FUNCTION search_enforce_projection_owner_checkpoint()
 RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        IF NEW.owner_revision <> 1 THEN
+        IF NEW.owner_revision <> 1
+            AND NOT EXISTS (
+                SELECT 1
+                FROM search_projection_owner_checkpoints
+                WHERE tenant_id = NEW.tenant_id
+                  AND source_module = NEW.source_module
+            )
+        THEN
             RAISE EXCEPTION 'search projection owner checkpoint must start at revision 1';
         END IF;
         RETURN NEW;
