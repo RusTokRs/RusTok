@@ -61,7 +61,7 @@ requireMarkers("operator", [
 
 requireMarkers("docs", [
   "Status: implementation retained, not run.",
-  "requires exactly `Permission::MODULES_MANAGE`",
+  "requires `Permission::MODULES_MANAGE` to be present",
   "tenant comparison occurs before the inner reconciliation runner",
   "does not accept a caller-supplied tenant separate from the context",
   "performs no database I/O during composition",
