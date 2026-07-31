@@ -58,6 +58,21 @@ pub enum CommentsThreadRequest {
     },
 }
 
+impl CommentsThreadRequest {
+    /// Returns the complete port context carried by this operation.
+    pub fn context(&self) -> &PortContext {
+        match self {
+            Self::CreateComment { context, .. }
+            | Self::GetComment { context, .. }
+            | Self::ListCommentsForTarget { context, .. }
+            | Self::ListPublicCommentsForTarget { context, .. }
+            | Self::UpdateComment { context, .. }
+            | Self::SetCommentStatus { context, .. }
+            | Self::DeleteComment { context, .. } => context,
+        }
+    }
+}
+
 /// Transport-neutral wire response for a remote `CommentsThreadPort` provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "result", content = "payload", rename_all = "snake_case")]
@@ -68,6 +83,14 @@ pub enum CommentsThreadResponse {
         total: u64,
     },
     Deleted,
+}
+
+/// Stable provider reply envelope used by concrete remote transports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", content = "payload", rename_all = "snake_case")]
+pub enum CommentsThreadTransportReply {
+    Success(CommentsThreadResponse),
+    Error(PortError),
 }
 
 /// Executes one typed Comments request over a concrete remote transport.

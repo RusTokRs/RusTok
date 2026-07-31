@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_json_transport",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-68.md",
+  "source_contract": {
+    "remote_core": "crates/rustok-comments/src/remote.rs",
+    "transport_adapter": "crates/rustok-comments/src/tcp_transport.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "provider_manifest": "crates/rustok-comments/Cargo.toml",
+    "transport": "rustok_comments::TcpJsonCommentsTransport",
+    "request": "rustok_comments::CommentsThreadRequest",
+    "reply": "rustok_comments::CommentsThreadTransportReply",
+    "error": "rustok_api::PortError"
+  },
+  "protocol": {
+    "name": "comments_tcp_length_prefixed_json_v1",
+    "length_prefix": "u32_big_endian",
+    "request_encoding": "serde_json",
+    "reply_encoding": "serde_json",
+    "connection_scope": "one_request_one_reply",
+    "default_max_frame_bytes": 8388608,
+    "endpoint_owner": "host"
+  },
+  "deadline": {
+    "source": "PortContext.deadline_ms",
+    "required_before_connect": true,
+    "scope": "connect_write_read_decode",
+    "mechanism": "tokio::time::timeout",
+    "timeout_code": "comments.tcp_timeout"
+  },
+  "fail_closed": {
+    "invalid_frame_limit_code": "comments.tcp_invalid_frame_limit",
+    "oversized_frame_code": "comments.tcp_frame_too_large",
+    "encode_code": "comments.tcp_encode",
+    "decode_code": "comments.tcp_decode",
+    "unavailable_code": "comments.tcp_unavailable",
+    "typed_provider_error_preserved": true,
+    "retry_implemented": false
+  },
+  "operations": [
+    "CreateComment",
+    "GetComment",
+    "ListCommentsForTarget",
+    "ListPublicCommentsForTarget",
+    "UpdateComment",
+    "SetCommentStatus",
+    "DeleteComment"
+  ],
+  "pending": [
+    "tcp_server_adapter",
+    "endpoint_discovery",
+    "authentication",
+    "retry_backoff",
+    "host_publication",
+    "in_process_remote_runtime_parity",
+    "runtime_execution"
+  ],
+  "explicit_non_claims": [
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_tcp_runtime_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}

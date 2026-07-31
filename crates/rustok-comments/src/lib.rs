@@ -15,6 +15,8 @@ pub mod remote;
 mod richtext;
 #[cfg(feature = "server")]
 pub mod services;
+#[cfg(feature = "tcp-transport")]
+pub mod tcp_transport;
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;
@@ -39,6 +41,8 @@ pub use ports::*;
 pub use remote::*;
 #[cfg(feature = "server")]
 pub use services::CommentsService;
+#[cfg(feature = "tcp-transport")]
+pub use tcp_transport::TcpJsonCommentsTransport;
 
 #[cfg(feature = "server")]
 pub struct CommentsModule;
