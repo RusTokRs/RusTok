@@ -25,6 +25,9 @@ function fixture({
   missingDispatcherWait = false,
   missingConcurrencyCase = false,
   missingConcurrencyBarrier = false,
+  missingRetryLimitCase = false,
+  missingRetryLimitProbe = false,
+  missingRetryLimitEvidence = false,
   missingSharedClassifier = false,
   directHandlesClassifier = false,
   missingCounterHarness = false,
@@ -46,6 +49,7 @@ function fixture({
   hostHarnessStatusDrift = false,
   dispatcherStatusDrift = false,
   concurrencyStatusDrift = false,
+  retryLimitStatusDrift = false,
   postgresStatusDrift = false,
   restartStatusDrift = false,
   processRestartStatusDrift = false,
@@ -65,6 +69,7 @@ function fixture({
   const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
   const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
   const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
+  const retryLimitHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact';
   const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
   const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
   const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
@@ -175,11 +180,32 @@ barrier.wait().await;
 CONCURRENT_PROJECTION_DELIVERIES as i32
 count_all_deliveries(&test_db.db).await?
 `;
+    const retryLimitSource = missingRetryLimitCase
+      ? ''
+      : `
+async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears()
+${missingRetryLimitProbe ? '' : `install_retry_limit_probe(&test_db.db).await?;
+eight zero-row updates must reach the optimistic retry limit
+after 8 concurrent attempts
+load_retry_attempt_count(&test_db.db).await?
+EXPECTED_RETRY_LIMIT_ATTEMPTS
+remove_retry_limit_probe(&test_db.db).await?;
+CREATE SEQUENCE blog_projection_retry_attempts START WITH 1;
+CREATE FUNCTION force_blog_projection_retry_limit()
+PERFORM nextval('blog_projection_retry_attempts');
+RETURN NULL;
+CREATE TRIGGER force_blog_projection_retry_limit
+BEFORE UPDATE OF comment_count, version ON blog_posts
+DROP TRIGGER force_blog_projection_retry_limit ON blog_posts;
+DROP FUNCTION force_blog_projection_retry_limit();
+SELECT last_value::bigint AS count FROM blog_projection_retry_attempts`}
+`;
     write(
       root,
       postgresHarnessPath,
       `
 const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+const EXPECTED_RETRY_LIMIT_ATTEMPTS: i64 = 8;
 struct PostgresBlogProjectionTestDb
 CREATE SCHEMA
 DROP SCHEMA IF EXISTS
@@ -189,6 +215,7 @@ async fn duplicate_delivery_updates_counter_and_outbox_once()
 handler.handle(&envelope).await?;
 ${dispatcherSource}
 ${concurrencySource}
+${retryLimitSource}
 async fn delete_before_create_stays_non_negative_and_replays_in_order()
 DomainEvent::CommentDeleted
 async fn missing_post_replay_commits_only_after_source_appears()
@@ -383,6 +410,26 @@ assert!(!handler.handles(&forum_created));
         scope: 'concurrent_unique_envelopes_same_post_final_counter_delivery_outbox',
         cases: ['concurrent_created_events_converge_without_lost_updates'],
       },
+      ...(missingRetryLimitEvidence
+        ? {}
+        : {
+            retry_limit_harness: {
+              status: retryLimitStatusDrift ? 'executed' : 'executable_no_run',
+              runtime_status: retryLimitStatusDrift ? 'passed' : 'not_run',
+              path: postgresHarnessPath,
+              environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+              command: retryLimitHarnessCommand,
+              isolation:
+                'unique_schema_one_connection_pool_before_update_skip_trigger_nontransactional_attempt_sequence',
+              scope:
+                'real_handler_eight_zero_row_updates_terminal_error_atomic_rollback_and_same_envelope_replay',
+              non_claim:
+                'does_not_measure_natural_postgresql_contention_frequency_or_record_execution',
+              cases: [
+                'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
+              ],
+            },
+          }),
       postgres_harness: {
         status: postgresStatusDrift ? 'executed' : 'executable_no_run',
         runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
@@ -392,6 +439,7 @@ assert!(!handler.handles(&forum_created));
         isolation: 'unique_schema_one_connection_pool',
         cases: [
           'duplicate_delivery_updates_counter_and_outbox_once',
+          'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
           'delete_before_create_stays_non_negative_and_replays_in_order',
           'missing_post_replay_commits_only_after_source_appears',
           'outbox_failure_rolls_back_counter_and_delivery_before_retry',
@@ -429,6 +477,9 @@ assert!(!handler.handles(&forum_created));
         { name: 'atomic_counter_delivery_outbox' },
         { name: 'tenant_scoped_optimistic_update' },
         ...(missingRetryPolicyEvidence ? [] : [{ name: 'bounded_optimistic_retry_policy' }]),
+        ...(missingRetryLimitEvidence
+          ? []
+          : [{ name: 'postgres_retry_limit_rollback_and_replay' }]),
         { name: 'missing_post_retry' },
         { name: 'non_negative_count' },
         { name: 'host_registration_routing_harness' },
@@ -490,7 +541,7 @@ assert!(!handler.handles(&forum_created));
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests ProjectionUpdateDecision seven retry decisions tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates restarted_process_reuses_delivery_ledger_without_reapplying_counter comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections two sequential OS test processes server-host restart',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests ProjectionUpdateDecision seven retry decisions tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears eight zero-row same envelope restarted_process_reuses_delivery_ledger_without_reapplying_counter comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections two sequential OS test processes server-host restart',
   );
 
   return root;
@@ -574,6 +625,24 @@ test('rejects concurrent projection coverage without a shared barrier', () => {
     { missingConcurrencyBarrier: true },
     /missing Arc::new\(Barrier::new\(envelopes.len\(\)\)\)/,
   );
+});
+
+test('rejects a missing PostgreSQL retry-limit case', () => {
+  expectRejected(
+    { missingRetryLimitCase: true },
+    /missing async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears/,
+  );
+});
+
+test('rejects retry-limit coverage without the deterministic probe', () => {
+  expectRejected(
+    { missingRetryLimitProbe: true },
+    /missing install_retry_limit_probe\(&test_db.db\).await\?;/,
+  );
+});
+
+test('rejects retry-limit evidence drift', () => {
+  expectRejected({ missingRetryLimitEvidence: true }, /retry-limit harness drift/);
 });
 
 test('rejects project without the shared event classifier', () => {
@@ -685,6 +754,10 @@ test('rejects dispatcher harness execution promotion without execution', () => {
 
 test('rejects concurrency harness execution promotion without execution', () => {
   expectRejected({ concurrencyStatusDrift: true }, /concurrency harness drift/);
+});
+
+test('rejects retry-limit harness execution promotion without execution', () => {
+  expectRejected({ retryLimitStatusDrift: true }, /retry-limit harness drift/);
 });
 
 test('rejects PostgreSQL harness execution promotion without execution', () => {
