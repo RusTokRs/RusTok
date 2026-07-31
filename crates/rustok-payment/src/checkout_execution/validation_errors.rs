@@ -271,6 +271,18 @@ enum CheckoutPaymentExecutionReconciliationReason {
     MalformedDurableResult,
     InvalidSuccessfulProviderResponse,
     UnknownProviderOutcome,
+    MissingDurableAuthorizeProviderIdentity,
+    IncompleteAuthorizeOperation,
+    MissingDurableProviderPaymentIdentity,
+    CommitCheckpointFailed,
+    UnknownCollectionLifecycleBeforeAuthorization,
+    AuthorizationLocalPersistenceIncomplete,
+    UnknownCollectionLifecycleBeforeCapture,
+    CaptureLocalPersistenceIncomplete,
+    ProviderOperationInProgressOrReconciliationRequired,
+    ProviderFailureCheckpointFailed,
+    ProviderResultEncodingFailed,
+    ProviderSuccessCheckpointFailed,
 }
 
 impl CheckoutPaymentExecutionReconciliationReason {
@@ -280,6 +292,30 @@ impl CheckoutPaymentExecutionReconciliationReason {
             Self::MalformedDurableResult => "malformed_durable_result",
             Self::InvalidSuccessfulProviderResponse => "invalid_successful_provider_response",
             Self::UnknownProviderOutcome => "unknown_provider_outcome",
+            Self::MissingDurableAuthorizeProviderIdentity => {
+                "missing_durable_authorize_provider_identity"
+            }
+            Self::IncompleteAuthorizeOperation => "incomplete_authorize_operation",
+            Self::MissingDurableProviderPaymentIdentity => {
+                "missing_durable_provider_payment_identity"
+            }
+            Self::CommitCheckpointFailed => "commit_checkpoint_failed",
+            Self::UnknownCollectionLifecycleBeforeAuthorization => {
+                "unknown_collection_lifecycle_before_authorization"
+            }
+            Self::AuthorizationLocalPersistenceIncomplete => {
+                "authorization_local_persistence_incomplete"
+            }
+            Self::UnknownCollectionLifecycleBeforeCapture => {
+                "unknown_collection_lifecycle_before_capture"
+            }
+            Self::CaptureLocalPersistenceIncomplete => "capture_local_persistence_incomplete",
+            Self::ProviderOperationInProgressOrReconciliationRequired => {
+                "provider_operation_in_progress_or_reconciliation_required"
+            }
+            Self::ProviderFailureCheckpointFailed => "provider_failure_checkpoint_failed",
+            Self::ProviderResultEncodingFailed => "provider_result_encoding_failed",
+            Self::ProviderSuccessCheckpointFailed => "provider_success_checkpoint_failed",
         }
     }
 }

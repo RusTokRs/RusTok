@@ -3,16 +3,20 @@
   "status": "payment_checkout_execution_reconciliation_reason_diagnostic_safety_source_reviewed_unvalidated",
   "owner": "rustok-payment",
   "boundary": "checkout_payment_execution_port",
-  "scope": "manual-reconciliation diagnostic reason classification",
+  "scope": "all checkout execution manual-reconciliation diagnostic reason routes",
   "source_contract": {
-    "reconciliation_reason_variant_count": 4,
+    "reconciliation_reason_variant_count": 16,
+    "manual_reconciliation_call_site_count": 16,
+    "all_checkout_execution_call_sites_typed": true,
     "free_form_reason_parameter_allowed": false,
     "free_form_reason_text_logged": false,
     "stable_reason_label_logged": true,
-    "missing_durable_result_reason_preserved": true,
-    "malformed_durable_result_reason_preserved": true,
-    "invalid_successful_response_reason_preserved": true,
-    "unknown_provider_outcome_reason_preserved": true,
+    "durable_result_routes_typed": true,
+    "owner_error_routes_typed": true,
+    "provider_identity_routes_typed": true,
+    "authorize_lifecycle_and_persistence_routes_typed": true,
+    "capture_lifecycle_and_persistence_routes_typed": true,
+    "provider_journal_checkpoint_and_encoding_routes_typed": true,
     "manual_reconciliation_code_preserved": true,
     "manual_reconciliation_kind_preserved": true,
     "manual_reconciliation_message_preserved": true,
@@ -21,9 +25,9 @@
     "provider_result_recovery_changed": false,
     "provider_execution_changed": false,
     "payment_lifecycle_changed": false,
-    "local_persistence_diagnostics_changed": false,
+    "local_persistence_diagnostics_changed": true,
     "provider_checkpoint_diagnostics_changed": false,
-    "remaining_payment_execution_diagnostics_open": true,
+    "remaining_provider_checkpoint_diagnostics_open": true,
     "broad_ecommerce_cleanup_closed": false
   },
   "validation": {
@@ -37,12 +41,11 @@
     "runtime_proven": false
   },
   "notes": [
-    "The reconciliation helper accepts a closed four-variant enum instead of a free-form static string.",
-    "Diagnostics emit only a stable snake-case reason label selected by the enum.",
-    "Missing and malformed durable results retain their existing manual-reconciliation routes.",
-    "Provider invalid-response and unknown-outcome owner errors retain their existing routes.",
-    "The public conflict code, message, kind, and retryability remain unchanged.",
-    "Local persistence and provider checkpoint diagnostics remain separate open slices.",
+    "The reconciliation helper accepts a closed sixteen-variant enum instead of a free-form static string.",
+    "All checkout execution call sites in validation, provider helper, authorization, and capture sources select stable snake-case labels.",
+    "The public conflict code, message, kind, retryability, and all existing routing remain unchanged.",
+    "Authorization and capture local-persistence diagnostics are sanitized in the companion local-persistence source slice.",
+    "Provider checkpoint and request/result encoding payload diagnostics remain a separate open slice.",
     "No payment FFA or FBA status is promoted from source inspection."
   ]
 }

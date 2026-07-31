@@ -46,7 +46,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 return Err(manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment collection lifecycle is unknown before capture",
+                    CheckoutPaymentExecutionReconciliationReason::UnknownCollectionLifecycleBeforeCapture,
                 ));
             }
         }
@@ -109,10 +109,16 @@ impl InProcessCheckoutPaymentExecutionPort {
                 )
                 .await;
                 let context_facts = checkout_payment_execution_context_facts(context);
+                let error_facts = checkout_payment_execution_payment_error_facts(&error);
                 tracing::error!(
                     operation_id_non_nil = !journaled.operation_id.is_nil(),
                     provider_operation = "capture",
-                    error = ?error,
+                    local_persistence_error_variant = error_facts.error_variant,
+                    local_persistence_error_text_field_count = error_facts.text_field_count,
+                    local_persistence_error_text_total_length = error_facts.text_total_length,
+                    local_persistence_error_uuid_field_count = error_facts.uuid_field_count,
+                    local_persistence_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+                    local_persistence_error_opaque_payload_present = error_facts.opaque_payload_present,
                     correlation_id = %context.correlation_id,
                     tenant_id_length = context_facts.tenant_id_length,
                     actor_kind = context_facts.actor_kind,
@@ -128,7 +134,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 Err(manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment capture succeeded externally but local persistence is incomplete",
+                    CheckoutPaymentExecutionReconciliationReason::CaptureLocalPersistenceIncomplete,
                 ))
             }
         }
@@ -229,7 +235,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             return Err(manual_reconciliation(
                 context,
                 owner_operation,
-                "payment provider operation is already executing or requires reconciliation",
+                CheckoutPaymentExecutionReconciliationReason::ProviderOperationInProgressOrReconciliationRequired,
             ));
         }
 
@@ -286,7 +292,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     return Err(manual_reconciliation(
                         context,
                         owner_operation,
-                        "payment provider failure could not be durably checkpointed",
+                        CheckoutPaymentExecutionReconciliationReason::ProviderFailureCheckpointFailed,
                     ));
                 }
                 return Err(payment_error_to_port_error(
@@ -318,7 +324,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             manual_reconciliation(
                 context,
                 owner_operation,
-                "payment provider succeeded but its normalized result could not be persisted",
+                CheckoutPaymentExecutionReconciliationReason::ProviderResultEncodingFailed,
             )
         })?;
         self.operation_journal
@@ -350,7 +356,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment provider succeeded but its durable checkpoint failed",
+                    CheckoutPaymentExecutionReconciliationReason::ProviderSuccessCheckpointFailed,
                 )
             })?;
         Ok(JournaledProviderResult {

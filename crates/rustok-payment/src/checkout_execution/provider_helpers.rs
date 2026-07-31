@@ -23,7 +23,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment capture has no durable authorize provider identity",
+                    CheckoutPaymentExecutionReconciliationReason::MissingDurableAuthorizeProviderIdentity,
                 )
             })?;
         if !matches!(
@@ -35,7 +35,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             return Err(manual_reconciliation(
                 context,
                 owner_operation,
-                "payment capture cannot use an incomplete authorize operation",
+                CheckoutPaymentExecutionReconciliationReason::IncompleteAuthorizeOperation,
             ));
         }
         let provider_payment_id = authorize
@@ -58,7 +58,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 manual_reconciliation(
                     context,
                     owner_operation,
-                    "payment authorize operation has no durable provider payment identity",
+                    CheckoutPaymentExecutionReconciliationReason::MissingDurableProviderPaymentIdentity,
                 )
             })?;
         insert_metadata_string(
@@ -129,7 +129,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             return Err(manual_reconciliation(
                 context,
                 owner_operation,
-                "payment provider result was applied but its commit checkpoint failed",
+                CheckoutPaymentExecutionReconciliationReason::CommitCheckpointFailed,
             ));
         }
         Ok(())

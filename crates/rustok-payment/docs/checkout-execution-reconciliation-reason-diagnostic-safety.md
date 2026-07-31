@@ -4,51 +4,54 @@ Status: **source-ready / unvalidated**
 
 ## Boundary
 
-`manual_reconciliation` is the common checkout payment execution helper used when a
-durable provider result is missing or malformed and when the payment owner reports an
-invalid successful response or an unknown provider outcome.
+`manual_reconciliation` is the common checkout payment execution helper used after
+externally visible provider work can no longer be represented as an ordinary retryable
+owner error. Its call sites span durable-result recovery, owner error conversion,
+provider identity enrichment, authorization and capture lifecycle handling, local
+persistence failure, and provider journal checkpoint and encoding failure.
 
-The helper previously accepted a free-form `&'static str` and wrote that value directly
-as `internal_message`. Current call sites used fixed literals, but the parameter shape
-allowed future payload-bearing or unstable text to enter private diagnostics.
+The helper accepts only `CheckoutPaymentExecutionReconciliationReason`; it cannot accept
+or record free-form reason text.
 
 ## Private diagnostics
 
-The helper now accepts a closed four-variant enum:
+The closed enum contains sixteen reasons grouped across:
 
-- `MissingNormalizedDurableResult`;
-- `MalformedDurableResult`;
-- `InvalidSuccessfulProviderResponse`;
-- `UnknownProviderOutcome`.
+- missing or malformed durable provider results;
+- invalid successful responses and unknown provider outcomes;
+- missing or incomplete durable authorize/provider identity;
+- authorization and capture unknown-lifecycle or local-persistence failure;
+- in-progress/reconciliation-required provider execution;
+- commit, provider-failure, result-encoding, and provider-success checkpoint failure.
 
 Each variant maps to one stable snake-case label. Tracing records only that label as
-`reconciliation_reason` together with the existing correlation, operation, code,
-boundary, deadline, and bounded context facts.
+`reconciliation_reason` together with correlation, operation, code, boundary, deadline,
+and bounded context facts.
 
-The helper no longer accepts or records free-form reconciliation reason text.
+All sixteen checkout execution call sites use typed variants; no call site passes a
+string reason.
 
 ## Preserved behavior
 
-This source slice does not change:
+This source contract does not change:
 
 - provider-operation status and result-presence gates;
 - durable provider-result decoding or recovery ordering;
-- the four existing manual-reconciliation call routes;
-- owner error classification;
+- authorization, capture, or provider execution ordering;
+- any manual-reconciliation call route;
 - the public `payment.checkout_execution_manual_reconciliation` code;
 - `PortErrorKind::Conflict`;
 - the public message `payment checkout execution requires manual reconciliation`;
 - retryability (`false`);
-- payment lifecycle, provider execution, journal, or persistence behavior.
+- journal mutation or persistence behavior.
 
-## Remaining payment execution diagnostics
+## Related diagnostic slices
 
-Separate cleanup remains open for:
+Authorization and capture local-persistence `PaymentError` payload logging is sanitized
+in `checkout-execution-local-persistence-diagnostic-safety.md`.
 
-- local persistence diagnostics;
-- provider checkpoint diagnostics.
-
-The canonical ecommerce correlation-safe mapper-cleanup item remains open.
+Separate cleanup remains open for provider checkpoint and request/result encoding error
+diagnostics. The canonical ecommerce correlation-safe mapper-cleanup item remains open.
 
 ## Evidence
 
@@ -59,7 +62,7 @@ The canonical ecommerce correlation-safe mapper-cleanup item remains open.
 
 Per maintainer instruction, no tests, Node verifiers, Cargo commands, formatting,
 workflows, or CI were run. Maintainer validation should include the focused verifier,
-payment owner tests, compilation, and injected execution paths for all four reasons.
+payment owner tests, compilation, and injected execution paths for all sixteen reasons.
 
 No payment FFA/FBA, runtime, workflow, CI, or production status is promoted from this
 source review.
