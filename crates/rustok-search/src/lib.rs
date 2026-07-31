@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+pub mod forum_document_filters;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
@@ -55,6 +56,7 @@ pub use engine::{
     canonical_search_result_url,
 };
 pub use engine::{SearchResult, SearchResultItem};
+pub use forum_document_filters::ForumStorefrontDocumentFilters;
 pub use forum_reconciliation::{
     DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionReconciler,
     ForumProjectionSweepReport,
