@@ -54,9 +54,9 @@ requireMarkers('crates/rustok-channel/tests/index_selection.rs', [
   'assert!(!cargo.contains("rustok-index"));',
 ]);
 
-const migrationPath =
+const revisionMigrationPath =
   'crates/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs';
-const migration = requireMarkers(migrationPath, [
+const revisionMigration = requireMarkers(revisionMigrationPath, [
   'ALTER TABLE channels',
   'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
   'chk_channels_index_revision_positive',
@@ -65,7 +65,38 @@ const migration = requireMarkers(migrationPath, [
   'trg_channels_bump_index_revision',
   'BEFORE UPDATE ON channels',
 ]);
-forbidMarkers(migrationPath, migration, [
+forbidMarkers(revisionMigrationPath, revisionMigration, [
+  'index_entities',
+  'index_links',
+  'index_jobs',
+  'index_checkpoints',
+]);
+
+const tombstoneMigrationPath =
+  'crates/rustok-channel/src/migrations/m20260731_000011_add_channel_index_tombstones.rs';
+const tombstoneMigration = requireMarkers(tombstoneMigrationPath, [
+  'CREATE TABLE channel_index_tombstones',
+  'PRIMARY KEY (tenant_id, channel_id)',
+  'chk_channel_index_tombstones_source_version_positive',
+  'rustok_channel_store_index_tombstone(',
+  'rustok_channel_clear_superseded_index_tombstone(',
+  'rustok_channel_seed_index_revision_from_tombstone()',
+  'retained_source_version + 1',
+  'trg_channels_seed_index_revision',
+  'BEFORE INSERT ON channels',
+  'rustok_channel_capture_index_tombstone()',
+  'OLD.index_revision + 1',
+  'trg_channels_capture_index_tombstone',
+  'BEFORE DELETE ON channels',
+  'trg_channels_clear_index_tombstone',
+  'AFTER INSERT ON channels',
+  'rustok_channel_move_index_tombstone()',
+  'AFTER UPDATE OF id, tenant_id ON channels',
+  'NEW.index_revision',
+]);
+forbidMarkers(tombstoneMigrationPath, tombstoneMigration, [
+  'REFERENCES channels',
+  'REFERENCES tenants',
   'index_entities',
   'index_links',
   'index_jobs',
@@ -74,6 +105,8 @@ forbidMarkers(migrationPath, migration, [
 requireMarkers('crates/rustok-channel/src/migrations/mod.rs', [
   'mod m20260730_000010_add_channel_index_revision;',
   'Box::new(m20260730_000010_add_channel_index_revision::Migration)',
+  'mod m20260731_000011_add_channel_index_tombstones;',
+  'Box::new(m20260731_000011_add_channel_index_tombstones::Migration)',
 ]);
 requireMarkers('crates/rustok-channel/src/migrations/m20260325_000001_create_channels.rs', [
   '.name("idx_channels_tenant_slug")',
@@ -104,6 +137,15 @@ const sourcePath = 'crates/rustok-distribution/src/channel_index.rs';
 const source = requireMarkers(sourcePath, [
   'SALES_CHANNEL_INDEX_SOURCE: &str = "sales-channel-postgres-primary"',
   'SALES_CHANNEL_EVENT_DOMAIN: &str = "rustok-channel.sales-channel-replay-v1"',
+  'SALES_CHANNEL_ROWS_CTE',
+  'sales_channel_index_union AS (',
+  'FALSE AS is_deleted',
+  'TRUE AS is_deleted',
+  'FROM channels c',
+  'FROM channel_index_tombstones tombstone',
+  'COUNT(*) OVER (',
+  'PARTITION BY row.tenant_id, row.channel_id',
+  'row.identity_count',
   'extensions.contains::<rustok_channel::ChannelRuntimeSelected>()',
   'register_index_schema_source(extensions, "channel", schema)',
   'register_postgres_index_source_factory(',
@@ -112,17 +154,18 @@ const source = requireMarkers(sourcePath, [
   'field("id", IndexValueType::Uuid, true, true)?',
   'field("slug", IndexValueType::String, true, true)?',
   'field("is_active", IndexValueType::Boolean, true, true)?',
-  'field_name("id")?, IndexValue::Uuid(self.channel_id)',
   'impl PostgresIndexSourceFactory for SalesChannelPostgresIndexSourceFactory',
   'impl IndexSource for SalesChannelPostgresIndexSource',
-  'FROM channels c',
-  'c.index_revision,',
-  'c.id > $2',
-  'ORDER BY c.id ASC',
+  'row.channel_id > $2',
+  'ORDER BY row.channel_id ASC',
   'request.limit() + 1',
   'WITH requested(channel_id) AS (VALUES {})',
-  'JOIN requested r ON r.channel_id = c.id',
+  'JOIN requested requested_key ON requested_key.channel_id = row.channel_id',
   'sales_channel_index_locale_forbidden',
+  'identity_count != 1',
+  'enum SalesChannelRowState',
+  'SalesChannelRowState::Deleted',
+  'IndexMutation::Delete',
   'derive_index_source_event_id(',
   'locale: None',
   'links: Vec::new()',
@@ -130,6 +173,7 @@ const source = requireMarkers(sourcePath, [
   'assert_eq!(schema.fields.len(), 6);',
   'selected_sales_channel_schema_is_nonlocalized_and_link_free',
   'selected_sales_channel_cursor_rejects_nil_and_unknown_fields',
+  'selected_sales_channel_tombstone_emits_delete_with_stable_identity',
   'selected_sales_channel_bridge_skips_partial_registry_without_channel_module',
   'selected_sales_channel_bridge_registers_schema_and_factory',
 ]);
@@ -138,8 +182,8 @@ forbidMarkers(sourcePath, source, [
   'IndexLink',
   'IndexLinkValue',
   'LocaleKey',
-  'ORDER BY c.index_revision',
-  '(c.index_revision, c.id)',
+  'ORDER BY row.index_revision',
+  '(row.index_revision, row.channel_id)',
   'SELECT *',
   'index_entities',
   'index_links',
@@ -161,9 +205,11 @@ requireMarkers('crates/rustok-distribution/tests/channel_index.rs', [
 
 requireMarkers('crates/rustok-channel/README.md', [
   '`channels.index_revision`',
+  '`channel_index_tombstones`',
   '`ChannelRuntimeSelected`',
   '`rustok-channel::sales_channel@1`',
   'stable `channel_id` ordering',
+  'retained hard-delete mutations',
   'does not depend on `rustok-index`',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-sales-channel-source.md', [
@@ -174,7 +220,9 @@ requireMarkers('crates/rustok-index/docs/m7-sales-channel-source.md', [
   'stable `channel_id` UUID order',
   '`index_revision` is the mutation `source_version`; it is not the scan cursor.',
   'The schema itself is link-free.',
-  'Channel hard-delete tombstones',
+  '`channel_index_tombstones`',
+  '`IndexMutation::Delete`',
+  'A count other than one is a permanent source-contract failure',
   'Runtime capability presence does not establish persisted schema readiness.',
   'maintainer-run',
 ]);
