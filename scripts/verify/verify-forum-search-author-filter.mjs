@@ -165,13 +165,37 @@ requireAll(
 requireAll(
   graphqlAdapter,
   [
-    "$authorIds: [String!]",
+    "FORUM_STOREFRONT_SEARCH_QUERY",
+    "FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY",
+    "ForumStorefrontSearchByAuthors",
+    "$authorIds: [String!]!",
     "authorIds: $authorIds",
     "fetch_search_with_authors",
-    '#[serde(rename = "authorIds")]\n    author_ids: Option<Vec<String>>',
+    "struct SearchPreviewVariables",
+    "struct AuthorSearchPreviewVariables",
+    "author_ids: Vec<String>",
   ],
   paths.graphqlAdapter,
 );
+const legacyGraphqlQueryStart = graphqlAdapter.indexOf(
+  "const FORUM_STOREFRONT_SEARCH_QUERY",
+);
+const authorGraphqlQueryStart = graphqlAdapter.indexOf(
+  "const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY",
+);
+if (legacyGraphqlQueryStart < 0 || authorGraphqlQueryStart < 0) {
+  failures.push(`${paths.graphqlAdapter}: GraphQL operations are incomplete`);
+} else {
+  const legacyGraphqlQuery = graphqlAdapter.slice(
+    legacyGraphqlQueryStart,
+    authorGraphqlQueryStart,
+  );
+  if (legacyGraphqlQuery.includes("authorIds")) {
+    failures.push(
+      `${paths.graphqlAdapter}: existing GraphQL operation must not send authorIds`,
+    );
+  }
+}
 requireAll(
   nativeAdapter,
   [
@@ -278,6 +302,15 @@ if (contract) {
   }
   if (contract.compatibility?.shared_storefront_filter_dto_changed !== false) {
     failures.push(`${paths.contract}: shared storefront DTO must remain unchanged`);
+  }
+  if (contract.transport_parity?.existing_graphql_operation_changed !== false) {
+    failures.push(`${paths.contract}: existing GraphQL operation changed`);
+  }
+  if (
+    contract.transport_parity?.additive_author_graphql_operation !==
+    "ForumStorefrontSearchByAuthors"
+  ) {
+    failures.push(`${paths.contract}: additive GraphQL author operation is missing`);
   }
   if (contract.transport_parity?.existing_native_endpoint_signature_changed !== false) {
     failures.push(`${paths.contract}: existing native endpoint signature changed`);
