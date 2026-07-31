@@ -2,12 +2,12 @@
 
 ## Status
 
-`source_complete_consumer_checkpoint_pending`
+`source_complete_runtime_evidence_pending`
 
 This slice exposes the append-only Forum projection revision ledger as a bounded,
-transport-neutral owner-revision source for Search. It does not change the
-existing Search inbox `ingest_sequence`, create a second projection consumer or
-advance a Search owner-revision checkpoint.
+transport-neutral owner-revision source for Search. The Search-owned checkpoint,
+sealed versioned invalidation publisher and persistent consumer are now merged;
+maintainer-executed PostgreSQL, Iggy and cross-module evidence remains open.
 
 ## Owner clock
 
@@ -50,8 +50,7 @@ that already emitted a Search invalidation.
 
 ## Neutral Search contract
 
-Search owns `ForumProjectionOwnerRevisionSourcePort` and validates each page
-before a future checkpoint protocol may consume it:
+Search owns `ForumProjectionOwnerRevisionSourcePort` and validates each page:
 
 - tenant UUID must be non-nil;
 - cursor must be non-negative;
@@ -68,35 +67,47 @@ Missing host composition and malformed owner pages fail closed through typed
 Search and Forum; Search never queries `forum_projection_revision_ledger` or
 `forum_domain_events` directly.
 
-## Deliberate boundary with ingest ordering
+## Delivered checkpoint and versioned rollout
+
+`FORUM-23B2G2B2` was merged through PR #2731. It adds the Search-owned owner
+checkpoint, bounded tenant discovery and current-state repair protocol while
+retaining the existing Forum inbox as the primary delivery lane.
+
+`FORUM-23B2G2B3A` through `FORUM-23B2G2B3C` were merged through PRs #2738,
+#2741, #2749 and #2753. They add the sealed caused typed invalidation, atomic
+Forum dual publisher and default-off persistent Search consumer. All delivery
+representations converge on the same legacy root envelope ID and existing
+`search_projection_inbox` row.
 
 Search `ingest_sequence` remains a delivery-order cursor owned by the durable
 Search inbox. Forum `revision` is an independent owner causal clock. They are not
 compared numerically and neither replaces the other.
 
-This source slice registers the owner port but does not connect it to the
-background sweeper. It does not:
+The remaining evidence protocol is frozen by `FORUM-23B2G2B3D0`:
 
-- create or advance an owner-revision checkpoint;
-- infer that an absent inbox row is safe to skip;
-- rebuild a tenant automatically;
-- mark owner state covered by pending or failed inbox work;
-- alter existing claim, retry, completion or watermark SQL;
-- claim PostgreSQL runtime reconciliation evidence.
+```text
+crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
+```
 
-`FORUM-23B2G2B2` should add the Search-owned checkpoint and commit protocol. It
-must first drain or account for pending inbox work, rebuild when a committed owner
-revision lacks durable delivery coverage, and advance the owner checkpoint only
-after projection state commits successfully.
+It requires executable PostgreSQL/Iggy proof for exact duplicate recognition,
+restart/acknowledgement behavior, raw and semantic poison, missing-delivery
+repair, multi-process serialization, deletion/ACL ordering and Search-disabled
+continuity. No runtime result is claimed by this source handoff.
 
 ## Maintainer verification
 
 The implementation agent did not run these commands, as requested:
 
 ```bash
+node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs
 cargo test -p rustok-search owner_revision_tests -- --nocapture
+cargo test -p rustok-search --test forum_projection_sweeper_contract -- --nocapture
+cargo test -p rustok-search forum_contract_ingress -- --nocapture
 cargo test -p rustok-server --features mod-forum host_materializes_index_query_runtime_after_source_registry -- --nocapture
 node scripts/verify/verify-forum-search-owner-revision-source.mjs
+node scripts/verify/verify-forum-search-owner-revision-checkpoint.mjs
+node scripts/verify/verify-forum-search-versioned-invalidation-consumer.mjs
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-search --all-targets
 cargo check -p rustok-server --features mod-forum --all-targets
@@ -104,7 +115,7 @@ cargo xtask module validate forum
 cargo xtask module validate search
 ```
 
-PostgreSQL evidence should cover tenant isolation, first revision, contiguous
+PostgreSQL evidence must cover tenant isolation, first revision, contiguous
 multi-page reads, exact envelope identity, empty tail pages, invalid cursor and
-limit rejection, unavailable non-PostgreSQL behavior and host composition before
-the checkpoint protocol is allowed to mutate reconciliation state.
+limit rejection, owner checkpoint advancement only after projection success,
+missing-delivery repair and the complete D0 runtime scenarios.
