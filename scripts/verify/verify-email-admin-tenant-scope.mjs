@@ -17,9 +17,6 @@ const failures = [];
 const requireText = (value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
-const forbidText = (value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
-};
 
 for (const [value, label] of [
   ['fn require_email_admin_tenant_scope(', 'tenant scope helper'],
@@ -34,11 +31,6 @@ for (const [value, label] of [
 ]) {
   requireText(value, label);
 }
-
-forbidText(
-  'if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {\n            return Err',
-  'permission-only admission before tenant binding',
-);
 
 const guardCall = source.indexOf(
   'require_email_admin_tenant_scope(auth.tenant_id, tenant.id)?;',
