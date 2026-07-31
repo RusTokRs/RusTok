@@ -26,14 +26,19 @@ function fixture({
   missingPostgresHarness = false,
   missingRollbackCase = false,
   missingPostgresRegistration = false,
+  missingRestartHarness = false,
+  missingRestartConnection = false,
+  missingRestartRegistration = false,
   statusDrift = false,
   harnessStatusDrift = false,
   postgresStatusDrift = false,
+  restartStatusDrift = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
   const handlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
   const postgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
+  const restartHarnessPath = 'crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
   const serviceExportPath = 'crates/rustok-blog/src/services/mod.rs';
   const entityPath = 'crates/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
   const migrationPath = 'crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
@@ -42,6 +47,7 @@ function fixture({
   const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
   const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
   const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
+  const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 
   write(
     root,
@@ -113,6 +119,32 @@ count_outbox_events(&test_db.db)
     );
   }
 
+  if (!missingRestartHarness) {
+    write(
+      root,
+      restartHarnessPath,
+      `
+const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+struct PostgresBlogProjectionRestartTestDb
+database_url: String
+async fn restarted_connection(&self)
+SET search_path TO
+async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()
+let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+first_handler.handle(&envelope).await?;
+drop(first_handler);
+${missingRestartConnection ? '' : 'let restarted_db = test_db.restarted_connection().await?;'}
+let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());
+restarted_handler.handle(&envelope).await?;
+load_post_state(&restarted_db, tenant_id, post_id).await?, (1, 2)
+count_delivery(&restarted_db, envelope.id).await?, 1
+count_outbox_events(&restarted_db).await?, 1
+CREATE TABLE blog_comment_projection_deliveries
+CREATE TABLE sys_events
+`,
+    );
+  }
+
   write(root, serviceExportPath, 'pub use comment_projection::BlogCommentProjectionHandler;');
   write(
     root,
@@ -158,7 +190,7 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 3,
+      schema_version: 4,
       module: 'blog',
       surface: 'comments_event_projection',
       status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
@@ -201,6 +233,17 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
           'outbox_failure_rolls_back_counter_and_delivery_before_retry',
         ],
       },
+      restart_harness: {
+        status: restartStatusDrift ? 'executed' : 'executable_no_run',
+        runtime_status: restartStatusDrift ? 'passed' : 'not_run',
+        path: restartHarnessPath,
+        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+        command: restartHarnessCommand,
+        isolation: 'unique_schema_new_connection',
+        cases: [
+          'restarted_handler_reuses_delivery_ledger_without_reapplying_counter',
+        ],
+      },
       cases: [
         { name: 'shared_event_classifier' },
         { name: 'blog_post_target_filter' },
@@ -214,6 +257,7 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
         { name: 'postgres_out_of_order_delete_create' },
         { name: 'postgres_missing_post_recovery' },
         { name: 'postgres_outbox_rollback_recovery' },
+        { name: 'postgres_restart_replay' },
         { name: 'module_listener_registration' },
       ],
     }),
@@ -222,13 +266,14 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
     root,
     registryPath,
     JSON.stringify({
-      schema_version: 12,
+      schema_version: 13,
       evidence: { comments_event_projection: evidencePath },
       verification_chain: {
         source_gates: {
           comments_event_projection: {
             unit_test: handlerPath,
             ...(missingPostgresRegistration ? {} : { postgres_test: postgresHarnessPath }),
+            ...(missingRestartRegistration ? {} : { restart_test: restartHarnessPath }),
           },
         },
       },
@@ -250,13 +295,20 @@ registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`
           environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
           command: postgresHarnessCommand,
         },
+        restart_harness: {
+          path: restartHarnessPath,
+          status: restartStatusDrift ? 'executed' : 'executable_no_run',
+          runtime_status: restartStatusDrift ? 'passed' : 'not_run',
+          environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+          command: restartHarnessCommand,
+        },
       },
     }),
   );
   write(
     root,
     'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests comment_projection_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL runtime delivery and recovery',
+    'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL runtime delivery and recovery',
   );
 
   return root;
@@ -340,6 +392,24 @@ test('rejects a registry without the PostgreSQL target', () => {
   );
 });
 
+test('rejects a missing restart harness source', () => {
+  expectRejected({ missingRestartHarness: true }, /expected file is missing/);
+});
+
+test('rejects restart coverage that reuses the original connection', () => {
+  expectRejected(
+    { missingRestartConnection: true },
+    /missing let restarted_db = test_db.restarted_connection\(\).await\?;/,
+  );
+});
+
+test('rejects a registry without the restart target', () => {
+  expectRejected(
+    { missingRestartRegistration: true },
+    /restart test path drift/,
+  );
+});
+
 test('rejects runtime status promotion without execution', () => {
   expectRejected({ statusDrift: true }, /status drift/);
 });
@@ -350,4 +420,8 @@ test('rejects source harness execution promotion without execution', () => {
 
 test('rejects PostgreSQL harness execution promotion without execution', () => {
   expectRejected({ postgresStatusDrift: true }, /PostgreSQL harness drift/);
+});
+
+test('rejects restart harness execution promotion without execution', () => {
+  expectRejected({ restartStatusDrift: true }, /restart harness drift/);
 });

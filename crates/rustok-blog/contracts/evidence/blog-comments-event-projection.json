@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
@@ -43,6 +43,17 @@
       "delete_before_create_stays_non_negative_and_replays_in_order",
       "missing_post_replay_commits_only_after_source_appears",
       "outbox_failure_rolls_back_counter_and_delivery_before_retry"
+    ]
+  },
+  "restart_harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+    "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test",
+    "isolation": "unique_schema_new_connection",
+    "cases": [
+      "restarted_handler_reuses_delivery_ledger_without_reapplying_counter"
     ]
   },
   "cases": [
@@ -95,6 +106,10 @@
       "expected": "the retained PostgreSQL target removes the outbox table, expects counter and delivery rollback, recreates the table, and replays the same envelope"
     },
     {
+      "name": "postgres_restart_replay",
+      "expected": "the retained restart target opens a new database connection and handler over the same schema, replays the same envelope, and expects one durable application"
+    },
+    {
       "name": "module_listener_registration",
       "expected": "Blog registers BlogCommentProjectionHandler through the module event-listener registry"
     }
@@ -102,10 +117,12 @@
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-blog --lib services::comment_projection::tests",
     "execute the env-gated PostgreSQL comment_projection_postgres_test target and retain its output",
+    "execute the env-gated PostgreSQL comment_projection_restart_postgres_test target and retain its output",
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
     "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
+    "retain restarted-handler replay evidence across a new database connection",
     "retain concurrent optimistic-update exhaustion and retry evidence",
-    "retain host event-dispatch registration and restart recovery evidence"
+    "retain host event-dispatch registration and process restart recovery evidence"
   ]
 }
