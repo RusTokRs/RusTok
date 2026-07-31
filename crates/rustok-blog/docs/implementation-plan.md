@@ -93,9 +93,8 @@ projection. Typed storefront comments availability is source-verified across the
 owner GraphQL resolver, GraphQL client, native SSR adapter, shared DTO, and Leptos
 UI. Only `ExternalService` and `Timeout` become empty `UNAVAILABLE` or `TIMEOUT`
 comment payloads; every other `BlogError` remains fail-closed. The in-process
-source profile is verified, while the remote adapter and broader degraded UI modes
-remain planned. In particular, cached snapshot and comment-form fallback remain
-planned, and runtime evidence is pending.
+source profile is verified. The remote adapter and degraded UI modes remain planned.
+Cached snapshot and comment-form fallback remain planned, and runtime evidence is pending.
 
 Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
