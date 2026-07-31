@@ -9,6 +9,25 @@ fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
 }
 
+#[cfg(feature = "ssr")]
+fn require_email_admin_tenant_scope(
+    auth_tenant_id: uuid::Uuid,
+    resolved_tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    if auth_tenant_id == resolved_tenant_id {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth_tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "email.admin_tenant_scope_mismatch",
+        boundary = "email_admin_native_transport",
+        "email admin permissions cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("Email admin access is denied"))
+}
+
 #[server(prefix = "/api/fn", endpoint = "admin/email-settings")]
 pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -25,6 +44,7 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(|err| server_error(err.to_string()))?;
+        require_email_admin_tenant_scope(auth.tenant_id, tenant.id)?;
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new("settings:read required"));
         }
