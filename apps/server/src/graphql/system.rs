@@ -4,10 +4,12 @@ use rustok_api::{
     HostAuthority, HostAuthorityContext, Permission, graphql::GraphQLError,
     has_effective_permission,
 };
+use rustok_core::SecurityActorKind;
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::auth::host_authority_context_for_authenticated_actor;
 use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -72,13 +74,37 @@ fn require_permission<'a>(
 fn require_host_authority(
     ctx: &Context<'_>,
     required: HostAuthority,
-) -> Result<&HostAuthorityContext> {
-    let authority = ctx
-        .data_opt::<HostAuthorityContext>()
-        .filter(|authority| authority.allows(required))
-        .ok_or_else(|| {
-            <FieldError as GraphQLError>::permission_denied("host-global authority required")
-        })?;
+) -> Result<HostAuthorityContext> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let actor_kind = if auth.grant_type == "client_credentials" {
+        SecurityActorKind::Service
+    } else {
+        SecurityActorKind::User
+    };
+    let authority = host_authority_context_for_authenticated_actor(
+        actor_kind,
+        auth.user_id,
+        auth.client_id,
+        &auth.grant_type,
+    )
+    .map_err(|error| {
+        tracing::error!(
+            actor_id = %auth.user_id,
+            client_id = ?auth.client_id,
+            error = %error,
+            code = "host_authority.graphql_resolve_failed",
+            "host authority resolution failed for System GraphQL"
+        );
+        <FieldError as GraphQLError>::internal_error(
+            "Host authority configuration is invalid",
+        )
+    })?
+    .filter(|authority| authority.allows(required))
+    .ok_or_else(|| {
+        <FieldError as GraphQLError>::permission_denied("host-global authority required")
+    })?;
     Ok(authority)
 }
 
