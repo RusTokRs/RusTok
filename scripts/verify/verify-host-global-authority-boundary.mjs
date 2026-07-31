@@ -20,6 +20,9 @@ const graphqlControllerSource = read('apps/server/src/controllers/graphql.rs');
 const eventsNativeSource = read(
   'crates/rustok-events-module/admin/src/transport/native_server_adapter.rs',
 );
+const iggyNativeSource = read(
+  'crates/rustok-iggy-connector/admin/src/transport/native_server_adapter.rs',
+);
 const systemSource = read('apps/server/src/graphql/system.rs');
 const settingsModuleSource = read('apps/server/src/graphql/settings/mod.rs');
 const settingsQuerySource = read('apps/server/src/graphql/settings/query.rs');
@@ -221,6 +224,56 @@ for (const [block, label] of [
   forbidText(block, 'has_effective_permission', label);
 }
 
+const iggyNativeRead = between(
+  iggyNativeSource,
+  'pub async fn iggy_connector_configuration_native()',
+  'pub async fn update_iggy_connector_configuration_native(',
+  'native Iggy host-global read',
+);
+const iggyNativeManage = between(
+  iggyNativeSource,
+  'pub async fn update_iggy_connector_configuration_native(',
+  'pub(super) async fn fetch_configuration()',
+  'native Iggy host-global mutation',
+);
+requireOrder(
+  iggyNativeRead,
+  [
+    'extract::<HostAuthorityContext>()',
+    'authority.allows(HostAuthority::Read)',
+    'shared_get::<SharedIggyConnectorControl>()',
+    '.configuration()',
+  ],
+  'native Iggy configuration read',
+);
+requireOrder(
+  iggyNativeManage,
+  [
+    'extract::<HostAuthorityContext>()',
+    'authority.allows(HostAuthority::Manage)',
+    'extract::<AuthContext>()',
+    'extract::<TenantContext>()',
+    'auth.tenant_id != tenant.id',
+    'shared_get::<SharedIggyConnectorControl>()',
+    '.update_configuration(',
+    'authority.actor_id(),',
+    'auth.tenant_id,',
+  ],
+  'native Iggy configuration mutation',
+);
+for (const [block, label] of [
+  [iggyNativeRead, 'native Iggy configuration read'],
+  [iggyNativeManage, 'native Iggy configuration mutation'],
+]) {
+  forbidText(block, 'Permission::SETTINGS_', label);
+  forbidText(block, 'has_effective_permission', label);
+}
+forbidText(
+  iggyNativeManage,
+  'auth.user_id',
+  'native Iggy mutation audit actor must be host-owned',
+);
+
 const systemGuard = between(
   systemSource,
   'fn require_host_authority(',
@@ -340,5 +393,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Host-owned opaque credentials are removed before dispatch and issue request-scoped typed HTTP/native authority independently from tenant OAuth, RBAC, scopes, roles and metadata; WebSocket remains fail-closed',
+  '✔ Host-owned opaque credentials are removed before dispatch and issue request-scoped typed HTTP/native authority for Events and Iggy independently from tenant OAuth, RBAC, scopes, roles and metadata; WebSocket remains fail-closed',
 );
