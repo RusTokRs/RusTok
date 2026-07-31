@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
@@ -38,8 +36,9 @@ impl ForumProjectionScope {
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
             | DomainEvent::TenantUpdated { .. } => Some(Self::Full),
-            DomainEvent::ProfileUpdated { user_id, .. }
-            | DomainEvent::UserDeleted { user_id } => Some(Self::Author(*user_id)),
+            DomainEvent::ProfileUpdated { user_id, .. } | DomainEvent::UserDeleted { user_id } => {
+                Some(Self::Author(*user_id))
+            }
             DomainEvent::TenantModuleToggled { module_slug, .. } if module_slug == "forum" => {
                 Some(Self::Full)
             }
@@ -145,13 +144,13 @@ impl ForumProjectionInbox {
                 .query_one(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     r#"
-                    SELECT event_id, scope_key, revision_at, envelope_json,
+                    SELECT event_id, scope_key, revision_at, ingest_sequence, envelope_json,
                            status, attempt_count, next_attempt_at
                     FROM search_projection_inbox
                     WHERE tenant_id = $1
                       AND source_module = 'forum'
                       AND status IN ('pending', 'retryable_error')
-                    ORDER BY revision_at ASC, event_id ASC
+                    ORDER BY ingest_sequence ASC
                     LIMIT 1
                     FOR UPDATE
                     "#,
@@ -168,6 +167,14 @@ impl ForumProjectionInbox {
             let scope_key: String = row.try_get("", "scope_key").map_err(Error::Database)?;
             let revision_at: DateTime<Utc> =
                 row.try_get("", "revision_at").map_err(Error::Database)?;
+            let ingest_sequence: i64 = row
+                .try_get("", "ingest_sequence")
+                .map_err(Error::Database)?;
+            if ingest_sequence <= 0 {
+                return Err(Error::External(
+                    "Forum projection inbox returned a non-positive ingest sequence".to_string(),
+                ));
+            }
             let envelope_json: serde_json::Value =
                 row.try_get("", "envelope_json").map_err(Error::Database)?;
             let status: String = row.try_get("", "status").map_err(Error::Database)?;
@@ -183,22 +190,11 @@ impl ForumProjectionInbox {
                 return Ok(None);
             }
 
-            if let Some((watermark_at, watermark_event_id)) =
+            if let Some(watermark_sequence) =
                 load_effective_watermark(&transaction, tenant_id, &scope_key).await?
-                && !is_newer_revision(
-                    &revision_at,
-                    event_id,
-                    &watermark_at,
-                    watermark_event_id,
-                )
+                && ingest_sequence <= watermark_sequence
             {
-                mark_terminal(
-                    &transaction,
-                    event_id,
-                    "skipped",
-                    Some("stale_revision"),
-                )
-                .await?;
+                mark_terminal(&transaction, event_id, "skipped", Some("stale_revision")).await?;
                 transaction.commit().await.map_err(Error::Database)?;
                 continue;
             }
@@ -254,6 +250,7 @@ impl ForumProjectionInbox {
                 tenant_id,
                 scope_key,
                 revision_at,
+                ingest_sequence,
                 envelope,
                 attempt: attempt_count.saturating_add(1).max(1) as u32,
             }));
@@ -277,6 +274,7 @@ pub(crate) struct ForumProjectionInboxClaim {
     tenant_id: Uuid,
     scope_key: String,
     revision_at: DateTime<Utc>,
+    ingest_sequence: i64,
     envelope: EventEnvelope,
     attempt: u32,
 }
@@ -292,22 +290,20 @@ impl ForumProjectionInboxClaim {
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO search_projection_watermarks (
-                    tenant_id, source_module, scope_key, revision_at, event_id, updated_at
-                ) VALUES ($1, 'forum', $2, $3, $4, CURRENT_TIMESTAMP)
+                    tenant_id, source_module, scope_key, ingest_sequence, revision_at, event_id, updated_at
+                ) VALUES ($1, 'forum', $2, $3, $4, $5, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id, source_module, scope_key)
                 DO UPDATE SET
+                    ingest_sequence = EXCLUDED.ingest_sequence,
                     revision_at = EXCLUDED.revision_at,
                     event_id = EXCLUDED.event_id,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE search_projection_watermarks.revision_at < EXCLUDED.revision_at
-                   OR (
-                        search_projection_watermarks.revision_at = EXCLUDED.revision_at
-                        AND search_projection_watermarks.event_id < EXCLUDED.event_id
-                   )
+                WHERE search_projection_watermarks.ingest_sequence < EXCLUDED.ingest_sequence
                 "#,
                 vec![
                     self.tenant_id.into(),
                     self.scope_key.into(),
+                    self.ingest_sequence.into(),
                     self.revision_at.into(),
                     self.event_id.into(),
                 ],
@@ -377,7 +373,7 @@ async fn load_effective_watermark(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     scope_key: &str,
-) -> Result<Option<(DateTime<Utc>, Uuid)>> {
+) -> Result<Option<i64>> {
     if scope_key.starts_with(AUTHOR_SCOPE_PREFIX) {
         // Profile privacy changes are redaction barriers. They always rebuild from
         // current owner state and must not be discarded because an unrelated Forum
@@ -402,12 +398,12 @@ async fn load_watermark(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     scope_key: &str,
-) -> Result<Option<(DateTime<Utc>, Uuid)>> {
+) -> Result<Option<i64>> {
     let row = transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
-            SELECT revision_at, event_id
+            SELECT ingest_sequence
             FROM search_projection_watermarks
             WHERE tenant_id = $1
               AND source_module = 'forum'
@@ -417,13 +413,8 @@ async fn load_watermark(
         ))
         .await
         .map_err(Error::Database)?;
-    row.map(|row| {
-        Ok((
-            row.try_get("", "revision_at").map_err(Error::Database)?,
-            row.try_get("", "event_id").map_err(Error::Database)?,
-        ))
-    })
-    .transpose()
+    row.map(|row| row.try_get("", "ingest_sequence").map_err(Error::Database))
+        .transpose()
 }
 
 async fn mark_terminal(
@@ -455,33 +446,11 @@ async fn mark_terminal(
     Ok(())
 }
 
-fn max_watermark(
-    left: Option<(DateTime<Utc>, Uuid)>,
-    right: Option<(DateTime<Utc>, Uuid)>,
-) -> Option<(DateTime<Utc>, Uuid)> {
+fn max_watermark(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
-        (Some(left), Some(right)) => {
-            if is_newer_revision(&left.0, left.1, &right.0, right.1) {
-                Some(left)
-            } else {
-                Some(right)
-            }
-        }
+        (Some(left), Some(right)) => Some(left.max(right)),
         (Some(value), None) | (None, Some(value)) => Some(value),
         (None, None) => None,
-    }
-}
-
-fn is_newer_revision(
-    incoming_at: &DateTime<Utc>,
-    incoming_event_id: Uuid,
-    watermark_at: &DateTime<Utc>,
-    watermark_event_id: Uuid,
-) -> bool {
-    match incoming_at.cmp(watermark_at) {
-        Ordering::Greater => true,
-        Ordering::Less => false,
-        Ordering::Equal => incoming_event_id.as_bytes() > watermark_event_id.as_bytes(),
     }
 }
 
@@ -563,35 +532,19 @@ mod tests {
                 Some(ForumProjectionScope::Author(user_id))
             );
         }
-        assert!(ForumProjectionScope::Author(user_id)
-            .key()
-            .starts_with(AUTHOR_SCOPE_PREFIX));
-    }
-
-    #[test]
-    fn revision_order_uses_timestamp_then_event_identity() {
-        let timestamp = Utc::now();
-        let low = Uuid::from_u128(1);
-        let high = Uuid::from_u128(2);
-        assert!(is_newer_revision(&timestamp, high, &timestamp, low));
-        assert!(!is_newer_revision(&timestamp, low, &timestamp, high));
-        assert!(is_newer_revision(
-            &(timestamp.to_owned() + Duration::microseconds(1)),
-            low,
-            &timestamp,
-            high
-        ));
-    }
-
-    #[test]
-    fn effective_watermark_prefers_newest_revision() {
-        let timestamp = Utc::now();
-        let low = (timestamp.to_owned(), Uuid::from_u128(1));
-        let high = (
-            timestamp.to_owned() + Duration::microseconds(1),
-            Uuid::from_u128(2),
+        assert!(
+            ForumProjectionScope::Author(user_id)
+                .key()
+                .starts_with(AUTHOR_SCOPE_PREFIX)
         );
-        assert_eq!(max_watermark(Some(low), Some(high.to_owned())), Some(high));
+    }
+
+    #[test]
+    fn ingest_sequence_order_is_numeric() {
+        assert_eq!(max_watermark(Some(3), Some(8)), Some(8));
+        assert_eq!(max_watermark(Some(8), Some(3)), Some(8));
+        assert_eq!(max_watermark(Some(8), None), Some(8));
+        assert_eq!(max_watermark(None, None), None);
     }
 
     #[test]
