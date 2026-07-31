@@ -16,6 +16,10 @@ mod richtext;
 #[cfg(feature = "server")]
 pub mod services;
 #[cfg(feature = "tcp-transport")]
+mod tcp_protocol;
+#[cfg(feature = "tcp-transport")]
+pub mod tcp_server;
+#[cfg(feature = "tcp-transport")]
 pub mod tcp_transport;
 
 #[cfg(feature = "server")]
@@ -41,6 +45,11 @@ pub use ports::*;
 pub use remote::*;
 #[cfg(feature = "server")]
 pub use services::CommentsService;
+#[cfg(feature = "tcp-transport")]
+pub use tcp_server::{
+    CommentsTcpAuthorityResolver, CommentsTcpOperation, TcpJsonCommentsServerAdapter,
+    TrustedCommentsTcpAuthority,
+};
 #[cfg(feature = "tcp-transport")]
 pub use tcp_transport::TcpJsonCommentsTransport;
 
