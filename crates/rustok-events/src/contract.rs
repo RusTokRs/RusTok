@@ -128,6 +128,36 @@ impl ContractEventEnvelope {
     where
         E: EventContract,
     {
+        Self::new_with_causation(tenant_id, actor_id, None, event)
+    }
+
+    /// Creates a typed envelope that is causally linked to one exact durable
+    /// predecessor envelope.
+    ///
+    /// The causation identity is transport metadata, not payload data. A nil
+    /// identity is rejected by the same registered-envelope validation used for
+    /// decoded and relayed events.
+    pub fn new_caused_by<E>(
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Uuid,
+        event: E,
+    ) -> Result<Self, EventContractEnvelopeError>
+    where
+        E: EventContract,
+    {
+        Self::new_with_causation(tenant_id, actor_id, Some(causation_id), event)
+    }
+
+    fn new_with_causation<E>(
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Option<Uuid>,
+        event: E,
+    ) -> Result<Self, EventContractEnvelopeError>
+    where
+        E: EventContract,
+    {
         event.validate()?;
         let event_type = event.event_type().to_string();
         let schema_version = event.schema_version();
@@ -137,7 +167,7 @@ impl ContractEventEnvelope {
             event_type,
             schema_version,
             correlation_id: id,
-            causation_id: None,
+            causation_id,
             tenant_id,
             trace_id: rustok_telemetry::current_trace_id(),
             timestamp: Utc::now(),
@@ -159,6 +189,10 @@ impl ContractEventEnvelope {
 
     pub fn schema_version(&self) -> u16 {
         self.schema_version
+    }
+
+    pub fn causation_id(&self) -> Option<Uuid> {
+        self.causation_id
     }
 
     pub fn tenant_id(&self) -> Uuid {
@@ -285,4 +319,54 @@ pub enum EventContractEnvelopeError {
     },
     #[error("event contract `{0}` is not a root DomainEvent")]
     NotRootEvent(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mention_event() -> ForumMentionEvent {
+        ForumMentionEvent::UserMentionAdded {
+            source_kind: "topic".to_string(),
+            source_id: Uuid::new_v4(),
+            source_revision_id: 1,
+            source_locale: "en".to_string(),
+            mentioned_user_id: Uuid::new_v4(),
+        }
+    }
+
+    #[test]
+    fn caused_contract_envelope_retains_exact_causation_identity() {
+        let causation_id = Uuid::new_v4();
+        let envelope = ContractEventEnvelope::new_caused_by(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            causation_id,
+            mention_event(),
+        )
+        .expect("caused contract envelope should validate");
+
+        assert_eq!(envelope.causation_id(), Some(causation_id));
+        envelope
+            .validate_registered_schema()
+            .expect("caused contract envelope should remain registered");
+    }
+
+    #[test]
+    fn caused_contract_envelope_rejects_nil_causation_identity() {
+        let error = ContractEventEnvelope::new_caused_by(
+            Uuid::new_v4(),
+            None,
+            Uuid::nil(),
+            mention_event(),
+        )
+        .expect_err("nil causation identity must fail closed");
+
+        assert!(matches!(
+            error,
+            EventContractEnvelopeError::Validation(EventValidationError::NilUuid(
+                "causation_id"
+            ))
+        ));
+    }
 }
