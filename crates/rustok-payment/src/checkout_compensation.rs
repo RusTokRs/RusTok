@@ -43,6 +43,33 @@ struct CheckoutPaymentCompensationOwnerContextFacts {
     deadline_ms: Option<u64>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CheckoutPaymentCompensationPaymentErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum CheckoutPaymentCompensationOwnerFailureKind {
+    ProviderRequestEncoding,
+    ProviderResultEncoding,
+    ProviderResultDecoding,
+}
+
+impl CheckoutPaymentCompensationOwnerFailureKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::ProviderRequestEncoding => "provider_request_encoding",
+            Self::ProviderResultEncoding => "provider_result_encoding",
+            Self::ProviderResultDecoding => "provider_result_decoding",
+        }
+    }
+}
+
 #[async_trait]
 pub trait CheckoutPaymentCompensationPort: Send + Sync {
     async fn compensate_checkout_payment(
@@ -136,7 +163,7 @@ impl InProcessCheckoutPaymentCompensationPort {
                     .mark_committed(operation.id)
                     .await
                     .map_err(|error| {
-                        log_checkout_payment_compensation_owner_error(
+                        log_checkout_payment_compensation_payment_error(
                             context,
                             owner_operation,
                             "commit_recovered_cancel_checkpoint",
@@ -202,15 +229,15 @@ impl InProcessCheckoutPaymentCompensationPort {
             idempotency_key: Some(idempotency_key.clone()),
             metadata: provider_metadata,
         };
-        let request_payload = serde_json::to_value(&provider_request).map_err(|error| {
-            log_checkout_payment_compensation_owner_error(
+        let request_payload = serde_json::to_value(&provider_request).map_err(|_| {
+            log_checkout_payment_compensation_static_error(
                 context,
                 owner_operation,
                 "encode_provider_cancel_request",
                 "payment.checkout_compensation_encoding_failed",
                 "payment compensation request encoding failed",
                 None,
-                &error,
+                CheckoutPaymentCompensationOwnerFailureKind::ProviderRequestEncoding,
             );
             PortError::invariant_violation(
                 "payment.checkout_compensation_encoding_failed",
@@ -290,7 +317,7 @@ impl InProcessCheckoutPaymentCompensationPort {
                         .await
                 };
                 if let Err(checkpoint_error) = checkpoint {
-                    log_checkout_payment_compensation_owner_error(
+                    log_checkout_payment_compensation_payment_error(
                         context,
                         owner_operation,
                         "checkpoint_provider_cancel_failure",
@@ -308,15 +335,15 @@ impl InProcessCheckoutPaymentCompensationPort {
                 return Err(payment_error_to_port_error(context, owner_operation, error));
             }
         };
-        let result_payload = serde_json::to_value(&provider_result).map_err(|error| {
-            log_checkout_payment_compensation_owner_error(
+        let result_payload = serde_json::to_value(&provider_result).map_err(|_| {
+            log_checkout_payment_compensation_static_error(
                 context,
                 owner_operation,
                 "encode_provider_cancel_result",
                 "payment.checkout_compensation_provider_result_encoding_failed",
                 "payment compensation provider result encoding failed",
                 Some(operation.id),
-                &error,
+                CheckoutPaymentCompensationOwnerFailureKind::ProviderResultEncoding,
             );
             manual_reconciliation(
                 context,
@@ -332,7 +359,7 @@ impl InProcessCheckoutPaymentCompensationPort {
             )
             .await
             .map_err(|error| {
-                log_checkout_payment_compensation_owner_error(
+                log_checkout_payment_compensation_payment_error(
                     context,
                     owner_operation,
                     "checkpoint_provider_cancel_success",
@@ -554,7 +581,7 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
                 .mark_committed(outcome.operation_id)
                 .await
                 .map_err(|error| {
-                    log_checkout_payment_compensation_owner_error(
+                    log_checkout_payment_compensation_payment_error(
                         &context,
                         owner_operation,
                         "commit_provider_cancel_checkpoint",
@@ -595,15 +622,15 @@ fn persisted_cancel_result(
                     "payment provider cancellation checkpoint has no normalized result",
                 )
             })?;
-            serde_json::from_value(value).map(Some).map_err(|error| {
-                log_checkout_payment_compensation_owner_error(
+            serde_json::from_value(value).map(Some).map_err(|_| {
+                log_checkout_payment_compensation_static_error(
                     context,
                     owner_operation,
                     "decode_provider_cancel_checkpoint",
                     "payment.provider_invalid_response",
                     "payment compensation provider checkpoint is malformed",
                     Some(operation.id),
-                    &error,
+                    CheckoutPaymentCompensationOwnerFailureKind::ProviderResultDecoding,
                 );
                 manual_reconciliation(
                     context,
@@ -714,20 +741,149 @@ fn checkout_payment_compensation_owner_context_facts(
     }
 }
 
-fn log_checkout_payment_compensation_owner_error<E: std::fmt::Debug>(
+fn checkout_payment_compensation_payment_error_facts(
+    error: &PaymentError,
+) -> CheckoutPaymentCompensationPaymentErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        PaymentError::Validation(value) => (
+            "validation",
+            1,
+            value.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::PaymentCollectionNotFound(id) => (
+            "payment_collection_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::PaymentNotFound(id) => (
+            "payment_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::RefundNotFound(id) => (
+            "refund_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::InvalidTransition { from, to } => (
+            "invalid_transition",
+            2,
+            from.chars().count() + to.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderUnavailable {
+            provider_id,
+            operation,
+        } => (
+            "provider_unavailable",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderRejected {
+            provider_id,
+            operation,
+        } => (
+            "provider_rejected",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderInvalidResponse {
+            provider_id,
+            operation,
+        } => (
+            "provider_invalid_response",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderOutcomeUnknown {
+            provider_id,
+            operation,
+        } => (
+            "provider_outcome_unknown",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderConfiguration { provider_id } => (
+            "provider_configuration",
+            1,
+            provider_id.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::Database(_) => ("database", 0, 0, 0, 0, true),
+    };
+    CheckoutPaymentCompensationPaymentErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
+fn log_checkout_payment_compensation_owner_failure(
     context: &PortContext,
     owner_operation: &'static str,
     local_operation: &'static str,
     code: &'static str,
     event: &'static str,
     operation_id: Option<Uuid>,
-    error: &E,
+    failure_kind: &'static str,
+    payment_error_facts: Option<CheckoutPaymentCompensationPaymentErrorFacts>,
 ) {
     let context_facts = checkout_payment_compensation_owner_context_facts(context);
     let operation_id_present = operation_id.is_some();
     let operation_id_non_nil = operation_id.map(|value| !value.is_nil());
+    let payment_error_variant = payment_error_facts.map(|facts| facts.error_variant);
+    let payment_error_text_field_count = payment_error_facts.map(|facts| facts.text_field_count);
+    let payment_error_text_total_length = payment_error_facts.map(|facts| facts.text_total_length);
+    let payment_error_uuid_field_count = payment_error_facts.map(|facts| facts.uuid_field_count);
+    let payment_error_uuid_non_nil_count = payment_error_facts.map(|facts| facts.uuid_non_nil_count);
+    let payment_error_opaque_payload_present =
+        payment_error_facts.map(|facts| facts.opaque_payload_present);
     tracing::error!(
-        error = ?error,
+        failure_kind,
+        payment_error_variant = ?payment_error_variant,
+        payment_error_text_field_count = ?payment_error_text_field_count,
+        payment_error_text_total_length = ?payment_error_text_total_length,
+        payment_error_uuid_field_count = ?payment_error_uuid_field_count,
+        payment_error_uuid_non_nil_count = ?payment_error_uuid_non_nil_count,
+        payment_error_opaque_payload_present = ?payment_error_opaque_payload_present,
         owner = PAYMENT_OWNER,
         operation = owner_operation,
         local_operation,
@@ -752,21 +908,62 @@ fn log_checkout_payment_compensation_owner_error<E: std::fmt::Debug>(
         code,
         event,
         boundary = PAYMENT_COMPENSATION_BOUNDARY,
-        "payment checkout compensation owner technical outcome retained safe context"
+        "payment checkout compensation owner technical outcome retained bounded diagnostics"
     );
 }
 
-fn log_checkout_payment_compensation_owner_warning<E: std::fmt::Debug>(
+fn log_checkout_payment_compensation_payment_error(
     context: &PortContext,
     owner_operation: &'static str,
     local_operation: &'static str,
     code: &'static str,
     event: &'static str,
-    error: &E,
+    operation_id: Option<Uuid>,
+    error: &PaymentError,
+) {
+    log_checkout_payment_compensation_owner_failure(
+        context,
+        owner_operation,
+        local_operation,
+        code,
+        event,
+        operation_id,
+        "payment_error",
+        Some(checkout_payment_compensation_payment_error_facts(error)),
+    );
+}
+
+fn log_checkout_payment_compensation_static_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    code: &'static str,
+    event: &'static str,
+    operation_id: Option<Uuid>,
+    failure_kind: CheckoutPaymentCompensationOwnerFailureKind,
+) {
+    log_checkout_payment_compensation_owner_failure(
+        context,
+        owner_operation,
+        local_operation,
+        code,
+        event,
+        operation_id,
+        failure_kind.label(),
+        None,
+    );
+}
+
+fn log_checkout_payment_compensation_owner_warning(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    code: &'static str,
+    event: &'static str,
 ) {
     let context_facts = checkout_payment_compensation_owner_context_facts(context);
     tracing::warn!(
-        error = ?error,
+        tenant_id_parse_failed = true,
         owner = PAYMENT_OWNER,
         operation = owner_operation,
         local_operation,
@@ -789,7 +986,7 @@ fn log_checkout_payment_compensation_owner_warning<E: std::fmt::Debug>(
         code,
         event,
         boundary = PAYMENT_COMPENSATION_BOUNDARY,
-        "payment checkout compensation owner rejection retained safe context"
+        "payment checkout compensation owner rejection retained bounded diagnostics"
     );
 }
 
@@ -860,14 +1057,13 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_checkout_payment_compensation_owner_warning(
             context,
             owner_operation,
             "parse_tenant_context",
             "payment.tenant_id_invalid",
             "payment checkout compensation tenant context is invalid",
-            &error,
         );
         PortError::validation(
             "payment.tenant_id_invalid",
@@ -882,8 +1078,11 @@ fn manual_reconciliation(
     internal_message: &'static str,
 ) -> PortError {
     let context_facts = checkout_payment_compensation_owner_context_facts(context);
+    let reconciliation_reason_present = !internal_message.trim().is_empty();
+    let reconciliation_reason_length = internal_message.chars().count();
     tracing::error!(
-        internal_message,
+        reconciliation_reason_present,
+        reconciliation_reason_length,
         owner = PAYMENT_OWNER,
         operation = owner_operation,
         local_operation = "require_manual_reconciliation",
@@ -937,7 +1136,7 @@ fn payment_error_to_port_error(
     error: PaymentError,
 ) -> PortError {
     let code = stable_payment_error_code(&error);
-    log_checkout_payment_compensation_owner_error(
+    log_checkout_payment_compensation_payment_error(
         context,
         owner_operation,
         "map_payment_owner_error",

@@ -4,9 +4,27 @@
   "owner": "rustok_payment",
   "operation": "compensate_checkout_payment",
   "source_contract": {
+    "owner_error_site_count": 8,
+    "payment_error_site_count": 5,
+    "codec_error_site_count": 3,
+    "tenant_parse_site_count": 1,
+    "manual_reconciliation_call_site_count": 17,
     "owner_context_shape_logged": true,
     "correlation_id_logged": true,
-    "original_internal_error_private": true,
+    "complete_internal_error_logged": false,
+    "payment_error_text_logged": false,
+    "payment_error_uuid_value_logged": false,
+    "payment_error_opaque_payload_logged": false,
+    "payment_error_variant_logged": true,
+    "payment_error_aggregate_text_shape_logged": true,
+    "payment_error_aggregate_uuid_shape_logged": true,
+    "payment_error_opaque_payload_presence_logged": true,
+    "codec_error_text_logged": false,
+    "static_codec_failure_kind_logged": true,
+    "tenant_parse_error_text_logged": false,
+    "tenant_parse_failure_flag_logged": true,
+    "manual_reconciliation_reason_text_logged": false,
+    "manual_reconciliation_reason_shape_logged": true,
     "stable_diagnostic_codes_preserved": true,
     "raw_tenant_id_logged_by_owner": false,
     "raw_actor_id_logged_by_owner": false,
@@ -35,6 +53,8 @@
     "local_cancellation_policy_changed": false,
     "manual_reconciliation_envelope_changed": false,
     "payment_error_mapping_changed": false,
+    "persistent_owner_diagnostic_cleanup_complete": true,
+    "checkout_compensation_payload_diagnostic_cleanup_closed": true,
     "broad_ecommerce_cleanup_closed": false
   },
   "validation": {
@@ -50,5 +70,13 @@
     "remote_port_proven": false,
     "mounted_runtime_proven": false,
     "production_behavior_proven": false
-  }
+  },
+  "notes": [
+    "Five PaymentError diagnostics retain only a stable variant plus aggregate text, UUID, and opaque-payload shape facts.",
+    "Provider request encoding, provider result encoding, and persisted-result decoding diagnostics retain only static failure kinds.",
+    "Tenant UUID parsing emits only a failure flag and bounded context shape.",
+    "Manual reconciliation records only internal-reason presence and character length; the public conflict envelope is unchanged.",
+    "The wrapper and persistent owner payload-diagnostic sites are source-closed but unvalidated.",
+    "The broad ecommerce mapper and non-PortError envelope cleanup remains open."
+  ]
 }

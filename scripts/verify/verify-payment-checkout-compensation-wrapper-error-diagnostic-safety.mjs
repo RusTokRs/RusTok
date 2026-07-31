@@ -50,17 +50,25 @@ function functionBody(source, functionName) {
 
 const paths = {
   source: "crates/rustok-payment/src/checkout_compensation_context.rs",
+  owner: "crates/rustok-payment/src/checkout_compensation.rs",
   evidence:
     "crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json",
   review:
     "crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json",
+  ownerEvidence:
+    "crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json",
+  ownerReview:
+    "crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json",
   doc: "crates/rustok-payment/docs/checkout-compensation-local-context.md",
   plan: "crates/rustok-commerce/docs/implementation-plan.md",
 };
 
 const source = read(paths.source);
+const owner = read(paths.owner);
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
+const ownerEvidence = JSON.parse(read(paths.ownerEvidence));
+const ownerReview = JSON.parse(read(paths.ownerReview));
 const doc = read(paths.doc);
 const plan = read(paths.plan);
 const helper = functionBody(source, "checkout_payment_compensation_port_error_facts");
@@ -72,9 +80,7 @@ for (const marker of [
   "message_present: bool",
   "message_length: usize",
   "fn checkout_payment_compensation_port_error_facts(",
-]) {
-  requireText(source, marker, `${paths.source}: error fact model`);
-}
+]) requireText(source, marker, `${paths.source}: error fact model`);
 
 for (const [variant, label] of [
   ["Validation", "validation"],
@@ -94,12 +100,9 @@ for (const [variant, label] of [
 for (const marker of [
   "message_present: !error.message.trim().is_empty()",
   "message_length: error.message.chars().count()",
-]) {
-  requireText(helper, marker, `${paths.source}: message shape`);
-}
-for (const forbidden of ["format!(", ".to_string()", "message_text", "debug_error"]) {
+]) requireText(helper, marker, `${paths.source}: message shape`);
+for (const forbidden of ["format!(", ".to_string()", "message_text", "debug_error"])
   forbidText(helper, forbidden, `${paths.source}: fact payload values`);
-}
 
 for (const marker of [
   "checkout_payment_compensation_local_operation(error.code.as_str())",
@@ -116,9 +119,7 @@ for (const marker of [
   "retryable = error.retryable",
   "boundary = PAYMENT_COMPENSATION_BOUNDARY",
   "\n    error\n}",
-]) {
-  requireText(mapper, marker, `${paths.source}: wrapper mapper`);
-}
+]) requireText(mapper, marker, `${paths.source}: wrapper mapper`);
 
 requireCount(mapper, "error_message_present = error_facts.message_present", 2, "two message presence fields");
 requireCount(mapper, "error_message_length = error_facts.message_length", 2, "two message length fields");
@@ -134,9 +135,7 @@ for (const forbidden of [
   "error_kind = %error.kind",
   "format!(\"{error",
   "error.to_string()",
-]) {
-  forbidText(mapper, forbidden, `${paths.source}: complete PortError payload`);
-}
+]) forbidText(mapper, forbidden, `${paths.source}: complete PortError payload`);
 
 for (const marker of [
   "tenant_id_length = context_facts.tenant_id_length",
@@ -146,16 +145,12 @@ for (const marker of [
   "reason_length = ?facts.reason_length",
   "metadata_kind = facts.metadata_kind",
   "correlation_id = %context.correlation_id",
-]) {
-  requireText(mapper, marker, `${paths.source}: retained safe context`);
-}
+]) requireText(mapper, marker, `${paths.source}: retained safe context`);
 
 if (
   evidence.status !==
   "payment_checkout_compensation_wrapper_diagnostic_safety_source_unvalidated"
-) {
-  failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
-}
+) failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
 for (const [key, expected] of Object.entries({
   stable_code_only_local_classification: true,
   human_message_control_flow: false,
@@ -175,8 +170,9 @@ for (const [key, expected] of Object.entries({
   local_operation_mapping_changed: false,
   owner_delegation_changed: false,
   request_response_dto_changed: false,
-  persistent_owner_source_changed: false,
-  persistent_owner_diagnostic_cleanup_complete: false,
+  persistent_owner_source_changed: true,
+  persistent_owner_diagnostic_cleanup_complete: true,
+  checkout_compensation_payload_diagnostic_cleanup_closed: true,
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -204,9 +200,7 @@ for (const key of [
 if (
   review.status !==
   "payment_checkout_compensation_wrapper_diagnostic_safety_source_reviewed_unvalidated"
-) {
-  failures.push(`${paths.review}: unexpected status ${review.status}`);
-}
+) failures.push(`${paths.review}: unexpected status ${review.status}`);
 for (const [key, expected] of Object.entries({
   same_port_error_returned: true,
   complete_port_error_logging_removed: true,
@@ -215,9 +209,11 @@ for (const [key, expected] of Object.entries({
   error_message_shape_logged: true,
   severity_classification_preserved: true,
   local_operation_mapping_preserved: true,
-  persistent_owner_source_unchanged: true,
-  persistent_owner_diagnostic_cleanup_complete: false,
+  persistent_owner_source_unchanged: false,
+  persistent_owner_diagnostic_cleanup_complete: true,
+  checkout_compensation_payload_diagnostic_cleanup_closed: true,
   focused_wrapper_guard_added: true,
+  focused_owner_guard_added: true,
   runtime_evidence_claimed: false,
 })) {
   if (review.review_findings?.[key] !== expected) {
@@ -225,15 +221,40 @@ for (const [key, expected] of Object.entries({
   }
 }
 
+if (ownerEvidence.source_contract?.persistent_owner_diagnostic_cleanup_complete !== true) {
+  failures.push(`${paths.ownerEvidence}: owner diagnostic cleanup must be complete`);
+}
+if (ownerEvidence.source_contract?.checkout_compensation_payload_diagnostic_cleanup_closed !== true) {
+  failures.push(`${paths.ownerEvidence}: compensation payload diagnostics must be source-closed`);
+}
+if (ownerReview.review_findings?.focused_owner_guard_added !== true) {
+  failures.push(`${paths.ownerReview}: focused owner guard must be recorded`);
+}
+
+for (const forbidden of [
+  "error = ?error",
+  "error = %error",
+  "error = ?checkpoint_error",
+  "error = %checkpoint_error",
+  "\n        internal_message,\n",
+]) forbidText(owner, forbidden, `${paths.owner}: companion owner payload logging`);
+for (const marker of [
+  "payment_error_variant = ?payment_error_variant",
+  "CheckoutPaymentCompensationOwnerFailureKind::ProviderRequestEncoding",
+  "CheckoutPaymentCompensationOwnerFailureKind::ProviderResultEncoding",
+  "CheckoutPaymentCompensationOwnerFailureKind::ProviderResultDecoding",
+  "tenant_id_parse_failed = true",
+  "reconciliation_reason_present,",
+  "reconciliation_reason_length,",
+]) requireText(owner, marker, `${paths.owner}: companion owner bounded facts`);
+
 for (const marker of [
   "Status: **source-ready / unvalidated**",
-  "They no longer record the complete `PortError`",
+  "They do not record the complete `PortError`",
   "The same original `PortError` is returned",
-  "Persistent owner payload-shape cleanup remains open.",
+  "payload-diagnostic sites at source level",
   "No FBA or FFA status is promoted from source inspection.",
-]) {
-  requireText(doc, marker, `${paths.doc}: wrapper error policy`);
-}
+]) requireText(doc, marker, `${paths.doc}: wrapper error policy`);
 requireText(
   plan,
   "Finish correlation-safe mapper cleanup for order, payment execution/compensation,",
@@ -249,5 +270,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Payment checkout compensation wrapper diagnostics retain only stable PortError kind and message shape while returning the same public error; owner payload cleanup remains open",
+  "Payment checkout compensation wrapper diagnostics retain only stable PortError kind and message shape while the companion owner payload diagnostics are source-closed; execution validation remains open",
 );
