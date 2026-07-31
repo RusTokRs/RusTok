@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "comments_http_port_injection",
+  "role": "consumer",
+  "provider": "comments",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "source_contract": {
+    "http_runtime": "crates/rustok-blog/src/controllers/mod.rs",
+    "moderation_controller": "crates/rustok-blog/src/controllers/comments.rs",
+    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
+    "consumer_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+  },
+  "profiles": {
+    "source_verified": [
+      "in_process_fallback",
+      "host_injected_port_selection"
+    ],
+    "pending": [
+      "remote_transport_implementation"
+    ]
+  },
+  "composition": {
+    "host_context": "rustok_api::HostRuntimeContext",
+    "shared_value": "Arc<dyn CommentsThreadPort>",
+    "lookup": "HostRuntimeContext::shared_get",
+    "selector": "BlogHttpRuntime::comment_service",
+    "injected_constructor": "CommentService::with_comments_thread_port",
+    "fallback_constructor": "CommentService::new",
+    "http_operation": "moderate_comment"
+  },
+  "harness": {
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "source": "crates/rustok-blog/src/controllers/mod.rs",
+    "test": "controllers::tests::blog_http_runtime_exposes_comments_port_selection",
+    "command": "cargo test -p rustok-blog --lib controllers::tests::blog_http_runtime_exposes_comments_port_selection -- --exact"
+  },
+  "non_claims": [
+    "no remote network transport is implemented",
+    "no Rust or JavaScript test was run",
+    "no compile, database, browser, workflow, CI, or production result is recorded",
+    "GraphQL and native SSR composition remain separate pending slices"
+  ]
+}
