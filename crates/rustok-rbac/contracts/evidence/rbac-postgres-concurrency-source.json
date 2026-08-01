@@ -13,6 +13,7 @@
     "admin_url_env": "RUSTOK_MIGRATION_SMOKE_ADMIN_URL",
     "full_workspace_migrator": true,
     "two_independent_database_connections": true,
+    "barrier_synchronized_starts": true,
     "ignored_by_default": true
   },
   "scenarios": {
