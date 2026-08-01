@@ -16,6 +16,9 @@ use crate::dto::{
 use crate::entities::{forum_topic, forum_topic_subscription};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
+use crate::services::topic_subscription_lock::{
+    lock_active_topic_subscription_write_in_tx, lock_topic_subscription_scopes_in_tx,
+};
 use crate::subscription::ForumSubscriptionLevel;
 
 use super::SubscriptionService;
@@ -110,9 +113,10 @@ impl SubscriptionService {
     ) -> ForumResult<ForumSubscriptionResponse> {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_topic(tenant_id, topic_id).await?;
         let preferences = resolve_preferences(&input);
         let txn = self.db.begin().await?;
+        lock_active_topic_subscription_write_in_tx(&txn, tenant_id, topic_id).await?;
+        lock_topic_subscription_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let existing = forum_topic_subscription::Entity::find()
             .filter(forum_topic_subscription::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_subscription::Column::TopicId.eq(topic_id))

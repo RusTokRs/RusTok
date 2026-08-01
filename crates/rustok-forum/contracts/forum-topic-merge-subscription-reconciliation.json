@@ -1,0 +1,97 @@
+{
+  "contract": "forum_topic_merge_subscription_reconciliation_v1",
+  "task": "FORUM-21C",
+  "parent_task": "FORUM-21",
+  "depends_on": "FORUM-21B",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution",
+  "scope": "bounded_post_merge_topic_subscription_union",
+  "owner_service": "ForumTopicMergeSubscriptionReconciliationService",
+  "input": "ReconcileForumTopicMergeSubscriptionsInput",
+  "result": "ForumTopicMergeSubscriptionReconciliationResult",
+  "migration": "m20260801_000011_add_forum_topic_merge_subscription_reconciliations",
+  "receipt_table": "forum_topic_merge_subscription_reconciliations",
+  "source_merge_receipt_table": "forum_topic_merge_operations",
+  "semantic_event": {
+    "journal": "forum_domain_events",
+    "event_type": "forum.topic.merge_subscriptions_reconciled",
+    "schema_version": 1,
+    "aggregate_is_retained_target": true,
+    "event_id_equals_operation_id": true,
+    "shared_rustok_events_contract_changed": false
+  },
+  "existing_subscription_event": {
+    "event_type": "forum.subscription.changed.v1",
+    "emitted_by_existing_table_triggers": true,
+    "same_owner_transaction": true
+  },
+  "required_permissions": [
+    "forum_topics:manage"
+  ],
+  "bounds": {
+    "reason_max_characters": 500,
+    "source_subscription_rows_max": 500,
+    "one_merge_receipt_per_reconciliation": true,
+    "one_reconciliation_per_merge_receipt": true
+  },
+  "target_authority_policy": {
+    "source_only": "move_row_to_target_preserving_delivery_state_last_notified_and_created_at_while_incrementing_revision_once_and_refreshing_updated_at",
+    "equal_source_and_target_delivery_state": "delete_source_and_preserve_target",
+    "different_source_and_target_delivery_state": "delete_source_and_preserve_target_without_combining_or_escalating_preferences",
+    "target_only": "unchanged",
+    "source_after_reconciliation": "zero_rows"
+  },
+  "transactional_invariants": [
+    "the command requires non-nil tenant reconciliation operation merge operation and human actor identities",
+    "the normalized reason is non-empty bounded to 500 characters and contains no control characters",
+    "reconciliations are serialized per tenant before immutable reconciliation receipt lookup",
+    "an exact existing reconciliation receipt is resolved before current merge or subscription state",
+    "reusing a reconciliation operation identifier with a different merge actor or reason fails with FORUM_TOPIC_MERGE_SUBSCRIPTION_RECONCILIATION_CONFLICT",
+    "one merge receipt may have at most one reconciliation receipt",
+    "the referenced immutable FORUM-21B merge receipt and its forum.topic.merged semantic event must match exactly",
+    "source and target topic rows are locked in deterministic UUID order before sorted per-topic subscription scopes",
+    "the source must be the archived locked merge tombstone and the retained target must remain non-archived in the recorded category",
+    "the source subscription set is bounded to at most 500 rows and ordered by user identity",
+    "source-only rows move by primary-key topic replacement preserving delivery state last-notified and creation time while advancing revision exactly once and refreshing updated_at",
+    "when both rows exist the target row remains byte-semantic authority and only the source row is deleted",
+    "equal delivery states and differing delivery states are counted separately without merging notification preferences",
+    "the source has zero topic subscription rows before event and receipt insertion",
+    "semantic event receipt row moves deletions existing subscription change events and lock-protected subscription state commit in one transaction",
+    "exact replay locks source and target subscription scopes and creates no additional event receipt movement deletion or preference mutation"
+  ],
+  "ordinary_write_hardening": [
+    "topic subscription writes lock the non-deleted topic row before the per-topic subscription scope",
+    "topic subscription writes reject archived topics",
+    "PostgreSQL service and database mutation paths share deterministic advisory subscription scopes while SQLite uses durable lock rows plus writer serialization",
+    "service writes auto-subscribe triggers and direct PostgreSQL mutations cannot race source-only movement into the same target user key"
+  ],
+  "database_guards": [
+    "tenant-composite foreign keys bind reconciliation to merge receipt source target and actor",
+    "one tenant merge operation has at most one reconciliation receipt",
+    "operation event merge source target and actor identities are non-nil",
+    "source and target topics differ and event_id equals operation_id",
+    "reason and all classified counts are bounded",
+    "source count equals moved plus equal-deduplicated plus target-authority-conflict counts",
+    "topic subscription inserts and updates targeting archived topics are rejected for PostgreSQL and SQLite",
+    "reconciliation receipt updates and deletes are rejected for PostgreSQL and SQLite"
+  ],
+  "test": "crates/rustok-forum/tests/topic_merge_subscription_reconciliation_sqlite.rs",
+  "verifier": "scripts/verify/verify-forum-topic-merge-subscription-reconciliation.mjs",
+  "documentation": "crates/rustok-forum/docs/forum-21c-topic-merge-subscription-reconciliation.md",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-merge-subscription-reconciliation.mjs",
+    "cargo test -p rustok-forum --test topic_merge_subscription_reconciliation_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
+    "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution",
+    "this slice does not add public REST GraphQL native admin or storefront reconciliation transport",
+    "this slice does not add canonical aliases redirects or route tombstones",
+    "this slice does not remap topic read state tags votes or topic-level audience relations",
+    "this slice does not change category subscriptions notification fan-out or delivery providers",
+    "this slice does not support cross-category merge split fork or reply-range operations",
+    "this slice does not provide PostgreSQL concurrency runtime evidence",
+    "this slice is not sufficient to mark FORUM-21 done"
+  ]
+}
