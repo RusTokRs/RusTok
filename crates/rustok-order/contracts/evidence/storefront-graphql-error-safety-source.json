@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "order_storefront_graphql_error_safety_source_unvalidated",
-  "scope": "order-owned storefront GraphQL checkout completion transport",
+  "scope": "order-owned storefront GraphQL checkout completion public and diagnostic transport boundary",
   "covered_operations": [
     "complete_storefront_checkout"
   ],
@@ -23,17 +23,41 @@
     "unknown_static_public_envelope": true,
     "correlation_logging": true,
     "safe_request_shape_logging": true,
+    "raw_graphql_detail_logged": false,
+    "parsed_graphql_error_debug_logged": false,
+    "raw_graphql_detail_shape_logged": true,
+    "typed_parse_validity_logged": true,
+    "closed_graphql_error_category_logged": true,
     "raw_cart_id_logged": false,
     "raw_idempotency_key_logged": false,
     "raw_tenant_slug_logged": false,
     "raw_command_metadata_logged": false,
     "raw_graphql_error_public": false,
-    "non_graphql_errors_pass_through": true
+    "non_graphql_errors_pass_through": true,
+    "broad_ecommerce_cleanup_closed": false
   },
   "stable_public_messages": {
     "network_or_http": "Checkout completion is temporarily unavailable",
     "unauthorized": "Checkout authentication is required",
     "graphql_rejection_or_unknown": "Checkout request could not be completed"
+  },
+  "internal_diagnostics": {
+    "raw_graphql_error": false,
+    "parsed_graphql_error_debug": false,
+    "raw_graphql_error_present": true,
+    "raw_graphql_error_length": true,
+    "parsed_graphql_error_valid": true,
+    "closed_graphql_error_category": true,
+    "owner_operation": true,
+    "correlation_id": true,
+    "tenant_slug_value": false,
+    "tenant_slug_configured_and_length": true,
+    "cart_id_value": false,
+    "cart_id_length": true,
+    "idempotency_key_value": false,
+    "idempotency_key_length": true,
+    "command_metadata": false,
+    "create_fulfillment_policy": true
   },
   "suggested_execution": [
     "node scripts/verify/verify-order-storefront-graphql-error-safety.mjs",
