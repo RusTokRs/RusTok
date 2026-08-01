@@ -78,7 +78,11 @@ mod tests {
             None
         );
         assert_eq!(
-            AuthPrincipalKind::from_authenticated_facts("direct", Some(Uuid::new_v4()), Uuid::new_v4()),
+            AuthPrincipalKind::from_authenticated_facts(
+                "direct",
+                Some(Uuid::new_v4()),
+                Uuid::new_v4(),
+            ),
             None
         );
     }
