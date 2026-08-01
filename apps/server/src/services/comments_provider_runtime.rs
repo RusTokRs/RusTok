@@ -30,6 +30,10 @@ mod keyring_schedule_persistence {
     include!("comments_provider_runtime_keyring_schedule_persistence.rs");
 }
 
+mod keyring_schedule_persistence_postgres {
+    include!("comments_provider_runtime_keyring_schedule_persistence_postgres.rs");
+}
+
 mod keyring_schedule_persisted_trigger {
     include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
 }
@@ -92,6 +96,11 @@ pub use keyring_schedule_persistence::{
     CommentsTcpDelegationSchedulePersistenceStore,
     CommentsTcpDelegationSchedulePersistenceStoreError,
     SharedCommentsTcpDelegationSchedulePersistenceStore,
+};
+pub use keyring_schedule_persistence_postgres::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE,
+    PostgresCommentsTcpDelegationSchedulePersistenceStore,
 };
 pub use keyring_schedule_persisted_trigger::{
     CommentsTcpDelegationPersistedScheduleAuditOutcome,
