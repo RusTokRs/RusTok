@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, time::Duration};
 
 use async_trait::async_trait;
-use rustok_api::PortError;
+use rustok_api::{PortActorKind, PortError};
 use tokio::{net::TcpStream, time::timeout};
 
 use crate::{
@@ -21,9 +21,9 @@ pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;
 ///
 /// Each operation opens one connection, wraps the typed request in a versioned
 /// credential envelope, applies the port deadline to preparation and the complete
-/// exchange, and closes the connection after one typed reply. Reads use the
-/// configured service bearer. Owner writes use a short-lived signed user
-/// delegation when a signer is configured.
+/// exchange, and closes the connection after one typed reply. Reads and the
+/// host-owned system moderation path use the configured service bearer. User-
+/// owned writes use a short-lived signed delegation when a signer is configured.
 #[derive(Clone, Debug)]
 pub struct TcpJsonCommentsTransport {
     endpoint: SocketAddr,
@@ -169,7 +169,9 @@ impl TcpJsonCommentsTransport {
         request: CommentsThreadRequest,
     ) -> Result<CommentsThreadResponse, PortError> {
         let operation = CommentsTcpOperation::for_request(&request);
-        let envelope = if operation.is_write() {
+        let service_moderation = operation == CommentsTcpOperation::SetCommentStatus
+            && request.context().actor.kind == PortActorKind::System;
+        let envelope = if operation.is_write() && !service_moderation {
             match self.delegation_signer.as_ref() {
                 Some(signer) => {
                     let credential = signer.credential_for(&request)?;
