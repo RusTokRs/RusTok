@@ -1,10 +1,11 @@
 use std::{collections::HashSet, fmt, net::SocketAddr};
 
 use async_trait::async_trait;
-use rustok_api::{PortActor, PortContext, PortError};
+use rustok_api::{
+    PortActor, PortContext, PortError, SHA256_DIGEST_BYTES, fixed_work_sha256_eq,
+    sha256_digest,
+};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use subtle::ConstantTimeEq;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -16,18 +17,17 @@ use crate::CommentsThreadRequest;
 pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;
 
 const MAX_BEARER_TOKEN_BYTES: usize = 4_096;
-const AUTHORIZATION_DIGEST_BYTES: usize = 32;
 const BEARER_SCHEME: &str = "bearer";
 const BEARER_PREFIX: &[u8] = b"Bearer ";
 
 /// Deployment-provided credential for the Comments TCP boundary.
 ///
 /// The original token remains private, its `Debug` representation is always
-/// redacted, and comparisons are performed through a fixed-size SHA-256 digest.
+/// redacted, and comparisons are performed through fixed-size SHA-256 digests.
 #[derive(Clone, Eq, PartialEq)]
 pub struct CommentsTcpBearerToken {
     secret: String,
-    authorization_digest: [u8; AUTHORIZATION_DIGEST_BYTES],
+    authorization_digest: [u8; SHA256_DIGEST_BYTES],
 }
 
 impl CommentsTcpBearerToken {
@@ -56,7 +56,7 @@ impl CommentsTcpBearerToken {
         }
 
         let candidate_digest = bearer_authorization_digest(credential.token.as_bytes());
-        bool::from(self.authorization_digest.ct_eq(&candidate_digest))
+        fixed_work_sha256_eq(&self.authorization_digest, &candidate_digest)
     }
 }
 
@@ -279,14 +279,8 @@ fn is_canonical_uuid(value: &str) -> bool {
     Uuid::parse_str(value).is_ok_and(|parsed| parsed.to_string() == value)
 }
 
-fn bearer_authorization_digest(secret: &[u8]) -> [u8; AUTHORIZATION_DIGEST_BYTES] {
-    let mut hasher = Sha256::new();
-    hasher.update(BEARER_PREFIX);
-    hasher.update(secret);
-    let digest = hasher.finalize();
-    let mut output = [0_u8; AUTHORIZATION_DIGEST_BYTES];
-    output.copy_from_slice(&digest);
-    output
+fn bearer_authorization_digest(secret: &[u8]) -> [u8; SHA256_DIGEST_BYTES] {
+    sha256_digest(&[BEARER_PREFIX, secret])
 }
 
 fn authentication_failed() -> PortError {
