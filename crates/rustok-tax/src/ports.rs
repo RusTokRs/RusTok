@@ -109,6 +109,18 @@ fn tax_calculation_context_facts(context: &PortContext) -> TaxCalculationContext
     }
 }
 
+fn tax_port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    }
+}
+
 fn require_tax_calculation_policy(
     context: &PortContext,
     owner_operation: &'static str,
@@ -129,7 +141,6 @@ fn log_tax_calculation_policy_rejection(
     match &error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
             tracing::error!(
-                error = ?error,
                 owner = "rustok_tax",
                 correlation_id = %context.correlation_id,
                 tenant_id_length = facts.tenant_id_length,
@@ -149,15 +160,16 @@ fn log_tax_calculation_policy_rejection(
                 deadline_ms = ?facts.deadline_ms,
                 operation = owner_operation,
                 code = %error.code,
-                error_kind = ?error.kind,
+                error_kind = tax_port_error_kind(&error.kind),
+                error_message_present = !error.message.is_empty(),
+                error_message_length = error.message.chars().count(),
                 retryable = error.retryable,
                 boundary = TAX_CALCULATION_PORT_BOUNDARY,
-                "tax calculation policy admission failed"
+                "tax calculation policy admission failed with bounded diagnostics"
             );
         }
         _ => {
             tracing::warn!(
-                error = ?error,
                 owner = "rustok_tax",
                 correlation_id = %context.correlation_id,
                 tenant_id_length = facts.tenant_id_length,
@@ -177,10 +189,12 @@ fn log_tax_calculation_policy_rejection(
                 deadline_ms = ?facts.deadline_ms,
                 operation = owner_operation,
                 code = %error.code,
-                error_kind = ?error.kind,
+                error_kind = tax_port_error_kind(&error.kind),
+                error_message_present = !error.message.is_empty(),
+                error_message_length = error.message.chars().count(),
                 retryable = error.retryable,
                 boundary = TAX_CALCULATION_PORT_BOUNDARY,
-                "tax calculation policy admission was rejected"
+                "tax calculation policy admission was rejected with bounded diagnostics"
             );
         }
     }
