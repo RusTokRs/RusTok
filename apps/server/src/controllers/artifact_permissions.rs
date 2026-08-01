@@ -118,11 +118,21 @@ async fn assign(
 }
 
 fn ensure_artifact_permission_control_plane(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
+    let kind = auth.validated_principal_kind().map_err(|error| {
+        tracing::warn!(
+            reason = %error,
+            code = "rbac.artifact_permission_principal_invalid",
+            "Rejected artifact permission control-plane request with invalid principal facts"
+        );
+        http_error(rustok_web::HttpError::forbidden(
+            "forbidden",
+            "RBAC control-plane principal is not eligible",
+        ))
+    })?;
     let principal = RbacControlPlanePrincipal {
         tenant_id: auth.tenant_id,
         session_id: auth.session_id,
-        client_id: auth.client_id,
-        grant_type: &auth.grant_type,
+        kind,
     };
     require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
         http_error(rustok_web::HttpError::forbidden(
@@ -223,6 +233,20 @@ mod tests {
 
             assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
         }
+    }
+
+    #[test]
+    fn malformed_principal_facts_are_denied_before_permission_admission() {
+        let tenant_id = Uuid::new_v4();
+        let auth = auth_context(
+            tenant_id,
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            "direct",
+            vec![Permission::MODULES_MANAGE],
+        );
+
+        assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
     }
 
     #[test]

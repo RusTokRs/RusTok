@@ -52,11 +52,21 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
                     "RBAC tenant context is temporarily unavailable",
                 )
             })?;
+        let kind = auth.validated_principal_kind().map_err(|error| {
+            tracing::warn!(
+                reason = %error,
+                auth_tenant_id = %auth.tenant_id,
+                resolved_tenant_id = %tenant.id,
+                code = "rbac.admin_principal_invalid",
+                boundary = RBAC_ADMIN_BOUNDARY,
+                "RBAC admin bootstrap authenticated principal facts are invalid"
+            );
+            ServerFnError::new("RBAC admin access is denied")
+        })?;
         let principal = RbacControlPlanePrincipal {
             tenant_id: auth.tenant_id,
             session_id: auth.session_id,
-            client_id: auth.client_id,
-            grant_type: &auth.grant_type,
+            kind,
         };
         require_direct_control_plane_user(principal, tenant.id).map_err(|error| {
             tracing::warn!(

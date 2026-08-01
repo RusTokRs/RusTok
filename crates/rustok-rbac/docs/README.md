@@ -23,6 +23,12 @@ documentation for this module must live inside the crate, not spread across
 - `apps/server` owns only the adapter/wiring layer: store adapters, cache integration, transport extractors and observability;
 - GraphQL role query/mutation/types live in `rustok-rbac`; `apps/server` only composes roots and passes adapter role records to runtime persistence;
 - `rustok-core` remains the owner of typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
+- `rustok-api::AuthPrincipalKind` is the shared typed principal classification for
+  direct users, OAuth-delegated users and service principals. During the current
+  migration, `AuthContext::validated_principal_kind` is the only allowed
+  fail-closed classifier for legacy grant/session/client facts. RBAC owner policy
+  and REST, GraphQL and native adapters consume the enum and must not reinterpret
+  those facts independently;
 - live authorization goes only through tenant policy evaluation, without a relation-only/shadow parity path;
 - `RbacPermissionDecisionPort` resolves its tenant/user decision through the
   authoritative `PermissionResolver`; request claims are not used as an
@@ -154,6 +160,8 @@ durable generation and recovery action is still an open P1 in the implementation
 
 - `cargo xtask module validate rbac`
 - `cargo xtask module test rbac`
+- `cargo test -p rustok-api context::principal`
+- `cargo test -p rustok-server --test rbac_explicit_actor_kind_guard`
 - `cargo test -p rustok-telemetry rbac_invalidation_metrics`
 - `cargo test -p rustok-server --lib rbac_invalidation_generation`
 - `node scripts/verify/verify-rbac-invalidation-observability.mjs`

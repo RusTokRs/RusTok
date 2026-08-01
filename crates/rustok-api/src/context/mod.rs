@@ -7,6 +7,7 @@ mod host_authority;
 mod oauth_scope;
 #[cfg(feature = "server")]
 mod principal;
+mod principal_kind;
 #[cfg(feature = "server")]
 mod tenant;
 
@@ -27,6 +28,9 @@ pub use host_authority::{
 };
 #[cfg(feature = "server")]
 pub use oauth_scope::scope_matches;
+#[cfg(feature = "server")]
+pub use principal::AuthPrincipalKindError;
+pub use principal_kind::AuthPrincipalKind;
 #[cfg(feature = "server")]
 pub use tenant::{
     OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension, TenantError,

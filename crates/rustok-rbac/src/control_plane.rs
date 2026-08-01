@@ -1,13 +1,17 @@
+use rustok_api::AuthPrincipalKind;
 use thiserror::Error;
 use uuid::Uuid;
 
 /// Host-neutral authenticated facts required by the RBAC control-plane policy.
+///
+/// The host supplies one already validated principal kind from the shared
+/// authorization context. RBAC does not reinterpret grant strings, client ids,
+/// or OAuth subject shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RbacControlPlanePrincipal<'a> {
+pub struct RbacControlPlanePrincipal {
     pub tenant_id: Uuid,
     pub session_id: Uuid,
-    pub client_id: Option<Uuid>,
-    pub grant_type: &'a str,
+    pub kind: AuthPrincipalKind,
 }
 
 /// Fail-closed admission errors for tenant-scoped RBAC control-plane operations.
@@ -22,17 +26,14 @@ pub enum RbacControlPlaneAdmissionError {
 /// Require a direct, session-bound user whose authenticated tenant matches the
 /// routed tenant before any RBAC role or permission control-plane admission.
 ///
-/// OAuth authorization-code and client-credentials principals remain valid for
-/// data-plane operations admitted by their effective permissions, but they are
-/// not allowed to mutate RBAC control-plane state.
+/// OAuth delegated users and service principals remain valid for data-plane
+/// operations admitted by their effective permissions, but they are not allowed
+/// to mutate or inspect RBAC control-plane state.
 pub fn require_direct_control_plane_user(
-    principal: RbacControlPlanePrincipal<'_>,
+    principal: RbacControlPlanePrincipal,
     tenant_id: Uuid,
 ) -> Result<(), RbacControlPlaneAdmissionError> {
-    if principal.client_id.is_some()
-        || principal.grant_type != "direct"
-        || principal.session_id.is_nil()
-    {
+    if principal.kind != AuthPrincipalKind::DirectUser || principal.session_id.is_nil() {
         return Err(RbacControlPlaneAdmissionError::DirectSessionRequired);
     }
 
@@ -50,21 +51,23 @@ mod tests {
     fn principal(
         tenant_id: Uuid,
         session_id: Uuid,
-        client_id: Option<Uuid>,
-        grant_type: &str,
-    ) -> RbacControlPlanePrincipal<'_> {
+        kind: AuthPrincipalKind,
+    ) -> RbacControlPlanePrincipal {
         RbacControlPlanePrincipal {
             tenant_id,
             session_id,
-            client_id,
-            grant_type,
+            kind,
         }
     }
 
     #[test]
     fn direct_session_bound_user_is_allowed_for_matching_tenant() {
         let tenant_id = Uuid::new_v4();
-        let principal = principal(tenant_id, Uuid::new_v4(), None, "direct");
+        let principal = principal(
+            tenant_id,
+            Uuid::new_v4(),
+            AuthPrincipalKind::DirectUser,
+        );
 
         assert_eq!(
             require_direct_control_plane_user(principal, tenant_id),
@@ -73,15 +76,13 @@ mod tests {
     }
 
     #[test]
-    fn oauth_principals_are_denied_even_with_management_permission() {
-        for grant_type in ["authorization_code", "client_credentials"] {
+    fn delegated_and_service_principals_are_denied_even_with_a_session_value() {
+        for kind in [
+            AuthPrincipalKind::DelegatedUser,
+            AuthPrincipalKind::Service,
+        ] {
             let tenant_id = Uuid::new_v4();
-            let principal = principal(
-                tenant_id,
-                Uuid::nil(),
-                Some(Uuid::new_v4()),
-                grant_type,
-            );
+            let principal = principal(tenant_id, Uuid::new_v4(), kind);
 
             assert_eq!(
                 require_direct_control_plane_user(principal, tenant_id),
@@ -91,9 +92,9 @@ mod tests {
     }
 
     #[test]
-    fn malformed_direct_principal_without_session_is_denied() {
+    fn direct_principal_without_session_is_denied() {
         let tenant_id = Uuid::new_v4();
-        let principal = principal(tenant_id, Uuid::nil(), None, "direct");
+        let principal = principal(tenant_id, Uuid::nil(), AuthPrincipalKind::DirectUser);
 
         assert_eq!(
             require_direct_control_plane_user(principal, tenant_id),
@@ -103,7 +104,11 @@ mod tests {
 
     #[test]
     fn cross_tenant_context_is_denied() {
-        let principal = principal(Uuid::new_v4(), Uuid::new_v4(), None, "direct");
+        let principal = principal(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            AuthPrincipalKind::DirectUser,
+        );
 
         assert_eq!(
             require_direct_control_plane_user(principal, Uuid::new_v4()),
