@@ -14,6 +14,8 @@
     "host_runtime": "apps/server/src/services/comments_provider_runtime.rs",
     "provider_export": "crates/rustok-comments/src/lib.rs",
     "provider_manifest": "crates/rustok-comments/Cargo.toml",
+    "digest_helper": "crates/rustok-api/src/digest.rs",
+    "digest_export": "crates/rustok-api/src/lib.rs",
     "port": "rustok_comments::CommentsThreadPort",
     "request": "rustok_comments::CommentsThreadRequest"
   },
@@ -46,8 +48,18 @@
     "expected_value_shape": "Bearer <token>",
     "digest": "sha256",
     "digest_bytes": 32,
-    "constant_time_primitive": "subtle::ConstantTimeEq",
-    "candidate_length_leak_through_digest_comparison": false
+    "digest_function": "rustok_api::sha256_digest",
+    "fixed_work_digest_compare": "rustok_api::fixed_work_sha256_eq",
+    "digest_compare_early_return": false,
+    "digest_compare_length_dependent_loop": false,
+    "compiler_hardware_side_channel_audit": false,
+    "candidate_hash_work_depends_on_token_length": true
+  },
+  "dependency_contract": {
+    "rustok_comments_new_direct_dependencies": [],
+    "rustok_comments_manifest_restored_to_pre_slice_set": true,
+    "cargo_lock_package_entry_change_required": false,
+    "sha256_dependency_owner": "rustok-api"
   },
   "authority": {
     "resolver": "rustok_comments::CommentsTcpBearerAuthorityResolver",
@@ -73,6 +85,7 @@
     "listener_service_actor_environment": "RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID",
     "service_actor_kind": "service",
     "service_actor_uuid_required": true,
+    "service_actor_surrounding_whitespace_allowed": false,
     "built_in_claims": [
       "comments:manage"
     ],
@@ -113,6 +126,7 @@
     "credential_rotation",
     "replay_resistance",
     "secret_manager_loading",
+    "compiler_hardware_side_channel_audit",
     "retry_backoff",
     "in_process_tcp_runtime_parity",
     "listener_readiness_and_health",
@@ -125,6 +139,7 @@
     "no_non_loopback_safety",
     "no_replay_resistance",
     "no_rotation_or_revocation",
+    "no_separately_audited_constant_time_result",
     "no_compile_result",
     "no_rust_test_result",
     "no_javascript_verifier_result",
