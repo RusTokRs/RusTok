@@ -4,7 +4,10 @@
     "public_operation": "calculate_tax",
     "canonical_wrapper": "crates/rustok-tax/src/calculation_context.rs",
     "canonical_owner": "crates/rustok-tax/src/ports.rs",
-    "documentation": "crates/rustok-tax/docs/calculation-local-context.md",
+    "documentation": [
+      "crates/rustok-tax/docs/calculation-local-context.md",
+      "crates/rustok-tax/docs/calculation-port-policy-context.md"
+    ],
     "verifiers": [
       "scripts/verify/verify-tax-calculation-local-context.mjs",
       "scripts/verify/verify-tax-calculation-policy-context.mjs",
@@ -16,6 +19,12 @@
     "wrapper_safe_context_shape": true,
     "wrapper_safe_request_shape": true,
     "owner_safe_policy_context_shape": true,
+    "owner_policy_complete_port_error_logged": false,
+    "owner_policy_message_text_logged": false,
+    "owner_policy_debug_kind_logged": false,
+    "owner_policy_closed_kind_logged": true,
+    "owner_policy_message_shape_logged": true,
+    "owner_policy_error_return_changed": false,
     "owner_safe_validation_detail_shape": true,
     "owner_safe_result_detail_shape": true,
     "correlation_id_logged": true,

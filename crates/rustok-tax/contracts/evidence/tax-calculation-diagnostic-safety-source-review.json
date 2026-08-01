@@ -18,10 +18,16 @@
     "provider_selection_and_delegation_preserved": true,
     "result_validation_preserved": true,
     "all_public_port_errors_preserved": true,
+    "policy_admission_error_return_preserved": true,
     "wrapper_uses_stable_code_only": true,
     "wrapper_context_logs_safe_shape_only": true,
     "wrapper_request_logs_safe_shape_only": true,
     "owner_policy_logs_safe_shape_only": true,
+    "owner_policy_complete_port_error_removed": true,
+    "owner_policy_message_text_removed": true,
+    "owner_policy_debug_kind_removed": true,
+    "owner_policy_closed_kind_retained": true,
+    "owner_policy_message_shape_retained": true,
     "owner_validation_details_reduced_to_presence_and_length": true,
     "owner_result_details_reduced_to_presence_and_length": true,
     "raw_context_values_removed": true,
@@ -33,5 +39,5 @@
     "broad_cleanup_remains_open": true,
     "runtime_evidence_claimed": false
   },
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation were executed."
 }
