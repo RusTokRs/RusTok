@@ -8,7 +8,9 @@ use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::common::settings::RustokSettings;
 use rustok_server::models::_entities::user_roles;
 use rustok_server::models::{tenants, users};
-use rustok_server::services::rbac_invalidation_generation::start_rbac_invalidation_generation_watchdog;
+use rustok_server::services::rbac_invalidation_generation::{
+    start_rbac_invalidation_generation_watchdog,
+};
 use rustok_server::services::rbac_service::RbacService;
 use rustok_server::services::server_runtime_context::ServerRuntimeContext;
 use rustok_telemetry::rbac_invalidation_metrics::{
@@ -132,9 +134,10 @@ async fn missed_publication_incident_connects_decision_relations_cache_generatio
         .exec(&transaction)
         .await
         .expect("remove role relation inside owner transaction");
-    let durable_generation = rustok_rbac::reserve_permission_invalidation_generation(&transaction)
-        .await
-        .expect("reserve durable invalidation generation");
+    let durable_generation =
+        rustok_rbac::reserve_permission_invalidation_generation(&transaction)
+            .await
+            .expect("reserve durable invalidation generation");
     transaction
         .commit()
         .await
