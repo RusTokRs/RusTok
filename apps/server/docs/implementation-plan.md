@@ -96,10 +96,12 @@ metadata with one explicit shared principal kind:
 
 - `rustok-api::AuthPrincipalKind` is host-neutral and distinguishes direct user,
   OAuth delegated user and service principal;
-- HTTP/native middleware and GraphQL HTTP/WebSocket composition classify already
-  validated auth facts once and attach `AuthPrincipalContext`;
-- unknown or inconsistent grant/client/session shapes fail closed before request
-  data reaches module policy;
+- the access-token resolver validates the token and classifies the claims once,
+  storing the typed result on `CurrentUser`;
+- HTTP/native middleware and GraphQL HTTP/WebSocket composition only propagate
+  `CurrentUser.principal_kind` into `AuthPrincipalContext`;
+- unknown or inconsistent grant/client/session shapes fail closed in the auth
+  resolver before request data reaches module policy;
 - GraphQL role reads/writes, REST artifact-role permission writes and native
   RBAC Admin require typed principal context before effective permission checks;
 - only `DirectUser` with authenticated/routed tenant equality may enter RBAC
@@ -113,9 +115,9 @@ metadata with one explicit shared principal kind:
 - the owner crate remains independent of Axum and the `rustok-api/server` feature.
 
 The contract is documented in
-`crates/rustok-rbac/docs/explicit-principal-kind.md`. Same-SHA API/RBAC/Admin/
-server compilation, focused tests, source verifiers and live negative transport
-evidence remain required before this correction is verified.
+`crates/rustok-rbac/docs/explicit-principal-kind.md`. Same-SHA API/auth-resolver/
+RBAC/Admin/server compilation, focused tests, source verifiers and live negative
+transport evidence remain required before this correction is verified.
 
 The default `rustok-rbac` crate compiled on exact PR #2747 head
 `3cf4b3a44980ca257f7f53849e905673141db289` inside Rust-host workflow run
@@ -188,17 +190,17 @@ required evidence.
 - Include negative tests for RBAC/tenant isolation and failure-mode tests for event transport.
 - Add live HTTP/native host-authority tests for no header, wrong token, read/manage hierarchy, audit identity, Iggy authenticated/resolved tenant ownership, rotation/revocation and WebSocket denial.
 - Retain REST, GraphQL and native RBAC tests/verifiers for delegated/service denial, missing typed context, tenant mismatch, missing permission and trusted actor propagation.
-- Run the targeted API/RBAC/Admin/server checks and focused principal-kind and invalidation source verifiers before the complete Wave 2 server sweep.
+- Run the targeted API/auth-resolver/RBAC/Admin/server checks and focused principal-kind and invalidation source verifiers before the complete Wave 2 server sweep.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `pending`
 - Last verified at (UTC): `2026-08-01`
-- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority; active core/rbac review of explicit principal classification and propagation across HTTP/native middleware, GraphQL HTTP/WebSocket, REST artifact-role permission writes and native RBAC Admin; canonical durable-generation watchdog and process telemetry registry`
+- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority; active core/rbac review of access-token claim classification, typed propagation across HTTP/native middleware and GraphQL HTTP/WebSocket, REST artifact-role permission writes and native RBAC Admin; canonical durable-generation watchdog and process telemetry registry`
 - Findings: `P0=3, P1=4, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the historical RBAC REST invalid principal grant; the second P1 is historical native role-metadata admission inconsistency; the third P1 is missing invalidation observability; the fourth P1 is repeated owner inference from grant/client/session metadata; the existing P2 is the earlier module-control-plane construction finding)
-- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner control-plane policy as 75b67f877eb405abe4e6761a16d6b7ece98bc103. Current core/rbac source work adds canonical invalidation observability and introduces host-neutral AuthPrincipalKind plus mandatory AuthPrincipalContext; HTTP/native and GraphQL classify validated facts once, every RBAC transport consumes the typed context and the owner no longer receives client_id, grant_type or session_id.`
+- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner control-plane policy as 75b67f877eb405abe4e6761a16d6b7ece98bc103. Current core/rbac source work adds canonical invalidation observability and introduces host-neutral AuthPrincipalKind plus mandatory AuthPrincipalContext; the access-token resolver is the single classifier, HTTP/native and GraphQL are propagation-only, every RBAC transport consumes the typed context and the owner no longer receives client_id, grant_type or session_id.`
 - Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC corrections lack same-SHA format, rustok-api default/server, telemetry, all-feature owner, admin SSR/server compilation, focused Rust/source verifier tests and live transport evidence; PostgreSQL concurrency, two-replica Redis recovery, one complete authorization incident trace and module-owned management-flow evidence remain absent; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
-- Evidence: `source audit confirms authenticated facts are classified at middleware and GraphQL HTTP/WebSocket composition into a closed typed enum; RBAC GraphQL, REST and native adapters require the typed request context; owner policy contains only kind plus tenant and has no grant/client/session fallback. Source guards cover the typed contract and admission order. No command execution is claimed. Historical PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled only default rustok-rbac before issue #2740 stopped the workflow.`
-- Next action: `continue the core/rbac cursor: run targeted API/RBAC Admin/server checks and principal-kind, tenant and invalidation source verifiers on one revision, then retain PostgreSQL concurrency and multi-replica Redis recovery evidence; leave the complete server composition audit for its Wave 2 cursor visit`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && node scripts/verify/verify-rbac-invalidation-observability.mjs`
+- Evidence: `source audit confirms the auth resolver maps validated claims into the closed typed enum and stores it on CurrentUser; middleware and GraphQL HTTP/WebSocket only propagate that value; RBAC GraphQL, REST and native adapters require the typed request context; owner policy contains only kind plus tenant and has no grant/client/session fallback. Source guards cover the single-source typed contract and admission order. No command execution is claimed. Historical PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled only default rustok-rbac before issue #2740 stopped the workflow.`
+- Next action: `continue the core/rbac cursor: run targeted API/auth-resolver/RBAC Admin/server checks and principal-kind, tenant and invalidation source verifiers on one revision, then retain PostgreSQL concurrency and multi-replica Redis recovery evidence; leave the complete server composition audit for its Wave 2 cursor visit`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-api authenticated_facts_classify_fail_closed && cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && node scripts/verify/verify-rbac-invalidation-observability.mjs`
