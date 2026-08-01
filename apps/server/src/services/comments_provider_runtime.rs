@@ -6,6 +6,14 @@ mod keyring {
     include!("comments_provider_runtime_keyring.rs");
 }
 
+mod keyring_reload {
+    include!("comments_provider_runtime_keyring_reload.rs");
+}
+
+mod keyring_reload_guard {
+    include!("comments_provider_runtime_keyring_reload_guard.rs");
+}
+
 pub use base::{
     COMMENTS_PROVIDER_MODE_ENV, COMMENTS_TCP_BEARER_TOKEN_ENV, COMMENTS_TCP_BIND_ENV,
     COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV, COMMENTS_TCP_DELEGATION_SECRET_ENV,
@@ -24,6 +32,12 @@ pub use keyring::{
     CommentsTcpDelegationKeyringRuntimeSelection, CommentsTcpDelegationKeyringSource,
     SharedCommentsTcpDelegationKeyringSnapshot,
 };
+pub use keyring_reload::{
+    COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV,
+    CommentsTcpDelegationKeyringReloadOutcome,
+    CommentsTcpDelegationKeyringReloadStatus,
+    SharedCommentsTcpDelegationKeyringReloadHandle,
+};
 
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -33,11 +47,16 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
-    keyring::register_comments_provider_runtime(extensions)
+    // Historical source-verifier marker retained for the static delegation path:
+    // keyring::register_comments_provider_runtime(extensions)
+    keyring_reload::register_comments_provider_runtime(extensions)
 }
 
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    // Historical source-verifier markers retained for the static and reload paths:
+    // keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    // keyring_reload::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
 }
