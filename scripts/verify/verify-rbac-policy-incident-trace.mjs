@@ -137,7 +137,7 @@ for (const marker of [
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "policy incident",
+  "one complete incident trace",
 ]) requireText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
