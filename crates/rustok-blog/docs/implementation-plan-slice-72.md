@@ -9,10 +9,11 @@ lifecycle.
 ## 2026-08-01 continuation audit
 
 Slice 71 was rechecked against current `main` at
-`bb25ee2c3307987f233d1051ec2a32db999dbdf1`. The listener remains opt-in,
+`86a4c3249ebca8f981b7f23deb67aac047420ff3`. The listener remains opt-in,
 loopback-only while plaintext, bounded by frame/concurrency/idle/shutdown
 limits, attached to the shared `StopHandle`, and separated from the
-consumer-selected provider. No permissive authority fallback was present.
+consumer-selected provider. The intervening Forum and Pricing commits do not
+modify the Blog/Comments transport paths.
 
 The current TCP payload carried no credential, so the listener could only start
 when another host component supplied a concrete `CommentsTcpAuthorityResolver`.
@@ -27,7 +28,8 @@ remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/tcp_auth.rs` owns the authentication contract.
+- `crates/rustok-comments/src/tcp_auth.rs` owns the authentication envelope and
+  concrete loopback bearer authority contract.
 - `CommentsTcpRequestEnvelope` wraps one existing typed
   `CommentsThreadRequest` with:
   - `protocol_version`, currently `1`;
@@ -44,9 +46,15 @@ remains maintainer-owned.
 - The bearer value is retained privately for client envelope creation. Its
   `Debug` output, the wire credential `Debug`, resolver `Debug`, and transport
   `Debug` redact the secret.
-- Server comparison hashes the expected and candidate `Bearer <token>` values
-  with SHA-256 and compares the fixed-size digests using
-  `subtle::ConstantTimeEq`.
+- `crates/rustok-api/src/digest.rs` provides the already-dependency-backed shared
+  SHA-256 helper and a fixed-work comparison over two 32-byte digests.
+- Expected and candidate `Bearer <token>` values are hashed before comparison.
+  Digest comparison has no early return or length-dependent loop. This source
+  contract does not claim a separately audited compiler or hardware side-channel
+  guarantee.
+- No new direct dependency was added to `rustok-comments`; its manifest returned
+  to the pre-slice dependency set, so this source change does not require a
+  `Cargo.lock` package-entry mutation.
 - Missing, malformed, incorrect, non-loopback, or non-canonical-tenant
   authentication inputs share the static error code and message:
   `comments.tcp_authentication_failed` / `Comments TCP service authentication
@@ -70,7 +78,8 @@ remains maintainer-owned.
   `SharedCommentsTcpAuthorityResolver` as the highest-priority authority source.
 - Without that override, the listener composes the concrete bearer resolver from:
   - `RUSTOK_COMMENTS_TCP_BEARER_TOKEN`;
-  - `RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID`, which must be a UUID service actor.
+  - `RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID`, which must be a valid UUID service
+    actor without surrounding whitespace.
 - The built-in service authority publishes exactly one platform permission claim,
   `comments:manage`, and one role, `admin`. These values are compatible with the
   existing `SecurityContext::try_from_port_context` contract and permit owner
@@ -93,6 +102,7 @@ This slice does not implement or claim:
 
 - TLS, mTLS, payload encryption, channel binding, or non-loopback safety;
 - nonce, timestamp, challenge-response, request signing, or replay resistance;
+- a separately audited compiler/hardware constant-time guarantee;
 - bearer-token rotation, overlapping key sets, revocation, or secret-manager
   loading;
 - per-tenant credentials or dynamic principal lookup;
@@ -133,11 +143,12 @@ Runtime status: `not_run`.
 - `node scripts/verify/verify-blog-comments-tcp-listener-lifecycle.mjs`
 - `node scripts/verify/verify-blog-comments-tcp-server-adapter.mjs`
 - `node scripts/verify/verify-blog-comments-tcp-transport.mjs`
+- `cargo test -p rustok-api --lib digest::tests`
 - `cargo test -p rustok-comments --features tcp-transport --lib tcp_auth::tests`
 - `cargo test -p rustok-comments --features tcp-transport --lib tcp_server::tests`
 - `cargo test -p rustok-comments --features tcp-transport --lib tcp_transport::tests`
 - `cargo test -p rustok-server --features mod-blog --lib comments_provider_runtime::tests`
-- `cargo check -p rustok-server --features mod-blog`
+- `cargo check -p rustok-server --features mod-blog --locked`
 - `npm run verify:blog:comments-port-boundary`
 - `npm run test:verify:blog:comments-port-boundary`
 
@@ -145,6 +156,8 @@ Runtime status: `not_run`.
 
 - Comments owns typed request/reply envelopes, credential validation, concrete
   bearer authentication, owner dispatch, framing, and stable transport errors.
+- `rustok-api` owns the narrow shared digest helper already backed by its existing
+  SHA-256 dependency.
 - Blog owns consumer policy, article rendering, degraded presentation, and
   transport-neutral `Arc<dyn CommentsThreadPort>` consumption.
 - The server host owns secret and actor configuration, provider selection,
