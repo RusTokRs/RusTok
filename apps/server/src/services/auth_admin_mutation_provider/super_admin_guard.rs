@@ -34,6 +34,23 @@ where
         return Ok(());
     }
 
+    if count_remaining_active_super_admins(db, tenant_id, target_user_id).await? == 0 {
+        return Err(AuthAdminMutationError::Conflict(
+            "cannot remove, demote, or deactivate the last active super administrator".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+pub(super) async fn count_remaining_active_super_admins<C>(
+    db: &C,
+    tenant_id: Uuid,
+    target_user_id: Uuid,
+) -> Result<u64, AuthAdminMutationError>
+where
+    C: ConnectionTrait,
+{
     let super_admin_role = lock_super_admin_role(db, tenant_id).await?.ok_or_else(|| {
         AuthAdminMutationError::Conflict(
             "active super administrator role assignment is inconsistent".to_string(),
@@ -49,22 +66,14 @@ where
         .await
         .map_err(internal)?;
 
-    let remaining_active = users::Entity::find()
+    users::Entity::find()
         .filter(users::Column::TenantId.eq(tenant_id))
         .filter(users::Column::Id.is_in(super_admin_user_ids))
         .filter(users::Column::Id.ne(target_user_id))
         .filter(users::Column::Status.eq(UserStatus::Active))
         .count(db)
         .await
-        .map_err(internal)?;
-
-    if remaining_active == 0 {
-        return Err(AuthAdminMutationError::Conflict(
-            "cannot remove, demote, or deactivate the last active super administrator".to_string(),
-        ));
-    }
-
-    Ok(())
+        .map_err(internal)
 }
 
 async fn lock_super_admin_role<C>(

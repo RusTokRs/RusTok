@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "contract_id": "rbac_owner_role_mutation_v1",
+  "status": "source_ready_unvalidated",
+  "base_revision": "6ca587546e5a218d38c49f7c0612edcf61d8f816",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "priority": "P1",
+  "owner": {
+    "crate": "rustok-rbac",
+    "policy": "plan_user_role_mutation",
+    "facts": "RbacRoleMutationFacts",
+    "outcome": "RbacRoleMutationOutcome",
+    "plan": "RbacRoleMutationPlan"
+  },
+  "authoritative_facts": [
+    "requested tenant identity",
+    "authenticated actor identity and request-bound actor role",
+    "actor tenant identity",
+    "locked target user identity tenant status and effective role",
+    "whether the target has exactly one requested canonical tenant role assignment",
+    "remaining active super administrators after excluding the target when continuity is at risk"
+  ],
+  "owner_invariants": [
+    "tenant actor and target identities are non-nil",
+    "actor tenant equals the requested tenant",
+    "target tenant equals the requested tenant",
+    "the actor may assign only an owner-approved requested role",
+    "the actor may manage the target role unless mutating the same user",
+    "removing demoting or deactivating the last active super administrator is rejected",
+    "an exact same-role assignment is a no-op",
+    "malformed same-effective-role assignments are repaired rather than reported as a privilege change",
+    "a changed effective role is reported as a role replacement"
+  ],
+  "persistence": {
+    "adapter": "ServerAuthAdminMutationProvider::update_user",
+    "relation_writer": "RbacService::replace_user_role_in_transaction",
+    "generation_allocator": "reserve_rbac_invalidation_generation",
+    "outbox": "TransactionalEventBus::publish_contract_in_tx",
+    "atomic_transaction": true,
+    "event_failure_rolls_back_relation_user_and_generation": true,
+    "post_commit_cache_invalidation": true
+  },
+  "event_contracts": [
+    {
+      "event_type": "rbac.user_role_replaced",
+      "schema_version": 1,
+      "payload": [
+        "user_id",
+        "previous_role",
+        "new_role",
+        "durable_generation"
+      ]
+    },
+    {
+      "event_type": "rbac.user_role_assignment_repaired",
+      "schema_version": 1,
+      "payload": [
+        "user_id",
+        "role",
+        "durable_generation"
+      ]
+    }
+  ],
+  "transport": {
+    "existing_graphql_writer": "ServerRbacGraphqlRoleWriter",
+    "existing_runtime": "UserAdminMutationRuntime",
+    "new_rest_surface": false,
+    "new_graphql_surface": false,
+    "new_native_surface": false,
+    "speculative_roles_endpoint": false
+  },
+  "non_goals": [
+    "custom role creation or custom role hierarchy",
+    "arbitrary permission grant management",
+    "new remote or headless role-management transport",
+    "status-only or account-deletion event redesign",
+    "migration or removal of the legacy source payload RbacRoleAssignmentEvent",
+    "claiming compiled or executed verification"
+  ],
+  "validation": {
+    "rust_tests_executed": false,
+    "source_verifier_executed": false,
+    "format_checked": false,
+    "cargo_checked": false,
+    "server_compiled": false,
+    "outbox_runtime_executed": false,
+    "transport_runtime_executed": false,
+    "workflow_or_ci_observed": false
+  },
+  "remaining_gates": {
+    "same_revision_compile_and_module_gates": false,
+    "executed_outbox_atomicity_evidence": false,
+    "custom_role_and_permission_mutation_contract": false,
+    "native_operator_parity": false,
+    "remote_headless_requirement_decided": false,
+    "live_negative_transport_requests": false,
+    "core_rbac_complete": false
+  },
+  "cursor_advanced": false
+}
