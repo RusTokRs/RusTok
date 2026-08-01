@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt,
-    hash::Hash,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
