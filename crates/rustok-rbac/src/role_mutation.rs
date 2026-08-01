@@ -183,7 +183,7 @@ fn validate_identity(
 mod tests {
     use super::*;
     use rustok_events::{
-        RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED, EventContract,
+        RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED,
     };
 
     fn facts() -> RbacRoleMutationFacts {
