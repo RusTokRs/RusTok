@@ -2,6 +2,7 @@ pub(crate) mod graph;
 #[cfg(test)]
 pub(crate) use graph::{PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE};
 mod product;
+pub(crate) mod relation_admission;
 #[path = "../product_variant_index.rs"]
 mod variant;
 
