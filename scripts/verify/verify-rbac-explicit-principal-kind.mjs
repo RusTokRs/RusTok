@@ -22,6 +22,8 @@ const files = {
   auth: "crates/rustok-api/src/context/auth.rs",
   context: "crates/rustok-api/src/context/mod.rs",
   api: "crates/rustok-api/src/lib.rs",
+  resolver: "apps/server/src/extractors/auth/mod.rs",
+  resolverTests: "apps/server/src/extractors/auth/tests.rs",
   middleware: "apps/server/src/middleware/auth_context.rs",
   graphqlHost: "apps/server/src/controllers/graphql.rs",
   owner: "crates/rustok-rbac/src/control_plane.rs",
@@ -71,21 +73,44 @@ requireText(
 );
 
 for (const marker of [
+  "pub principal_kind: AuthPrincipalKind",
+  "fn classify_access_token_claims(",
   "AuthPrincipalKind::from_authenticated_facts(",
-  "AuthPrincipalContextExtension(",
-  "AuthPrincipalContext::new(principal_kind)",
-  'code = "auth.principal_kind_invalid"',
-  "Authenticated principal classification is invalid",
-]) requireText(sources.middleware, marker, `${files.middleware}: HTTP/native construction`);
+  "let principal_kind = classify_access_token_claims(&claims)?;",
+  "principal_kind,",
+]) requireText(sources.resolver, marker, `${files.resolver}: single classification source`);
 
 for (const marker of [
-  "fn graphql_principal_kind(current_user: &CurrentUser)",
-  "AuthPrincipalKind::from_authenticated_facts(",
-  ".data(AuthPrincipalContext::new(principal_kind))",
-  "data.insert(AuthPrincipalContext::new(principal_kind));",
-  'code = "graphql.auth_principal_kind_invalid"',
-  'code = "graphql_ws.auth_principal_kind_invalid"',
-]) requireText(sources.graphqlHost, marker, `${files.graphqlHost}: GraphQL construction`);
+  "token_claim_classifier_returns_explicit_principal_kinds",
+  "AuthPrincipalKind::DirectUser",
+  "AuthPrincipalKind::DelegatedUser",
+  "AuthPrincipalKind::Service",
+  "principal_kind: AuthPrincipalKind::Service",
+]) requireText(sources.resolverTests, marker, `${files.resolverTests}: resolver regression`);
+
+for (const marker of [
+  "AuthPrincipalContextExtension(",
+  "AuthPrincipalContext::new(current_user.principal_kind)",
+]) requireText(sources.middleware, marker, `${files.middleware}: HTTP/native propagation`);
+
+for (const marker of [
+  "AuthPrincipalContext::new(current_user.principal_kind)",
+  "request = request.data(auth_ctx).data(principal_context);",
+  "data.insert(principal_context);",
+]) requireText(sources.graphqlHost, marker, `${files.graphqlHost}: GraphQL propagation`);
+
+for (const [name, source] of [
+  ["middleware", sources.middleware],
+  ["graphqlHost", sources.graphqlHost],
+]) {
+  for (const forbidden of [
+    "AuthPrincipalKind::from_authenticated_facts(",
+    "fn graphql_principal_kind(",
+    "auth.principal_kind_invalid",
+    "graphql.auth_principal_kind_invalid",
+    "graphql_ws.auth_principal_kind_invalid",
+  ]) forbidText(source, forbidden, `${files[name]}: duplicate classification`);
+}
 
 for (const marker of [
   "pub struct RbacControlPlanePrincipal",
@@ -144,5 +169,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ RBAC control-plane admission consumes one explicit typed principal kind across HTTP, GraphQL, WebSocket, REST, and native adapters",
+  "✔ authentication classifies one explicit principal kind and every RBAC control-plane transport consumes it without metadata fallback",
 );
