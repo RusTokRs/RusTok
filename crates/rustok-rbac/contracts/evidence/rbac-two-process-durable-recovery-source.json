@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "evidence_id": "RBAC-TWO-PROCESS-DURABLE-RECOVERY-SOURCE-20260801",
-  "generated_at": "2026-08-01T16:20:00Z",
+  "generated_at": "2026-08-01T16:00:00Z",
   "status": "source_ready_unvalidated",
   "cycle": "cycle-001",
   "component": "core/rbac",
