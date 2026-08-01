@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-CLI-LIVE-REPAIR-SOURCE-20260801",
+  "generated_at": "2026-08-01T16:55:00Z",
+  "status": "source_ready_unvalidated",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "base_revision": "33bbca155cb816da14d4d5fa966936ae396d58ef",
+  "test_source": "crates/rustok-rbac/cli/tests/live_repair_replica_recovery.rs",
+  "topology": {
+    "database": "isolated_postgresql_database",
+    "observer_processes": 2,
+    "cli_processes": 1,
+    "independent_os_processes": true,
+    "shared_process_cache": false,
+    "redis_configured": false,
+    "replica_restart_permitted": false
+  },
+  "drift_fixture": {
+    "role": "manager",
+    "extra_permission": "settings:manage",
+    "expected_pre_repair_decision": "allow",
+    "expected_post_repair_decision": "deny"
+  },
+  "cli_contract": {
+    "provider": "rustok_rbac_cli::command_provider",
+    "namespace": "rbac",
+    "command": "repair-system-roles",
+    "apply": true,
+    "scope": "one_tenant",
+    "expected_exit_code": 0,
+    "expected_mode": "apply",
+    "minimum_changes_total": 1,
+    "expected_durable_generation": 1,
+    "runtime_restart_required_if_applied": false
+  },
+  "recovery_contract": {
+    "worker": "start_rbac_invalidation_generation_watchdog",
+    "authority": "durable PostgreSQL invalidation generation",
+    "expected_observer_generation": 1,
+    "expected_observer_count": 2,
+    "maximum_observer_recovery_elapsed_ms": 8000,
+    "authoritative_permission_confirmation": true
+  },
+  "forbidden_shortcuts": {
+    "direct_owner_repair_call": true,
+    "direct_generation_reservation": true,
+    "manual_cache_clear": true,
+    "synthetic_invalidation_publish": true,
+    "single_process_replica_simulation": true,
+    "test_only_repair_implementation": true
+  },
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "formatting_executed": false,
+    "cargo_check_executed": false,
+    "postgresql_runtime_executed": false,
+    "subprocess_runtime_executed": false,
+    "workflow_or_ci_executed": false
+  },
+  "source_evidence_present": true,
+  "runtime_evidence_retained": false,
+  "full_multi_replica_gate_complete": false,
+  "broad_rbac_verification_complete": false,
+  "cursor_advanced": false
+}

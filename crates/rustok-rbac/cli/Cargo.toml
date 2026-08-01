@@ -13,3 +13,15 @@ rustok-rbac.workspace = true
 sea-orm.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+rustok-migrations.workspace = true
+rustok-server = { path = "../../../apps/server", default-features = false }
+rustok-test-utils.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+tempfile = "3.27"
+tokio.workspace = true
