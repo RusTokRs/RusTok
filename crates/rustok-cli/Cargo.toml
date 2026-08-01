@@ -13,6 +13,22 @@ rustok-runtime.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+chrono.workspace = true
+redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
+rustok-api.workspace = true
+rustok-core.workspace = true
+rustok-migrations.workspace = true
+rustok-rbac.workspace = true
+rustok-server = { path = "../../apps/server", default-features = false }
+rustok-telemetry.workspace = true
+rustok-test-utils.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+tempfile = "3.27"
+uuid.workspace = true
+
 [lib]
 name = "rustok_cli"
 path = "src/lib.rs"
