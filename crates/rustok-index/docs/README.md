@@ -28,6 +28,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 - [Live Implementation Plan](./implementation-plan.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
+- [M6 Bounded Source-call Timeout](./m6-source-call-timeout.md)
 - [M6 Replay Job Leases](./m6-replay-job-leases.md)
 - [M6 Bounded Multi-page Replay Runner](./m6-bounded-multipage-runner.md)
 - [M6 Replay Runtime Host Composition](./m6-replay-runtime-composition.md)
