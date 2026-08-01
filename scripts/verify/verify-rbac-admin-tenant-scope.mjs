@@ -21,16 +21,17 @@ const fail = (message) => {
 };
 
 for (const marker of [
+  'AuthPrincipalContext',
+  'leptos_axum::extract::<AuthPrincipalContext>()',
   'RbacControlPlanePrincipal',
   'require_direct_control_plane_user(principal, tenant.id)',
   'tenant_id: auth.tenant_id',
-  'session_id: auth.session_id',
-  'client_id: auth.client_id',
-  'grant_type: &auth.grant_type',
+  'principal_kind: principal_context.kind',
   'code = "rbac.admin_control_plane_denied"',
   'boundary = RBAC_ADMIN_BOUNDARY',
   'ServerFnError::new("RBAC admin access is denied")',
   'RBAC authentication context is temporarily unavailable',
+  'RBAC principal context is temporarily unavailable',
   'RBAC tenant context is temporarily unavailable',
   'fn rbac_admin_context_error<E: std::fmt::Debug>(',
 ]) {
@@ -40,7 +41,7 @@ for (const marker of [
 const principalIndex = source.indexOf('require_direct_control_plane_user(principal, tenant.id)');
 const permissionIndex = source.indexOf('Permission::SETTINGS_READ');
 if (principalIndex < 0 || permissionIndex < 0 || principalIndex >= permissionIndex) {
-  fail('RBAC Admin must admit a direct matching principal before SETTINGS_READ');
+  fail('RBAC Admin must admit a typed direct matching principal before SETTINGS_READ');
 }
 
 for (const forbidden of [
@@ -48,18 +49,28 @@ for (const forbidden of [
   'fn rbac_admin_scope_matches<T: PartialEq>(',
   '.map_err(ServerFnError::new)?',
   '.map_err(|error| ServerFnError::new(error))?',
+  'session_id: auth.session_id',
+  'client_id: auth.client_id',
+  'grant_type: &auth.grant_type',
 ]) {
   if (source.includes(forbidden)) fail(`RBAC Admin retains obsolete or unsafe path ${forbidden}`);
 }
 
 for (const marker of [
   'pub struct RbacControlPlanePrincipal',
-  'principal.client_id.is_some()',
-  'principal.grant_type != "direct"',
-  'principal.session_id.is_nil()',
+  'pub principal_kind: AuthPrincipalKind',
+  '!principal.principal_kind.is_direct_user()',
   'principal.tenant_id != tenant_id',
 ]) {
   if (!owner.includes(marker)) fail(`RBAC owner control-plane policy missing ${marker}`);
+}
+
+for (const forbidden of [
+  'principal.client_id',
+  'principal.grant_type',
+  'principal.session_id',
+]) {
+  if (owner.includes(forbidden)) fail(`RBAC owner infers principal authority from ${forbidden}`);
 }
 
 if (!cargo.includes('tracing.workspace = true')) {
@@ -70,5 +81,5 @@ if (!cargo.includes('"dep:rustok-rbac"')) {
 }
 
 console.log(
-  '[verify-rbac-admin-tenant-scope] RBAC Admin requires a direct matching principal before permission admission and keeps context failures static publicly',
+  '[verify-rbac-admin-tenant-scope] RBAC Admin requires a typed direct matching principal before permission admission and keeps context failures static publicly',
 );
