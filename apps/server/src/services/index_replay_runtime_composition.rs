@@ -1,3 +1,11 @@
+#[path = "index_reconciliation_operator.rs"]
+mod reconciliation_operator;
+
+pub use reconciliation_operator::{
+    IndexReconciliationOperatorContext, IndexReconciliationOperatorError,
+    IndexReconciliationOperatorRuntime,
+};
+
 use std::fmt;
 
 use rustok_api::{Permission, has_effective_permission};
@@ -110,8 +118,8 @@ impl fmt::Debug for IndexReplayOperatorRuntime {
 ///
 /// This function performs no database I/O and starts no worker. It invokes selected source
 /// factories only to construct adapters, freezes the complete source catalog, binds the immutable
-/// schema/source registries to the host database, and publishes the guarded bounded operator
-/// capability through `ModuleRuntimeExtensions`.
+/// schema/source registries to the host database, and publishes the guarded bounded replay and
+/// reconciliation operator capabilities through `ModuleRuntimeExtensions`.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -138,12 +146,14 @@ pub(crate) fn materialize_index_replay_runtime(
         extensions.insert(sources);
     }
 
-    let runtime = rustok_index::materialize_postgres_index_replay_runtime(extensions, db).map_err(
-        |error| ServerError::Message(format!("Index replay runtime composition failed: {error}")),
-    )?;
+    let runtime = rustok_index::materialize_postgres_index_replay_runtime(extensions, db.clone())
+        .map_err(|error| {
+            ServerError::Message(format!("Index replay runtime composition failed: {error}"))
+        })?;
     if let Some(runtime) = runtime {
         extensions.insert(IndexReplayOperatorRuntime::new(runtime));
     }
+    reconciliation_operator::materialize_index_reconciliation_operator(extensions, db)?;
     Ok(())
 }
 
