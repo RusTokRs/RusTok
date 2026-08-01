@@ -6,8 +6,8 @@ This file is the canonical live implementation plan for RBAC. It owns the
 current implementation state, completed source phases, remaining priorities and
 targeted verification.
 
-- `[x]` means the capability is present in `main` and protected by source-level
-  tests or architecture guards.
+- `[x]` means the capability is present in the current verification branch and
+  protected by source-level tests or architecture guards.
 - `[ ]` means implementation or verification is still required.
 - A source-complete item is not considered compiled or operationally verified
   until the corresponding Rust and live-service checks have passed.
@@ -16,7 +16,7 @@ targeted verification.
 - `docs/verification/rbac-server-modules-verification-plan.md` remains the
   cross-platform verification checklist, not a second RBAC implementation plan.
 
-Last reconciled with `main`: 2026-07-31.
+Last reconciled with `main`: 2026-08-01.
 
 ## Current state
 
@@ -37,6 +37,8 @@ The ownership boundary is:
 - `RbacRoleAssignmentDbWriter` is an idempotent bootstrap/test persistence
   primitive, while existing-user mutations use explicit transaction-owned or
   committed entry points;
+- `PermissionResolver` and `RuntimePermissionResolver` are read-only permission
+  lookup contracts. They do not expose or compose role-assignment mutations;
 - Redis/local PubSub is a best-effort fast path; the database-backed monotonic
   generation is the recovery source of truth;
 - the admin overview remains an intentional native-only module-owned surface.
@@ -48,6 +50,15 @@ made principal admission one owner-defined contract across GraphQL, REST and
 native RBAC Admin. The host-neutral `RbacControlPlanePrincipal` keeps the owner
 crate independent of Axum and `rustok-api/server`, while adapters supply only
 trusted authenticated facts.
+
+Draft PR #2799 on
+`verification/cycle-001-rbac-read-only-resolver` removes the obsolete public
+resolver mutation path. Previously `PermissionResolver` exposed role writes and
+the server runtime composed a `RoleAssignmentStore` adapter that called direct
+persistence helpers and only invalidated the local cache. That path could bypass
+the committed transaction owner, last-super-admin continuity locks, durable
+invalidation generation and cross-replica recovery. No production caller
+required the path, so it was removed atomically rather than wrapped.
 
 ## FFA/FBA boundary
 
@@ -116,6 +127,10 @@ trusted authenticated facts.
   password change that requires revocation.
 - [x] Reserve invalidation generations only for mutations that can change an
   existing authorization snapshot.
+- [x] Remove mutation methods from `PermissionResolver`; existing-user role
+  writes cannot enter through the read runtime.
+- [x] Remove the obsolete `RoleAssignmentStore` owner export and server adapter
+  instead of retaining a compatibility-shaped composition path.
 
 ### Phase 4. Durable cache invalidation and replica recovery — source complete
 
@@ -168,6 +183,8 @@ trusted authenticated facts.
   actor comes from the authenticated context.
 - [x] Guard native RBAC Admin metadata bootstrap with the same owner principal
   policy before `settings:read`; remove the obsolete tenant-only helper.
+- [x] Add `rbac_permission_resolver_read_only_guard` to prevent mutation methods,
+  assignment-store composition or the removed server adapter from returning.
 - [ ] Execute the added Rust tests and architecture guards in a toolchain-enabled
   environment and fix any compile, formatting or lint failures.
 
@@ -176,7 +193,7 @@ trusted authenticated facts.
 ### P0. Compile and targeted verification
 
 - [ ] Run formatting, compilation, Clippy and targeted RBAC/server/CLI tests on
-  the reconciled `main` revision.
+  the reconciled revision.
 - [ ] Record successful module validate/test evidence for `rbac`.
 - [ ] Execute the existing FFA/FBA verification scripts against the same
   revision.
@@ -295,6 +312,29 @@ trusted authenticated facts.
   server compile, focused unit/architecture/verifier execution and transport-
   level negative requests are still required.
 
+## Read-only resolver and committed-mutation correction (2026-08-01)
+
+- Status: `draft_pr_queued_unvalidated`.
+- Draft PR: #2799.
+- Severity: `P1` authorization mutation and cache-coherence bypass.
+- Root cause: the public `PermissionResolver` contract also exposed four role
+  mutation methods. `RuntimePermissionResolver` delegated them to a server-owned
+  `RoleAssignmentStore` that called direct persistence helpers and invalidated
+  only the local process cache. A caller could therefore bypass continuity
+  locking, committed mutation ownership, durable generation reservation and
+  cross-replica recovery.
+- [x] Make `PermissionResolver` and `RuntimePermissionResolver` read-only.
+- [x] Remove all four mutation methods and their runtime delegation.
+- [x] Remove the obsolete `RoleAssignmentStore` trait, public re-export,
+  `ServerRoleAssignmentStore` adapter and constructor generic atomically.
+- [x] Keep test fixture setup on an explicit low-level persistence helper without
+  exposing it through the production resolver.
+- [x] Add `rbac_permission_resolver_read_only_guard` covering owner contract,
+  runtime composition and server wiring.
+- [x] Open mergeable draft PR #2799 without workflow changes.
+- [ ] Run format, owner/server compile and the focused architecture test on the
+  exact PR revision before treating this source correction as validated.
+
 ## Verification commands
 
 - Contract tests cover every public use case.
@@ -312,6 +352,7 @@ cargo test -p rustok-migrations --lib rbac_system_role_repair_tests
 cargo test -p rustok-rbac-cli
 cargo test -p rustok-server --lib rbac
 cargo test -p rustok-server \
+  --test rbac_permission_resolver_read_only_guard \
   --test rbac_artifact_permission_control_plane_guard \
   --test rbac_cache_invalidation_architecture_guard \
   --test rbac_mutation_api_architecture_guard \
@@ -364,11 +405,11 @@ harness owns them.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-07-31`
-- Scope inspected: `principal classification and authoritative request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog, durable assignment owner, REST/GraphQL adapters, native RBAC Admin bootstrap, operational CLI repair and invalidation worker/gap-tracker composition`
-- Findings: `P0=1, P1=1, P2=0, P3=0`
-- Fixed in this pass: `PR #2747 merged one host-neutral rustok-rbac policy requiring a direct non-nil session and authenticated/routed tenant equality before GraphQL, REST and native RBAC control-plane permission admission; REST no longer treats modules:manage as sufficient principal authority, native bootstrap no longer treats settings:read as sufficient, the obsolete native tenant-only helper is removed and the durable mutation actor remains derived from trusted AuthContext`
-- Remaining risks or blockers: `the merged P0/P1 corrections have only narrow default-crate compile evidence; same-SHA format, all-feature RBAC compile, RBAC Admin SSR compile, server compile, focused unit/architecture/verifier tests and live negative transport requests have not run. PostgreSQL mutation concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open. CI and Hardening runs for exact head remained pending without jobs, while issue #2740 stopped Rust-host before server build.`
-- Evidence: `source review confirms middleware builds request scope from authoritative DB permissions and OAuth only narrows authority; relation resolution tenant-filters role ids and generation-aware fills fail closed; role replacement and repair reserve durable generation in their owner transaction; local, Redis and reconciliation listeners share one bounded gap tracker. Exact PR head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159, then failed on the known PostgreSQL role fixture #2740 before rustok-server. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. No other queued or pending job is claimed as passed.`
-- Next action: `continue the RBAC P0/P1 sweep across remaining event/worker and management surfaces; obtain format/all-feature/admin/server/focused/module evidence on one reconciled revision, then run PostgreSQL concurrency and multi-replica Redis recovery before deciding completed versus blocked`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Last verified at (UTC): `2026-08-01`
+- Scope inspected: `principal classification and request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog and control-plane adapters; PermissionResolver and RuntimePermissionResolver public contracts; server resolver composition; operational CLI repair and invalidation worker/gap-tracker composition`
+- Findings: `P0=1, P1=2, P2=0, P3=0`
+- Fixed in this pass: `PR #2747 previously merged the P0 REST artifact-grant and P1 native role-metadata principal corrections. Draft PR #2799 additionally removes the P1 resolver mutation bypass: PermissionResolver is read-only, runtime role-write delegation is deleted, RoleAssignmentStore and ServerRoleAssignmentStore are removed rather than wrapped, the test fixture uses an explicit low-level setup helper and a new architecture guard prevents the mutation composition surface from returning.`
+- Remaining risks or blockers: `draft PR #2799 has source-review evidence only. Its first exact head was mergeable and started Browser E2E, CI, Hardening, Cache hardening, Ecommerce Hardening, Migration Compatibility and Rust-hosted Browser Smoke, but all seven runs and every inspected CI/Rust-host job were queued and no commit statuses existed; queued work is not pass evidence. Local checkout and targeted checks cannot run because github.com DNS resolution fails in the execution environment. Same-SHA format, all-feature RBAC compile, RBAC Admin SSR compile, server compile, focused unit/architecture/verifier tests and live negative transport requests remain absent. PostgreSQL mutation concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open. Issue #2740 remains the known Rust-host PostgreSQL role-fixture blocker.`
+- Evidence: `source review confirms the former public resolver mutation methods delegated direct persistence writes and local-only invalidation, while the corrected owner resolver now exposes permission lookup only and the server runtime no longer imports, implements, exports or constructs an assignment-store adapter. rbac_permission_resolver_read_only_guard locks the owner trait, runtime implementation and server composition. Draft PR #2799 is open, draft and mergeable. Initial workflow run state was queued only, so exact execution evidence is not claimed; the environment DNS failure and prior workflow fixture #2740 are recorded separately from product defects.`
+- Next action: `inspect and fix exact-head PR #2799 format, owner/admin/server compile, focused tests and module-verifier results without treating queued or infrastructure-only failures as product evidence; then continue the RBAC P0/P1 sweep and run PostgreSQL concurrency plus multi-replica Redis recovery before deciding completed versus blocked`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard --test rbac_artifact_permission_control_plane_guard --test rbac_cache_invalidation_architecture_guard --test rbac_mutation_api_architecture_guard --test rbac_migration_registration_guard --test rbac_startup_invalidation_architecture_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`

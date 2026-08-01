@@ -135,7 +135,6 @@ mod tests {
     use crate::{AuthzEngine, PermissionResolution, PermissionResolver};
     use async_trait::async_trait;
     use rustok_api::Permission;
-    use rustok_core::UserRole;
 
     struct StubResolver {
         permissions: Vec<Permission>,
@@ -159,41 +158,6 @@ mod tests {
                 permissions: self.permissions.clone(),
                 cache_hit: self.cache_hit,
             })
-        }
-
-        async fn assign_role_permissions(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-            _role: UserRole,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn replace_user_role(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-            _role: UserRole,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn remove_tenant_role_assignments(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn remove_user_role_assignment(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-            _role: UserRole,
-        ) -> Result<(), Self::Error> {
-            Ok(())
         }
     }
 
@@ -280,10 +244,14 @@ mod tests {
             fail_resolve: false,
         };
 
-        let decision =
-            authorize_all_permissions(&resolver, &uuid::Uuid::new_v4(), &uuid::Uuid::new_v4(), &[])
-                .await
-                .unwrap();
+        let decision = authorize_all_permissions(
+            &resolver,
+            &uuid::Uuid::new_v4(),
+            &uuid::Uuid::new_v4(),
+            &[],
+        )
+        .await
+        .unwrap();
 
         assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(decision.allowed);
