@@ -25,6 +25,7 @@ pub const DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS: u64 = 5_000;
 pub const MAX_COMMENTS_TCP_DELEGATION_TTL_MS: u64 = 30_000;
 pub const DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS: u64 = 2_000;
 pub const DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY: usize = 4_096;
+pub const MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY: usize = 65_536;
 
 const MIN_DELEGATION_SECRET_BYTES: usize = 32;
 const MAX_DELEGATION_SECRET_BYTES: usize = 4_096;
@@ -32,6 +33,12 @@ const MAX_DELEGATION_TOKEN_BYTES: usize = 32 * 1_024;
 const MAX_DELEGATION_PAYLOAD_BYTES: usize = 16 * 1_024;
 const DELEGATION_SCHEME: &str = "delegated_hmac_sha256";
 const DELEGATION_SIGNATURE_DOMAIN: &[u8] = b"rustok-comments-tcp-user-delegation-v1\0";
+const COMPOSITE_SERVICE_OPERATIONS: [CommentsTcpOperation; 4] = [
+    CommentsTcpOperation::GetComment,
+    CommentsTcpOperation::ListCommentsForTarget,
+    CommentsTcpOperation::ListPublicCommentsForTarget,
+    CommentsTcpOperation::SetCommentStatus,
+];
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct CommentsTcpDelegationSecret {
@@ -71,7 +78,7 @@ pub enum CommentsTcpDelegationConfigError {
     InvalidSecret,
     #[error("Comments TCP delegation TTL must be within 1..=30000 milliseconds")]
     InvalidTtl,
-    #[error("Comments TCP delegation replay capacity must be greater than zero")]
+    #[error("Comments TCP delegation replay capacity must be within 1..=65536")]
     InvalidReplayCapacity,
 }
 
@@ -117,10 +124,10 @@ impl CommentsTcpDelegationSigner {
         now_ms: u64,
     ) -> Result<CommentsTcpCredential, PortError> {
         let operation = CommentsTcpOperation::for_request(request);
-        if !operation.is_write() {
+        if !operation.is_write() || operation == CommentsTcpOperation::SetCommentStatus {
             return Err(PortError::validation(
-                "comments.tcp_delegation_write_required",
-                "Comments TCP user delegation is only issued for owner write operations",
+                "comments.tcp_delegation_user_write_required",
+                "Comments TCP user delegation is issued for user-owned write operations",
             ));
         }
 
@@ -182,7 +189,7 @@ impl CommentsTcpDelegationSigner {
 
 #[derive(Clone)]
 pub struct CommentsTcpDelegatingAuthorityResolver {
-    read_authority: CommentsTcpBearerAuthorityResolver,
+    service_authority: CommentsTcpBearerAuthorityResolver,
     secret: CommentsTcpDelegationSecret,
     max_ttl_ms: u64,
     clock_skew_ms: u64,
@@ -196,10 +203,11 @@ impl CommentsTcpDelegatingAuthorityResolver {
         delegation_secret: CommentsTcpDelegationSecret,
     ) -> Self {
         Self {
-            read_authority: CommentsTcpBearerAuthorityResolver::from_token(
+            service_authority: CommentsTcpBearerAuthorityResolver::from_token(
                 bearer_token,
                 service_actor,
-            ),
+            )
+            .with_allowed_operations(COMPOSITE_SERVICE_OPERATIONS),
             secret: delegation_secret,
             max_ttl_ms: MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
             clock_skew_ms: DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
@@ -209,13 +217,13 @@ impl CommentsTcpDelegatingAuthorityResolver {
         }
     }
 
-    pub fn with_read_claim(mut self, claim: impl Into<String>) -> Self {
-        self.read_authority = self.read_authority.with_claim(claim);
+    pub fn with_service_claim(mut self, claim: impl Into<String>) -> Self {
+        self.service_authority = self.service_authority.with_claim(claim);
         self
     }
 
-    pub fn with_read_role(mut self, role: impl Into<String>) -> Self {
-        self.read_authority = self.read_authority.with_role(role);
+    pub fn with_service_role(mut self, role: impl Into<String>) -> Self {
+        self.service_authority = self.service_authority.with_role(role);
         self
     }
 
@@ -232,16 +240,11 @@ impl CommentsTcpDelegatingAuthorityResolver {
         Ok(self)
     }
 
-    pub fn with_clock_skew(mut self, clock_skew: Duration) -> Self {
-        self.clock_skew_ms = duration_ms(clock_skew).unwrap_or(u64::MAX);
-        self
-    }
-
     pub fn with_replay_capacity(
         mut self,
         capacity: usize,
     ) -> Result<Self, CommentsTcpDelegationConfigError> {
-        if capacity == 0 {
+        if capacity == 0 || capacity > MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY {
             return Err(CommentsTcpDelegationConfigError::InvalidReplayCapacity);
         }
         self.replay = Arc::new(Mutex::new(DelegationReplayState::new(capacity)));
@@ -256,10 +259,14 @@ impl CommentsTcpDelegatingAuthorityResolver {
         request: &CommentsThreadRequest,
         now_ms: u64,
     ) -> Result<TrustedCommentsTcpAuthority, PortError> {
-        if !peer_addr.ip().is_loopback() {
+        if !peer_addr.ip().is_loopback()
+            || CommentsTcpOperation::for_request(request) != operation
+            || operation == CommentsTcpOperation::SetCommentStatus
+        {
             return Err(delegation_invalid());
         }
-        let credential = credential.filter(|value| value.scheme() == DELEGATION_SCHEME)
+        let credential = credential
+            .filter(|value| value.scheme() == DELEGATION_SCHEME)
             .ok_or_else(delegation_invalid)?;
         let token = credential.token();
         if token.len() > MAX_DELEGATION_TOKEN_BYTES {
@@ -334,7 +341,7 @@ impl CommentsTcpDelegatingAuthorityResolver {
         if replay.entries.contains_key(nonce) {
             return Err(PortError::forbidden(
                 "comments.tcp_delegation_replayed",
-                "Comments TCP user delegation has already been used",
+                "Comments TCP user delegation has already been used by this listener process",
             ));
         }
         if replay.entries.len() >= replay.capacity {
@@ -359,7 +366,7 @@ impl fmt::Debug for CommentsTcpDelegatingAuthorityResolver {
             .unwrap_or_default();
         formatter
             .debug_struct("CommentsTcpDelegatingAuthorityResolver")
-            .field("read_authority", &self.read_authority)
+            .field("service_authority", &self.service_authority)
             .field("secret", &"[REDACTED]")
             .field("max_ttl_ms", &self.max_ttl_ms)
             .field("clock_skew_ms", &self.clock_skew_ms)
@@ -377,7 +384,13 @@ impl CommentsTcpAuthorityResolver for CommentsTcpDelegatingAuthorityResolver {
         credential: Option<&CommentsTcpCredential>,
         request: &CommentsThreadRequest,
     ) -> Result<TrustedCommentsTcpAuthority, PortError> {
-        if operation.is_write() {
+        let service_moderation = operation == CommentsTcpOperation::SetCommentStatus
+            && request.context().actor.kind == PortActorKind::System;
+        if !operation.is_write() || service_moderation {
+            self.service_authority
+                .authorize(peer_addr, operation, credential, request)
+                .await
+        } else {
             self.authorize_delegated_write_at(
                 peer_addr,
                 operation,
@@ -385,10 +398,6 @@ impl CommentsTcpAuthorityResolver for CommentsTcpDelegatingAuthorityResolver {
                 request,
                 current_unix_ms()?,
             )
-        } else {
-            self.read_authority
-                .authorize(peer_addr, operation, credential, request)
-                .await
         }
     }
 }
@@ -538,7 +547,25 @@ mod tests {
     }
 
     #[test]
-    fn delegation_binds_request_and_rejects_replay() {
+    fn replay_capacity_is_hard_bounded() {
+        let secret = CommentsTcpDelegationSecret::new(
+            "0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let resolver = CommentsTcpDelegatingAuthorityResolver::new(
+            CommentsTcpBearerToken::new("comments-read-secret").unwrap(),
+            PortActor::service(Uuid::new_v4().to_string()),
+            secret,
+        );
+        assert!(
+            resolver
+                .with_replay_capacity(MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY + 1)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn delegation_binds_request_and_rejects_process_local_replay() {
         let secret = CommentsTcpDelegationSecret::new(
             "0123456789abcdef0123456789abcdef",
         )
