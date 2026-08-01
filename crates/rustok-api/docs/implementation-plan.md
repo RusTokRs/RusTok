@@ -25,6 +25,12 @@ version/locale envelope and unknown structural fields. The optional `server`
 feature exposes the document as the semantic `RichText` GraphQL scalar. This
 crate intentionally does not validate profiles, render HTML, or select locale.
 
+`AuthPrincipalKind` is now a host-neutral shared authorization contract available
+without the `server` feature. It distinguishes direct users, OAuth delegated
+users, and service principals. Server-enabled builds expose the separate
+`AuthPrincipalContext` request carrier; module owners can consume the enum
+without taking an Axum or Async-GraphQL dependency.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
@@ -73,9 +79,25 @@ crate intentionally does not validate profiles, render HTML, or select locale.
    **Done when:** repository-owned transports use one typed document instead of
    a body string plus `content_json`, and this crate remains dependency-neutral.
 
+## Delivered result: explicit authenticated principal kind
+
+- `AuthPrincipalKind::{DirectUser, DelegatedUser, Service}` is compiled without
+  the `server` feature and contains no host/runtime dependency.
+- `from_authenticated_facts` accepts only the three validated grant/client/session
+  shapes and returns `None` for unknown or ambiguous combinations.
+- `AuthPrincipalContext` and its Axum extractor are server-only request carriers;
+  they are separate from legacy `AuthContext` transport metadata.
+- RBAC is the first owner consumer. Its control-plane policy receives only the
+  typed kind and tenant id, with no fallback to string inference.
+- Source and same-revision compile/test evidence remain required before the
+  current RBAC cycle item can be completed.
+
 ## Verification
 
 - `npm run verify:api:surface-contract`
+- `node scripts/verify/verify-rbac-explicit-principal-kind.mjs`
+- `cargo check -p rustok-api`
+- `cargo check -p rustok-api --features server`
 - Targeted compile/tests when changing shared request, auth, tenant, channel,
   GraphQL, route, locale, permission, or port contracts.
 - Documentation synchronization for `apps/server` and module-owned transports.

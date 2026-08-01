@@ -4,7 +4,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use rustok_api::context::{AuthContext, AuthContextExtension};
+use rustok_api::context::{
+    AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
+};
 use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
 
@@ -67,6 +69,9 @@ pub async fn resolve_optional(
                 current_user.user.id,
                 current_user.permissions.clone(),
                 current_user.inferred_role.clone(),
+            ));
+            parts.extensions.insert(AuthPrincipalContextExtension(
+                AuthPrincipalContext::new(current_user.principal_kind),
             ));
             parts.extensions.insert(AuthContextExtension(AuthContext {
                 user_id: current_user.user.id,

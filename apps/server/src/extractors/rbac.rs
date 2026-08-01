@@ -368,7 +368,7 @@ pub fn check_all_permissions(
 mod tests {
     use super::*;
     use axum::http::StatusCode;
-    use rustok_api::Permission;
+    use rustok_api::{AuthPrincipalKind, Permission};
     use rustok_core::UserRole;
 
     fn create_test_user(role: UserRole) -> CurrentUser {
@@ -398,6 +398,7 @@ mod tests {
             permissions,
             inferred_role: role,
             actor_kind: rustok_core::SecurityActorKind::User,
+            principal_kind: AuthPrincipalKind::DirectUser,
             client_id: None,
             scopes: vec![],
             grant_type: "direct".to_string(),

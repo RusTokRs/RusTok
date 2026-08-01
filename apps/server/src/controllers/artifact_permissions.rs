@@ -7,7 +7,9 @@ use axum::{
     response::Response,
     routing::put,
 };
-use rustok_api::{AuthContext, Permission, has_effective_permission};
+use rustok_api::{
+    AuthContext, AuthPrincipalContext, Permission, has_effective_permission,
+};
 use rustok_rbac::{
     ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
     RbacArtifactPermissionAssignmentService, RbacControlPlanePrincipal,
@@ -57,10 +59,11 @@ async fn grant_artifact_permission(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     auth: AuthContext,
+    principal_context: AuthPrincipalContext,
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
-    ensure_artifact_permission_control_plane(&auth, tenant.id)?;
+    ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;
     assign(&ctx, tenant.id, auth.user_id, role_id, input, true).await
 }
 
@@ -84,10 +87,11 @@ async fn revoke_artifact_permission(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     auth: AuthContext,
+    principal_context: AuthPrincipalContext,
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
-    ensure_artifact_permission_control_plane(&auth, tenant.id)?;
+    ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;
     assign(&ctx, tenant.id, auth.user_id, role_id, input, false).await
 }
 
@@ -117,12 +121,14 @@ async fn assign(
     }))
 }
 
-fn ensure_artifact_permission_control_plane(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
+fn ensure_artifact_permission_control_plane(
+    auth: &AuthContext,
+    principal_context: AuthPrincipalContext,
+    tenant_id: Uuid,
+) -> Result<()> {
     let principal = RbacControlPlanePrincipal {
         tenant_id: auth.tenant_id,
-        session_id: auth.session_id,
-        client_id: auth.client_id,
-        grant_type: &auth.grant_type,
+        principal_kind: principal_context.kind,
     };
     require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
         http_error(rustok_web::HttpError::forbidden(
@@ -174,81 +180,84 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::ensure_artifact_permission_control_plane;
-    use rustok_api::{AuthContext, Permission};
+    use rustok_api::{
+        AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission,
+    };
     use uuid::Uuid;
 
-    fn auth_context(
-        tenant_id: Uuid,
-        session_id: Uuid,
-        client_id: Option<Uuid>,
-        grant_type: &str,
-        permissions: Vec<Permission>,
-    ) -> AuthContext {
+    fn auth_context(tenant_id: Uuid, permissions: Vec<Permission>) -> AuthContext {
         AuthContext {
             user_id: Uuid::new_v4(),
-            session_id,
+            session_id: Uuid::new_v4(),
             tenant_id,
             permissions,
-            client_id,
+            client_id: None,
             scopes: Vec::new(),
-            grant_type: grant_type.to_string(),
+            grant_type: "direct".to_string(),
         }
     }
 
     #[test]
     fn direct_session_manager_is_admitted() {
         let tenant_id = Uuid::new_v4();
-        let auth = auth_context(
-            tenant_id,
-            Uuid::new_v4(),
-            None,
-            "direct",
-            vec![Permission::MODULES_MANAGE],
-        );
+        let auth = auth_context(tenant_id, vec![Permission::MODULES_MANAGE]);
 
-        assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_ok());
+        assert!(
+            ensure_artifact_permission_control_plane(
+                &auth,
+                AuthPrincipalContext::new(AuthPrincipalKind::DirectUser),
+                tenant_id,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
-    fn oauth_principals_are_denied_even_with_modules_manage() {
-        for grant_type in ["authorization_code", "client_credentials"] {
+    fn delegated_and_service_principals_are_denied_even_with_modules_manage() {
+        for principal_kind in [
+            AuthPrincipalKind::DelegatedUser,
+            AuthPrincipalKind::Service,
+        ] {
             let tenant_id = Uuid::new_v4();
-            let auth = auth_context(
-                tenant_id,
-                Uuid::nil(),
-                Some(Uuid::new_v4()),
-                grant_type,
-                vec![Permission::MODULES_MANAGE],
-            );
+            let auth = auth_context(tenant_id, vec![Permission::MODULES_MANAGE]);
 
-            assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
+            assert!(
+                ensure_artifact_permission_control_plane(
+                    &auth,
+                    AuthPrincipalContext::new(principal_kind),
+                    tenant_id,
+                )
+                .is_err()
+            );
         }
     }
 
     #[test]
     fn direct_user_from_another_tenant_is_denied() {
-        let auth = auth_context(
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            None,
-            "direct",
-            vec![Permission::MODULES_MANAGE],
-        );
+        let auth = auth_context(Uuid::new_v4(), vec![Permission::MODULES_MANAGE]);
 
-        assert!(ensure_artifact_permission_control_plane(&auth, Uuid::new_v4()).is_err());
+        assert!(
+            ensure_artifact_permission_control_plane(
+                &auth,
+                AuthPrincipalContext::new(AuthPrincipalKind::DirectUser),
+                Uuid::new_v4(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn direct_user_without_modules_manage_is_denied() {
         let tenant_id = Uuid::new_v4();
-        let auth = auth_context(
-            tenant_id,
-            Uuid::new_v4(),
-            None,
-            "direct",
-            vec![Permission::MODULES_READ],
-        );
+        let auth = auth_context(tenant_id, vec![Permission::MODULES_READ]);
 
-        assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
+        assert!(
+            ensure_artifact_permission_control_plane(
+                &auth,
+                AuthPrincipalContext::new(AuthPrincipalKind::DirectUser),
+                tenant_id,
+            )
+            .is_err()
+        );
     }
 }

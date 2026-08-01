@@ -1,6 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_effective_permission,
+    AuthContext, AuthPrincipalContext, Permission, TenantContext, graphql::GraphQLError,
+    has_effective_permission,
 };
 use rustok_core::{Rbac, UserRole};
 
@@ -34,9 +35,12 @@ impl RbacQuery {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let principal_context = ctx
+            .data::<AuthPrincipalContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_direct_control_plane_user(auth, tenant.id)?;
+        require_direct_control_plane_user(auth, *principal_context, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(<FieldError as GraphQLError>::permission_denied(
