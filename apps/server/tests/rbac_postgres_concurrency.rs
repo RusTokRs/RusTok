@@ -33,9 +33,12 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             .await?;
 
         let generation_before = rustok_rbac::read_permission_invalidation_generation(&db_a).await?;
+        let assertion_db = db_a.clone();
+        let task_db_a = db_a.clone();
+        let task_db_b = db_b.clone();
         let task_a = tokio::spawn(async move {
             RbacService::replace_user_role_committed(
-                &db_a,
+                &task_db_a,
                 &target_user_id,
                 &tenant_id,
                 UserRole::Admin,
@@ -44,7 +47,7 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
         });
         let task_b = tokio::spawn(async move {
             RbacService::replace_user_role_committed(
-                &db_b,
+                &task_db_b,
                 &target_user_id,
                 &tenant_id,
                 UserRole::Manager,
@@ -57,7 +60,7 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
 
         let assignments = user_roles::Entity::find()
             .filter(user_roles::Column::UserId.eq(target_user_id))
-            .all(&connect_for_assertions().await?)
+            .all(&assertion_db)
             .await?;
         if assignments.len() != 1 {
             return Err(format!(
@@ -67,7 +70,6 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             .into());
         }
 
-        let assertion_db = connect_for_assertions().await?;
         let final_role = roles::Entity::find_by_id(assignments[0].role_id)
             .filter(roles::Column::TenantId.eq(tenant_id))
             .one(&assertion_db)
@@ -95,7 +97,6 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             )
             .into());
         }
-        assertion_db.close().await?;
         Ok(())
     })
     .await
@@ -118,9 +119,12 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             .await?;
 
         let generation_before = rustok_rbac::read_permission_invalidation_generation(&db_a).await?;
+        let assertion_db = db_a.clone();
+        let task_db_a = db_a.clone();
+        let task_db_b = db_b.clone();
         let first = tokio::spawn(async move {
             RbacService::replace_user_role_committed(
-                &db_a,
+                &task_db_a,
                 &first_user_id,
                 &tenant_id,
                 UserRole::Admin,
@@ -129,7 +133,7 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
         });
         let second = tokio::spawn(async move {
             RbacService::replace_user_role_committed(
-                &db_b,
+                &task_db_b,
                 &second_user_id,
                 &tenant_id,
                 UserRole::Admin,
@@ -156,7 +160,6 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             return Err(format!("unexpected continuity rejection: {rejection}").into());
         }
 
-        let assertion_db = connect_for_assertions().await?;
         let super_admin_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_id))
             .filter(roles::Column::Slug.eq(UserRole::SuperAdmin.to_string()))
@@ -185,7 +188,6 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             )
             .into());
         }
-        assertion_db.close().await?;
         Ok(())
     })
     .await
@@ -271,14 +273,6 @@ where
     drop_postgres_database_if_exists(&admin, &database_name).await?;
     admin.close().await?;
     test_result
-}
-
-async fn connect_for_assertions() -> TestResult<DatabaseConnection> {
-    let admin_url = std::env::var(RBAC_POSTGRES_ADMIN_URL_ENV)
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
-    let database_name = std::env::var("RUSTOK_RBAC_ACTIVE_TEST_DATABASE")?;
-    let target_url = postgres_database_url(&admin_url, &database_name);
-    Ok(connect_postgres(&target_url).await?)
 }
 
 async fn insert_tenant(db: &DatabaseConnection, suffix: &str) -> TestResult<Uuid> {
