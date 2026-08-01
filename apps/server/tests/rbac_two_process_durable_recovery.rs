@@ -22,7 +22,6 @@ use rustok_test_utils::{
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use sea_orm_migration::MigratorTrait;
 use serde::{Deserialize, Serialize};
-use tempfile::TempDir;
 use uuid::Uuid;
 
 const ADMIN_URL_ENV: &str = "RUSTOK_MIGRATION_SMOKE_ADMIN_URL";
@@ -179,10 +178,25 @@ async fn run_child(role: &str) -> TestResult<()> {
     match role {
         "observer" => {
             let ready_path = PathBuf::from(required_env(CHILD_READY_PATH_ENV)?);
-            run_observer(db, tenant_id, user_id, cache.redis_configuration_present(), ready_path, result_path).await
+            run_observer(
+                db,
+                tenant_id,
+                user_id,
+                cache.redis_configuration_present(),
+                ready_path,
+                result_path,
+            )
+            .await
         }
         "mutator" => {
-            run_mutator(db, tenant_id, user_id, cache.redis_configuration_present(), result_path).await
+            run_mutator(
+                db,
+                tenant_id,
+                user_id,
+                cache.redis_configuration_present(),
+                result_path,
+            )
+            .await
         }
         other => Err(test_error(format!("unsupported replica child role {other}"))),
     }
@@ -264,7 +278,6 @@ async fn run_observer(
                         redis_configured,
                     },
                 )?;
-                db.close().await?;
                 return Ok(());
             }
         }
@@ -272,7 +285,6 @@ async fn run_observer(
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
-    db.close().await?;
     Err(test_error(format!(
         "observer did not recover through durable generation {durable_generation} before timeout"
     )))
@@ -294,7 +306,6 @@ async fn run_mutator(
             redis_configured,
         },
     )?;
-    db.close().await?;
     Ok(())
 }
 
@@ -360,7 +371,8 @@ async fn wait_for_file(path: &Path, timeout: Duration) -> TestResult<()> {
 }
 
 fn required_env(name: &str) -> TestResult<String> {
-    std::env::var(name).map_err(|_| test_error(format!("required environment variable {name} is missing")))
+    std::env::var(name)
+        .map_err(|_| test_error(format!("required environment variable {name} is missing")))
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> TestResult<()> {
