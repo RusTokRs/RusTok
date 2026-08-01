@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-POLICY-INCIDENT-TRACE-SOURCE-20260801",
+  "generated_at": "2026-08-01T11:27:00Z",
+  "status": "source_ready_unvalidated",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "base_revision": "3a9304aead372b22a5d9069143922d23934e4d7c",
+  "scenario": "missed committed role-relation invalidation publication recovered by the durable generation watchdog",
+  "fixture_backend": "sqlite_in_memory",
+  "postgresql_evidence": false,
+  "multi_replica_evidence": false,
+  "production_paths": {
+    "evaluator": "apps/server/src/services/rbac_service.rs",
+    "relation_store": "apps/server/src/services/rbac_authoritative.rs",
+    "permission_cache": "apps/server/src/services/rbac_runtime.rs",
+    "durable_generation": "apps/server/src/services/rbac_invalidation_generation.rs",
+    "recovery_metrics": "crates/rustok-telemetry/src/rbac_invalidation_metrics.rs"
+  },
+  "incident_packet_source": "apps/server/tests/rbac_policy_incident_trace.rs",
+  "packet_contract": {
+    "evaluator_decision_before_recovery": true,
+    "authoritative_relation_state": true,
+    "cache_hit_and_snapshot_size": true,
+    "durable_and_applied_generation": true,
+    "bounded_recovery_action": "generation_advanced_full_clear",
+    "recovery_and_full_clear_counter_deltas": true,
+    "evaluator_decision_after_recovery": true,
+    "raw_permission_list_logged": false,
+    "password_or_token_logged": false
+  },
+  "failure_injection": {
+    "relation_mutation_and_generation_share_transaction": true,
+    "publisher_intentionally_not_called": true,
+    "stale_cache_is_observed_before_watchdog_recovery": true,
+    "watchdog_is_the_recovery_actor": true,
+    "manual_test_only_cache_clear": false
+  },
+  "expected_outcome": {
+    "decision_before_recovery": "allowed_from_stale_cache",
+    "authoritative_relation_grants_required_permission": false,
+    "durable_generation_ahead_of_applied": true,
+    "recovery_count_delta": 1,
+    "full_clear_count_delta": 1,
+    "decision_after_recovery": "denied_from_authoritative_relations"
+  },
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "formatting_executed": false,
+    "cargo_check_executed": false,
+    "workflow_or_ci_executed": false,
+    "sqlite_runtime_executed": false,
+    "postgresql_runtime_executed": false
+  },
+  "broad_rbac_verification_complete": false,
+  "cursor_advanced": false
+}
