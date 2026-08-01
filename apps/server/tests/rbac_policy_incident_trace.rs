@@ -101,14 +101,19 @@ async fn missed_publication_incident_connects_decision_relations_cache_generatio
 
     let writer = RbacRoleAssignmentDbWriter::new(db.clone());
     writer
-        .assign_role_permissions(tenant_id, user_id, UserRole::Admin)
+        .assign_role_permissions(tenant_id, user_id, UserRole::Customer)
         .await
-        .expect("assign incident admin role");
+        .expect("seed canonical tenant roles");
+    RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Admin)
+        .await
+        .expect("commit initial admin role and durable generation");
 
-    let context = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
     let initial_generation = rustok_rbac::read_permission_invalidation_generation(&db)
         .await
         .expect("read initial durable generation");
+    assert!(initial_generation > 0);
+
+    let context = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
     start_rbac_invalidation_generation_watchdog(&context)
         .await
         .expect("start durable generation watchdog");
@@ -227,6 +232,7 @@ async fn missed_publication_incident_connects_decision_relations_cache_generatio
         evaluator_allowed_after_recovery = packet.evaluator_allowed_after_recovery,
         "rbac policy incident packet"
     );
+    println!("rbac policy incident packet: {packet:?}");
 
     assert_eq!(packet.relation_assigned_role_count, 0);
     assert!(!packet.relation_grants_required_permission);
