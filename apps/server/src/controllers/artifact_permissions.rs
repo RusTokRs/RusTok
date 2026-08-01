@@ -1,5 +1,8 @@
 //! Host transport for RBAC-owned artifact permission grants.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use axum::{
     Json,
     extract::{Path, State},
@@ -8,12 +11,15 @@ use axum::{
     routing::put,
 };
 use rustok_api::{AuthContext, Permission, has_effective_permission};
+use rustok_events::RbacArtifactPermissionEvent;
+use rustok_outbox::TransactionalEventBus;
 use rustok_rbac::{
-    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
-    RbacArtifactPermissionAssignmentService, RbacControlPlanePrincipal,
-    require_direct_control_plane_user,
+    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
+    ArtifactRolePermissionAssignmentCommand, RbacArtifactPermissionAssignmentService,
+    RbacControlPlanePrincipal, require_direct_control_plane_user,
 };
 use rustok_web::json_response;
+use sea_orm::DatabaseTransaction;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -21,8 +27,38 @@ use uuid::Uuid;
 use crate::{
     error::{Error, Result, http_error},
     extractors::tenant::CurrentTenant,
-    services::server_runtime_context::ServerRuntimeContext,
+    services::{
+        event_bus::transactional_event_bus_from_context,
+        server_runtime_context::ServerRuntimeContext,
+    },
 };
+
+#[derive(Clone)]
+struct TransactionalOutboxArtifactPermissionEventPublisher {
+    event_bus: TransactionalEventBus,
+}
+
+impl TransactionalOutboxArtifactPermissionEventPublisher {
+    fn new(event_bus: TransactionalEventBus) -> Self {
+        Self { event_bus }
+    }
+}
+
+#[async_trait]
+impl ArtifactPermissionEventPublisher for TransactionalOutboxArtifactPermissionEventPublisher {
+    async fn publish_assignment_changed(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        event: RbacArtifactPermissionEvent,
+    ) -> std::result::Result<(), ArtifactPermissionAssignmentError> {
+        self.event_bus
+            .publish_contract_in_tx(transaction, tenant_id, Some(actor_id), event)
+            .await
+            .map_err(|error| ArtifactPermissionAssignmentError::Database(error.to_string()))
+    }
+}
 
 /// The transport input for one exact role-to-artifact-permission operation.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -99,7 +135,10 @@ async fn assign(
     input: ArtifactRolePermissionAssignmentRequest,
     granted: bool,
 ) -> Result<Response> {
-    let service = RbacArtifactPermissionAssignmentService::new(ctx.db_clone());
+    let event_publisher = Arc::new(TransactionalOutboxArtifactPermissionEventPublisher::new(
+        transactional_event_bus_from_context(ctx),
+    ));
+    let service = RbacArtifactPermissionAssignmentService::new(ctx.db_clone(), event_publisher);
     let result = service
         .assign(ArtifactRolePermissionAssignmentCommand {
             tenant_id,
@@ -173,8 +212,17 @@ pub fn router() -> crate::routes::ServerRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_artifact_permission_control_plane;
+    use super::{
+        TransactionalOutboxArtifactPermissionEventPublisher,
+        ensure_artifact_permission_control_plane,
+    };
     use rustok_api::{AuthContext, Permission};
+    use rustok_events::RbacArtifactPermissionEvent;
+    use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
+    use rustok_rbac::ArtifactPermissionEventPublisher;
+    use sea_orm::{Database, EntityTrait, TransactionTrait};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     fn auth_context(
@@ -250,5 +298,49 @@ mod tests {
         );
 
         assert!(ensure_artifact_permission_control_plane(&auth, tenant_id).is_err());
+    }
+
+    #[tokio::test]
+    async fn transactional_outbox_adapter_writes_typed_event() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("create outbox table");
+
+        let adapter = TransactionalOutboxArtifactPermissionEventPublisher::new(
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+        );
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let transaction = db.begin().await.expect("begin owner transaction");
+        adapter
+            .publish_assignment_changed(
+                &transaction,
+                tenant_id,
+                actor_id,
+                RbacArtifactPermissionEvent::AssignmentChanged {
+                    operation_id: Uuid::new_v4(),
+                    role_id: Uuid::new_v4(),
+                    installation_id: Uuid::new_v4(),
+                    permission_key: "sample.events.handle".to_string(),
+                    granted: true,
+                },
+            )
+            .await
+            .expect("publish typed event");
+        transaction.commit().await.expect("commit owner transaction");
+
+        let events = SysEvents::find().all(&db).await.expect("load outbox");
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].event_type,
+            "rbac.artifact_role_permission.assignment_changed"
+        );
+        assert_eq!(events[0].schema_version, 1);
+        assert_eq!(events[0].payload["tenant_id"], serde_json::json!(tenant_id));
+        assert_eq!(events[0].payload["actor_id"], serde_json::json!(actor_id));
     }
 }
