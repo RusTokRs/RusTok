@@ -12,8 +12,8 @@ mod tenant;
 
 #[cfg(feature = "server")]
 pub use auth::{
-    AuthContext, AuthContextExtension, OptionalAuthContext, has_any_effective_permission,
-    has_effective_permission, restrict_permissions_to_scopes,
+    AuthContext, AuthContextExtension, AuthPrincipalKind, OptionalAuthContext,
+    has_any_effective_permission, has_effective_permission, restrict_permissions_to_scopes,
 };
 pub use channel::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
