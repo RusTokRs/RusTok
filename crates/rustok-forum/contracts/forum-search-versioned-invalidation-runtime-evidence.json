@@ -205,6 +205,23 @@
         "multi_process_deletion_acl_or_search_disabled_profiles",
         "aggregate_d0_artifact_assembly_or_link_forum_03"
       ]
+    },
+    {
+      "task": "FORUM-23B2G2B3D11",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-aggregate-evidence-assembler.json",
+      "assembler": "scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-runtime-evidence.json",
+      "covers": [
+        "all_nine_runtime_subproof_artifacts_required",
+        "same_source_commit_aggregate_assembly",
+        "exact_ten_scenario_mapping",
+        "input_sha256_and_parent_digest_retention",
+        "atomic_output_after_complete_validation"
+      ],
+      "does_not_cover": [
+        "runtime_execution_or_d0_status_promotion",
+        "link_forum_03_or_release_completion"
+      ]
     }
   ],
   "required_runtime": {
@@ -348,6 +365,8 @@
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_search_disabled_recovery -- --nocapture --test-threads=1",
     "node scripts/verify/verify-forum-search-versioned-invalidation-normal-delivery-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-server --test forum_versioned_invalidation_normal_delivery_iggy -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-aggregate-evidence-assembler.mjs",
+    "node scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
