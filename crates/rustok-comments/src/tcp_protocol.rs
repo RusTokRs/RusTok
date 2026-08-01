@@ -1,17 +1,17 @@
 use rustok_api::PortError;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Default upper bound for one length-prefixed Comments request or response.
 pub const DEFAULT_MAX_COMMENTS_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
-pub(crate) async fn write_frame(
-    stream: &mut TcpStream,
+pub(crate) async fn write_frame<S>(
+    stream: &mut S,
     payload: &[u8],
     max_frame_bytes: usize,
-) -> Result<(), PortError> {
+) -> Result<(), PortError>
+where
+    S: AsyncWrite + Unpin + ?Sized,
+{
     ensure_frame_size(payload.len(), max_frame_bytes)?;
     let length = u32::try_from(payload.len()).map_err(|_| {
         PortError::invariant_violation(
@@ -35,10 +35,13 @@ pub(crate) async fn write_frame(
     Ok(())
 }
 
-pub(crate) async fn read_frame(
-    stream: &mut TcpStream,
+pub(crate) async fn read_frame<S>(
+    stream: &mut S,
     max_frame_bytes: usize,
-) -> Result<Vec<u8>, PortError> {
+) -> Result<Vec<u8>, PortError>
+where
+    S: AsyncRead + Unpin + ?Sized,
+{
     let mut length_bytes = [0_u8; 4];
     stream
         .read_exact(&mut length_bytes)
