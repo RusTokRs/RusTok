@@ -18,7 +18,8 @@ modify the Blog/Comments transport paths.
 The current TCP payload carried no credential, so the listener could only start
 when another host component supplied a concrete `CommentsTcpAuthorityResolver`.
 This continuation adds the first concrete loopback service credential without
-claiming transport encryption or remote-network safety.
+claiming transport encryption, remote-network safety, or end-user write
+delegation.
 
 No compile, Rust or JavaScript test, TCP exchange, database, browser, workflow,
 CI, production, or runtime result is promoted by this continuation. Execution
@@ -62,13 +63,26 @@ remains maintainer-owned.
 - `CommentsTcpBearerAuthorityResolver` authenticates the service credential,
   validates a canonical UUID tenant, and applies an explicit operation allowlist
   before returning trusted authority.
-- Disallowed authenticated operations fail with
-  `comments.tcp_operation_forbidden` before provider dispatch.
+- The resolver's safe default admits exactly three read operations:
+  - `GetComment`;
+  - `ListCommentsForTarget`;
+  - `ListPublicCommentsForTarget`.
+- The default rejects `CreateComment`, `UpdateComment`, `SetCommentStatus`, and
+  `DeleteComment` with `comments.tcp_operation_forbidden` before provider
+  dispatch.
+- This read-only default is deliberate. `CommentsService::create_comment`
+  requires a trusted end-user `user_id`, while a static service actor has none;
+  broad service authority would therefore either fail create inconsistently or
+  over-authorize ownership-sensitive writes.
+- A host may still supply another `SharedCommentsTcpAuthorityResolver`, but write
+  enablement requires a resolver that establishes trustworthy per-request user
+  authority rather than replaying untrusted actor/claim/role fields.
 - `TcpJsonCommentsServerAdapter` passes the envelope credential only to the
   authority resolver. It never copies the credential into `PortContext`.
 - After authentication, the existing tenant equality check remains mandatory and
-  actor, claims, and roles are replaced with trusted values before all seven
-  owner operations.
+  actor, claims, and roles are replaced with trusted values before dispatch.
+- The typed transport and adapter still retain all seven operation variants;
+  authenticated write parity remains pending a trusted user-delegation contract.
 - `TcpJsonCommentsTransport` can construct authenticated version-1 envelopes and
   still retains an unauthenticated constructor for a future externally
   authenticated channel such as mTLS.
@@ -80,12 +94,9 @@ remains maintainer-owned.
   - `RUSTOK_COMMENTS_TCP_BEARER_TOKEN`;
   - `RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID`, which must be a valid UUID service
     actor without surrounding whitespace.
-- The built-in service authority publishes exactly one platform permission claim,
-  `comments:manage`, and one role, `admin`. These values are compatible with the
-  existing `SecurityContext::try_from_port_context` contract and permit owner
-  policy to remain authoritative.
-- All seven Comments TCP operations are allowed by the built-in resolver; callers
-  may construct a narrower resolver through `with_allowed_operations`.
+- The built-in service authority publishes one platform permission claim,
+  `comments:manage`, and one role, `admin`; the transport-level read allowlist
+  remains the effective upper bound for that resolver.
 - Existing loopback bind and endpoint restrictions remain unchanged because the
   bearer credential does not encrypt the transport.
 - Historical slice-68 through slice-71 source guards are reconciled with the
@@ -103,6 +114,7 @@ This slice does not implement or claim:
 - TLS, mTLS, payload encryption, channel binding, or non-loopback safety;
 - nonce, timestamp, challenge-response, request signing, or replay resistance;
 - a separately audited compiler/hardware constant-time guarantee;
+- trusted end-user delegation or authenticated write parity;
 - bearer-token rotation, overlapping key sets, revocation, or secret-manager
   loading;
 - per-tenant credentials or dynamic principal lookup;
@@ -119,23 +131,27 @@ Runtime status: `not_run`.
 
 ## Next implementation results
 
-1. Add TLS/mTLS or an equivalently authenticated encrypted channel before any
+1. Add a signed delegation envelope, protected host identity, or mTLS-derived
+   authority that can establish tenant-bound end-user identity and permission
+   claims before enabling create/update/moderation/delete remotely.
+2. Add TLS/mTLS or an equivalently authenticated encrypted channel before any
    non-loopback endpoint or listener is allowed.
-2. Prefer certificate identity or add bounded credential rotation and replay
+3. Prefer certificate identity or add bounded credential rotation and replay
    resistance if bearer authentication remains supported.
-3. Add bounded retry/backoff only for retryable client failures. Writes must never
+4. Add bounded retry/backoff only for retryable client failures. Writes must never
    be replayed without the existing idempotency key, and the original deadline
    must bound the complete attempt set.
-4. Add in-process/TCP parity fixtures for all seven operations, protocol-version
+5. Add in-process/TCP parity fixtures for the three built-in authenticated reads;
+   keep write parity gated on trusted delegation. Cover protocol-version
    rejection, missing/wrong credentials, operation denial, tenant mismatch,
    exact provider errors, malformed and oversized frames, idle peers,
    concurrency rejection, disconnects, deadlines, and shutdown.
-5. Add listener health/readiness only after retained runtime execution establishes
+6. Add listener health/readiness only after retained runtime execution establishes
    bind, authentication, dispatch, and drain behavior.
-6. Run and record retained Rust, JavaScript, TCP, PostgreSQL, browser, workflow,
+7. Run and record retained Rust, JavaScript, TCP, PostgreSQL, browser, workflow,
    and CI targets before promoting evidence beyond source-only status.
-7. Continue cached thread snapshot and comment-form fallback work after the
-   authenticated remote path has observed runtime evidence.
+8. Continue cached thread snapshot and comment-form fallback work after the
+   authenticated remote read path has observed runtime evidence.
 
 ## Suggested verification — intentionally not run in this slice
 
@@ -166,6 +182,8 @@ Runtime status: `not_run`.
 - Authentication must fail closed and must not reveal whether a token, tenant, or
   peer check failed. Provider dispatch must occur only after trusted authority is
   established and applied.
+- A static service bearer may authorize the built-in read set only. Ownership-
+  sensitive writes require separately established trusted user authority.
 - Plaintext bearer mode remains loopback-only. Bearer authentication alone must
   never be used to justify non-loopback publication.
 - Source-only evidence remains explicit until the maintainer runs and records the
