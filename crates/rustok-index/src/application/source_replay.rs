@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeSet,
     fmt,
+    future::Future,
     sync::Arc,
 };
 
@@ -316,6 +317,28 @@ where
         &self,
         request: IndexReplayPageRequest,
     ) -> Result<IndexReplayPageOutcome, IndexReplayError> {
+        self.run_next_page_interruptible(request, || async {
+            Ok::<bool, IndexReplayFailure>(false)
+        })
+        .await
+    }
+
+    /// Runs one replay page with cooperative interruption checks at durable boundaries.
+    ///
+    /// The probe is called after checkpoint readiness and before source scan, before every
+    /// mutation application, and before checkpoint commit. Returning `true` interrupts the
+    /// page without advancing its checkpoint. Mutations already committed before an
+    /// interruption may be replayed and must remain safe through inbox deduplication and
+    /// monotonic source-version guards.
+    pub async fn run_next_page_interruptible<Check, CheckFuture>(
+        &self,
+        request: IndexReplayPageRequest,
+        mut should_interrupt: Check,
+    ) -> Result<IndexReplayPageOutcome, IndexReplayError>
+    where
+        Check: FnMut() -> CheckFuture,
+        CheckFuture: Future<Output = Result<bool, IndexReplayFailure>>,
+    {
         let descriptor = self
             .sources
             .source_for_schema(request.schema())
@@ -350,6 +373,7 @@ where
             }
         }
 
+        check_replay_interruption(&mut should_interrupt).await?;
         let scan_request = IndexSourceScanRequest::new(
             request.tenant_id(),
             request.schema().clone(),
@@ -387,6 +411,7 @@ where
             .and_then(|checkpoint| checkpoint.last_delivery_id().map(str::to_owned));
 
         for (position, mutation) in page.mutations().iter().enumerate() {
+            check_replay_interruption(&mut should_interrupt).await?;
             let outcome = self
                 .mutation_sink
                 .apply_replay_mutation(
@@ -415,6 +440,7 @@ where
             max_source_version,
             last_delivery_id,
         )?;
+        check_replay_interruption(&mut should_interrupt).await?;
         self.checkpoint_store
             .commit_replay_checkpoint(&checkpoint)
             .await
@@ -432,6 +458,20 @@ where
             duplicate_count,
             stale_count,
         })
+    }
+}
+
+async fn check_replay_interruption<Check, CheckFuture>(
+    should_interrupt: &mut Check,
+) -> Result<(), IndexReplayError>
+where
+    Check: FnMut() -> CheckFuture,
+    CheckFuture: Future<Output = Result<bool, IndexReplayFailure>>,
+{
+    match should_interrupt().await {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(IndexReplayError::Interrupted),
+        Err(failure) => Err(IndexReplayError::InterruptionCheckFailed(failure)),
     }
 }
 
@@ -456,6 +496,10 @@ pub enum IndexReplayError {
     UnknownSchemaSource(SchemaRef),
     #[error(transparent)]
     SourceContract(IndexSourceError),
+    #[error("Index replay page was cooperatively interrupted")]
+    Interrupted,
+    #[error("Index replay interruption check failed")]
+    InterruptionCheckFailed(#[source] IndexReplayFailure),
     #[error("Index replay checkpoint identity does not match the requested replay scope")]
     CheckpointIdentityMismatch {
         expected: IndexReplayCheckpointKey,
