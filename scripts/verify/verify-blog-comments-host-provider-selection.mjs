@@ -89,6 +89,7 @@ hasAll(
   [
     'pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";',
     'pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";',
+    'pub const COMMENTS_TCP_BEARER_TOKEN_ENV: &str = "RUSTOK_COMMENTS_TCP_BEARER_TOKEN";',
     'pub enum CommentsProviderProfile',
     'InProcessFallback',
     'Preconfigured',
@@ -98,7 +99,8 @@ hasAll(
     '"tcp"',
     'raw_endpoint.trim().parse::<SocketAddr>()',
     'endpoint.ip().is_loopback()',
-    'TcpJsonCommentsTransport::new(endpoint)',
+    'comments_tcp_bearer_token_from_environment()?;',
+    'TcpJsonCommentsTransport::with_bearer_token(endpoint, bearer_token)',
     'remote_comments_thread_port(transport)',
     'extensions.insert::<Arc<dyn CommentsThreadPort>>',
     'RUSTOK_COMMENTS_PROVIDER_MODE} must be one of: in_process, tcp',
@@ -115,6 +117,7 @@ hasNone(
     'unwrap_or_else(|_| "tcp"',
     '0.0.0.0:',
     'retry(',
+    'println!(',
   ],
   'selector non-claims',
 );
