@@ -27,7 +27,10 @@ fn rbac_admin_context_error<E: std::fmt::Debug>(
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{AuthContext, Permission, TenantContext, has_effective_permission};
+        use rustok_api::{
+            AuthContext, AuthPrincipalContext, Permission, TenantContext,
+            has_effective_permission,
+        };
         use rustok_core::{ModuleRegistry, Rbac, UserRole, infer_user_role_from_permissions};
         use rustok_rbac::{
             RbacControlPlanePrincipal, require_direct_control_plane_user,
@@ -43,6 +46,15 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
                     "RBAC authentication context is temporarily unavailable",
                 )
             })?;
+        let principal_context = leptos_axum::extract::<AuthPrincipalContext>()
+            .await
+            .map_err(|error| {
+                rbac_admin_context_error(
+                    error,
+                    "principal_kind",
+                    "RBAC principal context is temporarily unavailable",
+                )
+            })?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(|error| {
@@ -54,7 +66,7 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
             })?;
         let principal = RbacControlPlanePrincipal {
             tenant_id: auth.tenant_id,
-            principal_kind: auth.principal_kind,
+            principal_kind: principal_context.kind,
         };
         require_direct_control_plane_user(principal, tenant.id).map_err(|error| {
             tracing::warn!(
