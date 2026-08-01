@@ -67,7 +67,18 @@
     "peer_loopback_required": true,
     "canonical_uuid_tenant_required": true,
     "operation_allowlist": true,
-    "all_operations_default": true,
+    "all_operations_default": false,
+    "default_allowed_operations": [
+      "get_comment",
+      "list_comments_for_target",
+      "list_public_comments_for_target"
+    ],
+    "default_denied_operations": [
+      "create_comment",
+      "update_comment",
+      "set_comment_status",
+      "delete_comment"
+    ],
     "operation_denied_code": "comments.tcp_operation_forbidden",
     "authentication_failure_code": "comments.tcp_authentication_failed",
     "authentication_failure_message": "Comments TCP service authentication failed",
@@ -77,7 +88,8 @@
       "actor",
       "claims",
       "roles"
-    ]
+    ],
+    "trusted_user_delegation_implemented": false
   },
   "host_configuration": {
     "consumer_tcp_requires_bearer": true,
@@ -92,12 +104,17 @@
     "built_in_roles": [
       "admin"
     ],
+    "built_in_operation_upper_bound": [
+      "get_comment",
+      "list_comments_for_target",
+      "list_public_comments_for_target"
+    ],
     "external_authority_override_precedence": true,
     "allow_all_fallback": false,
     "plaintext_loopback_only": true,
     "non_loopback_enabled": false
   },
-  "operations": [
+  "protocol_operations": [
     "create_comment",
     "get_comment",
     "list_comments_for_target",
@@ -117,10 +134,13 @@
     "non_loopback_peer_rejected": true,
     "invalid_tenant_rejected": true,
     "disallowed_operation_rejected": true,
+    "default_owner_writes_rejected": true,
     "provider_dispatch_before_authentication": false,
     "silent_in_process_fallback_for_explicit_tcp": false
   },
   "pending": [
+    "trusted_user_delegation",
+    "authenticated_write_parity",
     "tls_or_mtls_transport_encryption",
     "non_loopback_publication",
     "credential_rotation",
@@ -139,6 +159,8 @@
     "no_non_loopback_safety",
     "no_replay_resistance",
     "no_rotation_or_revocation",
+    "no_trusted_user_delegation",
+    "no_authenticated_write_parity",
     "no_separately_audited_constant_time_result",
     "no_compile_result",
     "no_rust_test_result",
