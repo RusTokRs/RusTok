@@ -43,6 +43,11 @@ for (const marker of [
   "drop_postgres_database_if_exists(&admin, &database_name)",
   "Migrator::up(&db_a, None).await?",
   "let db_b = connect_postgres(&target_url).await?",
+  "Barrier::new(2)",
+  "Barrier::new(8)",
+  "barrier_a.wait().await",
+  "barrier_b.wait().await",
+  "barrier.wait().await",
   "RbacService::replace_user_role_committed",
   "RbacRoleAssignmentDbWriter::new(db_a.clone())",
   "assignments.len() != 1",
@@ -100,6 +105,7 @@ const evidenceChecks = [
   [evidence.fixture?.backend === "postgresql", "fixture backend must be PostgreSQL"],
   [evidence.fixture?.isolated_database_per_test === true, "isolated databases must remain required"],
   [evidence.fixture?.two_independent_database_connections === true, "two connections must remain required"],
+  [evidence.fixture?.barrier_synchronized_starts === true, "barrier-synchronized starts must remain required"],
   [evidence.fixture?.ignored_by_default === true, "tests must remain ignored by default"],
   [evidence.scenarios?.same_target_role_replacement?.expected_generation_delta === 2, "role replacement generation delta must remain two"],
   [evidence.scenarios?.last_active_super_admin?.expected_successes === 1, "exactly one super-admin demotion must succeed"],
@@ -150,5 +156,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready PostgreSQL RBAC concurrency harness covers serialized role replacement, last-super-admin continuity and unique contiguous generation allocation without claiming execution or multi-replica evidence",
+  "✔ source-ready PostgreSQL RBAC concurrency harness covers synchronized role replacement, last-super-admin continuity and unique contiguous generation allocation without claiming execution or multi-replica evidence",
 );
