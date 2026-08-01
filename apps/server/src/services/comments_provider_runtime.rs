@@ -432,8 +432,8 @@ fn comments_tcp_authority_from_environment(
         DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
     )?;
     let resolver = CommentsTcpDelegatingAuthorityResolver::new(token, actor, delegation_secret)
-        .with_read_claim(COMMENTS_TCP_SERVICE_PERMISSION)
-        .with_read_role(COMMENTS_TCP_SERVICE_ROLE)
+        .with_service_claim(COMMENTS_TCP_SERVICE_PERMISSION)
+        .with_service_role(COMMENTS_TCP_SERVICE_ROLE)
         .with_max_ttl(Duration::from_millis(ttl_ms))
         .map_err(|error| format!("Comments TCP delegation TTL configuration failed: {error}"))?
         .with_replay_capacity(replay_capacity)
