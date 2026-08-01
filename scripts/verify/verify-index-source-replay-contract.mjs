@@ -69,6 +69,35 @@ for (const forbidden of [
   }
 }
 
+const timeoutPath = 'crates/rustok-index/src/application/source_timeout.rs';
+const sourceTimeout = requireMarkers(timeoutPath, [
+  'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
+  'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
+  'const INDEX_SOURCE_LOAD_TIMEOUT_CODE: &str = "index_source_load_timeout";',
+  'struct TimedIndexSource<S>',
+  'tokio::time::timeout',
+  'timeout(self.call_timeout, self.inner.scan(request)).await',
+  'timeout(self.call_timeout, self.inner.load(request)).await',
+  'IndexSourceFailure::retryable(code)',
+  'super::source_registry::register_index_source(',
+  'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
+  'timed_source_classifies_scan_timeout_as_retryable',
+  'timed_source_classifies_targeted_load_timeout_as_retryable',
+]);
+for (const forbidden of [
+  'DatabaseConnection',
+  'PostgresMutationStore',
+  'index_jobs',
+  'index_checkpoints',
+  'tokio::spawn',
+  'tracing::',
+  'format!(',
+]) {
+  if (sourceTimeout.includes(forbidden)) {
+    fail(`${timeoutPath} contains forbidden storage/scheduler/raw-detail marker ${forbidden}`);
+  }
+}
+
 const workerPath = 'crates/rustok-index/src/application/source_replay.rs';
 const worker = requireMarkers(workerPath, [
   'pub struct IndexReplayWorker',
@@ -159,13 +188,14 @@ requireMarkers(testsPath, [
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'mod source_registry;',
   'mod source_replay;',
+  'mod source_timeout;',
   'mod source_replay_tests;',
   'IndexSourceCatalog',
   'SharedIndexSourceRegistry',
   'IndexReplayWorker',
   'IndexReplayCheckpointStore',
   'materialize_index_source_registry',
-  'register_index_source',
+  'pub use source_timeout::register_index_source;',
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay;',
@@ -180,6 +210,7 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
   'PostgresIndexReplayJobStore',
 ]);
 requireMarkers('crates/rustok-index/Cargo.toml', [
+  'tokio.workspace = true',
   'tracing.workspace = true',
 ]);
 requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
@@ -196,6 +227,18 @@ requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
   'it cannot advance the durable cursor',
   'reserved empty values',
   'maintainer-run',
+]);
+requireMarkers('crates/rustok-index/docs/m6-source-call-timeout.md', [
+  'Status: `source_complete_owner_execution_pending`',
+  'The default source-call deadline is `30 seconds`.',
+  '`index_source_scan_timeout`',
+  '`index_source_load_timeout`',
+  'this source wrapper never extends or heartbeats a job lease',
+  'complete in-page interruption/timeouts remains open',
+  'maintainer-run',
+]);
+requireMarkers('crates/rustok-index/docs/README.md', [
+  '[M6 Bounded Source-call Timeout](./m6-source-call-timeout.md)',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M5/M6 bounded source replay contract: `source_complete_worker_pending`',
