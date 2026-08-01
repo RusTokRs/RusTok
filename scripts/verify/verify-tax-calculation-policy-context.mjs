@@ -36,9 +36,20 @@ for (const [value, label] of [
   ],
   [
     'log_tax_calculation_policy_rejection(context, owner_operation, error);',
-    'rejection diagnostics before rethrow',
+    'rejection diagnostics before unchanged return',
   ],
   ['fn tax_calculation_context_facts(', 'safe context fact helper'],
+  ['fn tax_port_error_kind(', 'closed port error kind helper'],
+  ['PortErrorKind::Validation => "validation"', 'validation kind label'],
+  ['PortErrorKind::NotFound => "not_found"', 'not-found kind label'],
+  ['PortErrorKind::Conflict => "conflict"', 'conflict kind label'],
+  ['PortErrorKind::Forbidden => "forbidden"', 'forbidden kind label'],
+  ['PortErrorKind::Unavailable => "unavailable"', 'unavailable kind label'],
+  ['PortErrorKind::Timeout => "timeout"', 'timeout kind label'],
+  [
+    'PortErrorKind::InvariantViolation => "invariant_violation"',
+    'invariant kind label',
+  ],
   ['fn log_tax_calculation_policy_rejection(', 'structured diagnostic helper'],
   ['owner = "rustok_tax"', 'truthful tax owner'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
@@ -58,14 +69,28 @@ for (const [value, label] of [
   ['idempotency_key_length = ?facts.idempotency_key_length', 'idempotency length'],
   ['deadline_ms = ?facts.deadline_ms', 'deadline context'],
   ['operation = owner_operation', 'exact owner operation'],
-  ['code = %error.code', 'original port code'],
-  ['error_kind = ?error.kind', 'original port kind'],
+  ['code = %error.code', 'stable port code'],
+  [
+    'error_kind = tax_port_error_kind(&error.kind)',
+    'closed port error kind label',
+  ],
+  [
+    'error_message_present = !error.message.is_empty()',
+    'port error message presence',
+  ],
+  [
+    'error_message_length = error.message.chars().count()',
+    'port error message length',
+  ],
   ['retryable = error.retryable', 'original retryability'],
   ['boundary = TAX_CALCULATION_PORT_BOUNDARY', 'boundary identity'],
-  ['"tax calculation policy admission failed"', 'error diagnostic event'],
   [
-    '"tax calculation policy admission was rejected"',
-    'warning diagnostic event',
+    '"tax calculation policy admission failed with bounded diagnostics"',
+    'technical diagnostic event',
+  ],
+  [
+    '"tax calculation policy admission was rejected with bounded diagnostics"',
+    'ordinary diagnostic event',
   ],
   [
     'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
@@ -101,6 +126,11 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
+  ['error = ?error', 'complete PortError debug payload'],
+  ['error = %error', 'complete PortError display payload'],
+  ['error_kind = ?error.kind', 'debug-formatted PortError kind'],
+  ['error_message = %error.message', 'raw PortError message'],
+  ['message = %error.message', 'raw PortError message alias'],
   ['tenant_id = %context.tenant_id', 'raw tenant context'],
   ['actor = ?context.actor', 'raw actor context'],
   ['channel = ?context.channel', 'raw channel context'],
@@ -124,5 +154,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Tax calculation policy rejections retain correlation plus safe context shape and the original PortError',
+  '✔ Tax calculation policy rejections retain correlation and bounded PortError shape without logging the complete envelope',
 );
