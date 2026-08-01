@@ -11,12 +11,14 @@ This module has no module-owned UI. `calculate_tax` is a read-like port with a
 required deadline and typed `PortError` mapping; it must not require write
 idempotency.
 
-The canonical root wrapper and the owner `TaxService` port implementation now retain
+The canonical root wrapper and the owner `TaxService` port implementation retain
 correlation plus safe context, request, and detail shape. Local attribution uses stable
-error codes only. Raw tenant, actor, channel, causation, provider, identifier,
-financial, and validation-detail values are not written by the hardened tax
-calculation diagnostics. Public error envelopes, provider behavior, and validation
-order remain unchanged.
+error codes only. Policy admission records a closed error-kind label, retryability, and
+message presence/length while returning the original `PortError` unchanged; it does
+not record the complete envelope, message text, or debug-kind output. Raw tenant,
+actor, channel, causation, provider, identifier, financial, and validation-detail
+values are not written by the hardened tax calculation diagnostics. Public error
+envelopes, provider behavior, and validation order remain unchanged.
 
 ## FFA/FBA boundary
 
@@ -36,7 +38,7 @@ order remain unchanged.
   port semantics, plan/registry evidence, and fallback metadata.
 - `scripts/verify/verify-tax-calculation-policy-context.mjs`,
   `scripts/verify/verify-tax-calculation-error-context.mjs`, and
-  `scripts/verify/verify-tax-calculation-local-context.mjs` lock safe owner policy,
+  `scripts/verify/verify-tax-calculation-local-context.mjs` lock bounded owner policy,
   owner mapper, and post-delegation context retention without promoting runtime
   evidence.
 
@@ -90,4 +92,5 @@ order remain unchanged.
 3. Update this status block and `docs/modules/registry.md` with an FBA boundary
    change.
 4. Keep diagnostics correlation-aware and shape-only; never route on public messages
-   or log raw tax identities, values, provider payloads, or internal validation text.
+   or log complete `PortError` envelopes, raw tax identities, values, provider payloads,
+   or internal validation text.
