@@ -23,10 +23,17 @@ receipt snapshot for a bounded durable consumer. It publishes fixed states `tota
 snapshot availability and timestamp. Inspection failure or observer shutdown clears
 all counts and timestamp so stale values cannot appear current.
 
-No runtime-consumer or poison-receipt metric uses tenant, event, relation, partition,
-offset, payload, delivery UUID, publisher identity, acknowledgement token, credential,
-or raw error-message values as labels. Lag is never inferred from event age,
-processing duration, one delivered offset, or a local cursor counter.
+The dedicated `rbac_invalidation_metrics` module exposes process-level durable and
+applied authorization-generation state, signed lag, watchdog health and bounded
+recovery counters. It is registered in the same canonical process registry. RBAC and
+`apps/server` retain ownership of generation semantics, recovery decisions, alert
+thresholds and the incident runbook.
+
+No runtime-consumer, poison-receipt or RBAC invalidation metric uses tenant, user,
+role, permission, session, OAuth client, event, relation, partition, offset, payload,
+delivery UUID, publisher identity, acknowledgement token, credential, cache key or
+raw error-message values as labels. Lag is never inferred from event age, processing
+duration, one delivered offset, a local cursor counter or Redis state.
 
 ## Boundary
 
@@ -37,12 +44,14 @@ processing duration, one delivered offset, or a local cursor counter.
   collector helpers.
 - Domain/runtime owners choose stable metric meanings, bounded semantic values, alert
   thresholds, and operational response.
-- Runtime collectors register through `register_runtime_collector`; a second global
+- Runtime collectors register through `register_runtime_collector`; statically known
+  bounded collectors register through the same initialization path. A second global
   registry is forbidden.
 - Dynamic identities, raw positions, payloads, claims, credentials, storage causes,
   and unbounded error values are forbidden as metric labels.
 - Metrics provide observations only. They never acknowledge, reclaim, repair, delete,
-  retain, authorize, or select delivery policy.
+  retain, authorize, invalidate snapshots, advance generations or select delivery
+  policy.
 
 ## Delivered result: bounded runtime consumer metrics
 
@@ -83,34 +92,60 @@ processing duration, one delivered offset, or a local cursor counter.
 - Alert thresholds and any reclaim, repair, or retention response remain external
   reviewed operator policy.
 
+## Delivered result: bounded RBAC invalidation metrics
+
+- `rbac_invalidation_metrics::register` installs eight statically known metric families
+  in the existing process registry.
+- Gauges expose durable database generation, locally applied generation, signed
+  durable-minus-applied lag and watchdog running state.
+- A positive lag represents pending catch-up, zero represents an applied checkpoint and
+  a negative lag represents database regression below the monotonic process checkpoint.
+- Counters expose durable-generation database read failures, watchdog restarts,
+  recovery actions and process-wide permission snapshot clears.
+- The only vector label is `reason`; values are selected by the canonical worker from
+  bounded sets such as `panic`, `unexpected_exit`, `runtime_replaced`, `initial_sync`,
+  `generation_advanced` and `generation_regressed`.
+- The collector performs no database reads, cache operations or worker supervision. The
+  existing `apps/server` watchdog supplies observations and remains the only recovery
+  path.
+- Unit coverage locks signed lag behavior and registration of all metric families.
+- `scripts/verify/verify-rbac-invalidation-observability.mjs` guards registry
+  composition, forbidden labels, canonical worker wiring, RBAC operator documentation
+  and cycle cursor synchronization.
+
 ## Next results
 
 1. **Prove bootstrap and shutdown behavior in every host mode.** Cover native server,
    CLI compatibility, OTel enabled/disabled, metrics disabled, repeated initialization,
-   dynamic collector registration, poison observer shutdown, and graceful exporter
-   shutdown.
+   dynamic collector registration, poison observer shutdown, RBAC watchdog shutdown,
+   and graceful exporter shutdown.
 2. **Harden the shared metrics contract.** Add focused coverage for duplicate/concurrent
    registration, disabled telemetry, collector rendering, bounded labels, incomplete
-   snapshot clearing, poison snapshot unavailability, and worker termination with an
-   unacknowledged delivery.
+   snapshot clearing, poison snapshot unavailability, RBAC generation saturation and
+   worker termination with an unacknowledged delivery.
 3. **Retain live lag and receipt evidence.** Verify every-partition Iggy snapshots,
    concurrent broker movement, missing checkpoints, observer reconnect, PostgreSQL
-   aggregate consistency, expired leases, TLS/auth failure, and multi-replica semantics
-   before selecting alerts.
+   aggregate consistency, expired leases, TLS/auth failure, RBAC Redis outage/restart,
+   missed publication and multi-replica semantics before promoting operational gates.
 4. **Align module instrumentation with operations.** Validate representative modules and
    `/metrics` against a small correlation/service-health convention without moving
-   domain semantics or runbooks into this crate.
+   domain semantics or runbooks into this crate. RBAC still needs one retained incident
+   chain connecting evaluator decision, relation state, cache snapshot, durable
+   generation and recovery action.
 
 ## Verification
 
 - `cargo test -p rustok-telemetry`
+- `cargo test -p rustok-telemetry rbac_invalidation_metrics`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
+- `cargo test -p rustok-server --lib rbac_invalidation_generation`
+- `node scripts/verify/verify-rbac-invalidation-observability.mjs`
 - `node scripts/verify/verify-runtime-consumer-metrics.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-social-graph-index-poison-observer.mjs`
 - `scripts/verify/verify-architecture.sh`
-- Targeted `/metrics`, bootstrap, registration, snapshot, and shutdown tests.
+- Targeted `/metrics`, bootstrap, registration, snapshot, shutdown and recovery tests.
 
 These commands remain maintainer-run and were not executed manually in this slice.
 

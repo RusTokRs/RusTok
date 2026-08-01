@@ -114,6 +114,35 @@ The default `rustok-rbac` crate compiled on exact PR head
 SSR compilation, server compilation, focused tests, verifier execution and live
 negative transport evidence remain required before this correction is verified.
 
+## RBAC durable invalidation observability composition
+
+The server owns the process-level watchdog that reconciles the authoritative
+RBAC database generation with the generation applied to local permission
+snapshots. The cycle-001 RBAC source slice instruments that existing worker; it
+does not create a second counter, cache authority, listener or recovery path.
+
+The host adapter now reports through the canonical `rustok-telemetry` registry:
+
+- durable and locally applied generation;
+- signed durable-minus-applied lag, including a negative regression signal;
+- watchdog running state and bounded restart reasons;
+- durable-generation database read failures;
+- bounded recovery and process-wide permission snapshot clear reasons.
+
+The worker records positive lag before catch-up, zero after a successful applied
+checkpoint, and preserves negative lag when the database regresses below the
+monotonic process checkpoint. Recovery still clears permission snapshots through
+the existing owner/runtime path. No metric contains tenant, user, role,
+permission, session, OAuth client or cache-key labels.
+
+Alert thresholds and Redis outage/restart, missed PubSub, generation regression
+and canonical role-repair procedures are owned in
+`crates/rustok-rbac/docs/README.md`. Source guard
+`scripts/verify/verify-rbac-invalidation-observability.mjs` locks registry,
+worker, documentation and cursor synchronization. Compilation, test execution,
+two-replica Redis recovery and one complete authorization incident trace remain
+required evidence.
+
 ## Improvements
 
 ### Architecture debt
@@ -134,6 +163,7 @@ negative transport evidence remain required before this correction is verified.
 - Align metric coverage across all critical endpoints and background event processing.
 - Add end-to-end tracing: gateway -> handlers -> modules -> outbox/transport.
 - Build SLO dashboards for latency/error budget and health per module.
+- Execute and retain RBAC durable-generation metric, lag, worker-restart and full-clear evidence across Redis outage/restart and missed-publication recovery.
 
 ### Security
 
@@ -150,16 +180,17 @@ negative transport evidence remain required before this correction is verified.
 - Include negative tests for RBAC/tenant isolation and failure-mode tests for event transport.
 - Add live HTTP/native host-authority tests for no header, wrong token, read/manage hierarchy, audit identity, Iggy authenticated/resolved tenant ownership, rotation/revocation and WebSocket denial.
 - Retain REST artifact-role permission and native RBAC Admin tests/verifiers for OAuth delegated/service denial, tenant mismatch, missing permission and trusted actor propagation.
+- Run the targeted telemetry/server tests and focused RBAC invalidation observability source verifier before the complete Wave 2 server sweep.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `pending`
-- Last verified at (UTC): `2026-07-31`
-- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority, followed by the active core/rbac review of authoritative request scope, artifact role-permission REST adapter and native RBAC Admin bootstrap`
-- Findings: `P0=3, P1=2, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the RBAC REST invalid principal grant; the second P1 is native role-metadata admission inconsistency; the existing P2 is the earlier module-control-plane construction finding)
-- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner host-neutral direct-session policy for REST, GraphQL and native RBAC Admin as 75b67f877eb405abe4e6761a16d6b7ece98bc103, with authenticated/routed tenant equality before modules:manage or settings:read, trusted AuthContext actor propagation and removal of the obsolete native tenant-only helper.`
-- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC P0/P1 corrections still lack same-SHA format, all-feature owner compile, admin SSR/server compile, focused unit/architecture/verifier tests and live transport evidence; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
-- Evidence: `source audit confirms middleware builds AuthContext and request scope from authoritative DB permissions, with OAuth scopes only narrowing authority. Exact PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159; issue #2740 then stopped the job before rustok-server. Standard CI and Hardening remained pending without jobs. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. No other queued or pending result is claimed. Host-authority source remains merged at 1ce83819b077ef6e0df009fd5675f556315ef63a.`
-- Next action: `continue the core/rbac P0/P1 sweep and obtain exact-SHA format/all-feature/admin/server/focused/module/live evidence; leave the complete server composition audit for its Wave 2 cursor visit`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs`
+- Last verified at (UTC): `2026-08-01`
+- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority; active core/rbac review of authoritative request scope, artifact role-permission REST adapter and native RBAC Admin bootstrap; source review of the canonical durable-generation watchdog and process telemetry registry`
+- Findings: `P0=3, P1=3, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the RBAC REST invalid principal grant; the second P1 is native role-metadata admission inconsistency; the third P1 is missing dedicated invalidation lag/worker/recovery observability and incident operations; the existing P2 is the earlier module-control-plane construction finding)
+- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner host-neutral direct-session policy for REST, GraphQL and native RBAC Admin as 75b67f877eb405abe4e6761a16d6b7ece98bc103. The current core/rbac source slice registers bounded durable/applied generation, signed lag, watchdog, database-read, recovery and full-clear metrics in the canonical telemetry registry and instruments only the existing watchdog; alert policy and recovery runbook are synchronized with the RBAC owner plan.`
+- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC corrections still lack same-SHA format, telemetry/all-feature owner compile, admin SSR/server compile, focused Rust/source verifier tests and live transport evidence; PostgreSQL concurrency, two-replica Redis recovery and one complete authorization incident trace remain absent; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
+- Evidence: `source audit confirms middleware builds AuthContext and request scope from authoritative DB permissions, with OAuth scopes only narrowing authority. Exact PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159; issue #2740 then stopped the job before rustok-server. The new source slice registers metrics only through rustok-telemetry, instruments the canonical rbac_invalidation_generation watchdog and adds unit/source guards without claiming command execution. Standard CI and Hardening remained pending without jobs. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. Host-authority source remains merged at 1ce83819b077ef6e0df009fd5675f556315ef63a.`
+- Next action: `continue the core/rbac cursor: run targeted telemetry/RBAC Admin/server checks and the invalidation source verifier on one revision, then retain PostgreSQL concurrency and multi-replica Redis recovery evidence; leave the complete server composition audit for its Wave 2 cursor visit`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-telemetry && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-telemetry rbac_invalidation_metrics && cargo test -p rustok-server --lib rbac_invalidation_generation && node scripts/verify/verify-rbac-invalidation-observability.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs`

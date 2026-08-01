@@ -2,6 +2,7 @@ pub mod consumer_poison_metrics;
 pub mod dlq_duplicate_alert_metrics;
 pub mod metrics;
 pub mod otel;
+pub mod rbac_invalidation_metrics;
 pub mod runtime_consumer_metrics;
 pub mod social_graph_index_privacy_shadow_metrics;
 
@@ -230,6 +231,7 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
 
     dlq_duplicate_alert_metrics::register(registry)?;
     metrics::register_all(registry)?;
+    rbac_invalidation_metrics::register(registry)?;
 
     let _ = REGISTRY.set(registry.clone());
     let _ = METRICS_HANDLE.set(handle.clone());
