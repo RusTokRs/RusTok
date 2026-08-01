@@ -146,6 +146,8 @@ impl ForumVisibilityScopedReadStateService {
 
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::DeletedAt.is_null())
+            .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
             .filter(forum_topic::Column::CreatedAt.lte(snapshot_at.clone()));
         if let Some(category_ids) = category_ids {
             select = select.filter(forum_topic::Column::CategoryId.is_in(category_ids));
@@ -195,6 +197,14 @@ impl ForumVisibilityScopedReadStateService {
 
         if !visible_topic_ids.is_empty() {
             let write_txn = self.db.begin().await?;
+            lock_active_topic_read_state_writes_in_tx(
+                &write_txn,
+                tenant_id,
+                &visible_topic_ids,
+            )
+            .await?;
+            lock_topic_read_state_scopes_in_tx(&write_txn, tenant_id, &visible_topic_ids)
+                .await?;
             let public_positions =
                 latest_public_positions_in_tx(&write_txn, tenant_id, &visible_topic_ids).await?;
             let topic_revisions =
