@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "customer_read_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "owner_policy_source": "crates/rustok-customer/src/ports.rs",
+    "canonical_wrapper": "crates/rustok-customer/src/read_context.rs",
+    "policy_verifier": "scripts/verify/verify-customer-read-policy-context.mjs",
+    "local_verifier": "scripts/verify/verify-customer-read-local-context.mjs",
+    "policy_documentation": "crates/rustok-customer/docs/read-port-policy-context.md",
+    "local_documentation": "crates/rustok-customer/docs/read-local-context.md",
+    "implementation_plan": "crates/rustok-customer/docs/implementation-plan.md"
+  },
+  "source_contract": {
+    "owner_policy_diagnostics_bounded": true,
+    "canonical_wrapper_diagnostics_bounded": true,
+    "complete_port_error_logged": false,
+    "raw_context_logged": false,
+    "raw_request_uuid_logged": false,
+    "canonical_wrapper_exact_pagination_logged": false,
+    "canonical_wrapper_exact_profile_counts_logged": false,
+    "raw_search_logged": false,
+    "bounded_context_shape_logged": true,
+    "bounded_request_shape_logged": true,
+    "stable_code_logged": true,
+    "error_message_shape_logged": true,
+    "closed_error_kind_logged": true,
+    "exact_local_classification_changed": false,
+    "delegated_error_return_changed": false,
+    "owner_list_validation_contract_changed": false,
+    "public_contract_changed": false,
+    "owner_delegation_changed": false,
+    "customer_ffa_fba_status_promoted": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "execution": []
+}

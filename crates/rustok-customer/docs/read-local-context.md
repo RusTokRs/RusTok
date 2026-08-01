@@ -1,148 +1,104 @@
-# Customer read local outcome context
+# Customer read local diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice retains stable owner-local outcome context for the canonical root customer read construction:
+The canonical root `InProcessCustomerReadPort` retains actionable diagnostics for all
+four `CustomerReadPort` operations while delegating the original context and request to
+the unchanged `CustomerService` implementation:
 
-- `CustomerReadPort::read_customer_projection`;
-- `CustomerReadPort::read_customer_projection_by_user`;
-- `CustomerReadPort::list_customer_projections`;
-- `CustomerReadPort::list_profile_enrichment`;
-- root `InProcessCustomerReadPort`;
-- root `in_process_customer_read_port`.
+- `read_customer_projection`;
+- `read_customer_projection_by_user`;
+- `list_customer_projections`;
+- `list_profile_enrichment`.
 
-The existing owner implementation in `ports.rs` remains unchanged. A root wrapper retains the delegated
-`PortContext` and safe request facts, calls the original `CustomerService` port implementation, classifies
-only exact stable returned `PortError` envelopes, and returns the same error unchanged.
+The module-path factory under `rustok_customer::ports` remains an explicit compatibility
+path. Root construction continues through `in_process_customer_read_port` and the
+canonical wrapper.
 
-## Canonical root cutover
+## Bounded context shape
 
-The crate keeps `pub mod ports`, so the existing trait, request/response DTOs, service implementation, and
-module-path factory remain available for compatibility. Root exports now separate contracts from canonical
-construction:
+This bounded context shape keeps attribution useful without copying delegated identity
+or routing values into the event.
 
-- `CustomerReadPort` and its DTOs continue to come from `ports`;
-- root `InProcessCustomerReadPort` and `in_process_customer_read_port` come from `read_context`.
+Covered events retain correlation ID, owner operation, local operation, stable boundary,
+and only bounded delegated context:
 
-Current Commerce consumers import the root factory, so they use the wrapper without changing transport or
-orchestration source. Callers that deliberately construct through `rustok_customer::ports` remain an
-explicit compatibility bypass and are not counted as covered by this slice.
+- tenant and actor-ID character lengths;
+- a closed actor-kind label;
+- claim and role counts;
+- optional channel, causation, traceparent, and idempotency presence/length;
+- locale length and deadline.
 
-## Delegation order
+Raw tenant, actor, channel, locale, causation, traceparent, and idempotency values are not
+recorded by the wrapper.
 
-Each wrapper operation performs the same sequence:
+## Bounded request shape
 
-1. clone the accepted `PortContext` for diagnostics;
-2. retain operation-specific safe request facts;
-3. delegate the original context and request to the unchanged owner implementation;
-4. inspect only a returned `PortError`;
-5. emit a local event only when the exact stable code and message are covered;
-6. return the same `PortError` unchanged.
+Operation-specific diagnostics retain only:
 
-The persistent owner continues to own read-policy admission, tenant parsing, page validation, tenant-scoped
-queries, profile enrichment, DTO construction, and public error mapping.
+- customer or user UUID presence and non-nil status;
+- page and page-size presence plus non-zero status;
+- search presence and character length;
+- enrichment-list emptiness and duplicate-user-ID presence.
 
-## Safe request facts
+Raw customer/user UUIDs, exact pagination values, exact profile-enrichment counts, search
+text, email, customer names, profile names, preferred locale values, rows, and result
+payloads are not recorded.
 
-Covered diagnostics may retain:
+## Stable local classification
 
-- typed customer id for `read_customer_projection`;
-- typed user id for `read_customer_projection_by_user`;
-- page, page size, and search character length for `list_customer_projections`;
-- requested and unique user-id counts for `list_profile_enrichment`.
+The wrapper preserves the exact stable `operation + code + message` classification for:
 
-The wrapper does not retain raw search text, customer names, email addresses, profile names, preferred
-locale values, customer records, result rows, or profile payloads.
+- invalid tenant context;
+- invalid page and page size;
+- storage unavailability;
+- customer and customer-by-user not found;
+- owner validation;
+- profile projection unavailability.
 
-## Covered stable outcomes
+Unknown envelopes pass through without an additional local event. Unavailable, timeout,
+and invariant kinds remain error severity; ordinary validation, not-found, and conflict
+outcomes remain warning severity.
 
-The mapper requires exact `operation + code + message` matches where an outcome is operation-specific.
-Unknown envelopes pass through without an additional event.
+## Bounded error shape
 
-| Stable envelope | Covered operation | Local operation | Severity |
-| --- | --- | --- | --- |
-| `customer.context_invalid` / `customer request context is invalid` | all | `validate_tenant_context` | warning |
-| `customer.page_invalid` / `customer projection page is invalid` | list customers | `validate_page` | warning |
-| `customer.per_page_invalid` / `customer projection page size is invalid` | list customers | `validate_page_size` | warning |
-| `customer.database_unavailable` / `customer storage is temporarily unavailable` | all | `owner_storage` | error |
-| `customer.customer_not_found` / `customer was not found` | customer-id read | `load_customer` | warning |
-| `customer.customer_by_user_not_found` / `customer was not found for the requested user` | user-id read | `load_customer_by_user` | warning |
-| `customer.validation` / `customer request is invalid` | all | `validate_owner_request` | warning |
-| `customer.profile_unavailable` / `customer profile projection is temporarily unavailable` | all | `load_profile_projection` | error |
+Covered events retain stable code, retryability, message presence/length, and a closed
+seven-value error-kind label. The complete delegated `PortError`, its message text, and
+debug-formatted kind are not copied into diagnostics.
 
-Unavailable, timeout, and invariant kinds use error severity. Validation and not-found outcomes use warning
-severity.
-
-## Retained diagnostic context
-
-Covered outcomes record:
-
-- truthful owner `rustok_customer`;
-- exact public owner operation;
-- operation-specific local label;
-- boundary `customer_read_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- safe operation-specific request facts;
-- exact stable code and public-safe message;
-- typed error kind and retryability;
-- the complete delegated `PortError`.
+The same delegated `PortError` is returned unchanged.
 
 ## Preserved behavior
 
-This work does not change:
+This source slice does not change:
 
-- the `CustomerReadPort` trait or DTOs;
-- `CustomerService` queries and profile bridge behavior;
-- `PortCallPolicy::read()` admission or deadline semantics;
-- tenant parsing and tenant isolation;
-- page and page-size bounds;
-- optional authenticated-customer not-found behavior in Commerce consumers;
-- public codes, messages, kinds, or retryability;
-- FBA or FFA status.
+- the `CustomerReadPort` trait or request/response DTOs;
+- root or compatibility factory names;
+- owner read-policy admission and deadline semantics;
+- tenant parsing, list validation, tenant isolation, or profile enrichment;
+- `CustomerService` queries and DTO construction;
+- exact public codes, messages, kinds, or retryability;
+- Commerce not-found handling or GraphQL fallback behavior;
+- Customer FFA/FBA status.
 
-## Static evidence
+## Evidence
 
-`scripts/verify/verify-customer-read-local-context.mjs` guards:
+- `scripts/verify/verify-customer-read-local-context.mjs`;
+- `scripts/verify/verify-customer-read-policy-context.mjs`;
+- `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json`;
+- `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
 
-- legacy module compatibility plus canonical root wrapper construction;
-- context and safe-fact retention before unchanged owner delegation;
-- all four operations and exact operation constants;
-- exact stable code-and-message classification;
-- complete `PortContext`, safe request-fact, and delegated-error fields;
-- technical versus ordinary severity;
-- absence of raw search, customer, email, profile, and result payload logging;
-- same delegated error return.
-
-The customer no-compile FBA guard also checks the root wrapper while retaining `ports.rs` as the owner
-implementation source. The runtime-smoke typed-error matrix is synchronized with the existing
-`customer.context_invalid` contract; this is evidence repair, not a public error change.
+The guards are fail-closed for complete error formatting, raw delegated context, raw
+request UUIDs, exact pagination/count values, raw message text, debug-kind output, and
+customer/profile payloads.
 
 ## Remaining gaps
 
-The ecommerce correlation-safe mapper task remains open for:
+Direct compatibility-path callers, customer write adapters, consumer-side transport
+mappers, profile transports, and runtime/remote evidence remain separate work. The
+broader ecommerce correlation-safe mapper cleanup remains open.
 
-- direct callers that deliberately bypass the root wrapper through `rustok_customer::ports`;
-- consumer-side GraphQL, REST, native, and operator mappings not already covered by focused slices;
-- customer write adapters and profile transports;
-- remaining promotion, ecommerce, and non-`PortError` envelopes;
-- compiled, runtime, restart, remote-profile, and cross-transport evidence.
-
-No architecture status is promoted from source inspection alone.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
-
-```bash
-node scripts/verify/verify-customer-read-local-context.mjs
-node scripts/verify/verify-customer-read-policy-context.mjs
-node scripts/verify/verify-customer-fba-no-compile.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
-cargo check -p rustok-customer --lib
-cargo check -p rustok-commerce --lib
-```
+No test, Node verifier, Cargo command, formatter, workflow, CI, or mounted runtime target
+was executed for this source slice.
