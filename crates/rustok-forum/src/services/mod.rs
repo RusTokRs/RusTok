@@ -107,6 +107,7 @@ mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_create_audience_authorization;
 mod topic_facade;
+mod topic_merge;
 mod topic_move;
 mod topic_owner {
     include!("topic_owner.rs");
@@ -218,6 +219,10 @@ pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };
 pub use topic_facade::TopicService;
+pub use topic_merge::{
+    ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
+    MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
+};
 pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
     MoveForumTopicInput,
