@@ -1,57 +1,72 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-07-30T18:45:00Z",
+  "reviewed_at_utc": "2026-08-01T08:30:00Z",
+  "review_base": "f8cf7098c390d78e958cc0a6310a23ecc617539f",
   "status": "pricing_admin_graphql_error_safety_source_reviewed_unvalidated",
-  "scope": "Pricing admin GraphQL public error boundary",
+  "scope": "Pricing admin GraphQL public and diagnostic error boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-pricing/docs/implementation-plan.md",
     "crates/rustok-pricing/admin/Cargo.toml",
     "crates/rustok-pricing/admin/src/transport.rs",
     "crates/rustok-pricing/admin/src/transport/graphql_adapter.rs",
+    "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs",
     "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs",
-    "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
-    "crates/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json",
+    "crates/rustok-pricing/docs/admin-graphql-error-safety.md",
     "crates/rustok-graphql/src/lib.rs",
-    "scripts/verify/verify-pricing-admin-boundary.mjs"
+    "scripts/verify/verify-pricing-admin-graphql-error-safety.mjs"
   ],
   "findings": [
     {
-      "id": "pricing-admin-graphql-display-public",
-      "severity": "confirmed",
-      "finding": "All four Pricing admin GraphQL reads converted GraphqlHttpError through ApiError::Graphql(value.to_string()) and returned that display directly from the selected transport facade. GraphQL server messages and HTTP status text could therefore reach the admin UI error envelope."
+      "id": "pricing-admin-static-public-envelope-preserved",
+      "severity": "preservation",
+      "finding": "All four Pricing admin GraphQL reads already reparse the private adapter display through GraphqlHttpError and return stable Pricing-owned public messages."
     },
     {
-      "id": "pricing-admin-final-facade-boundary",
-      "severity": "selected",
-      "finding": "The smallest compatible fix is a Pricing-owned per-call context in transport.rs. It sanitizes only ApiError::Graphql after the adapter call while preserving request validation and native behavior."
+      "id": "pricing-admin-raw-diagnostic-payload",
+      "severity": "diagnostic_safety",
+      "finding": "The shared mapper still copied the complete private GraphQL display and Debug representation of the parsed typed error into both technical and rejection tracing events."
     },
     {
-      "id": "pricing-admin-safe-shape",
-      "severity": "confirmed",
-      "finding": "The new diagnostics retain a unique correlation id and only request-field presence or character lengths. Identifier, locale, search, status, money-context, channel, and quantity values are not recorded as structured fields."
+      "id": "pricing-admin-request-shape-preservation",
+      "severity": "preservation",
+      "finding": "Correlation and optional request-field presence or length facts can be retained without recording raw identifiers, search text, status, pricing context, channel values, or backend error payloads."
     },
     {
-      "id": "pricing-admin-mutations-native-only",
-      "severity": "preserved",
-      "finding": "Variant price, discount, rule, and price-list scope mutations remain native-only and are outside this GraphQL read slice."
+      "id": "pricing-admin-transport-separation",
+      "severity": "preservation",
+      "finding": "The four GraphQL documents, request validation, native reads, native-only mutations, selected transport, and no-fallback behavior remain unchanged."
     }
   ],
+  "implementation_review": {
+    "typed_graphql_variant_policy": true,
+    "static_public_graphql_messages": true,
+    "raw_graphql_detail_logging_removed": true,
+    "parsed_graphql_error_debug_logging_removed": true,
+    "bounded_graphql_error_shape_retained": true,
+    "all_four_read_operations_preserved": true,
+    "per_call_correlation_id": true,
+    "safe_request_shape_only": true,
+    "private_graphql_adapter_changed": false,
+    "native_reads_changed": false,
+    "native_only_mutations_changed": false,
+    "graphql_documents_changed": false,
+    "transport_selection_changed": false,
+    "runtime_evidence_claimed": false
+  },
   "changed_files_expected": [
-    "crates/rustok-pricing/admin/Cargo.toml",
-    "crates/rustok-pricing/admin/src/transport.rs",
     "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs",
     "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json",
     "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json",
     "crates/rustok-pricing/docs/admin-graphql-error-safety.md",
-    "crates/rustok-pricing/docs/implementation-plan.md",
-    "scripts/verify/verify-pricing-admin-boundary.mjs",
     "scripts/verify/verify-pricing-admin-graphql-error-safety.mjs"
   ],
   "remaining_scope": [
-    "remaining ecommerce adapters and non-PortError public envelopes",
+    "remaining ecommerce adapters and non-PortError public or diagnostic envelopes",
     "Pricing admin verifier and Cargo execution",
-    "GraphQL/browser runtime and mounted parity evidence"
+    "GraphQL/browser runtime and mounted parity evidence",
+    "broad ecommerce correlation-safe mapper cleanup"
   ],
   "validation": {
     "tests_run": false,
