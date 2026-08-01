@@ -8,10 +8,11 @@ use std::{
     time::Duration,
 };
 
+use rustok_api::PortActor;
 use rustok_comments::{
-    CommentsTcpAuthorityResolver, CommentsThreadPort, CommentsThreadTransport,
-    TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport, in_process_comments_thread_port,
-    remote_comments_thread_port,
+    CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
+    CommentsThreadPort, CommentsThreadTransport, TcpJsonCommentsServerAdapter,
+    TcpJsonCommentsTransport, in_process_comments_thread_port, remote_comments_thread_port,
 };
 use rustok_core::ModuleRuntimeExtensions;
 use tokio::{
@@ -20,6 +21,7 @@ use tokio::{
     task::{JoinError, JoinSet},
     time::timeout,
 };
+use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
@@ -28,6 +30,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";
 pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";
+pub const COMMENTS_TCP_BEARER_TOKEN_ENV: &str = "RUSTOK_COMMENTS_TCP_BEARER_TOKEN";
+pub const COMMENTS_TCP_SERVICE_ACTOR_ID_ENV: &str = "RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID";
 pub const COMMENTS_TCP_LISTENER_ENABLED_ENV: &str = "RUSTOK_COMMENTS_TCP_LISTENER_ENABLED";
 pub const COMMENTS_TCP_BIND_ENV: &str = "RUSTOK_COMMENTS_TCP_BIND";
 pub const COMMENTS_TCP_MAX_CONNECTIONS_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_CONNECTIONS";
@@ -41,6 +45,8 @@ const DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS: usize = 64;
 const DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS: u64 = 5_000;
 const DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+const COMMENTS_TCP_SERVICE_ROLE: &str = "admin";
+const COMMENTS_TCP_SERVICE_PERMISSION: &str = "comments:manage";
 
 static COMMENTS_TCP_LISTENER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
@@ -57,8 +63,10 @@ pub struct CommentsProviderRuntimeSelection {
     pub endpoint: Option<SocketAddr>,
 }
 
-/// Host-provided authority implementation required before a Comments TCP
-/// listener may bind. There is deliberately no allow-all fallback.
+/// Optional host-provided authority override for the Comments TCP listener.
+///
+/// When absent, the server composes the concrete bearer resolver from deployment
+/// configuration. There is deliberately no allow-all fallback.
 #[derive(Clone)]
 pub struct SharedCommentsTcpAuthorityResolver(pub Arc<dyn CommentsTcpAuthorityResolver>);
 
@@ -152,9 +160,9 @@ struct CommentsTcpListenerLifecycleReservation;
 /// Publishes the host-selected Comments provider through `ModuleRuntimeExtensions`.
 ///
 /// The default `in_process` mode intentionally inserts no port. Blog therefore
-/// retains its existing database/event-bus fallback. `tcp` publishes the typed
-/// remote adapter only for an explicit loopback sidecar endpoint; plaintext TCP
-/// is never enabled for a non-loopback address.
+/// retains its existing database/event-bus fallback. `tcp` requires an explicit
+/// loopback endpoint and bearer credential, then publishes the authenticated
+/// typed remote adapter. Plaintext TCP is never enabled for a non-loopback address.
 pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
@@ -196,8 +204,10 @@ pub fn register_comments_provider_runtime(
                 ));
             }
 
-            let transport: Arc<dyn CommentsThreadTransport> =
-                Arc::new(TcpJsonCommentsTransport::new(endpoint));
+            let bearer_token = comments_tcp_bearer_token_from_environment()?;
+            let transport: Arc<dyn CommentsThreadTransport> = Arc::new(
+                TcpJsonCommentsTransport::with_bearer_token(endpoint, bearer_token),
+            );
             extensions.insert::<Arc<dyn CommentsThreadPort>>(remote_comments_thread_port(transport));
             extensions.insert(CommentsProviderRuntimeSelection {
                 profile: CommentsProviderProfile::TcpLoopback,
@@ -213,7 +223,7 @@ pub fn register_comments_provider_runtime(
 
 /// Starts the opt-in host-owned Comments TCP listener exactly once.
 ///
-/// Binding is fail-closed: a loopback address, explicit authority resolver,
+/// Binding is fail-closed: a loopback address, authenticated authority resolver,
 /// bounded frame size, bounded concurrency, non-zero pre-request timeout, and
 /// shutdown grace are all required before the task is spawned.
 pub async fn start_comments_tcp_listener_if_enabled(
@@ -257,13 +267,10 @@ async fn start_comments_tcp_listener(
                     .cloned()
             })
         })
-        .ok_or_else(|| {
-            Error::BadRequest(
-                "Comments TCP listener requires a host-provided SharedCommentsTcpAuthorityResolver"
-                    .to_string(),
-            )
-        })?
-        .0;
+        .map(|shared| shared.0)
+        .map(Ok)
+        .unwrap_or_else(comments_tcp_bearer_authority_from_environment)
+        .map_err(Error::BadRequest)?;
 
     let provider = runtime_ctx
         .shared_get::<SharedCommentsTcpServerProvider>()
@@ -324,6 +331,7 @@ async fn start_comments_tcp_listener(
     tracing::info!(
         instance_id,
         bind_addr = %local_addr,
+        authentication = "bearer_or_host_override",
         max_connections = config.max_connections,
         pre_request_timeout_ms = config.pre_request_timeout.as_millis(),
         shutdown_grace_ms = config.shutdown_grace.as_millis(),
@@ -331,6 +339,58 @@ async fn start_comments_tcp_listener(
         "Comments TCP listener started"
     );
     Ok(())
+}
+
+fn comments_tcp_bearer_token_from_environment() -> std::result::Result<CommentsTcpBearerToken, String> {
+    let secret = match env::var(COMMENTS_TCP_BEARER_TOKEN_ENV) {
+        Ok(value) => value,
+        Err(env::VarError::NotPresent) => {
+            return Err(format!(
+                "{COMMENTS_TCP_BEARER_TOKEN_ENV} is required for Comments TCP bearer authentication"
+            ));
+        }
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!(
+                "{COMMENTS_TCP_BEARER_TOKEN_ENV} must contain valid UTF-8"
+            ));
+        }
+    };
+
+    CommentsTcpBearerToken::new(secret).map_err(|error| {
+        format!(
+            "{COMMENTS_TCP_BEARER_TOKEN_ENV} is not a valid Comments TCP bearer token: {error}"
+        )
+    })
+}
+
+fn comments_tcp_bearer_authority_from_environment(
+) -> std::result::Result<Arc<dyn CommentsTcpAuthorityResolver>, String> {
+    let token = comments_tcp_bearer_token_from_environment()?;
+    let actor = comments_tcp_service_actor_from_environment()?;
+    Ok(Arc::new(
+        CommentsTcpBearerAuthorityResolver::from_token(token, actor)
+            .with_claim(COMMENTS_TCP_SERVICE_PERMISSION)
+            .with_role(COMMENTS_TCP_SERVICE_ROLE),
+    ))
+}
+
+fn comments_tcp_service_actor_from_environment() -> std::result::Result<PortActor, String> {
+    let raw_actor_id = read_optional_environment(COMMENTS_TCP_SERVICE_ACTOR_ID_ENV)?.ok_or_else(|| {
+        format!(
+            "{COMMENTS_TCP_SERVICE_ACTOR_ID_ENV} is required when the built-in Comments TCP bearer resolver is used"
+        )
+    })?;
+    parse_comments_tcp_service_actor_id(&raw_actor_id)
+}
+
+fn parse_comments_tcp_service_actor_id(value: &str) -> std::result::Result<PortActor, String> {
+    let actor_id = value.trim();
+    if actor_id != value || Uuid::parse_str(actor_id).is_err() {
+        return Err(format!(
+            "{COMMENTS_TCP_SERVICE_ACTOR_ID_ENV} must be a canonical UUID without surrounding whitespace"
+        ));
+    }
+    Ok(PortActor::service(actor_id.to_string()))
 }
 
 fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
@@ -533,6 +593,14 @@ mod tests {
         let _ = selector;
         assert_eq!(COMMENTS_PROVIDER_MODE_ENV, "RUSTOK_COMMENTS_PROVIDER_MODE");
         assert_eq!(COMMENTS_TCP_ENDPOINT_ENV, "RUSTOK_COMMENTS_TCP_ENDPOINT");
+        assert_eq!(
+            COMMENTS_TCP_BEARER_TOKEN_ENV,
+            "RUSTOK_COMMENTS_TCP_BEARER_TOKEN"
+        );
+        assert_eq!(
+            COMMENTS_TCP_SERVICE_ACTOR_ID_ENV,
+            "RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID"
+        );
     }
 
     #[test]
@@ -547,5 +615,16 @@ mod tests {
         assert!(!parse_bool_value("enabled", "off").unwrap());
         assert!(parse_positive_usize_value("limit", "0").is_err());
         assert!(parse_positive_u64_value("timeout", "0").is_err());
+    }
+
+    #[test]
+    fn built_in_bearer_actor_requires_canonical_uuid() {
+        let actor_id = Uuid::new_v4().to_string();
+        assert_eq!(
+            parse_comments_tcp_service_actor_id(&actor_id).unwrap(),
+            PortActor::service(actor_id.clone())
+        );
+        assert!(parse_comments_tcp_service_actor_id("not-a-uuid").is_err());
+        assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
     }
 }
