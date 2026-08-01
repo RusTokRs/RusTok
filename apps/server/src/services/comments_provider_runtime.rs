@@ -14,6 +14,14 @@ mod keyring_reload_guard {
     include!("comments_provider_runtime_keyring_reload_guard.rs");
 }
 
+mod keyring_schedule {
+    include!("comments_provider_runtime_keyring_schedule.rs");
+}
+
+mod keyring_schedule_guard {
+    include!("comments_provider_runtime_keyring_schedule_guard.rs");
+}
+
 pub use base::{
     COMMENTS_PROVIDER_MODE_ENV, COMMENTS_TCP_BEARER_TOKEN_ENV, COMMENTS_TCP_BIND_ENV,
     COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV, COMMENTS_TCP_DELEGATION_SECRET_ENV,
@@ -38,6 +46,13 @@ pub use keyring_reload::{
     CommentsTcpDelegationKeyringReloadStatus,
     SharedCommentsTcpDelegationKeyringReloadHandle,
 };
+pub use keyring_schedule::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV,
+    CommentsTcpDelegationScheduleReloadOutcome,
+    CommentsTcpDelegationScheduleReloadStatus,
+    CommentsTcpDelegationScheduleRuntimeSelection,
+    SharedCommentsTcpDelegationScheduleHandle,
+};
 
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -47,16 +62,18 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
-    // Historical source-verifier marker retained for the static delegation path:
+    // Historical source-verifier markers retained for static and ordinary reload paths:
     // keyring::register_comments_provider_runtime(extensions)
-    keyring_reload::register_comments_provider_runtime(extensions)
+    // keyring_reload::register_comments_provider_runtime(extensions)
+    keyring_schedule_guard::register_comments_provider_runtime(extensions)
 }
 
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    // Historical source-verifier markers retained for the static and reload paths:
+    // Historical source-verifier markers retained for static and ordinary reload paths:
     // keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await
     // keyring_reload::start_comments_tcp_listener_if_enabled(runtime_ctx).await
-    keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    // keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    keyring_schedule_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
 }

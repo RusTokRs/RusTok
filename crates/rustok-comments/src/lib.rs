@@ -24,6 +24,8 @@ pub mod tcp_delegation;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_delegation_reload;
 #[cfg(feature = "tcp-transport")]
+pub mod tcp_delegation_schedule;
+#[cfg(feature = "tcp-transport")]
 mod tcp_protocol;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_server;
@@ -81,6 +83,13 @@ pub use tcp_delegation_reload::{
     CommentsTcpDelegationKeyringProvider,
     ReloadableCommentsTcpDelegatingAuthorityResolver,
     ReloadableCommentsTcpDelegationSigner,
+};
+#[cfg(feature = "tcp-transport")]
+pub use tcp_delegation_schedule::{
+    CommentsTcpDelegationSchedule, CommentsTcpDelegationScheduleConfigError,
+    CommentsTcpDelegationScheduledKey,
+    MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS,
+    MAX_COMMENTS_TCP_DELEGATION_SCHEDULE_CLOCK_SKEW_MS,
 };
 #[cfg(feature = "tcp-transport")]
 pub use tcp_server::{
