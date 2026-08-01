@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "status": "pricing_read_local_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-pricing/src/read_context.rs",
+    "crates/rustok-pricing/src/ports.rs",
+    "scripts/verify/verify-pricing-read-local-context.mjs",
+    "crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json",
+    "crates/rustok-pricing/docs/read-local-context.md"
+  ],
+  "review_findings": {
+    "all_six_read_operations_preserved": true,
+    "owner_delegation_preserved": true,
+    "public_error_envelope_preserved": true,
+    "public_message_mapping_preserved": true,
+    "technical_error_severity_preserved": true,
+    "ordinary_warning_severity_preserved": true,
+    "raw_context_removed": true,
+    "raw_uuid_removed": true,
+    "exact_quantity_removed": true,
+    "public_message_text_removed": true,
+    "debug_error_kind_removed": true,
+    "bounded_context_shape_retained": true,
+    "bounded_request_shape_retained": true,
+    "message_shape_retained": true,
+    "closed_error_kind_retained": true,
+    "read_wrapper_source_closed": true,
+    "write_wrapper_remains_open": true,
+    "broad_ecommerce_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation was executed."
+}
