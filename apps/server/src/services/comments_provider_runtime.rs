@@ -34,8 +34,16 @@ mod keyring_schedule_persistence_postgres {
     include!("comments_provider_runtime_keyring_schedule_persistence_postgres.rs");
 }
 
+mod keyring_schedule_persistence_postgres_audit {
+    include!("comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs");
+}
+
 mod keyring_schedule_persisted_trigger {
     include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
+}
+
+mod keyring_schedule_postgres_audited_trigger {
+    include!("comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs");
 }
 
 mod keyring_schedule_trigger_guard {
@@ -102,11 +110,18 @@ pub use keyring_schedule_persistence_postgres::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE,
     PostgresCommentsTcpDelegationSchedulePersistenceStore,
 };
+pub use keyring_schedule_persistence_postgres_audit::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_EVENT_TYPE,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_SCHEMA_VERSION,
+    PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore,
+};
 pub use keyring_schedule_persisted_trigger::{
     CommentsTcpDelegationPersistedScheduleAuditOutcome,
     CommentsTcpDelegationPersistedScheduleAuditRecord,
     SharedCommentsTcpDelegationPersistedScheduleTrigger,
 };
+pub use keyring_schedule_postgres_audited_trigger::SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger;
 
 use rustok_core::ModuleRuntimeExtensions;
 
