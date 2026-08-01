@@ -1,0 +1,72 @@
+{
+  "contract": "forum_search_link_forum_03_canonical_promotion_packet_v1",
+  "task": "FORUM-23B2G2B3D19",
+  "target_link": "LINK-FORUM-03",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "review_contract": "crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json",
+  "promotion_candidate": "target/link-forum-03-forum-index-search-complete-promotion-candidate.json",
+  "complete_artifact": "target/link-forum-03-forum-index-search-complete-evidence.json",
+  "packet_builder": "scripts/evidence/prepare-link-forum-03-canonical-promotion-packet.mjs",
+  "verifier": "scripts/verify/verify-link-forum-03-canonical-promotion-packet.mjs",
+  "output_packet": {
+    "path": "target/link-forum-03-canonical-promotion-packet.json",
+    "status": "ready_for_separate_canonical_source_pull_request",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "atomic_replace": true,
+    "automatic_canonical_source_mutation": false
+  },
+  "required_plan_state": {
+    "forum_21": "planned",
+    "forum_23": "in_progress",
+    "link_forum_03": "planned"
+  },
+  "required_ledger_transition": {
+    "before": "| `LINK-FORUM-03` | `planned` | Forum/index/search ordering and visibility proof. |",
+    "after": "| `LINK-FORUM-03` | `done` | D13-D18 provide reviewed and retained Forum/index/search ordering, recovery, multilingual, moderation, private/trusted exclusion and topic-move evidence. |",
+    "exact_before_occurrences": 1,
+    "exact_after_occurrences_before_promotion": 0
+  },
+  "required_completion_record": [
+    "the canonical pull request cites the retained D18 promotion candidate and complete D17 artifact paths",
+    "the canonical pull request records the D18 reviewer identity review time retention reference and exact retained digest",
+    "the canonical pull request lists all six canonical LINK-FORUM-03 scenarios",
+    "the canonical pull request states that FORUM-21 remains planned and FORUM-23 remains in_progress",
+    "the canonical pull request does not claim that the source-ready D13-D19 chain ran unless the retained candidate exists and validates"
+  ],
+  "fail_closed_requirements": [
+    "the D18 contract has exact pending identity paths and proposed LINK-only transition",
+    "the D18 promotion candidate has exact approved identity current source commit reviewer retention and transition fields",
+    "the candidate canonical-plan digest equals the exact current plan bytes and records FORUM-21 planned FORUM-23 in_progress LINK-FORUM-03 planned",
+    "the candidate complete-artifact metadata equals the exact retained complete artifact bytes",
+    "the candidate review-contract digest equals the current D18 contract bytes",
+    "all four candidate source-artifact records match the exact retained D13 D14 D15 and D16 bytes metadata and scenario identities",
+    "the current canonical plan contains the exact planned LINK-FORUM-03 ledger row once and no done row",
+    "the packet records exact candidate contract plan complete-artifact and source-artifact digests",
+    "the packet describes but never performs the canonical edit",
+    "the packet is written only after complete validation by same-directory atomic rename",
+    "the builder accepts no arguments overrides missing-artifact mode skipped results static fallback or source-commit override"
+  ],
+  "proposed_transition": {
+    "task": "LINK-FORUM-03",
+    "from": "planned",
+    "to": "done",
+    "requires_separate_canonical_source_pull_request": true,
+    "canonical_source_mutated_by_builder": false,
+    "promotes_forum_21": false,
+    "promotes_forum_23": false
+  },
+  "maintainer_commands": [
+    "node scripts/verify/verify-link-forum-03-canonical-promotion-packet.mjs",
+    "node scripts/evidence/prepare-link-forum-03-canonical-promotion-packet.mjs"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that D13 D14 D15 D16 D17 D18 or any runtime command ran",
+    "this packet builder does not generate repair infer or accept a missing D18 promotion candidate",
+    "this packet builder does not authenticate external retention or create a cryptographic signature",
+    "this packet builder does not edit the canonical Forum plan",
+    "this packet does not promote FORUM-21 or mark FORUM-23 done",
+    "a generated packet is an input to a separate reviewed canonical-source pull request and is not itself a status change"
+  ]
+}
