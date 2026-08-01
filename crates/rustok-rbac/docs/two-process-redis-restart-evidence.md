@@ -18,9 +18,10 @@ The ignored integration test creates:
 
 The observer and mutators are re-executions of the integration-test binary. They
 do not share memory, a Moka cache, a local invalidation bus or a runtime context.
-The parent waits for the canonical
+The observer itself waits for the canonical
 `rbac.permissions.generation.v1` Redis subscriber through `PUBSUB NUMSUB` before
-starting the first mutation.
+publishing its ready file, and the parent verifies that subscriber before starting
+the first mutation.
 
 ## Redis fast path
 
@@ -50,6 +51,11 @@ The parent then restarts `redis-server` on the same loopback port. The existing
 observer process must reconnect. The production Redis subscription ready callback
 reads the durable database generation and clears permission snapshots. The
 observer must then converge to the authoritative deny within eight seconds.
+
+The complete live replica sequence, measured from observer spawn through the
+post-restart decision, must finish within twenty-five seconds. This is shorter
+than the production thirty-second periodic listener reconciliation interval, so a
+passing restart result cannot be attributed to the database poll fallback.
 
 This proves the source shape for:
 
