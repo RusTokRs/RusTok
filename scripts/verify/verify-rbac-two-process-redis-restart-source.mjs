@@ -153,12 +153,12 @@ for (const marker of [
   "Merged PR #2853 owns the separate watchdog-fallback source packet.",
   "source_ready_unvalidated",
   "It does not prove:",
-  "The full multi-replica P0 gate remains open.",
+  "the complete multi-replica P0 gate",
 ]) requireText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
   "### P0. Database concurrency and multi-replica recovery evidence",
-  "Redis available, unavailable",
+  "Redis available and restart/resubscribe source",
   "CLI system-role repair",
   "RBAC two-process Redis restart source packet",
   "Status: `in_progress`",
@@ -167,7 +167,7 @@ for (const marker of [
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "Redis available/restart source harness",
+  "Draft #2857 adds the complementary Redis available",
   "CLI repair propagation",
 ]) requireText(sources.master, marker, `${files.master}: active cursor`);
 
