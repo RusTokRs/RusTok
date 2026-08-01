@@ -67,6 +67,9 @@ pub enum ForumError {
     #[error("Forum topic move operation conflicts with an existing command: {0}")]
     TopicMoveOperationConflict(Uuid),
 
+    #[error("Forum topic merge operation conflicts with an existing command: {0}")]
+    TopicMergeOperationConflict(Uuid),
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -134,6 +137,7 @@ impl ForumError {
             Self::RelationRevisionUnavailable => "FORUM_RELATION_REVISION_UNAVAILABLE",
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
+            Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
             Self::ReplyNotFound(_) => "FORUM_REPLY_NOT_FOUND",
@@ -179,7 +183,7 @@ impl From<sea_orm::DbErr> for ForumError {
         }
         if message.contains("Forum category color") {
             return Self::Validation(
-                "Forum category color must be a safe bounded hexadecimal color".to_string(),
+                "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string(),
             );
         }
         Self::Database(error)
