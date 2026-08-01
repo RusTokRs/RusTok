@@ -1,0 +1,93 @@
+{
+  "contract": "forum_topic_merge_read_state_reconciliation_v1",
+  "task": "FORUM-21D",
+  "parent_task": "FORUM-21",
+  "depends_on": "FORUM-21B",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution",
+  "scope": "bounded_post_merge_conservative_read_state_discard",
+  "owner_service": "ForumTopicMergeReadStateReconciliationService",
+  "input": "ReconcileForumTopicMergeReadStatesInput",
+  "result": "ForumTopicMergeReadStateReconciliationResult",
+  "migration": "m20260801_000012_add_forum_topic_merge_read_state_reconciliations",
+  "receipt_table": "forum_topic_merge_read_state_reconciliations",
+  "source_merge_receipt_table": "forum_topic_merge_operations",
+  "semantic_event": {
+    "journal": "forum_domain_events",
+    "event_type": "forum.topic.merge_read_states_reconciled",
+    "schema_version": 1,
+    "aggregate_is_retained_target": true,
+    "event_id_equals_operation_id": true,
+    "shared_rustok_events_contract_changed": false
+  },
+  "required_permissions": [
+    "forum_topics:manage"
+  ],
+  "bounds": {
+    "reason_max_characters": 500,
+    "source_read_state_rows_max": 500,
+    "one_merge_receipt_per_reconciliation": true,
+    "one_reconciliation_per_merge_receipt": true
+  },
+  "conservative_target_authority_policy": {
+    "target_rows": "byte_semantic_unchanged",
+    "source_only": "delete_source_without_creating_target_state",
+    "source_and_target_overlap": "delete_source_and_preserve_target",
+    "source_after_reconciliation": "zero_rows",
+    "rationale": "one_monotonic_target_high_water_cannot_represent_discontiguous_source_and_target_read_history_without_marking_unread_target_content_read"
+  },
+  "transactional_invariants": [
+    "the command requires non-nil tenant reconciliation operation merge operation and human actor identities",
+    "the normalized reason is non-empty bounded to 500 characters and contains no control characters",
+    "reconciliations are serialized per tenant before immutable reconciliation receipt lookup",
+    "an exact existing reconciliation receipt is resolved before current merge or topic state",
+    "reusing a reconciliation operation identifier with a different merge actor or reason fails with FORUM_TOPIC_MERGE_READ_STATE_RECONCILIATION_CONFLICT",
+    "one merge receipt may have at most one read-state reconciliation receipt",
+    "the referenced immutable FORUM-21B merge receipt and its forum.topic.merged semantic event must match exactly",
+    "first execution locks source and target topic rows in deterministic UUID order before sorted read-state scopes",
+    "the source must be the archived locked merge tombstone and the retained target must remain non-archived in the recorded category",
+    "the source read-state set is bounded to at most 500 rows and ordered by user identity",
+    "target user overlap is loaded only for the bounded source user set",
+    "target read-state rows are never inserted updated or deleted by reconciliation",
+    "all source read-state rows are deleted and classified as source-only or target-overlap",
+    "the source has zero read-state rows before semantic event and receipt insertion",
+    "semantic event receipt and source deletion commit in one transaction",
+    "exact replay locks source and target read-state scopes proves source emptiness and creates no additional mutation event or receipt"
+  ],
+  "ordinary_write_hardening": [
+    "single topic read writes lock the active non-deleted topic row before the per-topic read-state scope",
+    "raw bulk and visibility-scoped bulk candidates exclude deleted and archived topics",
+    "bounded bulk writes lock active topic rows and sorted read-state scopes before high-water calculation",
+    "PostgreSQL service and direct database mutation paths share deterministic advisory read-state scopes while SQLite uses durable lock rows plus writer serialization"
+  ],
+  "database_guards": [
+    "tenant-composite foreign keys bind reconciliation to merge receipt source target and actor",
+    "one tenant merge operation has at most one read-state reconciliation receipt",
+    "operation event merge source target and actor identities are non-nil",
+    "source and target topics differ and event_id equals operation_id",
+    "reason and all classified counts are bounded",
+    "source count equals source-only plus target-overlap counts",
+    "read-state topic identity updates are rejected",
+    "read-state inserts and updates targeting archived or missing topics are rejected for PostgreSQL and SQLite",
+    "reconciliation receipt updates and deletes are rejected for PostgreSQL and SQLite"
+  ],
+  "test": "crates/rustok-forum/tests/topic_merge_read_state_reconciliation_sqlite.rs",
+  "verifier": "scripts/verify/verify-forum-topic-merge-read-state-reconciliation.mjs",
+  "documentation": "crates/rustok-forum/docs/forum-21d-topic-merge-read-state-reconciliation.md",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-merge-read-state-reconciliation.mjs",
+    "cargo test -p rustok-forum --test topic_merge_read_state_reconciliation_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
+    "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution",
+    "this slice does not add public REST GraphQL native admin or storefront reconciliation transport",
+    "this slice does not add canonical aliases redirects or route tombstones",
+    "this slice does not reconcile topic subscriptions tags votes or topic-level audience relations",
+    "this slice does not translate source read positions into target positions or source revisions into target revisions",
+    "this slice does not support cross-category merge split fork or reply-range operations",
+    "this slice does not provide PostgreSQL concurrency runtime evidence",
+    "this slice is not sufficient to mark FORUM-21 done"
+  ]
+}

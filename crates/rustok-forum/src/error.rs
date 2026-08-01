@@ -70,6 +70,9 @@ pub enum ForumError {
     #[error("Forum topic merge operation conflicts with an existing command: {0}")]
     TopicMergeOperationConflict(Uuid),
 
+    #[error("Forum topic merge read-state reconciliation conflicts with an existing command: {0}")]
+    TopicMergeReadStateReconciliationConflict(Uuid),
+
     #[error("Forum topic merge subscription reconciliation conflicts with an existing command: {0}")]
     TopicMergeSubscriptionReconciliationConflict(Uuid),
 
@@ -141,6 +144,9 @@ impl ForumError {
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
+            Self::TopicMergeReadStateReconciliationConflict(_) => {
+                "FORUM_TOPIC_MERGE_READ_STATE_RECONCILIATION_CONFLICT"
+            }
             Self::TopicMergeSubscriptionReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_SUBSCRIPTION_RECONCILIATION_CONFLICT"
             }

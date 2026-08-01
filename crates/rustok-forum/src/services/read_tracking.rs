@@ -18,7 +18,12 @@ use crate::entities::{
 };
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
-use crate::state_machine::ReplyStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
+
+use super::topic_read_state_lock::{
+    lock_active_topic_read_state_write_in_tx, lock_active_topic_read_state_writes_in_tx,
+    lock_topic_read_state_scopes_in_tx,
+};
 
 const BULK_READ_CURSOR_VERSION: &str = "br1";
 const DEFAULT_BULK_READ_LIMIT: u64 = 50;
@@ -134,11 +139,9 @@ impl ForumTopicReadStateService {
         validate_nonnegative(&input)?;
 
         let txn = self.db.begin().await?;
-        let topic = forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))?;
+        let topic =
+            lock_active_topic_read_state_write_in_tx(&txn, tenant_id, topic_id).await?;
+        lock_topic_read_state_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
 
         let latest_public_position = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -255,6 +258,8 @@ impl ForumTopicReadStateService {
 
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::DeletedAt.is_null())
+            .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
             .filter(forum_topic::Column::CreatedAt.lte(snapshot_at.clone()));
         if let Some(category_ids) = category_ids {
             select = select.filter(forum_topic::Column::CategoryId.is_in(category_ids));
@@ -281,6 +286,8 @@ impl ForumTopicReadStateService {
         topics.truncate(limit as usize);
 
         let topic_ids = topics.iter().map(|topic| topic.id).collect::<Vec<_>>();
+        lock_active_topic_read_state_writes_in_tx(&txn, tenant_id, &topic_ids).await?;
+        lock_topic_read_state_scopes_in_tx(&txn, tenant_id, &topic_ids).await?;
         let public_positions = latest_public_positions_in_tx(&txn, tenant_id, &topic_ids).await?;
         let topic_revisions = latest_topic_revisions_in_tx(&txn, tenant_id, &topic_ids).await?;
         let now: sea_orm::prelude::DateTimeWithTimeZone = Utc::now().into();
