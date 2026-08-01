@@ -56,6 +56,13 @@ fn parse_user_role(value: &str) -> Result<UserRole, AuthAdminMutationError> {
         .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))
 }
 
+fn status_change_requested(
+    current_status: &UserStatus,
+    requested_status: Option<&UserStatus>,
+) -> bool {
+    requested_status.is_some_and(|status| status != current_status)
+}
+
 fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => {
@@ -437,20 +444,20 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await
         .map_err(map_custom_field_error)?;
         let password_changed = command.password.is_some();
-        let status_disables_user = requested_status
-            .as_ref()
-            .is_some_and(|status| status != &UserStatus::Active);
 
         let tx = self
             .db
             .begin()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
-        let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
-        let user_id = user.id;
-        let target_tenant_id = user.tenant_id;
-        let target_status = user.status.clone();
+        let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
+        let current_role = self
+            .user_role(&tx, context.tenant_id, locked_user.id)
+            .await?;
+        let user_id = locked_user.id;
+        let target_tenant_id = locked_user.tenant_id;
+        let target_status = locked_user.status.clone();
+        let status_changed = status_change_requested(&target_status, requested_status.as_ref());
 
         let role_mutation_plan: Option<RbacRoleMutationPlan> =
             if let Some(requested_role) = requested_role.as_ref() {
@@ -499,15 +506,22 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 None
             };
 
-        let mut active: users::ActiveModel = user.into();
+        let user_row_update_requested = command.email.is_some()
+            || command.name.is_some()
+            || status_changed
+            || command.password.is_some()
+            || prepared.metadata.is_some();
+        let mut active: users::ActiveModel = locked_user.clone().into();
         if let Some(email) = command.email {
             active.email = Set(email.to_lowercase());
         }
         if let Some(name) = command.name {
             active.name = Set(Some(name));
         }
-        if let Some(status) = requested_status.as_ref() {
-            active.status = Set(status.clone());
+        if status_changed {
+            if let Some(status) = requested_status.as_ref() {
+                active.status = Set(status.clone());
+            }
         }
         if let Some(password) = command.password {
             active.password_hash = Set(hash_password(&password)
@@ -518,21 +532,30 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
 
         if requested_role.is_none() {
+            let effective_requested_status = if status_changed {
+                requested_status.as_ref()
+            } else {
+                None
+            };
             ensure_active_super_admin_continuity(
                 &tx,
                 context.tenant_id,
                 user_id,
                 &current_role,
                 None,
-                requested_status.as_ref(),
+                effective_requested_status,
                 false,
             )
             .await?;
         }
-        let user = active
-            .update(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let user = if user_row_update_requested {
+            active
+                .update(&tx)
+                .await
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+        } else {
+            locked_user
+        };
         if let Some(plan) = role_mutation_plan.as_ref() {
             RbacService::replace_user_role_in_transaction(
                 &tx,
@@ -543,6 +566,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         }
+        let status_disables_user = status_changed
+            && requested_status
+                .as_ref()
+                .is_some_and(|status| status != &UserStatus::Active);
         if password_changed || status_disables_user {
             revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
         }
@@ -561,7 +588,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
-        let invalidates_authorization = role_mutation_plan.is_some() || requested_status.is_some();
+        let invalidates_authorization = role_mutation_plan.is_some() || status_changed;
         let durable_generation = if invalidates_authorization {
             Some(
                 reserve_rbac_invalidation_generation(&tx)
@@ -698,7 +725,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_role_mutation_policy_error, parse_user_role, parse_user_status};
+    use super::{
+        map_role_mutation_policy_error, parse_user_role, parse_user_status,
+        status_change_requested,
+    };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
     use rustok_rbac::RbacRoleMutationPolicyError;
@@ -720,6 +750,19 @@ mod tests {
         assert!(matches!(
             map_role_mutation_policy_error(RbacRoleMutationPolicyError::LastActiveSuperAdmin),
             AuthAdminMutationError::Conflict(_)
+        ));
+    }
+
+    #[test]
+    fn status_effective_change_ignores_exact_replay() {
+        assert!(!status_change_requested(
+            &UserStatus::Active,
+            Some(&UserStatus::Active),
+        ));
+        assert!(!status_change_requested(&UserStatus::Active, None));
+        assert!(status_change_requested(
+            &UserStatus::Active,
+            Some(&UserStatus::Banned),
         ));
     }
 }
