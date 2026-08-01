@@ -17,6 +17,9 @@ unchanged.
 
 ## Bounded context shape
 
+This bounded context shape preserves attribution without copying delegated identity or
+routing values into the admission event.
+
 The owner policy event retains:
 
 - owner `rustok_customer`;
