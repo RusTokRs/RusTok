@@ -25,7 +25,7 @@ fn artifact_role_permission_routes_require_owner_direct_principal_admission_firs
         controller
             .matches("principal_context: AuthPrincipalContext,")
             .count(),
-        2
+        3
     );
     assert_eq!(
         controller
