@@ -10,6 +10,10 @@ mod keyring_reload {
     include!("comments_provider_runtime_keyring_reload.rs");
 }
 
+mod keyring_reload_guard {
+    include!("comments_provider_runtime_keyring_reload_guard.rs");
+}
+
 pub use base::{
     COMMENTS_PROVIDER_MODE_ENV, COMMENTS_TCP_BEARER_TOKEN_ENV, COMMENTS_TCP_BIND_ENV,
     COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV, COMMENTS_TCP_DELEGATION_SECRET_ENV,
@@ -51,7 +55,8 @@ pub fn register_comments_provider_runtime(
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    // Historical source-verifier marker retained for the static delegation path:
+    // Historical source-verifier markers retained for the static and reload paths:
     // keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await
-    keyring_reload::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    // keyring_reload::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
 }
