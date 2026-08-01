@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-TWO-PROCESS-REDIS-RESTART-SOURCE-20260801",
+  "generated_at": "2026-08-01T16:19:00Z",
+  "status": "source_ready_unvalidated",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "base_revision": "f6c6920c49a74fb5b18f74a15d93ce223a770e02",
+  "test_source": "apps/server/tests/rbac_two_process_redis_restart_recovery.rs",
+  "topology": {
+    "database": "isolated_postgresql_database",
+    "observer_processes": 1,
+    "mutator_processes": 1,
+    "independent_os_processes": true,
+    "shared_process_cache": false,
+    "shared_local_invalidation_bus": false,
+    "redis_server": "isolated_spawned_redis_server"
+  },
+  "available_scenario": {
+    "redis_state": "available",
+    "subscriber_readiness": "redis_pubsub_numsub",
+    "mutation_entrypoint": "RbacService::replace_user_role_committed",
+    "expected_durable_generation_delta": 1,
+    "expected_redis_publish_success_minimum": 1,
+    "expected_redis_publish_failures": 0,
+    "expected_final_decision": "deny",
+    "maximum_fast_path_elapsed_ms": 3000
+  },
+  "restart_scenario": {
+    "redis_state_at_mutation": "stopped",
+    "expected_redis_publish_successes": 0,
+    "expected_redis_publish_failure_minimum": 1,
+    "expected_pre_restart_decision": "allow_from_stale_observer_cache",
+    "restart_action": "restart_same_redis_endpoint",
+    "recovery_actor": "supervised Redis subscription ready callback",
+    "recovery_authority": "durable PostgreSQL invalidation generation",
+    "expected_final_decision": "deny",
+    "maximum_restart_recovery_elapsed_ms": 5000
+  },
+  "production_paths": {
+    "cache_runtime": "apps/server/src/services/cache_runtime.rs",
+    "publisher_and_listener": "apps/server/src/services/rbac_cache_invalidation.rs",
+    "committed_mutation": "apps/server/src/services/rbac_committed_mutations.rs",
+    "generation_authority": "crates/rustok-rbac/src/invalidation_generation.rs",
+    "redis_transport": "crates/rustok-cache/src/service.rs"
+  },
+  "isolation_contract": {
+    "watchdog_disabled_in_harness": true,
+    "reason": "merged PR #2853 owns the separate durable-watchdog fallback scenario; this harness isolates Redis delivery and resubscribe-ready recovery",
+    "manual_permission_cache_clear_forbidden": true,
+    "manual_generation_update_forbidden": true,
+    "test_only_mutation_forbidden": true,
+    "hand_built_rbac_invalidation_publish_forbidden": true
+  },
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "formatting_executed": false,
+    "cargo_check_executed": false,
+    "postgresql_runtime_executed": false,
+    "redis_runtime_executed": false,
+    "subprocess_runtime_executed": false,
+    "workflow_or_ci_executed": false
+  },
+  "redis_available_source_evidence": true,
+  "redis_restart_source_evidence": true,
+  "runtime_evidence_retained": false,
+  "cli_repair_live_replica_evidence": false,
+  "full_multi_replica_gate_complete": false,
+  "broad_rbac_verification_complete": false,
+  "cursor_advanced": false
+}
