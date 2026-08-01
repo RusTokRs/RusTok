@@ -1,0 +1,87 @@
+{
+  "contract": "forum_search_versioned_invalidation_host_worker_retry_source_proof_v1",
+  "task": "FORUM-23B2G2B3D8",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "predecessor": {
+    "task": "FORUM-23B2G2B3D7",
+    "pull_request": 2788,
+    "state_at_authorship": "merged",
+    "merge_commit": "ed5bdacfdbf8107f3a8f4eed39b705d455a85c63",
+    "parent_registration": "D7_registered_D8_deferred_until_D8_merge"
+  },
+  "host_boundary": {
+    "package": "rustok-server",
+    "test": "apps/server/tests/forum_versioned_invalidation_host_worker_retry_iggy.rs",
+    "startup": "rustok_server::services::forum_search_inbox_worker::start_forum_search_contract_consumer_if_enabled",
+    "worker_handle": "ForumSearchContractConsumerWorkerHandle",
+    "shutdown": "rustok_server::services::app_lifecycle::StopHandle",
+    "dependency_change_required": false
+  },
+  "production_references": [
+    "apps/server/src/services/forum_search_contract_consumer.rs",
+    "apps/server/src/services/forum_search_inbox_worker.rs",
+    "apps/server/src/services/server_runtime_context.rs",
+    "apps/server/src/services/app_lifecycle.rs"
+  ],
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-host-worker-retry-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "written_only_after_worker_shutdown_and_cleanup": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "broker": "external_iggy",
+    "broker_address_env": "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS",
+    "delivery_profile": "outbox_iggy",
+    "consumer_flag": "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_ENABLED=true",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "topic": "domain",
+    "configured_max_attempts": 3,
+    "configured_backoff_ms": [
+      25,
+      50
+    ],
+    "configured_idle_poll_ms": 5000
+  },
+  "scenario": {
+    "id": "host_worker_retry_exhaustion_restart_and_stop",
+    "proves": [
+      "the public server startup path creates the production Forum Search contract-consumer worker",
+      "a PostgreSQL BEFORE INSERT failure is classified through production ingress as retryable storage failure",
+      "a non-transactional PostgreSQL sequence records exactly three production worker admission attempts",
+      "retry exhaustion stops the first worker without committing a Search inbox row or source offset",
+      "removing only the injected database failure and restarting through the same public startup path creates a new worker instance",
+      "the unacknowledged first delivery is redelivered and four valid deliveries reach one durable inbox row each",
+      "later deliveries prove the restarted production worker acknowledged and advanced the fixed consumer group",
+      "the shared StopHandle terminates the worker before the configured five-second idle poll elapses",
+      "the production consumer group is empty after graceful shutdown"
+    ]
+  },
+  "identity_invariants": [
+    "the first and restarted worker instance IDs differ",
+    "all typed envelopes retain causation IDs equal to their legacy root event IDs",
+    "search_projection_inbox.event_id equals each exact root event ID",
+    "retry exhaustion leaves zero durable inbox rows",
+    "each recovered root event ID has exactly one durable inbox row",
+    "the production consumer group and topic remain unchanged across restart",
+    "owner revision values are not compared with Search ingest_sequence",
+    "shutdown uses the host-owned StopHandle rather than task abortion"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test --locked -p rustok-server --test forum_versioned_invalidation_host_worker_retry_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL or external Iggy execution passed",
+    "this proof does not inject acknowledgement failure after durable ingress because D3 already owns that restart case",
+    "this proof does not duplicate raw or semantic poison terminalization owned by D4 and D5",
+    "this proof does not resolve the publish-before-mark ambiguity parked in closed PR 2783",
+    "this proof does not execute missing-delivery owner repair owned by D6",
+    "this proof does not duplicate multi-process serialization owned by D7",
+    "this proof does not validate deletion or ACL ordering, Search-disabled recovery or storefront visibility",
+    "this proof does not modify production Rust, dependency manifests, migrations, event schemas, public APIs or Cargo.lock",
+    "this proof does not register D8 in the parent D0 contract before D8 itself merges",
+    "this proof does not complete FORUM-23B2G2B3D or close LINK-FORUM-03"
+  ]
+}
