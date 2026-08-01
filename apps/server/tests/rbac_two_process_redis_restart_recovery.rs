@@ -124,6 +124,7 @@ async fn separate_process_replica_applies_available_redis_invalidation() {
                 .await?;
                 if recovery.durable_generation != mutation.committed_generation
                     || recovery.authoritative_allowed
+                    || recovery.elapsed > FAST_PATH_BOUND
                 {
                     return Err(test_error(
                         "available Redis observer did not converge to the authoritative deny at the committed generation",
@@ -240,6 +241,7 @@ async fn separate_process_replica_recovers_after_redis_restart_and_resubscribe()
 
                 if recovery.durable_generation != mutation.committed_generation
                     || recovery.authoritative_allowed
+                    || recovery.elapsed > remaining
                     || restart_started.elapsed() > RESTART_RECOVERY_BOUND
                 {
                     return Err(test_error(
@@ -431,13 +433,13 @@ async fn wait_for_redis(url: &str, timeout: Duration) -> TestResult<()> {
         loop {
             if let Ok(client) = redis::Client::open(url)
                 && let Ok(mut connection) = client.get_multiplexed_async_connection().await
-                && redis::cmd("PING")
-                    .query_async::<String>(&mut connection)
-                    .await
-                    .as_deref()
-                    == Ok("PONG")
             {
-                return;
+                let pong = redis::cmd("PING")
+                    .query_async::<String>(&mut connection)
+                    .await;
+                if matches!(pong.as_deref(), Ok("PONG")) {
+                    return;
+                }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
