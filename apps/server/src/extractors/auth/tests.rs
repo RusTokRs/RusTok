@@ -1,6 +1,6 @@
 use super::{
-    AccessTokenSubjectKind, CurrentUser, classify_access_token_claims,
-    resolve_current_user_from_access_token, resolve_service_token_permissions,
+    CurrentUser, classify_access_token_claims, resolve_current_user_from_access_token,
+    resolve_service_token_permissions,
 };
 use crate::auth::{
     AuthConfig, AuthSettingsOverrides, Claims, encode_access_token, encode_oauth_access_token,
@@ -10,7 +10,7 @@ use crate::models::{oauth_apps, sessions, tenants, users};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use chrono::{Duration, Utc};
-use rustok_api::Permission;
+use rustok_api::{AuthPrincipalKind, Permission};
 use rustok_core::{SecurityActorKind, UserRole, UserStatus};
 use rustok_migrations::Migrator;
 use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -133,22 +133,22 @@ async fn insert_oauth_app(
 }
 
 #[test]
-fn token_claim_classifier_separates_user_and_service_subjects() {
+fn token_claim_classifier_returns_explicit_principal_kinds() {
     let direct = claims("direct", None, Uuid::new_v4());
     let oauth_user = claims("authorization_code", Some(Uuid::new_v4()), Uuid::nil());
     let service = claims("client_credentials", Some(Uuid::new_v4()), Uuid::nil());
 
     assert_eq!(
         classify_access_token_claims(&direct).expect("direct token"),
-        AccessTokenSubjectKind::User
+        AuthPrincipalKind::DirectUser
     );
     assert_eq!(
         classify_access_token_claims(&oauth_user).expect("OAuth user token"),
-        AccessTokenSubjectKind::User
+        AuthPrincipalKind::DelegatedUser
     );
     assert_eq!(
         classify_access_token_claims(&service).expect("service token"),
-        AccessTokenSubjectKind::Service
+        AuthPrincipalKind::Service
     );
 }
 
@@ -166,6 +166,7 @@ fn service_current_user_builds_service_security_context() {
         permissions: vec![Permission::MODULES_LIST],
         inferred_role: UserRole::Customer,
         actor_kind: SecurityActorKind::Service,
+        principal_kind: AuthPrincipalKind::Service,
         client_id: Some(Uuid::new_v4()),
         scopes: Vec::new(),
         grant_type: "client_credentials".to_string(),
