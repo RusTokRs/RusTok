@@ -70,7 +70,7 @@ pub use services::relation_permission_resolver::{
     PermissionCache, PermissionCacheLookup, RelationPermissionStore, invalidate_cached_permissions,
     resolve_permissions_from_relations, resolve_permissions_with_cache,
 };
-pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
+pub use services::runtime_permission_resolver::RuntimePermissionResolver;
 
 /// Build a read-only canonical system-role repair plan.
 pub async fn plan_system_role_repair(
