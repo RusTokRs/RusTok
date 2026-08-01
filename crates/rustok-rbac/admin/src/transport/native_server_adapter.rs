@@ -54,9 +54,7 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
             })?;
         let principal = RbacControlPlanePrincipal {
             tenant_id: auth.tenant_id,
-            session_id: auth.session_id,
-            client_id: auth.client_id,
-            grant_type: &auth.grant_type,
+            principal_kind: auth.principal_kind,
         };
         require_direct_control_plane_user(principal, tenant.id).map_err(|error| {
             tracing::warn!(
