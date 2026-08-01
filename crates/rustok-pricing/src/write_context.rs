@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
-use uuid::Uuid;
 
 use crate::ports::{
     ApplyVariantDiscountRequest, PricingWritePort, SetPriceListPercentageRuleRequest,
@@ -21,16 +20,41 @@ const SET_PRICE_LIST_PERCENTAGE_RULE_OPERATION: &str = "set_price_list_percentag
 
 #[derive(Debug, Clone, Default)]
 struct PricingWriteDiagnosticFacts {
-    variant_id: Option<Uuid>,
-    price_list_id: Option<Uuid>,
-    channel_id: Option<Uuid>,
-    min_quantity: Option<i32>,
-    max_quantity: Option<i32>,
+    variant_id_present: bool,
+    variant_id_non_nil: bool,
+    price_list_id_present: bool,
+    price_list_id_non_nil: bool,
+    channel_id_present: bool,
+    channel_id_non_nil: bool,
+    min_quantity_present: bool,
+    min_quantity_nonzero: bool,
+    min_quantity_negative: bool,
+    max_quantity_present: bool,
+    max_quantity_nonzero: bool,
+    max_quantity_negative: bool,
     currency_code_length: Option<usize>,
     channel_slug_length: Option<usize>,
     fallback_locale_length: Option<usize>,
-    compare_at_amount_present: Option<bool>,
-    adjustment_percent_present: Option<bool>,
+    compare_at_amount_present: bool,
+    adjustment_percent_present: bool,
+}
+
+struct PricingWriteContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -74,17 +98,30 @@ impl PricingWritePort for InProcessPricingWritePort {
     ) -> Result<AdminPricingPrice, PortError> {
         let diagnostic_context = context.clone();
         let diagnostic_facts = PricingWriteDiagnosticFacts {
-            variant_id: Some(request.variant_id),
-            price_list_id: request.price_list_id,
-            channel_id: request.channel_id,
-            min_quantity: request.min_quantity,
-            max_quantity: request.max_quantity,
+            variant_id_present: true,
+            variant_id_non_nil: !request.variant_id.is_nil(),
+            price_list_id_present: request.price_list_id.is_some(),
+            price_list_id_non_nil: request
+                .price_list_id
+                .map(|value| !value.is_nil())
+                .unwrap_or(false),
+            channel_id_present: request.channel_id.is_some(),
+            channel_id_non_nil: request
+                .channel_id
+                .map(|value| !value.is_nil())
+                .unwrap_or(false),
+            min_quantity_present: request.min_quantity.is_some(),
+            min_quantity_nonzero: request.min_quantity.map(|value| value != 0).unwrap_or(false),
+            min_quantity_negative: request.min_quantity.map(|value| value < 0).unwrap_or(false),
+            max_quantity_present: request.max_quantity.is_some(),
+            max_quantity_nonzero: request.max_quantity.map(|value| value != 0).unwrap_or(false),
+            max_quantity_negative: request.max_quantity.map(|value| value < 0).unwrap_or(false),
             currency_code_length: Some(request.currency_code.chars().count()),
             channel_slug_length: request
                 .channel_slug
                 .as_ref()
                 .map(|value| value.chars().count()),
-            compare_at_amount_present: Some(request.compare_at_amount.is_some()),
+            compare_at_amount_present: request.compare_at_amount.is_some(),
             ..PricingWriteDiagnosticFacts::default()
         };
         let result = PricingWritePort::upsert_variant_price(&self.inner, context, request).await;
@@ -105,8 +142,13 @@ impl PricingWritePort for InProcessPricingWritePort {
     ) -> Result<ActivePriceListOption, PortError> {
         let diagnostic_context = context.clone();
         let diagnostic_facts = PricingWriteDiagnosticFacts {
-            price_list_id: Some(request.price_list_id),
-            channel_id: request.channel_id,
+            price_list_id_present: true,
+            price_list_id_non_nil: !request.price_list_id.is_nil(),
+            channel_id_present: request.channel_id.is_some(),
+            channel_id_non_nil: request
+                .channel_id
+                .map(|value| !value.is_nil())
+                .unwrap_or(false),
             channel_slug_length: request
                 .channel_slug
                 .as_ref()
@@ -131,9 +173,18 @@ impl PricingWritePort for InProcessPricingWritePort {
     ) -> Result<PriceAdjustmentPreview, PortError> {
         let diagnostic_context = context.clone();
         let diagnostic_facts = PricingWriteDiagnosticFacts {
-            variant_id: Some(request.variant_id),
-            price_list_id: request.price_list_id,
-            channel_id: request.channel_id,
+            variant_id_present: true,
+            variant_id_non_nil: !request.variant_id.is_nil(),
+            price_list_id_present: request.price_list_id.is_some(),
+            price_list_id_non_nil: request
+                .price_list_id
+                .map(|value| !value.is_nil())
+                .unwrap_or(false),
+            channel_id_present: request.channel_id.is_some(),
+            channel_id_non_nil: request
+                .channel_id
+                .map(|value| !value.is_nil())
+                .unwrap_or(false),
             currency_code_length: Some(request.currency_code.chars().count()),
             channel_slug_length: request
                 .channel_slug
@@ -159,12 +210,13 @@ impl PricingWritePort for InProcessPricingWritePort {
     ) -> Result<ActivePriceListOption, PortError> {
         let diagnostic_context = context.clone();
         let diagnostic_facts = PricingWriteDiagnosticFacts {
-            price_list_id: Some(request.price_list_id),
+            price_list_id_present: true,
+            price_list_id_non_nil: !request.price_list_id.is_nil(),
             fallback_locale_length: request
                 .fallback_locale
                 .as_ref()
                 .map(|value| value.chars().count()),
-            adjustment_percent_present: Some(request.adjustment_percent.is_some()),
+            adjustment_percent_present: request.adjustment_percent.is_some(),
             ..PricingWriteDiagnosticFacts::default()
         };
         let result = PricingWritePort::set_price_list_percentage_rule(
@@ -267,6 +319,164 @@ fn classify_pricing_write_local_outcome(error: &PortError) -> Option<PricingWrit
     Some(outcome)
 }
 
+fn pricing_write_context_facts(context: &PortContext) -> PricingWriteContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    PricingWriteContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn pricing_write_port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    }
+}
+
+fn log_pricing_write_local_outcome(
+    context: &PortContext,
+    owner_operation: &'static str,
+    outcome: PricingWriteLocalOutcome,
+    facts: &PricingWriteDiagnosticFacts,
+    error: &PortError,
+    mapped_error: &PortError,
+    technical_failure: bool,
+) {
+    let context_facts = pricing_write_context_facts(context);
+    let public_message_present = !mapped_error.message.is_empty();
+    let public_message_length = mapped_error.message.chars().count();
+    let original_message_length = error.message.chars().count();
+    let error_kind = pricing_write_port_error_kind(&mapped_error.kind);
+
+    if technical_failure {
+        tracing::error!(
+            owner = PRICING_OWNER,
+            operation = owner_operation,
+            local_operation = outcome.local_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            variant_id_present = facts.variant_id_present,
+            variant_id_non_nil = facts.variant_id_non_nil,
+            price_list_id_present = facts.price_list_id_present,
+            price_list_id_non_nil = facts.price_list_id_non_nil,
+            channel_id_present = facts.channel_id_present,
+            channel_id_non_nil = facts.channel_id_non_nil,
+            min_quantity_present = facts.min_quantity_present,
+            min_quantity_nonzero = facts.min_quantity_nonzero,
+            min_quantity_negative = facts.min_quantity_negative,
+            max_quantity_present = facts.max_quantity_present,
+            max_quantity_nonzero = facts.max_quantity_nonzero,
+            max_quantity_negative = facts.max_quantity_negative,
+            currency_code_length = ?facts.currency_code_length,
+            channel_slug_length = ?facts.channel_slug_length,
+            fallback_locale_length = ?facts.fallback_locale_length,
+            compare_at_amount_present = facts.compare_at_amount_present,
+            adjustment_percent_present = facts.adjustment_percent_present,
+            internal_code = %error.code,
+            public_message_present,
+            public_message_length,
+            original_message_length,
+            error_kind,
+            retryable = mapped_error.retryable,
+            boundary = PRICING_WRITE_BOUNDARY,
+            "pricing write local technical outcome retained bounded delegated context"
+        );
+    } else {
+        tracing::warn!(
+            owner = PRICING_OWNER,
+            operation = owner_operation,
+            local_operation = outcome.local_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            variant_id_present = facts.variant_id_present,
+            variant_id_non_nil = facts.variant_id_non_nil,
+            price_list_id_present = facts.price_list_id_present,
+            price_list_id_non_nil = facts.price_list_id_non_nil,
+            channel_id_present = facts.channel_id_present,
+            channel_id_non_nil = facts.channel_id_non_nil,
+            min_quantity_present = facts.min_quantity_present,
+            min_quantity_nonzero = facts.min_quantity_nonzero,
+            min_quantity_negative = facts.min_quantity_negative,
+            max_quantity_present = facts.max_quantity_present,
+            max_quantity_nonzero = facts.max_quantity_nonzero,
+            max_quantity_negative = facts.max_quantity_negative,
+            currency_code_length = ?facts.currency_code_length,
+            channel_slug_length = ?facts.channel_slug_length,
+            fallback_locale_length = ?facts.fallback_locale_length,
+            compare_at_amount_present = facts.compare_at_amount_present,
+            adjustment_percent_present = facts.adjustment_percent_present,
+            internal_code = %error.code,
+            public_message_present,
+            public_message_length,
+            original_message_length,
+            error_kind,
+            retryable = mapped_error.retryable,
+            boundary = PRICING_WRITE_BOUNDARY,
+            "pricing write local outcome retained bounded delegated context"
+        );
+    }
+}
+
 fn map_pricing_write_local_port_error(
     context: &PortContext,
     owner_operation: &'static str,
@@ -290,77 +500,15 @@ fn map_pricing_write_local_port_error(
         &mapped_error.kind,
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
     );
-    let original_message_length = error.message.chars().count();
-
-    if technical_failure {
-        tracing::error!(
-            owner = PRICING_OWNER,
-            operation = owner_operation,
-            local_operation = outcome.local_operation,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            claim_count = context.claims.len(),
-            role_count = context.roles.len(),
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            variant_id = ?facts.variant_id,
-            price_list_id = ?facts.price_list_id,
-            channel_id = ?facts.channel_id,
-            min_quantity = ?facts.min_quantity,
-            max_quantity = ?facts.max_quantity,
-            currency_code_length = ?facts.currency_code_length,
-            channel_slug_length = ?facts.channel_slug_length,
-            fallback_locale_length = ?facts.fallback_locale_length,
-            compare_at_amount_present = ?facts.compare_at_amount_present,
-            adjustment_percent_present = ?facts.adjustment_percent_present,
-            internal_code = %error.code,
-            public_message = %mapped_error.message,
-            original_message_length,
-            error_kind = ?mapped_error.kind,
-            retryable = mapped_error.retryable,
-            boundary = PRICING_WRITE_BOUNDARY,
-            "pricing write local technical outcome retained delegated context"
-        );
-    } else {
-        tracing::warn!(
-            owner = PRICING_OWNER,
-            operation = owner_operation,
-            local_operation = outcome.local_operation,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            claim_count = context.claims.len(),
-            role_count = context.roles.len(),
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            variant_id = ?facts.variant_id,
-            price_list_id = ?facts.price_list_id,
-            channel_id = ?facts.channel_id,
-            min_quantity = ?facts.min_quantity,
-            max_quantity = ?facts.max_quantity,
-            currency_code_length = ?facts.currency_code_length,
-            channel_slug_length = ?facts.channel_slug_length,
-            fallback_locale_length = ?facts.fallback_locale_length,
-            compare_at_amount_present = ?facts.compare_at_amount_present,
-            adjustment_percent_present = ?facts.adjustment_percent_present,
-            internal_code = %error.code,
-            public_message = %mapped_error.message,
-            original_message_length,
-            error_kind = ?mapped_error.kind,
-            retryable = mapped_error.retryable,
-            boundary = PRICING_WRITE_BOUNDARY,
-            "pricing write local outcome retained delegated context"
-        );
-    }
+    log_pricing_write_local_outcome(
+        context,
+        owner_operation,
+        outcome,
+        facts,
+        &error,
+        &mapped_error,
+        technical_failure,
+    );
 
     mapped_error
 }

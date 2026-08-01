@@ -4,120 +4,99 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice retains stable owner-local outcome context for canonical root pricing writes:
+This slice closes the canonical local-diagnostic surface for all four `PricingWritePort`
+operations:
 
-- `PricingWritePort::upsert_variant_price`;
-- `PricingWritePort::set_price_list_scope`;
-- `PricingWritePort::apply_variant_discount`;
-- `PricingWritePort::set_price_list_percentage_rule`;
-- root `InProcessPricingWritePort`;
-- root `in_process_pricing_write_port`.
+- `upsert_variant_price`;
+- `set_price_list_scope`;
+- `apply_variant_discount`;
+- `set_price_list_percentage_rule`.
 
-The existing owner implementation in `ports.rs` remains unchanged. The root wrapper retains the delegated
-`PortContext` and safe request facts, calls the original `PricingService` port implementation, classifies
-covered returned `PortError` envelopes, normalizes identifying messages, and preserves kind, code, and
-retryability.
+`InProcessPricingWritePort` still delegates every call to the same owner implementation in
+`ports.rs`. Request and response DTOs, operation ordering, write/idempotency/deadline
+admission, tenant and actor parsing, mutation behavior, event publication, returned values,
+error kind, code, retryability, public message mapping, and technical-versus-ordinary
+severity are unchanged.
 
-## Canonical root cutover
+## Canonical root path
 
-The crate keeps `pub mod ports`, so the existing traits, requests, owner implementation, and module-path
-factories remain available for compatibility. Root construction is now split explicitly:
+Root `rustok_pricing::in_process_pricing_write_port` continues to construct
+`InProcessPricingWritePort`. The commerce GraphQL pricing mutations continue to use that
+root factory. The explicit compatibility factory under `rustok_pricing::ports` and the
+canonical read factory remain unchanged.
 
-- `InProcessPricingReadPort` owns canonical read construction;
-- `InProcessPricingWritePort` owns canonical write construction;
-- `rustok_pricing::ports` remains an explicit compatibility path.
+## Bounded delegated context
 
-The commerce GraphQL admin pricing mutations import the root write factory, so variant-price upsert,
-discount application, price-list rule update, and price-list scope update use this wrapper without resolver
-changes.
+Covered local outcomes retain correlation ID, exact owner and local operation names, and
+the stable `pricing_write_port` boundary. Delegated context is represented only by:
 
-## Delegation order
+- tenant and actor-ID character lengths;
+- a closed actor-kind label;
+- claim and role counts;
+- channel presence and character length;
+- locale character length;
+- causation, traceparent, and idempotency presence and character length;
+- deadline value.
 
-Each wrapper operation performs the same sequence:
+Raw tenant, actor, channel, locale, causation ID, traceparent, and idempotency-key values
+are not recorded.
 
-1. clone the accepted `PortContext` for diagnostics;
-2. retain operation-specific typed identity and bounded shape facts;
-3. delegate the original context and request to the unchanged owner implementation;
-4. inspect only a returned `PortError`;
-5. emit a local event only for a covered owner code;
-6. return the same envelope or the same kind/code/retryability with a stable message.
+## Bounded request shape
 
-The persistent owner continues to own write/idempotency admission, tenant and actor parsing, validation,
-price-list and variant mutation, event publication, saved projections, and public error selection.
+Request identity is retained only as UUID presence and non-nil state. Variant, price-list,
+and channel UUID values are not recorded.
 
-## Safe request facts
+Minimum and maximum quantities are represented only by presence, non-zero state, and
+negative state; exact minimum and maximum quantity values are not recorded. Currency,
+channel-slug, and fallback-locale inputs remain represented by character length only.
+Whether compare-at amount or adjustment percent was supplied remains a boolean presence
+fact; their values are not recorded.
 
-Covered diagnostics may retain:
+Raw currency codes, channel slugs, fallback locales, handles, SKUs, prices, compare-at
+prices, percentages, titles, returned rows, and owner error text are not recorded.
 
-- typed variant, price-list, and channel ids;
-- minimum and maximum quantity bounds;
-- currency-code, channel-slug, and fallback-locale character lengths;
-- whether compare-at amount or adjustment percent was supplied.
+## Local error shape
 
-The wrapper does not retain raw currency codes, channel slugs, fallback locales, handles, SKUs, prices,
-compare-at prices, percentages, titles, returned rows, or owner error text.
+Known owner envelopes keep the same classification and message mapping. Shared `port.*`
+admission envelopes and unknown future codes still pass through without an additional
+local event.
 
-## Covered stable outcomes
+For covered outcomes diagnostics retain:
 
-The wrapper recognizes stable owner codes and preserves existing kind and retryability.
+- the stable error code;
+- a closed `PortErrorKind` label;
+- retryability;
+- original and public message character lengths;
+- whether a public message is present.
 
-| Stable code | Local operation | Canonical message policy |
-| --- | --- | --- |
-| `pricing.tenant_id_invalid` | `validate_tenant_context` | `pricing request context is invalid` |
-| `pricing.actor_id_invalid` | `validate_actor_context` | `pricing write actor is invalid` |
-| `pricing.database_unavailable` | `owner_storage` | unchanged shared unavailable message |
-| `pricing.product_not_found` | `load_product` | `product was not found` |
-| `pricing.variant_not_found` | `load_variant` | `variant was not found` |
-| `pricing.duplicate_handle` | `validate_handle_uniqueness` | `pricing handle is already in use` |
-| `pricing.duplicate_sku` | `validate_sku_uniqueness` | `pricing SKU is already in use` |
-| `pricing.validation` | `validate_owner_request` | unchanged stable validation message |
-| `pricing.insufficient_inventory` | `validate_inventory_requirement` | stable non-quantified conflict message |
-| `pricing.invalid_option_combination` | `validate_option_combination` | unchanged stable validation message |
-| `pricing.shipping_profile_not_found` | `load_shipping_profile` | `shipping profile was not found` |
-| `pricing.duplicate_shipping_profile_slug` | `validate_shipping_profile_slug_uniqueness` | stable non-identifying conflict message |
-| `pricing.no_variants` | `validate_product_variants` | unchanged stable validation message |
-| `pricing.cannot_delete_published` | `validate_published_product_state` | unchanged stable conflict message |
-| `pricing.rich_error` | `owner_rich_invariant` | unchanged shared invariant message |
-| `pricing.core_error` | `owner_core_invariant` | unchanged shared invariant message |
+The public message text is not recorded, the original message text is not recorded, and
+`PortErrorKind` is not emitted through debug formatting.
 
-Shared `port.*` admission envelopes and unknown future codes pass through without duplicate local
-classification. Admission-specific pricing diagnostics remain separate follow-up work.
+Unavailable, timeout, and invariant outcomes remain error severity. Validation,
+not-found, and conflict outcomes remain warning severity.
 
-## Retained diagnostic context
+## Pricing boundary status
 
-Covered outcomes record:
-
-- truthful owner `rustok_pricing`;
-- exact public owner operation and local operation;
-- boundary `pricing_write_port`;
-- correlation and tenant identity;
-- typed actor, channel, locale, claims, and roles shape;
-- causation id, traceparent, idempotency key, and deadline when available;
-- safe operation-specific request facts;
-- stable internal code and canonical public message;
-- original message character length without message content;
-- typed error kind, retryability, and the mapped public-safe `PortError`.
-
-Unavailable, timeout, and invariant outcomes use error severity. Ordinary validation, not-found, and
-conflict outcomes use warning severity.
-
-## Preserved behavior
-
-This work does not change:
-
-- `PricingWritePort`, request DTOs, or returned owner projections;
-- `PricingService` mutation methods or event publication;
-- write/idempotency/deadline admission order;
-- tenant and actor parsing;
-- price, compare-at, tier, channel-scope, percentage, or locale semantics;
-- GraphQL mutation arguments, permissions, public GraphQL envelopes, or success responses;
-- read construction or read diagnostics;
-- FBA or FFA status.
+The owner `ports.rs`, canonical read wrapper, and canonical write wrapper are now
+source-closed for the currently identified public-message and payload-diagnostic gaps.
+Both canonical Pricing wrappers are now source-closed. The broader ecommerce cleanup and
+all execution evidence remain open.
 
 ## Static evidence
 
-`scripts/verify/verify-pricing-write-local-context.mjs` guards canonical construction, four unchanged owner
-delegations, complete delegated context, safe request facts, stable message normalization, technical versus
-ordinary severity, mapped error return, and the absence of raw pricing payload logging.
+- `scripts/verify/verify-pricing-write-local-context.mjs`
+- `crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json`
+- `crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source-review.json`
 
-No verifier, formatting, Cargo, test, runtime, or remote-profile command was executed in this source wave.
+Intended maintainer validation:
+
+```bash
+node scripts/verify/verify-pricing-write-local-context.mjs
+node scripts/verify/verify-pricing-read-local-context.mjs
+node scripts/verify/verify-pricing-owner-port-error-safety.mjs
+cargo check -p rustok-pricing --lib
+cargo check -p rustok-commerce --lib
+```
+
+No test, verifier, formatter, Cargo, workflow, CI, or mounted runtime command was executed
+for this source contract.
