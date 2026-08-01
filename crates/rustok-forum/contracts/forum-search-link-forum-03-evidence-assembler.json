@@ -1,0 +1,75 @@
+{
+  "contract": "forum_search_link_forum_03_evidence_assembler_v1",
+  "task": "FORUM-23B2G2B3D13",
+  "target_link": "LINK-FORUM-03",
+  "coverage": "ordering_visibility_and_search_disabled_core_only",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "d0_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "d12_contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json",
+  "assembler": "scripts/evidence/assemble-link-forum-03-forum-search-evidence.mjs",
+  "verifier": "scripts/verify/verify-link-forum-03-forum-search-evidence.mjs",
+  "required_inputs": [
+    "target/forum-search-versioned-invalidation-runtime-promotion-candidate.json",
+    "target/forum-search-versioned-invalidation-runtime-evidence.json",
+    "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json",
+    "target/forum-search-versioned-invalidation-search-disabled-recovery-evidence.json",
+    "target/forum-search-versioned-invalidation-normal-delivery-evidence.json"
+  ],
+  "output_artifact": {
+    "path": "target/link-forum-03-forum-index-search-ordering-visibility-evidence.json",
+    "generation": "assembler_only_after_d12_review_candidate",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "atomic_replace": true,
+    "automatic_canonical_source_mutation": false
+  },
+  "required_runtime_lineage": {
+    "normal_delivery": "FORUM-23B2G2B3D10:normal_delivery",
+    "ordering_and_visibility": "FORUM-23B2G2B3D8:deletion_acl_ordering",
+    "search_disabled_recovery": "FORUM-23B2G2B3D9:search_disabled_profile",
+    "retained_review": "FORUM-23B2G2B3D12:approved_for_canonical_status_promotion"
+  },
+  "fail_closed_requirements": [
+    "the canonical Forum plan still records FORUM-23 in_progress and LINK-FORUM-03 planned before downstream evidence assembly",
+    "the D12 promotion candidate has exact contract, task and approved status",
+    "the D12 candidate source commit equals git rev-parse HEAD and its proposed transition remains pending to runtime_evidence_reviewed",
+    "the D12 candidate parent-contract path, pending status and SHA-256 equal the current D0 parent bytes",
+    "the exact aggregate artifact bytes match the candidate SHA-256 and byte length",
+    "the aggregate retains exact D0 identity, runtime_evidence_assembled status, all ten frozen scenarios and PostgreSQL outbox_iggy profile",
+    "the D8, D9 and D10 source artifacts exist with exact task, contract, source commit, scenario identity, passed result and non-empty facts",
+    "the D8 and D9 source artifacts report broker_used false while D10 reports outbox_iggy, the canonical consumer group, topic and a non-empty stream",
+    "the D8, D9 and D10 source bytes match both the aggregate source_artifact digests and the D12 candidate retained source digests",
+    "the aggregate frozen scenario facts for normal_delivery, deletion_acl_ordering and search_disabled_profile equal the retained D10, D8 and D9 source facts",
+    "the output records the D12 reviewer and retention reference without claiming independent external-retention authentication",
+    "the output declares partial core coverage and cannot support a canonical LINK status change",
+    "the output is written only after complete validation by same-directory atomic rename",
+    "the assembler never edits D0, the canonical Forum plan, FORUM-23 or LINK-FORUM-03 status"
+  ],
+  "proves_after_maintainer_execution": [
+    "one real Forum owner transaction reaches external Iggy, durable Search ingress, production projection, delivery-covered checkpoint and exact storefront visibility",
+    "out-of-order and duplicate owner invalidations cannot restore hidden, deleted or richer-ACL-denied Forum content",
+    "current Forum owner reauthorization excludes stale denied Search rows from items, totals and facets",
+    "Forum owner writes remain available while Search storage and runtime are absent and late Search recovery rebuilds from the owner ledger",
+    "the normal, ordering/visibility and Search-disabled proofs share one reviewed source commit and retained evidence lineage"
+  ],
+  "remaining_link_forum_03_runtime_scope": [
+    "translation projection and retrieval",
+    "real moderation approval transition into Search visibility",
+    "topic move and category-scope projection update",
+    "exact private and trusted-channel exclusion runtime profile",
+    "separate review of the generated partial LINK artifact before any canonical plan change"
+  ],
+  "maintainer_commands": [
+    "node scripts/verify/verify-link-forum-03-forum-search-evidence.mjs",
+    "node scripts/evidence/assemble-link-forum-03-forum-search-evidence.mjs"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that D8, D9, D10, D11 or D12 ran",
+    "this slice does not generate missing runtime evidence or accept static fixtures",
+    "this slice does not independently authenticate the external retention reference recorded by D12",
+    "this partial core artifact is not sufficient to mark LINK-FORUM-03 done",
+    "this slice does not promote D0, FORUM-23 or LINK-FORUM-03 in canonical source",
+    "this slice does not close arbitrary channel/group, topic-kind or attachment-presence scope"
+  ]
+}
