@@ -12,6 +12,7 @@ rustok-core.workspace = true
 async-trait.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 
 # Domain and application core
@@ -31,4 +32,3 @@ uuid.workspace = true
 [dev-dependencies]
 proptest.workspace = true
 rustok-events.workspace = true
-tokio.workspace = true
