@@ -79,7 +79,9 @@ for (const marker of [
   "pub async fn reserve_permission_invalidation_generation(",
   "db: &DatabaseTransaction",
   "UPDATE rbac_invalidation_state",
-  "RETURNING generation",
+  "SET generation = generation + 1",
+  "if update.rows_affected() != 1",
+  "read_permission_invalidation_generation(db).await",
 ]) requireText(sources.generation, marker, `${files.generation}: generation authority`);
 
 for (const marker of [
