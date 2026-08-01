@@ -24,14 +24,15 @@ expose `AuthPrincipalContext`, the request-scoped typed carrier.
 ## Construction boundary
 
 The server authentication resolver validates token subject, tenant, app, grant,
-session, user status, scopes, and effective permissions first. HTTP/native
-middleware and GraphQL HTTP/WebSocket composition then call
-`AuthPrincipalKind::from_authenticated_facts` exactly once for their request
-context.
+session, user status, scopes, and effective permissions. During that resolution it
+calls `AuthPrincipalKind::from_authenticated_facts` once and stores the result on
+`CurrentUser`.
 
-An unknown or inconsistent combination fails closed with a static public error.
-The diagnostics record only the grant type and boolean client/session presence;
-they do not log credentials, tokens, or session identifiers.
+HTTP/native middleware and GraphQL HTTP/WebSocket composition only copy
+`CurrentUser.principal_kind` into `AuthPrincipalContext`. They are forbidden from
+reinterpreting grant, client, or session metadata. An unknown or inconsistent
+combination is rejected by the authentication resolver before any request context
+or module policy is constructed.
 
 ## Control-plane admission
 
@@ -78,6 +79,7 @@ cargo check -p rustok-rbac --all-features
 cargo check -p rustok-rbac-admin --features ssr
 cargo check -p rustok-server --lib
 cargo test -p rustok-api --features server authenticated_facts_classify_fail_closed
+cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds
 cargo test -p rustok-rbac --all-features control_plane
 cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard
 node scripts/verify/verify-rbac-admin-tenant-scope.mjs
