@@ -462,9 +462,11 @@ async fn wait_for_redis_subscribers(
                 let response = redis::cmd("PUBSUB")
                     .arg("NUMSUB")
                     .arg(channel)
-                    .query_async::<(String, u64)>(&mut connection)
+                    .query_async::<std::collections::HashMap<String, u64>>(&mut connection)
                     .await;
-                if response.is_ok_and(|(_, subscribers)| subscribers >= minimum) {
+                if response.is_ok_and(|counts| {
+                    counts.get(channel).copied().unwrap_or_default() >= minimum
+                }) {
                     return;
                 }
             }
