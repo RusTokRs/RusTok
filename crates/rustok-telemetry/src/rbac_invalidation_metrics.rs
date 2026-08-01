@@ -37,11 +37,11 @@ lazy_static! {
     )
     .expect("Failed to create rbac_invalidation_database_read_errors_total");
 
-    /// Total watchdog starts or restarts by bounded reason.
+    /// Total watchdog restarts by bounded reason.
     pub static ref RBAC_INVALIDATION_WATCHDOG_RESTARTS_TOTAL: IntCounterVec = IntCounterVec::new(
         Opts::new(
             "rustok_rbac_invalidation_watchdog_restarts_total",
-            "Total durable RBAC invalidation watchdog starts or restarts by reason"
+            "Total durable RBAC invalidation watchdog restarts by reason"
         ),
         &["reason"]
     )
