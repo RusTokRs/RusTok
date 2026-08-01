@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -45,6 +44,7 @@ const CHILD_MUTATION_RESULT_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_MUTATION_RESULT_
 const CHILD_TEST_NAME: &str = "rbac_redis_replica_child";
 const FAST_PATH_BOUND: Duration = Duration::from_secs(3);
 const RESTART_RECOVERY_BOUND: Duration = Duration::from_secs(8);
+const REPLICA_SEQUENCE_BOUND: Duration = Duration::from_secs(25);
 const CHILD_LIFETIME_BOUND: Duration = Duration::from_secs(20);
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -115,6 +115,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
         let restart_result_path = workspace.path().join("restart-result.json");
         let first_mutation_path = workspace.path().join("first-mutation.json");
         let second_mutation_path = workspace.path().join("second-mutation.json");
+        let replica_sequence_started = Instant::now();
 
         let mut observer = spawn_observer(
             &target_url,
@@ -187,7 +188,10 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
         std::fs::write(&outage_request_path, b"check-stale")?;
         wait_for_file(&outage_result_path, Duration::from_secs(3)).await?;
         let outage_result: DecisionResult = read_json(&outage_result_path)?;
-        if !outage_result.allowed || outage_result.authoritative_allowed || !outage_result.redis_configured {
+        if !outage_result.allowed
+            || outage_result.authoritative_allowed
+            || !outage_result.redis_configured
+        {
             return Err(test_error(format!(
                 "observer did not retain only the process-cache allow during outage: {outage_result:?}"
             )));
@@ -208,6 +212,11 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
             return Err(test_error(format!(
                 "existing observer did not recover after Redis restart: {restart_result:?}"
             )));
+        }
+        if replica_sequence_started.elapsed() > REPLICA_SEQUENCE_BOUND {
+            return Err(test_error(
+                "replica sequence crossed the 25-second poll-exclusion bound",
+            ));
         }
 
         wait_for_child(&mut observer, CHILD_LIFETIME_BOUND, "observer").await?;
@@ -252,6 +261,7 @@ async fn run_child(role: &str) -> TestResult<()> {
 
     match role {
         "observer" => {
+            wait_for_redis_subscribers(redis_url.as_str(), 1).await?;
             let fast_user_id = Uuid::parse_str(&required_env(CHILD_FAST_USER_ID_ENV)?)?;
             let restart_user_id = Uuid::parse_str(&required_env(CHILD_RESTART_USER_ID_ENV)?)?;
             run_observer(
@@ -437,6 +447,7 @@ async fn wait_for_permission(
     .map_err(|_| test_error(format!("permission did not converge to {expected} before {timeout:?}")))?
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_observer(
     database_url: &str,
     redis_url: &str,
