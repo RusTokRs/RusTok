@@ -168,7 +168,7 @@ impl fmt::Debug for CommentsTcpRequestEnvelope {
 /// Static service-to-service bearer resolver for the loopback Comments boundary.
 ///
 /// A valid credential authenticates the configured service actor. The claimed
-/// tenant must remain a canonical UUID and is copied into trusted authority only
+/// tenant must be a canonical UUID and is copied into trusted authority only
 /// after authentication. Principal fields are replaced later by the server
 /// adapter before provider dispatch.
 #[derive(Clone)]
@@ -244,8 +244,7 @@ impl CommentsTcpAuthorityResolver for CommentsTcpBearerAuthorityResolver {
     ) -> Result<TrustedCommentsTcpAuthority, PortError> {
         if !peer_addr.ip().is_loopback()
             || !self.token.matches(credential)
-            || claimed_context.tenant_id != claimed_context.tenant_id.trim()
-            || Uuid::parse_str(&claimed_context.tenant_id).is_err()
+            || !is_canonical_uuid(&claimed_context.tenant_id)
         {
             return Err(authentication_failed());
         }
@@ -274,6 +273,10 @@ fn valid_token_text(secret: &str) -> bool {
             .as_bytes()
             .iter()
             .any(|byte| *byte <= b' ' || *byte == 0x7f)
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+    Uuid::parse_str(value).is_ok_and(|parsed| parsed.to_string() == value)
 }
 
 fn bearer_authorization_digest(secret: &[u8]) -> [u8; AUTHORIZATION_DIGEST_BYTES] {
@@ -318,6 +321,14 @@ mod tests {
                 Err(CommentsTcpAuthenticationConfigError::InvalidBearerToken)
             );
         }
+    }
+
+    #[test]
+    fn tenant_authority_requires_canonical_uuid_text() {
+        let tenant_id = Uuid::new_v4();
+        assert!(is_canonical_uuid(&tenant_id.to_string()));
+        assert!(!is_canonical_uuid(&tenant_id.to_string().to_ascii_uppercase()));
+        assert!(!is_canonical_uuid("not-a-uuid"));
     }
 
     #[tokio::test]
