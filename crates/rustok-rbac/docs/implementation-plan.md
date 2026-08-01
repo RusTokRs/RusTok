@@ -16,7 +16,7 @@ targeted verification.
 - `docs/verification/rbac-server-modules-verification-plan.md` remains the
   cross-platform verification checklist, not a second RBAC implementation plan.
 
-Last reconciled with `main`: 2026-07-31.
+Last reconciled with `main`: 2026-08-01.
 
 ## Current state
 
@@ -198,14 +198,17 @@ trusted authenticated facts.
 
 ### P1. Invalidation observability and incident operations
 
-- [ ] Export metrics for database generation, locally applied generation,
-  generation lag, worker running/restart state and recovery/full-clear counts.
-- [ ] Define alert thresholds for non-zero sustained lag, repeated worker
+- [x] Export bounded metrics for database generation, locally applied generation,
+  generation lag, durable-watchdog running/restart state and recovery/full-clear
+  counts.
+- [ ] Extend worker-state and recovery counters to the local, Redis and periodic
+  reconciliation listeners, then retain dashboard evidence from a composed host.
+- [x] Define initial alert thresholds for non-zero sustained lag, repeated worker
   restarts, generation regression and failed database reads.
-- [ ] Add an operator runbook covering Redis outage, missed event, generation
+- [x] Add an operator runbook covering Redis outage, missed event, generation
   regression, repair execution and verification of effective permissions.
-- [ ] Make one policy incident traceable to the evaluator decision, relation
-  state, cache snapshot, durable generation and recovery action.
+- [ ] Retain one live policy-incident packet tracing the evaluator decision,
+  relation state, cache snapshot, durable generation and recovery action.
 
 ### P1. Explicit actor-kind contract
 
@@ -295,6 +298,27 @@ trusted authenticated facts.
   server compile, focused unit/architecture/verifier execution and transport-
   level negative requests are still required.
 
+## Durable invalidation observability correction (2026-08-01)
+
+- Status: `source_ready_unvalidated`.
+- Severity: `P1` because stale authorization recovery previously lacked bounded
+  generation-lag, worker-liveness and full-clear telemetry required for prompt
+  detection and incident reconstruction.
+- [x] Add a dedicated `rustok-telemetry` collector for durable database
+  generation, process-applied generation, lag, watchdog liveness/restarts,
+  recovery actions and fail-safe full clears.
+- [x] Register the collector in the canonical telemetry registry instead of a
+  parallel Prometheus registry.
+- [x] Instrument the durable database watchdog without changing generation,
+  cache-clear or authorization semantics.
+- [x] Add a telemetry registration test and a server architecture guard that
+  retain metric names, bounded labels and watchdog instrumentation.
+- [x] Add an operator runbook with initial alert thresholds, Redis outage,
+  missed-publication, generation-regression, live repair and incident-packet
+  procedures.
+- [ ] Same-SHA formatting, telemetry/server compilation, focused tests and live
+  metric scrape evidence remain required.
+
 ## Verification commands
 
 - Contract tests cover every public use case.
@@ -305,20 +329,24 @@ cargo check -p rustok-rbac
 cargo check -p rustok-rbac --all-features
 cargo check -p rustok-rbac-admin --features ssr
 cargo check -p rustok-rbac-cli
+cargo check -p rustok-telemetry
 cargo check -p rustok-server --lib
 cargo test -p rustok-rbac --all-features
 cargo test -p rustok-rbac-admin --features ssr
 cargo test -p rustok-migrations --lib rbac_system_role_repair_tests
 cargo test -p rustok-rbac-cli
+cargo test -p rustok-telemetry --test rbac_invalidation_metrics_test
 cargo test -p rustok-server --lib rbac
 cargo test -p rustok-server \
   --test rbac_artifact_permission_control_plane_guard \
   --test rbac_cache_invalidation_architecture_guard \
+  --test rbac_invalidation_observability_guard \
   --test rbac_mutation_api_architecture_guard \
   --test rbac_migration_registration_guard \
   --test rbac_startup_invalidation_architecture_guard
 cargo clippy -p rustok-rbac --all-features -- -D warnings
 cargo clippy -p rustok-rbac-cli -- -D warnings
+cargo clippy -p rustok-telemetry -- -D warnings
 cargo clippy -p rustok-server --lib -- -D warnings
 cargo xtask module validate rbac
 cargo xtask module test rbac
@@ -364,11 +392,11 @@ harness owns them.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-07-31`
-- Scope inspected: `principal classification and authoritative request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog, durable assignment owner, REST/GraphQL adapters, native RBAC Admin bootstrap, operational CLI repair and invalidation worker/gap-tracker composition`
-- Findings: `P0=1, P1=1, P2=0, P3=0`
-- Fixed in this pass: `PR #2747 merged one host-neutral rustok-rbac policy requiring a direct non-nil session and authenticated/routed tenant equality before GraphQL, REST and native RBAC control-plane permission admission; REST no longer treats modules:manage as sufficient principal authority, native bootstrap no longer treats settings:read as sufficient, the obsolete native tenant-only helper is removed and the durable mutation actor remains derived from trusted AuthContext`
-- Remaining risks or blockers: `the merged P0/P1 corrections have only narrow default-crate compile evidence; same-SHA format, all-feature RBAC compile, RBAC Admin SSR compile, server compile, focused unit/architecture/verifier tests and live negative transport requests have not run. PostgreSQL mutation concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open. CI and Hardening runs for exact head remained pending without jobs, while issue #2740 stopped Rust-host before server build.`
-- Evidence: `source review confirms middleware builds request scope from authoritative DB permissions and OAuth only narrows authority; relation resolution tenant-filters role ids and generation-aware fills fail closed; role replacement and repair reserve durable generation in their owner transaction; local, Redis and reconciliation listeners share one bounded gap tracker. Exact PR head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159, then failed on the known PostgreSQL role fixture #2740 before rustok-server. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. No other queued or pending job is claimed as passed.`
-- Next action: `continue the RBAC P0/P1 sweep across remaining event/worker and management surfaces; obtain format/all-feature/admin/server/focused/module evidence on one reconciled revision, then run PostgreSQL concurrency and multi-replica Redis recovery before deciding completed versus blocked`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Last verified at (UTC): `2026-08-01`
+- Scope inspected: `principal admission and tenant trust carry-over; generation-aware cache fill; committed role replacement and repair; durable invalidation watchdog, worker supervision, bounded telemetry registration, operator recovery procedures and regression guards`
+- Findings: `P0=0, P1=1, P2=0, P3=0`
+- Fixed in this pass: `added bounded PostgreSQL/applied generation and lag gauges, durable-watchdog liveness/restart counters, recovery/full-clear counters, canonical telemetry registration, watchdog instrumentation, an architecture guard, a metric registration test and an English operator runbook without changing authorization or invalidation authority semantics`
+- Remaining risks or blockers: `the source-ready observability correction has not run same-SHA rustfmt, telemetry/server compilation or focused tests. Local, Redis and periodic reconciliation worker metrics, retained live scrape/dashboard evidence, one correlated incident packet, PostgreSQL mutation concurrency, multi-replica Redis outage/restart recovery, explicit actor-kind design, module-owned management flows and FFA/FBA evidence remain open. The earlier control-plane correction still lacks full same-SHA validation, and issue #2740 remains an execution-infrastructure blocker for the Rust-host path.`
+- Evidence: `source inspection confirms the new metrics use fixed names and bounded reason/worker labels, register through rustok_telemetry's canonical registry, saturate u64 generations for Prometheus integers and instrument only the existing durable watchdog recovery branches. The new source test and server architecture guard retain registration and instrumentation markers; the runbook defines fail-closed recovery and evidence retention. No Cargo, Node, database, Redis, browser, workflow or live metric-scrape result is claimed for this pass.`
+- Next action: `run format, telemetry/server compilation and the focused telemetry/architecture tests on one reconciled revision; then instrument local/Redis/reconcile worker state and execute PostgreSQL concurrency plus multi-replica Redis failure/recovery before deciding completed versus blocked`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-telemetry && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-telemetry --test rbac_invalidation_metrics_test && cargo test -p rustok-server --test rbac_invalidation_observability_guard --test rbac_cache_invalidation_architecture_guard --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
