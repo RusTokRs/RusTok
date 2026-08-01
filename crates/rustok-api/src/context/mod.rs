@@ -7,13 +7,14 @@ mod host_authority;
 mod oauth_scope;
 #[cfg(feature = "server")]
 mod principal;
+mod principal_kind;
 #[cfg(feature = "server")]
 mod tenant;
 
 #[cfg(feature = "server")]
 pub use auth::{
-    AuthContext, AuthContextExtension, AuthPrincipalKind, OptionalAuthContext,
-    has_any_effective_permission, has_effective_permission, restrict_permissions_to_scopes,
+    AuthContext, AuthContextExtension, OptionalAuthContext, has_any_effective_permission,
+    has_effective_permission, restrict_permissions_to_scopes,
 };
 pub use channel::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
@@ -27,6 +28,7 @@ pub use host_authority::{
 };
 #[cfg(feature = "server")]
 pub use oauth_scope::scope_matches;
+pub use principal_kind::AuthPrincipalKind;
 #[cfg(feature = "server")]
 pub use tenant::{
     OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension, TenantError,
