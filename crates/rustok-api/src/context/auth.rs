@@ -236,21 +236,35 @@ pub struct AuthContext {
     pub session_id: Uuid,
     pub tenant_id: Uuid,
     pub permissions: Vec<Permission>,
-    pub principal_kind: AuthPrincipalKind,
     pub client_id: Option<Uuid>,
     pub scopes: Vec<String>,
     pub grant_type: String,
 }
 
+/// Explicit trusted principal kind carried separately from transport metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuthPrincipalContext {
+    pub kind: AuthPrincipalKind,
+}
+
+impl AuthPrincipalContext {
+    pub const fn new(kind: AuthPrincipalKind) -> Self {
+        Self { kind }
+    }
+}
+
 #[derive(Clone)]
 pub struct AuthContextExtension(pub AuthContext);
 
+#[derive(Clone, Copy)]
+pub struct AuthPrincipalContextExtension(pub AuthPrincipalContext);
+
 impl AuthContext {
     /// Check if the current context has the required scope.
-    /// Direct users are not OAuth principals. Delegated users and services must
-    /// carry a matching OAuth scope.
+    /// For direct grants (embedded/user login), scopes are empty and access is allowed.
+    /// For OAuth2 tokens, scopes must include the required scope (with wildcard support).
     pub fn require_scope(&self, required: &str) -> Result<(), async_graphql::Error> {
-        if self.principal_kind.is_direct_user() {
+        if self.client_id.is_none() {
             return Ok(());
         }
         if scope_matches(&self.scopes, required) {
@@ -281,6 +295,24 @@ where
     }
 }
 
+impl<S> FromRequestParts<S> for AuthPrincipalContext
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthPrincipalContextExtension>()
+            .map(|ext| ext.0)
+            .ok_or((
+                StatusCode::UNAUTHORIZED,
+                "Authenticated principal kind is unavailable".to_string(),
+            ))
+    }
+}
+
 pub struct OptionalAuthContext(pub Option<AuthContext>);
 
 impl<S> FromRequestParts<S> for OptionalAuthContext
@@ -304,21 +336,11 @@ mod tests {
     use super::*;
 
     fn make_auth_ctx(client_id: Option<Uuid>, scopes: Vec<String>) -> AuthContext {
-        let principal_kind = if client_id.is_some() {
-            AuthPrincipalKind::Service
-        } else {
-            AuthPrincipalKind::DirectUser
-        };
         AuthContext {
             user_id: Uuid::new_v4(),
-            session_id: if principal_kind.is_direct_user() {
-                Uuid::new_v4()
-            } else {
-                Uuid::nil()
-            },
+            session_id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             permissions: vec![],
-            principal_kind,
             client_id,
             scopes,
             grant_type: if client_id.is_some() {
