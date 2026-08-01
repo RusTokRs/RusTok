@@ -58,6 +58,16 @@ Canonical runtime signals:
 - `rustok_rbac_engine_eval_duration_ms_total`
 - `rustok_rbac_engine_eval_duration_samples`
 
+Durable invalidation signals:
+
+- `rustok_rbac_invalidation_database_generation`
+- `rustok_rbac_invalidation_applied_generation`
+- `rustok_rbac_invalidation_generation_lag`
+- `rustok_rbac_invalidation_worker_running`
+- `rustok_rbac_invalidation_worker_restarts_total`
+- `rustok_rbac_invalidation_recoveries_total`
+- `rustok_rbac_invalidation_full_clears_total`
+
 Release gates for changes in the module:
 
 - update unit tests for changed domain logic;
@@ -75,5 +85,6 @@ Release gates for changes in the module:
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
+- [RBAC durable invalidation operations runbook](./operations-runbook.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Verification plan](../../../docs/verification/rbac-server-modules-verification-plan.md)
