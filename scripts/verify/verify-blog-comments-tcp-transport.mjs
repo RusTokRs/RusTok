@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json';
 const manifestPath = 'crates/rustok-comments/Cargo.toml';
 const exportPath = 'crates/rustok-comments/src/lib.rs';
+const digestPath = 'crates/rustok-api/src/digest.rs';
 const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
 const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
 const remotePath = 'crates/rustok-comments/src/remote.rs';
@@ -44,6 +45,7 @@ for (const path of [
   evidencePath,
   manifestPath,
   exportPath,
+  digestPath,
   authPath,
   protocolPath,
   remotePath,
@@ -56,6 +58,7 @@ for (const path of [
 const evidence = json(evidencePath);
 const manifest = read(manifestPath);
 const exports = read(exportPath);
+const digest = read(digestPath);
 const auth = read(authPath);
 const protocol = read(protocolPath);
 const remote = read(remotePath);
@@ -130,12 +133,20 @@ sameSet(
 hasAll(
   manifest,
   [
-    'tcp-transport = ["server", "dep:sha2", "dep:subtle", "dep:tokio"]',
-    'sha2 = { workspace = true, optional = true }',
-    'subtle = { version = "2", optional = true }',
+    'tcp-transport = ["server", "dep:tokio"]',
     'tokio = { workspace = true, optional = true }',
   ],
   'comments manifest',
+);
+hasNone(
+  manifest,
+  [
+    'dep:sha2',
+    'dep:subtle',
+    'sha2 = { workspace = true, optional = true }',
+    'subtle = { version = "2", optional = true }',
+  ],
+  'comments manifest lock compatibility',
 );
 
 hasAll(
@@ -153,17 +164,31 @@ hasAll(
 );
 
 hasAll(
+  digest,
+  [
+    'pub const SHA256_DIGEST_BYTES: usize = 32;',
+    'pub fn sha256_digest(',
+    'pub fn fixed_work_sha256_eq(',
+    'difference |= expected[index] ^ candidate[index];',
+    'does not claim',
+  ],
+  'shared digest helper',
+);
+
+hasAll(
   auth,
   [
     'pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;',
     'pub struct CommentsTcpBearerToken',
     'pub struct CommentsTcpCredential',
     'pub struct CommentsTcpRequestEnvelope',
-    'ConstantTimeEq',
+    'fixed_work_sha256_eq',
+    'sha256_digest(&[BEARER_PREFIX, secret])',
     '[REDACTED]',
   ],
   'TCP authentication envelope',
 );
+hasNone(auth, ['ConstantTimeEq', 'use sha2::', 'use subtle::'], 'TCP auth dependency boundary');
 
 hasAll(
   remote,
