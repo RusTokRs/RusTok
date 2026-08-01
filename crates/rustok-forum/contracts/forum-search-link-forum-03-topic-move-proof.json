@@ -1,0 +1,71 @@
+{
+  "contract": "forum_search_link_forum_03_topic_move_proof_v1",
+  "task": "FORUM-23B2G2B3D16",
+  "target_link": "LINK-FORUM-03",
+  "coverage": "topic_move_category_scope_only",
+  "status": "source_ready_maintainer_execution_pending",
+  "owner_dependency": {
+    "task": "FORUM-21A",
+    "contract": "crates/rustok-forum/contracts/forum-topic-move-owner.json",
+    "service": "ForumTopicMoveService",
+    "operation_receipt": "forum_topic_move_operations",
+    "semantic_event": "forum.topic.moved"
+  },
+  "test": "apps/server/tests/forum_versioned_invalidation_topic_move.rs",
+  "verifier": "scripts/verify/verify-forum-search-link-forum-03-topic-move-proof.mjs",
+  "evidence_artifact": "target/forum-search-link-forum-03-topic-move-evidence.json",
+  "required_runtime": {
+    "database": "postgresql",
+    "broker_used": false,
+    "host_package": "rustok-server",
+    "search_inbox": "search_projection_inbox",
+    "projector": "ForumProjectionReconciler",
+    "storefront_execution": "execute_forum_storefront_search"
+  },
+  "required_owner_trace": [
+    "revisions 1 and 2 are the real source and target category-create forum-scope invalidations",
+    "revision 3 is the real topic-create source-category invalidation",
+    "revision 4 is the real approved-reply source-category invalidation",
+    "the move operation identifier equals the immutable receipt and Forum-local semantic event identifiers",
+    "revision 5 is the real moved-topic invalidation",
+    "revision 6 is the real source-category counter invalidation",
+    "revision 7 is the real target-category counter invalidation",
+    "an exact owner replay returns the original result without creating revision 8"
+  ],
+  "fail_closed_requirements": [
+    "the test creates one isolated PostgreSQL schema and applies real Outbox Taxonomy Forum and Search migrations",
+    "both categories the topic the approved reply and the move use exported Forum owner services",
+    "the seven owner revisions are contiguous and have exact target types target identifiers and order",
+    "every owner revision retains one legacy root envelope and one distinct caused typed envelope from sys_events",
+    "the exact typed envelopes enter Search through ForumSearchContractIngress rather than manual inbox insertion",
+    "Search ingest_sequence increases independently and is never compared numerically with Forum owner_revision",
+    "the production Forum projection source and ForumProjectionReconciler project the current topic reply and category counters",
+    "before the move only the source category storefront scope contains the exact topic and reply",
+    "after the move only the target category storefront scope contains the same topic and reply identities",
+    "topic and reply Search facets and payload category identifiers both change to the target category",
+    "source category counters become zero and target category counters become one topic and one approved reply",
+    "the operation receipt and forum.topic.moved journal payload exactly match the owner result",
+    "exact replay creates no new owner revision root typed event inbox row receipt semantic event or projection work",
+    "each root event retains exactly one Search inbox row and a caught-up repeat performs no duplicate work",
+    "the evidence artifact is written only after every assertion succeeds and the isolated schema is removed"
+  ],
+  "proves_after_maintainer_execution": [
+    "the real idempotent Forum topic-move owner command reaches the existing typed Search ingress and one durable inbox",
+    "topic and approved reply identities remain stable while their exact category scope changes",
+    "old category filtering no longer returns the moved discussion or visible facet buckets",
+    "new category filtering returns the exact moved topic and reply through production storefront execution and Forum owner eligibility",
+    "category counters Search documents and owner revision lineage converge after the move",
+    "exact owner replay is observationally idempotent across Forum Search and storefront state"
+  ],
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-search-link-forum-03-topic-move-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_topic_move -- --nocapture --test-threads=1"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier PostgreSQL test or storefront execution ran",
+    "this proof does not provide the separate FORUM-21A SQLite or PostgreSQL concurrency promotion evidence",
+    "this proof does not use external Iggy or replace the reviewed D0 D12 D13 D14 or D15 artifacts",
+    "this proof does not cover merge split fork reply-range moves aliases redirects or topic-move transports",
+    "this proof is not sufficient to mark LINK-FORUM-03 done promote FORUM-23 or change canonical FORUM-21 status"
+  ]
+}
