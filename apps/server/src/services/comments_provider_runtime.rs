@@ -22,6 +22,14 @@ mod keyring_schedule_guard {
     include!("comments_provider_runtime_keyring_schedule_guard.rs");
 }
 
+mod keyring_schedule_trigger {
+    include!("comments_provider_runtime_keyring_schedule_trigger.rs");
+}
+
+mod keyring_schedule_trigger_guard {
+    include!("comments_provider_runtime_keyring_schedule_trigger_guard.rs");
+}
+
 pub use base::{
     COMMENTS_PROVIDER_MODE_ENV, COMMENTS_TCP_BEARER_TOKEN_ENV, COMMENTS_TCP_BIND_ENV,
     COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV, COMMENTS_TCP_DELEGATION_SECRET_ENV,
@@ -53,6 +61,19 @@ pub use keyring_schedule::{
     CommentsTcpDelegationScheduleRuntimeSelection,
     SharedCommentsTcpDelegationScheduleHandle,
 };
+pub use keyring_schedule_trigger::{
+    DEFAULT_COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_CAPACITY,
+    MAX_COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_CAPACITY,
+    CommentsTcpDelegationScheduleTriggerAuditOutcome,
+    CommentsTcpDelegationScheduleTriggerAuditRecord,
+    CommentsTcpDelegationScheduleTriggerAuthorizationError,
+    CommentsTcpDelegationScheduleTriggerAuthorizationRequest,
+    CommentsTcpDelegationScheduleTriggerAuthorizer,
+    CommentsTcpDelegationScheduleTriggerContext,
+    CommentsTcpDelegationScheduleTriggerOperation,
+    SharedCommentsTcpDelegationScheduleTrigger,
+    SharedCommentsTcpDelegationScheduleTriggerAuthorizer,
+};
 
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -62,18 +83,21 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
-    // Historical source-verifier markers retained for static and ordinary reload paths:
+    // Historical source-verifier markers retained for static, ordinary reload,
+    // and scheduled composition paths:
     // keyring::register_comments_provider_runtime(extensions)
     // keyring_reload::register_comments_provider_runtime(extensions)
-    keyring_schedule_guard::register_comments_provider_runtime(extensions)
+    // keyring_schedule_guard::register_comments_provider_runtime(extensions)
+    keyring_schedule_trigger_guard::register_comments_provider_runtime(extensions)
 }
 
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    // Historical source-verifier markers retained for static and ordinary reload paths:
+    // Historical source-verifier markers retained for earlier listener paths:
     // keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await
     // keyring_reload::start_comments_tcp_listener_if_enabled(runtime_ctx).await
     // keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
-    keyring_schedule_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    // keyring_schedule_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
+    keyring_schedule_trigger_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await
 }
