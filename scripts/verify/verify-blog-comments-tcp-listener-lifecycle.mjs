@@ -5,6 +5,7 @@ const evidencePath =
 const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-71.md';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 const bootstrapPath = 'apps/server/src/services/server_bootstrap.rs';
+const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
 const adapterPath = 'crates/rustok-comments/src/tcp_server.rs';
 
 function read(path) {
@@ -28,6 +29,7 @@ const evidence = JSON.parse(read(evidencePath));
 const plan = read(planPath);
 const runtime = read(runtimePath);
 const bootstrap = read(bootstrapPath);
+const auth = read(authPath);
 const adapter = read(adapterPath);
 
 requireCondition(evidence.schema_version === 1, 'evidence schema must remain version 1');
@@ -77,7 +79,7 @@ requireCondition(
 );
 requireCondition(
   evidence.authority.listener_start_without_authority === false,
-  'listener must not start without host authority',
+  'listener must not start without authenticated authority',
 );
 requireCondition(
   evidence.provider.consumer_port_reused_as_server_provider === false,
@@ -104,6 +106,8 @@ requireCondition(
 for (const fragment of [
   'RUSTOK_COMMENTS_TCP_LISTENER_ENABLED',
   'RUSTOK_COMMENTS_TCP_BIND',
+  'RUSTOK_COMMENTS_TCP_BEARER_TOKEN',
+  'RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID',
   'RUSTOK_COMMENTS_TCP_MAX_CONNECTIONS',
   'RUSTOK_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS',
   'RUSTOK_COMMENTS_TCP_SHUTDOWN_GRACE_MS',
@@ -123,6 +127,10 @@ for (const fragment of [
   'runtime.is_registry_only()',
   'runtime.is_worker_only()',
   'SharedCommentsTcpAuthorityResolver',
+  'comments_tcp_bearer_authority_from_environment',
+  'CommentsTcpBearerAuthorityResolver::from_token(token, actor)',
+  '.with_claim(COMMENTS_TCP_SERVICE_PERMISSION)',
+  '.with_role(COMMENTS_TCP_SERVICE_ROLE)',
   'in_process_comments_thread_port(',
   'TcpJsonCommentsServerAdapter::with_max_frame_bytes(',
   'TcpListener::bind(config.bind_addr)',
@@ -150,14 +158,28 @@ requireCondition(
   !runtime.includes('TrustedCommentsTcpAuthority::new('),
   'host listener runtime must not manufacture trusted authority from the payload',
 );
+requireCondition(
+  !runtime.includes('COMMENTS_TCP_BEARER_TOKEN_ENV, %'),
+  'runtime must not log the bearer token value',
+);
+
+for (const fragment of [
+  'pub struct CommentsTcpBearerAuthorityResolver',
+  'ConstantTimeEq',
+  'comments.tcp_authentication_failed',
+  '[REDACTED]',
+]) {
+  requireText(auth, fragment, authPath);
+}
 
 for (const fragment of [
   'handle_connection_with_pre_request_timeout',
   'comments.tcp_server_invalid_idle_timeout',
   'comments.tcp_server_idle_timeout',
   'timeout(duration, read_frame(stream, self.max_frame_bytes))',
+  'serde_json::from_slice::<CommentsTcpRequestEnvelope>',
   'request.context().require_deadline_semantics()',
-  '.authorize(peer_addr, operation, request.context())',
+  'credential.as_ref()',
 ]) {
   requireText(adapter, fragment, adapterPath);
 }
