@@ -69,7 +69,7 @@ pub use tcp_server::{
     TrustedCommentsTcpAuthority,
 };
 #[cfg(feature = "tcp-transport")]
-pub use tcp_transport::TcpJsonCommentsTransport;
+pub use tcp_transport::{CommentsTcpTransportConfigError, TcpJsonCommentsTransport};
 
 #[cfg(feature = "server")]
 pub struct CommentsModule;
