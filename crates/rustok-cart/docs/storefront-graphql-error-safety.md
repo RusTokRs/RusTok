@@ -4,8 +4,8 @@ Status: source-unvalidated
 
 ## Scope
 
-This source slice hardens the cart-owned storefront GraphQL transport for the
-three public operations:
+This source slice hardens the public and diagnostic boundary for the three
+cart-owned storefront GraphQL operations:
 
 - `fetch_cart`;
 - `decrement_line_item`;
@@ -16,25 +16,32 @@ GraphQL adapter remains private and continues to own the query and mutation
 documents, variables, response decoding, cart and line-item UUID validation,
 quantity-command behavior, and DTO mapping.
 
-## Previous gap
+## Rechecked gap
 
-The private adapter converted `GraphqlHttpError` into
-`ApiError::Graphql(value.to_string())`. Each selected GraphQL closure delegated
-directly to that adapter, and `execute_selected_transport` retained the display
-string in the public `UiTransportError.graphql_error` field.
+The Cart storefront facade already creates an operation-specific
+`GraphqlCallContext`, reparses the private adapter display through
+`GraphqlHttpError::from_str`, and returns only stable Cart-owned public messages.
+GraphQL server messages and HTTP details therefore do not cross the public
+`UiTransportError` envelope.
 
-Consequently, server-provided GraphQL messages and HTTP details could cross the
-cart storefront UI boundary without a cart-owned public-envelope policy. The
-native SSR path already had a separate static-envelope policy, but that policy
-did not cover the GraphQL transport.
+The shared tracing event still copied two complete private values:
+
+- `raw_error = %raw_error`;
+- `parsed_error = ?parsed_error`.
+
+Those payloads were not required for correlation, exact operation attribution,
+the closed five-category policy, or request-shape diagnosis. They were a
+remaining non-`PortError` diagnostic-envelope gap in the ecommerce
+correlation-safe mapper cleanup.
 
 ## Public consumer policy
 
-`transport/mod.rs` now creates a private `GraphqlCallContext` before invoking
-each GraphQL operation. The context reparses the adapter's display handoff
-through `GraphqlHttpError::from_str` and maps only `ApiError::Graphql`.
+`transport/mod.rs` continues to create a private `GraphqlCallContext` before
+invoking each GraphQL operation. The context maps only `ApiError::Graphql` after
+the adapter returns and before the selected transport creates the public error
+envelope.
 
-The stable public messages are:
+The stable public messages remain:
 
 | Typed failure | Public message |
 | --- | --- |
@@ -47,32 +54,38 @@ The stable public messages are:
 `Validation` and `ServerFn` variants are returned unchanged. This preserves the
 existing identifier-validation behavior and independent native SSR policy.
 
-## Correlation diagnostics
+Technical network, HTTP, and unknown failures retain error-level diagnostics.
+Unauthorized and ordinary GraphQL rejection retain warning-level diagnostics.
 
-Every selected GraphQL call creates a unique correlation identifier from the
-owner operation and a new UUID. Internal tracing events retain:
+## Bounded correlation diagnostics
+
+Every selected GraphQL call retains a unique correlation identifier from the
+owner operation and a new UUID. Structured events retain only:
 
 - owner `rustok_cart.storefront`;
 - owner operation `fetch_cart`, `decrement_line_item`, or `remove_line_item`;
 - boundary `cart_storefront_graphql_transport`;
 - correlation identifier;
-- typed error kind and stable code;
-- raw and reparsed GraphQL cause for internal diagnosis;
+- one closed error category: `network`, `http`, `unauthorized`, `graphql`, or
+  `unknown`;
+- stable internal code;
+- raw-display presence and character length;
+- whether typed `GraphqlHttpError` parsing succeeded;
 - whether a tenant slug is configured and its character length;
 - selected-cart and locale presence plus character lengths for reads;
 - cart-id and line-item-id character lengths for writes;
 - decrement command kind, without quantity or identifier values.
 
-The mapper does not log the raw tenant slug, selected cart id, locale, cart id,
-line-item id, GraphQL endpoint, documents, variables, tokens, response payloads,
-or cart/customer data.
+Raw GraphQL display text is not written to the event.
+Debug output from the parsed typed error is not written to the event.
 
-Technical network, HTTP, and unknown failures use error-level diagnostics.
-Unauthorized and ordinary GraphQL rejection use warning-level diagnostics.
+The mapper also does not log the raw tenant slug, selected cart id, locale, cart
+id, line-item id, GraphQL endpoint, documents, variables, tokens, response
+payloads, or cart/customer data.
 
 ## Preserved behavior
 
-This slice does not change:
+This work does not change:
 
 - feature-based `NativeServer` versus `Graphql` selection;
 - the no-fallback transport policy;
@@ -84,11 +97,13 @@ This slice does not change:
 - cart and line-item identifier validation;
 - decrement quantity-command policy;
 - native server functions or native SSR error mapping;
-- Commerce aggregate use of the cart storefront facade.
+- stable public messages, codes, or severity;
+- Commerce aggregate use of the cart storefront facade;
+- FFA, FBA, browser, runtime, workflow, CI, or production status.
 
 The adapter still creates the same typed GraphQL display handoff. Sanitization
-occurs once at the public consumer boundary, avoiding duplicate diagnostics and
-preserving adapter ownership.
+continues to occur once at the public consumer boundary, avoiding duplicate
+diagnostics and preserving adapter ownership.
 
 ## Source guard
 
@@ -98,10 +113,9 @@ The focused verifier is:
 node scripts/verify/verify-cart-storefront-graphql-error-safety.mjs
 ```
 
-It checks all three operation contexts, typed mapping policy, static public
-messages and codes, correlation and safe request-shape diagnostics, GraphQL-only
-remapping, private-adapter preservation, native-path preservation, evidence
-status, and validation nonclaims.
+It now requires bounded error facts, forbids the complete raw and parsed payload
+fields, checks all three operation contexts and static public envelopes, and
+reconciles the retained source/review evidence and this documentation.
 
 The general owner boundary verifier imports both native and GraphQL guards:
 

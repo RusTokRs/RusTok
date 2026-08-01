@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "cart_storefront_graphql_error_safety_source_unvalidated",
-  "scope": "cart-owned storefront GraphQL read and line-item mutation transport",
+  "scope": "cart-owned storefront GraphQL public and diagnostic read and line-item mutation transport",
   "covered_operations": [
     "fetch_cart",
     "decrement_line_item",
@@ -28,13 +28,67 @@
     "raw_request_identifiers_logged": false,
     "raw_tenant_slug_logged": false,
     "raw_graphql_error_public": false,
-    "non_graphql_errors_pass_through": true
+    "raw_graphql_detail_logged": false,
+    "parsed_graphql_error_debug_logged": false,
+    "raw_graphql_detail_shape_logged": true,
+    "typed_parse_validity_logged": true,
+    "closed_graphql_error_category_logged": true,
+    "non_graphql_errors_pass_through": true,
+    "broad_ecommerce_cleanup_closed": false
   },
   "stable_public_messages": {
     "network_or_http": "Cart storefront is temporarily unavailable",
     "unauthorized": "Cart authentication is required",
     "graphql_rejection_or_unknown": "Cart request could not be completed"
   },
+  "safe_diagnostics": [
+    "owner",
+    "owner operation",
+    "correlation id",
+    "tenant slug configured and character length",
+    "selected cart id presence and character length",
+    "locale presence and character length",
+    "cart id character length",
+    "line item id character length",
+    "bounded command kind",
+    "raw GraphQL display presence",
+    "raw GraphQL display character length",
+    "typed GraphQL parse validity",
+    "closed GraphQL error category",
+    "stable code",
+    "boundary"
+  ],
+  "forbidden_public_or_structured_values": [
+    "raw GraphqlHttpError display",
+    "parsed GraphqlHttpError Debug output",
+    "tenant slug",
+    "selected cart id",
+    "locale",
+    "cart id",
+    "line item id",
+    "quantity",
+    "GraphQL endpoint",
+    "GraphQL document",
+    "GraphQL variables",
+    "authentication token",
+    "response payload"
+  ],
+  "preserved": [
+    "private GraphQL query and mutation documents",
+    "cart storefront request and response DTOs",
+    "cart and line-item identifier validation",
+    "decrement quantity command policy",
+    "native SSR error-safety policy",
+    "explicit feature-based transport selection",
+    "absence of native-to-GraphQL fallback",
+    "stable public messages, codes, and severity"
+  ],
+  "remaining_scope": [
+    "remaining ecommerce adapters and non-PortError public or diagnostic envelopes",
+    "Cart storefront verifier and Cargo execution",
+    "GraphQL/browser runtime and mounted parity evidence",
+    "broad ecommerce correlation-safe mapper cleanup"
+  ],
   "suggested_execution": [
     "node scripts/verify/verify-cart-storefront-graphql-error-safety.mjs",
     "node scripts/verify/verify-cart-storefront-native-error-safety.mjs",
