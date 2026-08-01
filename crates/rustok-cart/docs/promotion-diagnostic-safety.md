@@ -17,18 +17,21 @@ admin promotion preview and application:
 The owner calls, promotion selection, request DTO, public `PortError` policy, and
 legacy `CartService` compatibility implementation remain unchanged.
 
-## Confirmed gap
+## Confirmed gaps
 
-The guarded port already returned bounded public messages, but its diagnostics copied
-full tenant, actor, channel, locale, causation, traceparent, idempotency, cart and line
-item identities, promotion source, monetary amount, metadata, lifecycle strings, tax
-messages, validation details, and the complete `CartError` into structured events.
+The guarded port already returned bounded public messages and shape-only context,
+request, and owner-error fields. Two diagnostic details still violated the stricter
+ecommerce mapper contract:
 
-Those values were not needed to classify or correlate the failure.
+- tenant UUID rejection logged the parser cause as `parse_error = ?error`;
+- policy and mapped owner events emitted `PortErrorKind` through debug formatting.
+
+The parser cause is not required to distinguish an invalid tenant context, and debug
+formatting is not a closed diagnostic contract.
 
 ## Safe context and request shape
 
-The guarded boundary now retains the per-call correlation id and records only:
+The guarded boundary retains the per-call correlation id and records only:
 
 - tenant, actor, channel, locale, causation, traceparent, and idempotency lengths or
   presence facts;
@@ -42,20 +45,39 @@ The guarded boundary now retains the per-call correlation id and records only:
 It does not record raw tenant, actor, channel, locale, causation, traceparent,
 idempotency, cart, line-item, source-id, amount, or metadata values.
 
-## Safe owner error shape
+Tenant UUID rejection now records `tenant_id_parse_failed = true` together with the
+existing tenant length, operation, correlation, code, and boundary. The UUID parser
+cause is not copied into the event.
 
-The owner mapper classifies `CartError` structurally and records only:
+## Safe error shape
+
+Policy and owner-result diagnostics retain:
+
+- stable internal/public code;
+- message presence and length where applicable;
+- retryability;
+- one closed error-kind label:
+  - `validation`;
+  - `not_found`;
+  - `conflict`;
+  - `forbidden`;
+  - `unavailable`;
+  - `timeout`;
+  - `invariant_violation`.
+
+They do not use debug formatting for `PortErrorKind`.
+
+The owner mapper also classifies `CartError` structurally and records only:
 
 - owner error variant;
 - validation-detail presence and length;
 - missing-resource UUID non-nil facts;
 - transition-state string lengths;
 - database-error presence;
-- tax code/message presence and lengths;
-- stable owner/public codes, typed public kind, and retryability.
+- tax code/message presence and lengths.
 
 The complete `CartError`, database text, validation text, lifecycle values, tax
-message, and missing-resource UUID are no longer written by this boundary.
+message, and missing-resource UUID are not written by this boundary.
 
 ## Preserved behavior
 
@@ -70,21 +92,29 @@ This change does not alter:
 - metadata forwarding on apply;
 - public validation, not-found, conflict, tax-boundary, unavailable, timeout, kind,
   code, message, or retryability contracts;
+- technical-versus-ordinary diagnostic severity;
 - the legacy `CartPromotionPort for CartService` compatibility source;
 - Cart or ecommerce FFA/FBA status.
 
 ## Static evidence
 
-`scripts/verify/verify-cart-promotion-port-error-safety.mjs` now locks:
+`scripts/verify/verify-cart-promotion-port-error-safety.mjs` locks:
 
 - context and request fact capture before unchanged owner delegation;
 - safe context shape across validation, tenant parsing, policy rejection, and owner
   mapping;
+- a boolean tenant-parse failure fact with no parser cause;
+- the closed seven-value `PortErrorKind` mapper across policy and owner events;
 - safe request and owner-error shape;
 - technical versus ordinary diagnostic severity;
 - unchanged public error mapping and return order;
-- absence of raw context, identifiers, source, amount, metadata, message, and complete
-  owner-error fields.
+- absence of raw context, identifiers, source, amount, metadata, message, parser cause,
+  debug kind, and complete owner-error fields.
+
+Retained source and review evidence remain at:
+
+- `crates/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source.json`;
+- `crates/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source-review.json`.
 
 ## Validation boundary
 

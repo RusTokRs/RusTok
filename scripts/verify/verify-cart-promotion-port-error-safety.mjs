@@ -48,8 +48,14 @@ forbidText(
 const contextFacts = between(
   guard,
   'fn cart_promotion_context_facts(',
-  'fn cart_promotion_request_facts(',
+  'fn cart_promotion_port_error_kind(',
   'promotion context facts',
+);
+const kindMapper = between(
+  guard,
+  'fn cart_promotion_port_error_kind(',
+  'fn cart_promotion_request_facts(',
+  'promotion closed error-kind mapper',
 );
 const requestFacts = between(
   guard,
@@ -105,6 +111,7 @@ for (const [value, label] of [
   ['struct CartPromotionContextFacts', 'safe context model'],
   ['struct CartPromotionRequestFacts', 'safe request model'],
   ['struct CartPromotionOwnerErrorFacts', 'safe owner-error model'],
+  ['fn cart_promotion_port_error_kind(', 'closed PortError kind mapper'],
   ['const READ_CART_PROMOTION_PREVIEW_OPERATION', 'preview owner operation'],
   ['const APPLY_CART_PROMOTION_OPERATION', 'apply owner operation'],
   ['service: CartService::new(db)', 'owner service construction'],
@@ -149,6 +156,16 @@ for (const [value, label] of [
   ['idempotency_key_present: context.idempotency_key.is_some()', 'idempotency presence fact'],
   ['deadline_ms: context.deadline_ms', 'deadline fact'],
 ]) requireText(contextFacts, value, label);
+
+for (const [value, label] of [
+  ['PortErrorKind::Validation => "validation"', 'validation kind label'],
+  ['PortErrorKind::NotFound => "not_found"', 'not-found kind label'],
+  ['PortErrorKind::Conflict => "conflict"', 'conflict kind label'],
+  ['PortErrorKind::Forbidden => "forbidden"', 'forbidden kind label'],
+  ['PortErrorKind::Unavailable => "unavailable"', 'unavailable kind label'],
+  ['PortErrorKind::Timeout => "timeout"', 'timeout kind label'],
+  ['PortErrorKind::InvariantViolation => "invariant_violation"', 'invariant kind label'],
+]) requireText(kindMapper, value, label);
 
 for (const [value, label] of [
   ['cart_id_non_nil: !request.cart_id.is_nil()', 'cart non-nil fact'],
@@ -217,7 +234,8 @@ for (const [value, label] of [
 ]) requireText(targetValidation, value, label);
 
 for (const [value, label] of [
-  ['parse_error = ?error', 'bounded tenant parse cause'],
+  ['Uuid::parse_str(&context.tenant_id).map_err(|_|', 'opaque tenant parse rejection'],
+  ['tenant_id_parse_failed = true', 'bounded tenant parse failure fact'],
   ['code = "cart.tenant_id_invalid"', 'tenant stable code'],
   ['boundary = CART_PROMOTION_CONTEXT_BOUNDARY', 'tenant boundary'],
 ]) requireText(tenantParser, value, label);
@@ -227,7 +245,10 @@ for (const [value, label] of [
   ['internal_code = %error.code', 'context stable internal code'],
   ['internal_message_present = !error.message.trim().is_empty()', 'context message presence'],
   ['internal_message_length = error.message.chars().count()', 'context message length'],
-  ['error_kind = ?error.kind', 'context typed kind'],
+  [
+    'error_kind = cart_promotion_port_error_kind(&error.kind)',
+    'context closed kind label',
+  ],
   ['retryable = error.retryable', 'context retryability'],
   ['boundary = CART_PROMOTION_CONTEXT_BOUNDARY', 'context boundary'],
   [
@@ -256,7 +277,10 @@ for (const [value, label] of [
   ['tax_message_length = ?owner_error_facts.tax_message_length', 'owner tax message shape'],
   ['owner_code,', 'owner internal code'],
   ['public_code = %public_error.code', 'mapped public code'],
-  ['error_kind = ?public_error.kind', 'mapped public kind'],
+  [
+    'error_kind = cart_promotion_port_error_kind(&public_error.kind)',
+    'mapped closed public kind',
+  ],
   ['retryable = public_error.retryable', 'mapped retryability'],
   ['boundary = CART_PROMOTION_OWNER_BOUNDARY', 'owner boundary'],
   ['"cart promotion owner operation failed"', 'owner failure event'],
@@ -290,6 +314,9 @@ for (const value of [
   'source_id = %request.source_id',
   'amount = request.amount',
   'metadata = ?request.metadata',
+  'parse_error = ?error',
+  'error_kind = ?error.kind',
+  'error_kind = ?public_error.kind',
   '\n                error = ?error,',
   '\n            error = ?error,',
 ]) forbidText(guard, value, 'raw promotion diagnostic field');
@@ -329,5 +356,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Cart promotion preview/apply retain correlation and safe shape diagnostics with unchanged public envelopes',
+  '✔ Cart promotion preview/apply retain correlation and bounded parser/kind diagnostics with unchanged public envelopes',
 );

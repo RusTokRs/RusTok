@@ -236,6 +236,18 @@ fn cart_promotion_context_facts(context: &PortContext) -> CartPromotionContextFa
     }
 }
 
+fn cart_promotion_port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    }
+}
+
 fn cart_promotion_request_facts(request: &CartPromotionRequest) -> CartPromotionRequestFacts {
     let scope_kind = match &request.scope {
         CartPromotionScopeRequest::Cart => "cart",
@@ -416,10 +428,9 @@ fn parse_cart_promotion_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let facts = cart_promotion_context_facts(context);
         tracing::warn!(
-            parse_error = ?error,
             owner = CART_PROMOTION_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id_length = facts.tenant_id_length,
@@ -439,6 +450,7 @@ fn parse_cart_promotion_tenant_id(
             deadline_ms = ?facts.deadline_ms,
             operation = owner_operation,
             code = "cart.tenant_id_invalid",
+            tenant_id_parse_failed = true,
             boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
             "cart promotion tenant context is invalid"
         );
@@ -502,7 +514,7 @@ fn log_cart_promotion_context_rejection(
                 internal_code = %error.code,
                 internal_message_present = !error.message.trim().is_empty(),
                 internal_message_length = error.message.chars().count(),
-                error_kind = ?error.kind,
+                error_kind = cart_promotion_port_error_kind(&error.kind),
                 retryable = error.retryable,
                 boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
                 code = "cart.promotion_context_invalid",
@@ -532,7 +544,7 @@ fn log_cart_promotion_context_rejection(
                 internal_code = %error.code,
                 internal_message_present = !error.message.trim().is_empty(),
                 internal_message_length = error.message.chars().count(),
-                error_kind = ?error.kind,
+                error_kind = cart_promotion_port_error_kind(&error.kind),
                 retryable = error.retryable,
                 boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
                 code = "cart.promotion_context_invalid",
@@ -627,7 +639,7 @@ fn cart_promotion_error(
                 tax_message_length = ?owner_error_facts.tax_message_length,
                 owner_code,
                 public_code = %public_error.code,
-                error_kind = ?public_error.kind,
+                error_kind = cart_promotion_port_error_kind(&public_error.kind),
                 retryable = public_error.retryable,
                 boundary = CART_PROMOTION_OWNER_BOUNDARY,
                 "cart promotion owner operation failed"
@@ -676,7 +688,7 @@ fn cart_promotion_error(
                 tax_message_length = ?owner_error_facts.tax_message_length,
                 owner_code,
                 public_code = %public_error.code,
-                error_kind = ?public_error.kind,
+                error_kind = cart_promotion_port_error_kind(&public_error.kind),
                 retryable = public_error.retryable,
                 boundary = CART_PROMOTION_OWNER_BOUNDARY,
                 "cart promotion owner operation was rejected"

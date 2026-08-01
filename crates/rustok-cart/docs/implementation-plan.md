@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-cart`
 
-Last reviewed: 2026-07-31
+Last reviewed: 2026-08-01
 
 ## Current state
 
@@ -72,10 +72,13 @@ transport `status` fields remain strings for backward compatibility.
   deadline, and write-idempotency context at the owner boundary.
 - Admin cart-promotion preview and application consume `CartPromotionPort`.
   Promotion target validation, tenant parsing, policy rejection, and owner
-  mapping now retain correlation plus context/request/error shape only; raw
-  tenant, actor, channel, cart/line-item identities, source, amount, metadata,
-  lifecycle, tax, validation, and database values are not written by the
-  guarded boundary. Status: `source_ready_unvalidated`.
+  mapping retain correlation plus context/request/error shape only. Tenant UUID
+  rejection records a boolean parse-failure fact rather than the parser cause,
+  while policy and owner events use a closed seven-value error-kind label rather
+  than debug formatting. Raw tenant, actor, channel, cart/line-item identities,
+  source, amount, metadata, lifecycle, tax, validation, database, parser-cause,
+  and complete error values are not written by the guarded boundary. Status:
+  `source_ready_unvalidated`.
 - No new compile, lifecycle, restart, contention, or remote evidence is claimed
   by the typed source cutover or promotion diagnostic hardening.
 
