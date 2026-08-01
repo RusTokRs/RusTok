@@ -1,0 +1,52 @@
+{
+  "contract": "forum_search_versioned_invalidation_deletion_acl_ordering_proof_v1",
+  "task": "FORUM-23B2G2B3D8",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "apps/server/tests/forum_versioned_invalidation_deletion_acl_ordering.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "host_package": "rustok-server",
+    "broker": "not_required_for_bounded_ordering_and_visibility_proof",
+    "storefront_viewer": "anonymous_public",
+    "owner_mutations": [
+      "approved_reply_hidden",
+      "topic_deleted",
+      "topic_richer_audience_restricted"
+    ]
+  },
+  "scenario": {
+    "id": "deletion_acl_ordering",
+    "proves": [
+      "an approved reply, a future-deleted topic and a future-ACL-denied topic are each visible through production Forum storefront Search before owner changes",
+      "real Forum owner transactions emit contiguous revision rows for reply hide category impact, topic delete topic/category impact and richer topic audience impact",
+      "typed owner invalidations and legacy status events can be admitted in reverse/stale order while repeated roots retain one durable Search inbox identity",
+      "current-state Forum rebuilds followed by the oldest category-only refresh cannot restore hidden, deleted or richer-ACL-denied content",
+      "the reconciled Search projection contains none of the three denied owner objects",
+      "deliberately reinserted stale Search rows are reauthorized against current Forum owner state before visible totals, items, facets or pagination",
+      "the anonymous storefront viewer receives zero visible results for the hidden reply, deleted topic and role-restricted topic"
+    ]
+  },
+  "identity_invariants": [
+    "each typed invalidation causation_id equals its exact Forum owner ledger event_id",
+    "legacy status event roots remain independent from typed owner invalidation roots",
+    "duplicate typed and legacy delivery never allocates a second Search inbox row for the same root event UUID",
+    "owner revision order remains independent from Search ingest_sequence",
+    "storefront owner eligibility receives only the exact raw Forum candidate IDs returned by Search"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_deletion_acl_ordering -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL execution passed",
+    "this proof does not execute the long-running host polling loop or validate restart timing",
+    "this proof does not use Iggy acknowledgement, poison or DLQ behavior",
+    "this proof does not validate the Search-disabled profile or LINK-FORUM-03 completion",
+    "this proof does not close the aggregate FORUM-23B2G2B3D runtime evidence gate"
+  ]
+}
