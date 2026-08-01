@@ -47,7 +47,10 @@ impl GraphqlCallContext {
         let ApiError::Graphql(raw_error) = error else {
             return error;
         };
+        let raw_error_present = !raw_error.trim().is_empty();
+        let raw_error_length = raw_error.chars().count();
         let parsed_error = GraphqlHttpError::from_str(raw_error.as_str());
+        let parsed_error_valid = parsed_error.is_ok();
         let (error_kind, code, public_message, technical_failure) = match &parsed_error {
             Ok(GraphqlHttpError::Network) => (
                 "network",
@@ -83,8 +86,9 @@ impl GraphqlCallContext {
 
         if technical_failure {
             tracing::error!(
-                raw_error = %raw_error,
-                parsed_error = ?parsed_error,
+                raw_error_present,
+                raw_error_length,
+                parsed_error_valid,
                 owner = PRICING_STOREFRONT_GRAPHQL_OWNER,
                 owner_operation = PRICING_STOREFRONT_GRAPHQL_OPERATION,
                 correlation_id = %self.correlation_id,
@@ -112,8 +116,9 @@ impl GraphqlCallContext {
             );
         } else {
             tracing::warn!(
-                raw_error = %raw_error,
-                parsed_error = ?parsed_error,
+                raw_error_present,
+                raw_error_length,
+                parsed_error_valid,
                 owner = PRICING_STOREFRONT_GRAPHQL_OWNER,
                 owner_operation = PRICING_STOREFRONT_GRAPHQL_OPERATION,
                 correlation_id = %self.correlation_id,
