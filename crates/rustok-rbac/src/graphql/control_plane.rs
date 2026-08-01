@@ -1,11 +1,15 @@
 use async_graphql::{FieldError, Result};
-use rustok_api::{AuthContext, AuthPrincipalKind, graphql::GraphQLError};
+use rustok_api::{AuthContext, AuthPrincipalContext, AuthPrincipalKind, graphql::GraphQLError};
 use uuid::Uuid;
 
-pub(super) fn require_direct_control_plane_user(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
+pub(super) fn require_direct_control_plane_user(
+    auth: &AuthContext,
+    principal_context: AuthPrincipalContext,
+    tenant_id: Uuid,
+) -> Result<()> {
     let principal = crate::RbacControlPlanePrincipal {
         tenant_id: auth.tenant_id,
-        principal_kind: auth.principal_kind,
+        principal_kind: principal_context.kind,
     };
     crate::require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
         let message = error.to_string();
@@ -16,41 +20,34 @@ pub(super) fn require_direct_control_plane_user(auth: &AuthContext, tenant_id: U
 #[cfg(test)]
 mod tests {
     use super::require_direct_control_plane_user;
-    use rustok_api::{AuthContext, AuthPrincipalKind};
+    use rustok_api::{AuthContext, AuthPrincipalContext, AuthPrincipalKind};
     use uuid::Uuid;
 
-    fn auth_context(tenant_id: Uuid, principal_kind: AuthPrincipalKind) -> AuthContext {
+    fn auth_context(tenant_id: Uuid) -> AuthContext {
         AuthContext {
             user_id: Uuid::new_v4(),
-            session_id: if principal_kind.is_direct_user() {
-                Uuid::new_v4()
-            } else {
-                Uuid::nil()
-            },
+            session_id: Uuid::new_v4(),
             tenant_id,
             permissions: Vec::new(),
-            principal_kind,
-            client_id: if principal_kind.is_direct_user() {
-                None
-            } else {
-                Some(Uuid::new_v4())
-            },
+            client_id: None,
             scopes: Vec::new(),
-            grant_type: match principal_kind {
-                AuthPrincipalKind::DirectUser => "direct",
-                AuthPrincipalKind::DelegatedUser => "authorization_code",
-                AuthPrincipalKind::Service => "client_credentials",
-            }
-            .to_string(),
+            grant_type: "direct".to_string(),
         }
     }
 
     #[test]
     fn direct_user_is_allowed_for_matching_tenant() {
         let tenant_id = Uuid::new_v4();
-        let auth = auth_context(tenant_id, AuthPrincipalKind::DirectUser);
+        let auth = auth_context(tenant_id);
 
-        assert!(require_direct_control_plane_user(&auth, tenant_id).is_ok());
+        assert!(
+            require_direct_control_plane_user(
+                &auth,
+                AuthPrincipalContext::new(AuthPrincipalKind::DirectUser),
+                tenant_id,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -59,16 +56,30 @@ mod tests {
             AuthPrincipalKind::DelegatedUser,
             AuthPrincipalKind::Service,
         ] {
-            let auth = auth_context(Uuid::new_v4(), principal_kind);
+            let auth = auth_context(Uuid::new_v4());
 
-            assert!(require_direct_control_plane_user(&auth, auth.tenant_id).is_err());
+            assert!(
+                require_direct_control_plane_user(
+                    &auth,
+                    AuthPrincipalContext::new(principal_kind),
+                    auth.tenant_id,
+                )
+                .is_err()
+            );
         }
     }
 
     #[test]
     fn cross_tenant_context_is_denied() {
-        let auth = auth_context(Uuid::new_v4(), AuthPrincipalKind::DirectUser);
+        let auth = auth_context(Uuid::new_v4());
 
-        assert!(require_direct_control_plane_user(&auth, Uuid::new_v4()).is_err());
+        assert!(
+            require_direct_control_plane_user(
+                &auth,
+                AuthPrincipalContext::new(AuthPrincipalKind::DirectUser),
+                Uuid::new_v4(),
+            )
+            .is_err()
+        );
     }
 }
