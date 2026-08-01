@@ -8,18 +8,20 @@ use axum::{
         State,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
 use futures_util::{SinkExt, StreamExt};
-use rustok_api::{Action, Permission};
+use rustok_api::{Action, AuthPrincipalKind, Permission};
 use rustok_core::i18n::Locale;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::extractors::auth::{OptionalCurrentUser, resolve_current_user_from_access_token};
+use crate::extractors::auth::{
+    CurrentUser, OptionalCurrentUser, resolve_current_user_from_access_token,
+};
 use crate::graphql::AppSchema;
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::middleware::tenant;
@@ -56,6 +58,15 @@ fn graphql_permissions(mut permissions: Vec<Permission>) -> Vec<Permission> {
     permissions.sort_by_cached_key(ToString::to_string);
     permissions.dedup();
     permissions
+}
+
+fn graphql_principal_kind(current_user: &CurrentUser) -> Result<AuthPrincipalKind, &'static str> {
+    AuthPrincipalKind::from_authenticated_facts(
+        &current_user.grant_type,
+        current_user.client_id,
+        current_user.session_id,
+    )
+    .ok_or("Authenticated principal classification is invalid")
 }
 
 #[derive(Clone)]
@@ -105,11 +116,25 @@ async fn graphql_handler(
     });
 
     if let Some(current_user) = current_user {
+        let principal_kind = match graphql_principal_kind(&current_user) {
+            Ok(principal_kind) => principal_kind,
+            Err(message) => {
+                tracing::error!(
+                    grant_type = %current_user.grant_type,
+                    client_id_present = current_user.client_id.is_some(),
+                    session_id_present = !current_user.session_id.is_nil(),
+                    code = "graphql.auth_principal_kind_invalid",
+                    "validated GraphQL principal could not be classified"
+                );
+                return (StatusCode::INTERNAL_SERVER_ERROR, message).into_response();
+            }
+        };
         let auth_ctx = AuthContext {
             user_id: current_user.user.id,
             session_id: current_user.session_id,
             tenant_id: current_user.user.tenant_id,
             permissions: graphql_permissions(current_user.permissions),
+            principal_kind,
             client_id: current_user.client_id,
             scopes: current_user.scopes,
             grant_type: current_user.grant_type,
@@ -377,11 +402,22 @@ async fn build_ws_connection_data(
         .and_then(Locale::parse)
         .or_else(|| Locale::parse(&tenant_ctx.default_locale))
         .unwrap_or_default();
+    let principal_kind = graphql_principal_kind(&current_user).map_err(|message| {
+        tracing::error!(
+            grant_type = %current_user.grant_type,
+            client_id_present = current_user.client_id.is_some(),
+            session_id_present = !current_user.session_id.is_nil(),
+            code = "graphql_ws.auth_principal_kind_invalid",
+            "validated GraphQL WebSocket principal could not be classified"
+        );
+        async_graphql::Error::new(message)
+    })?;
     let auth_ctx = AuthContext {
         user_id: current_user.user.id,
         session_id: current_user.session_id,
         tenant_id: current_user.user.tenant_id,
         permissions: graphql_permissions(current_user.permissions),
+        principal_kind,
         client_id: current_user.client_id,
         scopes: current_user.scopes,
         grant_type: current_user.grant_type,
