@@ -64,6 +64,9 @@ pub enum ForumError {
     #[error("Forum relation revision changed concurrently")]
     RelationRevisionConflict,
 
+    #[error("Forum topic move operation conflicts with an existing command: {0}")]
+    TopicMoveOperationConflict(Uuid),
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -130,6 +133,7 @@ impl ForumError {
             Self::QuoteTargetUnavailable => "FORUM_QUOTE_TARGET_UNAVAILABLE",
             Self::RelationRevisionUnavailable => "FORUM_RELATION_REVISION_UNAVAILABLE",
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
+            Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
             Self::ReplyNotFound(_) => "FORUM_REPLY_NOT_FOUND",

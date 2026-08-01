@@ -1,0 +1,71 @@
+{
+  "contract": "forum_topic_move_owner_v1",
+  "task": "FORUM-21A",
+  "parent_task": "FORUM-21",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution",
+  "scope": "single_active_topic_category_move_only",
+  "owner_service": "ForumTopicMoveService",
+  "input": "MoveForumTopicInput",
+  "result": "ForumTopicMoveResult",
+  "migration": "m20260801_000009_add_forum_topic_move_operations",
+  "receipt_table": "forum_topic_move_operations",
+  "semantic_event": {
+    "journal": "forum_domain_events",
+    "event_type": "forum.topic.moved",
+    "schema_version": 1,
+    "event_id_equals_operation_id": true,
+    "shared_rustok_events_contract_changed": false
+  },
+  "required_permissions": [
+    "forum_topics:manage"
+  ],
+  "bounds": {
+    "reason_max_characters": 500,
+    "one_topic_per_operation": true,
+    "one_source_category_per_operation": true,
+    "one_target_category_per_operation": true
+  },
+  "transactional_invariants": [
+    "the operation requires a non-nil tenant topic operation target-category and human actor identity",
+    "the reason is trimmed non-empty bounded to 500 characters and contains no control characters",
+    "topic moves are serialized per tenant before receipt lookup or owner-state mutation",
+    "the exact existing operation receipt is resolved before current topic or category state so a valid retry returns the original result",
+    "reusing an operation identifier with a different topic target actor or normalized reason fails with FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
+    "the topic must exist in the tenant be non-deleted non-archived and currently belong to a different category",
+    "the source and target categories must exist in the tenant and both remain active",
+    "a current solution must still reference one approved reply owned by the moved topic",
+    "the target inherited category audience structure and the resulting topic audience composition must load successfully",
+    "source and target category topic and published-reply counters transfer with checked arithmetic and never clamp",
+    "topic category mutation counter transfer semantic event receipt and three projection invalidations commit in one transaction",
+    "projection invalidations are published for the topic then source category then target category",
+    "the operation receipt and semantic event are immutable and exact replay creates no additional event invalidation or counter change"
+  ],
+  "database_guards": [
+    "tenant-composite foreign keys bind the receipt to the topic source category target category and human actor",
+    "operation event topic category and actor identities are non-nil",
+    "source and target categories differ",
+    "event_id equals operation_id",
+    "reason and published reply count are bounded",
+    "receipt updates and deletes are rejected for PostgreSQL and SQLite"
+  ],
+  "test": "crates/rustok-forum/tests/topic_move_sqlite.rs",
+  "verifier": "scripts/verify/verify-forum-topic-move-owner.mjs",
+  "documentation": "crates/rustok-forum/docs/forum-21a-topic-move-owner.md",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-move-owner.mjs",
+    "cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
+    "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution",
+    "this slice does not add a public REST GraphQL native admin or storefront topic-move transport",
+    "this slice does not create canonical URL aliases redirects or route tombstones",
+    "this slice does not merge split fork or move reply ranges",
+    "this slice does not deduplicate subscriptions because one topic identity is retained",
+    "this slice does not change attachments mentions replies tags revisions read state votes subscriptions or solution identity",
+    "this slice does not provide PostgreSQL concurrency runtime evidence",
+    "this slice is not sufficient to mark FORUM-21 done or LINK-FORUM-03 complete"
+  ]
+}
