@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "status": "pricing_read_local_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "wrapper_source": "crates/rustok-pricing/src/read_context.rs",
+    "owner_source": "crates/rustok-pricing/src/ports.rs",
+    "focused_verifier": "scripts/verify/verify-pricing-read-local-context.mjs",
+    "documentation": "crates/rustok-pricing/docs/read-local-context.md"
+  },
+  "source_contract": {
+    "read_operation_count": 6,
+    "owner_delegation_changed": false,
+    "request_response_contract_changed": false,
+    "error_kind_code_retryability_changed": false,
+    "public_message_mapping_changed": false,
+    "technical_error_severity_changed": false,
+    "ordinary_warning_severity_changed": false,
+    "raw_context_logged": false,
+    "raw_uuid_logged": false,
+    "exact_quantity_logged": false,
+    "public_message_logged": false,
+    "error_kind_debug_logged": false,
+    "bounded_context_shape_logged": true,
+    "bounded_request_shape_logged": true,
+    "message_shape_logged": true,
+    "closed_error_kind_logged": true,
+    "read_context_wrapper_cleanup_closed": true,
+    "write_context_wrapper_cleanup_closed": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "execution": []
+}
