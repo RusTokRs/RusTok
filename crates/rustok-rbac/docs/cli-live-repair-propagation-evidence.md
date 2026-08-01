@@ -12,22 +12,24 @@ advance the platform verification cursor or complete RBAC.
 The ignored integration test creates:
 
 - one isolated PostgreSQL database migrated by the workspace migrator;
-- one isolated loopback `redis-server` child process;
 - two independent long-lived observer processes;
 - one independent short-lived CLI process.
 
 Each observer owns a separate process-local permission cache, server runtime
-context, Redis subscription and durable-generation watchdog. The parent requires
-two subscribers on `rbac.permissions.generation.v1` before starting repair and
-records the observer process identifiers before and after recovery. Restarting an
-observer is not an accepted recovery path.
+context, cache listener and durable-generation watchdog. Redis configuration is
+explicitly removed from every child process. The previously added Redis harness
+covers transport delivery and restart; this packet isolates CLI propagation so
+the database generation watchdog is the only cross-process recovery path.
+
+The parent records observer process identifiers before and after recovery.
+Restarting an observer is not an accepted recovery path.
 
 ## Drift fixture
 
 Two active users receive the canonical Manager role. The fixture adds one extra
-`settings:manage` permission relation to that built-in role. Both observers warm
-an allowed decision only after the canonical cache listener has completed its
-synchronous initial durable-generation recovery at generation zero.
+`settings:manage` permission relation to that built-in role. The canonical cache
+listener completes its synchronous initial durable-generation recovery at
+generation zero before each observer warms an allowed decision.
 
 The repair must remove the extra relation. The authoritative decision for both
 users then becomes deny.
@@ -72,10 +74,11 @@ For both live replicas, the packet requires:
 - at least one `generation_advanced` full clear;
 - recovery within seven seconds;
 - cached and authoritative final decisions both deny;
-- listener Redis configuration and watchdog runtime still active.
+- Redis remains unconfigured;
+- cache-listener and watchdog tasks remain active.
 
-This verifies the source shape for CLI repair propagation without server restart
-and without relying on same-process cache sharing.
+This verifies the source shape for CLI repair propagation without server restart,
+Redis delivery or same-process cache sharing.
 
 ## Forbidden shortcuts
 
@@ -87,14 +90,16 @@ The integration harness does not:
 - manually clear user or global permission caches;
 - update `rbac_invalidation_state` with test SQL;
 - publish a synthetic invalidation message;
+- configure Redis as an alternate recovery path;
 - model replicas as two contexts in one process;
 - terminate and replace observers after repair.
 
 ## Evidence boundary
 
 No Rust test, source verifier, formatting, Cargo check, PostgreSQL execution,
-Redis execution, subprocess execution, workflow or CI check was run in the
-connector-only work unit that added this packet.
+subprocess execution, workflow or CI check was run in the connector-only work
+unit that added this packet. Redis was neither configured nor executed by this
+source harness.
 
 The packet remains `source_ready_unvalidated`. It does not close:
 
@@ -119,5 +124,4 @@ Required environment:
 
 ```text
 RUSTOK_MIGRATION_SMOKE_ADMIN_URL=postgres://...
-RUSTOK_CACHE_REDIS_SERVER_BIN=/path/to/redis-server
 ```
