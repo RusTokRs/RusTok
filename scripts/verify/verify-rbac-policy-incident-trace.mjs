@@ -39,6 +39,8 @@ for (const marker of [
   "struct RbacPolicyIncidentPacket",
   "missed_publication_incident_connects_decision_relations_cache_generation_and_recovery",
   "RbacRoleAssignmentDbWriter::new(db.clone())",
+  "replace_user_role_committed",
+  "assert!(initial_generation > 0)",
   "RbacService::has_permission",
   "RbacService::get_user_permissions_authoritative",
   "RbacService::get_user_permissions",
@@ -50,6 +52,7 @@ for (const marker of [
   "RBAC_INVALIDATION_FULL_CLEARS_TOTAL",
   'recovery_action: "generation_advanced_full_clear"',
   '"rbac policy incident packet"',
+  'println!("rbac policy incident packet: {packet:?}")',
   "assert!(!packet.evaluator_allowed_after_recovery)",
 ]) requireText(sources.packet, marker, `${files.packet}: packet scenario`);
 
@@ -122,17 +125,16 @@ for (const marker of [
   "missed post-commit publication",
   "generation_advanced_full_clear",
   "The only recovery actor is the existing durable-generation watchdog.",
-  "do not claim that PostgreSQL, Rust, Node, formatting, workflows, or CI have run",
+  "The source file and evidence JSON do not claim",
   "core/rbac` cursor remains",
 ]) requireText(sources.docs, marker, `${files.docs}: incident contract`);
 
 for (const marker of [
   "### P1. Invalidation observability and incident operations",
-  "policy incident",
-  "rbac_policy_incident_trace",
-  "source_ready_unvalidated",
+  "Make one policy incident traceable",
+  "Retain one real or dedicated integration incident packet",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner handoff`);
+]) requireText(sources.plan, marker, `${files.plan}: open owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
