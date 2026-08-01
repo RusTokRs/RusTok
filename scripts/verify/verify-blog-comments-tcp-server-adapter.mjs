@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json';
 const exportPath = 'crates/rustok-comments/src/lib.rs';
+const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
 const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
 const remotePath = 'crates/rustok-comments/src/remote.rs';
 const serverPath = 'crates/rustok-comments/src/tcp_server.rs';
@@ -38,6 +39,7 @@ function sameSet(actual, expected, label) {
 for (const path of [
   evidencePath,
   exportPath,
+  authPath,
   protocolPath,
   remotePath,
   serverPath,
@@ -49,6 +51,7 @@ for (const path of [
 
 const evidence = JSON.parse(read(evidencePath));
 const exports = read(exportPath);
+const auth = read(authPath);
 const protocol = read(protocolPath);
 const remote = read(remotePath);
 const server = read(serverPath);
@@ -115,18 +118,37 @@ hasAll(
 );
 
 hasAll(
+  auth,
+  [
+    'pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;',
+    'pub struct CommentsTcpCredential',
+    'pub struct CommentsTcpRequestEnvelope',
+    'pub struct CommentsTcpBearerAuthorityResolver',
+    'comments.tcp_authentication_failed',
+    'comments.tcp_operation_forbidden',
+  ],
+  'TCP authentication contract',
+);
+
+hasAll(
   server,
   [
     'pub enum CommentsTcpOperation',
+    'pub const ALL: [Self; 7]',
     'pub struct TrustedCommentsTcpAuthority',
     'pub trait CommentsTcpAuthorityResolver: Send + Sync',
+    'credential: Option<&CommentsTcpCredential>',
     'pub struct TcpJsonCommentsServerAdapter',
     'authority: Arc<dyn CommentsTcpAuthorityResolver>',
     'pub async fn handle_connection(',
     'CommentsThreadTransportReply::Success(response)',
     'CommentsThreadTransportReply::Error(error)',
+    'serde_json::from_slice::<CommentsTcpRequestEnvelope>',
+    'envelope.into_parts()',
+    'protocol_version != COMMENTS_TCP_PROTOCOL_VERSION',
+    'comments.tcp_server_unsupported_protocol',
     'request.context().require_deadline_semantics()?;',
-    '.authorize(peer_addr, operation, request.context())',
+    'credential.as_ref()',
     'comments.tcp_authority_tenant_mismatch',
     'trusted.actor = authority.actor;',
     'trusted.claims = authority.claims;',
@@ -167,9 +189,12 @@ hasNone(
 hasAll(
   exports,
   [
+    'pub mod tcp_auth;',
     'mod tcp_protocol;',
     'pub mod tcp_server;',
     'pub mod tcp_transport;',
+    'CommentsTcpBearerAuthorityResolver',
+    'CommentsTcpRequestEnvelope',
     'CommentsTcpAuthorityResolver, CommentsTcpOperation, TcpJsonCommentsServerAdapter,',
     'TrustedCommentsTcpAuthority,',
   ],
@@ -191,6 +216,7 @@ hasAll(
   [
     'use crate::tcp_protocol::{',
     'pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;',
+    'CommentsTcpRequestEnvelope::with_bearer(request, token)',
     'write_frame(&mut stream, request_payload, self.max_frame_bytes).await?;',
     'read_frame(&mut stream, self.max_frame_bytes).await?;',
   ],
