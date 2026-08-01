@@ -36,6 +36,8 @@
     "redis_process_restarted_on_same_loopback_port": true,
     "recovery_action": "redis_resubscribe_ready_callback_reads_durable_generation_and_clears_permission_snapshots",
     "maximum_reconnect_recovery_ms": 8000,
+    "maximum_replica_sequence_ms": 25000,
+    "periodic_reconciliation_excluded": true,
     "expected_final_decision": "deny"
   },
   "forbidden_shortcuts": [
