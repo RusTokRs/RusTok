@@ -23,6 +23,8 @@ const files = {
   watchdog: "apps/server/src/services/rbac_invalidation_generation.rs",
   docs: "crates/rustok-rbac/docs/README.md",
   plan: "crates/rustok-rbac/docs/implementation-plan.md",
+  serverPlan: "apps/server/docs/implementation-plan.md",
+  telemetryPlan: "crates/rustok-telemetry/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 
@@ -31,6 +33,8 @@ const telemetry = read(files.telemetry);
 const watchdog = read(files.watchdog);
 const docs = read(files.docs);
 const plan = read(files.plan);
+const serverPlan = read(files.serverPlan);
+const telemetryPlan = read(files.telemetryPlan);
 const master = read(files.master);
 
 for (const metricName of [
@@ -117,6 +121,25 @@ for (const marker of [
 ]) requireText(plan, marker, `${files.plan}: implementation handoff`);
 
 for (const marker of [
+  "## RBAC durable invalidation observability composition",
+  "signed durable-minus-applied lag",
+  "only recovery path",
+  "Status: `pending`",
+  "leave the complete server composition audit for its Wave 2 cursor visit",
+]) requireText(serverPlan, marker, `${files.serverPlan}: cross-owner server handoff`);
+
+for (const marker of [
+  "## Delivered result: bounded RBAC invalidation metrics",
+  "same canonical process registry",
+  "performs no database reads, cache operations or worker supervision",
+  "one retained incident chain",
+]) requireText(
+  telemetryPlan,
+  marker,
+  `${files.telemetryPlan}: cross-owner telemetry handoff`,
+);
+
+for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
   "`core/rbac` — `crates/rustok-rbac` — in_progress",
@@ -130,5 +153,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ RBAC durable invalidation metrics, bounded labels, watchdog transitions, operator policy, and cycle cursor are synchronized",
+  "✔ RBAC durable invalidation metrics, bounded labels, watchdog transitions, owner/cross-owner plans, operator policy, and cycle cursor are synchronized",
 );
