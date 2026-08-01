@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-TWO-PROCESS-DURABLE-RECOVERY-SOURCE-20260801",
+  "generated_at": "2026-08-01T16:20:00Z",
+  "status": "source_ready_unvalidated",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "base_revision": "db554f67d6c3a5342b53f45d9f302abb8e5cf6db",
+  "test_source": "apps/server/tests/rbac_two_process_durable_recovery.rs",
+  "topology": {
+    "database": "isolated_postgresql_database",
+    "observer_processes": 1,
+    "mutator_processes": 1,
+    "independent_os_processes": true,
+    "shared_process_cache": false,
+    "shared_local_invalidation_bus": false,
+    "redis_configured": false
+  },
+  "scenario": {
+    "initial_role": "admin",
+    "committed_role": "customer",
+    "permission": "settings:manage",
+    "mutation_entrypoint": "RbacService::replace_user_role_committed",
+    "observer_initial_decision": "allow_from_warmed_process_cache",
+    "fast_path_delivery": "intentionally_missed_process_local_publication",
+    "expected_durable_generation_delta": 1,
+    "expected_pre_recovery_decision": "allow_from_stale_process_cache",
+    "recovery_actor": "Rbac invalidation generation watchdog",
+    "expected_post_recovery_decision": "deny",
+    "expected_authoritative_decision": "deny",
+    "maximum_recovery_elapsed_ms": 7000
+  },
+  "production_paths": {
+    "cache": "apps/server/src/services/rbac_runtime.rs",
+    "publisher_and_listener": "apps/server/src/services/rbac_cache_invalidation.rs",
+    "durable_watchdog": "apps/server/src/services/rbac_invalidation_generation.rs",
+    "committed_mutation": "apps/server/src/services/rbac_committed_mutations.rs",
+    "generation_authority": "crates/rustok-rbac/src/invalidation_generation.rs"
+  },
+  "shortcuts_forbidden": {
+    "in_process_replica_simulation": true,
+    "manual_permission_cache_clear": true,
+    "manual_generation_update_sql": true,
+    "test_only_mutation_implementation": true,
+    "redis_delivery": true,
+    "shared_local_bus_delivery": true
+  },
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "formatting_executed": false,
+    "cargo_check_executed": false,
+    "postgresql_runtime_executed": false,
+    "subprocess_runtime_executed": false,
+    "workflow_or_ci_executed": false
+  },
+  "redis_available_evidence": false,
+  "redis_restart_evidence": false,
+  "cli_repair_live_replica_evidence": false,
+  "full_multi_replica_gate_complete": false,
+  "broad_rbac_verification_complete": false,
+  "cursor_advanced": false
+}
