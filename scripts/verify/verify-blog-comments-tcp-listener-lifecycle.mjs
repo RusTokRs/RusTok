@@ -5,6 +5,7 @@ const evidencePath =
 const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-71.md';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 const bootstrapPath = 'apps/server/src/services/server_bootstrap.rs';
+const digestPath = 'crates/rustok-api/src/digest.rs';
 const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
 const adapterPath = 'crates/rustok-comments/src/tcp_server.rs';
 
@@ -29,6 +30,7 @@ const evidence = JSON.parse(read(evidencePath));
 const plan = read(planPath);
 const runtime = read(runtimePath);
 const bootstrap = read(bootstrapPath);
+const digest = read(digestPath);
 const auth = read(authPath);
 const adapter = read(adapterPath);
 
@@ -164,13 +166,27 @@ requireCondition(
 );
 
 for (const fragment of [
+  'pub const SHA256_DIGEST_BYTES: usize = 32;',
+  'pub fn sha256_digest(',
+  'pub fn fixed_work_sha256_eq(',
+  'difference |= expected[index] ^ candidate[index];',
+]) {
+  requireText(digest, fragment, digestPath);
+}
+
+for (const fragment of [
   'pub struct CommentsTcpBearerAuthorityResolver',
-  'ConstantTimeEq',
+  'fixed_work_sha256_eq',
+  'sha256_digest(&[BEARER_PREFIX, secret])',
   'comments.tcp_authentication_failed',
   '[REDACTED]',
 ]) {
   requireText(auth, fragment, authPath);
 }
+requireCondition(
+  !auth.includes('ConstantTimeEq') && !auth.includes('use subtle::'),
+  'Comments auth must use the shared lock-compatible digest helper',
+);
 
 for (const fragment of [
   'handle_connection_with_pre_request_timeout',
