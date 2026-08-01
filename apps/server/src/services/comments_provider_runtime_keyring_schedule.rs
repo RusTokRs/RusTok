@@ -1,4 +1,8 @@
-use std::{fmt, path::Path, time::Duration};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use rustok_api::PortError;
 use rustok_comments::{
@@ -28,6 +32,7 @@ mod keyring_reload_guard {
 
 mod historical {
     include!("comments_provider_runtime_keyring_schedule_base.rs");
+    include!("comments_provider_runtime_keyring_schedule_persistence_bridge.rs");
 }
 
 pub use historical::{
@@ -39,7 +44,7 @@ pub use historical::{
 
 /// Public schedule handle with read-only status and provider behavior.
 ///
-/// Mutation is intentionally restricted to the sibling authorized trigger owner.
+/// Mutation is intentionally restricted to sibling server-owned trigger code.
 #[derive(Clone)]
 pub struct SharedCommentsTcpDelegationScheduleHandle(
     historical::SharedCommentsTcpDelegationScheduleHandle,
@@ -61,8 +66,11 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         file_path: impl AsRef<Path>,
         max_ttl: Duration,
     ) -> std::result::Result<Self, String> {
-        historical::SharedCommentsTcpDelegationScheduleHandle::from_file(file_path, max_ttl)
-            .map(Self)
+        historical::SharedCommentsTcpDelegationScheduleHandle::from_file(
+            file_path,
+            max_ttl,
+        )
+        .map(Self)
     }
 
     pub fn current_status(
@@ -77,6 +85,19 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         self.0.current_selection()
     }
 
+    pub(super) fn from_prepared_file(
+        file_path: PathBuf,
+        schedule: CommentsTcpDelegationSchedule,
+        generation: u64,
+    ) -> std::result::Result<Self, String> {
+        historical::SharedCommentsTcpDelegationScheduleHandle::from_prepared_file(
+            file_path,
+            schedule,
+            generation,
+        )
+        .map(Self)
+    }
+
     pub(super) fn replace_host_schedule(
         &self,
         schedule: CommentsTcpDelegationSchedule,
@@ -89,6 +110,24 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         &self,
     ) -> std::result::Result<CommentsTcpDelegationScheduleReloadOutcome, String> {
         self.0.reload_file()
+    }
+
+    pub(super) fn replace_prepared_with_commit<F>(
+        &self,
+        schedule: CommentsTcpDelegationSchedule,
+        generation: u64,
+        source: keyring::CommentsTcpDelegationKeyringSource,
+        before_publish: F,
+    ) -> std::result::Result<CommentsTcpDelegationScheduleReloadOutcome, String>
+    where
+        F: FnOnce() -> std::result::Result<(), String>,
+    {
+        self.0.replace_prepared_with_commit(
+            schedule,
+            generation,
+            source,
+            before_publish,
+        )
     }
 
     fn historical_clone(&self) -> historical::SharedCommentsTcpDelegationScheduleHandle {
@@ -147,9 +186,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     historical::start_comments_tcp_listener_if_enabled(runtime_ctx).await
 }
 
-// Historical slice-79 source-verifier markers retained while the immutable
-// owner is moved behind this read-only facade. The slice-80 verifier hashes the
-// preserved base blob and verifies that mutation is only `pub(super)` here.
+// Historical slice-79 and slice-80 source-verifier markers retained while the
+// immutable owner remains byte-for-byte in the private base file.
 // "RUSTOK_COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED"
 // COMMENTS_TCP_DELEGATION_SCHEDULE_SCHEMA_VERSION: u16 = 2
 // pub struct CommentsTcpDelegationScheduleRuntimeSelection

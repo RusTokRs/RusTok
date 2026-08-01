@@ -26,6 +26,14 @@ mod keyring_schedule_trigger {
     include!("comments_provider_runtime_keyring_schedule_trigger.rs");
 }
 
+mod keyring_schedule_persistence {
+    include!("comments_provider_runtime_keyring_schedule_persistence.rs");
+}
+
+mod keyring_schedule_persisted_trigger {
+    include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
+}
+
 mod keyring_schedule_trigger_guard {
     include!("comments_provider_runtime_keyring_schedule_trigger_guard.rs");
 }
@@ -74,6 +82,22 @@ pub use keyring_schedule_trigger::{
     SharedCommentsTcpDelegationScheduleTrigger,
     SharedCommentsTcpDelegationScheduleTriggerAuthorizer,
 };
+pub use keyring_schedule_persistence::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_PERSISTENCE_SCHEMA_VERSION,
+    CommentsTcpDelegationScheduleDigest,
+    CommentsTcpDelegationSchedulePersistenceDocument,
+    CommentsTcpDelegationSchedulePersistenceKey,
+    CommentsTcpDelegationSchedulePersistenceRecord,
+    CommentsTcpDelegationSchedulePersistenceStartupMode,
+    CommentsTcpDelegationSchedulePersistenceStore,
+    CommentsTcpDelegationSchedulePersistenceStoreError,
+    SharedCommentsTcpDelegationSchedulePersistenceStore,
+};
+pub use keyring_schedule_persisted_trigger::{
+    CommentsTcpDelegationPersistedScheduleAuditOutcome,
+    CommentsTcpDelegationPersistedScheduleAuditRecord,
+    SharedCommentsTcpDelegationPersistedScheduleTrigger,
+};
 
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -84,7 +108,7 @@ pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
     // Historical source-verifier markers retained for static, ordinary reload,
-    // and scheduled composition paths:
+    // scheduled, and authorized trigger composition paths:
     // keyring::register_comments_provider_runtime(extensions)
     // keyring_reload::register_comments_provider_runtime(extensions)
     // keyring_schedule_guard::register_comments_provider_runtime(extensions)
