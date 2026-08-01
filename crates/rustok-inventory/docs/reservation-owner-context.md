@@ -1,187 +1,112 @@
-# Inventory reservation owner context
+# Inventory reservation owner diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This work closes write-admission, tenant-context, and stable local-outcome diagnostic gaps at the
-durable inventory reservation owner boundary.
+This slice closes the remaining payload-diagnostic gaps in the canonical durable
+inventory reservation wrapper:
 
-The covered public operations are:
+- write-policy admission;
+- write-semantics admission;
+- tenant UUID validation;
+- stable post-delegation local outcomes.
+
+The covered public operations remain:
 
 - `InventoryReservationIdentityPort::reserve_inventory_by_identity`;
 - `InventoryReservationIdentityPort::release_inventory_by_identity`.
 
-These operations are used by the durable checkout inventory reservation and compensation paths.
-Deprecated quantity-only reserve/release and availability diagnostics are documented in their separate
-availability/quantity context notes.
+The public facade, factory names, request/response DTOs, operation ordering,
+persistent-owner delegation, and returned `PortError` values are unchanged.
 
-## Public API compatibility
+## Preserved ordering
 
-The crate-root API retains the existing names:
+Both operations still perform:
 
-- `InventoryReservationIdentityPort`;
-- `InventoryIdentityReservationRequest`;
-- `InventoryIdentityReservationReleaseRequest`;
-- `InventoryIdentityReservationSnapshot`;
-- `InventoryIdentityReservationReleaseSnapshot`;
-- `PersistentInventoryReservationIdentityPort`;
-- `PersistentInventoryReservationIdentityPort::new`;
-- `in_process_inventory_reservation_identity_port`.
+1. write-policy admission;
+2. write-semantics admission;
+3. trimmed tenant UUID validation;
+4. safe diagnostic-fact capture;
+5. delegation of the original context and request;
+6. exact stable local-outcome classification;
+7. return of the same delegated error.
 
-The public `rustok_inventory::ports` module path also retains the same contracts, struct, and factory.
+The persistent owner in `ports.rs` still repeats its existing admission and
+tenant checks before storage work.
 
-The original `ports.rs` source is compiled as the private `ports_impl` module. A public compatibility
-facade selectively re-exports all existing inventory port contracts while exporting the durable
-reservation wrapper under the original struct and factory names. External callers therefore cannot
-construct or select the direct durable reservation implementation through either the crate root or
-the public `ports` path.
+## Bounded context shape
 
-## Ordering
+Admission, tenant-validation, and covered local-outcome events retain:
 
-Each durable reservation write now flows through these layers:
+- truthful owner and exact public operation;
+- admission, validation, or local-operation label;
+- correlation ID and stable boundary;
+- tenant and actor-ID character lengths;
+- closed actor-kind label;
+- claim and role counts;
+- channel, causation, traceparent, and idempotency presence plus lengths;
+- locale length and deadline;
+- stable error code, retryability, closed error-kind label, and error-message
+  presence/length.
 
-1. require write policy;
-2. require write semantics;
-3. parse the trimmed tenant UUID;
-4. retain the accepted diagnostic context and safe request facts;
-5. delegate the original `PortContext` and request to the unchanged persistent owner;
-6. allow the persistent owner to repeat its existing admission and tenant checks before storage work;
-7. classify only covered stable local errors and return the same `PortError` unchanged.
+They do not record raw tenant, actor, channel, locale, causation, traceparent,
+or idempotency values. The complete `PortError` is not written through Debug or
+Display formatting, and raw error-message text is not copied into events.
 
-The repeated checks are deterministic. The wrapper uses the same `PortCallPolicy::write()` contract,
-the same write-semantics requirements, and the same trimmed tenant UUID parsing rule as the existing
-owner implementation.
+Unavailable, timeout, and invariant outcomes retain error severity. Ordinary
+validation, not-found, conflict, forbidden, and policy rejections retain warning
+severity.
 
-No actor validation was added because the persistent durable reservation owner did not reject malformed
-actor identity. Adding that check would change request acceptance rather than retain diagnostics.
+## Tenant validation
 
-## Admission diagnostics
+Tenant parsing still trims the delegated tenant string and returns:
 
-Write-policy and write-semantics failures record:
+- code `inventory.context_invalid`;
+- message `inventory request context is invalid`;
+- validation kind and unchanged retryability.
 
-- truthful owner `rustok_inventory`;
-- exact operation;
-- admission phase `policy` or `write_semantics`;
-- boundary `inventory_reservation_identity_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- stable code and message;
-- typed error kind and retryability;
-- the original `PortError`.
+The UUID parse cause is not recorded. The event retains only
+`tenant_id_parse_failed = true`, bounded context shape, and bounded error shape.
 
-Unavailable, timeout, and invariant admission failures use error severity. Ordinary validation,
-forbidden, conflict, and other caller rejection use warning severity.
+The exact admission and tenant-validation errors are returned unchanged.
 
-The wrapper returns the exact admission `PortError` unchanged.
-
-## Tenant-context validation
-
-The wrapper preserves the existing validation contract:
-
-- trim the delegated tenant string;
-- parse it as a UUID;
-- return code `inventory.context_invalid`;
-- return message `inventory request context is invalid`.
-
-For a parse failure, the structured warning retains the UUID parse cause together with the complete
-delegated `PortContext`, truthful owner, exact operation, validation phase `tenant_id`, stable public
-envelope, and boundary.
-
-The same constructed validation `PortError` is returned unchanged.
-
-## Local owner outcomes
-
-After successful admission and tenant validation, the wrapper retains the accepted context and safe
-request facts across the unchanged persistent owner delegation. Exact stable request-validation,
-variant/state lookup, replay identity, stock, reservation not-found, storage, and invariant envelopes
-now receive operation-specific local diagnostics while returning the same delegated `PortError`.
-
-The wrapper records only the character length of caller-provided `external_id`; it does not publish the
-raw identity string. The complete classification and pass-through contract is documented in
-[`reservation-local-context.md`](./reservation-local-context.md).
-
-## Preserved durable reservation behavior
+## Preserved behavior
 
 This work does not change:
 
-- reservation request or snapshot DTOs;
-- reservation and external identity semantics;
-- external-id trimming or length bounds;
+- reservation/external identity semantics;
+- external-ID normalization or limits;
 - positive quantity validation;
 - tenant-scoped variant loading;
-- inventory-item locking;
-- active-location selection;
-- backorder policy;
-- atomic reserved-quantity updates;
-- replay adoption by reservation id or external id;
-- conflicting replay classification;
-- reservation metadata;
-- insert-race adoption;
-- exact release identity checks;
-- already-released idempotency;
-- reservation ledger consistency checks;
-- available-quantity overflow classification;
+- row locking, transactions, replay adoption, or insert-race handling;
+- location selection or backorder policy;
+- metadata or release state transitions;
 - storage mappings;
 - public codes, messages, kinds, or retryability.
 
-The original persistent owner receives the original `PortContext` and request after wrapper acceptance.
+No FBA or FFA status is promoted from source inspection.
 
-## Static evidence
+## Evidence
 
-`scripts/verify/verify-inventory-reservation-owner-context.mjs` guards:
+- `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
+- `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`
+- `scripts/verify/verify-inventory-reservation-owner-context.mjs`
+- `scripts/verify/verify-inventory-reservation-local-context.mjs`
 
-- private persistent implementation and public compatibility facade;
-- preserved crate-root and module-path contracts;
-- wrapper constructor and factory cutover;
-- exact reserve and release operations;
-- admission → tenant validation → owner delegation ordering;
-- write-policy and write-semantics interception;
-- full admission context and severity policy;
-- same admission error return;
-- trimmed tenant parsing and retained parse cause;
-- stable tenant validation envelope;
-- full tenant-validation context and same error return;
-- preserved persistent external-id, quantity, identity-conflict, and ledger-invariant behavior.
+## Validation status
 
-`scripts/verify/verify-inventory-reservation-local-context.mjs` separately guards:
+Tests, Node verifiers, Cargo commands, formatting, workflows, CI, and mounted
+runtime validation were intentionally not run.
 
-- accepted context and safe request-fact retention;
-- post-delegation exact stable local-outcome classification;
-- reserve/release operation-specific labels;
-- complete diagnostic fields without raw external-id text;
-- unknown-error pass-through;
-- same delegated error return;
-- unchanged persistent validation, lookup, replay, stock, storage, and invariant branches.
-
-The existing checkout inventory boundary verifier remains applicable because commerce continues to
-call the same root factory and owner trait. The wrapper adds owner-side diagnostics without changing
-the persistent owner call.
-
-## Remaining gaps
-
-The ecommerce correlation-safe mapper task remains open for:
-
-- direct callers that bypass canonical inventory factories where a bypass remains possible;
-- remaining payment execution and compensation consumers;
-- GraphQL query customer reads and the shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No FBA or FFA status is promoted from source inspection alone.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
+Suggested maintainer checks:
 
 ```bash
-node scripts/verify/verify-inventory-reservation-local-context.mjs
 node scripts/verify/verify-inventory-reservation-owner-context.mjs
-node scripts/verify/verify-inventory-availability-quantity-local-context.mjs
-node scripts/verify/verify-commerce-checkout-inventory-boundary-context.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
+node scripts/verify/verify-inventory-reservation-local-context.mjs
+node scripts/verify/verify-inventory-port-diagnostic-safety.mjs
 cargo check -p rustok-inventory --lib
 cargo check -p rustok-commerce --lib
 ```
+
+The broader ecommerce correlation-safe mapper cleanup remains open.
