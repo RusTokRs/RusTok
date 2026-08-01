@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_delegation_key_rotation",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-76.md",
+  "source_contract": {
+    "delegation": "crates/rustok-comments/src/tcp_delegation.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "host_runtime": "apps/server/src/services/comments_provider_runtime.rs"
+  },
+  "key_id": {
+    "minimum_bytes": 1,
+    "maximum_bytes": 64,
+    "alphabet": "ascii_alphanumeric_dot_underscore_hyphen",
+    "signed": true,
+    "authorization_principal": false,
+    "secret": false
+  },
+  "keyring": {
+    "minimum_keys": 1,
+    "maximum_keys": 8,
+    "unique_ids_required": true,
+    "active_key_required": true,
+    "immutable_after_construction": true,
+    "active_key_used_for_signing": true,
+    "all_retained_keys_used_for_verification": true,
+    "debug_secret_redaction": true,
+    "debug_active_id_redaction": true
+  },
+  "signature": {
+    "algorithm": "hmac_sha256",
+    "domain": "rustok-comments-tcp-user-delegation-v1",
+    "new_binding_order": [
+      "domain",
+      "key_id",
+      "separator",
+      "claims_payload"
+    ],
+    "verification_before_claims_parse": true,
+    "unknown_key_code": "comments.tcp_delegation_invalid",
+    "bad_signature_code": "comments.tcp_delegation_invalid",
+    "revoked_key_code": "comments.tcp_delegation_invalid",
+    "key_lookup_oracle_in_public_error": false
+  },
+  "compatibility": {
+    "single_secret_constructor_retained": true,
+    "single_secret_key_id": "legacy",
+    "new_single_secret_tokens_are_keyed": true,
+    "old_unkeyed_tokens_supported": true,
+    "legacy_fallback_explicit_for_multi_key_ring": true,
+    "credential_scheme_changed": false,
+    "delegation_version_changed": false,
+    "host_environment_contract_changed": false
+  },
+  "rotation": {
+    "overlapping_verification_keys": true,
+    "independent_active_signing_key": true,
+    "old_key_removal_revokes_tokens": true,
+    "recommended_wait_includes_max_ttl": true,
+    "recommended_wait_includes_clock_skew": true,
+    "live_mutation": false,
+    "scheduled_activation": false,
+    "durable_audit_history": false
+  },
+  "retained_security": {
+    "complete_request_digest": true,
+    "tenant_binding": true,
+    "user_binding": true,
+    "claims_binding": true,
+    "single_role_binding": true,
+    "operation_binding": true,
+    "correlation_binding": true,
+    "idempotency_binding": true,
+    "ttl_bound": true,
+    "nonce_replay_admission": true,
+    "nonce_scope": "listener_process_global_across_keys",
+    "service_bearer_reads": true,
+    "system_moderation": true,
+    "owner_policy_after_principal_replacement": true
+  },
+  "dependency_contract": {
+    "new_direct_dependencies": [],
+    "manifest_changed": false,
+    "cargo_lock_changed": false
+  },
+  "non_claims": [
+    "host_multi_key_environment_loading",
+    "secret_manager_loading",
+    "live_key_reload",
+    "atomic_distributed_rotation",
+    "durable_key_metadata",
+    "asymmetric_signing",
+    "hardware_backed_keys",
+    "multi_replica_replay_prevention",
+    "restart_safe_replay_prevention",
+    "tls_mtls",
+    "non_loopback_publication",
+    "runtime_execution"
+  ],
+  "execution": {
+    "rust_tests_run": false,
+    "javascript_verifiers_run": false,
+    "cargo_commands_run": false,
+    "formatting_run": false,
+    "tcp_runtime_run": false,
+    "database_run": false,
+    "browser_run": false,
+    "workflow_run": false,
+    "ci_run": false
+  }
+}
