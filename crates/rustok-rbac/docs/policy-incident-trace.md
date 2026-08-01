@@ -8,6 +8,11 @@ permission cache, durable invalidation generation, watchdog recovery action, and
 post-recovery evaluator decision without introducing a second authorization or cache
 implementation.
 
+The fixture uses the existing `setup_test_db_with_migrations` helper and therefore runs
+against a fresh single-connection in-memory SQLite database. It is not PostgreSQL
+concurrency evidence, multi-replica evidence, or Redis transport evidence. Those P0
+gates remain open.
+
 ## Incident scenario
 
 The source-ready test is
@@ -56,6 +61,8 @@ permission or relation lists are not written to the packet.
 - The test does not call the invalidation publisher, manually clear the cache, create a
   second evaluator, or normalize the durable/applied generation gap.
 - The only recovery actor is the existing durable-generation watchdog.
+- The SQLite packet does not replace retained real-PostgreSQL concurrency or
+  two-replica Redis outage/restart/missed-publication evidence.
 
 ## Source evidence
 
@@ -74,7 +81,7 @@ node scripts/verify/verify-rbac-policy-incident-trace.mjs
 ```
 
 The test should be retained with its `rbac policy incident packet` log output on the
-same revision. The source file and evidence JSON do not claim that PostgreSQL, Rust,
-Node, formatting, workflows, or CI have run. The broader `core/rbac` cursor remains
-`in_progress` until its compile, concurrency, multi-replica Redis, management-flow,
-and FFA/FBA gates are satisfied.
+same revision. The source file and evidence JSON do not claim that SQLite, PostgreSQL,
+Rust, Node, formatting, workflows, or CI have run. The broader `core/rbac` cursor
+remains `in_progress` until its compile, PostgreSQL concurrency, multi-replica Redis,
+management-flow, and FFA/FBA gates are satisfied.
