@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "status": "customer_read_boundary_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-customer/src/ports.rs",
+    "crates/rustok-customer/src/error.rs",
+    "scripts/verify/verify-customer-owner-error-diagnostic-safety.mjs",
+    "crates/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source.json",
+    "crates/rustok-customer/docs/customer-owner-error-diagnostic-safety.md",
+    "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs"
+  ],
+  "review_findings": {
+    "all_four_read_operations_preserved": true,
+    "public_request_response_contracts_preserved": true,
+    "owner_delegation_preserved": true,
+    "all_seven_public_mappings_preserved": true,
+    "database_profile_severity_preserved": true,
+    "ordinary_warning_severity_preserved": true,
+    "admission_list_parser_warning_severity_preserved": true,
+    "complete_customer_error_logging_removed_from_owner_mapper": true,
+    "database_profile_payload_removed": true,
+    "validation_email_text_removed": true,
+    "customer_user_uuid_removed": true,
+    "raw_context_removed_from_owner_mapper": true,
+    "bounded_context_shape_retained": true,
+    "bounded_owner_error_shape_retained": true,
+    "complete_port_error_logging_removed_from_admission": true,
+    "port_error_message_text_removed_from_admission": true,
+    "static_port_error_kind_and_message_shape_retained": true,
+    "raw_context_removed_from_admission_and_list_validation": true,
+    "list_search_text_removed": true,
+    "bounded_list_request_shape_retained": true,
+    "uuid_parser_payload_removed": true,
+    "raw_tenant_removed_from_parser": true,
+    "static_tenant_parse_failure_retained": true,
+    "admission_parser_list_validation_diagnostics_source_closed": true,
+    "customer_read_boundary_source_closed": true,
+    "broad_ecommerce_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation was executed."
+}

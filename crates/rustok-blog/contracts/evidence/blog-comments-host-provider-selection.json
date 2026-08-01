@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_host_provider_selection",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-70.md",
+  "source_contract": {
+    "selector": "apps/server/src/services/comments_provider_runtime.rs",
+    "host_composition": "apps/server/src/services/mod.rs",
+    "distribution_features": "crates/rustok-distribution/Cargo.toml",
+    "graphql_consumer": "crates/rustok-blog/src/graphql/runtime_data.rs",
+    "http_consumer": "crates/rustok-blog/src/controllers/mod.rs",
+    "graphql_host_snapshot": "apps/server/src/services/graphql_schema.rs",
+    "native_http_host_snapshot": "apps/server/src/services/app_router.rs",
+    "runtime_extensions": "rustok_core::ModuleRuntimeExtensions",
+    "port": "rustok_comments::CommentsThreadPort"
+  },
+  "configuration": {
+    "mode_environment": "RUSTOK_COMMENTS_PROVIDER_MODE",
+    "endpoint_environment": "RUSTOK_COMMENTS_TCP_ENDPOINT",
+    "default_mode": "in_process",
+    "accepted_modes": [
+      "in_process",
+      "tcp"
+    ],
+    "tcp_endpoint_format": "ip_socket_address",
+    "tcp_loopback_required": true,
+    "dns_resolution": false,
+    "silent_tcp_fallback": false
+  },
+  "profiles": [
+    {
+      "name": "InProcessFallback",
+      "port_published": false,
+      "consumer_behavior": "existing_database_event_bus_fallback"
+    },
+    {
+      "name": "Preconfigured",
+      "port_published": true,
+      "consumer_behavior": "preserve_existing_host_adapter"
+    },
+    {
+      "name": "TcpLoopback",
+      "port_published": true,
+      "transport": "rustok_comments::TcpJsonCommentsTransport",
+      "adapter": "rustok_comments::remote_comments_thread_port"
+    }
+  ],
+  "publication": {
+    "selected_value": "Arc<dyn rustok_comments::CommentsThreadPort>",
+    "registry": "ModuleRuntimeExtensions",
+    "registration_count": "once_during_host_provider_composition",
+    "graphql": true,
+    "axum_http": true,
+    "server_functions": true,
+    "admin_native": true,
+    "storefront_native": true,
+    "separate_transport_specific_consumer_wiring": false
+  },
+  "fail_closed": {
+    "unknown_mode_rejected": true,
+    "missing_tcp_endpoint_rejected": true,
+    "invalid_tcp_endpoint_rejected": true,
+    "non_loopback_tcp_endpoint_rejected": true,
+    "preconfigured_provider_replaced": false,
+    "startup_connection_probe": false
+  },
+  "pending": [
+    "listener_bind_and_accept_loop",
+    "concrete_authority_resolver",
+    "credentials_or_mtls_identity",
+    "transport_encryption",
+    "non_loopback_remote_publication",
+    "connection_idle_timeout",
+    "bounded_concurrency_and_shutdown",
+    "retry_backoff",
+    "in_process_tcp_runtime_parity",
+    "runtime_execution"
+  ],
+  "explicit_non_claims": [
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_tcp_runtime_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}

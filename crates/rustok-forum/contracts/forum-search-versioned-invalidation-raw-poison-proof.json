@@ -1,0 +1,53 @@
+{
+  "contract": "forum_search_versioned_invalidation_raw_poison_proof_v1",
+  "task": "FORUM-23B2G2B3D4",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "apps/server/tests/forum_versioned_invalidation_raw_poison_iggy.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-raw-poison-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "broker": "external_iggy",
+    "broker_address_env": "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS",
+    "broker_username_env": "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+    "broker_password_env": "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD",
+    "serialization": "json",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "topic": "domain",
+    "partitions": 1
+  },
+  "scenario": {
+    "id": "raw_poison_dlq_redelivery",
+    "poison_kind": "contract_deserialization_failure",
+    "proves": [
+      "the exact undecodable broker bytes and source coordinates derive one stable connector delivery UUID",
+      "one PostgreSQL connector-owned poison receipt transitions through publishing and published before source acknowledgement",
+      "the DLQ entry carries the connector delivery UUID as its explicit deterministic Iggy broker message identity",
+      "reopening the production Forum Search consumer group redelivers the same source offset and delivery UUID while the receipt remains published",
+      "redelivery receives AlreadyPublished, emits no second physical DLQ message, and acknowledges the source only before the receipt becomes acknowledged",
+      "successful source acknowledgement advances the consumer group to the next raw delivery"
+    ]
+  },
+  "identity_invariants": [
+    "the poison delivery UUID is connector identity and is not a trusted domain event or tenant identity",
+    "consumer group, stream, topic, partition, offset and exact bytes are immutable receipt identity",
+    "the deterministic DLQ broker message UUID equals the connector delivery UUID",
+    "the first observed delivery attempt count remains immutable across redelivery",
+    "published is durable before source acknowledgement and acknowledged is durable only after source acknowledgement"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-server --test forum_versioned_invalidation_raw_poison_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL or external Iggy execution passed",
+    "this proof does not run the server-owned Forum Search consumer loop or its retry backoff",
+    "this proof does not inject DLQ publication failure, durable publish-mark ambiguity or poison identity collision",
+    "this proof does not establish semantic inbox identity-conflict poison handling",
+    "this proof does not execute the Search projector or advance an owner checkpoint",
+    "this proof does not establish multi-process serialization, deletion or ACL ordering, Search-disabled recovery or LINK-FORUM-03 completion"
+  ]
+}

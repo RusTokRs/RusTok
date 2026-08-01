@@ -1,0 +1,48 @@
+{
+  "contract": "forum_search_versioned_invalidation_multi_process_proof_v1",
+  "task": "FORUM-23B2G2B3D7",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "apps/server/tests/forum_versioned_invalidation_multi_process_serialization.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-multi-process-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "host_package": "rustok-server",
+    "minimum_concurrent_os_processes": 2,
+    "owner_tenant_page_limit": 1,
+    "owner_revision_page_limit": 8
+  },
+  "scenario": {
+    "id": "multi_process_serialization",
+    "proves": [
+      "two independent rustok-server integration-target OS processes read the same owner scan cursor and first tenant head",
+      "the holder process retains the PostgreSQL advisory transaction lock while its current-state rebuild is paused",
+      "the contender process reports the tenant as blocked and never enters the Forum projection source",
+      "the contender establishes the first scan cursor while the holder remains active and the holder stale compare-and-set cannot duplicate or regress it",
+      "exactly one first-tenant rebuild commits and checkpoint audit records revisions 1 then 2 with repaired projection state already visible",
+      "a later independent process opens the next tenant from the retained cursor and advances its checkpoint to revision 1",
+      "scan cursor audit is exactly first tenant then second tenant with no skip or regression"
+    ]
+  },
+  "identity_invariants": [
+    "the tenant advisory-lock key remains search:forum:<tenant_id>:forum",
+    "owner tenant ordering uses the exact UUID cursor and never Search ingest_sequence",
+    "checkpoint event_id follows each exact Forum owner revision event UUID",
+    "the first checkpoint starts at revision 1 and every update advances by exactly 1",
+    "a stale scan-cursor writer may not overwrite a value that differs from its expected cursor"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_multi_process_serialization -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL or child-process execution passed",
+    "this proof does not execute the long-running host polling loop or validate restart scheduling",
+    "this proof does not use Iggy delivery, acknowledgement, poison or DLQ behavior",
+    "this proof does not validate deletion or ACL ordering, Search-disabled recovery, storefront visibility or LINK-FORUM-03 completion",
+    "this proof does not close the aggregate FORUM-23B2G2B3D runtime evidence gate"
+  ]
+}

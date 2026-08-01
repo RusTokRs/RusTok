@@ -11,10 +11,27 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const lib = read('crates/rustok-pricing/src/lib.rs');
-const legacy = read('crates/rustok-pricing/src/ports.rs');
-const wrapper = read('crates/rustok-pricing/src/write_context.rs');
-const consumer = read('crates/rustok-commerce/src/graphql/mutations/pricing.rs');
+const paths = {
+  lib: 'crates/rustok-pricing/src/lib.rs',
+  owner: 'crates/rustok-pricing/src/ports.rs',
+  wrapper: 'crates/rustok-pricing/src/write_context.rs',
+  readWrapper: 'crates/rustok-pricing/src/read_context.rs',
+  consumer: 'crates/rustok-commerce/src/graphql/mutations/pricing.rs',
+  evidence:
+    'crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json',
+  review:
+    'crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source-review.json',
+  document: 'crates/rustok-pricing/docs/write-local-context.md',
+};
+
+const lib = read(paths.lib);
+const owner = read(paths.owner);
+const wrapper = read(paths.wrapper);
+const readWrapper = read(paths.readWrapper);
+const consumer = read(paths.consumer);
+const evidence = JSON.parse(read(paths.evidence));
+const review = JSON.parse(read(paths.review));
+const document = read(paths.document);
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -22,6 +39,25 @@ const requireText = (source, value, label) => {
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+
+function functionBody(source, name) {
+  const match = new RegExp(`(?:async\\s+)?fn\\s+${name}\\s*\\(`).exec(source);
+  if (!match) {
+    failures.push(`missing function ${name}`);
+    return '';
+  }
+  const openBrace = source.indexOf('{', match.index);
+  let depth = 0;
+  for (let index = openBrace; index >= 0 && index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(openBrace, index + 1);
+    }
+  }
+  failures.push(`unterminated function ${name}`);
+  return '';
+}
 
 for (const [source, value, label] of [
   [lib, 'mod write_context;', 'private write wrapper module'],
@@ -31,20 +67,18 @@ for (const [source, value, label] of [
     'canonical root write wrapper export',
   ],
   [lib, 'InProcessPricingReadPort, in_process_pricing_read_port', 'preserved root read wrapper'],
-  [legacy, 'pub fn in_process_pricing_write_port(', 'legacy compatibility factory'],
-  [legacy, 'impl PricingWritePort for crate::PricingService', 'unchanged write owner implementation'],
+  [owner, 'pub fn in_process_pricing_write_port(', 'legacy compatibility factory'],
+  [owner, 'impl PricingWritePort for crate::PricingService', 'owner implementation'],
   [wrapper, 'pub struct InProcessPricingWritePort', 'canonical write wrapper'],
-  [wrapper, 'pub fn from_service(inner: PricingService) -> Self', 'host composition constructor'],
+  [wrapper, 'pub fn from_service(inner: PricingService) -> Self', 'composition constructor'],
   [wrapper, 'pub fn in_process_pricing_write_port(', 'canonical write factory'],
-  [wrapper, 'Arc::new(InProcessPricingWritePort::new(db, event_bus))', 'wrapper factory construction'],
-  [wrapper, 'impl PricingWritePort for InProcessPricingWritePort', 'wrapper trait implementation'],
+  [wrapper, 'Arc::new(InProcessPricingWritePort::new(db, event_bus))', 'wrapper construction'],
+  [wrapper, 'impl PricingWritePort for InProcessPricingWritePort', 'wrapper implementation'],
   [wrapper, 'const PRICING_OWNER: &str = "rustok_pricing";', 'truthful owner'],
   [wrapper, 'const PRICING_WRITE_BOUNDARY: &str = "pricing_write_port";', 'stable boundary'],
   [consumer, 'in_process_pricing_write_port,', 'mounted root write factory import'],
   [consumer, 'in_process_pricing_write_port(db.clone(), event_bus.clone())', 'mounted write construction'],
-]) {
-  requireText(source, value, label);
-}
+]) requireText(source, value, label);
 
 forbidText(
   lib,
@@ -59,50 +93,91 @@ const operations = [
   ['apply_variant_discount', 'APPLY_VARIANT_DISCOUNT_OPERATION'],
   ['set_price_list_percentage_rule', 'SET_PRICE_LIST_PERCENTAGE_RULE_OPERATION'],
 ];
-
 for (const [operation, constant] of operations) {
-  requireText(wrapper, `PricingWritePort::${operation}(`, `${operation} unchanged owner delegation`);
+  requireText(wrapper, `PricingWritePort::${operation}(`, `${operation} owner delegation`);
   requireText(wrapper, constant, `${operation} stable operation constant`);
 }
-const innerDelegations = wrapper.match(/&self\.inner/g) ?? [];
-if (innerDelegations.length !== operations.length) {
-  failures.push(
-    `expected ${operations.length} unchanged owner delegations, found ${innerDelegations.length}`,
-  );
+const delegations = wrapper.match(/&self\.inner/g) ?? [];
+if (delegations.length !== operations.length) {
+  failures.push(`expected ${operations.length} owner delegations, found ${delegations.length}`);
 }
 
-const retainedContext = [
+for (const marker of [
+  'struct PricingWriteContextFacts',
+  "actor_kind: &'static str",
+  'tenant_id_length: context.tenant_id.chars().count()',
+  'actor_id_length: context.actor.id.chars().count()',
+  'claim_count: context.claims.len()',
+  'role_count: context.roles.len()',
+  'channel_present: context.channel.is_some()',
+  'channel_length: context.channel.as_ref().map(',
+  'locale_length: context.locale.chars().count()',
+  'causation_id_present: context.causation_id.is_some()',
+  'traceparent_present: context.traceparent.is_some()',
+  'idempotency_key_present: context.idempotency_key.is_some()',
+  'deadline_ms: context.deadline_ms',
+]) requireText(wrapper, marker, 'bounded delegated context');
+
+for (const marker of [
+  'variant_id_present: bool',
+  'variant_id_non_nil: bool',
+  'price_list_id_present: bool',
+  'price_list_id_non_nil: bool',
+  'channel_id_present: bool',
+  'channel_id_non_nil: bool',
+  'min_quantity_present: bool',
+  'min_quantity_nonzero: bool',
+  'min_quantity_negative: bool',
+  'max_quantity_present: bool',
+  'max_quantity_nonzero: bool',
+  'max_quantity_negative: bool',
+  'currency_code_length: Option<usize>',
+  'channel_slug_length: Option<usize>',
+  'fallback_locale_length: Option<usize>',
+  'compare_at_amount_present: bool',
+  'adjustment_percent_present: bool',
+]) requireText(wrapper, marker, 'bounded write request schema');
+
+const logger = functionBody(wrapper, 'log_pricing_write_local_outcome');
+for (const marker of [
+  'tracing::error!(',
+  'tracing::warn!(',
+  'owner = PRICING_OWNER',
+  'operation = owner_operation',
+  'local_operation = outcome.local_operation',
   'correlation_id = %context.correlation_id',
-  'tenant_id = %context.tenant_id',
-  'actor = ?context.actor',
-  'claim_count = context.claims.len()',
-  'role_count = context.roles.len()',
-  'channel = ?context.channel',
-  'locale = %context.locale',
-  'causation_id = ?context.causation_id',
-  'traceparent = ?context.traceparent',
-  'idempotency_key = ?context.idempotency_key',
-  'deadline_ms = ?context.deadline_ms',
-];
-for (const value of retainedContext) {
-  requireText(wrapper, value, 'complete delegated pricing write context');
-}
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'claim_count = context_facts.claim_count',
+  'role_count = context_facts.role_count',
+  'variant_id_present = facts.variant_id_present',
+  'price_list_id_non_nil = facts.price_list_id_non_nil',
+  'min_quantity_present = facts.min_quantity_present',
+  'min_quantity_nonzero = facts.min_quantity_nonzero',
+  'min_quantity_negative = facts.min_quantity_negative',
+  'max_quantity_present = facts.max_quantity_present',
+  'max_quantity_nonzero = facts.max_quantity_nonzero',
+  'max_quantity_negative = facts.max_quantity_negative',
+  'compare_at_amount_present = facts.compare_at_amount_present',
+  'adjustment_percent_present = facts.adjustment_percent_present',
+  'public_message_present',
+  'public_message_length',
+  'original_message_length',
+  'error_kind',
+  'retryable = mapped_error.retryable',
+  'boundary = PRICING_WRITE_BOUNDARY',
+]) requireText(logger, marker, 'bounded local outcome logger');
 
-const safeFacts = [
-  'variant_id = ?facts.variant_id',
-  'price_list_id = ?facts.price_list_id',
-  'channel_id = ?facts.channel_id',
-  'min_quantity = ?facts.min_quantity',
-  'max_quantity = ?facts.max_quantity',
-  'currency_code_length = ?facts.currency_code_length',
-  'channel_slug_length = ?facts.channel_slug_length',
-  'fallback_locale_length = ?facts.fallback_locale_length',
-  'compare_at_amount_present = ?facts.compare_at_amount_present',
-  'adjustment_percent_present = ?facts.adjustment_percent_present',
-];
-for (const value of safeFacts) {
-  requireText(wrapper, value, 'safe pricing write request facts');
-}
+const kind = functionBody(wrapper, 'pricing_write_port_error_kind');
+for (const marker of [
+  'PortErrorKind::Validation => "validation"',
+  'PortErrorKind::NotFound => "not_found"',
+  'PortErrorKind::Conflict => "conflict"',
+  'PortErrorKind::Forbidden => "forbidden"',
+  'PortErrorKind::Unavailable => "unavailable"',
+  'PortErrorKind::Timeout => "timeout"',
+  'PortErrorKind::InvariantViolation => "invariant_violation"',
+]) requireText(kind, marker, 'closed PortErrorKind label');
 
 const sanitizedOutcomes = [
   ['pricing.tenant_id_invalid', 'pricing request context is invalid'],
@@ -117,25 +192,41 @@ const sanitizedOutcomes = [
 ];
 for (const [code, message] of sanitizedOutcomes) {
   requireText(wrapper, `"${code}"`, `${code} classification`);
-  requireText(wrapper, `Some("${message}")`, `${code} stable public message`);
+  requireText(wrapper, `Some("${message}")`, `${code} stable message`);
 }
 
-for (const value of [
+const mapper = functionBody(wrapper, 'map_pricing_write_local_port_error');
+for (const marker of [
+  'return error;',
   'PortError::new(',
   'error.kind.clone()',
   'error.code.clone()',
   'error.retryable',
-  'original_message_length = error.message.chars().count()',
-  'public_message = %mapped_error.message',
+  'None => error.clone()',
   'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
-  'tracing::error!',
-  'tracing::warn!',
-  'mapped_error\n}',
-]) {
-  requireText(wrapper, value, 'same envelope or safe-message mapping');
-}
+  'log_pricing_write_local_outcome(',
+  'mapped_error',
+]) requireText(mapper, marker, 'same envelope and severity mapping');
 
-for (const value of [
+for (const forbidden of [
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'variant_id = ?facts.variant_id',
+  'price_list_id = ?facts.price_list_id',
+  'channel_id = ?facts.channel_id',
+  'min_quantity = ?facts.min_quantity',
+  'max_quantity = ?facts.max_quantity',
+  'public_message = %mapped_error.message',
+  'error_kind = ?mapped_error.kind',
+  'error = ?error',
+  'mapped_error = ?mapped_error',
+  'internal_message = %error.message',
+  'original_message =',
   'currency_code = %',
   'currency_code = ?',
   'channel_slug = %',
@@ -150,39 +241,103 @@ for (const value of [
   'compare_at_amount =',
   'discount_percent =',
   'adjustment_percent =',
-  'error = ?error',
-  'mapped_error = ?mapped_error',
-  'internal_message = %error.message',
-  'original_message =',
-]) {
-  forbidText(wrapper, value, 'raw pricing write payload logging');
-}
+]) forbidText(wrapper, forbidden, 'raw pricing write diagnostics');
 
-for (const value of [
-  'format!("product {id} not found")',
-  'format!("variant {id} not found")',
-  'format!("duplicate handle `{handle}` for locale `{locale}`")',
-  'format!("duplicate sku `{sku}`")',
-  'format!("insufficient inventory: requested {requested}, available {available}")',
-  'format!("shipping profile {id} not found")',
-  'format!("duplicate shipping profile slug `{slug}`")',
-]) {
-  forbidText(wrapper, value, 'dynamic canonical write public message');
-}
-
-for (const value of [
-  '"port.idempotency_key_required"',
-  '"port.deadline_required"',
-]) {
+for (const value of ['"port.idempotency_key_required"', '"port.deadline_required"']) {
   forbidText(wrapper, value, 'shared admission envelope reclassification');
 }
 
+for (const marker of [
+  'const PRICING_READ_BOUNDARY: &str = "pricing_read_port";',
+  'impl PricingReadPort for InProcessPricingReadPort',
+]) requireText(readWrapper, marker, 'read wrapper remains source-closed');
+
+for (const [key, expected] of Object.entries({
+  write_operation_count: 4,
+  owner_delegation_changed: false,
+  request_response_contract_changed: false,
+  error_kind_code_retryability_changed: false,
+  public_message_mapping_changed: false,
+  technical_error_severity_changed: false,
+  ordinary_warning_severity_changed: false,
+  raw_context_logged: false,
+  raw_uuid_logged: false,
+  exact_quantity_logged: false,
+  public_message_logged: false,
+  error_kind_debug_logged: false,
+  bounded_context_shape_logged: true,
+  bounded_request_shape_logged: true,
+  message_shape_logged: true,
+  closed_error_kind_logged: true,
+  read_context_wrapper_cleanup_closed: true,
+  write_context_wrapper_cleanup_closed: true,
+  broad_ecommerce_cleanup_closed: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+  }
+}
+for (const key of [
+  'tests_run',
+  'verifiers_run',
+  'cargo_run',
+  'format_run',
+  'workflow_checks_run',
+  'ci_run',
+  'compile_proven',
+  'mounted_runtime_proven',
+]) {
+  if (evidence.validation?.[key] !== false) {
+    failures.push(`${paths.evidence}: validation.${key} must remain false`);
+  }
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push(`${paths.evidence}: execution must remain empty`);
+}
+
+for (const [key, expected] of Object.entries({
+  all_four_write_operations_preserved: true,
+  owner_delegation_preserved: true,
+  mounted_root_factory_preserved: true,
+  public_error_envelope_preserved: true,
+  public_message_mapping_preserved: true,
+  technical_error_severity_preserved: true,
+  ordinary_warning_severity_preserved: true,
+  raw_context_removed: true,
+  raw_uuid_removed: true,
+  exact_quantity_removed: true,
+  public_message_text_removed: true,
+  debug_error_kind_removed: true,
+  bounded_context_shape_retained: true,
+  bounded_request_shape_retained: true,
+  message_shape_retained: true,
+  closed_error_kind_retained: true,
+  read_wrapper_source_closed: true,
+  write_wrapper_source_closed: true,
+  broad_ecommerce_cleanup_remains_open: true,
+  runtime_evidence_claimed: false,
+})) {
+  if (review.review_findings?.[key] !== expected) {
+    failures.push(`${paths.review}: review_findings.${key} must be ${expected}`);
+  }
+}
+
+for (const marker of [
+  '# Pricing write local outcome context',
+  'Status: **source-ready / unvalidated**',
+  'bounded delegated context',
+  'UUID presence and non-nil state',
+  'exact minimum and maximum quantity values are not recorded',
+  'public message text is not recorded',
+  'Both canonical Pricing wrappers are now source-closed',
+]) requireText(document, marker, `${paths.document}: truthful scope`);
+
 if (failures.length > 0) {
-  console.error('Pricing write local context verification failed:');
+  console.error('Pricing write local diagnostic-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ canonical pricing writes retain delegated context and publish only stable local outcomes',
+  '✔ canonical Pricing writes preserve four owner delegations and public envelopes while logging only bounded context/request/message shape; runtime evidence remains open',
 );

@@ -10,6 +10,7 @@
 
 pub mod artifact_permissions;
 pub mod context;
+pub mod digest;
 pub mod event_delivery;
 #[cfg(feature = "server")]
 pub mod graphql;
@@ -43,6 +44,9 @@ pub use context::{
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
     ChannelResolutionTraceStep,
+};
+pub use digest::{
+    SHA256_BLOCK_BYTES, SHA256_DIGEST_BYTES, fixed_work_sha256_eq, hmac_sha256, sha256_digest,
 };
 pub use event_delivery::{
     EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryUpdateOutcome,

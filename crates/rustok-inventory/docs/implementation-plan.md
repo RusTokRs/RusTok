@@ -30,6 +30,17 @@ presence/length shape facts. This source contract is guarded by
 `scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs` and
 remains unvalidated.
 
+The canonical durable reservation wrapper now retains correlation, closed
+operation labels, bounded context shape, bounded reservation/request shape,
+stable code, retryability, closed error-kind labels, and error-message
+presence/length. It no longer records complete `PortError` values, raw context,
+raw UUIDs, exact quantities, raw external IDs, or tenant UUID parse causes.
+Admission, tenant-validation, and exact stable local-outcome mappings return the
+same errors unchanged. This source contract is guarded by
+`scripts/verify/verify-inventory-reservation-owner-context.mjs` and
+`scripts/verify/verify-inventory-reservation-local-context.mjs`; execution
+evidence remains open.
+
 `BootstrapService` owns default-location creation, initial item/level creation,
 variant-record cleanup, and batched available-quantity reads when product
 creates or deletes variants. This is a native transaction-sharing bootstrap
@@ -43,12 +54,17 @@ and reservation contracts remain inventory-owned.
 - Structural shape: `core_transport_ui`
 - Admin native error safety: `source_ready_unvalidated`
 - Admin client transport error safety: `source_ready_unvalidated`
+- Durable reservation owner diagnostic safety: `source_ready_unvalidated`
 - FBA provider contract: `InventoryReservationPort` /
   `inventory.reservation.v1` in
   `crates/rustok-inventory/contracts/inventory-fba-registry.json`.
 - Static and no-compile runtime evidence:
   `crates/rustok-inventory/contracts/evidence/inventory-contract-test-static-matrix.json`
   and `crates/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json`.
+- Durable reservation diagnostic evidence:
+  `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
+  and
+  `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`.
 - `scripts/verify/verify-inventory-admin-boundary.mjs` locks the native
   core/transport/UI split and absence of pre-FFA/GraphQL admin paths.
 - `scripts/verify/verify-inventory-admin-native-error-safety.mjs` locks mounted
@@ -58,6 +74,10 @@ and reservation contracts remain inventory-owned.
   the final facade mapping, per-operation correlation context, safe request-shape
   diagnostics, and static `InventoryTransportError` text without claiming a
   runtime pass.
+- `scripts/verify/verify-inventory-reservation-owner-context.mjs` and
+  `scripts/verify/verify-inventory-reservation-local-context.mjs` lock bounded
+  durable reservation admission, tenant-validation, request-shape, and local
+  outcome diagnostics while preserving the exact owner calls and error returns.
 
 ## Open results
 
@@ -76,24 +96,29 @@ and reservation contracts remain inventory-owned.
    **Done when:** integration tests prove that cart, checkout, and storefront
    read models cannot diverge from `InventoryService` policy.
 
-3. **Run the verification/CI evidence slice for `InventoryReservationPort` and
-   admin native/client error safety.** Execute the remote-adapter contract and
-   fallback profiles before a `boundary_ready` promotion; retain native-only
-   admin transport unless a public parity contract is introduced. Execute both
-   focused admin error-safety guards, compile the default/hydrate/SSR package,
-   and retain mounted browser plus server-function failure evidence before
-   promoting either source-only status.
+3. **Run the verification/CI evidence slice for `InventoryReservationPort`,
+   durable reservation owner diagnostics, and admin native/client error
+   safety.** Execute the remote-adapter contract and fallback profiles before a
+   `boundary_ready` promotion; retain native-only admin transport unless a
+   public parity contract is introduced. Execute the focused error-safety
+   guards, compile the default/hydrate/SSR package, and retain mounted browser
+   plus server-function failure evidence before promoting any source-only
+   status.
    **Depends on:** a runtime-composed commerce consumer and remote adapter
    environment.
    **Done when:** deadline, idempotency, typed-error, degraded-mode, owner
-   invocation, client-facade sanitization, and mounted public-envelope evidence
-   covers every published port operation and native admin endpoint.
+   invocation, durable reservation diagnostic sanitization, client-facade
+   sanitization, and mounted public-envelope evidence covers every published
+   port operation and native admin endpoint.
 
 ## Verification
 
 - `npm run verify:inventory:admin-boundary`
 - `node scripts/verify/verify-inventory-admin-native-error-safety.mjs`
 - `node scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs`
+- `node scripts/verify/verify-inventory-reservation-owner-context.mjs`
+- `node scripts/verify/verify-inventory-reservation-local-context.mjs`
+- `node scripts/verify/verify-inventory-port-diagnostic-safety.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo xtask module validate inventory`
 - `cargo xtask module test inventory`
@@ -107,3 +132,6 @@ and reservation contracts remain inventory-owned.
    with any inventory/checkout/channel contract change.
 3. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.
+4. Keep durable reservation diagnostics correlation-aware and shape-only; do
+   not log complete port errors, raw context, reservation identities, external
+   identities, exact quantities, or parser causes.

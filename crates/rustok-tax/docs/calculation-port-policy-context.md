@@ -8,7 +8,8 @@ The canonical `TaxCalculationPort::calculate_tax` implementation assigns the tru
 `calculate_tax` operation before applying `PortCallPolicy::read()`. Admission failures
 are inspected, diagnosed, and returned unchanged.
 
-This slice keeps that ordering while hardening the diagnostic payload.
+This slice keeps that ordering while closing the remaining policy-admission diagnostic
+payload gap.
 
 ## Safe policy diagnostics
 
@@ -18,15 +19,23 @@ Policy rejection events retain:
 - operation `calculate_tax`;
 - boundary `tax_calculation_port`;
 - correlation id;
-- stable error code, typed kind, and retryability;
+- stable error code, a closed typed-kind label, and retryability;
+- error-message presence and character length;
 - tenant and actor-id lengths;
 - actor kind, claim count, and role count;
 - channel, causation, traceparent, and idempotency presence plus lengths;
 - locale length and deadline.
 
-They do not record raw tenant, actor id, channel, locale, causation id, traceparent, or
-idempotency key values. The original typed `PortError` remains available as structured
-technical evidence and is returned unchanged.
+They do not record:
+
+- the complete `PortError` through Debug or Display formatting;
+- public/internal error-message text;
+- debug-formatted `PortErrorKind` output;
+- raw tenant, actor id, channel, locale, causation id, traceparent, or idempotency
+  key values.
+
+The original typed `PortError` is still returned to the caller unchanged. It is not
+copied into the diagnostic event.
 
 Unavailable, timeout, and invariant failures retain error severity. Ordinary policy or
 validation rejections retain warning severity.
@@ -47,10 +56,11 @@ The change does not alter:
 
 `scripts/verify/verify-tax-calculation-policy-context.mjs` requires operation assignment
 before policy admission, the unchanged read policy, safe context-shape diagnostics,
-original typed error fields, and unchanged public envelopes. It forbids raw context
-values.
+closed kind classification, message shape, and unchanged public envelopes. It forbids
+complete `PortError` formatting, raw message text, debug-kind formatting, and raw
+context values.
 
-The owner and wrapper result paths are guarded by:
+The owner and wrapper result paths remain guarded by:
 
 - `scripts/verify/verify-tax-calculation-error-context.mjs`;
 - `scripts/verify/verify-tax-calculation-local-context.mjs`.

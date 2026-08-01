@@ -16,12 +16,67 @@ const INVENTORY_RESERVATION_BOUNDARY: &str = "inventory_reservation_identity_por
 const RESERVE_OPERATION: &str = "reserve_inventory_by_identity";
 const RELEASE_OPERATION: &str = "release_inventory_by_identity";
 
+struct InventoryReservationContextFacts {
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
 struct InventoryReservationIdentityDiagnostic {
-    reservation_id: Uuid,
-    variant_id: Option<Uuid>,
-    quantity: Option<i32>,
-    line_item_id: Option<Uuid>,
+    reservation_id_present: bool,
+    reservation_id_non_nil: bool,
+    variant_id_present: bool,
+    variant_id_non_nil: bool,
+    quantity_present: bool,
+    quantity_nonzero: bool,
+    quantity_negative: bool,
+    line_item_id_present: bool,
+    line_item_id_non_nil: bool,
     external_id_length: usize,
+}
+
+impl InventoryReservationIdentityDiagnostic {
+    fn reserve(request: &InventoryIdentityReservationRequest) -> Self {
+        Self {
+            reservation_id_present: true,
+            reservation_id_non_nil: !request.reservation_id.is_nil(),
+            variant_id_present: true,
+            variant_id_non_nil: !request.variant_id.is_nil(),
+            quantity_present: true,
+            quantity_nonzero: request.quantity != 0,
+            quantity_negative: request.quantity < 0,
+            line_item_id_present: request.line_item_id.is_some(),
+            line_item_id_non_nil: request.line_item_id.is_some_and(|value| !value.is_nil()),
+            external_id_length: request.external_id.chars().count(),
+        }
+    }
+
+    fn release(request: &InventoryIdentityReservationReleaseRequest) -> Self {
+        Self {
+            reservation_id_present: true,
+            reservation_id_non_nil: !request.reservation_id.is_nil(),
+            variant_id_present: false,
+            variant_id_non_nil: false,
+            quantity_present: false,
+            quantity_nonzero: false,
+            quantity_negative: false,
+            line_item_id_present: false,
+            line_item_id_non_nil: false,
+            external_id_length: request.external_id.chars().count(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -53,13 +108,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RESERVE_OPERATION)?;
         let diagnostic_context = context.clone();
-        let identity = InventoryReservationIdentityDiagnostic {
-            reservation_id: request.reservation_id,
-            variant_id: Some(request.variant_id),
-            quantity: Some(request.quantity),
-            line_item_id: request.line_item_id,
-            external_id_length: request.external_id.chars().count(),
-        };
+        let identity = InventoryReservationIdentityDiagnostic::reserve(&request);
         let result = self
             .inner
             .reserve_inventory_by_identity(context, request)
@@ -82,13 +131,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RELEASE_OPERATION)?;
         let diagnostic_context = context.clone();
-        let identity = InventoryReservationIdentityDiagnostic {
-            reservation_id: request.reservation_id,
-            variant_id: None,
-            quantity: None,
-            line_item_id: None,
-            external_id_length: request.external_id.chars().count(),
-        };
+        let identity = InventoryReservationIdentityDiagnostic::release(&request);
         let result = self
             .inner
             .release_inventory_by_identity(context, request)
@@ -101,6 +144,54 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 error,
             )
         })
+    }
+}
+
+fn inventory_reservation_context_facts(
+    context: &PortContext,
+) -> InventoryReservationContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    InventoryReservationContextFacts {
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn inventory_reservation_port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
     }
 }
 
@@ -166,66 +257,109 @@ fn map_inventory_reservation_identity_local_port_error(
         }
         _ => return error,
     };
+
+    log_inventory_reservation_local_outcome(
+        context,
+        operation,
+        local_operation,
+        identity,
+        &error,
+    );
+    error
+}
+
+fn log_inventory_reservation_local_outcome(
+    context: &PortContext,
+    operation: &'static str,
+    local_operation: &'static str,
+    identity: &InventoryReservationIdentityDiagnostic,
+    error: &PortError,
+) {
+    let facts = inventory_reservation_context_facts(context);
     let technical_failure = matches!(
         &error.kind,
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
     );
+
     if technical_failure {
         tracing::error!(
-            error = ?error,
             owner = INVENTORY_OWNER,
             operation,
             local_operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            reservation_id = %identity.reservation_id,
-            variant_id = ?identity.variant_id,
-            request_quantity = ?identity.quantity,
-            line_item_id = ?identity.line_item_id,
+            tenant_id_length = facts.tenant_id_length,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            reservation_id_present = identity.reservation_id_present,
+            reservation_id_non_nil = identity.reservation_id_non_nil,
+            variant_id_present = identity.variant_id_present,
+            variant_id_non_nil = identity.variant_id_non_nil,
+            quantity_present = identity.quantity_present,
+            quantity_nonzero = identity.quantity_nonzero,
+            quantity_negative = identity.quantity_negative,
+            line_item_id_present = identity.line_item_id_present,
+            line_item_id_non_nil = identity.line_item_id_non_nil,
             external_id_length = identity.external_id_length,
-            internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            code = %error.code,
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
+            error_kind = inventory_reservation_port_error_kind(&error.kind),
             retryable = error.retryable,
             boundary = INVENTORY_RESERVATION_BOUNDARY,
-            "durable inventory reservation local technical outcome retained delegated context"
+            "durable inventory reservation local technical outcome retained bounded delegated context"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = INVENTORY_OWNER,
             operation,
             local_operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            reservation_id = %identity.reservation_id,
-            variant_id = ?identity.variant_id,
-            request_quantity = ?identity.quantity,
-            line_item_id = ?identity.line_item_id,
+            tenant_id_length = facts.tenant_id_length,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            reservation_id_present = identity.reservation_id_present,
+            reservation_id_non_nil = identity.reservation_id_non_nil,
+            variant_id_present = identity.variant_id_present,
+            variant_id_non_nil = identity.variant_id_non_nil,
+            quantity_present = identity.quantity_present,
+            quantity_nonzero = identity.quantity_nonzero,
+            quantity_negative = identity.quantity_negative,
+            line_item_id_present = identity.line_item_id_present,
+            line_item_id_non_nil = identity.line_item_id_non_nil,
             external_id_length = identity.external_id_length,
-            internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            code = %error.code,
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
+            error_kind = inventory_reservation_port_error_kind(&error.kind),
             retryable = error.retryable,
             boundary = INVENTORY_RESERVATION_BOUNDARY,
-            "durable inventory reservation local outcome retained delegated context"
+            "durable inventory reservation local outcome retained bounded delegated context"
         );
     }
-    error
 }
 
 fn require_inventory_reservation_write_admission(
@@ -238,7 +372,12 @@ fn require_inventory_reservation_write_admission(
             log_inventory_reservation_admission_rejection(context, operation, "policy", error);
         })?;
     context.require_write_semantics().inspect_err(|error| {
-        log_inventory_reservation_admission_rejection(context, operation, "write_semantics", error);
+        log_inventory_reservation_admission_rejection(
+            context,
+            operation,
+            "write_semantics",
+            error,
+        );
     })
 }
 
@@ -248,53 +387,70 @@ fn log_inventory_reservation_admission_rejection(
     admission_phase: &'static str,
     error: &PortError,
 ) {
-    match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
-            tracing::error!(
-                error = ?error,
-                owner = INVENTORY_OWNER,
-                operation,
-                admission_phase,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = INVENTORY_RESERVATION_BOUNDARY,
-                "inventory reservation owner admission failed"
-            );
-        }
-        _ => {
-            tracing::warn!(
-                error = ?error,
-                owner = INVENTORY_OWNER,
-                operation,
-                admission_phase,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = INVENTORY_RESERVATION_BOUNDARY,
-                "inventory reservation owner admission was rejected"
-            );
-        }
+    let facts = inventory_reservation_context_facts(context);
+    let technical_failure = matches!(
+        &error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    );
+
+    if technical_failure {
+        tracing::error!(
+            owner = INVENTORY_OWNER,
+            operation,
+            admission_phase,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = facts.tenant_id_length,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            code = %error.code,
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
+            error_kind = inventory_reservation_port_error_kind(&error.kind),
+            retryable = error.retryable,
+            boundary = INVENTORY_RESERVATION_BOUNDARY,
+            "inventory reservation owner admission failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = INVENTORY_OWNER,
+            operation,
+            admission_phase,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = facts.tenant_id_length,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            code = %error.code,
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
+            error_kind = inventory_reservation_port_error_kind(&error.kind),
+            retryable = error.retryable,
+            boundary = INVENTORY_RESERVATION_BOUNDARY,
+            "inventory reservation owner admission was rejected with bounded diagnostics"
+        );
     }
 }
 
@@ -302,33 +458,49 @@ fn parse_inventory_reservation_tenant_id(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|cause| {
+    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         let error = PortError::validation(
             "inventory.context_invalid",
             "inventory request context is invalid",
         );
-        tracing::warn!(
-            parse_cause = ?cause,
-            error = ?error,
-            owner = INVENTORY_OWNER,
-            operation,
-            validation_phase = "tenant_id",
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
-            retryable = error.retryable,
-            boundary = INVENTORY_RESERVATION_BOUNDARY,
-            "inventory reservation owner context validation was rejected"
-        );
+        log_inventory_reservation_tenant_rejection(context, operation, &error);
         error
     })
+}
+
+fn log_inventory_reservation_tenant_rejection(
+    context: &PortContext,
+    operation: &'static str,
+    error: &PortError,
+) {
+    let facts = inventory_reservation_context_facts(context);
+    tracing::warn!(
+        owner = INVENTORY_OWNER,
+        operation,
+        validation_phase = "tenant_id",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = facts.tenant_id_length,
+        actor_kind = facts.actor_kind,
+        actor_id_length = facts.actor_id_length,
+        claim_count = facts.claim_count,
+        role_count = facts.role_count,
+        channel_present = facts.channel_present,
+        channel_length = ?facts.channel_length,
+        locale_length = facts.locale_length,
+        causation_id_present = facts.causation_id_present,
+        causation_id_length = ?facts.causation_id_length,
+        traceparent_present = facts.traceparent_present,
+        traceparent_length = ?facts.traceparent_length,
+        idempotency_key_present = facts.idempotency_key_present,
+        idempotency_key_length = ?facts.idempotency_key_length,
+        deadline_ms = ?facts.deadline_ms,
+        tenant_id_parse_failed = true,
+        code = %error.code,
+        error_message_present = !error.message.is_empty(),
+        error_message_length = error.message.chars().count(),
+        error_kind = inventory_reservation_port_error_kind(&error.kind),
+        retryable = error.retryable,
+        boundary = INVENTORY_RESERVATION_BOUNDARY,
+        "inventory reservation owner context validation was rejected with bounded diagnostics"
+    );
 }
