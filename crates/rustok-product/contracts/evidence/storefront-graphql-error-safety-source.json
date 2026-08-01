@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "product_storefront_graphql_error_safety_source_unvalidated",
   "scope": "product-owned storefront GraphQL catalog, detail, pricing, and catalog-search-options transport",
   "covered_operations": [
@@ -25,10 +25,27 @@
     "unknown_static_public_envelope": true,
     "correlation_logging": true,
     "safe_request_shape_logging": true,
+    "raw_graphql_detail_logged": false,
+    "parsed_graphql_error_debug_logged": false,
+    "raw_graphql_detail_shape_logged": true,
+    "typed_parse_validity_logged": true,
+    "closed_graphql_error_category_logged": true,
     "raw_request_values_logged": false,
     "raw_tenant_slug_logged": false,
     "raw_graphql_error_public": false,
-    "non_graphql_errors_pass_through": true
+    "non_graphql_errors_pass_through": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "internal_diagnostics": {
+    "raw_graphql_error": false,
+    "parsed_graphql_error_debug": false,
+    "raw_graphql_error_present": true,
+    "raw_graphql_error_length": true,
+    "parsed_graphql_error_valid": true,
+    "closed_graphql_error_category": true,
+    "owner_operation": true,
+    "correlation_id": true,
+    "safe_request_shape": true
   },
   "stable_public_messages": {
     "network_or_http": "Product storefront is temporarily unavailable",
