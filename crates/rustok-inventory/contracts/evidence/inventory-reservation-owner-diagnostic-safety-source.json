@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "inventory_reservation_owner_diagnostic_safety_source_unvalidated",
+  "scope": {
+    "owner_wrapper": "crates/rustok-inventory/src/reservation_owner_context.rs",
+    "persistent_owner": "crates/rustok-inventory/src/ports.rs",
+    "owner_verifier": "scripts/verify/verify-inventory-reservation-owner-context.mjs",
+    "local_verifier": "scripts/verify/verify-inventory-reservation-local-context.mjs",
+    "owner_documentation": "crates/rustok-inventory/docs/reservation-owner-context.md",
+    "local_documentation": "crates/rustok-inventory/docs/reservation-local-context.md"
+  },
+  "source_contract": {
+    "admission_diagnostic_cleanup_closed": true,
+    "tenant_parser_diagnostic_cleanup_closed": true,
+    "local_outcome_diagnostic_cleanup_closed": true,
+    "complete_port_error_logged": false,
+    "raw_context_logged": false,
+    "uuid_parse_cause_logged": false,
+    "raw_request_uuid_logged": false,
+    "exact_request_quantity_logged": false,
+    "raw_external_id_logged": false,
+    "bounded_context_shape_logged": true,
+    "bounded_request_shape_logged": true,
+    "stable_code_logged": true,
+    "error_message_shape_logged": true,
+    "closed_error_kind_logged": true,
+    "admission_error_return_changed": false,
+    "tenant_error_return_changed": false,
+    "delegated_error_return_changed": false,
+    "exact_code_message_classification_changed": false,
+    "public_contract_changed": false,
+    "owner_delegation_changed": false,
+    "sql_or_state_machine_changed": false,
+    "inventory_ffa_fba_status_promoted": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "execution": []
+}
