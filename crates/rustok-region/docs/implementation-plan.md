@@ -25,6 +25,11 @@ adapters bind and render prepared state.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `RegionReadPort` / `region.read_projection.v1` in
   `crates/rustok-region/contracts/region-fba-registry.json`.
+- Owner read-port error safety: `source_closed_unvalidated`; public validation
+  messages and owner diagnostics are bounded by
+  `crates/rustok-region/docs/region-owner-port-error-safety.md` and
+  `scripts/verify/verify-region-owner-port-error-safety.mjs` without promoting
+  FFA/FBA status.
 - Static and runtime-order evidence:
   `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json`
   and `crates/rustok-region/contracts/evidence/region-provider-runtime-order-smoke.json`.
@@ -62,8 +67,16 @@ adapters bind and render prepared state.
    **Done when:** route ownership, fallback behavior, and tax-provider policy
    describe the same module boundary everywhere.
 
+4. **Validate the Region owner-port error-safety source contract.** Execute the
+   focused verifier, compile the Region and Commerce consumers, and retain
+   mounted failure-envelope evidence without exposing raw owner payloads.
+   **Depends on:** repository checkout and composed Region consumers.
+   **Done when:** source guard, compile, and mounted runtime evidence are retained
+   without changing the current FFA/FBA status prematurely.
+
 ## Verification
 
+- `node scripts/verify/verify-region-owner-port-error-safety.mjs`
 - `npm run verify:region:admin-boundary`
 - `npm run verify:region:storefront-boundary`
 - `npm run verify:region:fba`

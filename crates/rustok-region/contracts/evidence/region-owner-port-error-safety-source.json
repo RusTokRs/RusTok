@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "region_owner_port_error_safety_source_unvalidated",
+  "scope": {
+    "owner_source": "crates/rustok-region/src/ports.rs",
+    "owner_error": "crates/rustok-region/src/error.rs",
+    "focused_verifier": "scripts/verify/verify-region-owner-port-error-safety.mjs",
+    "documentation": "crates/rustok-region/docs/region-owner-port-error-safety.md",
+    "local_plan": "crates/rustok-region/docs/implementation-plan.md"
+  },
+  "source_contract": {
+    "owner_operation_count": 2,
+    "owner_delegation_changed": false,
+    "request_response_contract_changed": false,
+    "public_error_kind_code_retryability_changed": false,
+    "dynamic_owner_validation_message_public": false,
+    "database_error_payload_logged": false,
+    "complete_port_error_logged_by_admission": false,
+    "port_error_message_text_logged_by_admission": false,
+    "raw_context_logged": false,
+    "raw_region_uuid_logged": false,
+    "raw_country_code_logged": false,
+    "static_owner_messages": true,
+    "closed_error_variant_logged": true,
+    "aggregate_text_shape_logged": true,
+    "aggregate_uuid_shape_logged": true,
+    "opaque_payload_presence_logged": true,
+    "bounded_context_shape_logged": true,
+    "bounded_request_shape_logged": true,
+    "region_ffa_status_changed": false,
+    "region_fba_status_changed": false,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "execution": []
+}
