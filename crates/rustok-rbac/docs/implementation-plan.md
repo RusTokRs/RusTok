@@ -16,7 +16,7 @@ targeted verification.
 - `docs/verification/rbac-server-modules-verification-plan.md` remains the
   cross-platform verification checklist, not a second RBAC implementation plan.
 
-Last reconciled with `main`: 2026-07-31.
+Last reconciled with `main`: 2026-08-01.
 
 ## Current state
 
@@ -32,8 +32,10 @@ The ownership boundary is:
   transaction-typed repair APIs, relation-integrity and durable invalidation
   generation migrations, and integration contracts;
 - `apps/server` owns authenticated host adapters, transaction orchestration,
-  request/process cache adapters, distributed invalidation delivery and runtime
-  supervision;
+  request/process cache adapters, distributed invalidation delivery, runtime
+  supervision and process-level invalidation telemetry;
+- `rustok-telemetry` owns the bounded Prometheus collectors registered in the
+  canonical process registry; it does not own RBAC recovery decisions;
 - `RbacRoleAssignmentDbWriter` is an idempotent bootstrap/test persistence
   primitive, while existing-user mutations use explicit transaction-owned or
   committed entry points;
@@ -48,6 +50,10 @@ made principal admission one owner-defined contract across GraphQL, REST and
 native RBAC Admin. The host-neutral `RbacControlPlanePrincipal` keeps the owner
 crate independent of Axum and `rustok-api/server`, while adapters supply only
 trusted authenticated facts.
+
+The cycle-001 invalidation observability slice adds dedicated bounded metrics to
+the canonical telemetry registry and instruments the existing database watchdog.
+It does not add a second generation counter, cache authority or recovery path.
 
 ## FFA/FBA boundary
 
@@ -168,6 +174,9 @@ trusted authenticated facts.
   actor comes from the authenticated context.
 - [x] Guard native RBAC Admin metadata bootstrap with the same owner principal
   policy before `settings:read`; remove the obsolete tenant-only helper.
+- [x] Add bounded invalidation metric registration tests, signed lag regression
+  coverage and `verify-rbac-invalidation-observability.mjs` to lock the canonical
+  registry, watchdog transitions, operator policy and active cursor.
 - [ ] Execute the added Rust tests and architecture guards in a toolchain-enabled
   environment and fix any compile, formatting or lint failures.
 
@@ -178,8 +187,8 @@ trusted authenticated facts.
 - [ ] Run formatting, compilation, Clippy and targeted RBAC/server/CLI tests on
   the reconciled `main` revision.
 - [ ] Record successful module validate/test evidence for `rbac`.
-- [ ] Execute the existing FFA/FBA verification scripts against the same
-  revision.
+- [ ] Execute the existing FFA/FBA and invalidation-observability verification
+  scripts against the same revision.
 - [ ] Resolve every failure before claiming the source-complete phases are
   compiled verified.
 
@@ -198,11 +207,11 @@ trusted authenticated facts.
 
 ### P1. Invalidation observability and incident operations
 
-- [ ] Export metrics for database generation, locally applied generation,
+- [x] Export metrics for database generation, locally applied generation,
   generation lag, worker running/restart state and recovery/full-clear counts.
-- [ ] Define alert thresholds for non-zero sustained lag, repeated worker
+- [x] Define alert thresholds for non-zero sustained lag, repeated worker
   restarts, generation regression and failed database reads.
-- [ ] Add an operator runbook covering Redis outage, missed event, generation
+- [x] Add an operator runbook covering Redis outage, missed event, generation
   regression, repair execution and verification of effective permissions.
 - [ ] Make one policy incident traceable to the evaluator decision, relation
   state, cache snapshot, durable generation and recovery action.
@@ -239,6 +248,35 @@ trusted authenticated facts.
   `transport_verified` gate is satisfied.
 - [ ] Complete native operator parity evidence before considering FFA
   `parity_verified`.
+
+## Durable invalidation observability correction (2026-08-01)
+
+- Status: `source_ready_unvalidated`.
+- Severity: `P1` because stale authorization recovery lacked dedicated lag,
+  worker-health and full-clear telemetry plus a bounded incident response policy.
+- Root cause: the canonical watchdog emitted logs and generic event-error counters,
+  but operators could not directly compare the database generation with the
+  process checkpoint, distinguish lag from regression, or alert on worker/read
+  failures without reconstructing state from logs.
+- [x] Add one `rustok-telemetry` metric module registered in the existing process
+  registry; do not create a second registry or generation authority.
+- [x] Export durable generation, applied generation, signed lag and watchdog
+  running state without tenant, user, role, permission, session, client or cache-key
+  labels.
+- [x] Count bounded watchdog restart reasons, database read failures, recovery
+  reasons and process-wide permission snapshot clears.
+- [x] Instrument the existing database watchdog before and after recovery so
+  positive lag is visible during catch-up, zero after successful application and
+  negative during database regression.
+- [x] Retain the monotonic local checkpoint on database regression while clearing
+  permission snapshots; telemetry must not normalize the unsafe state to zero.
+- [x] Add unit coverage for signed lag and metric registration plus the focused
+  source verifier `scripts/verify/verify-rbac-invalidation-observability.mjs`.
+- [x] Document alert thresholds and recovery procedures for Redis outage/restart,
+  missed PubSub, generation regression and canonical role repair.
+- [ ] Execute telemetry/server tests and the source verifier on the same revision.
+- [ ] Retain one real or dedicated integration incident packet connecting evaluator
+  decision, relation state, cache snapshot, durable generation and recovery action.
 
 ## Tenant trust boundary correction (2026-07-31)
 
@@ -301,15 +339,18 @@ trusted authenticated facts.
 
 ```bash
 cargo fmt --all -- --check
+cargo check -p rustok-telemetry
 cargo check -p rustok-rbac
 cargo check -p rustok-rbac --all-features
 cargo check -p rustok-rbac-admin --features ssr
 cargo check -p rustok-rbac-cli
 cargo check -p rustok-server --lib
+cargo test -p rustok-telemetry rbac_invalidation_metrics
 cargo test -p rustok-rbac --all-features
 cargo test -p rustok-rbac-admin --features ssr
 cargo test -p rustok-migrations --lib rbac_system_role_repair_tests
 cargo test -p rustok-rbac-cli
+cargo test -p rustok-server --lib rbac_invalidation_generation
 cargo test -p rustok-server --lib rbac
 cargo test -p rustok-server \
   --test rbac_artifact_permission_control_plane_guard \
@@ -322,6 +363,7 @@ cargo clippy -p rustok-rbac-cli -- -D warnings
 cargo clippy -p rustok-server --lib -- -D warnings
 cargo xtask module validate rbac
 cargo xtask module test rbac
+node scripts/verify/verify-rbac-invalidation-observability.mjs
 node scripts/verify/verify-rbac-admin-tenant-scope.mjs
 npm run verify:rbac:admin-boundary
 npm run verify:rbac:fba
@@ -364,11 +406,11 @@ harness owns them.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-07-31`
-- Scope inspected: `principal classification and authoritative request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog, durable assignment owner, REST/GraphQL adapters, native RBAC Admin bootstrap, operational CLI repair and invalidation worker/gap-tracker composition`
-- Findings: `P0=1, P1=1, P2=0, P3=0`
-- Fixed in this pass: `PR #2747 merged one host-neutral rustok-rbac policy requiring a direct non-nil session and authenticated/routed tenant equality before GraphQL, REST and native RBAC control-plane permission admission; REST no longer treats modules:manage as sufficient principal authority, native bootstrap no longer treats settings:read as sufficient, the obsolete native tenant-only helper is removed and the durable mutation actor remains derived from trusted AuthContext`
-- Remaining risks or blockers: `the merged P0/P1 corrections have only narrow default-crate compile evidence; same-SHA format, all-feature RBAC compile, RBAC Admin SSR compile, server compile, focused unit/architecture/verifier tests and live negative transport requests have not run. PostgreSQL mutation concurrency, durable generation allocation, Redis outage/restart/missed-publication recovery, operator repair propagation, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open. CI and Hardening runs for exact head remained pending without jobs, while issue #2740 stopped Rust-host before server build.`
-- Evidence: `source review confirms middleware builds request scope from authoritative DB permissions and OAuth only narrows authority; relation resolution tenant-filters role ids and generation-aware fills fail closed; role replacement and repair reserve durable generation in their owner transaction; local, Redis and reconciliation listeners share one bounded gap tracker. Exact PR head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159, then failed on the known PostgreSQL role fixture #2740 before rustok-server. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. No other queued or pending job is claimed as passed.`
-- Next action: `continue the RBAC P0/P1 sweep across remaining event/worker and management surfaces; obtain format/all-feature/admin/server/focused/module evidence on one reconciled revision, then run PostgreSQL concurrency and multi-replica Redis recovery before deciding completed versus blocked`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-rbac-admin --features ssr && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Last verified at (UTC): `2026-08-01`
+- Scope inspected: `principal classification and authoritative request-scope construction; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; installer bootstrap boundary; artifact permission catalog, durable assignment owner, REST/GraphQL adapters, native RBAC Admin bootstrap, operational CLI repair, invalidation worker/gap-tracker composition, canonical telemetry registration, signed durable/applied generation lag, watchdog lifecycle, database-read failures, recovery/full-clear transitions and operator incident procedures`
+- Findings: `P0=0, P1=1, P2=0, P3=0`
+- Fixed in this pass: `added dedicated bounded RBAC invalidation gauges/counters to the canonical rustok-telemetry registry; instrumented the existing database watchdog without adding another authority or execution path; retained negative lag for generation regression and zeroed lag only after successful catch-up; added unit and source regression guards plus documented alert thresholds and Redis/missed-event/regression/repair procedures`
+- Remaining risks or blockers: `the observability correction is source-ready but unexecuted. Same-SHA formatting, telemetry/RBAC all-feature/RBAC Admin/server compilation, focused Rust and source verifiers, module gates and live negative transport requests remain absent. PostgreSQL mutation concurrency, unique durable generation allocation, multi-replica Redis outage/restart/missed-publication recovery, canonical repair propagation, one complete incident trace, explicit actor-kind design, module-owned management flow and FFA/FBA evidence remain open. Issue #2740 still blocks the known Rust-host path before the server build.`
+- Evidence: `source review confirms the new metric module is registered only in the existing telemetry registry and has no tenant/user/role/permission/session/client/cache-key labels; signed lag unit coverage distinguishes catch-up, zero lag and database regression; the canonical watchdog records bounded panic/unexpected-exit/runtime-replaced, database-read, initial-sync, generation-advanced and generation-regressed transitions; verify-rbac-invalidation-observability.mjs locks code, docs and cursor synchronization. No formatting, compilation, test, verifier, workflow, CI, PostgreSQL or Redis command is claimed as executed in this pass.`
+- Next action: `run the targeted telemetry and server checks plus the focused source verifier on one revision; resolve failures, then retain PostgreSQL concurrency and two-replica Redis recovery evidence before continuing the explicit actor-kind and module-owned management P1 work`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-telemetry && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-telemetry rbac_invalidation_metrics && cargo test -p rustok-server --lib rbac_invalidation_generation && node scripts/verify/verify-rbac-invalidation-observability.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
