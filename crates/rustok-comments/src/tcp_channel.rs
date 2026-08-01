@@ -124,7 +124,9 @@ mod tests {
     #[test]
     fn plaintext_channel_is_explicitly_loopback_only() {
         assert_eq!(
-            PlaintextLoopbackCommentsTcpChannel.protection(),
+            CommentsTcpClientChannelConnector::protection(
+                &PlaintextLoopbackCommentsTcpChannel,
+            ),
             CommentsTcpChannelProtection::PlaintextLoopback
         );
         assert!(ensure_loopback("127.0.0.1:9000".parse().unwrap(), "endpoint").is_ok());
