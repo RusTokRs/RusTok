@@ -21,6 +21,12 @@ const evidence = JSON.parse(
     'crates/rustok-payment/contracts/evidence/payment-storefront-graphql-error-safety-source.json',
   ),
 );
+const review = JSON.parse(
+  read(
+    'crates/rustok-payment/contracts/evidence/payment-storefront-graphql-error-safety-source-review.json',
+  ),
+);
+const document = read('crates/rustok-payment/docs/storefront-graphql-error-safety.md');
 
 const failures = [];
 const requireText = (content, value, label) => {
@@ -124,23 +130,32 @@ for (const [value, label] of [
   ['Uuid::new_v4()', 'unique correlation generation'],
   ['let PaymentTransportError::Graphql(raw_error) = error else', 'non-GraphQL pass-through'],
   ['return error;', 'same non-GraphQL error return'],
+  ['let raw_error_present = !raw_error.trim().is_empty();', 'raw display presence fact'],
+  ['let raw_error_length = raw_error.chars().count();', 'raw display length fact'],
   ['GraphqlHttpError::from_str(raw_error.as_str())', 'typed display parsing'],
+  ['let parsed_error_valid = parsed_error.is_ok();', 'typed parse validity fact'],
   ['Ok(GraphqlHttpError::Network)', 'network policy'],
   ['Ok(GraphqlHttpError::Http(_))', 'HTTP policy'],
   ['Ok(GraphqlHttpError::Unauthorized)', 'authentication policy'],
   ['Ok(GraphqlHttpError::Graphql(_))', 'GraphQL rejection policy'],
   ['Err(_)', 'unknown failure policy'],
+  ['"network"', 'closed network category'],
+  ['"http"', 'closed HTTP category'],
+  ['"unauthorized"', 'closed unauthorized category'],
+  ['"graphql"', 'closed GraphQL category'],
+  ['"unknown"', 'closed unknown category'],
   ['tracing::error!(', 'technical diagnostics'],
   ['tracing::warn!(', 'rejection diagnostics'],
-  ['raw_error = %raw_error', 'internal raw cause'],
-  ['parsed_error = ?parsed_error', 'typed internal cause'],
+  ['raw_error_present,', 'bounded raw display presence logging'],
+  ['raw_error_length,', 'bounded raw display length logging'],
+  ['parsed_error_valid,', 'bounded typed parse logging'],
   ['owner = PAYMENT_STOREFRONT_GRAPHQL_OWNER', 'truthful owner'],
   ['owner_operation = self.owner_operation', 'exact owner operation'],
   ['correlation_id = %self.correlation_id', 'correlation diagnostics'],
   ['tenant_slug_configured = self.tenant_slug_length.is_some()', 'tenant configuration fact'],
   ['tenant_slug_length = ?self.tenant_slug_length', 'tenant length fact'],
-  ['error_kind,', 'stable error kind'],
-  ['code,', 'stable public code'],
+  ['error_kind,', 'closed error category'],
+  ['code,', 'stable internal code'],
   ['boundary = PAYMENT_STOREFRONT_GRAPHQL_BOUNDARY', 'boundary diagnostics'],
   ['PaymentTransportError::Graphql(public_message.to_string())', 'static public GraphQL envelope'],
 ]) requireText(safety, value, label);
@@ -157,6 +172,10 @@ for (const [code, message, label] of [
 }
 
 for (const value of [
+  'raw_error = %raw_error',
+  'raw_error = ?raw_error',
+  'parsed_error = ?parsed_error',
+  'parsed_error = %parsed_error',
   'tenant_slug =',
   'tenant_slug = %',
   'graphql_query',
@@ -185,8 +204,14 @@ for (const [key, expected] of Object.entries({
   transport_selection_changed: false,
   request_response_dto_changed: false,
   graphql_query_changed: false,
+  raw_graphql_detail_logged: false,
+  parsed_graphql_error_debug_logged: false,
+  raw_graphql_detail_shape_logged: true,
+  typed_parse_validity_logged: true,
+  closed_graphql_error_category_logged: true,
   raw_graphql_error_public: false,
   raw_tenant_slug_logged: false,
+  broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`evidence source_contract.${key} must be ${expected}`);
@@ -208,6 +233,40 @@ for (const key of [
   }
 }
 
+if (
+  review.status !==
+  'payment_storefront_graphql_error_safety_source_reviewed_unvalidated'
+) failures.push(`review status mismatch: ${review.status}`);
+for (const [key, expected] of Object.entries({
+  typed_graphql_variant_policy: true,
+  static_public_graphql_messages: true,
+  raw_graphql_detail_logging_removed: true,
+  parsed_graphql_error_debug_logging_removed: true,
+  bounded_graphql_error_shape_retained: true,
+  all_three_public_operations_preserved: true,
+  per_call_correlation_id: true,
+  tenant_shape_only: true,
+  private_graphql_adapter_changed: false,
+  native_path_changed: false,
+  validation_path_changed: false,
+  graphql_queries_changed: false,
+  transport_selection_changed: false,
+  request_response_dto_changed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (review.implementation_review?.[key] !== expected) {
+    failures.push(`review implementation_review.${key} must be ${expected}`);
+  }
+}
+
+for (const marker of [
+  'Status: **source-ready / unvalidated**',
+  'Raw GraphQL display text is not written to the event.',
+  'Debug output from the parsed typed error is not written to the event.',
+  'raw-display presence and character length',
+  'The ecommerce correlation-safe mapper item remains open',
+]) requireText(document, marker, 'truthful payment GraphQL documentation');
+
 if (failures.length > 0) {
   console.error('Payment storefront GraphQL error-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
@@ -215,5 +274,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ payment storefront GraphQL failures retain internal typed diagnostics and expose only static transport messages; runtime evidence remains open',
+  '✔ payment storefront GraphQL failures retain bounded error and tenant shape while exposing only static transport messages; runtime evidence remains open',
 );

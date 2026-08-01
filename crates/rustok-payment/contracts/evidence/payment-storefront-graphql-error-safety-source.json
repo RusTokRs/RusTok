@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "payment_storefront_graphql_error_safety_source_unvalidated",
   "scope": "payment-owned storefront GraphQL transport consumer for refund summary and payment collection read/create",
   "source_contract": {
@@ -19,8 +19,25 @@
     "transport_selection_changed": false,
     "request_response_dto_changed": false,
     "graphql_query_changed": false,
+    "raw_graphql_detail_logged": false,
+    "parsed_graphql_error_debug_logged": false,
+    "raw_graphql_detail_shape_logged": true,
+    "typed_parse_validity_logged": true,
+    "closed_graphql_error_category_logged": true,
     "raw_graphql_error_public": false,
-    "raw_tenant_slug_logged": false
+    "raw_tenant_slug_logged": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "internal_diagnostics": {
+    "raw_graphql_error": false,
+    "parsed_graphql_error_debug": false,
+    "raw_graphql_error_present": true,
+    "raw_graphql_error_length": true,
+    "parsed_graphql_error_valid": true,
+    "closed_graphql_error_category": true,
+    "owner_operation": true,
+    "correlation_id": true,
+    "tenant_slug_configured_and_length": true
   },
   "stable_public_messages": {
     "network_unavailable": "Payment storefront is temporarily unavailable",
