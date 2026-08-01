@@ -6,6 +6,49 @@ use axum::{
 use std::collections::HashSet;
 use uuid::Uuid;
 
+/// Trusted principal classification produced after access-token subject and grant
+/// invariants have been validated by the authentication boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthPrincipalKind {
+    DirectUser,
+    DelegatedUser,
+    Service,
+}
+
+impl AuthPrincipalKind {
+    /// Convert already-authenticated grant facts into one explicit principal kind.
+    /// Invalid or ambiguous combinations fail closed and must not reach downstream
+    /// authorization policy.
+    pub fn from_authenticated_facts(
+        grant_type: &str,
+        client_id: Option<Uuid>,
+        session_id: Uuid,
+    ) -> Option<Self> {
+        match grant_type {
+            "direct" if client_id.is_none() && !session_id.is_nil() => Some(Self::DirectUser),
+            "authorization_code" if client_id.is_some() && session_id.is_nil() => {
+                Some(Self::DelegatedUser)
+            }
+            "client_credentials" if client_id.is_some() && session_id.is_nil() => {
+                Some(Self::Service)
+            }
+            _ => None,
+        }
+    }
+
+    pub const fn is_direct_user(self) -> bool {
+        matches!(self, Self::DirectUser)
+    }
+
+    pub const fn is_human_user(self) -> bool {
+        matches!(self, Self::DirectUser | Self::DelegatedUser)
+    }
+
+    pub const fn is_service(self) -> bool {
+        matches!(self, Self::Service)
+    }
+}
+
 /// Check if a requested scope is allowed by the granted scope list.
 ///
 /// Supports:
@@ -235,6 +278,7 @@ pub struct AuthContext {
     pub session_id: Uuid,
     pub tenant_id: Uuid,
     pub permissions: Vec<Permission>,
+    pub principal_kind: AuthPrincipalKind,
     pub client_id: Option<Uuid>,
     pub scopes: Vec<String>,
     pub grant_type: String,
@@ -245,10 +289,10 @@ pub struct AuthContextExtension(pub AuthContext);
 
 impl AuthContext {
     /// Check if the current context has the required scope.
-    /// For direct grants (embedded/user login), scopes are empty and access is allowed.
-    /// For OAuth2 tokens, scopes must include the required scope (with wildcard support).
+    /// Direct users are not OAuth principals. Delegated users and services must
+    /// carry a matching OAuth scope.
     pub fn require_scope(&self, required: &str) -> Result<(), async_graphql::Error> {
-        if self.client_id.is_none() {
+        if self.principal_kind.is_direct_user() {
             return Ok(());
         }
         if scope_matches(&self.scopes, required) {
@@ -302,11 +346,17 @@ mod tests {
     use super::*;
 
     fn make_auth_ctx(client_id: Option<Uuid>, scopes: Vec<String>) -> AuthContext {
+        let principal_kind = if client_id.is_some() {
+            AuthPrincipalKind::Service
+        } else {
+            AuthPrincipalKind::DirectUser
+        };
         AuthContext {
             user_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             permissions: vec![],
+            principal_kind,
             client_id,
             scopes,
             grant_type: if client_id.is_some() {
@@ -315,6 +365,38 @@ mod tests {
                 "direct".to_string()
             },
         }
+    }
+
+    #[test]
+    fn authenticated_facts_classify_fail_closed() {
+        assert_eq!(
+            AuthPrincipalKind::from_authenticated_facts("direct", None, Uuid::new_v4()),
+            Some(AuthPrincipalKind::DirectUser)
+        );
+        assert_eq!(
+            AuthPrincipalKind::from_authenticated_facts(
+                "authorization_code",
+                Some(Uuid::new_v4()),
+                Uuid::nil(),
+            ),
+            Some(AuthPrincipalKind::DelegatedUser)
+        );
+        assert_eq!(
+            AuthPrincipalKind::from_authenticated_facts(
+                "client_credentials",
+                Some(Uuid::new_v4()),
+                Uuid::nil(),
+            ),
+            Some(AuthPrincipalKind::Service)
+        );
+        assert_eq!(
+            AuthPrincipalKind::from_authenticated_facts(
+                "authorization_code",
+                Some(Uuid::new_v4()),
+                Uuid::new_v4(),
+            ),
+            None
+        );
     }
 
     #[test]
