@@ -1,0 +1,48 @@
+{
+  "contract": "forum_search_versioned_invalidation_search_disabled_recovery_proof_v1",
+  "task": "FORUM-23B2G2B3D9",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "apps/server/tests/forum_versioned_invalidation_search_disabled_recovery.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-search-disabled-recovery-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "host_package": "rustok-server",
+    "disabled_profile": "outbox_taxonomy_and_forum_migrations_without_search_migrations_or_runtime",
+    "enable_transition": "apply_search_migrations_then_start_bounded_owner_ledger_reconciler",
+    "broker": "not_required_for_owner_ledger_recovery_proof"
+  },
+  "scenario": {
+    "id": "search_disabled_profile",
+    "proves": [
+      "Forum category and topic owner commands commit while Search documents, inbox and owner-checkpoint tables do not exist",
+      "the owner transactions atomically retain legacy invalidation roots, caused typed invalidations and contiguous Forum revision-ledger rows without a synchronous Search call",
+      "late Search enable starts with zero inbox deliveries, zero owner checkpoints and zero Forum Search documents",
+      "the real Forum owner revision source discovers the tenant and all three missing revisions through bounded pages",
+      "one current-state rebuild materializes the category and two topics before owner checkpoints advance exactly through revisions 1, 2 and 3",
+      "the final checkpoint references the exact revision-3 legacy root event UUID with rebuild_repaired outcome",
+      "Forum owner rows and committed owner events remain unchanged and a caught-up sweep performs no duplicate rebuild or checkpoint advancement"
+    ]
+  },
+  "identity_invariants": [
+    "each forum_projection_revision_ledger.event_id equals one committed legacy index.reindex_requested envelope ID",
+    "each caused typed invalidation causation_id equals the same revision ledger event_id",
+    "Search owner recovery does not synthesize search_projection_inbox deliveries",
+    "Forum owner_revision remains independent from any Search ingest_sequence",
+    "checkpoint event_id equals the exact owner revision root event identity"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_search_disabled_recovery -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL execution passed",
+    "this proof models Search-disabled runtime by absence of Search migrations and workers rather than a long-running process restart",
+    "this proof does not use Iggy acknowledgement, poison or DLQ behavior",
+    "this proof does not validate host polling cadence, restart timing or deployment orchestration",
+    "this proof does not close the aggregate FORUM-23B2G2B3D runtime evidence gate or LINK-FORUM-03"
+  ]
+}
