@@ -1,0 +1,57 @@
+{
+  "contract": "forum_search_versioned_invalidation_aggregate_evidence_assembler_v1",
+  "task": "FORUM-23B2G2B3D11",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "assembler": "scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs",
+  "verifier": "scripts/verify/verify-forum-search-versioned-invalidation-aggregate-evidence-assembler.mjs",
+  "input_artifacts": [
+    "target/forum-search-versioned-invalidation-postgres-ingress-evidence.json",
+    "target/forum-search-versioned-invalidation-ack-restart-evidence.json",
+    "target/forum-search-versioned-invalidation-raw-poison-evidence.json",
+    "target/forum-search-versioned-invalidation-semantic-poison-evidence.json",
+    "target/forum-search-versioned-invalidation-missing-delivery-repair-evidence.json",
+    "target/forum-search-versioned-invalidation-multi-process-evidence.json",
+    "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json",
+    "target/forum-search-versioned-invalidation-search-disabled-recovery-evidence.json",
+    "target/forum-search-versioned-invalidation-normal-delivery-evidence.json"
+  ],
+  "output_artifact": {
+    "path": "target/forum-search-versioned-invalidation-runtime-evidence.json",
+    "generation": "assembler_only_after_all_runtime_subproofs_pass",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "atomic_replace": true
+  },
+  "fail_closed_requirements": [
+    "all nine D2 through D10 evidence files must exist and parse as JSON",
+    "every input contract and task must match its exact registered subproof",
+    "every required input scenario must be present exactly once with result passed and non-empty facts",
+    "all input artifacts must report PostgreSQL and one identical forty-character source commit",
+    "the shared source commit must equal git rev-parse HEAD at assembly time",
+    "all Iggy-backed artifacts must report outbox_iggy, the canonical consumer group and topic domain",
+    "the parent D0 contract must retain the exact ten frozen required scenarios",
+    "the assembler must derive the output from input bytes and record a SHA-256 digest for every source artifact",
+    "the output must contain every D0 required field and may be written only after all validation succeeds"
+  ],
+  "frozen_scenario_sources": {
+    "normal_delivery": "FORUM-23B2G2B3D10:normal_delivery",
+    "legacy_first_duplicate": "FORUM-23B2G2B3D2:legacy_first_duplicate",
+    "typed_first_duplicate": "FORUM-23B2G2B3D2:typed_first_duplicate",
+    "acknowledgement_failure_restart": "FORUM-23B2G2B3D3:acknowledgement_failure_restart",
+    "raw_poison_dlq_redelivery": "FORUM-23B2G2B3D4:raw_poison_dlq_redelivery",
+    "semantic_poison_identity_conflict": "FORUM-23B2G2B3D5:semantic_poison_identity_conflict",
+    "missing_delivery_owner_repair": "FORUM-23B2G2B3D6:missing_delivery_owner_repair",
+    "multi_process_serialization": "FORUM-23B2G2B3D7:multi_process_serialization",
+    "deletion_acl_ordering": "FORUM-23B2G2B3D8:deletion_acl_ordering",
+    "search_disabled_profile": "FORUM-23B2G2B3D9:search_disabled_profile"
+  },
+  "maintainer_command": "node scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs",
+  "non_claims": [
+    "this source-ready assembler does not claim that any PostgreSQL, Iggy, restart, poison, DLQ or multi-process command passed",
+    "the assembler does not execute D2 through D10 tests or create missing subproof evidence",
+    "the assembler does not accept mixed commits, skipped scenarios, static fixtures or manually edited aggregate output",
+    "this slice does not promote the D0 contract, FORUM-23 or LINK-FORUM-03 to complete",
+    "runtime completion still requires maintainer execution and retention of the generated aggregate artifact"
+  ]
+}
