@@ -1,171 +1,76 @@
-# Inventory durable reservation local outcome context
+# Inventory durable reservation local diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice extends the canonical `PersistentInventoryReservationIdentityPort` wrapper with
-post-delegation local outcome diagnostics for:
+The canonical durable reservation wrapper classifies covered owner failures
+using exact stable `code + message` pairs and returns the same delegated
+`PortError` unchanged.
 
-- `InventoryReservationIdentityPort::reserve_inventory_by_identity`;
-- `InventoryReservationIdentityPort::release_inventory_by_identity`.
+The covered operations remain reserve and release by durable reservation
+identity. Unknown owner envelopes pass through without an additional local
+event.
 
-Admission and tenant-validation diagnostics remain owned by the preceding durable reservation context
-slice. This work covers stable errors returned after the unchanged persistent owner accepts the
-original delegated context and request.
+## Bounded request shape
 
-## Delegation order
+Reserve diagnostics retain only:
 
-Both operations now follow the same source order:
+- reservation-ID presence and non-nil status;
+- variant-ID presence and non-nil status;
+- quantity presence, non-zero status, and negative status;
+- line-item-ID presence and non-nil status;
+- external-ID character length.
 
-1. require write policy;
-2. require write semantics;
-3. parse the trimmed tenant UUID;
-4. retain the accepted `PortContext` and safe request facts;
-5. delegate the original context and request to the unchanged persistent owner;
-6. inspect only a returned `PortError`;
-7. emit a local diagnostic when its exact stable code and message identify a covered outcome;
-8. return the same `PortError` unchanged.
+Release diagnostics retain reservation-ID shape and external-ID length while
+marking variant, quantity, and line-item facts absent.
 
-Successful reserve, replay-adoption, already-released, and release snapshots do not emit a local
-failure event.
+Raw UUIDs, exact quantity, and external-ID text are not recorded.
 
-## Retained request facts
+## Local classification
 
-Reserve diagnostics retain:
+The existing exact classifications remain unchanged for external-ID and
+quantity validation, variant/state lookup, replay identity conflicts,
+insufficient inventory, release lookup, missing inventory item, locked identity
+revalidation, ledger consistency, available-quantity overflow, and storage
+unavailability.
 
-- reservation id;
-- variant id;
-- requested quantity;
-- optional line-item id;
-- external-id character length.
+Technical unavailable, timeout, and invariant outcomes retain error severity.
+Ordinary validation, not-found, and conflict outcomes retain warning severity.
 
-Release diagnostics retain:
+## Bounded delegated error shape
 
-- reservation id;
-- external-id character length.
+Covered events retain stable code, retryability, a closed error-kind label, and
+error-message presence/length. The complete delegated `PortError` is not logged,
+raw message text is not copied into the event, and debug-formatted kind output is
+not retained.
 
-The caller-provided external-id text is deliberately not recorded. Validation can receive an empty or
-oversized value before the persistent owner normalizes it, so logging only its character length retains
-useful request evidence without publishing the raw identity string.
-
-## Covered stable outcomes
-
-The mapper requires exact `code + message` pairs. Code-only matching is intentionally forbidden.
-
-| Public operation | Stable envelope | Local operation | Severity |
-| --- | --- | --- | --- |
-| both | `inventory.reservation_external_id_invalid` / `reservation external_id must contain 1 to 191 characters` | `normalize_external_id` | warning |
-| reserve | `inventory.reservation_quantity_invalid` / `reservation quantity must be positive` | `validate_reservation_quantity` | warning |
-| both | `inventory.variant_not_found` / `inventory variant was not found` | `load_variant` | warning |
-| reserve | `inventory.state_not_found` / `variant has no configured inventory state` | `load_inventory_state` | warning |
-| reserve | `inventory.reservation_identity_conflict` / `reservation identity is already bound to different reservation data` | `validate_existing_reservation_identity` | warning |
-| reserve | `inventory.insufficient_inventory` / `insufficient inventory for reservation` | `reserve_available_stock` | warning |
-| release | `inventory.reservation_not_found` / `inventory reservation was not found` | `load_reservation` | warning |
-| release | `inventory.reservation_identity_conflict` / `reservation id is bound to another external identity` | `validate_release_external_identity` | warning |
-| release | `inventory.reservation_item_missing` / `reservation inventory item is missing` | `load_reservation_inventory_item` | error |
-| release | `inventory.reservation_identity_conflict` / `reservation identity changed while acquiring the owner lock` | `revalidate_release_identity` | warning |
-| release | `inventory.reservation_ledger_inconsistent` / `inventory reservation ledger is inconsistent` | `release_reserved_quantity` | error |
-| both | `inventory.available_quantity_overflow` / `inventory available quantity is outside the supported range` | `calculate_available_quantity` | error |
-| both | `inventory.database_unavailable` / `inventory storage is temporarily unavailable` | `owner_storage` | error |
-
-Unavailable, timeout, and invariant kinds use error severity. Validation, not-found, conflict, and other
-ordinary caller or state rejection use warning severity.
-
-## Retained diagnostic context
-
-Covered outcomes record:
-
-- truthful owner `rustok_inventory`;
-- exact public operation and local operation;
-- boundary `inventory_reservation_identity_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- the safe request facts described above;
-- stable code and message;
-- typed error kind and retryability;
-- the complete delegated `PortError` value.
-
-## Pass-through behavior
-
-The local mapper does not handle:
-
-- write-policy rejection;
-- missing write semantics;
-- malformed tenant context;
-- any unrecognized owner code or message;
-- successful initial reserve;
-- successful reserve replay adoption by reservation id or external id;
-- successful insert-race adoption;
-- successful first release;
-- successful already-released replay.
-
-Admission and tenant validation continue to be recorded before delegation by the existing wrapper
-helpers. Unknown owner envelopes pass through without another event.
+The same delegated error is returned unchanged.
 
 ## Preserved owner behavior
 
-This work does not change:
+The persistent implementation in `ports.rs` is unchanged, including:
 
-- request or response DTOs;
-- public codes, messages, kinds, or retryability;
-- external-id trimming and length limits;
+- external-ID normalization;
 - positive quantity validation;
-- tenant-scoped variant loading;
-- inventory-state and row-lock behavior;
-- active-location selection and backorder policy;
-- reservation id and external-id replay adoption;
-- insert-race rollback and adoption;
-- metadata construction;
-- exact release identity checks;
-- already-released idempotency;
-- reservation ledger mutation and consistency checks;
+- reservation and external-ID replay adoption;
+- row locking and transaction ordering;
+- stock and backorder policy;
+- release identity checks and idempotency;
+- reservation-ledger mutation;
 - available-quantity calculation;
-- database mapping;
-- factory names or checkout composition.
+- storage mapping.
 
-The persistent owner implementation in `ports.rs` remains unchanged.
+## Evidence
 
-## Static evidence
+- `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
+- `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`
+- `scripts/verify/verify-inventory-reservation-local-context.mjs`
+- `scripts/verify/verify-inventory-reservation-owner-context.mjs`
 
-`scripts/verify/verify-inventory-reservation-local-context.mjs` guards:
+No tests, verifiers, formatting, Cargo commands, workflows, CI, or mounted
+runtime validation were run.
 
-- admission → tenant validation → context retention → owner delegation → local mapping ordering;
-- retained safe request facts for reserve and release;
-- unchanged delegated method calls;
-- exact stable code-and-message classification;
-- operation-specific reserve and release local labels;
-- technical versus ordinary severity;
-- complete context and error fields;
-- absence of raw external-id diagnostics;
-- same delegated `PortError` return;
-- pass-through of unknown, admission, and context errors;
-- unchanged persistent owner validation, lookup, replay, stock, not-found, storage, and invariant branches.
-
-## Remaining gaps
-
-The ecommerce correlation-safe mapper task remains open for:
-
-- direct callers that bypass the canonical inventory factories where a bypass remains possible;
-- remaining payment execution and compensation consumers;
-- GraphQL customer reads and shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No FBA or FFA status is promoted from source inspection alone.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
-
-```bash
-node scripts/verify/verify-inventory-reservation-local-context.mjs
-node scripts/verify/verify-inventory-reservation-owner-context.mjs
-node scripts/verify/verify-inventory-availability-quantity-local-context.mjs
-node scripts/verify/verify-commerce-checkout-inventory-boundary-context.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
-cargo check -p rustok-inventory --lib
-cargo check -p rustok-commerce --lib
-```
+The ecommerce correlation-safe mapper task remains open for the remaining
+payment, fulfillment, customer, promotion, ecommerce adapter, and non-`PortError`
+surfaces.
