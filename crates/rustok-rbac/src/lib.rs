@@ -19,9 +19,9 @@ mod repair;
 pub mod services;
 
 pub use artifact_permission_assignment::{
-    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
-    ArtifactRolePermissionAssignmentResult, RbacArtifactPermissionAssignmentService,
-    SeaOrmArtifactPermissionAuthorizer,
+    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
+    ArtifactRolePermissionAssignmentCommand, ArtifactRolePermissionAssignmentResult,
+    RbacArtifactPermissionAssignmentService, SeaOrmArtifactPermissionAuthorizer,
 };
 pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
@@ -142,6 +142,10 @@ impl RusToKModule for RbacModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["outbox"]
     }
 
     fn kind(&self) -> ModuleKind {
