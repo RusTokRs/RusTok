@@ -9,9 +9,9 @@ credential envelope, and loopback bearer-authenticated read profile.
 ## 2026-08-01 continuation audit
 
 Slice 72 was rechecked against current `main` at
-`6cb1dde6071708a2d72328e7c01d2dc74a9c4931`. The intervening Region and Tax
-diagnostic commits do not modify Blog, Comments, the shared digest helper, or
-the TCP host runtime.
+`6cb1dde6071708a2d72328e7c01d2dc74a9c4931`. The intervening Region, Tax, and
+other ecommerce diagnostic commits do not modify Blog, Comments, the shared
+digest helper, or the TCP host runtime.
 
 The bearer-only profile remains deliberately read-only. Blog create, update, and
 delete calls already construct user-owned `PortContext` values with a canonical
@@ -101,8 +101,11 @@ remains maintainer-owned.
 - Plaintext endpoint, listener, and peer restrictions remain loopback-only.
 - No secret, signature, signed token, or delegation payload is emitted through
   transport, resolver, or secret `Debug` output.
-- Historical slice-68 through slice-72 guards are reconciled without changing
-  their retained source-only evidence status.
+- The slice-72 bearer guard is reconciled so the original three-read default
+  remains protected independently of the new delegation resolver.
+- Slice 73 uses one comprehensive source guard for HMAC, credential routing,
+  server authorization ordering, host configuration, Blog context construction,
+  Comments owner policy, and process-local replay bounds.
 - Source evidence is retained at
   `crates/rustok-blog/contracts/evidence/blog-comments-tcp-user-delegation.json`.
 - The standalone source verifier is
@@ -159,9 +162,6 @@ Runtime status: `not_run`.
 
 - `node scripts/verify/verify-blog-comments-tcp-user-delegation.mjs`
 - `node scripts/verify/verify-blog-comments-tcp-bearer-auth.mjs`
-- `node scripts/verify/verify-blog-comments-tcp-listener-lifecycle.mjs`
-- `node scripts/verify/verify-blog-comments-tcp-server-adapter.mjs`
-- `node scripts/verify/verify-blog-comments-tcp-transport.mjs`
 - `cargo test -p rustok-api --lib digest::tests`
 - `cargo test -p rustok-comments --features tcp-transport --lib tcp_delegation::tests`
 - `cargo test -p rustok-comments --features tcp-transport --lib tcp_auth::tests`
