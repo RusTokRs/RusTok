@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "fulfillment_storefront_graphql_error_safety_source_unvalidated",
   "scope": "fulfillment-owned storefront GraphQL shipping-selection transport",
   "owner": "rustok_fulfillment.storefront",
@@ -13,14 +13,19 @@
     "typed_graphql_error_policy": true,
     "per_call_correlation_id": true,
     "safe_request_shape_logging": true,
-    "raw_graphql_detail_internal_only": true,
+    "raw_graphql_detail_logged": false,
+    "parsed_graphql_error_debug_logged": false,
+    "raw_graphql_detail_shape_logged": true,
+    "typed_parse_validity_logged": true,
+    "closed_graphql_error_category_logged": true,
     "validation_variant_changed": false,
     "native_variant_changed": false,
     "transport_selection_changed": false,
     "graphql_document_changed": false,
     "request_response_dto_changed": false,
     "native_server_functions_changed": false,
-    "raw_graphql_detail_public": false
+    "raw_graphql_detail_public": false,
+    "broad_ecommerce_cleanup_closed": false
   },
   "stable_public_messages": {
     "network_or_http": "Shipping selection is temporarily unavailable",
@@ -28,8 +33,12 @@
     "graphql_rejection_or_unknown": "Shipping selection request could not be completed"
   },
   "internal_diagnostics": {
-    "raw_graphql_error": true,
-    "parsed_graphql_error": true,
+    "raw_graphql_error": false,
+    "parsed_graphql_error_debug": false,
+    "raw_graphql_error_present": true,
+    "raw_graphql_error_length": true,
+    "parsed_graphql_error_valid": true,
+    "closed_graphql_error_category": true,
     "owner_operation": true,
     "correlation_id": true,
     "tenant_slug_value": false,
