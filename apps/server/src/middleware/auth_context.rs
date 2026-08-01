@@ -6,7 +6,6 @@ use axum::{
 };
 use rustok_api::context::{
     AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
-    AuthPrincipalKind,
 };
 use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
@@ -65,25 +64,6 @@ pub async fn resolve_optional(
                 }
             }
 
-            let Some(principal_kind) = AuthPrincipalKind::from_authenticated_facts(
-                &current_user.grant_type,
-                current_user.client_id,
-                current_user.session_id,
-            ) else {
-                tracing::error!(
-                    grant_type = %current_user.grant_type,
-                    client_id_present = current_user.client_id.is_some(),
-                    session_id_present = !current_user.session_id.is_nil(),
-                    code = "auth.principal_kind_invalid",
-                    "validated current user could not be classified into the shared principal kind"
-                );
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Authenticated principal classification is invalid",
-                )
-                    .into_response();
-            };
-
             rbac_scope = Some(RbacRequestScope::new(
                 current_user.user.tenant_id,
                 current_user.user.id,
@@ -91,7 +71,7 @@ pub async fn resolve_optional(
                 current_user.inferred_role.clone(),
             ));
             parts.extensions.insert(AuthPrincipalContextExtension(
-                AuthPrincipalContext::new(principal_kind),
+                AuthPrincipalContext::new(current_user.principal_kind),
             ));
             parts.extensions.insert(AuthContextExtension(AuthContext {
                 user_id: current_user.user.id,
