@@ -143,6 +143,26 @@
         "deletion_acl_or_storefront_visibility",
         "search_disabled_profile_or_link_forum_03"
       ]
+    },
+    {
+      "task": "FORUM-23B2G2B3D8",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-deletion-acl-ordering-proof.json",
+      "test": "apps/server/tests/forum_versioned_invalidation_deletion_acl_ordering.rs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json",
+      "covers": [
+        "owner_hide_delete_and_richer_acl_revisions",
+        "legacy_and_typed_dual_path_out_of_order_admission",
+        "durable_duplicate_root_suppression",
+        "current_state_rebuild_and_stale_category_refresh_non_restoration",
+        "search_projection_denied_objects_absent",
+        "storefront_owner_reauthorization_rejects_stale_rows",
+        "visible_totals_items_and_facets_exclude_denied_content"
+      ],
+      "does_not_cover": [
+        "long_running_host_polling_or_restart_timing",
+        "iggy_acknowledgement_poison_or_dlq",
+        "search_disabled_profile_or_link_forum_03"
+      ]
     }
   ],
   "required_runtime": {
@@ -280,6 +300,8 @@
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-search --test forum_versioned_invalidation_missing_delivery_repair -- --nocapture --test-threads=1",
     "node scripts/verify/verify-forum-search-versioned-invalidation-multi-process-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_multi_process_serialization -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-deletion-acl-ordering-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_deletion_acl_ordering -- --nocapture --test-threads=1",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",
