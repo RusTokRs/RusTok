@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "region_owner_port_error_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-region/src/ports.rs",
+    "crates/rustok-region/src/error.rs",
+    "scripts/verify/verify-region-owner-port-error-safety.mjs",
+    "crates/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json",
+    "crates/rustok-region/docs/region-owner-port-error-safety.md",
+    "crates/rustok-region/docs/implementation-plan.md"
+  ],
+  "review_findings": {
+    "both_read_operations_preserved": true,
+    "owner_delegation_preserved": true,
+    "request_response_contract_preserved": true,
+    "public_error_kind_code_retryability_preserved": true,
+    "dynamic_validation_payload_removed_from_public_message": true,
+    "database_payload_removed_from_diagnostics": true,
+    "admission_payload_removed_from_diagnostics": true,
+    "context_payload_removed_from_diagnostics": true,
+    "request_identity_payload_removed_from_diagnostics": true,
+    "bounded_context_and_request_shape_retained": true,
+    "closed_owner_error_variant_retained": true,
+    "region_ffa_fba_status_unchanged": true,
+    "broad_ecommerce_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation was executed."
+}
