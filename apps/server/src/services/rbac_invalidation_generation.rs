@@ -205,7 +205,9 @@ async fn supervise_rbac_invalidation_generation_watchdog<F, Fut>(
     Fut: Future<Output = ()> + Send,
 {
     loop {
-        let worker_metric = RbacInvalidationWorkerMetricGuard::new(RBAC_DURABLE_GENERATION_WATCHDOG);
+        let worker_metric = RbacInvalidationWorkerMetricGuard::new(
+            RBAC_DURABLE_GENERATION_WATCHDOG,
+        );
         let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
         drop(worker_metric);
         let reason = if outcome.is_err() {
