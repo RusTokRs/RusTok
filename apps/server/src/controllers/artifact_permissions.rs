@@ -120,9 +120,7 @@ async fn assign(
 fn ensure_artifact_permission_control_plane(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
     let principal = RbacControlPlanePrincipal {
         tenant_id: auth.tenant_id,
-        session_id: auth.session_id,
-        client_id: auth.client_id,
-        grant_type: &auth.grant_type,
+        principal_kind: auth.principal_kind,
     };
     require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
         http_error(rustok_web::HttpError::forbidden(
@@ -174,24 +172,36 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::ensure_artifact_permission_control_plane;
-    use rustok_api::{AuthContext, Permission};
+    use rustok_api::{AuthContext, AuthPrincipalKind, Permission};
     use uuid::Uuid;
 
     fn auth_context(
         tenant_id: Uuid,
-        session_id: Uuid,
-        client_id: Option<Uuid>,
-        grant_type: &str,
+        principal_kind: AuthPrincipalKind,
         permissions: Vec<Permission>,
     ) -> AuthContext {
         AuthContext {
             user_id: Uuid::new_v4(),
-            session_id,
+            session_id: if principal_kind.is_direct_user() {
+                Uuid::new_v4()
+            } else {
+                Uuid::nil()
+            },
             tenant_id,
             permissions,
-            client_id,
+            principal_kind,
+            client_id: if principal_kind.is_direct_user() {
+                None
+            } else {
+                Some(Uuid::new_v4())
+            },
             scopes: Vec::new(),
-            grant_type: grant_type.to_string(),
+            grant_type: match principal_kind {
+                AuthPrincipalKind::DirectUser => "direct",
+                AuthPrincipalKind::DelegatedUser => "authorization_code",
+                AuthPrincipalKind::Service => "client_credentials",
+            }
+            .to_string(),
         }
     }
 
@@ -200,9 +210,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let auth = auth_context(
             tenant_id,
-            Uuid::new_v4(),
-            None,
-            "direct",
+            AuthPrincipalKind::DirectUser,
             vec![Permission::MODULES_MANAGE],
         );
 
@@ -210,14 +218,15 @@ mod tests {
     }
 
     #[test]
-    fn oauth_principals_are_denied_even_with_modules_manage() {
-        for grant_type in ["authorization_code", "client_credentials"] {
+    fn delegated_and_service_principals_are_denied_even_with_modules_manage() {
+        for principal_kind in [
+            AuthPrincipalKind::DelegatedUser,
+            AuthPrincipalKind::Service,
+        ] {
             let tenant_id = Uuid::new_v4();
             let auth = auth_context(
                 tenant_id,
-                Uuid::nil(),
-                Some(Uuid::new_v4()),
-                grant_type,
+                principal_kind,
                 vec![Permission::MODULES_MANAGE],
             );
 
@@ -229,9 +238,7 @@ mod tests {
     fn direct_user_from_another_tenant_is_denied() {
         let auth = auth_context(
             Uuid::new_v4(),
-            Uuid::new_v4(),
-            None,
-            "direct",
+            AuthPrincipalKind::DirectUser,
             vec![Permission::MODULES_MANAGE],
         );
 
@@ -243,9 +250,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let auth = auth_context(
             tenant_id,
-            Uuid::new_v4(),
-            None,
-            "direct",
+            AuthPrincipalKind::DirectUser,
             vec![Permission::MODULES_READ],
         );
 
