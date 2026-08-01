@@ -20,7 +20,7 @@ server = [
   "dep:thiserror",
   "dep:tracing",
 ]
-tcp-transport = ["server", "dep:tokio"]
+tcp-transport = ["server", "dep:sha2", "dep:subtle", "dep:tokio"]
 
 [dependencies]
 async-trait = { workspace = true, optional = true }
@@ -35,6 +35,8 @@ sea-orm = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+sha2 = { workspace = true, optional = true }
+subtle = { version = "2", optional = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
