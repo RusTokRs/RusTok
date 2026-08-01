@@ -1,0 +1,58 @@
+{
+  "contract": "forum_search_link_forum_03_translation_moderation_proof_v1",
+  "task": "FORUM-23B2G2B3D14",
+  "target_link": "LINK-FORUM-03",
+  "coverage": "translation_and_moderation_approval_only",
+  "status": "source_ready_maintainer_execution_pending",
+  "test": "apps/server/tests/forum_versioned_invalidation_translation_moderation.rs",
+  "verifier": "scripts/verify/verify-forum-search-link-forum-03-translation-moderation-proof.mjs",
+  "evidence_artifact": "target/forum-search-link-forum-03-translation-moderation-evidence.json",
+  "required_runtime": {
+    "database": "postgresql",
+    "broker_used": false,
+    "host_package": "rustok-server",
+    "search_inbox": "search_projection_inbox",
+    "projector": "ForumProjectionReconciler",
+    "storefront_execution": "execute_forum_storefront_search"
+  },
+  "required_owner_trace": [
+    "revision 1 is the real category-create forum-scope invalidation",
+    "revision 2 is the real topic-create forum-category invalidation",
+    "a pending reply in the moderated category creates no public projection revision",
+    "revision 3 is the real French category-translation forum-scope invalidation",
+    "revision 4 is the real French topic-translation forum-topic invalidation",
+    "revision 5 is the real pending-to-approved moderation forum-category invalidation"
+  ],
+  "fail_closed_requirements": [
+    "the test creates one isolated PostgreSQL schema and applies real Outbox Taxonomy Forum and Search migrations",
+    "all category topic reply translation and moderation mutations use exported Forum owner services",
+    "the five owner revisions are contiguous and have exact target types and target identifiers",
+    "every owner revision retains one legacy root envelope and one distinct caused typed envelope from sys_events",
+    "the exact typed envelopes enter Search through ForumSearchContractIngress rather than manual inbox insertion",
+    "the approval legacy ForumReplyStatusChanged envelope enters the existing Search inbox before the caused typed invalidation",
+    "Search ingest_sequence ordering increases independently and is never compared numerically with Forum owner_revision",
+    "the production Forum projection source and ForumProjectionReconciler project English and French current state",
+    "the pending reply is absent before approval and the exact approved reply becomes visible only after the real moderation command",
+    "the production storefront execution and Forum eligibility owner return exact English French and approved-reply results",
+    "each root event retains exactly one Search inbox row and a caught-up repeat performs no duplicate work",
+    "the evidence artifact is written only after every assertion succeeds and the isolated schema is removed"
+  ],
+  "proves_after_maintainer_execution": [
+    "English Forum topic projection remains visible after adding French category and topic translations",
+    "French category and topic owner translations become exact locale-specific Search documents and storefront results",
+    "a moderated pending reply is excluded from Search before approval",
+    "real ModerationService approval publishes durable owner state and makes the exact approved reply visible",
+    "translation and moderation invalidations converge on the existing one-inbox one-projector path"
+  ],
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-search-link-forum-03-translation-moderation-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_translation_moderation -- --nocapture --test-threads=1"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier PostgreSQL test or storefront execution ran",
+    "this proof does not execute or simulate topic move because the owner command remains planned under FORUM-21",
+    "this proof does not cover exact private or trusted-channel exclusion runtime behavior",
+    "this proof does not use external Iggy or replace the reviewed D0 D12 or D13 artifacts",
+    "this proof is not sufficient to mark LINK-FORUM-03 done or promote FORUM-23"
+  ]
+}
