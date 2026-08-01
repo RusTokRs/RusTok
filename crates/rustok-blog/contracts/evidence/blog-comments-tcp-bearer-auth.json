@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_bearer_auth",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-72.md",
+  "source_contract": {
+    "authentication": "crates/rustok-comments/src/tcp_auth.rs",
+    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "host_runtime": "apps/server/src/services/comments_provider_runtime.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "provider_manifest": "crates/rustok-comments/Cargo.toml",
+    "port": "rustok_comments::CommentsThreadPort",
+    "request": "rustok_comments::CommentsThreadRequest"
+  },
+  "wire_envelope": {
+    "type": "rustok_comments::CommentsTcpRequestEnvelope",
+    "protocol_version": 1,
+    "version_field": "protocol_version",
+    "credential_field": "credential",
+    "request_field": "request",
+    "encoding": "serde_json",
+    "length_prefix": "u32_big_endian",
+    "one_request_per_connection": true,
+    "unsupported_version_code": "comments.tcp_server_unsupported_protocol",
+    "credential_copied_to_port_context": false
+  },
+  "credential": {
+    "type": "rustok_comments::CommentsTcpBearerToken",
+    "scheme": "bearer",
+    "environment": "RUSTOK_COMMENTS_TCP_BEARER_TOKEN",
+    "minimum_bytes": 1,
+    "maximum_bytes": 4096,
+    "ascii_only": true,
+    "whitespace_allowed": false,
+    "control_bytes_allowed": false,
+    "debug_redacted": true,
+    "client_transport_debug_redacted": true,
+    "raw_secret_logged": false
+  },
+  "comparison": {
+    "expected_value_shape": "Bearer <token>",
+    "digest": "sha256",
+    "digest_bytes": 32,
+    "constant_time_primitive": "subtle::ConstantTimeEq",
+    "candidate_length_leak_through_digest_comparison": false
+  },
+  "authority": {
+    "resolver": "rustok_comments::CommentsTcpBearerAuthorityResolver",
+    "trait": "rustok_comments::CommentsTcpAuthorityResolver",
+    "peer_loopback_required": true,
+    "canonical_uuid_tenant_required": true,
+    "operation_allowlist": true,
+    "all_operations_default": true,
+    "operation_denied_code": "comments.tcp_operation_forbidden",
+    "authentication_failure_code": "comments.tcp_authentication_failed",
+    "authentication_failure_message": "Comments TCP service authentication failed",
+    "missing_and_wrong_token_indistinguishable": true,
+    "tenant_match_after_authentication": true,
+    "replaced_fields": [
+      "actor",
+      "claims",
+      "roles"
+    ]
+  },
+  "host_configuration": {
+    "consumer_tcp_requires_bearer": true,
+    "listener_bearer_environment": "RUSTOK_COMMENTS_TCP_BEARER_TOKEN",
+    "listener_service_actor_environment": "RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID",
+    "service_actor_kind": "service",
+    "service_actor_uuid_required": true,
+    "built_in_claims": [
+      "comments:manage"
+    ],
+    "built_in_roles": [
+      "admin"
+    ],
+    "external_authority_override_precedence": true,
+    "allow_all_fallback": false,
+    "plaintext_loopback_only": true,
+    "non_loopback_enabled": false
+  },
+  "operations": [
+    "create_comment",
+    "get_comment",
+    "list_comments_for_target",
+    "list_public_comments_for_target",
+    "update_comment",
+    "set_comment_status",
+    "delete_comment"
+  ],
+  "fail_closed": {
+    "missing_token_configuration_rejected": true,
+    "invalid_token_configuration_rejected": true,
+    "missing_service_actor_rejected_for_builtin_resolver": true,
+    "invalid_service_actor_rejected": true,
+    "missing_wire_credential_rejected": true,
+    "wrong_wire_credential_rejected": true,
+    "unsupported_protocol_rejected": true,
+    "non_loopback_peer_rejected": true,
+    "invalid_tenant_rejected": true,
+    "disallowed_operation_rejected": true,
+    "provider_dispatch_before_authentication": false,
+    "silent_in_process_fallback_for_explicit_tcp": false
+  },
+  "pending": [
+    "tls_or_mtls_transport_encryption",
+    "non_loopback_publication",
+    "credential_rotation",
+    "replay_resistance",
+    "secret_manager_loading",
+    "retry_backoff",
+    "in_process_tcp_runtime_parity",
+    "listener_readiness_and_health",
+    "runtime_execution",
+    "cached_thread_snapshot_and_form_fallback"
+  ],
+  "explicit_non_claims": [
+    "no_transport_encryption",
+    "no_mtls_result",
+    "no_non_loopback_safety",
+    "no_replay_resistance",
+    "no_rotation_or_revocation",
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_tcp_runtime_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
