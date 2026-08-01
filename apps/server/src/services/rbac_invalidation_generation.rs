@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use futures_util::FutureExt;
+use rustok_telemetry::rbac_invalidation_metrics as invalidation_metrics;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
@@ -14,6 +15,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
 const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 const RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY: Duration = Duration::from_secs(1);
+const RBAC_DURABLE_GENERATION_WATCHDOG: &str = "durable_generation_watchdog";
 
 struct AbortOnDropWatchdogTask {
     task: JoinHandle<()>,
@@ -43,6 +45,23 @@ impl RbacInvalidationGenerationWatchdogHandle {
     }
 }
 
+struct RbacInvalidationWorkerMetricGuard {
+    worker: &'static str,
+}
+
+impl RbacInvalidationWorkerMetricGuard {
+    fn new(worker: &'static str) -> Self {
+        invalidation_metrics::set_worker_running(worker, true);
+        Self { worker }
+    }
+}
+
+impl Drop for RbacInvalidationWorkerMetricGuard {
+    fn drop(&mut self) {
+        invalidation_metrics::set_worker_running(self.worker, false);
+    }
+}
+
 #[derive(Clone, Default)]
 struct RbacInvalidationGenerationWatchdogStartLock(Arc<tokio::sync::Mutex<()>>);
 
@@ -60,17 +79,21 @@ impl RbacInvalidationGenerationState {
     /// Record a generation already applied to this process. Stale or duplicate
     /// observations are harmless and never lower the local checkpoint.
     pub(crate) fn observe_applied(&self, generation: u64) -> u64 {
-        let mut current = self
-            .0
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match *current {
-            Some(existing) if existing >= generation => existing,
-            _ => {
-                *current = Some(generation);
-                generation
+        let applied = {
+            let mut current = self
+                .0
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match *current {
+                Some(existing) if existing >= generation => existing,
+                _ => {
+                    *current = Some(generation);
+                    generation
+                }
             }
-        }
+        };
+        invalidation_metrics::observe_applied_generation(applied);
+        applied
     }
 }
 
@@ -109,43 +132,52 @@ async fn run_rbac_invalidation_generation_watchdog(
     loop {
         interval.tick().await;
         match read_rbac_invalidation_generation(&db).await {
-            Ok(generation) => match state.current() {
-                Some(current) if generation == current => {
-                    last_regressed_database_generation = None;
-                }
-                Some(current) if generation < current => {
-                    if last_regressed_database_generation != Some(generation) {
-                        tracing::error!(
-                            previous = current,
-                            current = generation,
-                            "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
-                        );
-                        rustok_telemetry::metrics::record_event_error(
-                            RBAC_DURABLE_GENERATION_CHANNEL,
-                            "generation_regressed",
-                        );
+            Ok(generation) => {
+                let current = state.current();
+                invalidation_metrics::observe_generations(generation, current);
+                match current {
+                    Some(current) if generation == current => {
+                        last_regressed_database_generation = None;
+                    }
+                    Some(current) if generation < current => {
+                        if last_regressed_database_generation != Some(generation) {
+                            tracing::error!(
+                                previous = current,
+                                current = generation,
+                                "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
+                            );
+                            rustok_telemetry::metrics::record_event_error(
+                                RBAC_DURABLE_GENERATION_CHANNEL,
+                                "generation_regressed",
+                            );
+                            invalidation_metrics::record_recovery("generation_regressed");
+                            invalidate_all_user_permissions_cache().await;
+                            invalidation_metrics::record_full_clear("generation_regressed");
+                            last_regressed_database_generation = Some(generation);
+                        }
+                    }
+                    previous => {
+                        if let Some(previous) = previous {
+                            tracing::warn!(
+                                previous,
+                                current = generation,
+                                "Reconciled RBAC permission snapshots from durable database generation"
+                            );
+                        } else {
+                            tracing::info!(
+                                generation,
+                                "Durable RBAC invalidation generation became available"
+                            );
+                        }
+                        invalidation_metrics::record_recovery("watchdog_catch_up");
                         invalidate_all_user_permissions_cache().await;
-                        last_regressed_database_generation = Some(generation);
+                        invalidation_metrics::record_full_clear("watchdog_catch_up");
+                        state.observe_applied(generation);
+                        invalidation_metrics::observe_generations(generation, Some(generation));
+                        last_regressed_database_generation = None;
                     }
                 }
-                previous => {
-                    if let Some(previous) = previous {
-                        tracing::warn!(
-                            previous,
-                            current = generation,
-                            "Reconciled RBAC permission snapshots from durable database generation"
-                        );
-                    } else {
-                        tracing::info!(
-                            generation,
-                            "Durable RBAC invalidation generation became available"
-                        );
-                    }
-                    invalidate_all_user_permissions_cache().await;
-                    state.observe_applied(generation);
-                    last_regressed_database_generation = None;
-                }
-            },
+            }
             Err(error) if state.current().is_none() && is_missing_generation_state(&error) => {
                 tracing::debug!(
                     "Durable RBAC invalidation state is not installed yet; watchdog will retry"
@@ -173,14 +205,22 @@ async fn supervise_rbac_invalidation_generation_watchdog<F, Fut>(
     Fut: Future<Output = ()> + Send,
 {
     loop {
+        let worker_metric = RbacInvalidationWorkerMetricGuard::new(RBAC_DURABLE_GENERATION_WATCHDOG);
         let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
-        if outcome.is_err() {
+        drop(worker_metric);
+        let reason = if outcome.is_err() {
             tracing::error!("Durable RBAC invalidation generation watchdog panicked; restarting");
+            "panic"
         } else {
             tracing::error!(
                 "Durable RBAC invalidation generation watchdog exited unexpectedly; restarting"
             );
-        }
+            "unexpected_exit"
+        };
+        invalidation_metrics::record_worker_restart(
+            RBAC_DURABLE_GENERATION_WATCHDOG,
+            reason,
+        );
         rustok_telemetry::metrics::record_event_error(
             RBAC_DURABLE_GENERATION_CHANNEL,
             "watchdog_restart",
