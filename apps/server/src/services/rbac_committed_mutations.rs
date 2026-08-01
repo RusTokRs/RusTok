@@ -32,6 +32,30 @@ impl RbacService {
         replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 
+    /// Replace a role inside a caller-owned transaction only when the exact
+    /// tenant role relation is not already canonical.
+    ///
+    /// `false` means the user already has exactly one assignment to the
+    /// requested built-in role. A matching role among multiple or malformed
+    /// assignments is repaired and returns `true`. The caller remains
+    /// responsible for target locking, hierarchy/continuity checks, durable
+    /// generation reservation, commit and post-commit invalidation.
+    pub(crate) async fn replace_user_role_in_transaction_if_changed<C>(
+        db: &C,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+        role: rustok_core::UserRole,
+    ) -> Result<bool>
+    where
+        C: ConnectionTrait,
+    {
+        if has_exact_tenant_role_assignment(db, user_id, tenant_id, &role).await? {
+            return Ok(false);
+        }
+        Self::replace_user_role_in_transaction(db, user_id, tenant_id, role).await?;
+        Ok(true)
+    }
+
     /// Replace a role outside an enclosing transaction and invalidate the
     /// authorization snapshot only after commit, locally and across replicas.
     ///
@@ -234,7 +258,7 @@ mod tests {
     use rustok_core::{UserRole, UserStatus};
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ConnectionTrait, EntityTrait, Set};
+    use sea_orm::{ConnectionTrait, EntityTrait, Set, TransactionTrait};
 
     async fn insert_tenant_and_user(
         db: &impl ConnectionTrait,
@@ -335,6 +359,69 @@ mod tests {
             .unwrap();
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn transaction_role_replacement_reports_exact_noop() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "transaction-role-exact-noop",
+            "transaction-role-noop@example.com",
+        )
+        .await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .unwrap();
+
+        let tx = db.begin().await.unwrap();
+        let changed = RbacService::replace_user_role_in_transaction_if_changed(
+            &tx,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .unwrap();
+        assert!(!changed);
+        tx.rollback().await.unwrap();
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn transaction_role_replacement_repairs_multiple_assignments() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "transaction-role-multiple",
+            "transaction-role-multiple@example.com",
+        )
+        .await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .unwrap();
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Manager)
+            .await
+            .unwrap();
+
+        let tx = db.begin().await.unwrap();
+        let changed = RbacService::replace_user_role_in_transaction_if_changed(
+            &tx,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .unwrap();
+        assert!(changed);
+        tx.commit().await.unwrap();
+
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        assert!(
+            !RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_CREATE,)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
