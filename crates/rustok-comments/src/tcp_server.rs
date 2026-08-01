@@ -12,7 +12,7 @@ use crate::{
     CommentsThreadPort, CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransportReply,
 };
 
-/// Stable operation identity exposed to the host-owned TCP authority resolver.
+/// Stable operation identity exposed to host-owned TCP authority resolvers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CommentsTcpOperation {
     CreateComment,
@@ -34,6 +34,44 @@ impl CommentsTcpOperation {
         Self::SetCommentStatus,
         Self::DeleteComment,
     ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CreateComment => "create_comment",
+            Self::GetComment => "get_comment",
+            Self::ListCommentsForTarget => "list_comments_for_target",
+            Self::ListPublicCommentsForTarget => "list_public_comments_for_target",
+            Self::UpdateComment => "update_comment",
+            Self::SetCommentStatus => "set_comment_status",
+            Self::DeleteComment => "delete_comment",
+        }
+    }
+
+    pub const fn is_write(self) -> bool {
+        matches!(
+            self,
+            Self::CreateComment
+                | Self::UpdateComment
+                | Self::SetCommentStatus
+                | Self::DeleteComment
+        )
+    }
+
+    pub fn for_request(request: &CommentsThreadRequest) -> Self {
+        match request {
+            CommentsThreadRequest::CreateComment { .. } => Self::CreateComment,
+            CommentsThreadRequest::GetComment { .. } => Self::GetComment,
+            CommentsThreadRequest::ListCommentsForTarget { .. } => {
+                Self::ListCommentsForTarget
+            }
+            CommentsThreadRequest::ListPublicCommentsForTarget { .. } => {
+                Self::ListPublicCommentsForTarget
+            }
+            CommentsThreadRequest::UpdateComment { .. } => Self::UpdateComment,
+            CommentsThreadRequest::SetCommentStatus { .. } => Self::SetCommentStatus,
+            CommentsThreadRequest::DeleteComment { .. } => Self::DeleteComment,
+        }
+    }
 }
 
 /// Principal fields established by a host-owned authentication boundary.
@@ -72,9 +110,10 @@ impl TrustedCommentsTcpAuthority {
 
 /// Host-owned authentication and operation-authorization seam.
 ///
-/// Implementations may authenticate the versioned wire credential, resolve
-/// authority from mTLS identity, or use another protected host policy. Returning
-/// an error produces the stable typed error reply and prevents provider dispatch.
+/// Implementations may authenticate a service bearer, verify signed user
+/// delegation against the complete typed request, resolve authority from mTLS
+/// identity, or use another protected host policy. Returning an error produces
+/// the stable typed error reply and prevents provider dispatch.
 #[async_trait]
 pub trait CommentsTcpAuthorityResolver: Send + Sync {
     async fn authorize(
@@ -82,7 +121,7 @@ pub trait CommentsTcpAuthorityResolver: Send + Sync {
         peer_addr: SocketAddr,
         operation: CommentsTcpOperation,
         credential: Option<&CommentsTcpCredential>,
-        claimed_context: &PortContext,
+        request: &CommentsThreadRequest,
     ) -> Result<TrustedCommentsTcpAuthority, PortError>;
 }
 
@@ -217,17 +256,12 @@ impl TcpJsonCommentsServerAdapter {
         }
         request.context().require_deadline_semantics()?;
 
-        let operation = request_operation(&request);
+        let operation = CommentsTcpOperation::for_request(&request);
         let deadline_ms = request.context().deadline_ms.unwrap_or_default();
         timeout(Duration::from_millis(deadline_ms), async {
             let authority = self
                 .authority
-                .authorize(
-                    peer_addr,
-                    operation,
-                    credential.as_ref(),
-                    request.context(),
-                )
+                .authorize(peer_addr, operation, credential.as_ref(), &request)
                 .await?;
             let trusted_context = apply_authority(request.context(), authority)?;
             replace_request_context(&mut request, trusted_context);
@@ -262,22 +296,6 @@ fn apply_authority(
     trusted.claims = authority.claims;
     trusted.roles = authority.roles;
     Ok(trusted)
-}
-
-fn request_operation(request: &CommentsThreadRequest) -> CommentsTcpOperation {
-    match request {
-        CommentsThreadRequest::CreateComment { .. } => CommentsTcpOperation::CreateComment,
-        CommentsThreadRequest::GetComment { .. } => CommentsTcpOperation::GetComment,
-        CommentsThreadRequest::ListCommentsForTarget { .. } => {
-            CommentsTcpOperation::ListCommentsForTarget
-        }
-        CommentsThreadRequest::ListPublicCommentsForTarget { .. } => {
-            CommentsTcpOperation::ListPublicCommentsForTarget
-        }
-        CommentsThreadRequest::UpdateComment { .. } => CommentsTcpOperation::UpdateComment,
-        CommentsThreadRequest::SetCommentStatus { .. } => CommentsTcpOperation::SetCommentStatus,
-        CommentsThreadRequest::DeleteComment { .. } => CommentsTcpOperation::DeleteComment,
-    }
 }
 
 fn replace_request_context(request: &mut CommentsThreadRequest, trusted: PortContext) {
@@ -427,6 +445,17 @@ mod tests {
 
         assert_eq!(error.kind, PortErrorKind::Forbidden);
         assert_eq!(error.code, "comments.tcp_authority_tenant_mismatch");
+    }
+
+    #[test]
+    fn operation_classifies_owner_writes() {
+        assert!(CommentsTcpOperation::CreateComment.is_write());
+        assert!(CommentsTcpOperation::UpdateComment.is_write());
+        assert!(CommentsTcpOperation::SetCommentStatus.is_write());
+        assert!(CommentsTcpOperation::DeleteComment.is_write());
+        assert!(!CommentsTcpOperation::GetComment.is_write());
+        assert!(!CommentsTcpOperation::ListCommentsForTarget.is_write());
+        assert!(!CommentsTcpOperation::ListPublicCommentsForTarget.is_write());
     }
 
     #[test]

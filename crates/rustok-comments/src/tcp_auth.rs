@@ -18,6 +18,7 @@ pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;
 
 const MAX_BEARER_TOKEN_BYTES: usize = 4_096;
 const BEARER_SCHEME: &str = "bearer";
+const DELEGATED_HMAC_SCHEME: &str = "delegated_hmac_sha256";
 const BEARER_PREFIX: &[u8] = b"Bearer ";
 const DEFAULT_BEARER_OPERATIONS: [CommentsTcpOperation; 3] = [
     CommentsTcpOperation::GetComment,
@@ -84,8 +85,9 @@ pub enum CommentsTcpAuthenticationConfigError {
 
 /// Credential carried by the versioned TCP request envelope.
 ///
-/// Fields remain private so callers cannot accidentally log the token through a
-/// generated struct formatter. Serialization is the only wire-facing exposure.
+/// Fields remain private so callers cannot accidentally log bearer or signed
+/// delegation material through a generated struct formatter. Serialization is
+/// the only wire-facing exposure.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CommentsTcpCredential {
     scheme: String,
@@ -100,8 +102,19 @@ impl CommentsTcpCredential {
         }
     }
 
+    pub(crate) fn delegated(token: String) -> Self {
+        Self {
+            scheme: DELEGATED_HMAC_SCHEME.to_string(),
+            token,
+        }
+    }
+
     pub fn scheme(&self) -> &str {
         self.scheme.as_str()
+    }
+
+    pub(crate) fn token(&self) -> &str {
+        self.token.as_str()
     }
 }
 
@@ -133,9 +146,16 @@ impl CommentsTcpRequestEnvelope {
     }
 
     pub fn with_bearer(request: CommentsThreadRequest, token: &CommentsTcpBearerToken) -> Self {
+        Self::with_credential(request, token.credential())
+    }
+
+    pub(crate) fn with_credential(
+        request: CommentsThreadRequest,
+        credential: CommentsTcpCredential,
+    ) -> Self {
         Self {
             protocol_version: COMMENTS_TCP_PROTOCOL_VERSION,
-            credential: Some(token.credential()),
+            credential: Some(credential),
             request,
         }
     }
@@ -246,8 +266,9 @@ impl CommentsTcpAuthorityResolver for CommentsTcpBearerAuthorityResolver {
         peer_addr: SocketAddr,
         operation: CommentsTcpOperation,
         credential: Option<&CommentsTcpCredential>,
-        claimed_context: &PortContext,
+        request: &CommentsThreadRequest,
     ) -> Result<TrustedCommentsTcpAuthority, PortError> {
+        let claimed_context: &PortContext = request.context();
         if !peer_addr.ip().is_loopback()
             || !self.token.matches(credential)
             || !is_canonical_uuid(&claimed_context.tenant_id)
@@ -343,19 +364,22 @@ mod tests {
         )
         .with_claim("comments:manage")
         .with_role("admin");
-        let context = PortContext::new(
-            tenant_id.clone(),
-            PortActor::user(Uuid::new_v4().to_string()),
-            "en",
-            "corr-1",
-        );
+        let request = CommentsThreadRequest::DeleteComment {
+            context: PortContext::new(
+                tenant_id.clone(),
+                PortActor::user(Uuid::new_v4().to_string()),
+                "en",
+                "corr-1",
+            ),
+            comment_id: Uuid::new_v4(),
+        };
 
         let authority = resolver
             .authorize(
                 "127.0.0.1:9000".parse().unwrap(),
                 CommentsTcpOperation::GetComment,
                 Some(&credential),
-                &context,
+                &request,
             )
             .await
             .unwrap();
@@ -375,12 +399,15 @@ mod tests {
             token,
             PortActor::service(Uuid::new_v4().to_string()),
         );
-        let context = PortContext::new(
-            tenant_id,
-            PortActor::user(Uuid::new_v4().to_string()),
-            "en",
-            "corr-write",
-        );
+        let request = CommentsThreadRequest::DeleteComment {
+            context: PortContext::new(
+                tenant_id,
+                PortActor::user(Uuid::new_v4().to_string()),
+                "en",
+                "corr-write",
+            ),
+            comment_id: Uuid::new_v4(),
+        };
 
         for operation in [
             CommentsTcpOperation::CreateComment,
@@ -393,7 +420,7 @@ mod tests {
                     "127.0.0.1:9000".parse().unwrap(),
                     operation,
                     Some(&credential),
-                    &context,
+                    &request,
                 )
                 .await
                 .unwrap_err();
@@ -412,12 +439,15 @@ mod tests {
         let wrong = CommentsTcpBearerToken::new("wrong-secret")
             .unwrap()
             .credential();
-        let context = PortContext::new(
-            tenant_id,
-            PortActor::service(Uuid::new_v4().to_string()),
-            "en",
-            "corr-1",
-        );
+        let request = CommentsThreadRequest::DeleteComment {
+            context: PortContext::new(
+                tenant_id,
+                PortActor::service(Uuid::new_v4().to_string()),
+                "en",
+                "corr-1",
+            ),
+            comment_id: Uuid::new_v4(),
+        };
 
         for credential in [None, Some(&wrong)] {
             let error = resolver
@@ -425,7 +455,7 @@ mod tests {
                     "127.0.0.1:9000".parse().unwrap(),
                     CommentsTcpOperation::GetComment,
                     credential,
-                    &context,
+                    &request,
                 )
                 .await
                 .unwrap_err();

@@ -18,6 +18,8 @@ pub mod services;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_auth;
 #[cfg(feature = "tcp-transport")]
+pub mod tcp_delegation;
+#[cfg(feature = "tcp-transport")]
 mod tcp_protocol;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_server;
@@ -54,12 +56,20 @@ pub use tcp_auth::{
     CommentsTcpRequestEnvelope,
 };
 #[cfg(feature = "tcp-transport")]
+pub use tcp_delegation::{
+    COMMENTS_TCP_DELEGATION_VERSION, CommentsTcpDelegatingAuthorityResolver,
+    CommentsTcpDelegationConfigError, CommentsTcpDelegationSecret, CommentsTcpDelegationSigner,
+    DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
+    DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
+    MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
+};
+#[cfg(feature = "tcp-transport")]
 pub use tcp_server::{
     CommentsTcpAuthorityResolver, CommentsTcpOperation, TcpJsonCommentsServerAdapter,
     TrustedCommentsTcpAuthority,
 };
 #[cfg(feature = "tcp-transport")]
-pub use tcp_transport::TcpJsonCommentsTransport;
+pub use tcp_transport::{CommentsTcpTransportConfigError, TcpJsonCommentsTransport};
 
 #[cfg(feature = "server")]
 pub struct CommentsModule;

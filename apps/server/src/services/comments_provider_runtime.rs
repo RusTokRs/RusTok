@@ -11,7 +11,10 @@ use std::{
 use rustok_api::PortActor;
 use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
-    CommentsThreadPort, CommentsThreadTransport, TcpJsonCommentsServerAdapter,
+    CommentsTcpDelegatingAuthorityResolver, CommentsTcpDelegationSecret,
+    CommentsTcpDelegationSigner, CommentsThreadPort, CommentsThreadTransport,
+    DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
+    MAX_COMMENTS_TCP_DELEGATION_TTL_MS, TcpJsonCommentsServerAdapter,
     TcpJsonCommentsTransport, in_process_comments_thread_port, remote_comments_thread_port,
 };
 use rustok_core::ModuleRuntimeExtensions;
@@ -32,6 +35,10 @@ pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";
 pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";
 pub const COMMENTS_TCP_BEARER_TOKEN_ENV: &str = "RUSTOK_COMMENTS_TCP_BEARER_TOKEN";
 pub const COMMENTS_TCP_SERVICE_ACTOR_ID_ENV: &str = "RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID";
+pub const COMMENTS_TCP_DELEGATION_SECRET_ENV: &str = "RUSTOK_COMMENTS_TCP_DELEGATION_SECRET";
+pub const COMMENTS_TCP_DELEGATION_TTL_MS_ENV: &str = "RUSTOK_COMMENTS_TCP_DELEGATION_TTL_MS";
+pub const COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV: &str =
+    "RUSTOK_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY";
 pub const COMMENTS_TCP_LISTENER_ENABLED_ENV: &str = "RUSTOK_COMMENTS_TCP_LISTENER_ENABLED";
 pub const COMMENTS_TCP_BIND_ENV: &str = "RUSTOK_COMMENTS_TCP_BIND";
 pub const COMMENTS_TCP_MAX_CONNECTIONS_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_CONNECTIONS";
@@ -65,8 +72,9 @@ pub struct CommentsProviderRuntimeSelection {
 
 /// Optional host-provided authority override for the Comments TCP listener.
 ///
-/// When absent, the server composes the concrete bearer resolver from deployment
-/// configuration. There is deliberately no allow-all fallback.
+/// When absent, the server composes the concrete bearer read resolver and, when
+/// configured, the signed user-delegation write resolver. There is deliberately
+/// no allow-all fallback.
 #[derive(Clone)]
 pub struct SharedCommentsTcpAuthorityResolver(pub Arc<dyn CommentsTcpAuthorityResolver>);
 
@@ -161,8 +169,9 @@ struct CommentsTcpListenerLifecycleReservation;
 ///
 /// The default `in_process` mode intentionally inserts no port. Blog therefore
 /// retains its existing database/event-bus fallback. `tcp` requires an explicit
-/// loopback endpoint and bearer credential, then publishes the authenticated
-/// typed remote adapter. Plaintext TCP is never enabled for a non-loopback address.
+/// loopback endpoint and bearer credential. Signed user delegation is enabled
+/// only when a separate delegation secret is configured. Plaintext TCP is never
+/// enabled for a non-loopback address.
 pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
@@ -205,9 +214,15 @@ pub fn register_comments_provider_runtime(
             }
 
             let bearer_token = comments_tcp_bearer_token_from_environment()?;
-            let transport: Arc<dyn CommentsThreadTransport> = Arc::new(
-                TcpJsonCommentsTransport::with_bearer_token(endpoint, bearer_token),
-            );
+            let transport = match comments_tcp_delegation_signer_from_environment()? {
+                Some(signer) => TcpJsonCommentsTransport::with_bearer_and_delegation(
+                    endpoint,
+                    bearer_token,
+                    signer,
+                ),
+                None => TcpJsonCommentsTransport::with_bearer_token(endpoint, bearer_token),
+            };
+            let transport: Arc<dyn CommentsThreadTransport> = Arc::new(transport);
             extensions.insert::<Arc<dyn CommentsThreadPort>>(remote_comments_thread_port(transport));
             extensions.insert(CommentsProviderRuntimeSelection {
                 profile: CommentsProviderProfile::TcpLoopback,
@@ -269,7 +284,7 @@ async fn start_comments_tcp_listener(
         })
         .map(|shared| shared.0)
         .map(Ok)
-        .unwrap_or_else(comments_tcp_bearer_authority_from_environment)
+        .unwrap_or_else(comments_tcp_authority_from_environment)
         .map_err(Error::BadRequest)?;
 
     let provider = runtime_ctx
@@ -331,7 +346,7 @@ async fn start_comments_tcp_listener(
     tracing::info!(
         instance_id,
         bind_addr = %local_addr,
-        authentication = "bearer_or_host_override",
+        authentication = "bearer_or_delegated_hmac_or_host_override",
         max_connections = config.max_connections,
         pre_request_timeout_ms = config.pre_request_timeout.as_millis(),
         shutdown_grace_ms = config.shutdown_grace.as_millis(),
@@ -363,21 +378,73 @@ fn comments_tcp_bearer_token_from_environment() -> std::result::Result<CommentsT
     })
 }
 
-fn comments_tcp_bearer_authority_from_environment(
+fn comments_tcp_delegation_secret_from_environment(
+) -> std::result::Result<Option<CommentsTcpDelegationSecret>, String> {
+    let Some(secret) = read_optional_environment(COMMENTS_TCP_DELEGATION_SECRET_ENV)? else {
+        return Ok(None);
+    };
+    CommentsTcpDelegationSecret::new(secret).map(Some).map_err(|error| {
+        format!(
+            "{COMMENTS_TCP_DELEGATION_SECRET_ENV} is not a valid Comments TCP delegation secret: {error}"
+        )
+    })
+}
+
+fn comments_tcp_delegation_ttl_ms_from_environment() -> std::result::Result<u64, String> {
+    let ttl_ms = parse_optional_positive_u64(
+        COMMENTS_TCP_DELEGATION_TTL_MS_ENV,
+        DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
+    )?;
+    if ttl_ms > MAX_COMMENTS_TCP_DELEGATION_TTL_MS {
+        return Err(format!(
+            "{COMMENTS_TCP_DELEGATION_TTL_MS_ENV} must be within 1..={MAX_COMMENTS_TCP_DELEGATION_TTL_MS}"
+        ));
+    }
+    Ok(ttl_ms)
+}
+
+fn comments_tcp_delegation_signer_from_environment(
+) -> std::result::Result<Option<CommentsTcpDelegationSigner>, String> {
+    let Some(secret) = comments_tcp_delegation_secret_from_environment()? else {
+        return Ok(None);
+    };
+    let ttl_ms = comments_tcp_delegation_ttl_ms_from_environment()?;
+    CommentsTcpDelegationSigner::with_ttl(secret, Duration::from_millis(ttl_ms))
+        .map(Some)
+        .map_err(|error| format!("Comments TCP delegation signer configuration failed: {error}"))
+}
+
+fn comments_tcp_authority_from_environment(
 ) -> std::result::Result<Arc<dyn CommentsTcpAuthorityResolver>, String> {
     let token = comments_tcp_bearer_token_from_environment()?;
     let actor = comments_tcp_service_actor_from_environment()?;
-    Ok(Arc::new(
-        CommentsTcpBearerAuthorityResolver::from_token(token, actor)
-            .with_claim(COMMENTS_TCP_SERVICE_PERMISSION)
-            .with_role(COMMENTS_TCP_SERVICE_ROLE),
-    ))
+    let Some(delegation_secret) = comments_tcp_delegation_secret_from_environment()? else {
+        return Ok(Arc::new(
+            CommentsTcpBearerAuthorityResolver::from_token(token, actor)
+                .with_claim(COMMENTS_TCP_SERVICE_PERMISSION)
+                .with_role(COMMENTS_TCP_SERVICE_ROLE),
+        ));
+    };
+
+    let ttl_ms = comments_tcp_delegation_ttl_ms_from_environment()?;
+    let replay_capacity = parse_optional_positive_usize(
+        COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV,
+        DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
+    )?;
+    let resolver = CommentsTcpDelegatingAuthorityResolver::new(token, actor, delegation_secret)
+        .with_service_claim(COMMENTS_TCP_SERVICE_PERMISSION)
+        .with_service_role(COMMENTS_TCP_SERVICE_ROLE)
+        .with_max_ttl(Duration::from_millis(ttl_ms))
+        .map_err(|error| format!("Comments TCP delegation TTL configuration failed: {error}"))?
+        .with_replay_capacity(replay_capacity)
+        .map_err(|error| format!("Comments TCP replay configuration failed: {error}"))?;
+    Ok(Arc::new(resolver))
 }
 
 fn comments_tcp_service_actor_from_environment() -> std::result::Result<PortActor, String> {
     let raw_actor_id = read_optional_environment(COMMENTS_TCP_SERVICE_ACTOR_ID_ENV)?.ok_or_else(|| {
         format!(
-            "{COMMENTS_TCP_SERVICE_ACTOR_ID_ENV} is required when the built-in Comments TCP bearer resolver is used"
+            "{COMMENTS_TCP_SERVICE_ACTOR_ID_ENV} is required when the built-in Comments TCP authority resolver is used"
         )
     })?;
     parse_comments_tcp_service_actor_id(&raw_actor_id)
@@ -601,6 +668,18 @@ mod tests {
             COMMENTS_TCP_SERVICE_ACTOR_ID_ENV,
             "RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID"
         );
+        assert_eq!(
+            COMMENTS_TCP_DELEGATION_SECRET_ENV,
+            "RUSTOK_COMMENTS_TCP_DELEGATION_SECRET"
+        );
+        assert_eq!(
+            COMMENTS_TCP_DELEGATION_TTL_MS_ENV,
+            "RUSTOK_COMMENTS_TCP_DELEGATION_TTL_MS"
+        );
+        assert_eq!(
+            COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV,
+            "RUSTOK_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY"
+        );
     }
 
     #[test]
@@ -611,6 +690,9 @@ mod tests {
         assert_eq!(DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 2_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 5_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES, 8 * 1024 * 1024);
+        assert_eq!(DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, 5_000);
+        assert_eq!(MAX_COMMENTS_TCP_DELEGATION_TTL_MS, 30_000);
+        assert_eq!(DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, 4_096);
         assert!(parse_bool_value("enabled", "true").unwrap());
         assert!(!parse_bool_value("enabled", "off").unwrap());
         assert!(parse_positive_usize_value("limit", "0").is_err());
@@ -618,7 +700,7 @@ mod tests {
     }
 
     #[test]
-    fn built_in_bearer_actor_requires_canonical_uuid() {
+    fn built_in_authority_actor_requires_canonical_uuid() {
         let actor_id = Uuid::new_v4().to_string();
         assert_eq!(
             parse_comments_tcp_service_actor_id(&actor_id).unwrap(),

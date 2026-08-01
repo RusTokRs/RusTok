@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_user_delegation",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-73.md",
+  "source_contract": {
+    "digest_helper": "crates/rustok-api/src/digest.rs",
+    "digest_export": "crates/rustok-api/src/lib.rs",
+    "delegation": "crates/rustok-comments/src/tcp_delegation.rs",
+    "authentication": "crates/rustok-comments/src/tcp_auth.rs",
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "host_runtime": "apps/server/src/services/comments_provider_runtime.rs",
+    "blog_context_owner": "crates/rustok-blog/src/services/comment.rs",
+    "comments_policy_owner": "crates/rustok-comments/src/services.rs"
+  },
+  "delegation": {
+    "version": 1,
+    "credential_scheme": "delegated_hmac_sha256",
+    "signature": "hmac_sha256",
+    "signature_domain": "rustok-comments-tcp-user-delegation-v1",
+    "secret_environment": "RUSTOK_COMMENTS_TCP_DELEGATION_SECRET",
+    "secret_minimum_bytes": 32,
+    "secret_maximum_bytes": 4096,
+    "secret_ascii_only": true,
+    "secret_whitespace_allowed": false,
+    "secret_debug_redacted": true,
+    "default_ttl_ms": 5000,
+    "maximum_ttl_ms": 30000,
+    "ttl_environment": "RUSTOK_COMMENTS_TCP_DELEGATION_TTL_MS",
+    "request_digest": "sha256_serialized_comments_thread_request",
+    "signature_compare": "rustok_api::fixed_work_sha256_eq",
+    "compiler_hardware_side_channel_audit": false
+  },
+  "signed_bindings": [
+    "version",
+    "tenant_id",
+    "user_actor_id",
+    "claims",
+    "single_role",
+    "operation",
+    "correlation_id",
+    "idempotency_key",
+    "issued_at_unix_ms",
+    "expires_at_unix_ms",
+    "nonce",
+    "complete_request_digest"
+  ],
+  "authority_paths": {
+    "bearer_reads": [
+      "get_comment",
+      "list_comments_for_target",
+      "list_public_comments_for_target"
+    ],
+    "bearer_system_operations": [
+      "set_comment_status"
+    ],
+    "delegated_user_operations": [
+      "create_comment",
+      "update_comment",
+      "delete_comment"
+    ],
+    "all_protocol_operations": [
+      "create_comment",
+      "get_comment",
+      "list_comments_for_target",
+      "list_public_comments_for_target",
+      "update_comment",
+      "set_comment_status",
+      "delete_comment"
+    ],
+    "operation_derived_from_request": true,
+    "operation_request_match_required": true,
+    "principal_replaced_before_dispatch": true,
+    "owner_policy_runs_after_replacement": true
+  },
+  "blog_context": {
+    "create_user_delegated": true,
+    "update_user_delegated": true,
+    "delete_user_delegated": true,
+    "moderation_service_bearer": true,
+    "write_deadline_required": true,
+    "write_idempotency_key_required": true,
+    "user_uuid_required": true,
+    "permission_claims_required": true,
+    "single_role_required": true
+  },
+  "replay": {
+    "nonce_type": "canonical_uuid",
+    "one_time_per_listener_process": true,
+    "shared_across_adapter_clones": true,
+    "expired_entries_pruned": true,
+    "default_capacity": 4096,
+    "maximum_capacity": 65536,
+    "capacity_environment": "RUSTOK_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY",
+    "duplicate_code": "comments.tcp_delegation_replayed",
+    "full_or_unavailable_code": "comments.tcp_delegation_replay_unavailable",
+    "fail_closed_before_provider_dispatch": true,
+    "multi_process": false,
+    "multi_replica": false,
+    "durable": false,
+    "survives_restart": false
+  },
+  "deadline": {
+    "source": "PortContext.deadline_ms",
+    "scope": "sign_claims_encode_connect_write_read_decode",
+    "mechanism": "tokio::time::timeout",
+    "original_deadline_bounds_complete_attempt": true,
+    "retry_implemented": false
+  },
+  "host_configuration": {
+    "delegation_opt_in": true,
+    "missing_delegation_secret_profile": "bearer_read_only",
+    "external_authority_override_precedence": true,
+    "plaintext_loopback_only": true,
+    "non_loopback_enabled": false,
+    "allow_all_fallback": false,
+    "raw_secret_logged": false
+  },
+  "dependency_contract": {
+    "new_direct_dependencies": [],
+    "cargo_lock_package_entry_change_required": false,
+    "sha256_hmac_dependency_owner": "rustok-api"
+  },
+  "fail_closed": {
+    "missing_write_deadline_rejected": true,
+    "missing_write_idempotency_key_rejected": true,
+    "non_user_delegation_rejected": true,
+    "invalid_tenant_rejected": true,
+    "invalid_actor_rejected": true,
+    "missing_claims_rejected": true,
+    "ambiguous_role_rejected": true,
+    "wrong_signature_rejected": true,
+    "wrong_operation_rejected": true,
+    "mutated_request_rejected": true,
+    "wrong_correlation_rejected": true,
+    "wrong_idempotency_key_rejected": true,
+    "expired_delegation_rejected": true,
+    "future_delegation_outside_skew_rejected": true,
+    "duplicate_nonce_rejected": true,
+    "replay_capacity_exhaustion_rejected": true,
+    "provider_dispatch_before_authority": false,
+    "silent_write_fallback_to_bearer": false
+  },
+  "pending": [
+    "tls_or_mtls_transport_encryption",
+    "non_loopback_publication",
+    "shared_durable_replay_store",
+    "multi_replica_replay_protection",
+    "key_identifiers_and_rotation",
+    "secret_manager_loading",
+    "retry_backoff",
+    "in_process_tcp_runtime_parity",
+    "listener_readiness_and_health",
+    "runtime_execution",
+    "cached_thread_snapshot_and_form_fallback"
+  ],
+  "explicit_non_claims": [
+    "no_transport_encryption",
+    "no_mtls_result",
+    "no_non_loopback_safety",
+    "no_cluster_wide_replay_prevention",
+    "no_restart_safe_replay_prevention",
+    "no_key_rotation_or_revocation",
+    "no_retry_result",
+    "no_compile_result",
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_tcp_runtime_result",
+    "no_database_result",
+    "no_browser_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
