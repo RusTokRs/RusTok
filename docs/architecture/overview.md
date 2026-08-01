@@ -123,16 +123,41 @@ The basic write/read scheme of the platform:
 
 `rustok-outbox` is considered a `Core` platform module, not just a support crate.
 
-## Tenant Lifecycle
+## Core Architectural Guarantees
 
-Tenant-level enable/disable applies only to `Optional` modules and works
-on top of the already assembled platform composition.
+RusToK enforces strict system-wide invariants across all layers:
 
-It must not:
+### 1. Zero-Trust Security and `PortContext` Boundary
 
-- Disable `Core` modules
-- Turn capability crates into platform modules
-- Bypass the dependency graph from `modules.toml`
+- Every cross-module domain call passes a transport-agnostic `PortContext` carrying `tenant_id`, `actor` (`System`, `User`, `Agent`, `Anonymous`), OpenTelemetry tracing identifiers (`correlation_id`, `causation_id`, `traceparent`), `idempotency_key`, and strict deadline propagation (`deadline_ms`).
+- Caller-supplied `X-User-ID` headers are explicitly rejected at transport boundaries; identity is constructed exclusively by authenticated middleware after token and tenant validation.
+
+### 2. AI Agent Safety and Permission Intersection (`Subject ∩ Agent`)
+
+- AI-initiated workflows run under an `AgentPrincipal` identity.
+- Effective runtime permissions for any AI agent operation are strictly calculated as the intersection:
+  $$\text{Effective Permissions} = \text{Subject Permissions} \cap \text{Agent Principal Permissions}$$
+- This guarantees zero privilege escalation: an AI agent can never execute an operation that the initiating user is not explicitly authorized to perform.
+
+### 3. Transactional Outbox, Event Replay, and Idempotent Read Models
+
+- Entity mutations and cross-module `DomainEvent` records are written to `sys_events` within the same atomic database transaction (`outbox_local`).
+- High-throughput setups use native Iggy event streaming (`outbox_iggy`) with append-only event logs and stream replay capabilities.
+- Read projections (`rustok-index`) enforce checksummed keyset pagination (`CursorCodec`) and deterministic idempotency across process restarts.
+
+### 4. Dual Database Isolation (PostgreSQL + Turso / libSQL)
+
+- Centralized enterprise workloads rely on PostgreSQL composite primary keys and row-level tenant filtering.
+- Serverless and edge workloads leverage Turso (libSQL) per-tenant physical database isolation with zero-cost scale-to-zero, in-process embedded replicas (< 1ms read latency), and 5ms instant database branching for dry-run testing.
+
+### 5. Sandboxed Runtime and CAS Build Control Plane
+
+- Dynamic business logic in Alloy executes inside `rustok-sandbox` (Rhai/WASM) under strict execution time, CPU tick, and memory allocation quotas.
+- Module build lifecycle (`rustok-build`) uses Content-Addressable Storage (CAS) archive materialization and signed artifact verification for secure, reproducible module distribution.
+
+### 6. Live Runtime Guardrails and Backpressure Control
+
+- Live runtime health endpoints (`GET /health/runtime`) aggregate real-time signals: rate-limiter saturation, event bus backpressure depth, Iggy relay fallback status, and remote executor lease states.
 
 ## Readiness Criteria for Architecture Changes
 

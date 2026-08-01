@@ -6,7 +6,7 @@
 
 **Project status:** RusTok is under active development and provides a production-grade architectural foundation for building any data-driven applications, enterprise backends, and AI-native systems.
 
-*Universal Data Platform · Enterprise Backend · AI-Native · Modular Architecture · One Runtime*
+*AI-Native · Modular Monolith → Microservices · Enterprise-Grade · Rust & Tokio · One Binary*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
@@ -27,6 +27,20 @@
 
 ---
 
+### At a Glance
+
+| Metric | Value |
+|---|---|
+| **Platform Crates** | 120+ production Rust crates |
+| **Architecture Decisions** | 85+ documented ADRs |
+| **Deployment Profiles** | 4 topology modes (Monolith → Hybrid FBA) |
+| **UI Frameworks** | Leptos SSR + Next.js + Flutter Mobile |
+| **AI Adapters** | 6 domain-specific AI modules + MCP server |
+| **Database Engines** | PostgreSQL + Turso / libSQL |
+| **Languages** | Rust · TypeScript · Dart |
+
+---
+
 ## Executive Overview
 
 **RusTok** is a next-generation, high-performance platform designed to eliminate the dilemma between rigid monoliths and overly complex microservice architectures. Built from the ground up on **Rust** and **Tokio**, RusTok combines compile-time type safety with a fluid, topology-agnostic runtime model.
@@ -43,16 +57,16 @@ Rather than forcing developers to pick between a closed monolith or an expensive
 In traditional backend projects, engineering teams spend up to 70% of their initial time writing infrastructure plumbing: authentication, OAuth2, session management, RBAC permissions, multi-tenant isolation, caching layers, event outboxes, search indexers, media processing, and localization.
 
 **RusTok comes with all essential platform infrastructure built-in on pure Rust:**
-- **Core Platform Capabilities**: Authentication (`rustok-auth`), Multi-Tenancy (`rustok-tenant`), RBAC (`rustok-rbac`), Relational Indexing (`rustok-index`), Search (`rustok-search`), Transactional Outbox (`rustok-outbox`), Caching (`rustok-cache`), Media (`rustok-media`), SEO (`rustok-seo`), and Email (`rustok-email`).
+- **Required Core Platform Modules**: Control plane (`rustok-modules`), Authentication (`rustok-auth`), Multi-Tenancy (`rustok-tenant`), RBAC (`rustok-rbac`), Relational Indexing (`rustok-index`), Search (`rustok-search`), Transactional Outbox (`rustok-outbox`), Events (`rustok-events-module`), Caching (`rustok-cache`), Email (`rustok-email`), and Channel resolution (`rustok-channel`).
 - **100% Focus on Unique Product Logic**: Developers don't spend months building low-level infrastructure from scratch. You simply declare the modules you need in `modules.toml` and write your unique domain features.
 
 ### 2. Safety by Design, Not by Discipline
 In traditional Node.js, Python, or PHP platforms, security and data isolation depend on whether developers remember to check permissions or `tenant_id` filters on every query. One missed check leads to catastrophic cross-tenant data leaks.
 
-In RusTok, tenant context (`tenant_id`), RBAC policies (`rustok-rbac`), and locale matching (`ICU4X`) are enforced at **compile-time and embedded in composite database keys**. The Rust compiler rejects code that violates domain boundaries or tenant isolation before the application ever builds.
+In RusTok, tenant context (`tenant_id`), RBAC policies (`rustok-rbac`), and locale matching (`ICU4X`) are enforced at **compile-time and embedded in composite database keys**. Every cross-module call passes a transport-agnostic `PortContext` carrying strict `deadline_ms` timeouts, OpenTelemetry trace identifiers (`correlation_id`, `causation_id`), and idempotency keys. Caller-supplied identity headers (`X-User-ID`) are rejected at transport boundaries and reconstructed strictly post-token validation.
 
 ### 3. Alloy — Self-Evolving Dynamic Runtime & Instant Integrations
-Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/alloy](file:///d:/RusTok/crates/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
+Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/alloy](crates/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
 
 - ⚡ **New Features On-the-Fly**: Add new business capabilities, domain rules, and dynamic hooks instantly without redeploying platform binaries or restarting the server.
 - 🧹 **Dirty Data Cleansing & Legacy Migrations**: Works as an in-memory ETL sanitization engine. Alloy scripts handle dirty data, unescaped encodings, corrupt dates, and broken tables from legacy platforms on the fly without crashing the core server.
@@ -63,6 +77,7 @@ Compiled applications traditionally require code modifications, Pull Requests, C
 ### 4. Native AI & Agentic Ecosystem (`rustok-ai`, `rustok-mcp`)
 RusTok is designed from day one for AI orchestration and automated operations:
 - **Model Context Protocol (`rustok-mcp`)**: Native MCP server allows AI agents (Claude, Cursor, custom agents) to inspect platform state, manage modules, and run operations via standard MCP tools.
+- **Zero-Privilege Escalation (`Subject ∩ Agent`)**: AI agent runs operate under an `AgentPrincipal` whose effective permissions are calculated as the intersection of initiating user permissions and agent descriptor permissions ($\text{User} \cap \text{Agent}$). An AI agent can **never** elevate privileges beyond the initiating user.
 - **Provider-Neutral AI Framework (`rustok-ai`)**: LLM orchestration with a vector RAG data plane (Athanor vector engine) supporting OpenAI, Anthropic, and local models.
 - **Domain AI Adapters**: Pre-built AI adapters for products (`ai-product`), content (`ai-content`), media (`ai-media`), orders (`ai-order`), translations (`ai-translation`), and Alloy scripting (`ai-alloy`).
 
@@ -84,8 +99,8 @@ RusTok is designed to support a **Dual-Engine Persistence Strategy**:
 
 ## Target Applications & Use Cases
 
-### 1. Universal Data Platform Core (Startups, SaaS, ERP, CRM & Fintech)
-At its core, **RusTok Core** (`rustok-core`, `tenant`, `auth`, `rbac`, `index`, `search`, `outbox`, `cache`, `secrets`, `alloy`) is a universal, production-grade foundation for **any data-intensive application**.
+### 1. Universal Data Platform Engine (Startups, SaaS, ERP, CRM & Fintech)
+At its core, the **RusTok Platform Core** — composed of `apps/server` (composition root) and required Core Modules (`rustok-modules`, `auth`, `tenant`, `rbac`, `index`, `search`, `outbox`, `events`, `cache`, `email`, `channel`) — provides a universal, production-grade foundation for **any data-intensive application**.
 
 Rather than spending months rebuilding low-level infrastructure from scratch, RusTok Core provides pre-built Rust primitives for:
 - 🚀 **Startups & MVPs**: Launch production-ready digital products in days rather than months.
@@ -130,17 +145,15 @@ Fluid Backend Architecture (FBA) decouples domain service logic from transport b
 ### 2. Fluid Frontend Architecture (FFA)
 FFA provides a framework-agnostic UI architecture that eliminates frontend fragmentation and protects application code from UI framework lock-in:
 - **Framework-Agnostic UI Contracts (`rustok-ui-core`, `rustok-ui-i18n`)**: State machines, view-models, input validation, and i18n catalogs are written in pure Rust without UI framework dependencies (zero `leptos::*` or `dioxus::*` imports in core logic).
-- **Seamless UI Framework Swap (Leptos ↔ Dioxus Migration Track)**: Enables swapping or upgrading the frontend rendering engine (e.g. migrating from Leptos to Dioxus or adding native desktop/mobile hosts via [`docs/research/dioxus-ffa-ui-migration-plan.md`](docs/research/dioxus-ffa-ui-migration-plan.md)) without rewriting a single line of domain UI state, view-models, or validation logic. Only thin view-adapters (`ui/leptos.rs` → `ui/dioxus.rs`) are swapped.
+- **Seamless UI Framework Swap (Leptos ↔ Dioxus Migration Track)**: Enables swapping or upgrading the frontend rendering engine (e.g. migrating from Leptos to Dioxus or adding native desktop/mobile hosts via [dioxus-ffa-ui-migration-plan.md](docs/research/dioxus-ffa-ui-migration-plan.md)) without rewriting a single line of domain UI state, view-models, or validation logic. Only thin view-adapters (`ui/leptos.rs` → `ui/dioxus.rs`) are swapped.
 - **Integrated Leptos SSR Path (Default)**: Module UI packages compile directly into Leptos hosts using native `#[server]` functions for zero-overhead server rendering.
 - **Headless & Companion Path**: Exposes identical domain capabilities via parallel **GraphQL**, **REST**, and **gRPC** interfaces for Next.js, Flutter Mobile apps, or custom clients.
 
 ### 3. High-Performance Relational Index Engine (`rustok-index`)
-Cross-module read queries (e.g. searching products by categories, prices, flex fields, and inventory status) historically suffer from multi-table JOIN bottlenecks or N+1 microservice HTTP calls.
-
-RusTok solves this with **`rustok-index`** ([crates/rustok-index](file:///d:/RusTok/crates/rustok-index/README.md)):
-- **Schema-Agnostic PostgreSQL Persistence**: Uses a benchmarked `JSONB` entity envelope (`index_entities`) paired with an independent relational link graph (`index_links`).
-- **Dynamic Expression Indexes**: Automatically derives typed PostgreSQL partial B-Tree and GIN expression indexes for filterable/sortable fields.
-- **Checksummed Keyset Cursors**: Fast, deterministic keyset pagination (`CursorCodec`) and exact-count execution in single `REPEATABLE READ` transactions.
+RusTok solves this with **`rustok-index`** ([crates/rustok-index](crates/rustok-index/README.md)) — eliminating the need for heavy JVM search clusters (Elasticsearch/Algolia) or fragile EAV table schemas (Magento):
+- **Schema-Agnostic PostgreSQL Persistence**: Envelopes entity state into benchmarked `JSONB` structures (`index_entities`) paired with an independent relational link graph (`index_links`).
+- **Derived Expression Indexes**: Automatically derives typed PostgreSQL partial B-Tree expression indexes for scalar properties and GIN indexes for array containment.
+- **Zero N+1 Queries**: Executes cross-module filtering, aggregate ordering, and checksummed keyset pagination (`CursorCodec`) in a single `REPEATABLE READ` snapshot query.
 
 ### 4. Event Streaming & Transactional Outbox (Iggy & `sys_events`)
 RusTok implements reliable event-driven delivery without forcing heavy message brokers onto lightweight deployments:
@@ -151,7 +164,28 @@ RusTok implements reliable event-driven delivery without forcing heavy message b
 RusTok builds platform binaries declaratively:
 - **Build Composition**: `modules.toml` defines which module crates are compiled into the binary. Unused modules are omitted at compile time, eliminating dead code and reducing attack surface.
 - **Per-Tenant Enablement**: A single compiled binary can host multiple tenants, with modules enabled or disabled per tenant at runtime.
-- **Built-in Isolation & i18n**: Multi-tenancy (`tenant_id`) is baked into composite primary keys. Locale handling uses ICU4X/CLDR normalization.
+- **Built-in Isolation & i18n**: Multi-tenancy (`tenant_id`) is baked into composite primary keys. Locale handling uses ICU4X/CLDR normalization and Translation Memory (TM).
+
+### 6. Signed Module Build Pipeline & Content-Addressable Storage (`rustok-build`)
+- **CAS Artifact Materialization**: Module builds (`rustok-build-source`) use Content-Addressable Storage (CAS) for reproducible, immutable archive materialization.
+- **Signed Artifact Verification**: `rustok-build-publication` handles artifact signing and cryptographic verification before deployment.
+- **Isolated Build Dispatching**: Compiles modules in sandboxed background workers (`rustok-module-build-worker`) over authenticated gRPC channels.
+
+### 7. Double-Entry Marketplace Ledger & Financial Auditability
+- **Double-Entry Ledger (`rustok-marketplace-ledger`)**: Multi-vendor transactions, commissions, seller allocations, and payouts use strict double-entry financial accounting.
+- **Durable Event Audit Trail**: Immutable transaction logs prevent balance drift and provide complete financial auditability out of the box.
+
+### 8. Durable Workflow Pipeline & Execution Idempotency (`rustok-workflow`)
+- **Event-Triggered Workflows**: Workflow steps execute automatically upon domain events using durable `(workflow_id, trigger_event_id)` composite keys.
+- **Side-Effect Protection**: Network retries and redeliveries recognize existing execution receipts, returning cached results without re-triggering external HTTP calls, payments, or notifications.
+
+### 9. Self-Healing SEO Engine & Automated 301 Redirect Tree (`rustok-seo`)
+- **Automated 301 Redirect Trees**: Updating entity slugs (products, articles, categories) automatically generates and maintains canonical 301 redirect paths without manual operator rules.
+- **Idempotent Historical Replay**: Index repair and replay pipelines deduplicate operator runs, ensuring zero duplicate rows or broken links.
+
+### 10. Sealed Translation Control Plane & Translation Memory (`rustok-translation`)
+- **Sealed Event Lifecycles**: Translation jobs, proposals, approvals, and applies use sealed `TranslationWorkflowEvent` streams for atomic outbox delivery.
+- **Translation Memory (TM)**: Shared glossaries and translation memory prevent redundant machine/human translation costs across entities.
 
 ---
 
@@ -170,7 +204,7 @@ RusTok supports multiple deployment topographies out of the box using the same b
 
 ---
 
-## Platform Architecture Snapshot
+## Platform Modules & Applications
 
 ### Core Applications
 
@@ -185,7 +219,7 @@ RusTok supports multiple deployment topographies out of the box using the same b
 
 ### Complete Module Taxonomy
 
-Platform capabilities are structured into modular crates defined in [`modules.toml`](file:///d:/RusTok/modules.toml). Detailed ownership and status maps are maintained in [docs/modules/registry.md](file:///d:/RusTok/docs/modules/registry.md).
+Platform capabilities are structured into modular crates defined in [`modules.toml`](modules.toml). Detailed ownership and status maps are maintained in [docs/modules/registry.md](docs/modules/registry.md).
 
 #### Core Foundation Modules
 - `rustok-auth` — Authentication lifecycle, credentials, OAuth2, session contracts.
@@ -195,7 +229,7 @@ Platform capabilities are structured into modular crates defined in [`modules.to
 - `rustok-search` — Full-text relevance, autocomplete, facets, and search UI contracts.
 - `rustok-outbox` — Transactional event outbox, relay, retry, and DLQ controls.
 - `rustok-channel` — Channel context, host bindings, and locale resolution.
-- `rustok-cache` — Memory and Redis cache backend abstraction.
+- `rustok-cache` — Zero-latency Moka TinyLFU L1 in-memory cache, Redis L2, $O(1)$ generation invalidation, and thundering-herd lease protection.
 - `rustok-email` — Email template rendering and provider delivery lifecycle.
 - `rustok-secrets` — Platform secrets, credential storage, and encryption boundaries.
 
@@ -323,14 +357,22 @@ cargo machete
 
 | Resource | Path |
 |---|---|
-| **Documentation Map** | [docs/index.md](file:///d:/RusTok/docs/index.md) |
-| **Platform Architecture Overview** | [docs/architecture/overview.md](file:///d:/RusTok/docs/architecture/overview.md) |
-| **Module Registry** | [docs/modules/registry.md](file:///d:/RusTok/docs/modules/registry.md) |
-| **Fluid Backend Architecture Guide** | [docs/backend/module-backend-architecture.md](file:///d:/RusTok/docs/backend/module-backend-architecture.md) |
-| **Fluid Frontend Architecture Guide** | [docs/UI/module-package-architecture.md](file:///d:/RusTok/docs/UI/module-package-architecture.md) |
-| **Index Engine Architecture** | [crates/rustok-index/docs/README.md](file:///d:/RusTok/crates/rustok-index/docs/README.md) |
-| **Verification Plan** | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](file:///d:/RusTok/docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
-| **AI Agent Rules** | [AGENTS.md](file:///d:/RusTok/AGENTS.md) |
+| **Documentation Map** | [docs/index.md](docs/index.md) |
+| **Architecture Overview** | [docs/architecture/overview.md](docs/architecture/overview.md) |
+| **Module Registry** | [docs/modules/registry.md](docs/modules/registry.md) |
+| **Fluid Backend Architecture** | [docs/backend/module-backend-architecture.md](docs/backend/module-backend-architecture.md) |
+| **Fluid Frontend Architecture** | [docs/UI/module-package-architecture.md](docs/UI/module-package-architecture.md) |
+| **Index Engine** | [crates/rustok-index/docs/README.md](crates/rustok-index/docs/README.md) |
+| **Verification Plan** | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
+| **Quick Start Guide** | [docs/guides/quickstart.md](docs/guides/quickstart.md) |
+| **Contributing Guide** | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| **AI Agent Rules** | [AGENTS.md](AGENTS.md) |
+
+---
+
+## Contributing
+
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) for guidelines on development setup, branch naming, testing, and the pull request process.
 
 ---
 
