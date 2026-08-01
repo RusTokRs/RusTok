@@ -134,12 +134,14 @@ revocation now depend on an actual locked-state change.
 - [x] Repair multiple or malformed assignments even when one matches.
 - [x] Revoke sessions for disabling, banning, deleting or password revocation.
 - [x] Reserve invalidation generations only for effective changes.
-- [x] Preserve exact role/status replay as an Auth admin no-op while retaining
-  malformed relation repair in draft PR #2863.
+- [x] Add same-transaction artifact-permission publication, rollback and no-op
+  event semantics in the current draft #2847 branch.
+- [ ] Land exact role/status replay as an Auth admin no-op while retaining
+  malformed relation repair; the source currently exists only in draft PR #2863.
 - [ ] Merge draft #2843 so the public permission resolver cannot expose or
   compose role-assignment mutations.
-- [ ] Merge and validate draft #2847 so committed artifact-permission changes
-  publish one sealed event in the owner transaction.
+- [ ] Generate the digest, merge and validate draft #2847 so committed artifact-
+  permission changes publish one sealed event in the owner transaction.
 - [ ] Merge and validate draft #2863 so live Auth admin and GraphQL role replay
   cannot create false generation advances or redundant session revocation.
 
@@ -179,8 +181,10 @@ revocation now depend on an actual locked-state change.
 - [x] Add independent-process watchdog recovery in merged PR #2853.
 - [x] Add real Redis fast-path/outage/restart recovery in merged PR #2856.
 - [x] Add the full CLI repair propagation source packet in merged PR #2862.
-- [x] Add transaction result and Auth admin effective-no-op guards in draft PR
-  #2863.
+- [x] Add sealed event-contract, owner transaction and server Outbox adapter
+  source guards in the current draft #2847 branch.
+- [ ] Land the transaction result and Auth admin effective-no-op guards that
+  currently exist only in draft PR #2863.
 - [ ] Execute the Rust tests and architecture/source guards on one revision and
   fix every compile, format or lint failure.
 
@@ -263,12 +267,16 @@ revocation now depend on an actual locked-state change.
 - Draft PR: #2843.
 - Resolver mutation methods, `RoleAssignmentStore` and server delegation are
   removed without a compatibility path.
+- That source is not present in the current #2847 branch and must be reconciled
+  additively before landing order is final.
 
 ### Transactional artifact-permission event correction
 
-- Status: `draft_pr_source_ready_unvalidated`.
+- Status: `current_branch_source_ready_unvalidated`.
 - Draft PR: #2847.
-- Mutation, receipt and sealed event share one owner transaction.
+- Mutation, idempotency receipt and sealed event share one owner transaction.
+- Exact replay and unchanged-state confirmation emit no duplicate or false event.
+- Required publication failure rolls back mutation plus receipt.
 - Repository-generated digest and execution remain mandatory.
 
 ### Auth admin effective no-op correction
@@ -276,10 +284,12 @@ revocation now depend on an actual locked-state change.
 - Status: `draft_pr_source_ready_unvalidated`.
 - Draft PR: #2863.
 - Exact canonical role or status replay does not reserve a new durable
-  generation, fan out invalidation or redundantly revoke sessions.
+  generation, fan out invalidation, write the user row or redundantly revoke
+  sessions.
 - A matching role among multiple or malformed assignments remains a real repair
   and returns an effective change to the transaction owner.
-- Rust regression and architecture guard execution remains absent.
+- That source is not present in the current #2847 branch; Rust regression and
+  architecture guard execution also remains absent.
 
 ### PostgreSQL concurrency evidence
 
@@ -399,10 +409,10 @@ npm run verify:rbac:fba
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-08-01`
-- Scope inspected: `typed principal propagation; tenant-safe control-plane admission; committed mutation and read-only resolver ownership; Auth admin and GraphQL effective-change semantics; transactional artifact-permission events; durable generation allocation; PostgreSQL concurrency; independent-process watchdog recovery; Redis fast-path/outage/restart recovery; full CLI system-role repair propagation; invalidation observability and incident evidence`
+- Scope inspected: `typed principal propagation; tenant-safe artifact-permission admission; transactional artifact-permission mutation and idempotency; sealed integration event ownership; same-transaction Outbox publication; additive landing boundaries with resolver and Auth admin drafts; durable invalidation recovery backlog`
 - Findings: `P0=1, P1=3, P2=0, P3=0`
-- Fixed in this pass: `draft PR #2863 corrects a live operator-path P1: Auth admin previously treated the mere presence of role or status input as an authorization change. The new transaction helper reports exact canonical role replay as changed=false while preserving repair for multiple or malformed assignments. Status is compared against the locked user row. Generation reservation, post-commit fan-out and disabled-status session revocation now occur only for an effective change. Focused Rust regressions, a fail-closed source guard and ownership documentation are included. Merged PR #2862 is now the canonical full CLI repair propagation source packet; historical draft #2859 was closed without merge. Drafts #2843 and #2847 were reconstructed as clean mergeable branches before later main advances.`
-- Remaining risks or blockers: `#2863 is unexecuted. The #2849, #2853, #2856 and #2862 packets are source-only. Draft #2843 and #2847 remain unmerged; #2847 lacks its repository-generated digest. Same-SHA formatting, API/Events/telemetry/RBAC/Admin/server/CLI compilation, focused Rust/Node/module gates, live negative transports, runtime incident evidence and FFA/FBA management evidence remain absent. Issue #2740 still blocks the known Rust-host path before the server build.`
-- Evidence: `source review confirms the GraphQL role-assignment owner already enforces direct principal and users:manage admission and delegates through Auth orchestration with hierarchy, continuity, transaction ownership and durable generation. #2863 removes the remaining presence-based false-change marker, compares status after row lock, and retains malformed relation repair. #2862 reaches the registered CLI command path and two independent observers without Redis or restart. No execution evidence is claimed.`
-- Next action: `run the #2863 regression and architecture guards, then execute #2862/#2856/#2853/#2849 on one reconciled revision; generate and review the #2847 event digest; reconcile #2843/#2847/#2863 additively; then define semantic role-change events and native operator parity`
-- Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-rbac-cli && cargo check -p rustok-server --lib && cargo test -p rustok-server transaction_role_replacement_reports_exact_noop && cargo test -p rustok-server transaction_role_replacement_repairs_multiple_assignments && cargo test -p rustok-server status_effective_change_ignores_exact_replay && cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard && cargo test -p rustok-server --test rbac_mutation_api_architecture_guard && node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs && cargo test -p rustok-cli --test rbac_live_repair_propagation live_cli_system_role_repair_reaches_two_running_replicas_without_restart -- --ignored --nocapture && node scripts/verify/verify-rbac-two-process-redis-restart-source.mjs && cargo test -p rustok-server --test rbac_two_process_redis_restart separate_process_redis_fast_path_survives_restart_and_recovers_missed_publication -- --ignored --nocapture && node scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs && cargo test -p rustok-server --test rbac_two_process_durable_recovery -- --ignored --nocapture --test-threads=1 && node scripts/verify/verify-rbac-postgres-concurrency-source.mjs && cargo test -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Fixed in this pass: `draft PR #2847 adds the sealed rbac.artifact_role_permission.assignment_changed event and a host-neutral ArtifactPermissionEventPublisher. The owner command now keeps relation mutation, idempotency receipt, state-change detection and required event publication in one transaction; publication failure rolls all three back, while exact replay and no-op confirmation emit no duplicate or false event. The server adapter publishes through TransactionalEventBus::publish_contract_in_tx, and module manifests declare the RBAC to Outbox runtime dependency.`
+- Remaining risks or blockers: `#2847 is source-ready but unexecuted and lacks its repository-generated event digest. Draft #2843 contains the read-only resolver correction but is not present in this branch. Draft #2863 contains the zero-write Auth admin effective-no-op correction but is not present in this branch. The #2849, #2853, #2856 and #2862 packets remain source-only. Same-SHA formatting, Events/RBAC/Admin/server compilation, focused Rust/Node/module gates, live negative transports, runtime incident evidence and FFA/FBA management evidence remain absent. Issue #2740 still blocks the known Rust-host path before the server build.`
+- Evidence: `source review confirms the owner command receives one live transaction, publishes the sealed event only for an effective relation change, rolls back on publisher failure, stores the idempotency receipt in the same transaction and exposes no concrete Outbox dependency. Server composition maps the port to the canonical transactional event bus. Contract tests, owner transaction tests and the fail-closed source verifier are present. No digest or execution evidence is claimed.`
+- Next action: `generate and review the repository-owned event digest, run exact-head formatting, Events/RBAC/server compilation, contract/owner/adapter tests and the source verifier for #2847; resolve every branch-local failure; then reconcile #2843 and #2863 additively and execute #2862/#2856/#2853/#2849 on one revision before module promotion`
+- Resume command: `cargo run -p rustok-events --example event_contract_digests -- --write && cargo fmt --all -- --check && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && cargo test -p rustok-server --lib artifact_permission && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
