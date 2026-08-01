@@ -45,7 +45,7 @@ for (const marker of [
   "RbacService::get_user_permissions_authoritative",
   "RbacService::get_user_permissions",
   "reserve_permission_invalidation_generation(&transaction)",
-  "transaction.commit()",
+  "commit relation mutation and durable generation",
   "durable_generation > applied_generation_before",
   "permission_cache_hits + 1",
   "RBAC_INVALIDATION_RECOVERIES_TOTAL",
