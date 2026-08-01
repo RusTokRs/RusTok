@@ -89,18 +89,25 @@ hasAll(
   [
     'pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";',
     'pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";',
-    'pub const COMMENTS_TCP_BEARER_TOKEN_ENV: &str = "RUSTOK_COMMENTS_TCP_BEARER_TOKEN";',
     'pub enum CommentsProviderProfile',
     'InProcessFallback',
     'Preconfigured',
     'TcpLoopback',
+    'TcpProtectedLoopback',
+    'pub struct SharedCommentsTcpClientChannelConnector(',
     'extensions.contains::<Arc<dyn CommentsThreadPort>>()',
     '"in_process"',
     '"tcp"',
     'raw_endpoint.trim().parse::<SocketAddr>()',
-    'endpoint.ip().is_loopback()',
+    '.get::<SharedCommentsTcpClientChannelConnector>()',
+    '.unwrap_or_else(plaintext_client_channel_connector)',
+    'let channel_protection = channel_connector.protection();',
+    'require_loopback_endpoint(endpoint, channel_protection)?;',
     'comments_tcp_bearer_token_from_environment()?;',
-    'TcpJsonCommentsTransport::with_bearer_token(endpoint, bearer_token)',
+    'TcpJsonCommentsTransport::with_channel_connector_and_bearer_token(',
+    'TcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(',
+    'CommentsTcpChannelProtection::PlaintextLoopback',
+    'CommentsTcpChannelProtection::AuthenticatedEncrypted',
     'remote_comments_thread_port(transport)',
     'extensions.insert::<Arc<dyn CommentsThreadPort>>',
     'RUSTOK_COMMENTS_PROVIDER_MODE} must be one of: in_process, tcp',
@@ -118,6 +125,7 @@ hasNone(
     '0.0.0.0:',
     'retry(',
     'println!(',
+    'struct AllowAllCommentsTcpAuthority',
   ],
   'selector non-claims',
 );
@@ -191,10 +199,8 @@ hasAll(
     'existing database/event-bus fallback',
     'source_verified_no_compile',
     'not_run_by_request',
-    'listener lifecycle',
-    'retry/backoff',
   ],
   'slice 70 plan',
 );
 
-console.log('[verify-blog-comments-host-provider-selection] source contract verified');
+console.log('[verify-blog-comments-host-provider-selection] retained source contract verified');

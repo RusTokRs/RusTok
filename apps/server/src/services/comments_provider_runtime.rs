@@ -11,10 +11,12 @@ use std::{
 use rustok_api::PortActor;
 use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
+    CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
     CommentsTcpDelegatingAuthorityResolver, CommentsTcpDelegationSecret,
-    CommentsTcpDelegationSigner, CommentsThreadPort, CommentsThreadTransport,
-    DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
-    MAX_COMMENTS_TCP_DELEGATION_TTL_MS, TcpJsonCommentsServerAdapter,
+    CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor, CommentsThreadPort,
+    CommentsThreadTransport, DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
+    DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
+    PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsServerAdapter,
     TcpJsonCommentsTransport, in_process_comments_thread_port, remote_comments_thread_port,
 };
 use rustok_core::ModuleRuntimeExtensions;
@@ -62,6 +64,7 @@ pub enum CommentsProviderProfile {
     InProcessFallback,
     Preconfigured,
     TcpLoopback,
+    TcpProtectedLoopback,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,6 +80,27 @@ pub struct CommentsProviderRuntimeSelection {
 /// no allow-all fallback.
 #[derive(Clone)]
 pub struct SharedCommentsTcpAuthorityResolver(pub Arc<dyn CommentsTcpAuthorityResolver>);
+
+/// Optional host-provided client channel connector.
+///
+/// The connector is resolved while the consumer transport is published. Missing
+/// configuration retains the built-in plaintext loopback connector. A connector
+/// classified as authenticated and encrypted does not weaken bearer/delegation
+/// authorization and does not yet enable non-loopback publication.
+#[derive(Clone)]
+pub struct SharedCommentsTcpClientChannelConnector(
+    pub Arc<dyn CommentsTcpClientChannelConnector>,
+);
+
+/// Optional host-provided server channel acceptor.
+///
+/// Runtime-context registration takes precedence over module extensions. The
+/// acceptor must finish its own bounded handshake before returning a byte
+/// channel to the typed Comments server adapter.
+#[derive(Clone)]
+pub struct SharedCommentsTcpServerChannelAcceptor(
+    pub Arc<dyn CommentsTcpServerChannelAcceptor>,
+);
 
 /// Optional host override for the provider served by the TCP listener.
 ///
@@ -116,7 +140,7 @@ impl CommentsTcpListenerConfig {
         })?;
         if !bind_addr.ip().is_loopback() {
             return Err(format!(
-                "{COMMENTS_TCP_BIND_ENV} must be loopback while Comments TCP transport is unencrypted"
+                "{COMMENTS_TCP_BIND_ENV} must remain loopback until protected Comments TCP runtime evidence is retained"
             ));
         }
         if bind_addr.port() == 0 {
@@ -170,8 +194,9 @@ struct CommentsTcpListenerLifecycleReservation;
 /// The default `in_process` mode intentionally inserts no port. Blog therefore
 /// retains its existing database/event-bus fallback. `tcp` requires an explicit
 /// loopback endpoint and bearer credential. Signed user delegation is enabled
-/// only when a separate delegation secret is configured. Plaintext TCP is never
-/// enabled for a non-loopback address.
+/// only when a separate delegation secret is configured. A host-injected
+/// authenticated encrypted connector is supported, but non-loopback publication
+/// remains disabled until retained runtime evidence exists.
 pub fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
@@ -207,25 +232,41 @@ pub fn register_comments_provider_runtime(
                     "{COMMENTS_TCP_ENDPOINT_ENV} must be an explicit IP socket address"
                 )
             })?;
-            if !endpoint.ip().is_loopback() {
-                return Err(format!(
-                    "{COMMENTS_TCP_ENDPOINT_ENV} must be loopback while Comments TCP transport is unencrypted"
-                ));
-            }
+            let channel_connector = extensions
+                .get::<SharedCommentsTcpClientChannelConnector>()
+                .cloned()
+                .map(|shared| shared.0)
+                .unwrap_or_else(plaintext_client_channel_connector);
+            let channel_protection = channel_connector.protection();
+            require_loopback_endpoint(endpoint, channel_protection)?;
 
             let bearer_token = comments_tcp_bearer_token_from_environment()?;
             let transport = match comments_tcp_delegation_signer_from_environment()? {
-                Some(signer) => TcpJsonCommentsTransport::with_bearer_and_delegation(
+                Some(signer) => {
+                    TcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(
+                        endpoint,
+                        channel_connector,
+                        bearer_token,
+                        signer,
+                    )
+                }
+                None => TcpJsonCommentsTransport::with_channel_connector_and_bearer_token(
                     endpoint,
+                    channel_connector,
                     bearer_token,
-                    signer,
                 ),
-                None => TcpJsonCommentsTransport::with_bearer_token(endpoint, bearer_token),
             };
             let transport: Arc<dyn CommentsThreadTransport> = Arc::new(transport);
             extensions.insert::<Arc<dyn CommentsThreadPort>>(remote_comments_thread_port(transport));
             extensions.insert(CommentsProviderRuntimeSelection {
-                profile: CommentsProviderProfile::TcpLoopback,
+                profile: match channel_protection {
+                    CommentsTcpChannelProtection::PlaintextLoopback => {
+                        CommentsProviderProfile::TcpLoopback
+                    }
+                    CommentsTcpChannelProtection::AuthenticatedEncrypted => {
+                        CommentsProviderProfile::TcpProtectedLoopback
+                    }
+                },
                 endpoint: Some(endpoint),
             });
             Ok(())
@@ -240,7 +281,8 @@ pub fn register_comments_provider_runtime(
 ///
 /// Binding is fail-closed: a loopback address, authenticated authority resolver,
 /// bounded frame size, bounded concurrency, non-zero pre-request timeout, and
-/// shutdown grace are all required before the task is spawned.
+/// shutdown grace are all required before the task is spawned. A host-provided
+/// channel acceptor is resolved before the accept loop starts.
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
@@ -286,6 +328,18 @@ async fn start_comments_tcp_listener(
         .map(Ok)
         .unwrap_or_else(comments_tcp_authority_from_environment)
         .map_err(Error::BadRequest)?;
+    let channel_acceptor = runtime_ctx
+        .shared_get::<SharedCommentsTcpServerChannelAcceptor>()
+        .or_else(|| {
+            extensions.as_ref().and_then(|values| {
+                values
+                    .get::<SharedCommentsTcpServerChannelAcceptor>()
+                    .cloned()
+            })
+        })
+        .map(|shared| shared.0)
+        .unwrap_or_else(plaintext_server_channel_acceptor);
+    let channel_protection = channel_acceptor.protection();
 
     let provider = runtime_ctx
         .shared_get::<SharedCommentsTcpServerProvider>()
@@ -334,6 +388,7 @@ async fn start_comments_tcp_listener(
     tokio::spawn(run_comments_tcp_listener(
         listener,
         adapter,
+        channel_acceptor,
         config,
         stop_rx,
         instance_id,
@@ -346,6 +401,7 @@ async fn start_comments_tcp_listener(
     tracing::info!(
         instance_id,
         bind_addr = %local_addr,
+        channel_protection = ?channel_protection,
         authentication = "bearer_or_delegated_hmac_or_host_override",
         max_connections = config.max_connections,
         pre_request_timeout_ms = config.pre_request_timeout.as_millis(),
@@ -354,6 +410,31 @@ async fn start_comments_tcp_listener(
         "Comments TCP listener started"
     );
     Ok(())
+}
+
+fn plaintext_client_channel_connector() -> Arc<dyn CommentsTcpClientChannelConnector> {
+    Arc::new(PlaintextLoopbackCommentsTcpChannel)
+}
+
+fn plaintext_server_channel_acceptor() -> Arc<dyn CommentsTcpServerChannelAcceptor> {
+    Arc::new(PlaintextLoopbackCommentsTcpChannel)
+}
+
+fn require_loopback_endpoint(
+    endpoint: SocketAddr,
+    protection: CommentsTcpChannelProtection,
+) -> std::result::Result<(), String> {
+    if endpoint.ip().is_loopback() {
+        return Ok(());
+    }
+    match protection {
+        CommentsTcpChannelProtection::PlaintextLoopback => Err(format!(
+            "{COMMENTS_TCP_ENDPOINT_ENV} must be loopback while the Comments TCP connector is plaintext"
+        )),
+        CommentsTcpChannelProtection::AuthenticatedEncrypted => Err(format!(
+            "{COMMENTS_TCP_ENDPOINT_ENV} must remain loopback until protected Comments TCP runtime evidence is retained"
+        )),
+    }
 }
 
 fn comments_tcp_bearer_token_from_environment() -> std::result::Result<CommentsTcpBearerToken, String> {
@@ -475,6 +556,7 @@ fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
 async fn run_comments_tcp_listener(
     listener: TcpListener,
     adapter: TcpJsonCommentsServerAdapter,
+    channel_acceptor: Arc<dyn CommentsTcpServerChannelAcceptor>,
     config: CommentsTcpListenerConfig,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
     instance_id: u64,
@@ -515,13 +597,15 @@ async fn run_comments_tcp_listener(
                     }
                 };
                 let adapter = adapter.clone();
+                let channel_acceptor = channel_acceptor.clone();
                 let pre_request_timeout = config.pre_request_timeout;
                 connections.spawn(async move {
                     let _permit = permit;
                     if let Err(error) = adapter
-                        .handle_connection_with_pre_request_timeout(
+                        .handle_connection_with_acceptor_and_pre_request_timeout(
                             stream,
                             peer_addr,
+                            channel_acceptor.as_ref(),
                             pre_request_timeout,
                         )
                         .await
@@ -680,6 +764,10 @@ mod tests {
             COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV,
             "RUSTOK_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY"
         );
+        assert_ne!(
+            CommentsProviderProfile::TcpLoopback,
+            CommentsProviderProfile::TcpProtectedLoopback
+        );
     }
 
     #[test]
@@ -697,6 +785,16 @@ mod tests {
         assert!(!parse_bool_value("enabled", "off").unwrap());
         assert!(parse_positive_usize_value("limit", "0").is_err());
         assert!(parse_positive_u64_value("timeout", "0").is_err());
+    }
+
+    #[test]
+    fn protected_connector_does_not_enable_non_loopback() {
+        let endpoint: SocketAddr = "192.0.2.10:9000".parse().unwrap();
+        assert!(require_loopback_endpoint(
+            endpoint,
+            CommentsTcpChannelProtection::AuthenticatedEncrypted,
+        )
+        .is_err());
     }
 
     #[test]
