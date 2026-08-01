@@ -36,10 +36,11 @@ pub use artifact_permissions::{
 };
 #[cfg(feature = "server")]
 pub use context::{
-    AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
-    HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext, OptionalAuthContext,
-    OptionalChannel, OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension,
-    TenantError, has_any_effective_permission, has_effective_permission, scope_matches,
+    AuthContext, AuthContextExtension, AuthPrincipalKind, ChannelContextExt,
+    ChannelContextExtension, HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
+    OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
+    TenantContextExtension, TenantError, has_any_effective_permission, has_effective_permission,
+    scope_matches,
 };
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
