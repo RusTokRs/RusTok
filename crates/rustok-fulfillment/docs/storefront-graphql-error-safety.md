@@ -73,8 +73,8 @@ Internal events retain only:
 - seller-id presence;
 - shipping-option-id presence.
 
-Raw GraphQL display text is not written to the event. Debug output from the parsed typed
-error is not written to the event.
+Raw GraphQL display text is not written to the event.
+Debug output from the parsed typed error is not written to the event.
 
 The events also do not retain:
 
