@@ -208,6 +208,7 @@ pub fn rbac_role_mutation_event_schema(event_type: &str) -> Option<&'static Even
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ContractEventEnvelope;
 
     #[test]
     fn replacement_and_repair_contracts_validate() {
@@ -218,6 +219,24 @@ mod tests {
         RbacRoleMutationEvent::user_role_assignment_repaired(user_id, "manager", 8)
             .validate()
             .unwrap();
+    }
+
+    #[test]
+    fn registered_envelope_accepts_role_replacement_contract() {
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            RbacRoleMutationEvent::user_role_replaced(
+                Uuid::new_v4(),
+                "manager",
+                "admin",
+                9,
+            ),
+        )
+        .expect("RBAC role mutation event must be registered");
+
+        assert_eq!(envelope.event_type(), RBAC_EVENT_USER_ROLE_REPLACED);
+        assert_eq!(envelope.schema_version(), 1);
     }
 
     #[test]
