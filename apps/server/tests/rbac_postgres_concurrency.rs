@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::future::Future;
+use std::sync::Arc;
 
 use chrono::Utc;
 use rustok_core::{UserRole, UserStatus};
@@ -16,6 +17,7 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use sea_orm_migration::MigratorTrait;
+use tokio::sync::Barrier;
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -36,7 +38,11 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
         let assertion_db = db_a.clone();
         let task_db_a = db_a.clone();
         let task_db_b = db_b.clone();
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_a = Arc::clone(&barrier);
+        let barrier_b = Arc::clone(&barrier);
         let task_a = tokio::spawn(async move {
+            barrier_a.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_a,
                 &target_user_id,
@@ -46,6 +52,7 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             .await
         });
         let task_b = tokio::spawn(async move {
+            barrier_b.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_b,
                 &target_user_id,
@@ -122,7 +129,11 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
         let assertion_db = db_a.clone();
         let task_db_a = db_a.clone();
         let task_db_b = db_b.clone();
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_a = Arc::clone(&barrier);
+        let barrier_b = Arc::clone(&barrier);
         let first = tokio::spawn(async move {
+            barrier_a.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_a,
                 &first_user_id,
@@ -132,6 +143,7 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             .await
         });
         let second = tokio::spawn(async move {
+            barrier_b.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_b,
                 &second_user_id,
@@ -199,6 +211,7 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
 async fn concurrent_generation_reservations_are_unique_contiguous_and_committed() {
     with_rbac_postgres_database("rustok_rbac_generation", |db_a, db_b| async move {
         let generation_before = rustok_rbac::read_permission_invalidation_generation(&db_a).await?;
+        let barrier = Arc::new(Barrier::new(8));
         let mut tasks = Vec::new();
         for index in 0..8 {
             let db = if index % 2 == 0 {
@@ -206,7 +219,9 @@ async fn concurrent_generation_reservations_are_unique_contiguous_and_committed(
             } else {
                 db_b.clone()
             };
+            let barrier = Arc::clone(&barrier);
             tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
                 let transaction = db.begin().await?;
                 let generation =
                     rustok_rbac::reserve_permission_invalidation_generation(&transaction).await?;
