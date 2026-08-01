@@ -24,6 +24,7 @@ const files = {
   runtime: "apps/server/src/services/rbac_runtime.rs",
   generation: "apps/server/src/services/rbac_invalidation_generation.rs",
   metrics: "crates/rustok-telemetry/src/rbac_invalidation_metrics.rs",
+  testDb: "crates/rustok-test-utils/src/db.rs",
   evidence:
     "crates/rustok-rbac/contracts/evidence/rbac-policy-incident-trace-source.json",
   docs: "crates/rustok-rbac/docs/policy-incident-trace.md",
@@ -38,6 +39,7 @@ const sources = Object.fromEntries(
 for (const marker of [
   "struct RbacPolicyIncidentPacket",
   "missed_publication_incident_connects_decision_relations_cache_generation_and_recovery",
+  "setup_test_db_with_migrations::<Migrator>()",
   "RbacRoleAssignmentDbWriter::new(db.clone())",
   "replace_user_role_committed",
   "assert!(initial_generation > 0)",
@@ -102,17 +104,28 @@ for (const marker of [
   "RBAC_INVALIDATION_FULL_CLEARS_TOTAL",
 ]) requireText(sources.metrics, marker, `${files.metrics}: bounded metrics`);
 
+for (const marker of [
+  "Sets up a test database with specific migrations.",
+  '"sqlite:file:rustok_test_{}?mode=memory&cache=shared"',
+  "opts.max_connections(1)",
+]) requireText(sources.testDb, marker, `${files.testDb}: SQLite fixture`);
+
 const evidence = JSON.parse(sources.evidence);
 const evidenceChecks = [
   [evidence.status === "source_ready_unvalidated", "status must remain source_ready_unvalidated"],
   [evidence.cycle === "cycle-001", "cycle must remain cycle-001"],
   [evidence.component === "core/rbac", "component must remain core/rbac"],
+  [evidence.fixture_backend === "sqlite_in_memory", "fixture backend must remain in-memory SQLite"],
+  [evidence.postgresql_evidence === false, "PostgreSQL evidence must not be claimed"],
+  [evidence.multi_replica_evidence === false, "multi-replica evidence must not be claimed"],
   [evidence.failure_injection?.publisher_intentionally_not_called === true, "publisher omission must be explicit"],
   [evidence.failure_injection?.watchdog_is_the_recovery_actor === true, "watchdog must remain the recovery actor"],
   [evidence.failure_injection?.manual_test_only_cache_clear === false, "manual cache clear must remain forbidden"],
   [evidence.packet_contract?.raw_permission_list_logged === false, "raw permission lists must not be logged"],
   [evidence.validation?.rust_test_executed === false, "Rust execution must not be claimed"],
   [evidence.validation?.source_verifier_executed === false, "source verifier execution must not be claimed"],
+  [evidence.validation?.sqlite_runtime_executed === false, "SQLite execution must not be claimed"],
+  [evidence.validation?.postgresql_runtime_executed === false, "PostgreSQL execution must not be claimed"],
   [evidence.broad_rbac_verification_complete === false, "broad RBAC verification must remain open"],
   [evidence.cursor_advanced === false, "cursor must not advance"],
 ];
@@ -122,11 +135,14 @@ for (const [passed, message] of evidenceChecks) {
 
 for (const marker of [
   "dedicated integration scenario",
+  "single-connection in-memory SQLite database",
+  "It is not PostgreSQL",
   "missed post-commit publication",
   "generation_advanced_full_clear",
   "The only recovery actor is the existing durable-generation watchdog.",
+  "does not replace retained real-PostgreSQL concurrency",
   "The source file and evidence JSON do not claim",
-  "core/rbac` cursor remains",
+  "core/rbac` cursor",
 ]) requireText(sources.docs, marker, `${files.docs}: incident contract`);
 
 for (const marker of [
@@ -149,5 +165,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ one source-ready RBAC policy incident packet connects evaluator, relation truth, stale cache, durable generation, watchdog recovery, and final denial",
+  "✔ one source-ready SQLite RBAC policy incident packet connects evaluator, relation truth, stale cache, durable generation, watchdog recovery, and final denial without claiming PostgreSQL or multi-replica evidence",
 );
