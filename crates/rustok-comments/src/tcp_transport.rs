@@ -5,9 +5,10 @@ use rustok_api::PortError;
 use tokio::{net::TcpStream, time::timeout};
 
 use crate::{
-    CommentsTcpAuthenticationConfigError, CommentsTcpBearerToken, CommentsTcpRequestEnvelope,
-    CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransport,
-    CommentsThreadTransportReply,
+    CommentsTcpAuthenticationConfigError, CommentsTcpBearerToken,
+    CommentsTcpDelegationConfigError, CommentsTcpDelegationSecret, CommentsTcpDelegationSigner,
+    CommentsTcpOperation, CommentsTcpRequestEnvelope, CommentsThreadRequest,
+    CommentsThreadResponse, CommentsThreadTransport, CommentsThreadTransportReply,
 };
 
 use crate::tcp_protocol::{
@@ -19,14 +20,15 @@ pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;
 /// Concrete sidecar transport using length-prefixed JSON over TCP.
 ///
 /// Each operation opens one connection, wraps the typed request in a versioned
-/// credential envelope, applies the port deadline to the complete exchange, and
-/// closes the connection after one typed reply. The unauthenticated constructor
-/// remains available for a future externally authenticated channel such as mTLS;
-/// host publication uses the bearer constructor for the current loopback mode.
+/// credential envelope, applies the port deadline to preparation and the complete
+/// exchange, and closes the connection after one typed reply. Reads use the
+/// configured service bearer. Owner writes use a short-lived signed user
+/// delegation when a signer is configured.
 #[derive(Clone, Debug)]
 pub struct TcpJsonCommentsTransport {
     endpoint: SocketAddr,
     bearer_token: Option<CommentsTcpBearerToken>,
+    delegation_signer: Option<CommentsTcpDelegationSigner>,
     max_frame_bytes: usize,
 }
 
@@ -35,6 +37,7 @@ impl TcpJsonCommentsTransport {
         Self {
             endpoint,
             bearer_token: None,
+            delegation_signer: None,
             max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
         }
     }
@@ -43,6 +46,20 @@ impl TcpJsonCommentsTransport {
         Self {
             endpoint,
             bearer_token: Some(bearer_token),
+            delegation_signer: None,
+            max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
+        }
+    }
+
+    pub fn with_bearer_and_delegation(
+        endpoint: SocketAddr,
+        bearer_token: CommentsTcpBearerToken,
+        delegation_signer: CommentsTcpDelegationSigner,
+    ) -> Self {
+        Self {
+            endpoint,
+            bearer_token: Some(bearer_token),
+            delegation_signer: Some(delegation_signer),
             max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
         }
     }
@@ -57,6 +74,22 @@ impl TcpJsonCommentsTransport {
         ))
     }
 
+    pub fn with_bearer_and_delegation_secrets(
+        endpoint: SocketAddr,
+        bearer_secret: impl AsRef<str>,
+        delegation_secret: impl AsRef<str>,
+    ) -> Result<Self, CommentsTcpTransportConfigError> {
+        let bearer = CommentsTcpBearerToken::new(bearer_secret)
+            .map_err(CommentsTcpTransportConfigError::Authentication)?;
+        let delegation = CommentsTcpDelegationSecret::new(delegation_secret)
+            .map_err(CommentsTcpTransportConfigError::Delegation)?;
+        Ok(Self::with_bearer_and_delegation(
+            endpoint,
+            bearer,
+            CommentsTcpDelegationSigner::new(delegation),
+        ))
+    }
+
     pub fn with_max_frame_bytes(
         endpoint: SocketAddr,
         max_frame_bytes: usize,
@@ -65,6 +98,7 @@ impl TcpJsonCommentsTransport {
         Ok(Self {
             endpoint,
             bearer_token: None,
+            delegation_signer: None,
             max_frame_bytes,
         })
     }
@@ -78,6 +112,22 @@ impl TcpJsonCommentsTransport {
         Ok(Self {
             endpoint,
             bearer_token: Some(bearer_token),
+            delegation_signer: None,
+            max_frame_bytes,
+        })
+    }
+
+    pub fn with_bearer_and_delegation_and_max_frame_bytes(
+        endpoint: SocketAddr,
+        bearer_token: CommentsTcpBearerToken,
+        delegation_signer: CommentsTcpDelegationSigner,
+        max_frame_bytes: usize,
+    ) -> Result<Self, PortError> {
+        validate_frame_limit(max_frame_bytes)?;
+        Ok(Self {
+            endpoint,
+            bearer_token: Some(bearer_token),
+            delegation_signer: Some(delegation_signer),
             max_frame_bytes,
         })
     }
@@ -92,6 +142,10 @@ impl TcpJsonCommentsTransport {
 
     pub fn is_authenticated(&self) -> bool {
         self.bearer_token.is_some()
+    }
+
+    pub fn supports_delegated_writes(&self) -> bool {
+        self.delegation_signer.is_some()
     }
 
     async fn exchange(
@@ -109,6 +163,46 @@ impl TcpJsonCommentsTransport {
         let response_payload = read_frame(&mut stream, self.max_frame_bytes).await?;
         decode_reply(&response_payload)
     }
+
+    async fn prepare_and_exchange(
+        &self,
+        request: CommentsThreadRequest,
+    ) -> Result<CommentsThreadResponse, PortError> {
+        let operation = CommentsTcpOperation::for_request(&request);
+        let envelope = if operation.is_write() {
+            match self.delegation_signer.as_ref() {
+                Some(signer) => {
+                    let credential = signer.credential_for(&request)?;
+                    CommentsTcpRequestEnvelope::with_credential(request, credential)
+                }
+                None => match self.bearer_token.as_ref() {
+                    Some(token) => CommentsTcpRequestEnvelope::with_bearer(request, token),
+                    None => CommentsTcpRequestEnvelope::unauthenticated(request),
+                },
+            }
+        } else {
+            match self.bearer_token.as_ref() {
+                Some(token) => CommentsTcpRequestEnvelope::with_bearer(request, token),
+                None => CommentsTcpRequestEnvelope::unauthenticated(request),
+            }
+        };
+        let request_payload = serde_json::to_vec(&envelope).map_err(|_| {
+            PortError::invariant_violation(
+                "comments.tcp_encode",
+                "comments TCP request envelope could not be encoded",
+            )
+        })?;
+        ensure_frame_size(request_payload.len(), self.max_frame_bytes)?;
+        self.exchange(&request_payload).await
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CommentsTcpTransportConfigError {
+    #[error(transparent)]
+    Authentication(CommentsTcpAuthenticationConfigError),
+    #[error(transparent)]
+    Delegation(CommentsTcpDelegationConfigError),
 }
 
 #[async_trait]
@@ -119,21 +213,9 @@ impl CommentsThreadTransport for TcpJsonCommentsTransport {
     ) -> Result<CommentsThreadResponse, PortError> {
         request.context().require_deadline_semantics()?;
         let deadline_ms = request.context().deadline_ms.unwrap_or_default();
-        let envelope = match self.bearer_token.as_ref() {
-            Some(token) => CommentsTcpRequestEnvelope::with_bearer(request, token),
-            None => CommentsTcpRequestEnvelope::unauthenticated(request),
-        };
-        let request_payload = serde_json::to_vec(&envelope).map_err(|_| {
-            PortError::invariant_violation(
-                "comments.tcp_encode",
-                "comments TCP request envelope could not be encoded",
-            )
-        })?;
-        ensure_frame_size(request_payload.len(), self.max_frame_bytes)?;
-
         timeout(
             Duration::from_millis(deadline_ms),
-            self.exchange(&request_payload),
+            self.prepare_and_exchange(request),
         )
         .await
         .map_err(|_| {
@@ -182,8 +264,25 @@ mod tests {
         let debug = format!("{transport:?}");
 
         assert!(transport.is_authenticated());
+        assert!(!transport.supports_delegated_writes());
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("comments-secret"));
+    }
+
+    #[test]
+    fn delegated_transport_debug_is_redacted() {
+        let endpoint = "127.0.0.1:1".parse().unwrap();
+        let transport = TcpJsonCommentsTransport::with_bearer_and_delegation_secrets(
+            endpoint,
+            "comments-read-secret",
+            "0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let debug = format!("{transport:?}");
+
+        assert!(transport.supports_delegated_writes());
+        assert!(!debug.contains("comments-read-secret"));
+        assert!(!debug.contains("0123456789abcdef"));
     }
 
     #[test]
