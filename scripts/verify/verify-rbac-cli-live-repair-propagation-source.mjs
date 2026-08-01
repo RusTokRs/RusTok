@@ -41,19 +41,20 @@ for (const marker of [
   "rustok-telemetry.workspace = true",
   "rustok-test-utils.workspace = true",
 ]) requireText(sources.cargo, marker, `${files.cargo}: source harness dependencies`);
+for (const forbidden of ["redis =", "rustok-rbac-cli"])
+  forbidText(sources.cargo, forbidden, `${files.cargo}: isolated test dependency boundary`);
 
 for (const marker of [
-  '#[ignore = "requires PostgreSQL admin access, redis-server and subprocess execution"]',
+  '#[ignore = "requires PostgreSQL admin access and subprocess execution"]',
   "live_cli_system_role_repair_reaches_two_running_replicas_without_restart",
   'const CHILD_TEST_NAME: &str = "rbac_cli_live_repair_child"',
   'const WATCHDOG_RECOVERY_BOUND: Duration = Duration::from_secs(7)',
   "std::env::current_exe()",
   'child_command("observer"',
   'child_command("cli"',
-  "wait_for_redis_subscribers(&redis_url, 2)",
-  "RBAC_PERMISSION_INVALIDATION_CHANNEL",
   "start_rbac_cache_invalidation_listener",
   "start_rbac_invalidation_generation_watchdog",
+  "RbacCacheInvalidationListenerHandle",
   "RbacInvalidationGenerationWatchdogHandle",
   "RBAC_INVALIDATION_APPLIED_GENERATION",
   'with_label_values(&["generation_advanced"])',
@@ -69,6 +70,11 @@ for (const marker of [
   "affected_users_count != 2",
   "durable_generation != Some(1)",
   "runtime_restart_required_if_applied",
+  '.env_remove("RUSTOK_REDIS_URL")',
+  '.env_remove("REDIS_URL")',
+  "cache.redis_configuration_present()",
+  "listener.is_running()",
+  "watchdog.is_running()",
   "process_id",
 ]) requireText(sources.harness, marker, `${files.harness}: live CLI repair topology`);
 
@@ -87,6 +93,9 @@ for (const forbidden of [
   "CacheInvalidationMessage::new",
   "setup_test_db_with_migrations",
   "sqlite:",
+  "redis::",
+  "RUSTOK_CACHE_REDIS_SERVER_BIN",
+  "RBAC_PERMISSION_INVALIDATION_CHANNEL",
 ]) forbidText(sources.harness, forbidden, `${files.harness}: forbidden shortcut`);
 
 for (const marker of [
@@ -118,10 +127,9 @@ for (const forbidden of [
 ]) forbidText(sources.rbacCli, forbidden, `${files.rbacCli}: CLI has no fan-out handle`);
 
 for (const marker of [
-  'pub const RBAC_PERMISSION_INVALIDATION_CHANNEL: &str = "rbac.permissions.generation.v1"',
   "listener.recover_generation_and_clear().await",
-  "consume_subscription_with_ready",
   "invalidate_all_user_permissions_cache().await",
+  "ctx.shared_insert(runtime)",
 ]) requireText(sources.listener, marker, `${files.listener}: production listener baseline`);
 
 for (const marker of [
@@ -143,12 +151,13 @@ const evidenceChecks = [
   [evidence.topology?.cli_processes === 1, "one CLI process is required"],
   [evidence.topology?.independent_os_processes === true, "OS process isolation is required"],
   [evidence.topology?.shared_process_cache === false, "process cache must not be shared"],
-  [evidence.topology?.observer_redis_subscriptions_required === 2, "two Redis subscriptions are required"],
+  [evidence.topology?.redis_configured === false, "Redis must remain disabled"],
   [evidence.topology?.observer_restart_allowed === false, "observer restart must remain forbidden"],
   [evidence.cli_path?.runner === "rustok_cli::run_with_runtime", "canonical CLI runner is required"],
   [evidence.cli_path?.runtime_cache_handle_present === false, "CLI cache handle must remain absent"],
   [evidence.cli_path?.runtime_redis_handle_present === false, "CLI Redis handle must remain absent"],
   [evidence.cli_path?.expected_durable_generation === 1, "durable generation must remain one"],
+  [evidence.replica_recovery?.only_cross_process_recovery_path === "database_generation_watchdog", "watchdog must remain the only recovery path"],
   [evidence.replica_recovery?.recovery_reason === "generation_advanced", "generation advance recovery is required"],
   [evidence.replica_recovery?.full_clear_required_per_replica === true, "each replica must full-clear"],
   [evidence.replica_recovery?.maximum_recovery_ms === 7000, "recovery bound must remain 7000 ms"],
@@ -169,6 +178,8 @@ for (const [passed, message] of evidenceChecks) {
 for (const marker of [
   "two independent long-lived observer processes",
   "one independent short-lived CLI process",
+  "Redis configuration is explicitly removed",
+  "database generation watchdog is the only cross-process recovery path",
   "rustok_cli::run_with_runtime",
   "does not receive a server cache service",
   "generation_advanced",
@@ -196,5 +207,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC CLI repair harness runs the canonical CLI path in an independent process and requires two live replicas to recover through durable generation without restart while retaining all execution gates",
+  "✔ source-ready RBAC CLI repair harness runs the canonical CLI path in an independent process and requires two live DB-only replicas to recover through durable generation without restart while retaining all execution gates",
 );
