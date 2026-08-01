@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-30T18:30:00Z",
+  "generated_at_utc": "2026-08-01T08:00:00Z",
   "status": "pricing_storefront_graphql_error_safety_source_unvalidated",
-  "scope": "Pricing-owned storefront GraphQL public transport envelope",
+  "scope": "Pricing-owned storefront GraphQL public and diagnostic transport envelope",
   "operation": "fetch_storefront_pricing",
   "boundary": "pricing_storefront_graphql_transport",
   "public_messages": {
@@ -19,12 +19,17 @@
     "graphql_rejection_static_public_envelope": true,
     "raw_graphql_http_display_public": false,
     "raw_query_values_logged": false,
-    "private_graphql_error_diagnostics": true,
+    "raw_graphql_detail_logged": false,
+    "parsed_graphql_error_debug_logged": false,
+    "raw_graphql_detail_shape_logged": true,
+    "typed_parse_validity_logged": true,
+    "closed_graphql_error_category_logged": true,
     "transport_validation_messages_preserved": true,
     "native_adapter_changed": false,
     "query_contract_changed": false,
     "transport_selection_changed": false,
-    "fallback_added": false
+    "fallback_added": false,
+    "broad_ecommerce_cleanup_closed": false
   },
   "safe_diagnostics": [
     "owner",
@@ -47,10 +52,12 @@
     "channel_slug_present",
     "channel_slug_length",
     "quantity_present",
-    "error_kind",
+    "raw_graphql_error_present",
+    "raw_graphql_error_length",
+    "parsed_graphql_error_valid",
+    "closed_graphql_error_category",
     "stable_code",
-    "boundary",
-    "private_graphql_http_error"
+    "boundary"
   ],
   "forbidden_public_or_structured_values": [
     "tenant_slug",
@@ -62,7 +69,8 @@
     "channel_id",
     "channel_slug",
     "quantity",
-    "GraphqlHttpError display",
+    "raw GraphqlHttpError display",
+    "parsed GraphqlHttpError Debug output",
     "GraphQL server error message",
     "HTTP status text"
   ],
@@ -73,12 +81,14 @@
     "Pricing transport validation messages",
     "native server-function adapter and public policy",
     "native versus GraphQL selected transport",
-    "absence of native-to-GraphQL fallback"
+    "absence of native-to-GraphQL fallback",
+    "stable public messages, codes, and severity"
   ],
   "remaining_scope": [
-    "remaining ecommerce adapters and non-PortError public envelopes",
+    "remaining ecommerce adapters and non-PortError public or diagnostic envelopes",
     "Pricing storefront GraphQL runtime and browser evidence",
-    "Pricing native and GraphQL mounted parity"
+    "Pricing native and GraphQL mounted parity",
+    "broad ecommerce correlation-safe mapper cleanup"
   ],
   "suggested_execution": [
     "node scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs",
