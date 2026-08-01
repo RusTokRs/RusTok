@@ -53,10 +53,11 @@ native RBAC Admin. The host-neutral `RbacControlPlanePrincipal` keeps the owner
 crate independent of Axum and `rustok-api/server`.
 
 The current cycle-001 source slice replaces transport-metadata inference inside
-that owner policy with one explicit `AuthPrincipalKind`. HTTP/native middleware
-and GraphQL HTTP/WebSocket composition classify validated auth facts once,
-attach `AuthPrincipalContext`, and fail closed when the facts do not match one
-of the three admitted shapes. RBAC transports have no compatibility fallback.
+that owner policy with one explicit `AuthPrincipalKind`. The access-token resolver
+classifies validated claims once and stores the typed result on `CurrentUser`.
+HTTP/native middleware and GraphQL HTTP/WebSocket composition only propagate that
+result into `AuthPrincipalContext`; repeated grant/client/session interpretation is
+forbidden. RBAC transports have no compatibility fallback.
 
 The cycle-001 invalidation observability slice adds dedicated bounded metrics to
 the canonical telemetry registry and instruments the existing database watchdog.
@@ -185,8 +186,9 @@ It does not add a second generation counter, cache authority or recovery path.
   coverage and `verify-rbac-invalidation-observability.mjs` to lock the canonical
   registry, watchdog transitions, operator policy and active cursor.
 - [x] Add `verify-rbac-explicit-principal-kind.mjs` and update the Rust/source
-  architecture guards so every RBAC transport requires typed principal context
-  and the owner cannot reintroduce grant/client/session inference.
+  architecture guards so the token resolver is the single classifier, every RBAC
+  transport requires typed principal context and the owner cannot reintroduce
+  grant/client/session inference.
 - [ ] Execute the added Rust tests and architecture guards in a toolchain-enabled
   environment and fix any compile, formatting or lint failures.
 
@@ -272,9 +274,12 @@ It does not add a second generation counter, cache authority or recovery path.
   outside the `rustok-api/server` feature.
 - [x] Add server-only `AuthPrincipalContext` and an Axum extractor while leaving
   existing `AuthContext` transport metadata unchanged for unrelated consumers.
-- [x] Classify validated auth facts once in HTTP/native middleware and GraphQL
-  HTTP/WebSocket composition; reject unknown or inconsistent combinations with
-  static public errors and bounded diagnostics.
+- [x] Classify validated claims once in the access-token resolver, store the typed
+  result on `CurrentUser`, and reject unknown or inconsistent combinations before
+  any request context or module policy is constructed.
+- [x] Propagate `CurrentUser.principal_kind` through HTTP/native middleware and
+  GraphQL HTTP/WebSocket composition without reinterpreting grant/client/session
+  metadata.
 - [x] Reduce `RbacControlPlanePrincipal` to tenant id plus typed kind and remove
   all owner references to client, grant and session metadata.
 - [x] Require typed context in GraphQL role reads/writes, REST artifact-role
@@ -387,7 +392,8 @@ cargo check -p rustok-rbac --all-features
 cargo check -p rustok-rbac-admin --features ssr
 cargo check -p rustok-rbac-cli
 cargo check -p rustok-server --lib
-cargo test -p rustok-api --features server authenticated_facts_classify_fail_closed
+cargo test -p rustok-api authenticated_facts_classify_fail_closed
+cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds
 cargo test -p rustok-telemetry rbac_invalidation_metrics
 cargo test -p rustok-rbac --all-features
 cargo test -p rustok-rbac-admin --features ssr
@@ -451,10 +457,10 @@ harness owns them.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-08-01`
-- Scope inspected: `principal classification and authoritative request-scope construction; explicit typed principal propagation through HTTP/native middleware and GraphQL HTTP/WebSocket composition; GraphQL role reads/writes, REST artifact-role permission writes and native RBAC Admin admission; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; invalidation worker/gap-tracker composition and bounded recovery observability`
+- Scope inspected: `access-token claim validation and single-source typed principal classification; explicit principal propagation through HTTP/native middleware and GraphQL HTTP/WebSocket composition; GraphQL role reads/writes, REST artifact-role permission writes and native RBAC Admin admission; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; invalidation worker/gap-tracker composition and bounded recovery observability`
 - Findings: `P0=0, P1=1, P2=0, P3=0`
-- Fixed in this pass: `added the host-neutral AuthPrincipalKind and server-only AuthPrincipalContext; classified validated authentication facts once at HTTP/native and GraphQL boundaries; reduced RbacControlPlanePrincipal to typed kind plus tenant id; removed owner and adapter fallback to client_id/grant_type/session_id; required typed context before GraphQL, REST and native permission admission; added unit, Rust architecture and source regression guards plus an owner contract document`
+- Fixed in this pass: `added host-neutral AuthPrincipalKind and server-only AuthPrincipalContext; made the access-token resolver the only classifier and stored the result on CurrentUser; made HTTP/native and GraphQL composition propagation-only; reduced RbacControlPlanePrincipal to typed kind plus tenant id; removed owner and adapter fallback to client_id/grant_type/session_id; required typed context before GraphQL, REST and native permission admission; added resolver/unit, Rust architecture and source regression guards plus an owner contract document`
 - Remaining risks or blockers: `the explicit-kind and observability corrections are source-ready but unexecuted. Same-SHA formatting, rustok-api default/server, RBAC all-feature, RBAC Admin SSR and server compilation, focused Rust/source verifiers, module gates and live negative transport requests remain absent. PostgreSQL mutation concurrency, unique durable generation allocation, multi-replica Redis outage/restart/missed-publication recovery, canonical repair propagation, one complete incident trace, module-owned management flow and FFA/FBA evidence remain open. Issue #2740 still blocks the known Rust-host path before the server build.`
-- Evidence: `source review confirms AuthPrincipalKind is available without rustok-api/server; AuthPrincipalContext is mandatory in each RBAC transport; middleware and GraphQL HTTP/WebSocket reject unknown auth fact combinations; the owner policy contains no client_id, grant_type or session_id fields; delegated and service kinds are denied before effective management permission checks. Updated Rust/source guards lock the typed contract and active cursor. No formatting, compilation, test, verifier, workflow, CI, PostgreSQL or Redis command is claimed as executed in this pass.`
-- Next action: `run the targeted API/RBAC/Admin/server checks and both focused principal/tenant source verifiers on one revision; resolve failures, then retain PostgreSQL concurrency and two-replica Redis recovery evidence before continuing module-owned role/permission management and incident-trace P1 work`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Evidence: `source review confirms AuthPrincipalKind is available without rustok-api/server; classify_access_token_claims delegates to the shared fail-closed classifier and CurrentUser carries the typed result; middleware and GraphQL HTTP/WebSocket only propagate it; AuthPrincipalContext is mandatory in each RBAC transport; the owner policy contains no client_id, grant_type or session_id fields; delegated and service kinds are denied before effective management permission checks. Updated Rust/source guards lock the single-source typed contract and active cursor. No formatting, compilation, test, verifier, workflow, CI, PostgreSQL or Redis command is claimed as executed in this pass.`
+- Next action: `run the targeted API/auth-resolver/RBAC/Admin/server checks and focused principal/tenant source verifiers on one revision; resolve failures, then retain PostgreSQL concurrency and two-replica Redis recovery evidence before continuing module-owned role/permission management and incident-trace P1 work`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-api authenticated_facts_classify_fail_closed && cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
