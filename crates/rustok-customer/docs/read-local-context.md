@@ -19,6 +19,9 @@ canonical wrapper.
 
 ## Bounded context shape
 
+This bounded context shape keeps attribution useful without copying delegated identity
+or routing values into the event.
+
 Covered events retain correlation ID, owner operation, local operation, stable boundary,
 and only bounded delegated context:
 
