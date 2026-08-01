@@ -19,6 +19,11 @@ pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;
 const MAX_BEARER_TOKEN_BYTES: usize = 4_096;
 const BEARER_SCHEME: &str = "bearer";
 const BEARER_PREFIX: &[u8] = b"Bearer ";
+const DEFAULT_BEARER_OPERATIONS: [CommentsTcpOperation; 3] = [
+    CommentsTcpOperation::GetComment,
+    CommentsTcpOperation::ListCommentsForTarget,
+    CommentsTcpOperation::ListPublicCommentsForTarget,
+];
 
 /// Deployment-provided credential for the Comments TCP boundary.
 ///
@@ -170,7 +175,8 @@ impl fmt::Debug for CommentsTcpRequestEnvelope {
 /// A valid credential authenticates the configured service actor. The claimed
 /// tenant must be a canonical UUID and is copied into trusted authority only
 /// after authentication. Principal fields are replaced later by the server
-/// adapter before provider dispatch.
+/// adapter before provider dispatch. The default operation set is deliberately
+/// read-only because owner writes may require a trusted end-user identity.
 #[derive(Clone)]
 pub struct CommentsTcpBearerAuthorityResolver {
     token: CommentsTcpBearerToken,
@@ -197,7 +203,7 @@ impl CommentsTcpBearerAuthorityResolver {
             actor,
             claims: Vec::new(),
             roles: Vec::new(),
-            allowed_operations: HashSet::from(CommentsTcpOperation::ALL),
+            allowed_operations: HashSet::from(DEFAULT_BEARER_OPERATIONS),
         }
     }
 
@@ -358,6 +364,41 @@ mod tests {
         assert_eq!(authority.actor, PortActor::service(actor_id));
         assert_eq!(authority.claims, ["comments:manage"]);
         assert_eq!(authority.roles, ["admin"]);
+    }
+
+    #[tokio::test]
+    async fn default_bearer_resolver_rejects_owner_writes() {
+        let tenant_id = Uuid::new_v4().to_string();
+        let token = CommentsTcpBearerToken::new("comments-secret").unwrap();
+        let credential = token.credential();
+        let resolver = CommentsTcpBearerAuthorityResolver::from_token(
+            token,
+            PortActor::service(Uuid::new_v4().to_string()),
+        );
+        let context = PortContext::new(
+            tenant_id,
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "corr-write",
+        );
+
+        for operation in [
+            CommentsTcpOperation::CreateComment,
+            CommentsTcpOperation::UpdateComment,
+            CommentsTcpOperation::SetCommentStatus,
+            CommentsTcpOperation::DeleteComment,
+        ] {
+            let error = resolver
+                .authorize(
+                    "127.0.0.1:9000".parse().unwrap(),
+                    operation,
+                    Some(&credential),
+                    &context,
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "comments.tcp_operation_forbidden");
+        }
     }
 
     #[tokio::test]
