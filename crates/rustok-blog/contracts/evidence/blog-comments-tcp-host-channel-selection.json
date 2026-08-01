@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_host_channel_selection",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-75.md",
+  "source_contract": {
+    "host_runtime": "apps/server/src/services/comments_provider_runtime.rs",
+    "channel_contract": "crates/rustok-comments/src/tcp_channel.rs",
+    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs"
+  },
+  "client_selection": {
+    "wrapper": "SharedCommentsTcpClientChannelConnector",
+    "source": "ModuleRuntimeExtensions",
+    "default": "PlaintextLoopbackCommentsTcpChannel",
+    "selected_before_port_publication": true,
+    "bearer_constructor": "with_channel_connector_and_bearer_token",
+    "delegation_constructor": "with_channel_connector_bearer_and_delegation",
+    "plaintext_profile": "TcpLoopback",
+    "protected_profile": "TcpProtectedLoopback"
+  },
+  "server_selection": {
+    "wrapper": "SharedCommentsTcpServerChannelAcceptor",
+    "precedence": [
+      "ServerRuntimeContext",
+      "ModuleRuntimeExtensions",
+      "PlaintextLoopbackCommentsTcpChannel"
+    ],
+    "resolved_before_listener_spawn": true,
+    "shared_across_connections": true,
+    "adapter_entrypoint": "handle_connection_with_acceptor_and_pre_request_timeout",
+    "handshake_owned_by_acceptor": true,
+    "request_idle_timeout_starts_after_channel_establishment": true
+  },
+  "policy": {
+    "plaintext_endpoint_loopback_only": true,
+    "protected_endpoint_loopback_only": true,
+    "listener_bind_loopback_only": true,
+    "accepted_peer_loopback_only": true,
+    "non_loopback_enabled": false,
+    "authenticated_encrypted_classification_is_runtime_evidence": false,
+    "channel_mints_application_authority": false,
+    "bearer_and_delegation_retained": true,
+    "tenant_match_retained": true,
+    "owner_policy_retained": true
+  },
+  "lifecycle": {
+    "semaphore_bounded": true,
+    "join_set_owned": true,
+    "shared_stop_handle": true,
+    "shutdown_grace_bounded": true,
+    "abort_after_grace": true,
+    "frame_limit_retained": true
+  },
+  "diagnostics": {
+    "closed_channel_protection_logged": true,
+    "connector_debug_logged": false,
+    "acceptor_debug_logged": false,
+    "certificate_logged": false,
+    "private_key_logged": false,
+    "bearer_logged": false,
+    "delegation_secret_logged": false
+  },
+  "dependency_contract": {
+    "new_direct_dependencies": [],
+    "manifest_changed": false,
+    "cargo_lock_changed": false
+  },
+  "non_claims": [
+    "rustls_adapter",
+    "tokio_rustls_adapter",
+    "tls_handshake",
+    "mutual_tls",
+    "certificate_loading",
+    "server_name_validation",
+    "certificate_expiry_validation",
+    "certificate_revocation",
+    "encrypted_builtin_profile",
+    "non_loopback_publication",
+    "channel_derived_authority",
+    "runtime_execution"
+  ],
+  "execution": {
+    "rust_tests_run": false,
+    "javascript_verifiers_run": false,
+    "cargo_commands_run": false,
+    "formatting_run": false,
+    "tcp_runtime_run": false,
+    "tls_runtime_run": false,
+    "database_run": false,
+    "browser_run": false,
+    "workflow_run": false,
+    "ci_run": false
+  }
+}
