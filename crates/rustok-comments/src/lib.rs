@@ -18,6 +18,8 @@ pub mod services;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_auth;
 #[cfg(feature = "tcp-transport")]
+pub mod tcp_channel;
+#[cfg(feature = "tcp-transport")]
 pub mod tcp_delegation;
 #[cfg(feature = "tcp-transport")]
 mod tcp_protocol;
@@ -54,6 +56,11 @@ pub use tcp_auth::{
     COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpAuthenticationConfigError,
     CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken, CommentsTcpCredential,
     CommentsTcpRequestEnvelope,
+};
+#[cfg(feature = "tcp-transport")]
+pub use tcp_channel::{
+    BoxCommentsTcpIo, CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
+    CommentsTcpIo, CommentsTcpServerChannelAcceptor, PlaintextLoopbackCommentsTcpChannel,
 };
 #[cfg(feature = "tcp-transport")]
 pub use tcp_delegation::{

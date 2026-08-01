@@ -1,32 +1,39 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{fmt, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use rustok_api::{PortActorKind, PortError};
-use tokio::{net::TcpStream, time::timeout};
+use tokio::time::timeout;
 
 use crate::{
     CommentsTcpAuthenticationConfigError, CommentsTcpBearerToken,
+    CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
     CommentsTcpDelegationConfigError, CommentsTcpDelegationSecret, CommentsTcpDelegationSigner,
     CommentsTcpOperation, CommentsTcpRequestEnvelope, CommentsThreadRequest,
     CommentsThreadResponse, CommentsThreadTransport, CommentsThreadTransportReply,
+    PlaintextLoopbackCommentsTcpChannel,
 };
 
 use crate::tcp_protocol::{
-    ensure_frame_size, io_error, read_frame, validate_frame_limit, write_frame,
+    ensure_frame_size, read_frame, validate_frame_limit, write_frame,
 };
 
 pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;
 
-/// Concrete sidecar transport using length-prefixed JSON over TCP.
+/// Concrete sidecar transport using length-prefixed JSON over an injected byte channel.
 ///
-/// Each operation opens one connection, wraps the typed request in a versioned
+/// Each operation opens one channel, wraps the typed request in a versioned
 /// credential envelope, applies the port deadline to preparation and the complete
-/// exchange, and closes the connection after one typed reply. Reads and the
+/// exchange, and closes the channel after one typed reply. Reads and the
 /// host-owned system moderation path use the configured service bearer. User-
 /// owned writes use a short-lived signed delegation when a signer is configured.
-#[derive(Clone, Debug)]
+///
+/// The default connector is the built-in plaintext loopback-only compatibility
+/// channel. A host may inject an authenticated encrypted connector without
+/// changing framing, typed requests, bearer authentication, or user delegation.
+#[derive(Clone)]
 pub struct TcpJsonCommentsTransport {
     endpoint: SocketAddr,
+    channel_connector: Arc<dyn CommentsTcpClientChannelConnector>,
     bearer_token: Option<CommentsTcpBearerToken>,
     delegation_signer: Option<CommentsTcpDelegationSigner>,
     max_frame_bytes: usize,
@@ -34,8 +41,16 @@ pub struct TcpJsonCommentsTransport {
 
 impl TcpJsonCommentsTransport {
     pub fn new(endpoint: SocketAddr) -> Self {
+        Self::with_channel_connector(endpoint, plaintext_channel_connector())
+    }
+
+    pub fn with_channel_connector(
+        endpoint: SocketAddr,
+        channel_connector: Arc<dyn CommentsTcpClientChannelConnector>,
+    ) -> Self {
         Self {
             endpoint,
+            channel_connector,
             bearer_token: None,
             delegation_signer: None,
             max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
@@ -43,8 +58,21 @@ impl TcpJsonCommentsTransport {
     }
 
     pub fn with_bearer_token(endpoint: SocketAddr, bearer_token: CommentsTcpBearerToken) -> Self {
+        Self::with_channel_connector_and_bearer_token(
+            endpoint,
+            plaintext_channel_connector(),
+            bearer_token,
+        )
+    }
+
+    pub fn with_channel_connector_and_bearer_token(
+        endpoint: SocketAddr,
+        channel_connector: Arc<dyn CommentsTcpClientChannelConnector>,
+        bearer_token: CommentsTcpBearerToken,
+    ) -> Self {
         Self {
             endpoint,
+            channel_connector,
             bearer_token: Some(bearer_token),
             delegation_signer: None,
             max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
@@ -56,8 +84,23 @@ impl TcpJsonCommentsTransport {
         bearer_token: CommentsTcpBearerToken,
         delegation_signer: CommentsTcpDelegationSigner,
     ) -> Self {
+        Self::with_channel_connector_bearer_and_delegation(
+            endpoint,
+            plaintext_channel_connector(),
+            bearer_token,
+            delegation_signer,
+        )
+    }
+
+    pub fn with_channel_connector_bearer_and_delegation(
+        endpoint: SocketAddr,
+        channel_connector: Arc<dyn CommentsTcpClientChannelConnector>,
+        bearer_token: CommentsTcpBearerToken,
+        delegation_signer: CommentsTcpDelegationSigner,
+    ) -> Self {
         Self {
             endpoint,
+            channel_connector,
             bearer_token: Some(bearer_token),
             delegation_signer: Some(delegation_signer),
             max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
@@ -94,9 +137,22 @@ impl TcpJsonCommentsTransport {
         endpoint: SocketAddr,
         max_frame_bytes: usize,
     ) -> Result<Self, PortError> {
+        Self::with_channel_connector_and_max_frame_bytes(
+            endpoint,
+            plaintext_channel_connector(),
+            max_frame_bytes,
+        )
+    }
+
+    pub fn with_channel_connector_and_max_frame_bytes(
+        endpoint: SocketAddr,
+        channel_connector: Arc<dyn CommentsTcpClientChannelConnector>,
+        max_frame_bytes: usize,
+    ) -> Result<Self, PortError> {
         validate_frame_limit(max_frame_bytes)?;
         Ok(Self {
             endpoint,
+            channel_connector,
             bearer_token: None,
             delegation_signer: None,
             max_frame_bytes,
@@ -111,6 +167,7 @@ impl TcpJsonCommentsTransport {
         validate_frame_limit(max_frame_bytes)?;
         Ok(Self {
             endpoint,
+            channel_connector: plaintext_channel_connector(),
             bearer_token: Some(bearer_token),
             delegation_signer: None,
             max_frame_bytes,
@@ -126,6 +183,7 @@ impl TcpJsonCommentsTransport {
         validate_frame_limit(max_frame_bytes)?;
         Ok(Self {
             endpoint,
+            channel_connector: plaintext_channel_connector(),
             bearer_token: Some(bearer_token),
             delegation_signer: Some(delegation_signer),
             max_frame_bytes,
@@ -140,6 +198,10 @@ impl TcpJsonCommentsTransport {
         self.max_frame_bytes
     }
 
+    pub fn channel_protection(&self) -> CommentsTcpChannelProtection {
+        self.channel_connector.protection()
+    }
+
     pub fn is_authenticated(&self) -> bool {
         self.bearer_token.is_some()
     }
@@ -152,15 +214,9 @@ impl TcpJsonCommentsTransport {
         &self,
         request_payload: &[u8],
     ) -> Result<CommentsThreadResponse, PortError> {
-        let mut stream = TcpStream::connect(self.endpoint)
-            .await
-            .map_err(|error| io_error("connect", error))?;
-        stream
-            .set_nodelay(true)
-            .map_err(|error| io_error("set_nodelay", error))?;
-
-        write_frame(&mut stream, request_payload, self.max_frame_bytes).await?;
-        let response_payload = read_frame(&mut stream, self.max_frame_bytes).await?;
+        let mut channel = self.channel_connector.connect(self.endpoint).await?;
+        write_frame(&mut *channel, request_payload, self.max_frame_bytes).await?;
+        let response_payload = read_frame(&mut *channel, self.max_frame_bytes).await?;
         decode_reply(&response_payload)
     }
 
@@ -197,6 +253,23 @@ impl TcpJsonCommentsTransport {
         ensure_frame_size(request_payload.len(), self.max_frame_bytes)?;
         self.exchange(&request_payload).await
     }
+}
+
+impl fmt::Debug for TcpJsonCommentsTransport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TcpJsonCommentsTransport")
+            .field("endpoint", &self.endpoint)
+            .field("channel_protection", &self.channel_connector.protection())
+            .field("bearer_token", &self.bearer_token)
+            .field("delegation_signer", &self.delegation_signer)
+            .field("max_frame_bytes", &self.max_frame_bytes)
+            .finish()
+    }
+}
+
+fn plaintext_channel_connector() -> Arc<dyn CommentsTcpClientChannelConnector> {
+    Arc::new(PlaintextLoopbackCommentsTcpChannel)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -256,6 +329,16 @@ mod tests {
         let transport: Arc<dyn CommentsThreadTransport> =
             Arc::new(TcpJsonCommentsTransport::new(endpoint));
         let _ = transport;
+    }
+
+    #[test]
+    fn default_transport_is_plaintext_loopback() {
+        let endpoint = "127.0.0.1:1".parse().unwrap();
+        let transport = TcpJsonCommentsTransport::new(endpoint);
+        assert_eq!(
+            transport.channel_protection(),
+            CommentsTcpChannelProtection::PlaintextLoopback
+        );
     }
 
     #[test]

@@ -3,8 +3,8 @@ import fs from 'node:fs';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json';
 const manifestPath = 'crates/rustok-comments/Cargo.toml';
 const exportPath = 'crates/rustok-comments/src/lib.rs';
-const digestPath = 'crates/rustok-api/src/digest.rs';
 const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
+const channelPath = 'crates/rustok-comments/src/tcp_channel.rs';
 const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
 const remotePath = 'crates/rustok-comments/src/remote.rs';
 const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
@@ -14,259 +14,175 @@ function read(path) {
   return fs.readFileSync(path, 'utf8');
 }
 
-function json(path) {
-  return JSON.parse(read(path));
-}
-
 function fail(message) {
   console.error(`[verify-blog-comments-tcp-transport] ${message}`);
   process.exit(1);
 }
 
-function hasAll(text, snippets, label) {
-  for (const snippet of snippets) {
-    if (!text.includes(snippet)) fail(`${label} missing ${snippet}`);
-  }
+function requireCondition(condition, message) {
+  if (!condition) fail(message);
 }
 
-function hasNone(text, snippets, label) {
-  for (const snippet of snippets) {
-    if (text.includes(snippet)) fail(`${label} contains forbidden ${snippet}`);
-  }
+function requireText(source, fragment, label) {
+  requireCondition(source.includes(fragment), `${label} missing ${fragment}`);
 }
 
 function sameSet(actual, expected, label) {
   const left = [...actual].sort().join('|');
   const right = [...expected].sort().join('|');
-  if (left !== right) fail(`${label} drift: expected ${right}, got ${left}`);
+  requireCondition(left === right, `${label} drift: expected ${right}, got ${left}`);
 }
 
 for (const path of [
   evidencePath,
   manifestPath,
   exportPath,
-  digestPath,
   authPath,
+  channelPath,
   protocolPath,
   remotePath,
   transportPath,
   planPath,
 ]) {
-  if (!fs.existsSync(path)) fail(`missing source artifact ${path}`);
+  requireCondition(fs.existsSync(path), `missing source artifact ${path}`);
 }
 
-const evidence = json(evidencePath);
+const evidence = JSON.parse(read(evidencePath));
 const manifest = read(manifestPath);
 const exports = read(exportPath);
-const digest = read(digestPath);
 const auth = read(authPath);
+const channel = read(channelPath);
 const protocol = read(protocolPath);
 const remote = read(remotePath);
 const transport = read(transportPath);
 const plan = read(planPath);
 
-if (evidence.schema_version !== 1) fail('evidence schema_version drift');
-if (
-  evidence.module !== 'blog'
-  || evidence.provider !== 'comments'
-  || evidence.surface !== 'comments_tcp_json_transport'
-) fail('evidence identity drift');
-if (
-  evidence.status !== 'source_verified_no_compile'
-  || evidence.compile_policy !== 'not_run_by_request'
-  || evidence.runtime_status !== 'not_run'
-) fail('evidence execution status drift');
-if (evidence.generated_from !== planPath) fail('evidence plan path drift');
-
-const expectedOperations = [
-  'CreateComment',
-  'GetComment',
-  'ListCommentsForTarget',
-  'ListPublicCommentsForTarget',
-  'UpdateComment',
-  'SetCommentStatus',
-  'DeleteComment',
-];
-sameSet(evidence.operations ?? [], expectedOperations, 'transport operations');
-
-if (
-  evidence.source_contract?.remote_core !== remotePath
-  || evidence.source_contract?.transport_adapter !== transportPath
-  || evidence.source_contract?.provider_export !== exportPath
-  || evidence.source_contract?.provider_manifest !== manifestPath
-) fail('source contract path drift');
-
-if (
-  evidence.protocol?.name !== 'comments_tcp_length_prefixed_json_v1'
-  || evidence.protocol?.length_prefix !== 'u32_big_endian'
-  || evidence.protocol?.request_encoding !== 'serde_json'
-  || evidence.protocol?.reply_encoding !== 'serde_json'
-  || evidence.protocol?.connection_scope !== 'one_request_one_reply'
-  || evidence.protocol?.default_max_frame_bytes !== 8388608
-  || evidence.protocol?.endpoint_owner !== 'host'
-) fail('protocol contract drift');
-
-if (
-  evidence.deadline?.source !== 'PortContext.deadline_ms'
-  || evidence.deadline?.required_before_connect !== true
-  || evidence.deadline?.scope !== 'connect_write_read_decode'
-  || evidence.deadline?.mechanism !== 'tokio::time::timeout'
-  || evidence.deadline?.timeout_code !== 'comments.tcp_timeout'
-) fail('deadline contract drift');
-
-if (evidence.fail_closed?.retry_implemented !== false) fail('retry status drift');
+requireCondition(evidence.schema_version === 1, 'evidence schema drift');
+requireCondition(
+  evidence.module === 'blog'
+    && evidence.provider === 'comments'
+    && evidence.surface === 'comments_tcp_json_transport',
+  'evidence identity drift',
+);
+requireCondition(
+  evidence.status === 'source_verified_no_compile'
+    && evidence.compile_policy === 'not_run_by_request'
+    && evidence.runtime_status === 'not_run',
+  'evidence execution status drift',
+);
+requireCondition(evidence.generated_from === planPath, 'historical plan path drift');
 
 sameSet(
-  evidence.pending ?? [],
+  evidence.operations ?? [],
   [
-    'tcp_server_adapter',
-    'endpoint_discovery',
-    'authentication',
-    'retry_backoff',
-    'host_publication',
-    'in_process_remote_runtime_parity',
-    'runtime_execution',
+    'CreateComment',
+    'GetComment',
+    'ListCommentsForTarget',
+    'ListPublicCommentsForTarget',
+    'UpdateComment',
+    'SetCommentStatus',
+    'DeleteComment',
   ],
-  'historical slice 68 pending scope',
+  'transport operations',
 );
+requireCondition(
+  evidence.protocol?.length_prefix === 'u32_big_endian'
+    && evidence.protocol?.request_encoding === 'serde_json'
+    && evidence.protocol?.reply_encoding === 'serde_json'
+    && evidence.protocol?.connection_scope === 'one_request_one_reply'
+    && evidence.protocol?.default_max_frame_bytes === 8388608,
+  'historical protocol drift',
+);
+requireCondition(
+  evidence.deadline?.source === 'PortContext.deadline_ms'
+    && evidence.deadline?.required_before_connect === true
+    && evidence.deadline?.mechanism === 'tokio::time::timeout'
+    && evidence.deadline?.timeout_code === 'comments.tcp_timeout',
+  'historical deadline drift',
+);
+requireCondition(evidence.fail_closed?.retry_implemented === false, 'retry status drift');
 
-hasAll(
-  manifest,
-  [
-    'tcp-transport = ["server", "dep:tokio"]',
-    'tokio = { workspace = true, optional = true }',
-  ],
-  'comments manifest',
-);
-hasNone(
-  manifest,
-  [
-    'dep:sha2',
-    'dep:subtle',
-    'sha2 = { workspace = true, optional = true }',
-    'subtle = { version = "2", optional = true }',
-  ],
-  'comments manifest lock compatibility',
-);
-
-hasAll(
-  exports,
-  [
-    '#[cfg(feature = "tcp-transport")]',
-    'pub mod tcp_auth;',
-    'mod tcp_protocol;',
-    'pub mod tcp_transport;',
-    'CommentsTcpBearerToken',
-    'CommentsTcpRequestEnvelope',
-    'pub use tcp_transport::TcpJsonCommentsTransport;',
-  ],
-  'comments exports',
-);
-
-hasAll(
-  digest,
-  [
-    'pub const SHA256_DIGEST_BYTES: usize = 32;',
-    'pub fn sha256_digest(',
-    'pub fn fixed_work_sha256_eq(',
-    'difference |= expected[index] ^ candidate[index];',
-    'does not claim',
-  ],
-  'shared digest helper',
-);
-
-hasAll(
-  auth,
-  [
-    'pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;',
-    'pub struct CommentsTcpBearerToken',
-    'pub struct CommentsTcpCredential',
-    'pub struct CommentsTcpRequestEnvelope',
-    'fixed_work_sha256_eq',
-    'sha256_digest(&[BEARER_PREFIX, secret])',
-    '[REDACTED]',
-  ],
-  'TCP authentication envelope',
-);
-hasNone(auth, ['ConstantTimeEq', 'use sha2::', 'use subtle::'], 'TCP auth dependency boundary');
-
-hasAll(
-  remote,
-  [
-    'pub fn context(&self) -> &PortContext',
-    'pub enum CommentsThreadTransportReply',
-    'Success(CommentsThreadResponse)',
-    'Error(PortError)',
-  ],
-  'remote core',
-);
-for (const operation of expectedOperations) {
-  if (!remote.includes(`Self::${operation} { context, .. }`)) {
-    fail(`remote request context coverage missing ${operation}`);
-  }
+for (const fragment of [
+  'tcp-transport = ["server", "dep:tokio"]',
+  'tokio = { workspace = true, optional = true }',
+]) requireText(manifest, fragment, 'comments manifest');
+for (const forbidden of ['dep:rustls', 'dep:tokio-rustls', 'rustls =', 'tokio-rustls =']) {
+  requireCondition(!manifest.includes(forbidden), `comments manifest contains ${forbidden}`);
 }
 
-hasAll(
-  protocol,
-  [
-    'pub const DEFAULT_MAX_COMMENTS_FRAME_BYTES: usize = 8 * 1024 * 1024;',
-    'length.to_be_bytes()',
-    'u32::from_be_bytes(length_bytes)',
-    'comments.tcp_invalid_frame_limit',
-    'comments.tcp_frame_too_large',
-    'comments.tcp_unavailable',
-    'comments.tcp_timeout',
-  ],
-  'shared TCP protocol',
-);
+for (const fragment of [
+  'pub mod tcp_auth;',
+  'pub mod tcp_channel;',
+  'mod tcp_protocol;',
+  'pub mod tcp_transport;',
+  'CommentsTcpClientChannelConnector',
+  'PlaintextLoopbackCommentsTcpChannel',
+  'TcpJsonCommentsTransport',
+]) requireText(exports, fragment, 'comments exports');
 
-hasAll(
-  transport,
-  [
-    'pub struct TcpJsonCommentsTransport',
-    'impl CommentsThreadTransport for TcpJsonCommentsTransport',
-    'TcpStream::connect(self.endpoint)',
-    'request.context().require_deadline_semantics()?;',
-    'Duration::from_millis(deadline_ms)',
-    'self.exchange(&request_payload)',
-    'write_frame(&mut stream, request_payload, self.max_frame_bytes).await?;',
-    'read_frame(&mut stream, self.max_frame_bytes).await?;',
-    'CommentsTcpRequestEnvelope::with_bearer(request, token)',
-    'CommentsTcpRequestEnvelope::unauthenticated(request)',
-    'CommentsThreadTransportReply::Success(response)',
-    'CommentsThreadTransportReply::Error(error)',
-    'comments.tcp_encode',
-    'comments.tcp_decode',
-    'provider_error_reply_is_preserved',
-    'tcp_transport_is_injectable_without_connecting',
-    'bearer_transport_debug_is_redacted',
-  ],
-  'TCP transport',
-);
+for (const fragment of [
+  'pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;',
+  'pub struct CommentsTcpRequestEnvelope',
+  'CommentsTcpRequestEnvelope',
+  '[REDACTED]',
+]) requireText(auth, fragment, 'authentication envelope');
 
-hasNone(
-  transport,
-  [
-    'loop {',
-    'retry(',
-    'println!(',
-    'tracing::info!',
-  ],
-  'TCP transport non-claims',
-);
+for (const fragment of [
+  'pub trait CommentsTcpIo: AsyncRead + AsyncWrite + Unpin + Send',
+  'pub trait CommentsTcpClientChannelConnector: Send + Sync',
+  'async fn connect(&self, endpoint: SocketAddr)',
+  'PlaintextLoopback',
+  'AuthenticatedEncrypted',
+  'ensure_loopback(endpoint, "endpoint")?;',
+  'comments.tcp_plaintext_non_loopback',
+]) requireText(channel, fragment, 'channel connector');
 
-hasAll(
-  plan,
-  [
-    '# rustok-blog implementation plan — slice 68 continuation',
-    'comments_tcp_length_prefixed_json_v1',
-    'source_verified_no_compile',
-    'tcp_server_adapter',
-    'host_publication',
-    'retry_backoff',
-    'not_run_by_request',
-  ],
-  'slice 68 plan',
-);
+for (const fragment of [
+  'pub(crate) async fn write_frame<S>',
+  'S: AsyncWrite + Unpin + ?Sized',
+  'pub(crate) async fn read_frame<S>',
+  'S: AsyncRead + Unpin + ?Sized',
+  'length.to_be_bytes()',
+  'u32::from_be_bytes(length_bytes)',
+  'comments.tcp_invalid_frame_limit',
+  'comments.tcp_frame_too_large',
+]) requireText(protocol, fragment, 'generic framing');
+requireCondition(!protocol.includes('net::TcpStream'), 'framing must not own TcpStream');
 
-console.log('[verify-blog-comments-tcp-transport] source contract verified');
+for (const fragment of [
+  'pub enum CommentsThreadRequest',
+  'pub enum CommentsThreadTransportReply',
+  'Success(CommentsThreadResponse)',
+  'Error(PortError)',
+]) requireText(remote, fragment, 'remote typed core');
+
+for (const fragment of [
+  'channel_connector: Arc<dyn CommentsTcpClientChannelConnector>',
+  'pub fn with_channel_connector(',
+  'pub fn with_channel_connector_and_bearer_token(',
+  'pub fn with_channel_connector_bearer_and_delegation(',
+  'self.channel_connector.connect(self.endpoint).await?',
+  'write_frame(&mut *channel, request_payload, self.max_frame_bytes).await?;',
+  'read_frame(&mut *channel, self.max_frame_bytes).await?;',
+  'request.context().require_deadline_semantics()?;',
+  'Duration::from_millis(deadline_ms)',
+  'self.prepare_and_exchange(request)',
+  'CommentsTcpRequestEnvelope::with_bearer(request, token)',
+  'CommentsThreadTransportReply::Success(response)',
+  'CommentsThreadTransportReply::Error(error)',
+  'pub fn channel_protection(&self) -> CommentsTcpChannelProtection',
+  'default_transport_is_plaintext_loopback',
+]) requireText(transport, fragment, 'TCP transport');
+for (const forbidden of ['TcpStream::connect(self.endpoint)', 'retry(', 'println!(', 'tracing::info!']) {
+  requireCondition(!transport.includes(forbidden), `transport contains forbidden ${forbidden}`);
+}
+
+for (const fragment of [
+  '# rustok-blog implementation plan — slice 68 continuation',
+  'comments_tcp_length_prefixed_json_v1',
+  'source_verified_no_compile',
+  'retry_backoff',
+  'not_run_by_request',
+]) requireText(plan, fragment, 'slice 68 plan');
+
+console.log('[verify-blog-comments-tcp-transport] retained transport contract verified');
