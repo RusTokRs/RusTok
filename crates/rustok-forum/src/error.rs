@@ -70,6 +70,9 @@ pub enum ForumError {
     #[error("Forum topic merge operation conflicts with an existing command: {0}")]
     TopicMergeOperationConflict(Uuid),
 
+    #[error("Forum topic merge subscription reconciliation conflicts with an existing command: {0}")]
+    TopicMergeSubscriptionReconciliationConflict(Uuid),
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -138,6 +141,9 @@ impl ForumError {
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
+            Self::TopicMergeSubscriptionReconciliationConflict(_) => {
+                "FORUM_TOPIC_MERGE_SUBSCRIPTION_RECONCILIATION_CONFLICT"
+            }
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
             Self::ReplyNotFound(_) => "FORUM_REPLY_NOT_FOUND",

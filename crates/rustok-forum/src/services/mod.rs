@@ -108,12 +108,14 @@ mod topic_audience_visibility;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_merge;
+mod topic_merge_subscription_reconciliation;
 mod topic_move;
 mod topic_owner {
     include!("topic_owner.rs");
     include!("topic_owner_inline.rs");
 }
 mod topic_reply_create_audience;
+mod topic_subscription_lock;
 pub mod topic_visibility;
 pub mod user_stats;
 mod user_trust;
@@ -222,6 +224,12 @@ pub use topic_facade::TopicService;
 pub use topic_merge::{
     ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
+};
+pub use topic_merge_subscription_reconciliation::{
+    ForumTopicMergeSubscriptionReconciliationResult,
+    ForumTopicMergeSubscriptionReconciliationService,
+    MAX_FORUM_TOPIC_MERGE_SUBSCRIPTION_REASON_LEN, MAX_FORUM_TOPIC_MERGE_SUBSCRIPTIONS,
+    ReconcileForumTopicMergeSubscriptionsInput,
 };
 pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
