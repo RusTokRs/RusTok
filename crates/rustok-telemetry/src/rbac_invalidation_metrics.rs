@@ -104,7 +104,7 @@ pub fn update_generations(durable: u64, applied: Option<u64>) {
 }
 
 pub fn set_watchdog_running(running: bool) {
-    RBAC_INVALIDATION_WATCHDOG_RUNNING.set(i64::from(running));
+    RBAC_INVALIDATION_WATCHDOG_RUNNING.set(if running { 1 } else { 0 });
 }
 
 pub fn record_database_read_error() {
