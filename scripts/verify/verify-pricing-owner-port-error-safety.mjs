@@ -16,6 +16,10 @@ const paths = {
   error: 'crates/rustok-commerce-foundation/src/error.rs',
   readContext: 'crates/rustok-pricing/src/read_context.rs',
   writeContext: 'crates/rustok-pricing/src/write_context.rs',
+  readEvidence:
+    'crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json',
+  writeEvidence:
+    'crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json',
   evidence:
     'crates/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source.json',
   review:
@@ -29,6 +33,8 @@ const ports = read(paths.ports);
 const errorSource = read(paths.error);
 const readContext = read(paths.readContext);
 const writeContext = read(paths.writeContext);
+const readEvidence = JSON.parse(read(paths.readEvidence));
+const writeEvidence = JSON.parse(read(paths.writeEvidence));
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
 const document = read(paths.document);
@@ -320,6 +326,46 @@ for (const marker of [
   'pricing payload diagnostics: forbidden',
 ]) requireText(broadTest, marker, `${paths.broadTest}: Pricing fixture`);
 
+for (const [source, boundary, operationCount] of [
+  [readContext, 'pricing_read_port', 6],
+  [writeContext, 'pricing_write_port', 4],
+]) {
+  requireText(source, `"${boundary}"`, `${boundary} boundary`);
+  requireText(source, 'tenant_id_length = context_facts.tenant_id_length', `${boundary} tenant shape`);
+  requireText(source, 'actor_kind = context_facts.actor_kind', `${boundary} actor shape`);
+  requireText(source, 'public_message_length', `${boundary} message shape`);
+  requireText(source, 'original_message_length', `${boundary} original message shape`);
+  requireText(source, 'error_kind,', `${boundary} closed error kind`);
+  const delegations = source.match(/&self\.inner/g) ?? [];
+  if (delegations.length !== operationCount) {
+    failures.push(`${boundary}: expected ${operationCount} delegations, found ${delegations.length}`);
+  }
+  for (const forbidden of [
+    'tenant_id = %context.tenant_id',
+    'actor = ?context.actor',
+    'channel = ?context.channel',
+    'locale = %context.locale',
+    'causation_id = ?context.causation_id',
+    'traceparent = ?context.traceparent',
+    'idempotency_key = ?context.idempotency_key',
+    'public_message = %mapped_error.message',
+    'error_kind = ?mapped_error.kind',
+  ]) forbidText(source, forbidden, `${boundary}: raw wrapper diagnostics`);
+}
+
+if (readEvidence.source_contract?.read_context_wrapper_cleanup_closed !== true) {
+  failures.push(`${paths.readEvidence}: read wrapper must remain source-closed`);
+}
+if (readEvidence.source_contract?.write_context_wrapper_cleanup_closed !== false) {
+  failures.push(`${paths.readEvidence}: historical read slice must retain its deliberate boundary`);
+}
+if (writeEvidence.source_contract?.read_context_wrapper_cleanup_closed !== true) {
+  failures.push(`${paths.writeEvidence}: read wrapper closure must be retained`);
+}
+if (writeEvidence.source_contract?.write_context_wrapper_cleanup_closed !== true) {
+  failures.push(`${paths.writeEvidence}: write wrapper must be source-closed`);
+}
+
 for (const [key, expected] of Object.entries({
   port_operation_count: 10,
   read_operation_count: 6,
@@ -345,6 +391,9 @@ for (const [key, expected] of Object.entries({
   direct_lookup_message_cleanup_closed: true,
   owner_mapper_cleanup_closed: true,
   pricing_ports_boundary_cleanup_closed: true,
+  read_context_wrapper_cleanup_closed: true,
+  write_context_wrapper_cleanup_closed: true,
+  pricing_canonical_boundary_cleanup_closed: true,
   public_code_changed: false,
   public_message_changed: true,
   public_kind_changed: false,
@@ -355,8 +404,6 @@ for (const [key, expected] of Object.entries({
   owner_delegation_changed: false,
   pricing_business_logic_changed: false,
   request_response_contract_changed: false,
-  read_context_wrapper_cleanup_closed: false,
-  write_context_wrapper_cleanup_closed: false,
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -403,8 +450,9 @@ for (const [key, expected] of Object.entries({
   actor_parser_payload_removed: true,
   direct_lookup_payload_removed: true,
   pricing_ports_boundary_source_closed: true,
-  read_context_wrapper_remains_separate: true,
-  write_context_wrapper_remains_separate: true,
+  read_context_wrapper_source_closed: true,
+  write_context_wrapper_source_closed: true,
+  pricing_canonical_boundary_source_closed: true,
   broad_ecommerce_cleanup_remains_open: true,
   runtime_evidence_claimed: false,
 })) {
@@ -416,30 +464,20 @@ for (const [key, expected] of Object.entries({
 for (const marker of [
   '# Pricing owner port error safety',
   'Status: **source-ready / unvalidated**',
-  'tenant and write-actor UUID parsing',
-  '`pricing_error_to_port_error`',
-  'All fifteen current `CommerceError` variants',
-  '`crates/rustok-pricing/src/read_context.rs`',
-  '`crates/rustok-pricing/src/write_context.rs`',
-  'The broader ecommerce mapper cleanup also remains open.',
-]) requireText(document, marker, `${paths.document}: truthful scope`);
-requireText(
-  readContext,
-  'const PRICING_READ_BOUNDARY: &str = "pricing_read_port";',
-  'read wrapper remains separate',
-);
-requireText(
-  writeContext,
-  'const PRICING_WRITE_BOUNDARY: &str = "pricing_write_port";',
-  'write wrapper remains separate',
-);
+  'owner `crates/rustok-pricing/src/ports.rs`',
+  'canonical read `crates/rustok-pricing/src/read_context.rs`',
+  'canonical write `crates/rustok-pricing/src/write_context.rs`',
+  'Both canonical wrappers preserve their original owner delegation',
+  '**source-closed / unvalidated**',
+  'The broader ecommerce cleanup remains open.',
+]) requireText(document, marker, `${paths.document}: truthful canonical scope`);
 
 if (failures.length > 0) {
-  console.error('Pricing owner port error-safety verification failed:');
+  console.error('Pricing canonical port error-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Pricing ports retain ten owner operations and static public outcomes with bounded context/error shape; wrappers and execution evidence remain open',
+  '✔ Pricing owner ports retain full source guards while canonical read/write wrappers preserve ten operations and public envelopes with bounded diagnostics; aggregate cleanup and execution evidence remain open',
 );

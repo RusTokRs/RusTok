@@ -3,6 +3,8 @@
   "status": "pricing_owner_port_error_safety_source_unvalidated",
   "scope": {
     "owner_source": "crates/rustok-pricing/src/ports.rs",
+    "read_wrapper_source": "crates/rustok-pricing/src/read_context.rs",
+    "write_wrapper_source": "crates/rustok-pricing/src/write_context.rs",
     "owner_error": "crates/rustok-commerce-foundation/src/error.rs",
     "owner_mapper": "pricing_error_to_port_error",
     "tenant_parser": "parse_port_tenant_id",
@@ -36,6 +38,9 @@
     "direct_lookup_message_cleanup_closed": true,
     "owner_mapper_cleanup_closed": true,
     "pricing_ports_boundary_cleanup_closed": true,
+    "read_context_wrapper_cleanup_closed": true,
+    "write_context_wrapper_cleanup_closed": true,
+    "pricing_canonical_boundary_cleanup_closed": true,
     "public_code_changed": false,
     "public_message_changed": true,
     "public_kind_changed": false,
@@ -46,8 +51,6 @@
     "owner_delegation_changed": false,
     "pricing_business_logic_changed": false,
     "request_response_contract_changed": false,
-    "read_context_wrapper_cleanup_closed": false,
-    "write_context_wrapper_cleanup_closed": false,
     "broad_ecommerce_cleanup_closed": false
   },
   "validation": {
