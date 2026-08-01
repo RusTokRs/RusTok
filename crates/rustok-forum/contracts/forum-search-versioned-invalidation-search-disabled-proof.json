@@ -1,0 +1,84 @@
+{
+  "contract": "forum_search_versioned_invalidation_search_disabled_source_proof_v1",
+  "task": "FORUM-23B2G2B3D9",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "predecessor": {
+    "task": "FORUM-23B2G2B3D8",
+    "pull_request": 2789,
+    "state_at_authorship": "open_draft",
+    "scope_dependency": "independent_runtime_scenario",
+    "parent_registration": "D7_registered_D8_and_D9_deferred_until_each_merge"
+  },
+  "host_boundary": {
+    "package": "rustok-server",
+    "test": "apps/server/tests/forum_versioned_invalidation_search_disabled_recovery.rs",
+    "reason": "the server host owns the production Forum/Search/Index composition and full migration graph without new dependency edges"
+  },
+  "production_references": [
+    "crates/rustok-forum/src/services/category_projection_owner.rs",
+    "crates/rustok-forum/src/services/projection_invalidation.rs",
+    "crates/rustok-forum/src/services/event.rs",
+    "crates/rustok-forum/src/search_projection.rs",
+    "apps/server/src/services/forum_search_owner_revision.rs",
+    "apps/server/src/services/mod.rs",
+    "crates/rustok-search/src/forum_reconciliation.rs"
+  ],
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-search-disabled-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "written_only_after_cleanup": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "fallback_database_env": "DATABASE_URL",
+    "broker": "not_required",
+    "disabled_search_setting": "rustok.search.enabled=false",
+    "reenabled_search_setting": "rustok.search.enabled=true",
+    "disabled_storage_tables": [
+      "search_documents",
+      "search_projection_inbox",
+      "search_projection_owner_checkpoints",
+      "search_projection_owner_scan_cursors"
+    ],
+    "owner_command": "rustok_forum::CategoryService::create",
+    "recovery": "rustok_search::ForumProjectionReconciler::sweep_due",
+    "owner_revision_source": "production_server_adapter",
+    "projection_source": "production_forum_source"
+  },
+  "scenario": {
+    "id": "search_disabled_profile",
+    "proves": [
+      "a real Forum category owner command commits while the Search setting is disabled and Search-owned storage is unavailable",
+      "the owner command commits category state, one legacy root outbox envelope, one caused typed outbox envelope and one Forum owner-ledger revision atomically",
+      "the typed envelope causation identity equals the exact root envelope and owner-ledger event identity",
+      "no Search inbox row, Search document or Search owner checkpoint is created while Search is disabled",
+      "reenabling Search through production server runtime composition discovers the committed Forum owner ledger",
+      "one bounded owner reconciliation rebuilds the current Forum category document and advances the Search-owned checkpoint to revision 1",
+      "the owner-ledger recovery path does not synthesize a Search inbox row or a second execution lane",
+      "a caught-up repeat sweep performs no second rebuild or checkpoint advancement"
+    ]
+  },
+  "identity_invariants": [
+    "forum_projection_revision_ledger.event_id equals the legacy root sys_events.id",
+    "the typed Forum Search envelope causation_id equals the same legacy root identity",
+    "the typed payload carries owner_revision 1 and target_type forum",
+    "the recovered Search checkpoint event_id equals the same owner-ledger root identity",
+    "Search ingest_sequence remains absent because recovery uses the owner-ledger lane rather than a synthetic inbox delivery",
+    "Forum owner state remains authoritative before, during and after Search reenablement"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test --locked -p rustok-server --features mod-forum --test forum_versioned_invalidation_search_disabled_recovery -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL execution passed",
+    "this proof does not require or validate Iggy delivery, acknowledgement, poison or DLQ behavior",
+    "this proof does not execute the D8 long-running contract-consumer retry lifecycle",
+    "this proof does not validate deletion, ACL or storefront visibility ordering",
+    "this proof does not validate arbitrary multi-process contention beyond the merged D7 scenario",
+    "this proof does not remove the legacy root event or create a second Search inbox, projector, reconciler or ordering clock",
+    "this proof does not register D9 in the parent D0 contract before D9 itself merges",
+    "this proof does not complete FORUM-23B2G2B3D or close LINK-FORUM-03"
+  ]
+}
