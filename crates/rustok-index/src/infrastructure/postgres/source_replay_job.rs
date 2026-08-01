@@ -130,6 +130,14 @@ pub enum IndexReplayJobError {
     SchemaNotRegistered(SchemaRef),
     #[error("Index replay schema is retired: {0}")]
     SchemaRetired(SchemaRef),
+    #[error(
+        "Index replay scope is blocked by failed job {job_id} after attempt {attempt_count}"
+    )]
+    DeadLettered {
+        job_id: Uuid,
+        attempt_count: u32,
+        error_code: Option<String>,
+    },
     #[error("stored Index replay job is invalid: {0}")]
     InvalidStoredJob(String),
     #[error("Index replay completion checkpoint is missing")]
@@ -299,6 +307,13 @@ impl PostgresIndexReplayJobStore {
                     claimable = Some(stored);
                     break;
                 }
+                "failed" => {
+                    return Err(IndexReplayJobError::DeadLettered {
+                        job_id: stored.job_id,
+                        attempt_count: stored.attempt_count,
+                        error_code: stored.last_error_code,
+                    });
+                }
                 state => {
                     return Err(IndexReplayJobError::InvalidStoredJob(format!(
                         "unexpected active state {state}"
@@ -379,6 +394,7 @@ struct StoredJob {
     source_name: String,
     attempt_count: u32,
     claimable: bool,
+    last_error_code: Option<String>,
 }
 
 fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, IndexReplayJobError> {
@@ -414,12 +430,23 @@ fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, IndexR
     let attempt_count = u32::try_from(attempt_count).map_err(|_| {
         IndexReplayJobError::InvalidStoredJob("attempt count is outside the u32 range".to_owned())
     })?;
+    let last_error_code: Option<String> = row
+        .try_get("", "last_error_code")
+        .map_err(storage_error)?;
+    if let Some(code) = &last_error_code {
+        validate_error_code(code).map_err(|_| {
+            IndexReplayJobError::InvalidStoredJob(
+                "last_error_code is outside the replay error contract".to_owned(),
+            )
+        })?;
+    }
     Ok(StoredJob {
         job_id: stored_uuid(row, "job_id", backend)?,
         state: row.try_get("", "state").map_err(storage_error)?,
         source_name,
         attempt_count,
         claimable: row.try_get("", "claimable").map_err(storage_error)?,
+        last_error_code,
     })
 }
 
@@ -694,7 +721,7 @@ fn select_replay_jobs_sql(backend: DbBackend) -> String {
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
-        "SELECT job_id, state, request, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 ELSE 2 END, created_at DESC"
+        "SELECT job_id, state, request, last_error_code, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded', 'failed') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
     )
 }
 

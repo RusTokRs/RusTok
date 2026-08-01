@@ -225,18 +225,41 @@ async fn expired_replay_job_is_reclaimed_and_old_checkpoint_writer_is_fenced() {
 }
 
 #[tokio::test]
-async fn failed_terminal_replay_job_allows_a_new_job_identity() {
+async fn failed_terminal_replay_job_blocks_scope_without_raw_details() {
     let fixture = Fixture::new("active").await;
     let first = fixture.acquire("worker-a").await;
     fixture
         .jobs
-        .fail(&first, "index.replay_source_failed", json!({"retryable": false}))
+        .fail(
+            &first,
+            "index.replay_source_failed",
+            json!({"retryable": false, "private": "must-not-be-returned"}),
+        )
         .await
         .unwrap();
 
-    let second = fixture.acquire("worker-b").await;
-    assert_ne!(second.job_id(), first.job_id());
-    assert_eq!(second.attempt_count(), 1);
+    assert_eq!(
+        fixture.jobs.acquire(&fixture.request("worker-b")).await,
+        Err(IndexReplayJobError::DeadLettered {
+            job_id: first.job_id(),
+            attempt_count: 1,
+            error_code: Some("index.replay_source_failed".to_owned()),
+        })
+    );
+
+    let count: i64 = fixture
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS job_count FROM index_jobs WHERE tenant_id = ?1 AND kind = 'rebuild'",
+            vec![TENANT.to_owned().into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "job_count")
+        .unwrap();
+    assert_eq!(count, 1);
 }
 
 #[tokio::test]
