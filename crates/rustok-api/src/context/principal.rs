@@ -1,19 +1,21 @@
-use super::auth::AuthContext;
+use super::auth::{AuthContext, AuthPrincipalKind};
 use crate::PortActor;
 use uuid::Uuid;
 
-const CLIENT_CREDENTIALS_GRANT: &str = "client_credentials";
-
 impl AuthContext {
     /// Whether this request represents an OAuth service principal rather than a
-    /// human user. Authentication has already validated the grant/subject
-    /// invariants before constructing this context.
+    /// human user. Authentication classifies this once before constructing the
+    /// shared context.
     pub fn is_service_principal(&self) -> bool {
-        self.grant_type == CLIENT_CREDENTIALS_GRANT
+        self.principal_kind.is_service()
     }
 
     pub fn is_human_user_principal(&self) -> bool {
-        !self.is_service_principal()
+        self.principal_kind.is_human_user()
+    }
+
+    pub fn is_direct_user_principal(&self) -> bool {
+        self.principal_kind.is_direct_user()
     }
 
     /// Return a user id only for human-user grants. Use this for legacy
@@ -37,26 +39,32 @@ mod tests {
     use super::*;
     use crate::{Permission, PortActorKind};
 
-    fn auth(grant_type: &str, client_id: Option<Uuid>) -> AuthContext {
+    fn auth(principal_kind: AuthPrincipalKind, client_id: Option<Uuid>) -> AuthContext {
         AuthContext {
             user_id: client_id.unwrap_or_else(Uuid::new_v4),
-            session_id: if grant_type == CLIENT_CREDENTIALS_GRANT {
-                Uuid::nil()
-            } else {
+            session_id: if principal_kind.is_direct_user() {
                 Uuid::new_v4()
+            } else {
+                Uuid::nil()
             },
             tenant_id: Uuid::new_v4(),
             permissions: vec![Permission::PRODUCTS_READ],
+            principal_kind,
             client_id,
             scopes: Vec::new(),
-            grant_type: grant_type.to_string(),
+            grant_type: match principal_kind {
+                AuthPrincipalKind::DirectUser => "direct",
+                AuthPrincipalKind::DelegatedUser => "authorization_code",
+                AuthPrincipalKind::Service => "client_credentials",
+            }
+            .to_string(),
         }
     }
 
     #[test]
-    fn client_credentials_map_to_service_port_actor_without_user_id() {
+    fn service_kind_maps_to_service_port_actor_without_user_id() {
         let client_id = Uuid::new_v4();
-        let auth = auth(CLIENT_CREDENTIALS_GRANT, Some(client_id));
+        let auth = auth(AuthPrincipalKind::Service, Some(client_id));
         assert!(auth.is_service_principal());
         assert_eq!(auth.human_user_id(), None);
         assert_eq!(auth.port_actor().kind, PortActorKind::Service);
@@ -64,10 +72,14 @@ mod tests {
     }
 
     #[test]
-    fn direct_and_authorization_code_grants_map_to_user_actor() {
-        for grant in ["direct", "authorization_code"] {
-            let auth = auth(grant, None);
+    fn direct_and_delegated_users_map_to_user_actor() {
+        for principal_kind in [
+            AuthPrincipalKind::DirectUser,
+            AuthPrincipalKind::DelegatedUser,
+        ] {
+            let auth = auth(principal_kind, None);
             assert!(auth.is_human_user_principal());
+            assert_eq!(auth.is_direct_user_principal(), principal_kind.is_direct_user());
             assert_eq!(auth.human_user_id(), Some(auth.user_id));
             assert_eq!(auth.port_actor().kind, PortActorKind::User);
             assert_eq!(auth.port_actor().id, auth.user_id.to_string());
