@@ -91,28 +91,36 @@ effective permission as sufficient proof of principal eligibility.
 
 PR #2747 merged the owner-provided `RbacControlPlanePrincipal` policy as
 `75b67f877eb405abe4e6761a16d6b7ece98bc103` for GraphQL, REST and native
-RBAC Admin:
+RBAC Admin. The current cycle replaces owner-side reconstruction from OAuth
+metadata with one explicit shared principal kind:
 
-- only a direct grant with a non-nil session may enter the control plane;
-- the authenticated tenant must equal the middleware-routed tenant before
-  permission admission;
-- OAuth authorization-code and client-credentials principals remain denied even
-  when their effective scoped permissions include `modules:manage` or
-  `settings:read`;
-- permission admission occurs only after principal and tenant admission;
-- the durable REST operation actor is always `AuthContext.user_id`; request
+- `rustok-api::AuthPrincipalKind` is host-neutral and distinguishes direct user,
+  OAuth delegated user and service principal;
+- HTTP/native middleware and GraphQL HTTP/WebSocket composition classify already
+  validated auth facts once and attach `AuthPrincipalContext`;
+- unknown or inconsistent grant/client/session shapes fail closed before request
+  data reaches module policy;
+- GraphQL role reads/writes, REST artifact-role permission writes and native
+  RBAC Admin require typed principal context before effective permission checks;
+- only `DirectUser` with authenticated/routed tenant equality may enter RBAC
+  control-plane operations;
+- delegated users and services remain denied even when their effective scoped
+  permissions include `modules:manage`, `users:manage` or `settings:read`;
+- the owner principal contains only typed kind plus tenant id and has no fallback
+  to `client_id`, `grant_type` or `session_id`;
+- the durable REST operation actor remains `AuthContext.user_id`; request
   payloads cannot supply or replace the audit identity;
-- native RBAC Admin uses the same owner policy and no longer retains a separate
-  generic tenant-only helper;
-- adapters compose neutral authenticated facts into the owner policy, while the
-  owner crate remains independent of Axum and the `rustok-api/server` feature.
+- the owner crate remains independent of Axum and the `rustok-api/server` feature.
 
-The default `rustok-rbac` crate compiled on exact PR head
+The contract is documented in
+`crates/rustok-rbac/docs/explicit-principal-kind.md`. Same-SHA API/RBAC/Admin/
+server compilation, focused tests, source verifiers and live negative transport
+evidence remain required before this correction is verified.
+
+The default `rustok-rbac` crate compiled on exact PR #2747 head
 `3cf4b3a44980ca257f7f53849e905673141db289` inside Rust-host workflow run
 `30650883159`. That workflow then reproduced issue #2740 before building
-`rustok-server`. Same-SHA formatting, all-feature owner compilation, RBAC Admin
-SSR compilation, server compilation, focused tests, verifier execution and live
-negative transport evidence remain required before this correction is verified.
+`rustok-server`; it is historical evidence only for the pre-typed revision.
 
 ## RBAC durable invalidation observability composition
 
@@ -171,7 +179,7 @@ required evidence.
 - Introduce regular security review for sensitive endpoints (auth, tenant, admin operations).
 - Expand security event audit (login, privilege changes, tenant boundary violations).
 - Retain host-global operator credential denial/admission, rotation and replica-parity evidence without moving credential ownership into tenant OAuth or RBAC.
-- Keep role/permission control-plane principal admission owner-defined and ahead of effective permission checks on every transport.
+- Keep role/permission control-plane principal admission owner-defined, typed and ahead of effective permission checks on every transport.
 
 ### Test coverage
 
@@ -179,18 +187,18 @@ required evidence.
 - Add contract tests for API response stability for frontends.
 - Include negative tests for RBAC/tenant isolation and failure-mode tests for event transport.
 - Add live HTTP/native host-authority tests for no header, wrong token, read/manage hierarchy, audit identity, Iggy authenticated/resolved tenant ownership, rotation/revocation and WebSocket denial.
-- Retain REST artifact-role permission and native RBAC Admin tests/verifiers for OAuth delegated/service denial, tenant mismatch, missing permission and trusted actor propagation.
-- Run the targeted telemetry/server tests and focused RBAC invalidation observability source verifier before the complete Wave 2 server sweep.
+- Retain REST, GraphQL and native RBAC tests/verifiers for delegated/service denial, missing typed context, tenant mismatch, missing permission and trusted actor propagation.
+- Run the targeted API/RBAC/Admin/server checks and focused principal-kind and invalidation source verifiers before the complete Wave 2 server sweep.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `pending`
 - Last verified at (UTC): `2026-08-01`
-- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority; active core/rbac review of authoritative request scope, artifact role-permission REST adapter and native RBAC Admin bootstrap; source review of the canonical durable-generation watchdog and process telemetry registry`
-- Findings: `P0=3, P1=3, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the RBAC REST invalid principal grant; the second P1 is native role-metadata admission inconsistency; the third P1 is missing dedicated invalidation lag/worker/recovery observability and incident operations; the existing P2 is the earlier module-control-plane construction finding)
-- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner host-neutral direct-session policy for REST, GraphQL and native RBAC Admin as 75b67f877eb405abe4e6761a16d6b7ece98bc103. The current core/rbac source slice registers bounded durable/applied generation, signed lag, watchdog, database-read, recovery and full-clear metrics in the canonical telemetry registry and instruments only the existing watchdog; alert policy and recovery runbook are synchronized with the RBAC owner plan.`
-- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC corrections still lack same-SHA format, telemetry/all-feature owner compile, admin SSR/server compile, focused Rust/source verifier tests and live transport evidence; PostgreSQL concurrency, two-replica Redis recovery and one complete authorization incident trace remain absent; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
-- Evidence: `source audit confirms middleware builds AuthContext and request scope from authoritative DB permissions, with OAuth scopes only narrowing authority. Exact PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled default rustok-rbac in Rust-host workflow 30650883159; issue #2740 then stopped the job before rustok-server. The new source slice registers metrics only through rustok-telemetry, instruments the canonical rbac_invalidation_generation watchdog and adds unit/source guards without claiming command execution. Standard CI and Hardening remained pending without jobs. Browser E2E retained the unrelated four Next Admin sessionStorage failures while Next Frontend passed. Host-authority source remains merged at 1ce83819b077ef6e0df009fd5675f556315ef63a.`
-- Next action: `continue the core/rbac cursor: run targeted telemetry/RBAC Admin/server checks and the invalidation source verifier on one revision, then retain PostgreSQL concurrency and multi-replica Redis recovery evidence; leave the complete server composition audit for its Wave 2 cursor visit`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-telemetry && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-telemetry rbac_invalidation_metrics && cargo test -p rustok-server --lib rbac_invalidation_generation && node scripts/verify/verify-rbac-invalidation-observability.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs`
+- Scope inspected: `cross-owner Tenant trust sweep for host-global Events/Iggy/System/Settings authority; active core/rbac review of explicit principal classification and propagation across HTTP/native middleware, GraphQL HTTP/WebSocket, REST artifact-role permission writes and native RBAC Admin; canonical durable-generation watchdog and process telemetry registry`
+- Findings: `P0=3, P1=4, P2=1, P3=0` (two host-global P0 findings and one raw-credential-lifetime P1 belong to the Tenant/Events interaction; the third P0 is the historical RBAC REST invalid principal grant; the second P1 is historical native role-metadata admission inconsistency; the third P1 is missing invalidation observability; the fourth P1 is repeated owner inference from grant/client/session metadata; the existing P2 is the earlier module-control-plane construction finding)
+- Fixed in this pass: `PR #2735 merged the host-owned operator credential boundary as 1ce83819b077ef6e0df009fd5675f556315ef63a. PR #2747 merged one owner control-plane policy as 75b67f877eb405abe4e6761a16d6b7ece98bc103. Current core/rbac source work adds canonical invalidation observability and introduces host-neutral AuthPrincipalKind plus mandatory AuthPrincipalContext; HTTP/native and GraphQL classify validated facts once, every RBAC transport consumes the typed context and the owner no longer receives client_id, grant_type or session_id.`
+- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started; the RBAC corrections lack same-SHA format, rustok-api default/server, telemetry, all-feature owner, admin SSR/server compilation, focused Rust/source verifier tests and live transport evidence; PostgreSQL concurrency, two-replica Redis recovery, one complete authorization incident trace and module-owned management-flow evidence remain absent; host-authority source/unit/compile and live denial/admission/rotation/revocation/replica evidence also remain pending; issues #2680 and #2740 remain open`
+- Evidence: `source audit confirms authenticated facts are classified at middleware and GraphQL HTTP/WebSocket composition into a closed typed enum; RBAC GraphQL, REST and native adapters require the typed request context; owner policy contains only kind plus tenant and has no grant/client/session fallback. Source guards cover the typed contract and admission order. No command execution is claimed. Historical PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled only default rustok-rbac before issue #2740 stopped the workflow.`
+- Next action: `continue the core/rbac cursor: run targeted API/RBAC Admin/server checks and principal-kind, tenant and invalidation source verifiers on one revision, then retain PostgreSQL concurrency and multi-replica Redis recovery evidence; leave the complete server composition audit for its Wave 2 cursor visit`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && node scripts/verify/verify-rbac-invalidation-observability.mjs`
