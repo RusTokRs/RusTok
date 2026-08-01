@@ -8,6 +8,7 @@ use crate::tcp_protocol::{
     DEFAULT_MAX_COMMENTS_FRAME_BYTES, io_error, read_frame, validate_frame_limit, write_frame,
 };
 use crate::{
+    COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpCredential, CommentsTcpRequestEnvelope,
     CommentsThreadPort, CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransportReply,
 };
 
@@ -21,6 +22,18 @@ pub enum CommentsTcpOperation {
     UpdateComment,
     SetCommentStatus,
     DeleteComment,
+}
+
+impl CommentsTcpOperation {
+    pub const ALL: [Self; 7] = [
+        Self::CreateComment,
+        Self::GetComment,
+        Self::ListCommentsForTarget,
+        Self::ListPublicCommentsForTarget,
+        Self::UpdateComment,
+        Self::SetCommentStatus,
+        Self::DeleteComment,
+    ];
 }
 
 /// Principal fields established by a host-owned authentication boundary.
@@ -59,8 +72,8 @@ impl TrustedCommentsTcpAuthority {
 
 /// Host-owned authentication and operation-authorization seam.
 ///
-/// Implementations may resolve authority from an authenticated sidecar channel,
-/// mTLS identity, a pre-authorized local peer, or another host policy. Returning
+/// Implementations may authenticate the versioned wire credential, resolve
+/// authority from mTLS identity, or use another protected host policy. Returning
 /// an error produces the stable typed error reply and prevents provider dispatch.
 #[async_trait]
 pub trait CommentsTcpAuthorityResolver: Send + Sync {
@@ -68,6 +81,7 @@ pub trait CommentsTcpAuthorityResolver: Send + Sync {
         &self,
         peer_addr: SocketAddr,
         operation: CommentsTcpOperation,
+        credential: Option<&CommentsTcpCredential>,
         claimed_context: &PortContext,
     ) -> Result<TrustedCommentsTcpAuthority, PortError>;
 }
@@ -75,8 +89,9 @@ pub trait CommentsTcpAuthorityResolver: Send + Sync {
 /// Provider-side adapter for one length-prefixed JSON request per accepted TCP stream.
 ///
 /// The host owns listener lifecycle and passes each accepted stream with its peer
-/// address. This adapter decodes one request, requires trusted authority, invokes
-/// the host-selected Comments provider, writes one typed reply, and returns.
+/// address. This adapter decodes one versioned envelope, requires trusted
+/// authority, invokes the host-selected Comments provider, writes one typed
+/// reply, and returns.
 #[derive(Clone)]
 pub struct TcpJsonCommentsServerAdapter {
     provider: Arc<dyn CommentsThreadPort>,
@@ -186,13 +201,20 @@ impl TcpJsonCommentsServerAdapter {
                 })??,
             None => read_frame(stream, self.max_frame_bytes).await?,
         };
-        let mut request = serde_json::from_slice::<CommentsThreadRequest>(&request_payload)
+        let envelope = serde_json::from_slice::<CommentsTcpRequestEnvelope>(&request_payload)
             .map_err(|_| {
                 PortError::validation(
                     "comments.tcp_server_invalid_request",
-                    "comments TCP request is not valid typed JSON",
+                    "comments TCP request is not a valid typed envelope",
                 )
             })?;
+        let (protocol_version, credential, mut request) = envelope.into_parts();
+        if protocol_version != COMMENTS_TCP_PROTOCOL_VERSION {
+            return Err(PortError::validation(
+                "comments.tcp_server_unsupported_protocol",
+                "comments TCP request protocol version is not supported",
+            ));
+        }
         request.context().require_deadline_semantics()?;
 
         let operation = request_operation(&request);
@@ -200,7 +222,12 @@ impl TcpJsonCommentsServerAdapter {
         timeout(Duration::from_millis(deadline_ms), async {
             let authority = self
                 .authority
-                .authorize(peer_addr, operation, request.context())
+                .authorize(
+                    peer_addr,
+                    operation,
+                    credential.as_ref(),
+                    request.context(),
+                )
                 .await?;
             let trusted_context = apply_authority(request.context(), authority)?;
             replace_request_context(&mut request, trusted_context);

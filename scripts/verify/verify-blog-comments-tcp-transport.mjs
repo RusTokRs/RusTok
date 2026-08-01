@@ -3,6 +3,8 @@ import fs from 'node:fs';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json';
 const manifestPath = 'crates/rustok-comments/Cargo.toml';
 const exportPath = 'crates/rustok-comments/src/lib.rs';
+const digestPath = 'crates/rustok-api/src/digest.rs';
+const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
 const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
 const remotePath = 'crates/rustok-comments/src/remote.rs';
 const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
@@ -43,6 +45,8 @@ for (const path of [
   evidencePath,
   manifestPath,
   exportPath,
+  digestPath,
+  authPath,
   protocolPath,
   remotePath,
   transportPath,
@@ -54,6 +58,8 @@ for (const path of [
 const evidence = json(evidencePath);
 const manifest = read(manifestPath);
 const exports = read(exportPath);
+const digest = read(digestPath);
+const auth = read(authPath);
 const protocol = read(protocolPath);
 const remote = read(remotePath);
 const transport = read(transportPath);
@@ -132,17 +138,57 @@ hasAll(
   ],
   'comments manifest',
 );
+hasNone(
+  manifest,
+  [
+    'dep:sha2',
+    'dep:subtle',
+    'sha2 = { workspace = true, optional = true }',
+    'subtle = { version = "2", optional = true }',
+  ],
+  'comments manifest lock compatibility',
+);
 
 hasAll(
   exports,
   [
     '#[cfg(feature = "tcp-transport")]',
+    'pub mod tcp_auth;',
     'mod tcp_protocol;',
     'pub mod tcp_transport;',
+    'CommentsTcpBearerToken',
+    'CommentsTcpRequestEnvelope',
     'pub use tcp_transport::TcpJsonCommentsTransport;',
   ],
   'comments exports',
 );
+
+hasAll(
+  digest,
+  [
+    'pub const SHA256_DIGEST_BYTES: usize = 32;',
+    'pub fn sha256_digest(',
+    'pub fn fixed_work_sha256_eq(',
+    'difference |= expected[index] ^ candidate[index];',
+    'does not claim',
+  ],
+  'shared digest helper',
+);
+
+hasAll(
+  auth,
+  [
+    'pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;',
+    'pub struct CommentsTcpBearerToken',
+    'pub struct CommentsTcpCredential',
+    'pub struct CommentsTcpRequestEnvelope',
+    'fixed_work_sha256_eq',
+    'sha256_digest(&[BEARER_PREFIX, secret])',
+    '[REDACTED]',
+  ],
+  'TCP authentication envelope',
+);
+hasNone(auth, ['ConstantTimeEq', 'use sha2::', 'use subtle::'], 'TCP auth dependency boundary');
 
 hasAll(
   remote,
@@ -185,12 +231,15 @@ hasAll(
     'self.exchange(&request_payload)',
     'write_frame(&mut stream, request_payload, self.max_frame_bytes).await?;',
     'read_frame(&mut stream, self.max_frame_bytes).await?;',
+    'CommentsTcpRequestEnvelope::with_bearer(request, token)',
+    'CommentsTcpRequestEnvelope::unauthenticated(request)',
     'CommentsThreadTransportReply::Success(response)',
     'CommentsThreadTransportReply::Error(error)',
     'comments.tcp_encode',
     'comments.tcp_decode',
     'provider_error_reply_is_preserved',
     'tcp_transport_is_injectable_without_connecting',
+    'bearer_transport_debug_is_redacted',
   ],
   'TCP transport',
 );
@@ -200,8 +249,8 @@ hasNone(
   [
     'loop {',
     'retry(',
-    'Authorization',
-    'Bearer ',
+    'println!(',
+    'tracing::info!',
   ],
   'TCP transport non-claims',
 );

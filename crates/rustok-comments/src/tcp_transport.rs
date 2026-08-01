@@ -5,6 +5,7 @@ use rustok_api::PortError;
 use tokio::{net::TcpStream, time::timeout};
 
 use crate::{
+    CommentsTcpAuthenticationConfigError, CommentsTcpBearerToken, CommentsTcpRequestEnvelope,
     CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransport,
     CommentsThreadTransportReply,
 };
@@ -17,12 +18,15 @@ pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;
 
 /// Concrete sidecar transport using length-prefixed JSON over TCP.
 ///
-/// Endpoint resolution and authentication remain host-owned. Each operation opens
-/// one connection, carries the typed request unchanged, applies the port deadline
-/// to the complete exchange, and closes the connection after one typed reply.
+/// Each operation opens one connection, wraps the typed request in a versioned
+/// credential envelope, applies the port deadline to the complete exchange, and
+/// closes the connection after one typed reply. The unauthenticated constructor
+/// remains available for a future externally authenticated channel such as mTLS;
+/// host publication uses the bearer constructor for the current loopback mode.
 #[derive(Clone, Debug)]
 pub struct TcpJsonCommentsTransport {
     endpoint: SocketAddr,
+    bearer_token: Option<CommentsTcpBearerToken>,
     max_frame_bytes: usize,
 }
 
@@ -30,8 +34,27 @@ impl TcpJsonCommentsTransport {
     pub fn new(endpoint: SocketAddr) -> Self {
         Self {
             endpoint,
+            bearer_token: None,
             max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
         }
+    }
+
+    pub fn with_bearer_token(endpoint: SocketAddr, bearer_token: CommentsTcpBearerToken) -> Self {
+        Self {
+            endpoint,
+            bearer_token: Some(bearer_token),
+            max_frame_bytes: DEFAULT_MAX_COMMENTS_FRAME_BYTES,
+        }
+    }
+
+    pub fn with_bearer_secret(
+        endpoint: SocketAddr,
+        secret: impl AsRef<str>,
+    ) -> Result<Self, CommentsTcpAuthenticationConfigError> {
+        Ok(Self::with_bearer_token(
+            endpoint,
+            CommentsTcpBearerToken::new(secret)?,
+        ))
     }
 
     pub fn with_max_frame_bytes(
@@ -41,6 +64,20 @@ impl TcpJsonCommentsTransport {
         validate_frame_limit(max_frame_bytes)?;
         Ok(Self {
             endpoint,
+            bearer_token: None,
+            max_frame_bytes,
+        })
+    }
+
+    pub fn with_bearer_token_and_max_frame_bytes(
+        endpoint: SocketAddr,
+        bearer_token: CommentsTcpBearerToken,
+        max_frame_bytes: usize,
+    ) -> Result<Self, PortError> {
+        validate_frame_limit(max_frame_bytes)?;
+        Ok(Self {
+            endpoint,
+            bearer_token: Some(bearer_token),
             max_frame_bytes,
         })
     }
@@ -51,6 +88,10 @@ impl TcpJsonCommentsTransport {
 
     pub fn max_frame_bytes(&self) -> usize {
         self.max_frame_bytes
+    }
+
+    pub fn is_authenticated(&self) -> bool {
+        self.bearer_token.is_some()
     }
 
     async fn exchange(
@@ -78,8 +119,15 @@ impl CommentsThreadTransport for TcpJsonCommentsTransport {
     ) -> Result<CommentsThreadResponse, PortError> {
         request.context().require_deadline_semantics()?;
         let deadline_ms = request.context().deadline_ms.unwrap_or_default();
-        let request_payload = serde_json::to_vec(&request).map_err(|error| {
-            PortError::invariant_violation("comments.tcp_encode", error.to_string())
+        let envelope = match self.bearer_token.as_ref() {
+            Some(token) => CommentsTcpRequestEnvelope::with_bearer(request, token),
+            None => CommentsTcpRequestEnvelope::unauthenticated(request),
+        };
+        let request_payload = serde_json::to_vec(&envelope).map_err(|_| {
+            PortError::invariant_violation(
+                "comments.tcp_encode",
+                "comments TCP request envelope could not be encoded",
+            )
         })?;
         ensure_frame_size(request_payload.len(), self.max_frame_bytes)?;
 
@@ -98,8 +146,11 @@ impl CommentsThreadTransport for TcpJsonCommentsTransport {
 }
 
 fn decode_reply(payload: &[u8]) -> Result<CommentsThreadResponse, PortError> {
-    let reply = serde_json::from_slice::<CommentsThreadTransportReply>(payload).map_err(|error| {
-        PortError::invariant_violation("comments.tcp_decode", error.to_string())
+    let reply = serde_json::from_slice::<CommentsThreadTransportReply>(payload).map_err(|_| {
+        PortError::invariant_violation(
+            "comments.tcp_decode",
+            "comments TCP reply is not a valid typed envelope",
+        )
     })?;
     match reply {
         CommentsThreadTransportReply::Success(response) => Ok(response),
@@ -121,6 +172,18 @@ mod tests {
         let transport: Arc<dyn CommentsThreadTransport> =
             Arc::new(TcpJsonCommentsTransport::new(endpoint));
         let _ = transport;
+    }
+
+    #[test]
+    fn bearer_transport_debug_is_redacted() {
+        let endpoint = "127.0.0.1:1".parse().unwrap();
+        let transport =
+            TcpJsonCommentsTransport::with_bearer_secret(endpoint, "comments-secret").unwrap();
+        let debug = format!("{transport:?}");
+
+        assert!(transport.is_authenticated());
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("comments-secret"));
     }
 
     #[test]
