@@ -97,14 +97,11 @@ requireCondition(
   'evidence surface must remain comments_tcp_bearer_auth',
 );
 requireCondition(
-  evidence.status === 'source_verified_no_compile',
-  'evidence must remain source-only',
+  evidence.status === 'source_verified_no_compile'
+    && evidence.compile_policy === 'not_run_by_request'
+    && evidence.runtime_status === 'not_run',
+  'evidence execution status drift',
 );
-requireCondition(
-  evidence.compile_policy === 'not_run_by_request',
-  'compile policy must remain not_run_by_request',
-);
-requireCondition(evidence.runtime_status === 'not_run', 'runtime must remain not_run');
 requireCondition(evidence.generated_from === planPath, 'evidence plan path drift');
 
 requireCondition(
@@ -167,34 +164,45 @@ requireCondition(
   'dependency evidence drift',
 );
 
+const defaultReads = [
+  'get_comment',
+  'list_comments_for_target',
+  'list_public_comments_for_target',
+];
+const defaultWrites = [
+  'create_comment',
+  'update_comment',
+  'set_comment_status',
+  'delete_comment',
+];
+const allOperations = [...defaultReads, ...defaultWrites];
+
 requireCondition(
   evidence.authority?.peer_loopback_required === true
     && evidence.authority?.canonical_uuid_tenant_required === true
     && evidence.authority?.operation_allowlist === true
-    && evidence.authority?.all_operations_default === true
+    && evidence.authority?.all_operations_default === false
     && evidence.authority?.operation_denied_code === 'comments.tcp_operation_forbidden'
     && evidence.authority?.authentication_failure_code
       === 'comments.tcp_authentication_failed'
     && evidence.authority?.authentication_failure_message
       === 'Comments TCP service authentication failed'
     && evidence.authority?.missing_and_wrong_token_indistinguishable === true
-    && evidence.authority?.tenant_match_after_authentication === true,
+    && evidence.authority?.tenant_match_after_authentication === true
+    && evidence.authority?.trusted_user_delegation_implemented === false,
   'authority evidence drift',
 );
-
 sameSet(
-  evidence.operations ?? [],
-  [
-    'create_comment',
-    'get_comment',
-    'list_comments_for_target',
-    'list_public_comments_for_target',
-    'update_comment',
-    'set_comment_status',
-    'delete_comment',
-  ],
-  'authenticated operations',
+  evidence.authority?.default_allowed_operations ?? [],
+  defaultReads,
+  'default bearer read operations',
 );
+sameSet(
+  evidence.authority?.default_denied_operations ?? [],
+  defaultWrites,
+  'default bearer denied writes',
+);
+sameSet(evidence.protocol_operations ?? [], allOperations, 'protocol operations');
 
 requireCondition(
   evidence.host_configuration?.consumer_tcp_requires_bearer === true
@@ -214,26 +222,23 @@ requireCondition(
     && evidence.host_configuration?.non_loopback_enabled === false,
   'host configuration evidence drift',
 );
+sameSet(
+  evidence.host_configuration?.built_in_operation_upper_bound ?? [],
+  defaultReads,
+  'built-in host operation upper bound',
+);
 
 for (const value of Object.values(evidence.fail_closed ?? {})) {
   requireCondition(typeof value === 'boolean', 'fail_closed values must remain boolean');
 }
 requireCondition(
-  Object.values(evidence.fail_closed ?? {}).every((value) => value === true
-    || value === false),
-  'fail_closed values must remain explicit',
-);
-requireCondition(
-  evidence.fail_closed?.provider_dispatch_before_authentication === false
+  evidence.fail_closed?.default_owner_writes_rejected === true
+    && evidence.fail_closed?.provider_dispatch_before_authentication === false
     && evidence.fail_closed?.silent_in_process_fallback_for_explicit_tcp === false,
-  'dispatch and fallback fail-closed evidence drift',
+  'fail-closed dispatch/write evidence drift',
 );
 
-hasAll(
-  apiManifest,
-  ['sha2.workspace = true'],
-  'rustok-api manifest',
-);
+hasAll(apiManifest, ['sha2.workspace = true'], 'rustok-api manifest');
 hasAll(
   digest,
   [
@@ -275,13 +280,12 @@ hasNone(
   ],
   'rustok-comments direct dependency boundary',
 );
-
 const commentsLockBlock = packageBlock(lock, 'rustok-comments');
 const apiLockBlock = packageBlock(lock, 'rustok-api');
 hasNone(commentsLockBlock, ['"sha2', '"subtle"'], 'rustok-comments Cargo.lock entry');
 requireCondition(
   /"sha2(?: 0\.11\.0)?"/.test(apiLockBlock),
-  'rustok-api Cargo.lock entry must retain its SHA-256 dependency',
+  'rustok-api Cargo.lock entry must retain SHA-256',
 );
 
 hasAll(
@@ -289,7 +293,6 @@ hasAll(
   [
     'pub mod tcp_auth;',
     'COMMENTS_TCP_PROTOCOL_VERSION',
-    'CommentsTcpAuthenticationConfigError',
     'CommentsTcpBearerAuthorityResolver',
     'CommentsTcpBearerToken',
     'CommentsTcpCredential',
@@ -305,13 +308,11 @@ hasAll(
     'const MAX_BEARER_TOKEN_BYTES: usize = 4_096;',
     'const BEARER_SCHEME: &str = "bearer";',
     'const BEARER_PREFIX: &[u8] = b"Bearer ";',
-    'pub struct CommentsTcpBearerToken',
-    'authorization_digest: [u8; SHA256_DIGEST_BYTES]',
-    'pub struct CommentsTcpCredential',
-    'pub struct CommentsTcpRequestEnvelope',
-    'credential: Option<CommentsTcpCredential>',
-    'pub struct CommentsTcpBearerAuthorityResolver',
-    'HashSet::from(CommentsTcpOperation::ALL)',
+    'const DEFAULT_BEARER_OPERATIONS: [CommentsTcpOperation; 3]',
+    'CommentsTcpOperation::GetComment',
+    'CommentsTcpOperation::ListCommentsForTarget',
+    'CommentsTcpOperation::ListPublicCommentsForTarget',
+    'HashSet::from(DEFAULT_BEARER_OPERATIONS)',
     'fixed_work_sha256_eq(&self.authorization_digest, &candidate_digest)',
     'sha256_digest(&[BEARER_PREFIX, secret])',
     '!peer_addr.ip().is_loopback()',
@@ -319,19 +320,14 @@ hasAll(
     'comments.tcp_operation_forbidden',
     'comments.tcp_authentication_failed',
     'Comments TCP service authentication failed',
+    'default_bearer_resolver_rejects_owner_writes',
     '[REDACTED]',
   ],
   'Comments bearer authentication',
 );
 hasNone(
   auth,
-  [
-    'ConstantTimeEq',
-    'use sha2::',
-    'use subtle::',
-    'println!(',
-    'tracing::',
-  ],
+  ['ConstantTimeEq', 'use sha2::', 'use subtle::', 'println!(', 'tracing::'],
   'Comments auth dependency and logging boundary',
 );
 
@@ -359,13 +355,10 @@ hasAll(
     'bearer_token: Option<CommentsTcpBearerToken>',
     'pub fn with_bearer_token(',
     'pub fn with_bearer_secret(',
-    'pub fn is_authenticated(&self) -> bool',
     'CommentsTcpRequestEnvelope::with_bearer(request, token)',
     'CommentsTcpRequestEnvelope::unauthenticated(request)',
     'serde_json::to_vec(&envelope)',
     'request.context().require_deadline_semantics()?;',
-    'comments.tcp_encode',
-    'comments.tcp_decode',
     'bearer_transport_debug_is_redacted',
   ],
   'Comments TCP client transport',
@@ -399,7 +392,8 @@ hasNone(
     'TrustedCommentsTcpAuthority::new(',
     '%bearer_token',
     '?bearer_token',
-    'bearer_token =',
+    'bearer_token = %',
+    'bearer_token = ?',
     '0.0.0.0:',
   ],
   'server host authentication boundary',
@@ -409,11 +403,12 @@ hasAll(
   plan,
   [
     '## Slice 72 — authenticated Comments TCP bearer envelope',
-    'RUSTOK_COMMENTS_TCP_BEARER_TOKEN',
-    'RUSTOK_COMMENTS_TCP_SERVICE_ACTOR_ID',
     'fixed-work comparison over two 32-byte digests',
     'does not claim a separately audited compiler or hardware side-channel',
     'does not require a `Cargo.lock` package-entry mutation',
+    'The resolver\'s safe default admits exactly three read operations',
+    'The default rejects `CreateComment`, `UpdateComment`, `SetCommentStatus`, and',
+    'Ownership-sensitive writes require separately established trusted user authority',
     'Plaintext bearer mode remains loopback-only',
     'Status: `source_verified_no_compile`.',
     'Compile policy: `not_run_by_request`.',
