@@ -7,6 +7,9 @@
   "component": "core/rbac",
   "base_revision": "3a9304aead372b22a5d9069143922d23934e4d7c",
   "scenario": "missed committed role-relation invalidation publication recovered by the durable generation watchdog",
+  "fixture_backend": "sqlite_in_memory",
+  "postgresql_evidence": false,
+  "multi_replica_evidence": false,
   "production_paths": {
     "evaluator": "apps/server/src/services/rbac_service.rs",
     "relation_store": "apps/server/src/services/rbac_authoritative.rs",
@@ -47,6 +50,7 @@
     "formatting_executed": false,
     "cargo_check_executed": false,
     "workflow_or_ci_executed": false,
+    "sqlite_runtime_executed": false,
     "postgresql_runtime_executed": false
   },
   "broad_rbac_verification_complete": false,
