@@ -1,8 +1,6 @@
 use rustok_events::{DomainEvent, ForumSearchProjectionEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbBackend, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbBackend, Statement};
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
@@ -16,14 +14,8 @@ pub(crate) async fn publish_forum_projection_scope_direct_in_tx(
     tenant_id: Uuid,
     actor_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    write_projection_invalidation_in_tx(
-        txn,
-        tenant_id,
-        actor_id,
-        FORUM_PROJECTION_SCOPE,
-        None,
-    )
-    .await
+    write_projection_invalidation_in_tx(txn, tenant_id, actor_id, FORUM_PROJECTION_SCOPE, None)
+        .await
 }
 
 pub(crate) async fn publish_forum_category_projection_direct_in_tx(
@@ -133,10 +125,7 @@ async fn write_projection_invalidation_in_tx(
 
     let revision = allocate_projection_revision_in_tx(txn, tenant_id).await?;
     let root_event_id = TransactionalEventBus::publish_root_in_tx_with_envelope_id(
-        txn,
-        tenant_id,
-        actor_id,
-        root_event,
+        txn, tenant_id, actor_id, root_event,
     )
     .await?;
     TransactionalEventBus::publish_contract_direct_in_tx_with_causation_and_envelope_id(

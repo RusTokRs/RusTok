@@ -132,9 +132,9 @@ async fn create_topic(
                 category_id,
                 title: format!("Reply create audience {suffix}"),
                 slug: Some(format!("reply-create-audience-{suffix}")),
-                body: "Reply create audience topic fixture".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Reply create audience topic fixture",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -148,9 +148,9 @@ async fn create_topic(
 fn reply_input(suffix: &str) -> CreateReplyInput {
     CreateReplyInput {
         locale: "en".into(),
-        content: format!("Reply create audience fixture {suffix}"),
-        content_format: "markdown".into(),
-        content_json: None,
+        content: rustok_api::RichTextDocument::single_paragraph(format!(
+            "Reply create audience fixture {suffix}"
+        )),
         parent_reply_id: None,
     }
 }
@@ -158,9 +158,9 @@ fn reply_input(suffix: &str) -> CreateReplyInput {
 fn reply_command_input(suffix: &str) -> CreateReplyCommandInput {
     CreateReplyCommandInput {
         locale: "en".into(),
-        content: format!("Reply create audience command fixture {suffix}"),
-        content_format: "markdown".into(),
-        content_json: None,
+        content: rustok_api::RichTextDocument::single_paragraph(format!(
+            "Reply create audience command fixture {suffix}"
+        )),
         parent_reply_id: None,
         quotes: Vec::new(),
     }

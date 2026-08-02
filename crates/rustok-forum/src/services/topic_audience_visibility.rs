@@ -32,8 +32,7 @@ impl ForumTopicAudienceViewer {
     ) -> ForumResult<Self> {
         if security.is_public_read() {
             return Err(ForumError::Validation(
-                "Forum topic audience authenticated viewer cannot use public security"
-                    .to_string(),
+                "Forum topic audience authenticated viewer cannot use public security".to_string(),
             ));
         }
         if security.actor_kind != SecurityActorKind::User {
@@ -81,10 +80,7 @@ pub struct ForumTopicAudienceVisibilityService {
 }
 
 impl ForumTopicAudienceVisibilityService {
-    pub fn new(
-        db: DatabaseConnection,
-        facts_port: Option<SharedForumAudienceFactsPort>,
-    ) -> Self {
+    pub fn new(db: DatabaseConnection, facts_port: Option<SharedForumAudienceFactsPort>) -> Self {
         Self {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
@@ -135,11 +131,7 @@ impl ForumTopicAudienceVisibilityService {
     ) -> ForumResult<bool> {
         self.validate_viewer_context(tenant_id, viewer)?;
         if !ForumTopicVisibilityService::new(self.db.clone())
-            .is_topic_category_visible_to_viewer(
-                tenant_id,
-                topic_id,
-                viewer.is_authenticated(),
-            )
+            .is_topic_category_visible_to_viewer(tenant_id, topic_id, viewer.is_authenticated())
             .await?
         {
             return Ok(false);
@@ -223,12 +215,7 @@ impl ForumTopicAudienceVisibilityService {
         })?;
         let mut facts = self
             .facts_resolver
-            .resolve_for_constraints(
-                tenant_id,
-                context.clone(),
-                &viewer.security,
-                constraints,
-            )
+            .resolve_for_constraints(tenant_id, context.clone(), &viewer.security, constraints)
             .await?;
 
         // Local allow/deny/role resolution intentionally skips owner-port calls.
@@ -236,15 +223,15 @@ impl ForumTopicAudienceVisibilityService {
         // selector evaluates to NoMatch instead of looking like foreign facts.
         if facts == ForumAudienceFacts::default() {
             facts.tenant_id = tenant_id;
-            facts.user_id = viewer.security.user_id.expect("authenticated viewer validated");
+            facts.user_id = viewer
+                .security
+                .user_id
+                .expect("authenticated viewer validated");
         }
 
-        Ok(ForumAudienceEvaluator::decide(
-            tenant_id,
-            constraints,
-            &viewer.security,
-            &facts,
-        )?
-        .allowed)
+        Ok(
+            ForumAudienceEvaluator::decide(tenant_id, constraints, &viewer.security, &facts)?
+                .allowed,
+        )
     }
 }

@@ -228,7 +228,7 @@ SELECT
 FROM generate_series(1, {REPLIES_PER_TOPIC}) AS reply_no;
 
 INSERT INTO forum_topic_revisions
-    (tenant_id, topic_id, locale, title, slug, body, body_format, metadata,
+    (tenant_id, topic_id, locale, title, slug, body, metadata,
      revision_reason, created_at)
 SELECT
     '{tenant_id}',
@@ -237,7 +237,6 @@ SELECT
     'Concurrent read-state proof topic',
     NULL,
     'Revision ' || revision_no::text,
-    'markdown',
     '{{}}'::jsonb,
     'edit',
     CURRENT_TIMESTAMP - INTERVAL '12 hours' + revision_no * INTERVAL '1 second'
@@ -295,7 +294,7 @@ CROSS JOIN generate_series(1, {REPLIES_PER_TOPIC}) AS reply_no
 WHERE topic.tenant_id = '{tenant_id}';
 
 INSERT INTO forum_topic_revisions
-    (tenant_id, topic_id, locale, title, slug, body, body_format, metadata,
+    (tenant_id, topic_id, locale, title, slug, body, metadata,
      revision_reason, created_at)
 SELECT
     '{tenant_id}',
@@ -304,7 +303,6 @@ SELECT
     'Read-state proof topic',
     NULL,
     'Revision ' || revision_no::text,
-    'markdown',
     '{{}}'::jsonb,
     'edit',
     CURRENT_TIMESTAMP - INTERVAL '12 hours' + revision_no * INTERVAL '1 second'

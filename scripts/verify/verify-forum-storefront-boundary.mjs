@@ -9,7 +9,7 @@ const files = {
   ui: "crates/rustok-forum/storefront/src/ui/leptos.rs",
   transport: "crates/rustok-forum/storefront/src/transport/mod.rs",
   graphqlAdapter: "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
-  legacyApi: "crates/rustok-forum/storefront/src/api.rs",
+  removedApi: "crates/rustok-forum/storefront/src/api.rs",
   plan: "crates/rustok-forum/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
@@ -40,7 +40,7 @@ const pkg = JSON.parse(text(files.packageJson));
   "forum_storefront_slug_label",
   "forum_storefront_category_card_class",
   "forum_storefront_topic_card_class",
-  "forum_storefront_accent_style",
+  "forum_storefront_accent_class",
   "forum_storefront_status_badge_class",
   "ForumStorefrontCategoryRailLabels",
 ].forEach((name) => assertContains(core, name, `${files.core}: missing core-owned storefront policy ${name}`));
@@ -48,7 +48,7 @@ const pkg = JSON.parse(text(files.packageJson));
 assertNotContains(core, "leptos::", `${files.core}: core must remain framework-agnostic`);
 assertNotContains(core, "view!", `${files.core}: core must not render Leptos views`);
 assertNotContains(ui, "fn status_badge_class", `${files.ui}: status badge class policy must stay in core`);
-assertNotContains(ui, "background:linear-gradient", `${files.ui}: category accent fallback must stay in core`);
+assertNotContains(ui, "background:linear-gradient", `${files.ui}: inline category accent style must stay absent`);
 assertNotContains(ui, "?category={category_id}", `${files.ui}: route href construction must stay in core`);
 assertContains(ui, "forum_storefront_category_card_view_model", `${files.ui}: UI must consume core-owned category card view-model`);
 assertContains(ui, "forum_storefront_topic_card_view_model", `${files.ui}: UI must consume core-owned topic card view-model`);
@@ -57,12 +57,12 @@ assertContains(ui, "forum_storefront_count_label", `${files.ui}: UI must consume
 assertContains(transport, "fetch_storefront_forum", `${files.transport}: storefront transport facade must expose fetch_storefront_forum`);
 assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport facade must own GraphQL adapter module`);
 assertContains(transport, "graphql_adapter::fetch_storefront_forum", `${files.transport}: transport facade must delegate through GraphQL adapter`);
-assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to legacy api module`);
+assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to the removed api module`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: storefront GraphQL adapter must keep GraphQL-backed read contract`);
-if (existsSync(files.legacyApi)) {
-  fail(`${files.legacyApi}: legacy api.rs must stay removed; transport/graphql_adapter.rs owns the read contract`);
+if (existsSync(files.removedApi)) {
+  fail(`${files.removedApi}: removed api.rs must stay absent; transport/graphql_adapter.rs owns the read contract`);
 }
-assertNotContains(lib, "mod api;", `${files.lib}: lib must not wire legacy api module`);
+assertNotContains(lib, "mod api;", `${files.lib}: lib must not wire the removed api module`);
 assertContains(lib, "pub use ui::leptos::ForumView", `${files.lib}: lib must only wire and re-export ForumView`);
 assertContains(plan, "verify-forum-storefront-boundary.mjs", `${files.plan}: local plan must mention storefront fast boundary guardrail`);
 assertContains(registry, "verify-forum-storefront-boundary.mjs", `${files.registry}: central readiness board must mention storefront fast boundary guardrail`);

@@ -116,7 +116,6 @@ impl TopicService {
             None
         };
 
-        redact_topic_content_in_tx(&txn, tenant_id, topic_id).await?;
         delete_attached_localized_values(&txn, tenant_id, "topic", topic_id)
             .await
             .map_err(map_flex_cleanup_error)?;
@@ -256,32 +255,6 @@ async fn claim_topic_delete_in_tx(
         .await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicDeleted);
-    }
-    Ok(())
-}
-
-async fn redact_topic_content_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<()> {
-    for statement in [
-        format!(
-            "UPDATE forum_topic_translations \
-             SET title = '[deleted]', slug = NULL, body = '[deleted]', \
-                  body_format = 'markdown', updated_at = CURRENT_TIMESTAMP \
-             WHERE tenant_id = '{tenant_id}' AND topic_id = '{topic_id}'"
-        ),
-        format!(
-            "UPDATE forum_reply_bodies \
-             SET body = '[deleted]', body_format = 'markdown', updated_at = CURRENT_TIMESTAMP \
-             WHERE tenant_id = '{tenant_id}' AND reply_id IN (\
-                 SELECT id FROM forum_replies \
-                 WHERE tenant_id = '{tenant_id}' AND topic_id = '{topic_id}' AND deleted_at IS NULL\
-             )"
-        ),
-    ] {
-        txn.execute_unprepared(&statement).await?;
     }
     Ok(())
 }

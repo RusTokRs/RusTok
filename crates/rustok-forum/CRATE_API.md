@@ -49,7 +49,7 @@
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
 - `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
 - `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
-- `extract_forum_mention_candidates(body, body_format, locale, policy) -> ForumResult<ForumMentionCandidates>`
+- `extract_forum_mention_candidates(document: &RichTextDocument, policy) -> ForumResult<ForumMentionCandidates>`
 - `resolve_forum_mentions(profiles, tenant_id, candidates, requested_locale, tenant_default_locale) -> ForumResult<ForumResolvedMentions>`
 - `validate_forum_quote_references(source, references) -> ForumResult<Vec<ForumQuoteReference>>`
 - `diff_forum_mentions(previous, current) -> ForumResult<ForumMentionDiff>`
@@ -65,11 +65,14 @@
 
 ## DTO changes (current)
 ### TopicResponse
-- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
+- Canonical content: `body: RichTextView`, `body_plain_text: String`.
+- Locale and state: `requested_locale`, `effective_locale`, `available_locales`, `slug`, `author_id`, votes, subscription state, and `solution_reply_id`.
 ### TopicListItem
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### ReplyResponse / ReplyListItem
-- Added: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (in ListItem), `vote_score: i32`, `current_user_vote: Option<i32>`, `is_solution: bool`
+- `ReplyResponse` exposes `content: RichTextView` and `content_plain_text: String`.
+- `ReplyListItem` exposes only the bounded server-derived plain-text preview required by list surfaces.
+- Locale, author, parent, vote, and solution state remain explicit.
 ### CategoryResponse
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CategoryListItem
@@ -158,8 +161,8 @@
 - Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
 - Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
 ### Mention and quote revision contract
-- Markdown extraction ignores fenced code, inline code, escaped text and email-address `@` tokens.
-- `rt_json_v1` extraction first uses the canonical `rustok-core` sanitizer and ignores `code_block` nodes and text with a `code` mark.
+- Mention extraction walks the canonical `RichTextDocument` tree and ignores `codeBlock` nodes, code-marked text, and email-address `@` tokens.
+- Forum never parses a format selector, Markdown source, or a second JSON envelope for mentions.
 - Ordinary handles use `ProfileService::normalize_handle`; the `moderators` audience is a separate typed target and requires explicit moderation policy.
 - Every revision is capped at 32 unique mention targets and 32 unique quote references.
 - `resolve_forum_mentions` uses the tenant-scoped `ProfilesReader` contract. Missing, hidden, blocked, private, followers-only, foreign-tenant or mismatched targets all fail with the same safe `FORUM_MENTION_TARGET_UNAVAILABLE` class.
@@ -172,10 +175,10 @@
 - `forum_relation_revisions` assigns one globally unique immutable identity to each persisted mention/quote projection for a tenant, source target and locale.
 - `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only child rows keyed by the complete source identity and relation revision.
 - Quote rows retain the quoted target and globally unique quoted relation revision; PostgreSQL and SQLite reject tenant, kind or target mismatches.
-- Existing topic translations and reply bodies receive one `legacy` relation revision during migration, without parsing historical content or reading Profiles-owned tables.
-- PostgreSQL and SQLite source INSERT seed triggers give topic translations and reply bodies created after B1 rollout exactly one empty `legacy` identity until active projection persistence; the triggers do not infer mentions or read Profiles.
+- Relation revisions are created only by the canonical topic/reply command owner after the source document has been normalized and stored.
+- Migrations do not synthesize empty relation identities or backfill placeholder fingerprints.
 - The crate-private `MentionRelationService` separates profile-dependent `prepare` from transaction-only `persist_in_tx`; it is an owner implementation seam, not public persistence API.
-- `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over canonical body, format, resolved targets and quote identities.
+- `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over the canonical serialized document, resolved targets, and quote identities.
 - `persist_in_tx` locks the source stream, re-reads the persisted body in the same transaction, rejects prepared/body mismatch and writes the revision plus all child rows atomically.
 - Topic and reply create/edit owner commands prepare before opening the transaction and call `persist_in_tx` immediately after the canonical body write and before counters, semantic events and commit.
 - An identical latest fingerprint must also match the persisted target snapshot; only then does replay return the existing relation revision with no added targets.
@@ -284,14 +287,14 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
 - Stores a category image URL/path or reads Media tables instead of using the Media owner port.
 - Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
-- Parses mentions from code blocks, escaped text or unsanitized `rt_json_v1`.
+- Parses mentions from code blocks or code-marked structural text.
 - Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
 - Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
 - Calls Notifications from the Forum transaction instead of publishing a typed owner event.
 - Uses separate identities for the outbox and Forum journal copies of one mention event.
 - Exposes `handle_snapshot`, projection fingerprint or source body through the relation owner read.
 - Updates a persisted mention/quote row instead of appending a new relation revision.
-- Removes the source INSERT seed triggers before active owner writes are composed.
+- Writes a source document without composing relation persistence through the same command owner.
 - Persists a prepared relation projection without revalidating the source body inside the owner transaction.
 - Lets quote transports import `MentionRelationService`, `PreparedMentionRelations` or `persist_in_tx`.
 - Treats omitted update quotes as an empty list and silently clears relations.
@@ -308,9 +311,9 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- Existing `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput` and `UpdateReplyInput` remain source-compatible.
+- `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput`, and `UpdateReplyInput` accept one `RichTextDocument` field.
 - Separate command DTOs carry inline quotes and are consumed by transport adapters and facade conversions.
-- All changes to existing create/update DTO fields are considered breaking changes.
+- There are no format selectors, alternate content fields, or compatibility DTO variants.
 
 ### Domain Invariants
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.

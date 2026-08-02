@@ -12,8 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     CategoryBreadcrumb, CategoryTreeNode, CategoryTreeQuery, ForumCategoryReadOperation,
-    ForumCategoryReadTransport, MAX_FORUM_CATEGORY_TREE_NODES,
-    category_read_audience_port_context,
+    ForumCategoryReadTransport, MAX_FORUM_CATEGORY_TREE_NODES, category_read_audience_port_context,
 };
 
 use super::ForumGraphqlRuntimeData;

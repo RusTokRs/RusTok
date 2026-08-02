@@ -6,7 +6,7 @@ status: delivered
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-22
+last_reviewed: 2026-08-01
 ---
 
 # FORUM-12B2 owner write integration
@@ -40,15 +40,14 @@ edit methods live directly in `reply.rs`, while reply create remains in
 `reply_owner.rs`. This direct-module layout preserves access to private write
 helpers without widening the crate API.
 
-## Compatibility
+## Canonical document boundary
 
-Create and edit commands project user and typed audience mentions from canonical
-Markdown or `rt_json_v1`. Existing source INSERT seed triggers may create the
-rollout `legacy` identity first; the active projection is appended in the same
-transaction immediately afterward.
+Create and edit commands project user and typed audience mentions by walking the
+canonical `RichTextDocument`. Relation revisions are written only by the active
+owner command; migrations do not seed placeholder identities.
 
 Quote command DTOs are intentionally unchanged in this slice, so active commands
-pass an empty quote set. Versioned mention events, outbox publication and bounded
+pass an empty quote set. Sealed mention events, outbox publication and bounded
 owner reads are delivered separately in FORUM-12C; Notifications delivery remains
 downstream NOTIFY scope.
 

@@ -14,6 +14,16 @@ export function emptyRichTextDocument(): RichTextDocument {
   return { type: 'doc', content: [{ type: 'paragraph' }] };
 }
 
+export function richTextDocumentHasText(document: RichTextDocument): boolean {
+  const stack = [...document.content];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node?.text?.trim()) return true;
+    if (node?.content) stack.push(...node.content);
+  }
+  return false;
+}
+
 export function validateRichTextDocument(
   value: unknown,
   profile: RichTextProfileManifest

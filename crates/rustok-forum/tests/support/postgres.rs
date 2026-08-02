@@ -59,6 +59,10 @@ impl PostgresForumTestDb {
             for migration in TaxonomyModule.migrations() {
                 migration.up(&manager).await?;
             }
+            // Forum owns the topic-field trigger, while the shared generation
+            // table/function is a platform prerequisite normally installed by Auth.
+            flex::cache_generation::create_field_definition_cache_generation_table(&manager)
+                .await?;
             for migration in ForumModule.migrations() {
                 migration.up(&manager).await?;
             }

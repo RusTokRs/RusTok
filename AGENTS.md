@@ -44,9 +44,95 @@ When changing **architecture, API, events, modules, tenancy, routing, UI contrac
 2. Update the related central docs in `docs/`.
 3. Update [`docs/index.md`](docs/index.md) so the map remains accurate.
 4. If a module or application was added or renamed, update [`docs/modules/registry.md`](docs/modules/registry.md).
-5. Mark outdated documents as `deprecated` or `archived` and point to the replacement.
+5. Delete superseded implementation documentation once the replacement is canonical. Archive only externally relevant historical decisions or evidence, with an explicit reason and a link to the current contract.
 
 Do not create a new document if a suitable one already exists — extend the existing one.
+
+## Initial implementation and zero-legacy policy
+
+RusToK is a pre-release initial implementation. Internal repository code has no
+legacy consumers that justify compatibility layers. Implement the canonical
+target architecture directly.
+
+- A replacement is atomic: update every repository-owned caller, transport,
+  schema, fixture, test, seed, script, and current document, then delete the
+  superseded implementation in the same change.
+- Do not add or retain compatibility wrappers, deprecated aliases, dual
+  read/write paths, fallback-to-legacy behavior, old/new format adapters, or
+  parallel implementations of the same internal contract.
+- Do not create `legacy`, `old`, `new`, `v2`, or version-suffixed internal names
+  to avoid completing a rename or cutover. The surviving implementation uses
+  the canonical unversioned name.
+- Existing legacy found within the task scope must be removed, not extended,
+  documented as current, or hidden behind another facade.
+- For unreleased schema work, amend or consolidate pending migrations instead
+  of stacking corrective migrations solely to preserve repository history.
+  An explicitly preserved external migration history is the only exception.
+- Before declaring completion, search the repository for the removed names and
+  verify that any remaining occurrences are explicitly preserved historical
+  evidence, not executable code or current guidance.
+
+An agent may not invent an exception. A temporary bridge is allowed only when
+the user explicitly requires staged compatibility for an external consumer. It
+must have a named removal owner, deadline, and deletion task in the owning
+module plan.
+
+### No internal API or code version families
+
+Do not create repository-internal `/v1` or `/v2` routes, `FooV2` types,
+`new_*` modules, versioned GraphQL fields, versioned storage envelopes, or
+parallel package exports for repository-owned callers. Change the canonical
+contract in place, migrate its data, update every caller atomically, and keep
+one unversioned implementation.
+
+**Why:** an internal version does not remove migration work; it postpones it
+while multiplying code paths, security fixes, test matrices, documentation,
+and operational states. Two "temporary" versions quickly become two plausible
+sources of truth, so later contributors and agents copy the obsolete one and
+create further variants. Before the first external release, this cost buys no
+compatibility value.
+
+Version identifiers are allowed only where independent external deployment
+actually requires them: published package releases, immutable migration order,
+or a wire/event/public API consumed outside this repository. Keep that version
+at the boundary, map it immediately to the single canonical internal model, and
+do not fork domain logic by version. The explicit external-bridge approval and
+removal requirements above still apply.
+
+### No stubs or lint suppression as implementation
+
+A warning, unused symbol, failing test, or missing caller is evidence to
+investigate, not something to silence so a task appears complete.
+
+- Do not add `#[allow(dead_code)]`, `#![allow(dead_code)]`, broad
+  `allow(unused_*)`, or equivalent lint suppression in repository-owned code.
+- Do not use `todo!()`, `unimplemented!()`, placeholder return values, no-op
+  handlers, unconditional success, fake adapters, dummy data, or an
+  in-memory fallback as a substitute for required functionality.
+- When an unused implementation represents required target behavior, connect
+  it through the real owner, transport, composition, and UI path and add tests
+  of observable behavior. A source-marker or compile-only test does not prove
+  that the runtime functionality exists.
+- When it is not part of the target architecture, delete the symbol and its
+  stale tests, fixtures, configuration, and documentation instead of preserving
+  it for hypothetical future use.
+- When completing the functionality would require authority or scope not
+  granted by the user, report the concrete gap and leave the task incomplete;
+  do not hide it behind a stub or suppression.
+- Any existing suppression encountered in files touched by the task must be
+  audited and removed by wiring or deletion. Do not copy it to new code.
+- Tests, evidence, and verifiers must never require a suppression, stub,
+  placeholder implementation, or legacy path as a positive marker. They must
+  verify real behavior or record the capability as incomplete and fail closed.
+  Compile-only and source-marker checks may supplement runtime tests, but they
+  cannot substitute for missing functionality or justify completion status.
+
+The only narrow exceptions are generated code and externally invoked symbols
+that static analysis genuinely cannot observe, such as a required FFI export.
+Use the smallest possible `#[expect(..., reason = "...")]`, never a module- or
+crate-wide `allow`, and retain a test or verifier proving the external entry
+path. Feature- or target-specific code must use correct `#[cfg(...)]` structure,
+not lint suppression.
 
 ## AI Agent rules
 
@@ -66,7 +152,7 @@ Rules mandatory for all automated agents operating in this repository:
 12. If a module's UI is planned but not implemented yet, keep a `not_started` FFA/FBA status block in the module plan and a matching `not_started` row in the central readiness board; when UI first appears, update both local and central statuses in the same PR with initial verification evidence.
 13. Module-owned UI packages may expose only their owning module or capability surface. Do not place MCP, Alloy, commerce, catalog, AI, or other module/operator screens inside an unrelated module UI package. Cross-module workflows must be composed by the host from separate owner-owned entrypoints, not merged into another module. If a UI needs another module's data, consume that module's public transport contract only and document the dependency in the owner module plan.
 14. When adding UI for a module or capability, keep the required surfaces in parity: Next/admin where applicable and the Leptos FFA version with native `#[server]` functions plus the target parallel GraphQL/REST contract. Do not ship a Next-only operator surface when the module's admin UI contract requires Leptos FFA parity; document any native-only operator/bootstrap exception in the module plan.
-15. Treat RusToK as an initial implementation, not as a legacy migration project. Implement the target architecture directly: replace old internal ports, adapters, facades, entry points, and call sites atomically, then delete the superseded code. Do not add compatibility wrappers, dual old/new execution paths, deprecated aliases, fallback-to-legacy behavior, or "temporary" legacy ports unless the user explicitly requires a staged external migration. Any approved temporary bridge must have a named removal owner and deadline in the module plan. Required current platform contracts, such as parallel GraphQL support, are not legacy compatibility paths.
+15. Follow the repository-wide [initial implementation and zero-legacy policy](#initial-implementation-and-zero-legacy-policy). Required current platform contracts, such as parallel GraphQL support, are intentional target surfaces and are not legacy compatibility paths.
 16. All repository artifacts, including code, documentation, commit messages, comments, examples, and generated files, must be written in **English only**. The sole exception is `README.ru.md` (localized Russian translation of the main README). Direct conversation with the user should follow the user's preferred language.
 17. **DO NOT duplicate code across modules.** If a pattern appears in 2+ modules or 2+ hosts, extract it into a shared library:
     - UI primitives → `crates/leptos-ui/`

@@ -130,10 +130,9 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
                 category_id: category.id,
                 title: "Bounded recipient filtering".into(),
                 slug: Some("bounded-recipient-filtering".into()),
-                body: "Topic-created fanout must scan raw subscriptions without skipping denied recipients."
-                    .into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Topic-created fanout must scan raw subscriptions without skipping denied recipients.",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,

@@ -243,8 +243,7 @@ END"##,
         r##"CREATE TRIGGER forum_80_topic_translation_insert_event
 AFTER INSERT ON forum_topic_translations
 FOR EACH ROW
-WHEN NOT (NEW.title = '[deleted]' AND NEW.body = '[deleted]')
- AND (
+WHEN (
     SELECT COUNT(*)
     FROM forum_topic_translations
     WHERE tenant_id = NEW.tenant_id
@@ -268,12 +267,10 @@ END"##,
         r##"CREATE TRIGGER forum_80_topic_translation_update_event
 AFTER UPDATE ON forum_topic_translations
 FOR EACH ROW
-WHEN NOT (NEW.title = '[deleted]' AND NEW.body = '[deleted]')
- AND (
+WHEN (
     OLD.title IS NOT NEW.title
     OR OLD.slug IS NOT NEW.slug
     OR OLD.body IS NOT NEW.body
-    OR OLD.body_format IS NOT NEW.body_format
  )
 BEGIN
 INSERT INTO forum_domain_events (

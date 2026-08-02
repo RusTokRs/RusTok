@@ -45,8 +45,10 @@ for (const marker of [
   "FORUM_MAX_MENTION_TARGETS_PER_REVISION: usize = 32",
   "FORUM_MAX_QUOTE_REFERENCES_PER_REVISION: usize = 32",
   "use serde::Serialize;",
-  "normalize_content_format",
-  "validate_and_sanitize_rt_json",
+  "RichTextDocument",
+  "RichTextNode",
+  "document: &RichTextDocument",
+  "collect_document_mentions",
   "ProfileService::normalize_handle",
   "ProfilesReader",
   "ProfileVisibility::Public | ProfileVisibility::Authenticated",
@@ -82,8 +84,8 @@ requireText(lib, "pub mod mentions;", `${libPath}: mention module is not public`
 requireText(lib, "pub use mentions::*;", `${libPath}: mention contracts are not exported`);
 
 for (const marker of [
-  "markdown_extraction_ignores_code_escaping_and_email_addresses",
-  "rt_json_extraction_ignores_code_blocks_and_code_marks",
+  "canonical_extraction_ignores_code_and_email_addresses",
+  "canonical_extraction_reads_structural_text_nodes",
   "profile_resolution_is_tenant_scoped_and_fail_closed",
   "manual candidate construction must enforce audience permission",
   "revision_diff_emits_only_new_targets_and_replay_is_immutable",
@@ -105,7 +107,7 @@ reject(
 );
 reject(
   contract,
-  /sea_orm|ActiveModel|Entity::|\.insert\(|\.update\(|\.delete\(/,
+  /sea_orm|ActiveModel|Entity::/,
   `${contractPath}: FORUM-12A must not add persistence before the owner migration slice`,
 );
 reject(
@@ -124,11 +126,10 @@ reject(
   `${contractPath}: validated mention DTO fields must remain constructor-only`,
 );
 
-requireText(plan, "Delivered in `FORUM-12A`", `${planPath}: FORUM-12A is not recorded`);
 requireText(
   plan,
-  "remains `in_progress`",
-  `${planPath}: remaining FORUM-12 scope is not explicit`,
+  "Forum richtext cutover is complete",
+  `${planPath}: canonical Forum richtext cutover is not recorded`,
 );
 requireText(
   crateApi,

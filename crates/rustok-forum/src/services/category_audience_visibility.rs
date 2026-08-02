@@ -45,8 +45,7 @@ impl ForumCategoryAudienceViewer {
         }
         let user_id = security.user_id.ok_or_else(|| {
             ForumError::Validation(
-                "Forum category audience authenticated viewer requires a user identity"
-                    .to_string(),
+                "Forum category audience authenticated viewer requires a user identity".to_string(),
             )
         })?;
         if port_context.actor.kind != PortActorKind::User {
@@ -61,8 +60,7 @@ impl ForumCategoryAudienceViewer {
         })?;
         if context_user_id != user_id {
             return Err(ForumError::Validation(
-                "Forum category audience facts context actor does not match the viewer"
-                    .to_string(),
+                "Forum category audience facts context actor does not match the viewer".to_string(),
             ));
         }
         Ok(Self {
@@ -84,10 +82,7 @@ pub struct ForumCategoryAudienceVisibilityService {
 }
 
 impl ForumCategoryAudienceVisibilityService {
-    pub fn new(
-        db: DatabaseConnection,
-        facts_port: Option<SharedForumAudienceFactsPort>,
-    ) -> Self {
+    pub fn new(db: DatabaseConnection, facts_port: Option<SharedForumAudienceFactsPort>) -> Self {
         Self {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
@@ -109,11 +104,7 @@ impl ForumCategoryAudienceVisibilityService {
         self.validate_viewer_context(tenant_id, viewer)?;
 
         if !ForumCategoryVisibilityPolicyService::new(self.db.clone())
-            .is_category_visible_to_viewer(
-                tenant_id,
-                category_id,
-                viewer.is_authenticated(),
-            )
+            .is_category_visible_to_viewer(tenant_id, category_id, viewer.is_authenticated())
             .await?
         {
             return Ok(false);
@@ -176,18 +167,12 @@ impl ForumCategoryAudienceVisibilityService {
 
         let context = viewer.port_context.as_ref().ok_or_else(|| {
             ForumError::Validation(
-                "Forum category audience authenticated viewer is missing facts context"
-                    .to_string(),
+                "Forum category audience authenticated viewer is missing facts context".to_string(),
             )
         })?;
         let mut facts = self
             .facts_resolver
-            .resolve_for_constraints(
-                tenant_id,
-                context.clone(),
-                &viewer.security,
-                constraints,
-            )
+            .resolve_for_constraints(tenant_id, context.clone(), &viewer.security, constraints)
             .await?;
 
         // Local allow/deny/role decisions intentionally avoid owner-port calls.
@@ -200,12 +185,9 @@ impl ForumCategoryAudienceVisibilityService {
                 .expect("authenticated category viewer validated");
         }
 
-        Ok(ForumAudienceEvaluator::decide(
-            tenant_id,
-            constraints,
-            &viewer.security,
-            &facts,
-        )?
-        .allowed)
+        Ok(
+            ForumAudienceEvaluator::decide(tenant_id, constraints, &viewer.security, &facts)?
+                .allowed,
+        )
     }
 }

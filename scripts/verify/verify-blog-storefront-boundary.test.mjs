@@ -204,7 +204,7 @@ ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page:
     "crates/rustok-blog/src/graphql/types.rs",
     options.missingComments
       ? "pub struct GqlPost;"
-      : "pub content: Option<RichTextView>; pub content_plain_text: Option<String>; #[graphql(complex)] pub struct GqlPost; async fn public_comments() { CommentService::new; SecurityContext::public_read(); GqlPublicCommentList; }",
+      : `${options.nullableGraphqlRichtext ? "pub content: Option<RichTextView>; pub content_plain_text: Option<String>;" : "pub content: RichTextView; pub content_plain_text: String;"} #[graphql(complex)] pub struct GqlPost; async fn public_comments() { runtime.comment_service(db.clone(), event_bus.clone()); SecurityContext::public_read(); GqlPublicCommentList; }`,
   );
   if (options.legacyApi) {
     writeFixtureFile(root, "crates/rustok-blog/storefront/src/api.rs", "legacy api");
@@ -239,6 +239,7 @@ rejects legacy api module
 rejects missing public comments parity
 rejects missing comment pagination parity
 rejects legacy richtext transport
+rejects nullable GraphQL richtext projections
 rejects removed richtext summarizer
 rejects local richtext renderer
 rejects alternate selected-post HTML sink
@@ -301,6 +302,12 @@ test("blog storefront boundary verifier rejects legacy richtext transport", () =
   const result = runFixture({ legacyRichtext: true });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /legacy body|owner RichTextView|canonical richtext|owner HTML sink|removed legacy summarizer/);
+});
+
+test("blog storefront boundary verifier rejects nullable GraphQL richtext projections", () => {
+  const result = runFixture({ nullableGraphqlRichtext: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /pub content: RichTextView/);
 });
 
 test("blog storefront boundary verifier rejects removed richtext summarizer", () => {

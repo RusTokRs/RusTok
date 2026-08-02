@@ -86,9 +86,7 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
                 category_id: category.id,
                 title: "Subscription levels".into(),
                 slug: Some("subscription-levels".into()),
-                body: "Body".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -152,9 +150,7 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
             topic.id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Participating".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Participating"),
                 parent_reply_id: None,
             },
         )
@@ -175,9 +171,7 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
             topic.id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Muted author reply".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Muted author reply"),
                 parent_reply_id: None,
             },
         )

@@ -770,7 +770,7 @@ test('rejects removal of the compile-only injection harness', () => {
 test('rejects runtime promotion of the unexecuted injection harness', () => {
   const result = rejects({ injectionRuntimePromoted: true });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /adapter injection drift/);
+  assert.match(result.stderr, /base injection seam drift/);
 });
 
 test('rejects a storefront model without typed availability', () => {

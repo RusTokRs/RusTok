@@ -17,7 +17,7 @@ function requireFile(path) {
 }
 
 function requireAbsent(path) {
-  if (fs.existsSync(path)) fail(`${path} must be removed from the Blog package`);
+  if (fs.existsSync(path)) fail(`${path} must be absent from the canonical owner split`);
 }
 
 function hasAll(text, markers, label) {
@@ -39,8 +39,8 @@ if (
   evidence.schema_version !== 1 ||
   evidence.module !== 'blog' ||
   evidence.surface !== 'next_admin_forum_ui_ownership' ||
-  evidence.status !== 'source_verified_no_compile' ||
-  evidence.compile_policy !== 'not_run_by_request'
+  evidence.status !== 'verified' ||
+  evidence.compile_policy !== 'next_typecheck'
 ) {
   fail('evidence identity/status drift');
 }
@@ -56,9 +56,6 @@ const forumApi = requireFile('apps/next-admin/packages/forum/src/api/forum.ts');
 const forumEditor = requireFile(
   'apps/next-admin/packages/forum/src/components/forum-reply-editor.tsx'
 );
-const forumLegacyAdapter = requireFile(
-  'apps/next-admin/packages/forum/src/components/rt-json-format.ts'
-);
 const sharedEditor = requireFile(
   'apps/next-admin/src/shared/ui/rich-text-editor.tsx'
 );
@@ -71,7 +68,8 @@ for (const path of [
   'apps/next-admin/packages/blog/src/api/forum.ts',
   'apps/next-admin/packages/blog/src/components/forum-reply-editor.tsx',
   'apps/next-admin/packages/blog/src/components/rt-json-format.ts',
-  'apps/next-admin/packages/blog/src/components/rich-text-editor.tsx'
+  'apps/next-admin/packages/blog/src/components/rich-text-editor.tsx',
+  'apps/next-admin/packages/forum/src/components/rt-json-format.ts'
 ]) {
   requireAbsent(path);
 }
@@ -98,7 +96,17 @@ hasAll(
 hasAll(forumNav, ["title: 'Forum'", '/dashboard/forum/reply'], 'Forum navigation');
 hasAll(
   forumApi,
-  ['export interface GqlOpts', 'listForumTopics', 'createForumReply'],
+  [
+    'export interface GqlOpts',
+    'listForumTopics',
+    'createForumReply',
+    'content: RichTextDocument;'
+  ],
+  'Forum GraphQL adapter'
+);
+hasNone(
+  forumApi,
+  ['contentFormat', 'contentJson', 'bodyFormat', 'rt_json', 'markdown'],
   'Forum GraphQL adapter'
 );
 hasAll(
@@ -107,19 +115,24 @@ hasAll(
     "@/shared/ui/rich-text-editor",
     "profile='discussion'",
     "from '../api/forum'",
-    "from './rt-json-format'"
+    'validateRichTextDocument',
+    'richTextDocumentHasText',
+    'content: doc'
   ],
   'Forum reply editor'
 );
 hasNone(
   forumEditor,
-  ['packages/blog', "../api/posts", "./rich-text-editor"],
+  [
+    'packages/blog',
+    "../api/posts",
+    "./rich-text-editor",
+    "./rt-json-format",
+    'normalizeRtJsonPayload',
+    'stringifyRtDoc',
+    'rt_json_v1'
+  ],
   'Forum reply editor'
-);
-hasAll(
-  forumLegacyAdapter,
-  ['normalizeRtJsonPayload', 'stringifyRtDoc', "version: 'rt_json_v1'"],
-  'Forum legacy adapter'
 );
 hasAll(
   sharedEditor,
@@ -166,5 +179,5 @@ if (!packageJson.scripts?.['test:verify:blog:fba']?.includes('test:verify:blog:f
 requireFile('scripts/verify/verify-blog-forum-ui-ownership.test.mjs');
 
 console.log(
-  '[verify-blog-forum-ui-ownership] Forum Next admin navigation, API, reply editor, and legacy adapter are Forum-owned; Blog uses only the shared richtext lifecycle adapter'
+  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, and canonical richtext reply editor; Blog and Forum share only the richtext lifecycle adapter'
 );

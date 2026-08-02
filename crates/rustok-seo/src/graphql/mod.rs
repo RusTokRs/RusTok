@@ -1120,9 +1120,9 @@ mod tests {
                     category_id: category.id,
                     title: "Mobile launch".to_string(),
                     slug: Some("mobile-launch".to_string()),
-                    body: "Only the mobile channel should expose this topic.".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
+                    body: rustok_api::RichTextDocument::single_paragraph(
+                        "Only the mobile channel should expose this topic.",
+                    ),
                     metadata: json!({}),
                     tags: vec![],
                     channel_slugs: Some(vec!["mobile".to_string()]),

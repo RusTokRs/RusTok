@@ -237,7 +237,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
             return Ok(None);
         }
 
-        Ok(Some(map_topic_response(topic)))
+        Ok(Some(map_topic_response(topic)?))
     }
 
     async fn resolve_route(
@@ -470,7 +470,7 @@ async fn load_topic_summary(
     let Some(topic) = topic else {
         return Ok(None);
     };
-    let mapped = map_topic_response(topic);
+    let mapped = map_topic_response(topic)?;
     Ok(Some(SeoBulkSummaryRecord {
         target_kind: mapped.target_kind,
         target_id: mapped.target_id,
@@ -504,7 +504,7 @@ async fn load_topic_sitemap_candidate(
     {
         return Ok(None);
     }
-    let mapped = map_topic_response(topic);
+    let mapped = map_topic_response(topic)?;
     Ok(Some(SeoSitemapCandidateRecord {
         target_kind: mapped.target_kind,
         target_id: mapped.target_id,
@@ -567,10 +567,10 @@ fn map_category_response(category: CategoryResponse) -> SeoLoadedTargetRecord {
     }
 }
 
-fn map_topic_response(topic: TopicResponse) -> SeoLoadedTargetRecord {
+fn map_topic_response(topic: TopicResponse) -> AnyResult<SeoLoadedTargetRecord> {
     let title = topic.title.clone();
-    let description =
-        summarize_text(topic.body.as_str()).or_else(|| summarize_text(title.as_str()));
+    let plain_text = topic.body_plain_text.clone();
+    let description = summarize_text(&plain_text).or_else(|| summarize_text(title.as_str()));
     let primary_image = topic_image_descriptor(&topic, title.as_str());
     let open_graph_images = primary_image.clone().into_iter().collect::<Vec<_>>();
     let canonical_route = format!(
@@ -586,7 +586,7 @@ fn map_topic_response(topic: TopicResponse) -> SeoLoadedTargetRecord {
     template_fields.insert("category_id", topic.category_id.to_string());
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
-    SeoLoadedTargetRecord {
+    Ok(SeoLoadedTargetRecord {
         target_kind: SeoTargetSlug::new(builtin_slug::FORUM_TOPIC)
             .expect("builtin SEO target slug must stay valid"),
         target_id: topic.id,
@@ -614,7 +614,7 @@ fn map_topic_response(topic: TopicResponse) -> SeoLoadedTargetRecord {
         },
         structured_data: schema::discussion_forum_posting_with_image(
             topic.title.as_str(),
-            topic.body.as_str(),
+            plain_text.as_str(),
             description.as_deref(),
             primary_image.as_ref(),
             topic.effective_locale.as_str(),
@@ -623,7 +623,7 @@ fn map_topic_response(topic: TopicResponse) -> SeoLoadedTargetRecord {
         ),
         fallback_source: "forum_topic".to_string(),
         template_fields,
-    }
+    })
 }
 
 fn category_image_descriptor(
@@ -652,7 +652,6 @@ fn topic_image_descriptor(
             image_descriptor_from_metadata(topic.metadata.get("featured_image_url"), fallback_alt)
         })
         .or_else(|| image_descriptor_from_metadata(topic.metadata.get("og_image"), fallback_alt))
-        .or_else(|| first_markdown_image_descriptor(topic.body.as_str(), fallback_alt))
 }
 
 fn image_descriptor_from_metadata(
@@ -702,30 +701,6 @@ fn image_descriptor_from_metadata(
         });
 
     SeoTargetImageRecord::from_parts(url.to_string(), alt, width, height, mime_type)
-}
-
-fn first_markdown_image_descriptor(body: &str, fallback_alt: &str) -> Option<SeoTargetImageRecord> {
-    let start = body.find("![")?;
-    let alt_start = start + 2;
-    let alt_end = body[alt_start..].find(']')? + alt_start;
-    let after_alt = alt_end + 1;
-    let path_open = body[after_alt..].find('(')? + after_alt;
-    let path_start = path_open + 1;
-    let path_end = body[path_start..].find(')')? + path_start;
-
-    let alt = body[alt_start..alt_end].trim();
-    let url = body[path_start..path_end].trim();
-    SeoTargetImageRecord::from_parts(
-        url.to_string(),
-        if alt.is_empty() {
-            Some(fallback_alt.to_string())
-        } else {
-            Some(alt.to_string())
-        },
-        None,
-        None,
-        None,
-    )
 }
 
 enum ForumRoute {

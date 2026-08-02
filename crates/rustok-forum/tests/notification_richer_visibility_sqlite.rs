@@ -214,9 +214,9 @@ fn topic_input(category_id: Uuid, title: &str, slug: &str) -> CreateTopicInput {
         category_id,
         title: title.into(),
         slug: Some(slug.into()),
-        body: "Notification visibility must follow the current exact Forum owner.".into(),
-        body_format: "markdown".into(),
-        content_json: None,
+        body: rustok_api::RichTextDocument::single_paragraph(
+            "Notification visibility must follow the current exact Forum owner.",
+        ),
         metadata: serde_json::json!({}),
         tags: Vec::new(),
         channel_slugs: None,

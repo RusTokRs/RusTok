@@ -211,10 +211,10 @@ async fn seed_topics(
              VALUES
                 ('{topic_id}', '{tenant_id}', '{category_id}', 'open', '{{}}', FALSE, FALSE, 0);
              INSERT INTO forum_topic_translations
-                (id, topic_id, tenant_id, locale, title, body, body_format)
+                (id, topic_id, tenant_id, locale, title, body)
              VALUES
                 ('{translation_id}', '{topic_id}', '{tenant_id}', 'en',
-                 'Topic {index}', 'Body {index}', 'markdown');"
+                 'Topic {index}', 'Body {index}');"
         ))
         .await?;
         ids.push(topic_id);
@@ -238,10 +238,10 @@ async fn seed_replies(
              VALUES
                 ('{reply_id}', '{tenant_id}', '{topic_id}', 'approved', {});
              INSERT INTO forum_reply_bodies
-                (id, reply_id, tenant_id, locale, body, body_format)
+                (id, reply_id, tenant_id, locale, body)
              VALUES
                 ('{body_id}', '{reply_id}', '{tenant_id}', 'en',
-                 'Reply {index}', 'markdown');",
+                 'Reply {index}');",
             index + 1
         ))
         .await?;

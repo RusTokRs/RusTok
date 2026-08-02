@@ -21,6 +21,7 @@ function fixture({
   missingBlockedWorkerObservation = false,
   missingReplay = false,
   statusDrift = false,
+  publicSearchPathFallback = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-duplicate-race-'));
   const evidencePath =
@@ -59,7 +60,7 @@ SELECT set_config('application_name', $1, false)
 CREATE TABLE blog_comment_projection_deliveries
 CREATE TABLE sys_events
 .max_connections(1)
-SET search_path TO
+SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
 `,
   );
 
@@ -138,6 +139,13 @@ test('rejects a race without blocked-worker observation', () => {
 
 test('rejects a race without clean same-envelope replay', () => {
   expectRejected({ missingReplay: true }, /missing BlogCommentProjectionHandler::new/);
+});
+
+test('rejects a race harness that can fall back to public tables', () => {
+  expectRejected(
+    { publicSearchPathFallback: true },
+    /forbidden SET search_path TO "\{schema_name\}", public/,
+  );
 });
 
 test('rejects runtime promotion without execution', () => {

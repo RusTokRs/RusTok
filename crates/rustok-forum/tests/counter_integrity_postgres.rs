@@ -175,9 +175,9 @@ async fn create_concurrent_replies(
                     topic_id,
                     CreateReplyInput {
                         locale: "en".to_string(),
-                        content: format!("concurrent reply {index}"),
-                        content_format: "markdown".to_string(),
-                        content_json: None,
+                        content: rustok_api::RichTextDocument::single_paragraph(format!(
+                            "concurrent reply {index}"
+                        )),
                         parent_reply_id: None,
                     },
                 )
@@ -241,9 +241,7 @@ async fn create_concurrent_topics(
                         category_id,
                         title: format!("Concurrent topic {index}"),
                         slug: Some(format!("concurrent-topic-{index}")),
-                        body: "Body".to_string(),
-                        body_format: "markdown".to_string(),
-                        content_json: None,
+                        body: rustok_api::RichTextDocument::single_paragraph("Body"),
                         metadata: serde_json::json!({}),
                         tags: vec![],
                         channel_slugs: None,

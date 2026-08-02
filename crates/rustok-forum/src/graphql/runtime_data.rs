@@ -67,9 +67,7 @@ impl ForumGraphqlRuntimeData {
         event_bus: TransactionalEventBus,
     ) -> ForumReplyAudienceReadService {
         match self.audience_facts.clone() {
-            Some(facts) => {
-                ForumReplyAudienceReadService::with_audience_facts(db, event_bus, facts)
-            }
+            Some(facts) => ForumReplyAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumReplyAudienceReadService::new(db, event_bus),
         }
     }
@@ -91,9 +89,7 @@ impl ForumGraphqlRuntimeData {
         event_bus: TransactionalEventBus,
     ) -> ForumTopicAudienceReadService {
         match self.audience_facts.clone() {
-            Some(facts) => {
-                ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts)
-            }
+            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceReadService::new(db, event_bus),
         }
     }
@@ -104,7 +100,9 @@ impl ForumGraphqlRuntimeData {
         event_bus: TransactionalEventBus,
     ) -> ForumStorefrontReadStateService {
         match self.audience_facts.clone() {
-            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts),
+            Some(facts) => {
+                ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
+            }
             None => ForumStorefrontReadStateService::new(db, event_bus),
         }
     }

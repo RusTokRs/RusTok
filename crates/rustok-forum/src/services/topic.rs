@@ -2,9 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 struct TopicTranslationUpsertInput {
     title: Option<String>,
-    body: Option<String>,
-    body_format: Option<String>,
-    content_json: Option<serde_json::Value>,
+    body: Option<rustok_api::RichTextDocument>,
 }
 
 struct TopicResponseParts {
@@ -32,12 +30,12 @@ use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
+use rustok_core::SecurityContext;
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
-use rustok_core::{SecurityContext, prepare_content_payload};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
@@ -50,6 +48,7 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::richtext::{normalize_discussion, project_stored_discussion, serialize_discussion};
 use crate::services::category::CategoryService;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
@@ -91,14 +90,7 @@ impl TopicService {
         validate_topic_title(&input.title)?;
         let locale = normalize_locale(&input.locale)?;
         let normalized_tags = normalize_tags(&input.tags);
-        let prepared_body = prepare_content_payload(
-            Some(&input.body_format),
-            Some(&input.body),
-            input.content_json.as_ref(),
-            &locale,
-            "Topic body",
-        )
-        .map_err(ForumError::Validation)?;
+        let stored_body = serialize_discussion(input.body)?;
         let prepared_custom_fields = self
             .prepare_topic_custom_fields_for_create(tenant_id, &locale, input.metadata.clone())
             .await?;
@@ -138,8 +130,7 @@ impl TopicService {
                 .slug
                 .map(|value| normalize_slug(&value))
                 .filter(|value| !value.is_empty())),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
+            body: Set(stored_body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -229,7 +220,7 @@ impl TopicService {
             .get(&topic_id)
             .copied()
             .unwrap_or(false);
-        Ok(to_topic_response(
+        to_topic_response(
             topic,
             translations,
             TopicResponseParts {
@@ -242,7 +233,7 @@ impl TopicService {
             },
             &locale,
             fallback_locale.as_deref(),
-        ))
+        )
     }
 
     #[instrument(skip(self, security, input))]
@@ -314,8 +305,6 @@ impl TopicService {
             TopicTranslationUpsertInput {
                 title: input.title,
                 body: input.body,
-                body_format: input.body_format,
-                content_json: input.content_json,
             },
         )
         .await?;
@@ -902,12 +891,7 @@ impl TopicService {
         locale: &str,
         input: TopicTranslationUpsertInput,
     ) -> ForumResult<()> {
-        let TopicTranslationUpsertInput {
-            title,
-            body,
-            body_format,
-            content_json,
-        } = input;
+        let TopicTranslationUpsertInput { title, body } = input;
         let existing = forum_topic_translation::Entity::find()
             .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
@@ -923,17 +907,8 @@ impl TopicService {
                     validate_topic_title(&title)?;
                     active.title = Set(title);
                 }
-                if body.is_some() || content_json.is_some() || body_format.is_some() {
-                    let prepared_body = prepare_content_payload(
-                        body_format.as_deref(),
-                        body.as_deref(),
-                        content_json.as_ref(),
-                        locale,
-                        "Topic body",
-                    )
-                    .map_err(ForumError::Validation)?;
-                    active.body = Set(prepared_body.body);
-                    active.body_format = Set(prepared_body.format);
+                if let Some(body) = body {
+                    active.body = Set(serialize_discussion(body)?);
                 }
                 active.updated_at = Set(now.into());
                 active.update(txn).await?;
@@ -951,26 +926,15 @@ impl TopicService {
                         ForumError::Validation("Title is required for a new locale".to_string())
                     })?;
                 validate_topic_title(&title)?;
-                let prepared_body =
-                    if body.is_some() || content_json.is_some() || body_format.is_some() {
-                        prepare_content_payload(
-                            body_format.as_deref(),
-                            body.as_deref(),
-                            content_json.as_ref(),
-                            locale,
-                            "Topic body",
-                        )
-                        .map_err(ForumError::Validation)?
-                    } else if let Some(seed) = seed.as_ref() {
-                        rustok_core::PreparedContent {
-                            body: seed.body.clone(),
-                            format: seed.body_format.clone(),
-                        }
-                    } else {
-                        return Err(ForumError::Validation(
-                            "Body is required for a new locale".to_string(),
-                        ));
-                    };
+                let stored_body = match body {
+                    Some(body) => serialize_discussion(body)?,
+                    None => seed
+                        .as_ref()
+                        .map(|translation| translation.body.clone())
+                        .ok_or_else(|| {
+                            ForumError::Validation("Body is required for a new locale".to_string())
+                        })?,
+                };
 
                 forum_topic_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -979,8 +943,7 @@ impl TopicService {
                     locale: Set(locale.to_string()),
                     title: Set(title),
                     slug: Set(seed.and_then(|translation| translation.slug)),
-                    body: Set(prepared_body.body),
-                    body_format: Set(prepared_body.format),
+                    body: Set(stored_body),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1105,26 +1068,17 @@ fn to_topic_response(
     parts: TopicResponseParts,
     locale: &str,
     fallback_locale: Option<&str>,
-) -> TopicResponse {
+) -> ForumResult<TopicResponse> {
     let resolved =
         resolve_by_locale_with_fallback(&translations, locale, fallback_locale, |translation| {
             translation.locale.as_str()
         });
     let body = resolved
         .item
-        .map(|translation| translation.body.clone())
-        .unwrap_or_default();
-    let body_format = resolved
-        .item
-        .map(|translation| translation.body_format.clone())
-        .unwrap_or_else(|| "markdown".to_string());
-    let content_json = if body_format == "rt_json_v1" {
-        serde_json::from_str(&body).ok()
-    } else {
-        None
-    };
+        .ok_or_else(|| ForumError::Validation("Forum topic body is unavailable".to_string()))?;
+    let body = project_stored_discussion(&body.body)?;
 
-    TopicResponse {
+    Ok(TopicResponse {
         id: topic.id,
         requested_locale: locale.to_string(),
         locale: locale.to_string(),
@@ -1142,9 +1096,8 @@ fn to_topic_response(
             .item
             .and_then(|translation| translation.slug.clone())
             .unwrap_or_default(),
-        body,
-        body_format,
-        content_json,
+        body: body.view,
+        body_plain_text: body.plain_text,
         metadata: parts.metadata,
         status: topic.status.to_string(),
         tags: parts.tags,
@@ -1158,7 +1111,7 @@ fn to_topic_response(
         reply_count: topic.reply_count,
         created_at: topic.created_at.to_rfc3339(),
         updated_at: topic.updated_at.to_rfc3339(),
-    }
+    })
 }
 
 fn validate_topic_title(title: &str) -> ForumResult<()> {
@@ -1353,14 +1306,8 @@ impl TopicService {
         validate_topic_title(&input.title)?;
         let locale = normalize_locale(&input.locale)?;
         let normalized_tags = normalize_tags(&input.tags);
-        let prepared_body = prepare_content_payload(
-            Some(&input.body_format),
-            Some(&input.body),
-            input.content_json.as_ref(),
-            &locale,
-            "Topic body",
-        )
-        .map_err(ForumError::Validation)?;
+        let body = normalize_discussion(input.body)?;
+        let stored_body = serialize_discussion(body.clone())?;
         let prepared_custom_fields = self
             .prepare_topic_custom_fields_for_create(tenant_id, &locale, input.metadata.clone())
             .await?;
@@ -1372,8 +1319,7 @@ impl TopicService {
                 tenant_id,
                 crate::mentions::ForumContentTarget::topic(topic_id),
                 &locale,
-                &prepared_body.body,
-                &prepared_body.format,
+                &body,
                 &security,
                 std::iter::empty(),
             )
@@ -1413,8 +1359,7 @@ impl TopicService {
                 .slug
                 .map(|value| normalize_slug(&value))
                 .filter(|value| !value.is_empty())),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
+            body: Set(stored_body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -1501,8 +1446,7 @@ impl TopicService {
                         tenant_id,
                         crate::mentions::ForumContentTarget::topic(topic_id),
                         &locale,
-                        &body.body,
-                        &body.format,
+                        body,
                         &security,
                         std::iter::empty(),
                     )
@@ -1549,8 +1493,6 @@ impl TopicService {
             TopicTranslationUpsertInput {
                 title: input.title,
                 body: input.body,
-                body_format: input.body_format,
-                content_json: input.content_json,
             },
         )
         .await?;
@@ -1585,17 +1527,9 @@ impl TopicService {
         topic_id: Uuid,
         locale: &str,
         input: &UpdateTopicInput,
-    ) -> ForumResult<Option<rustok_core::PreparedContent>> {
-        if input.body.is_some() || input.content_json.is_some() || input.body_format.is_some() {
-            return prepare_content_payload(
-                input.body_format.as_deref(),
-                input.body.as_deref(),
-                input.content_json.as_ref(),
-                locale,
-                "Topic body",
-            )
-            .map(Some)
-            .map_err(ForumError::Validation);
+    ) -> ForumResult<Option<RichTextDocument>> {
+        if let Some(body) = input.body.clone() {
+            return normalize_discussion(body).map(Some);
         }
 
         let existing = forum_topic_translation::Entity::find()
@@ -1617,9 +1551,6 @@ impl TopicService {
             .ok_or_else(|| {
                 ForumError::Validation("Body is required for a new locale".to_string())
             })?;
-        Ok(Some(rustok_core::PreparedContent {
-            body: seed.body,
-            format: seed.body_format,
-        }))
+        Ok(Some(project_stored_discussion(&seed.body)?.view.document))
     }
 }

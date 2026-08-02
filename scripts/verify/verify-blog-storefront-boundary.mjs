@@ -235,11 +235,11 @@ assertContains(graphql, "publicComments(locale: $locale, page: $commentsPage, pe
 assertContains(graphql, "bounded_comments_request_page(comments_page)", `${files.graphql}: GraphQL page input must be bounded before serialization`);
 assertContains(graphql, "comments_per_page: COMMENTS_PAGE_SIZE", `${files.graphql}: GraphQL and native page size must match`);
 for (const marker of [
-  "pub content: Option<RichTextView>",
-  "pub content_plain_text: Option<String>",
+  "pub content: RichTextView",
+  "pub content_plain_text: String",
   "#[graphql(complex)]",
   "async fn public_comments(",
-  "CommentService::new",
+  "runtime.comment_service(db.clone(), event_bus.clone())",
   "SecurityContext::public_read()",
   "GqlPublicCommentList",
 ]) {
@@ -301,6 +301,7 @@ assertContains(verifierTest, "rejects legacy api module", `${files.verifierTest}
 assertContains(verifierTest, "rejects missing public comments parity", `${files.verifierTest}: fixture tests must reject missing comments parity`);
 assertContains(verifierTest, "rejects missing comment pagination parity", `${files.verifierTest}: fixture tests must reject missing pagination parity`);
 assertContains(verifierTest, "rejects legacy richtext transport", `${files.verifierTest}: fixture tests must reject legacy richtext transport`);
+assertContains(verifierTest, "rejects nullable GraphQL richtext projections", `${files.verifierTest}: fixture tests must reject nullable GraphQL richtext projections`);
 assertContains(verifierTest, "rejects removed richtext summarizer", `${files.verifierTest}: fixture tests must reject removed summarizers`);
 assertContains(verifierTest, "rejects local richtext renderer", `${files.verifierTest}: fixture tests must reject local renderers`);
 assertContains(verifierTest, "rejects alternate selected-post HTML sink", `${files.verifierTest}: fixture tests must reject alternate HTML sinks`);

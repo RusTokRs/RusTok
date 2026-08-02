@@ -39,25 +39,26 @@ impl RevisionService {
             query = query.filter(forum_topic_revision::Column::Locale.eq(locale));
         }
 
-        Ok(query
+        query
             .order_by_desc(forum_topic_revision::Column::Id)
             .limit(limit.clamp(1, MAX_REVISION_PAGE_SIZE))
             .all(&self.db)
             .await?
             .into_iter()
-            .map(|row| TopicRevisionResponse {
-                id: row.id,
-                topic_id: row.topic_id,
-                locale: row.locale,
-                title: row.title,
-                slug: row.slug,
-                body: row.body,
-                body_format: row.body_format,
-                metadata: row.metadata,
-                revision_reason: row.revision_reason,
-                created_at: row.created_at.to_rfc3339(),
+            .map(|row| {
+                Ok(TopicRevisionResponse {
+                    id: row.id,
+                    topic_id: row.topic_id,
+                    locale: row.locale,
+                    title: row.title,
+                    slug: row.slug,
+                    body: crate::richtext::project_stored_discussion(&row.body)?.view,
+                    metadata: row.metadata,
+                    revision_reason: row.revision_reason,
+                    created_at: row.created_at.to_rfc3339(),
+                })
             })
-            .collect())
+            .collect::<ForumResult<Vec<_>>>()
     }
 
     #[instrument(skip(self, security))]
@@ -78,21 +79,22 @@ impl RevisionService {
             query = query.filter(forum_reply_revision::Column::Locale.eq(locale));
         }
 
-        Ok(query
+        query
             .order_by_desc(forum_reply_revision::Column::Id)
             .limit(limit.clamp(1, MAX_REVISION_PAGE_SIZE))
             .all(&self.db)
             .await?
             .into_iter()
-            .map(|row| ReplyRevisionResponse {
-                id: row.id,
-                reply_id: row.reply_id,
-                locale: row.locale,
-                body: row.body,
-                body_format: row.body_format,
-                revision_reason: row.revision_reason,
-                created_at: row.created_at.to_rfc3339(),
+            .map(|row| {
+                Ok(ReplyRevisionResponse {
+                    id: row.id,
+                    reply_id: row.reply_id,
+                    locale: row.locale,
+                    body: crate::richtext::project_stored_discussion(&row.body)?.view,
+                    revision_reason: row.revision_reason,
+                    created_at: row.created_at.to_rfc3339(),
+                })
             })
-            .collect())
+            .collect::<ForumResult<Vec<_>>>()
     }
 }

@@ -102,38 +102,19 @@ pub fn CategoryDndGrid() {
 `;
 }
 
-function transportSource() {
+function transportSource({ restoredFallback = false } = {}) {
   return `
 mod category_tree_graphql_adapter;
-mod category_tree_rest_adapter;
 mod graphql_adapter;
-mod rest_adapter;
+${restoredFallback ? "mod rest_adapter;" : ""}
 pub async fn fetch_category_tree() {
-  match category_tree_graphql_adapter::fetch_category_tree().await {
-    Ok(tree) => Ok(tree),
-    Err(_) => category_tree_rest_adapter::fetch_category_tree().await,
-  }
-}
-pub async fn fetch_categories() {
-  match graphql_adapter::fetch_categories().await {
-    Ok(categories) => Ok(categories),
-    Err(_) => rest_adapter::fetch_categories().await,
-  }
+  category_tree_graphql_adapter::fetch_category_tree().await
 }
 pub async fn fetch_category() {}
 pub async fn create_category() {}
 pub async fn update_category() {}
 pub async fn move_category() {
-  match graphql_adapter::move_category().await {
-    Ok(()) => Ok(()),
-    Err(_) => rest_adapter::move_category().await,
-  }
-}
-pub async fn reorder_category_siblings() {
-  match graphql_adapter::reorder_category_siblings().await {
-    Ok(()) => Ok(()),
-    Err(_) => rest_adapter::reorder_category_siblings().await,
-  }
+  ${restoredFallback ? "match graphql_adapter::move_category().await { Ok(()) => Ok(()), Err(_) => rest_adapter::move_category().await }" : "graphql_adapter::move_category().await"}
 }
 pub async fn delete_category() {}
 pub async fn fetch_topics() {}
@@ -145,22 +126,10 @@ pub async fn fetch_replies() {}
 `;
 }
 
-function graphqlAdapterSource() {
+function graphqlAdapterSource({ rawPlacementBypass = false } = {}) {
   return `
-pub async fn fetch_categories() {}
 pub async fn move_category() {}
-pub async fn reorder_category_siblings() {}
 const MOVE: &str = "moveForumCategory";
-const REORDER: &str = "reorderForumCategorySiblings";
-`;
-}
-
-function restAdapterSource({ rawPlacementBypass = false } = {}) {
-  return `
-use reqwest;
-pub async fn fetch_categories() {}
-pub async fn move_category() { let _ = "/categories/{id}/move"; }
-pub async fn reorder_category_siblings() { let _ = "/categories/reorder"; }
 ${rawPlacementBypass ? "fn bypass() { let _ = position: Some(draft.position); }" : ""}
 `;
 }
@@ -170,12 +139,6 @@ function categoryTreeGraphqlAdapterSource() {
 const MAX_CATEGORY_TREE_DEPTH: u8 = 16;
 const QUERY: &str = "forumCategoryTree archived_at: archivedAt";
 pub async fn fetch_category_tree() {}
-`;
-}
-
-function categoryTreeRestAdapterSource() {
-  return `
-pub async fn fetch_category_tree() { let _ = "/categories/tree"; }
 `;
 }
 
@@ -196,19 +159,20 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-forum/admin/src/model.rs", modelSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/category_dnd.rs", categoryDndSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport.rs", transportSource());
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource());
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", restAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport.rs", transportSource(options));
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
+  if (options.restoredFallback) {
+    writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", "pub async fn move_category() {}\n");
+  }
   writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs", categoryTreeGraphqlAdapterSource());
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/category_tree_rest_adapter.rs", categoryTreeRestAdapterSource());
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
-  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs interactive admin drag-and-drop");
+  if (options.restoredApi) writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
+  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs interactive drag-and-drop");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-admin-boundary.mjs forum-wave1-rollout-evidence.json");
   writeFixtureFile(root, "package.json", packageJsonSource(options));
   writeFixtureFile(
     root,
     "scripts/verify/verify-forum-admin-boundary.test.mjs",
-    "passes canonical fixture\nrejects Leptos-specific core\nrejects raw api calls from UI\nrejects legacy admin api module\nrejects raw busy-key strings from UI\nrejects flat category hierarchy reads\nrejects DnD generic update bypass\nrejects missing package fixture script\n",
+    "passes canonical fixture\nrejects Leptos-specific core\nrejects raw api calls from UI\nrejects restored admin api module\nrejects raw busy-key strings from UI\nrejects flat category hierarchy reads\nrejects DnD generic update bypass\nrejects restored REST fallback\nrejects missing package fixture script\n",
   );
   return root;
 }
@@ -251,10 +215,10 @@ test("forum admin boundary verifier rejects raw api calls from UI", () => {
   });
 });
 
-test("forum admin boundary verifier rejects legacy admin api module", () => {
-  withTempFixture({ legacyApi: true }, (result) => {
+test("forum admin boundary verifier rejects restored admin api module", () => {
+  withTempFixture({ restoredApi: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /legacy api\.rs/);
+    assert.match(result.stderr, /removed forum admin api\.rs must stay absent/);
   });
 });
 
@@ -275,7 +239,14 @@ test("forum admin boundary verifier rejects generic category position bypass", (
 test("forum admin boundary verifier rejects flat category hierarchy reads", () => {
   withTempFixture({ flatCategoryRead: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /must not be reconstructed from the flat compatibility list/);
+    assert.match(result.stderr, /must not be reconstructed from a second flat list contract/);
+  });
+});
+
+test("forum admin boundary verifier rejects restored REST fallback", () => {
+  withTempFixture({ restoredFallback: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /removed REST fallback must stay absent/);
   });
 });
 

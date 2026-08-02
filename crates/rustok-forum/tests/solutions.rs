@@ -104,9 +104,7 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
                 category_id: category.id,
                 title: "Solved topic".to_string(),
                 slug: Some("solved-topic".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -121,9 +119,7 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Accepted answer".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Accepted answer"),
                 parent_reply_id: None,
             },
         )
@@ -221,9 +217,7 @@ async fn pending_reply_cannot_be_marked_as_solution() {
                 category_id: category.id,
                 title: "Pending reply topic".to_string(),
                 slug: Some("pending-reply-topic".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -238,9 +232,7 @@ async fn pending_reply_cannot_be_marked_as_solution() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Pending reply".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Pending reply"),
                 parent_reply_id: None,
             },
         )

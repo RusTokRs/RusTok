@@ -53,6 +53,7 @@ function fixture({
   postgresStatusDrift = false,
   restartStatusDrift = false,
   processRestartStatusDrift = false,
+  publicSearchPathFallback = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
   const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
@@ -210,7 +211,7 @@ struct PostgresBlogProjectionTestDb
 CREATE SCHEMA
 DROP SCHEMA IF EXISTS
 .max_connections(1)
-SET search_path TO
+SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
 async fn duplicate_delivery_updates_counter_and_outbox_once()
 handler.handle(&envelope).await?;
 ${dispatcherSource}
@@ -262,7 +263,7 @@ const PROCESS_EVENT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_EVENT_ID";
 struct PostgresBlogProjectionRestartTestDb
 database_url: String
 async fn restarted_connection(&self)
-SET search_path TO
+SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
 async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()
 let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());
 first_handler.handle(&envelope).await?;
@@ -693,6 +694,13 @@ test('rejects a PostgreSQL harness without rollback coverage', () => {
   expectRejected(
     { missingRollbackCase: true },
     /missing async fn outbox_failure_rolls_back_counter_and_delivery_before_retry/,
+  );
+});
+
+test('rejects PostgreSQL harnesses that can fall back to public tables', () => {
+  expectRejected(
+    { publicSearchPathFallback: true },
+    /forbidden SET search_path TO "\{schema_name\}", public/,
   );
 });
 

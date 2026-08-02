@@ -8,7 +8,11 @@ export type {
 } from './generated/contracts';
 export type { RichTextMessages } from './messages';
 export type { RichTextValidationResult } from './document';
-export { emptyRichTextDocument, validateRichTextDocument } from './document';
+export {
+  emptyRichTextDocument,
+  richTextDocumentHasText,
+  validateRichTextDocument
+} from './document';
 export { RICH_TEXT_MESSAGE_KEYS, isRichTextMessages } from './messages';
 export {
   RICH_TEXT_PROFILES,

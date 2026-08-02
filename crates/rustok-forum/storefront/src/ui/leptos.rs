@@ -6,7 +6,7 @@ use rustok_ui_core::UiRouteContext;
 use crate::core::{
     ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
     forum_storefront_count_label, forum_storefront_status_badge_class,
-    forum_storefront_topic_card_view_model, summarize_rich_content, topic_status_class,
+    forum_storefront_topic_card_view_model, topic_status_class,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -406,11 +406,7 @@ fn ForumThreadPanel(
 
     let topic_id = topic.id.clone();
     let status_class = topic_status_class(topic.status.as_str());
-    let body = summarize_rich_content(
-        topic.body.as_str(),
-        topic.body_format.as_str(),
-        locale.as_deref(),
-    );
+    let body_html = topic.body.html.clone();
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
     let mark_read_label = t(
@@ -459,7 +455,10 @@ fn ForumThreadPanel(
                     <h3 class="text-2xl font-semibold text-card-foreground">{topic.title}</h3>
                     <p class="mt-2 text-sm text-muted-foreground">{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
                 </div>
-                <p class="whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
+                <div
+                    class="richtext text-sm leading-7 text-muted-foreground"
+                    inner_html=body_html
+                ></div>
                 {read_state_available.then(|| {
                     let topic_id = topic_id.clone();
                     view! {
@@ -519,12 +518,7 @@ fn ForumThreadPanel(
 #[component]
 fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
     let status_class = topic_status_class(reply.status.as_str());
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let content = summarize_rich_content(
-        reply.content.as_str(),
-        reply.content_format.as_str(),
-        locale.as_deref(),
-    );
+    let content_html = reply.content.html.clone();
 
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
@@ -534,7 +528,10 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
                     {reply.effective_locale}
                 </span>
             </div>
-            <p class="mt-3 whitespace-pre-line text-sm leading-6 text-muted-foreground">{content}</p>
+            <div
+                class="richtext mt-3 text-sm leading-6 text-muted-foreground"
+                inner_html=content_html
+            ></div>
         </article>
     }
 }

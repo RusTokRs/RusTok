@@ -18,7 +18,6 @@ pub(super) async fn apply_setup(manager: &SchemaManager<'_>) -> Result<(), DbErr
             title TEXT NOT NULL,
             slug TEXT,
             body TEXT NOT NULL,
-            body_format TEXT NOT NULL,
             metadata TEXT NOT NULL DEFAULT '{}',
             revision_reason TEXT NOT NULL
                 CHECK (revision_reason IN ('edit', 'delete')),
@@ -36,7 +35,6 @@ pub(super) async fn apply_setup(manager: &SchemaManager<'_>) -> Result<(), DbErr
             reply_id TEXT NOT NULL,
             locale TEXT NOT NULL,
             body TEXT NOT NULL,
-            body_format TEXT NOT NULL,
             revision_reason TEXT NOT NULL
                 CHECK (revision_reason IN ('edit', 'delete')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -47,17 +45,13 @@ pub(super) async fn apply_setup(manager: &SchemaManager<'_>) -> Result<(), DbErr
         )"#,
         "CREATE INDEX idx_forum_reply_revisions_tenant_reply_created
          ON forum_reply_revisions (tenant_id, reply_id, created_at DESC, id DESC)",
-        r#"CREATE TABLE forum_hard_delete_context (
-            category_id TEXT NOT NULL,
-            topic_id TEXT PRIMARY KEY NOT NULL
-        )"#,
         "DROP TRIGGER IF EXISTS forum_topic_translation_revision_update",
         "DROP TRIGGER IF EXISTS forum_topic_metadata_revision_update",
         "DROP TRIGGER IF EXISTS forum_reply_body_revision_update",
+        "DROP TRIGGER IF EXISTS forum_topic_delete_revision_update",
+        "DROP TRIGGER IF EXISTS forum_reply_delete_revision_update",
         "DROP TRIGGER IF EXISTS forum_topics_deleted_update_guard",
         "DROP TRIGGER IF EXISTS forum_replies_deleted_update_guard",
-        "DROP TRIGGER IF EXISTS forum_categories_hard_delete_context_before",
-        "DROP TRIGGER IF EXISTS forum_categories_hard_delete_context_after",
         "DROP TRIGGER IF EXISTS forum_topics_soft_delete",
         "DROP TRIGGER IF EXISTS forum_replies_soft_delete",
     ] {

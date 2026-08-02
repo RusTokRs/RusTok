@@ -3,7 +3,7 @@
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
-use rustok_content::{resolve_by_locale_with_fallback, CanonicalUrlService};
+use rustok_content::{CanonicalUrlService, resolve_by_locale_with_fallback};
 use rustok_seo_targets::{
     SeoRouteMatchRecord, SeoTargetCapabilityKind, SeoTargetRouteResolveRequest, SeoTargetSlug,
 };
@@ -530,8 +530,8 @@ mod tests {
     use rustok_api::TenantContext;
     use rustok_core::{MemoryTransport, SecurityContext};
     use rustok_forum::{
-        migrations as forum_migrations, CategoryService, CreateCategoryInput, CreateTopicInput,
-        TopicService,
+        CategoryService, CreateCategoryInput, CreateTopicInput, TopicService,
+        migrations as forum_migrations,
     };
     use rustok_outbox::TransactionalEventBus;
     use rustok_taxonomy::migrations as taxonomy_migrations;
@@ -694,7 +694,9 @@ mod tests {
         let manager = SchemaManager::new(db);
         for migration in taxonomy_migrations::migrations() {
             if let Err(err) = migration.up(&manager).await {
-                if db.get_database_backend() != DbBackend::Postgres && err.to_string().contains("require PostgreSQL") {
+                if db.get_database_backend() != DbBackend::Postgres
+                    && err.to_string().contains("require PostgreSQL")
+                {
                     continue;
                 }
                 panic!("taxonomy migration should apply: {err:?}");
@@ -769,9 +771,9 @@ mod tests {
                     category_id: category.id,
                     title: "Welcome thread".to_string(),
                     slug: Some("welcome-thread".to_string()),
-                    body: "Introduce yourself to the community.".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
+                    body: rustok_api::RichTextDocument::single_paragraph(
+                        "Introduce yourself to the community.",
+                    ),
                     metadata: serde_json::json!({}),
                     tags: vec![],
                     channel_slugs: None,
@@ -888,9 +890,9 @@ mod tests {
                     category_id: category.id,
                     title: "Mobile release notes".to_string(),
                     slug: Some("mobile-release-notes".to_string()),
-                    body: "Visible only for the mobile channel.".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
+                    body: rustok_api::RichTextDocument::single_paragraph(
+                        "Visible only for the mobile channel.",
+                    ),
                     metadata: serde_json::json!({}),
                     tags: vec![],
                     channel_slugs: Some(vec!["mobile".to_string()]),

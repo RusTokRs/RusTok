@@ -96,9 +96,7 @@ async fn user_stats_track_topic_reply_and_solution_lifecycle() {
                 category_id: category.id,
                 title: "Stats topic".to_string(),
                 slug: Some("stats-topic".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -126,9 +124,7 @@ async fn user_stats_track_topic_reply_and_solution_lifecycle() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Solution".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Solution"),
                 parent_reply_id: None,
             },
         )

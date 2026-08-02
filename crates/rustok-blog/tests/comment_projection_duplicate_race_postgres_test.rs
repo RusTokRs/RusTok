@@ -343,7 +343,7 @@ async fn connect(
 }
 
 async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> TestResult<()> {
-    db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}", public"#))
+    db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}""#))
         .await?;
     Ok(())
 }

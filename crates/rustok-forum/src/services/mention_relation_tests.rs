@@ -2,21 +2,27 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
+use rustok_api::RichTextDocument;
 use rustok_core::SecurityContext;
 use rustok_profiles::{
     ProfileError, ProfileRecord, ProfileResult, ProfileStatus, ProfileSummary, ProfileVisibility,
     ProfilesReader,
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
+    TransactionTrait,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput, SetForumQuotesInput};
-use crate::entities::forum_relation_revision;
+use crate::entities::{
+    forum_relation_revision, forum_reply, forum_reply_body, forum_topic, forum_topic_translation,
+};
 use crate::mentions::{ForumContentTarget, ForumQuoteReference};
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::{ForumQuoteCommandService, MentionRelationService};
 
@@ -115,7 +121,6 @@ async fn setup_db() -> DatabaseConnection {
             title TEXT NOT NULL,
             slug TEXT,
             body TEXT NOT NULL,
-            body_format TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )"#,
@@ -137,7 +142,6 @@ async fn setup_db() -> DatabaseConnection {
             tenant_id TEXT NOT NULL,
             locale TEXT NOT NULL,
             body TEXT NOT NULL,
-            body_format TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )"#,
@@ -163,14 +167,7 @@ async fn setup_db() -> DatabaseConnection {
 
 async fn apply_relation_migrations(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
-    let mut migrations = crate::migrations::migrations();
-    let relation_migrations = migrations.split_off(
-        migrations
-            .len()
-            .checked_sub(3)
-            .expect("three mention relation migrations should be registered"),
-    );
-    for migration in relation_migrations {
+    for migration in crate::migrations::relation_migrations() {
         migration
             .up(&manager)
             .await
@@ -179,29 +176,38 @@ async fn apply_relation_migrations(db: &DatabaseConnection) {
 }
 
 async fn insert_topic_source(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid, body: &str) {
+    let body = stored_document(body);
     let category_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_topics (
-            id, tenant_id, category_id, author_id, status, metadata,
-            is_pinned, is_locked, reply_count, created_at, updated_at, last_reply_at
-        ) VALUES (
-            '{topic_id}', '{tenant_id}', '{category_id}', NULL, 'open', '{{}}',
-            0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL
-        )"
-    ))
+    let now = Utc::now().into();
+    forum_topic::ActiveModel {
+        id: Set(topic_id),
+        tenant_id: Set(tenant_id),
+        category_id: Set(category_id),
+        author_id: Set(None),
+        status: Set(TopicStatus::Open),
+        metadata: Set(serde_json::json!({})),
+        is_pinned: Set(false),
+        is_locked: Set(false),
+        reply_count: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+        last_reply_at: Set(None),
+    }
+    .insert(db)
     .await
     .expect("topic source should be inserted");
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_topic_translations (
-            id, topic_id, tenant_id, locale, title, slug, body, body_format,
-            created_at, updated_at
-        ) VALUES (
-            '{}', '{topic_id}', '{tenant_id}', 'en', 'Topic', NULL, '{}',
-            'markdown', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        )",
-        Uuid::new_v4(),
-        body.replace('\'', "''")
-    ))
+    forum_topic_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        topic_id: Set(topic_id),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        title: Set("Topic".to_string()),
+        slug: Set(None),
+        body: Set(body),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(db)
     .await
     .expect("topic translation should be inserted");
 }
@@ -213,40 +219,58 @@ async fn insert_reply_source(
     reply_id: Uuid,
     body: &str,
 ) {
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_replies (
-            id, tenant_id, topic_id, author_id, parent_reply_id, status, position,
-            created_at, updated_at
-        ) VALUES (
-            '{reply_id}', '{tenant_id}', '{topic_id}', NULL, NULL, 'approved', 1,
-            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        )"
-    ))
+    let body = stored_document(body);
+    let now = Utc::now().into();
+    forum_reply::ActiveModel {
+        id: Set(reply_id),
+        tenant_id: Set(tenant_id),
+        topic_id: Set(topic_id),
+        author_id: Set(None),
+        parent_reply_id: Set(None),
+        status: Set(ReplyStatus::Approved),
+        position: Set(1),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(db)
     .await
     .expect("reply source should be inserted");
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_reply_bodies (
-            id, reply_id, tenant_id, locale, body, body_format, created_at, updated_at
-        ) VALUES (
-            '{}', '{reply_id}', '{tenant_id}', 'en', '{}', 'markdown',
-            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        )",
-        Uuid::new_v4(),
-        body.replace('\'', "''")
-    ))
+    forum_reply_body::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        reply_id: Set(reply_id),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        body: Set(body),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(db)
     .await
     .expect("reply body should be inserted");
 }
 
 async fn update_topic_body(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid, body: &str) {
-    db.execute_unprepared(&format!(
-        "UPDATE forum_topic_translations
-         SET body = '{}', updated_at = CURRENT_TIMESTAMP
-         WHERE tenant_id = '{tenant_id}' AND topic_id = '{topic_id}' AND locale = 'en'",
-        body.replace('\'', "''")
-    ))
-    .await
-    .expect("topic body should update");
+    let body = stored_document(body);
+    let model = forum_topic_translation::Entity::find()
+        .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
+        .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+        .filter(forum_topic_translation::Column::Locale.eq("en"))
+        .one(db)
+        .await
+        .expect("topic body query should succeed")
+        .expect("topic body should exist");
+    let mut active = model.into_active_model();
+    active.body = Set(body);
+    active.updated_at = Set(Utc::now().into());
+    active.update(db).await.expect("topic body should update");
+}
+
+fn document(body: &str) -> RichTextDocument {
+    RichTextDocument::single_paragraph(body)
+}
+
+fn stored_document(body: &str) -> String {
+    crate::richtext::serialize_discussion(document(body)).expect("test document should serialize")
 }
 
 async fn relation_revision_count(db: &DatabaseConnection, tenant_id: Uuid) -> u64 {
@@ -270,13 +294,10 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     insert_topic_source(&db, other_tenant_id, other_topic_id, "Foreign quote").await;
     apply_relation_migrations(&db).await;
 
-    let before_seed = relation_revision_count(&db, tenant_id).await;
-    let seeded_topic_id = Uuid::new_v4();
-    insert_topic_source(&db, tenant_id, seeded_topic_id, "Created after migration").await;
     assert_eq!(
         relation_revision_count(&db, tenant_id).await,
-        before_seed + 1,
-        "new source rows must receive one legacy relation identity before FORUM-12B2"
+        0,
+        "relation identities are created only by the canonical command owner"
     );
 
     let alice_id = Uuid::new_v4();
@@ -303,8 +324,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
             tenant_id,
             ForumContentTarget::topic(topic_id),
             "en",
-            "Hello @alice",
-            "markdown",
+            &document("Hello @alice"),
             &security,
             [],
         )
@@ -325,8 +345,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
             tenant_id,
             ForumContentTarget::topic(topic_id),
             "en",
-            "Hello @alice",
-            "markdown",
+            &document("Hello @alice"),
             &security,
             [],
         )
@@ -350,8 +369,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
             tenant_id,
             ForumContentTarget::topic(topic_id),
             "en",
-            "Hello @alice and @bob",
-            "markdown",
+            &document("Hello @alice and @bob"),
             &security,
             [],
         )
@@ -379,8 +397,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
             tenant_id,
             ForumContentTarget::reply(reply_id),
             "en",
-            "Quoted reply",
-            "markdown",
+            &document("Quoted reply"),
             &security,
             [quote.clone()],
         )
@@ -400,8 +417,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
             other_tenant_id,
             ForumContentTarget::topic(other_topic_id),
             "en",
-            "Foreign quote",
-            "markdown",
+            &document("Foreign quote"),
             &security,
             [quote],
         )
@@ -423,12 +439,12 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     );
 
     let immutable_error = db
-        .execute_unprepared(&format!(
+        .execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
             "UPDATE forum_user_mentions
              SET handle_snapshot = 'mallory'
-             WHERE tenant_id = '{tenant_id}'
-               AND source_revision_id = {}",
-            first.source().revision_id()
+             WHERE tenant_id = ? AND source_revision_id = ?",
+            [tenant_id.into(), first.source().revision_id().into()],
         ))
         .await
         .expect_err("persisted mention rows must be immutable");
@@ -461,8 +477,7 @@ async fn quote_owner_replace_replay_clear_and_cross_tenant_rejection_are_atomic(
             tenant_id,
             ForumContentTarget::topic(topic_id),
             "en",
-            "Quote source",
-            "markdown",
+            &document("Quote source"),
             &security,
             [],
         )

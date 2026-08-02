@@ -74,10 +74,10 @@ VALUES
      'open', '{{}}', FALSE, FALSE, 0);
 
 INSERT INTO forum_topic_translations
-    (id, tenant_id, topic_id, locale, title, slug, body, body_format)
+    (id, tenant_id, topic_id, locale, title, slug, body)
 VALUES
     ('{}', '{tenant_id}', '{topic_id}', 'en',
-     'Event contract', 'event-contract', 'Original body', 'markdown');
+     'Event contract', 'event-contract', 'Original body');
 
 UPDATE forum_topics
 SET metadata = '{{"contract":true}}'
@@ -109,9 +109,9 @@ VALUES
     ('{reply_id}', '{tenant_id}', '{topic_id}', '{user_id}', 'approved', 1);
 
 INSERT INTO forum_reply_bodies
-    (id, tenant_id, reply_id, locale, body, body_format)
+    (id, tenant_id, reply_id, locale, body)
 VALUES
-    ('{}', '{tenant_id}', '{reply_id}', 'en', 'Original reply', 'markdown');
+    ('{}', '{tenant_id}', '{reply_id}', 'en', 'Original reply');
 
 UPDATE forum_reply_bodies
 SET body = 'Updated reply'

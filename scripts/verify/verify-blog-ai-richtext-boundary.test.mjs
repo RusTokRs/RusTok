@@ -23,7 +23,7 @@ function fixture(options = {}) {
   writeFixtureFile(
     root,
     'crates/rustok-ai/src/rustok_blog.rs',
-    `pub use rustok_blog_owner::{\n    ${shimExports},\n};\n`,
+    `pub use rustok_blog_owner::{\n    ${shimExports},\n};\n${options.testOnlyMigrations ? '#[cfg(test)]\npub use rustok_blog_owner::migrations;\n' : ''}`,
   );
 
   const direct = [
@@ -37,6 +37,7 @@ function fixture(options = {}) {
     options.publishDraft ? 'publish: true' : 'publish: false',
     options.markdownWriter ? 'CONTENT_FORMAT_MARKDOWN' : '',
     '}',
+    options.testOnlyMigrations ? '#[cfg(test)]\nmod tests { fn fixture() { crate::rustok_blog::migrations::migrations(); } }' : '',
   ].join('\n');
   writeFixtureFile(root, 'crates/rustok-ai/src/direct.rs', direct);
 
@@ -125,7 +126,7 @@ function fixture(options = {}) {
     root,
     'crates/rustok-blog/contracts/blog-fba-registry.json',
     JSON.stringify({
-      schema_version: 6,
+      schema_version: 13,
       verification_chain: {
         source_gates: {
           ai_richtext_boundary: {
@@ -182,6 +183,11 @@ test('Blog AI richtext verifier rejects migration re-exports through the AI shim
   const result = run(fixture({ exposeMigrations: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /forbidden owner re-export migrations|owner re-export drift/);
+});
+
+test('Blog AI richtext verifier permits test-only migration fixtures', () => {
+  const result = run(fixture({ testOnlyMigrations: true }));
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test('Blog AI richtext verifier rejects evidence that permits migration re-exports', () => {

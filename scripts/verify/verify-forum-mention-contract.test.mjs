@@ -21,8 +21,10 @@ function fixture(options = {}) {
 pub const FORUM_MAX_MENTION_TARGETS_PER_REVISION: usize = 32;
 pub const FORUM_MAX_QUOTE_REFERENCES_PER_REVISION: usize = 32;
 use serde::Serialize;
-normalize_content_format();
-validate_and_sanitize_rt_json();
+RichTextDocument;
+RichTextNode;
+document: &RichTextDocument;
+collect_document_mentions();
 ProfileService::normalize_handle();
 ProfilesReader;
 ProfileVisibility::Public | ProfileVisibility::Authenticated;
@@ -66,8 +68,8 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
     root,
     "crates/rustok-forum/tests/mention_contract.rs",
     [
-      "markdown_extraction_ignores_code_escaping_and_email_addresses",
-      "rt_json_extraction_ignores_code_blocks_and_code_marks",
+      "canonical_extraction_ignores_code_and_email_addresses",
+      "canonical_extraction_reads_structural_text_nodes",
       "profile_resolution_is_tenant_scoped_and_fail_closed",
       "manual candidate construction must enforce audience permission",
       "revision_diff_emits_only_new_targets_and_replay_is_immutable",
@@ -78,7 +80,7 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
   writeFixture(
     root,
     "crates/rustok-forum/docs/implementation-plan.md",
-    "Delivered in `FORUM-12A`\nFORUM-12 remains `in_progress`\n",
+    "Forum richtext cutover is complete\n",
   );
   writeFixture(
     root,

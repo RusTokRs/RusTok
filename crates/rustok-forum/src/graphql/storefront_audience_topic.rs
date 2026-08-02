@@ -47,10 +47,8 @@ impl ForumStorefrontAudienceTopicQuery {
         let service = runtime.topic_audience_read_service(db.clone(), event_bus.clone());
 
         let topic = if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let security = SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            );
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
             let audience_context = topic_read_audience_port_context(
                 ForumTopicReadTransport::Graphql,
                 ForumTopicReadOperation::SelectedTopic,
@@ -144,8 +142,7 @@ fn map_topic_response(topic: TopicResponse) -> GqlForumTopic {
         title: topic.title,
         slug: topic.slug,
         body: topic.body,
-        body_format: topic.body_format,
-        content_json: topic.content_json,
+        body_plain_text: topic.body_plain_text,
         metadata: topic.metadata,
         status: topic.status,
         tags: topic.tags,

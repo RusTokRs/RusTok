@@ -213,12 +213,7 @@ pub async fn mark_all_topics_read(
     )
     .map_err(crate::controllers::map_forum_error)?;
     let result = visibility_scoped_read_service(&runtime)
-        .mark_all_read_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            context,
-            input,
-        )
+        .mark_all_read_with_audience_context(tenant.id, forum_security(&auth), context, input)
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(result))

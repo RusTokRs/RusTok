@@ -214,9 +214,7 @@ fn admin_security() -> SecurityContext {
 fn reply_input(content: &str) -> CreateReplyInput {
     CreateReplyInput {
         locale: "en".to_string(),
-        content: content.to_string(),
-        content_format: "markdown".to_string(),
-        content_json: None,
+        content: rustok_api::RichTextDocument::single_paragraph(content),
         parent_reply_id: None,
     }
 }

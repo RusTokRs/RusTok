@@ -25,8 +25,6 @@ mod m20260721_000001_enforce_forum_category_depth;
 mod m20260721_000002_add_forum_category_topic_policy;
 mod m20260721_000003_add_forum_category_subtree_lifecycle;
 mod m20260722_000004_add_forum_mention_quote_relations;
-mod m20260722_000005_seed_forum_relation_revisions;
-mod m20260722_000006_add_forum_mention_events;
 mod m20260724_000001_add_forum_topic_read_states;
 mod m20260724_000002_add_forum_category_visibility_policy;
 mod m20260725_000001_add_forum_category_audience_policy;
@@ -73,8 +71,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260721_000002_add_forum_category_topic_policy::Migration),
         Box::new(m20260721_000003_add_forum_category_subtree_lifecycle::Migration),
         Box::new(m20260722_000004_add_forum_mention_quote_relations::Migration),
-        Box::new(m20260722_000005_seed_forum_relation_revisions::Migration),
-        Box::new(m20260722_000006_add_forum_mention_events::Migration),
         Box::new(m20260724_000001_add_forum_topic_read_states::Migration),
         Box::new(m20260724_000002_add_forum_category_visibility_policy::Migration),
         Box::new(m20260725_000001_add_forum_category_audience_policy::Migration),
@@ -89,6 +85,13 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260731_000007_add_forum_projection_revision_ledger::Migration),
         Box::new(m20260731_000008_harden_forum_projection_revision_counter::Migration),
     ]
+}
+
+#[cfg(test)]
+pub(crate) fn relation_migrations() -> Vec<Box<dyn MigrationTrait>> {
+    vec![Box::new(
+        m20260722_000004_add_forum_mention_quote_relations::Migration,
+    )]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {

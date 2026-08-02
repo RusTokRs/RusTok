@@ -55,8 +55,7 @@ pub fn reply_read_audience_port_context(
 ) -> ForumResult<PortContext> {
     if tenant_id.is_nil() || auth.tenant_id != tenant_id {
         return Err(ForumError::Validation(
-            "Forum reply-read authenticated tenant does not match the requested tenant"
-                .to_string(),
+            "Forum reply-read authenticated tenant does not match the requested tenant".to_string(),
         ));
     }
 
@@ -160,8 +159,15 @@ mod tests {
         assert_eq!(context.locale, "de-DE");
         assert_eq!(context.channel.as_deref(), Some("members"));
         assert_eq!(context.deadline_ms, Some(5_000));
-        assert_eq!(context.claims, vec![Permission::FORUM_REPLIES_READ.to_string()]);
-        assert!(context.correlation_id.starts_with("forum-rest-selected-reply-"));
+        assert_eq!(
+            context.claims,
+            vec![Permission::FORUM_REPLIES_READ.to_string()]
+        );
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-rest-selected-reply-")
+        );
     }
 
     #[test]
@@ -182,7 +188,11 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(context.correlation_id.starts_with("forum-graphql-reply-list-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-graphql-reply-list-")
+        );
     }
 
     #[test]

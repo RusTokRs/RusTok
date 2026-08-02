@@ -7,6 +7,7 @@ import {
   emptyRichTextDocument,
   getRichTextProfile,
   isEnvelope,
+  richTextDocumentHasText,
   validateRichTextDocument
 } from '../dist/core.mjs';
 
@@ -15,6 +16,17 @@ test('empty document uses an editor-compatible paragraph', () => {
     type: 'doc',
     content: [{ type: 'paragraph' }]
   });
+});
+
+test('text presence follows structural text nodes', () => {
+  assert.equal(richTextDocumentHasText(emptyRichTextDocument()), false);
+  assert.equal(
+    richTextDocumentHasText({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '  body  ' }] }]
+    }),
+    true
+  );
 });
 
 test('profile manifests keep comment authoring intentionally small', () => {

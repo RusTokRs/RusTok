@@ -110,9 +110,9 @@ async fn mention_description_and_audience_use_the_exact_recipient_for_topics_and
                 category_id: category.id,
                 title: "Recipient-specific mention".into(),
                 slug: Some("recipient-specific-mention".into()),
-                body: "Mention notification visibility must follow the exact recipient.".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Mention notification visibility must follow the exact recipient.",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -127,9 +127,7 @@ async fn mention_description_and_audience_use_the_exact_recipient_for_topics_and
             topic.id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Reply mention target".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Reply mention target"),
                 parent_reply_id: None,
             },
         )

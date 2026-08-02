@@ -42,8 +42,8 @@ export default async function Page(props: PageProps) {
       pageTitle='Forum Reply Composer'
       pageDescription={
         selectedTopic
-          ? `Draft rt_json_v1 replies for "${selectedTopic.title}".`
-          : 'Draft rt_json_v1 replies for forum topics.'
+          ? `Draft richtext replies for "${selectedTopic.title}".`
+          : 'Draft richtext replies for forum topics.'
       }
       pageHeaderAction={
         <form method='get' className='flex items-center gap-2'>

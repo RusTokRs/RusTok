@@ -8,6 +8,7 @@ import { Form } from '@/shared/ui/shadcn/form';
 import {
   emptyRichTextDocument,
   getRichTextProfile,
+  richTextDocumentHasText,
   validateRichTextDocument,
   type RichTextDocument
 } from '@rustok/richtext';
@@ -37,20 +38,6 @@ type FormValues = z.infer<typeof formSchema>;
 
 function resolveInitialDoc(initialData: PostResponse | null): RichTextDocument {
   return initialData?.content?.document ?? emptyRichTextDocument();
-}
-
-function documentHasText(document: RichTextDocument): boolean {
-  const stack = [...document.content];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (node?.text?.trim()) {
-      return true;
-    }
-    if (node?.content) {
-      stack.push(...node.content);
-    }
-  }
-  return false;
 }
 
 export default function PostForm({
@@ -100,7 +87,7 @@ export default function PostForm({
       content,
       getRichTextProfile('article')
     );
-    if (!validation.valid || !documentHasText(content)) {
+    if (!validation.valid || !richTextDocumentHasText(content)) {
       toast.error(validation.error ?? 'Post content is required.');
       return;
     }

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::normalize_locale_code;
-use rustok_core::{SecurityContext, prepare_content_payload};
+use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -30,7 +30,6 @@ use super::user_stats::UserStatsService;
 
 /// Public owner service for reply commands.
 ///
-/// The wrapped persistence service remains available as a compatibility path.
 /// Root-service lifecycle decisions live here so database triggers are
 /// invariant guards rather than the primary workflow engine.
 pub struct ReplyService {
@@ -58,129 +57,8 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
-        let locale = normalize_locale(&input.locale)?;
-        let prepared_body = prepare_content_payload(
-            Some(&input.content_format),
-            Some(&input.content),
-            input.content_json.as_ref(),
-            &locale,
-            "Reply content",
-        )
-        .map_err(ForumError::Validation)?;
-        let reply_id = Uuid::new_v4();
-        let prepared_relations = self
-            .relations
-            .prepare(
-                tenant_id,
-                ForumContentTarget::reply(reply_id),
-                &locale,
-                &prepared_body.body,
-                &prepared_body.format,
-                &security,
-                std::iter::empty(),
-            )
-            .await?;
-
-        let txn = self.db.begin().await?;
-        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
-        match topic.status {
-            TopicStatus::Closed => return Err(ForumError::TopicClosed),
-            TopicStatus::Archived => return Err(ForumError::TopicArchived),
-            TopicStatus::Open => {}
-        }
-        if topic.is_locked {
-            return Err(ForumError::TopicLocked);
-        }
-
-        let category =
-            CategoryService::find_category_in_tx(&txn, tenant_id, topic.category_id).await?;
-
-        if let Some(parent_reply_id) = input.parent_reply_id {
-            let parent =
-                reply::ReplyService::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
-            if parent.topic_id != topic_id {
-                return Err(ForumError::Validation(
-                    "Parent reply belongs to another topic".to_string(),
-                ));
-            }
-            if parent.status == ReplyStatus::Deleted {
-                return Err(ForumError::Validation(
-                    "Deleted reply cannot be used as a parent".to_string(),
-                ));
-            }
-        }
-
-        let position = allocate_reply_position_in_tx(&txn, tenant_id, topic_id).await?;
-        let status = if category.moderated {
-            ReplyStatus::Pending
-        } else {
-            ReplyStatus::Approved
-        };
-        let now = Utc::now();
-
-        forum_reply::ActiveModel {
-            id: Set(reply_id),
-            tenant_id: Set(tenant_id),
-            topic_id: Set(topic_id),
-            author_id: Set(security.user_id),
-            parent_reply_id: Set(input.parent_reply_id),
-            status: Set(status),
-            position: Set(position),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&txn)
-        .await?;
-
-        forum_reply_body::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            reply_id: Set(reply_id),
-            tenant_id: Set(tenant_id),
-            locale: Set(locale.clone()),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&txn)
-        .await?;
-
-        self.relations
-            .persist_in_tx(&txn, prepared_relations)
-            .await?;
-
-        if status == ReplyStatus::Approved {
-            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
-                .await?;
-            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, security.user_id, 1)
-                .await?;
-
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    tenant_id,
-                    security.user_id,
-                    DomainEvent::ForumTopicReplied {
-                        topic_id,
-                        reply_id,
-                        author_id: security.user_id,
-                    },
-                )
-                .await?;
-            publish_forum_category_projection_in_tx(
-                &self.event_bus,
-                &txn,
-                tenant_id,
-                security.user_id,
-                topic.category_id,
-            )
-            .await?;
-        }
-
-        txn.commit().await?;
-        self.inner.get(tenant_id, security, reply_id, &locale).await
+        self.create_command(tenant_id, security, topic_id, input.into())
+            .await
     }
 
     #[instrument(skip(self, security, input))]
@@ -192,7 +70,7 @@ impl ReplyService {
         input: UpdateReplyInput,
     ) -> ForumResult<ReplyResponse> {
         self.inner
-            .update_with_relations(tenant_id, reply_id, security, input)
+            .update_with_inline_relations(tenant_id, reply_id, security, input.into())
             .await
     }
 
@@ -227,7 +105,6 @@ impl ReplyService {
             .await?
             .is_some_and(|solution| solution.reply_id == reply_id);
 
-        redact_reply_body_in_tx(&txn, tenant_id, reply_id).await?;
         forum_solution::Entity::delete_many()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::ReplyId.eq(reply_id))
@@ -310,6 +187,11 @@ impl Deref for ReplyService {
     }
 }
 
+fn normalize_locale(locale: &str) -> ForumResult<String> {
+    normalize_locale_code(locale)
+        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
 async fn allocate_reply_position_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -360,20 +242,6 @@ async fn claim_reply_delete_in_tx(
     Ok(())
 }
 
-async fn redact_reply_body_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    reply_id: Uuid,
-) -> ForumResult<()> {
-    txn.execute_unprepared(&format!(
-        "UPDATE forum_reply_bodies \
-         SET body = '[deleted]', body_format = 'markdown', updated_at = CURRENT_TIMESTAMP \
-         WHERE tenant_id = '{tenant_id}' AND reply_id = '{reply_id}'"
-    ))
-    .await?;
-    Ok(())
-}
-
 async fn mark_reply_deleted_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -390,9 +258,4 @@ async fn mark_reply_deleted_in_tx(
         return Err(ForumError::ReplyDeleted);
     }
     Ok(())
-}
-
-fn normalize_locale(locale: &str) -> ForumResult<String> {
-    normalize_locale_code(locale)
-        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
 }

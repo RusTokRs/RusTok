@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use rustok_api::{RichTextDocument, RichTextView};
 use rustok_ui_core::normalize_css_hex_color;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
 
 fn deserialize_optional_css_hex_color<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -284,9 +284,8 @@ pub struct TopicDetail {
     pub author_id: Option<String>,
     pub title: String,
     pub slug: String,
-    pub body: String,
-    pub body_format: String,
-    pub content_json: Option<Value>,
+    pub body: RichTextView,
+    pub body_plain_text: String,
     pub status: String,
     pub tags: Vec<String>,
     pub is_pinned: bool,
@@ -343,8 +342,7 @@ pub struct TopicDraft {
     pub category_id: String,
     pub title: String,
     pub slug: String,
-    pub body: String,
-    pub body_format: String,
+    pub body: RichTextDocument,
     pub tags: Vec<String>,
 }
 

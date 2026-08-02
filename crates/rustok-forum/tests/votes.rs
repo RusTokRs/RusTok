@@ -104,9 +104,7 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
                 category_id: category.id,
                 title: "Vote me".to_string(),
                 slug: Some("vote-me".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -121,9 +119,7 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Reply".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Reply"),
                 parent_reply_id: None,
             },
         )
@@ -253,9 +249,7 @@ async fn vote_validation_rejects_invalid_values_and_pending_replies() {
                 category_id: category.id,
                 title: "Pending votes".to_string(),
                 slug: Some("pending-votes".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -270,9 +264,7 @@ async fn vote_validation_rejects_invalid_values_and_pending_replies() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Pending reply".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Pending reply"),
                 parent_reply_id: None,
             },
         )

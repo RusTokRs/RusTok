@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use rustok_api::RichTextDocument;
 use rustok_forum::{
     ForumContentTarget, ForumMentionAudience, ForumMentionCandidates, ForumMentionEventTarget,
     ForumMentionPolicy, ForumMentionRevisionProjection, ForumQuoteReference, ForumRevisionIdentity,
@@ -86,17 +87,20 @@ fn revision(
 }
 
 #[test]
-fn markdown_extraction_ignores_code_escaping_and_email_addresses() {
-    let body = r#"Hello @Alice and @alice.
-\@escaped `@inline` user@example.com
-```rust
-@fenced
-```
-@moderators"#;
+fn canonical_extraction_ignores_code_and_email_addresses() {
+    let document: RichTextDocument = serde_json::from_value(json!({
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "Hello @Alice and @alice. user@example.com @moderators"},
+                {"type": "text", "text": " @inline", "marks": [{"type": "code"}]}
+            ]},
+            {"type": "codeBlock", "content": [{"type": "text", "text": "@blocked"}]}
+        ]
+    }))
+    .expect("canonical document");
     let result = extract_forum_mention_candidates(
-        body,
-        "markdown",
-        "en",
+        &document,
         ForumMentionPolicy {
             allow_moderator_audience: true,
             ..ForumMentionPolicy::default()
@@ -109,45 +113,24 @@ fn markdown_extraction_ignores_code_escaping_and_email_addresses() {
 }
 
 #[test]
-fn rt_json_extraction_ignores_code_blocks_and_code_marks() {
-    let body = json!({
-        "version": "rt_json_v1",
-        "locale": "en",
-        "doc": {
-            "type": "doc",
-            "content": [
-                {"type": "paragraph", "content": [{"type": "text", "text": "Hi @alice"}]},
-                {"type": "code_block", "content": [{"type": "text", "text": "@blocked"}]},
-                {"type": "paragraph", "content": [
-                    {"type": "text", "text": "@inline", "marks": [{"type": "code"}]},
-                    {"type": "text", "text": " \\@escaped"}
-                ]}
-            ]
-        }
-    })
-    .to_string();
-
-    let result =
-        extract_forum_mention_candidates(&body, "rt_json_v1", "en", ForumMentionPolicy::default())
-            .expect("mentions should parse");
+fn canonical_extraction_reads_structural_text_nodes() {
+    let document = RichTextDocument::single_paragraph("Hi @alice");
+    let result = extract_forum_mention_candidates(&document, ForumMentionPolicy::default())
+        .expect("mentions should parse");
     assert_eq!(result.handles(), &["alice".to_string()]);
 }
 
 #[test]
 fn extraction_enforces_caps_and_special_audience_permission() {
     let denied = extract_forum_mention_candidates(
-        "@moderators",
-        "markdown",
-        "en",
+        &RichTextDocument::single_paragraph("@moderators"),
         ForumMentionPolicy::default(),
     )
     .expect_err("special audience must be permission gated");
     assert_eq!(denied.stable_code(), "FORUM_FORBIDDEN");
 
     let capped = extract_forum_mention_candidates(
-        "@alice @bob",
-        "markdown",
-        "en",
+        &RichTextDocument::single_paragraph("@alice @bob"),
         ForumMentionPolicy {
             max_targets: 1,
             allow_moderator_audience: false,

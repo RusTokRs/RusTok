@@ -53,9 +53,11 @@ async fn postgres_preserves_forum_tombstones_and_revision_history() -> TestResul
             .await?;
         if reply_revisions.len() != 2
             || reply_revisions[0].revision_reason != "delete"
-            || reply_revisions[0].body != "Edited reply"
+            || reply_revisions[0].body.document
+                != rustok_api::RichTextDocument::single_paragraph("Edited reply")
             || reply_revisions[1].revision_reason != "edit"
-            || reply_revisions[1].body != "Original reply"
+            || reply_revisions[1].body.document
+                != rustok_api::RichTextDocument::single_paragraph("Original reply")
         {
             return Err(test_error(format!(
                 "unexpected reply revision history: {reply_revisions:?}"
@@ -108,28 +110,15 @@ async fn postgres_preserves_forum_tombstones_and_revision_history() -> TestResul
             )));
         }
 
-        let cascade_seed = seed_thread(&context.db, "category-hard-delete").await?;
-        execute(
+        let protected_seed = seed_thread(&context.db, "non-empty-category-delete").await?;
+        expect_rejected(
             &context.db,
             format!(
                 "DELETE FROM forum_categories
                  WHERE tenant_id = '{}' AND id = '{}'",
-                cascade_seed.tenant_id, cascade_seed.category_id
+                protected_seed.tenant_id, protected_seed.category_id
             ),
-        )
-        .await?;
-        assert_absent(
-            &context.db,
-            "forum_topics",
-            cascade_seed.tenant_id,
-            cascade_seed.topic_id,
-        )
-        .await?;
-        assert_absent(
-            &context.db,
-            "forum_replies",
-            cascade_seed.tenant_id,
-            cascade_seed.reply_id,
+            "non-empty category delete",
         )
         .await?;
 
@@ -158,6 +147,8 @@ async fn seed_thread(db: &sea_orm::DatabaseConnection, slug: &str) -> TestResult
         reply_id: Uuid::new_v4(),
         author_id: Uuid::new_v4(),
     };
+    let original_topic_body = stored_document("Original topic body");
+    let original_reply_body = stored_document("Original reply");
 
     execute(
         db,
@@ -176,10 +167,10 @@ VALUES
      FALSE, FALSE, 0);
 
 INSERT INTO forum_topic_translations
-    (id, tenant_id, topic_id, locale, title, slug, body, body_format)
+    (id, tenant_id, topic_id, locale, title, slug, body)
 VALUES
     ('{}', '{}', '{}', 'en', 'Original topic', '{}',
-     'Original topic body', 'markdown');
+     '{original_topic_body}');
 
 INSERT INTO forum_replies
     (id, tenant_id, topic_id, author_id, status, position)
@@ -187,9 +178,9 @@ VALUES
     ('{}', '{}', '{}', '{}', 'approved', 1);
 
 INSERT INTO forum_reply_bodies
-    (id, tenant_id, reply_id, locale, body, body_format)
+    (id, tenant_id, reply_id, locale, body)
 VALUES
-    ('{}', '{}', '{}', 'en', 'Original reply', 'markdown');
+    ('{}', '{}', '{}', 'en', '{original_reply_body}');
 
 INSERT INTO forum_solutions
     (tenant_id, topic_id, reply_id, marked_by_user_id)
@@ -236,18 +227,20 @@ async fn edit_topic_and_reply(
     db: &sea_orm::DatabaseConnection,
     seed: &ThreadSeed,
 ) -> TestResult<()> {
+    let edited_topic_body = stored_document("Edited topic body");
+    let edited_reply_body = stored_document("Edited reply");
     execute(
         db,
         format!(
             r#"
 UPDATE forum_topic_translations
 SET title = 'Edited topic',
-    body = 'Edited topic body',
+    body = '{edited_topic_body}',
     updated_at = CURRENT_TIMESTAMP
 WHERE tenant_id = '{}' AND topic_id = '{}' AND locale = 'en';
 
 UPDATE forum_reply_bodies
-SET body = 'Edited reply',
+SET body = '{edited_reply_body}',
     updated_at = CURRENT_TIMESTAMP
 WHERE tenant_id = '{}' AND reply_id = '{}' AND locale = 'en';
 "#,
@@ -255,6 +248,12 @@ WHERE tenant_id = '{}' AND reply_id = '{}' AND locale = 'en';
         ),
     )
     .await
+}
+
+fn stored_document(text: &str) -> String {
+    serde_json::to_string(&rustok_api::RichTextDocument::single_paragraph(text))
+        .expect("richtext fixture should serialize")
+        .replace('\'', "''")
 }
 
 async fn refresh_counters(db: &sea_orm::DatabaseConnection, seed: &ThreadSeed) -> TestResult<()> {
@@ -341,7 +340,7 @@ WHERE reply.tenant_id = '{}' AND reply.id = '{}'
     ];
     if status != "deleted"
         || !is_deleted
-        || body != "[deleted]"
+        || body != stored_document("Edited reply")
         || counts.iter().any(|count| *count != 0)
     {
         return Err(test_error(format!(
@@ -418,43 +417,17 @@ WHERE topic.tenant_id = '{}' AND topic.id = '{}'
     if status != "archived"
         || !is_deleted
         || !is_locked
-        || title != "[deleted]"
-        || body != "[deleted]"
+        || title != "Edited topic"
+        || body != stored_document("Edited topic body")
         || reply_status != "deleted"
         || !reply_is_deleted
-        || reply_body != "[deleted]"
+        || reply_body != stored_document("Edited reply")
         || counts.iter().any(|count| *count != 0)
     {
         return Err(test_error(format!(
             "invalid topic tombstone: status={status}, deleted={is_deleted}, locked={is_locked}, \
              title={title}, body={body}, reply_status={reply_status}, \
              reply_deleted={reply_is_deleted}, reply_body={reply_body}, counts={counts:?}"
-        )));
-    }
-    Ok(())
-}
-
-async fn assert_absent(
-    db: &sea_orm::DatabaseConnection,
-    table: &str,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> TestResult<()> {
-    let row = db
-        .query_one(Statement::from_string(
-            DatabaseBackend::Postgres,
-            format!(
-                "SELECT COUNT(*)::bigint AS value
-                 FROM {table}
-                 WHERE tenant_id = '{tenant_id}' AND id = '{id}'"
-            ),
-        ))
-        .await?
-        .ok_or_else(|| test_error(format!("{table} count query returned no row")))?;
-    let count: i64 = row.try_get("", "value")?;
-    if count != 0 {
-        return Err(test_error(format!(
-            "{table} row must be physically removed by category cascade"
         )));
     }
     Ok(())

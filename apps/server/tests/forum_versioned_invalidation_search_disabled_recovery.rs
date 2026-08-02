@@ -157,9 +157,7 @@ impl ForumProjectionOwnerRevisionSourcePort for RealForumOwnerRevisionSource {
                 event_id: revision.event_id,
                 event_type: revision.event_type,
                 impact: match revision.impact {
-                    ForumOwnerRevisionImpact::FullRebuild => {
-                        SearchOwnerRevisionImpact::FullRebuild
-                    }
+                    ForumOwnerRevisionImpact::FullRebuild => SearchOwnerRevisionImpact::FullRebuild,
                 },
             })
             .collect())
@@ -371,16 +369,20 @@ async fn run_search_disabled_recovery_proof(
     }
 
     let audit = load_checkpoint_audit(db, fixture.tenant_id).await?;
-    if audit.iter().map(|row| row.owner_revision).collect::<Vec<_>>() != [1, 2, 3]
+    if audit
+        .iter()
+        .map(|row| row.owner_revision)
+        .collect::<Vec<_>>()
+        != [1, 2, 3]
         || audit.iter().map(|row| row.event_id).collect::<Vec<_>>()
             != before_enable
                 .revisions
                 .iter()
                 .map(|revision| revision.event_id)
                 .collect::<Vec<_>>()
-        || audit.iter().any(|row| {
-            row.outcome != "rebuild_repaired" || row.observed_forum_documents != 3
-        })
+        || audit
+            .iter()
+            .any(|row| row.outcome != "rebuild_repaired" || row.observed_forum_documents != 3)
     {
         return Err(test_error(format!(
             "late Search checkpoint audit did not retain exact rebuild-before-checkpoint ordering: {audit:?}"
@@ -522,9 +524,9 @@ fn topic_input(category_id: Uuid, title: &str, slug: &str) -> CreateTopicInput {
         category_id,
         title: title.to_string(),
         slug: Some(slug.to_string()),
-        body: format!("{title} body committed while Search is disabled"),
-        body_format: "markdown".to_string(),
-        content_json: None,
+        body: rustok_api::RichTextDocument::single_paragraph(format!(
+            "{title} body committed while Search is disabled"
+        )),
         metadata: json!({}),
         tags: Vec::new(),
         channel_slugs: None,
@@ -558,7 +560,12 @@ fn assert_disabled_owner_shape(
             "Search-disabled Forum owner snapshot has an unexpected shape: {snapshot:?}"
         )));
     }
-    if snapshot.revisions.iter().map(|row| row.revision).collect::<Vec<_>>() != [1, 2, 3]
+    if snapshot
+        .revisions
+        .iter()
+        .map(|row| row.revision)
+        .collect::<Vec<_>>()
+        != [1, 2, 3]
         || snapshot.revisions[0].target_type != "forum"
         || snapshot.revisions[0].target_id.is_some()
         || snapshot.revisions[1].target_type != "forum_category"
@@ -571,11 +578,16 @@ fn assert_disabled_owner_shape(
             snapshot.revisions
         )));
     }
-    let topic_ids = snapshot.topics.iter().map(|topic| topic.id).collect::<BTreeSet<_>>();
+    let topic_ids = snapshot
+        .topics
+        .iter()
+        .map(|topic| topic.id)
+        .collect::<BTreeSet<_>>();
     if topic_ids != BTreeSet::from([fixture.topic_one_id, fixture.topic_two_id])
-        || snapshot.topics.iter().any(|topic| {
-            topic.category_id != fixture.category_id || topic.status != "open"
-        })
+        || snapshot
+            .topics
+            .iter()
+            .any(|topic| topic.category_id != fixture.category_id || topic.status != "open")
     {
         return Err(test_error(format!(
             "Search-disabled Forum topics did not commit exactly: {:?}",
@@ -827,10 +839,7 @@ async fn count_rows(db: &DatabaseConnection, table: &str) -> TestResult<i64> {
     .await
 }
 
-async fn count_forum_documents(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn count_forum_documents(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -999,9 +1008,7 @@ async fn connect_in_schema(
 
 fn database_url_in_schema(database_url: &str, schema_name: &str) -> String {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
-    )
+    format!("{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic")
 }
 
 async fn connect(database_url: &str, max_connections: u32) -> TestResult<DatabaseConnection> {
@@ -1048,7 +1055,9 @@ fn source_commit() -> TestResult<String> {
         .args(["rev-parse", "HEAD"])
         .output()?;
     if !output.status.success() {
-        return Err(test_error("git rev-parse HEAD failed for evidence generation"));
+        return Err(test_error(
+            "git rev-parse HEAD failed for evidence generation",
+        ));
     }
     let value = String::from_utf8(output.stdout)?;
     let value = value.trim();

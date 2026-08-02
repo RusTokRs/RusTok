@@ -6,7 +6,10 @@ use rustok_api::graphql::PageInfo;
     name = "ForumCategoryConnection",
     params(crate::graphql::GqlForumCategory)
 ))]
-#[graphql(concrete(name = "ForumTopicConnection", params(crate::graphql::GqlForumTopic)))]
+#[graphql(concrete(
+    name = "ForumTopicConnection",
+    params(crate::graphql::GqlForumTopicListItem)
+))]
 #[graphql(concrete(name = "ForumReplyConnection", params(crate::graphql::GqlForumReply)))]
 pub struct ListConnection<T>
 where

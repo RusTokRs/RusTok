@@ -46,9 +46,7 @@ const categoryDndPath = "crates/rustok-forum/admin/src/ui/category_dnd.rs";
 const transportPath = "crates/rustok-forum/admin/src/transport.rs";
 const legacyApiPath = "crates/rustok-forum/admin/src/api.rs";
 const graphqlAdapterPath = "crates/rustok-forum/admin/src/transport/graphql_adapter.rs";
-const restAdapterPath = "crates/rustok-forum/admin/src/transport/rest_adapter.rs";
 const categoryTreeGraphqlAdapterPath = "crates/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs";
-const categoryTreeRestAdapterPath = "crates/rustok-forum/admin/src/transport/category_tree_rest_adapter.rs";
 const implementationPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
@@ -62,9 +60,7 @@ for (const filePath of [
   categoryDndPath,
   transportPath,
   graphqlAdapterPath,
-  restAdapterPath,
   categoryTreeGraphqlAdapterPath,
-  categoryTreeRestAdapterPath,
   implementationPlanPath,
   registryPath,
   packagePath,
@@ -73,7 +69,7 @@ for (const filePath of [
   assertExists(filePath, `${filePath}: expected forum admin FFA boundary file`);
 }
 if (existsSync(repoPath(legacyApiPath))) {
-  fail(`${legacyApiPath}: forum admin legacy api.rs must stay removed; transport/rest_adapter.rs owns REST fallback operations`);
+  fail(`${legacyApiPath}: removed forum admin api.rs must stay absent`);
 }
 
 const lib = readRepo(libPath);
@@ -83,9 +79,7 @@ const ui = readRepo(uiPath);
 const categoryDnd = readRepo(categoryDndPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
-const restAdapter = readRepo(restAdapterPath);
 const categoryTreeGraphqlAdapter = readRepo(categoryTreeGraphqlAdapterPath);
-const categoryTreeRestAdapter = readRepo(categoryTreeRestAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = JSON.parse(readRepo(packagePath));
@@ -163,7 +157,7 @@ assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import 
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
 assertContains(ui, "CategoryDndGrid", `${uiPath}: category admin must mount the owner-command DnD component`);
 assertContains(ui, "transport::fetch_category_tree", `${uiPath}: category admin must load the canonical category tree`);
-assertNotContains(ui, "transport::fetch_categories(token_value", `${uiPath}: category hierarchy must not be reconstructed from the flat compatibility list`);
+assertNotContains(ui, "transport::fetch_categories(token_value", `${uiPath}: category hierarchy must not be reconstructed from a second flat list contract`);
 assertContains(ui, "forum_admin_category_matrix_labels", `${uiPath}: UI must consume core-owned category matrix labels`);
 assertContains(ui, "forum_admin_category_form_labels", `${uiPath}: UI must consume core-owned category form labels`);
 assertContains(ui, "forum_admin_topic_stream_labels", `${uiPath}: UI must consume core-owned topic stream labels`);
@@ -221,38 +215,29 @@ for (const marker of ["crate::api", "ForumService", "update_category("]) {
   assertNotContains(categoryDnd, marker, `${categoryDndPath}: DnD must not bypass the transport owner move command (${marker})`);
 }
 
-for (const marker of ["fetch_category_tree", "fetch_categories", "fetch_category", "create_category", "update_category", "move_category", "reorder_category_siblings", "delete_category", "fetch_topics", "fetch_topic", "create_topic", "update_topic", "delete_topic", "fetch_replies"]) {
+for (const marker of ["fetch_category_tree", "fetch_category", "create_category", "update_category", "move_category", "delete_category", "fetch_topics", "fetch_topic", "create_topic", "update_topic", "delete_topic", "fetch_replies"]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
 assertContains(transport, "mod category_tree_graphql_adapter;", `${transportPath}: transport facade must wire canonical tree GraphQL adapter`);
-assertContains(transport, "mod category_tree_rest_adapter;", `${transportPath}: transport facade must wire canonical tree REST fallback`);
-assertContains(transport, "category_tree_graphql_adapter::fetch_category_tree", `${transportPath}: canonical tree must prefer GraphQL`);
-assertContains(transport, "category_tree_rest_adapter::fetch_category_tree", `${transportPath}: canonical tree must keep REST fallback`);
+assertContains(transport, "category_tree_graphql_adapter::fetch_category_tree", `${transportPath}: canonical tree must use GraphQL`);
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
-assertContains(transport, "mod rest_adapter;", `${transportPath}: transport facade must wire REST fallback adapter`);
-assertContains(transport, "graphql_adapter::fetch_categories", `${transportPath}: flat compatibility read must prefer GraphQL`);
-assertContains(transport, "rest_adapter::fetch_categories", `${transportPath}: flat compatibility read must keep REST fallback`);
-assertContains(transport, "graphql_adapter::move_category", `${transportPath}: placement must prefer the GraphQL owner command`);
-assertContains(transport, "rest_adapter::move_category", `${transportPath}: placement must keep the REST owner-command fallback`);
-assertContains(transport, "graphql_adapter::reorder_category_siblings", `${transportPath}: sibling reorder must prefer GraphQL`);
-assertContains(transport, "rest_adapter::reorder_category_siblings", `${transportPath}: sibling reorder must keep REST fallback`);
+assertContains(transport, "graphql_adapter::move_category", `${transportPath}: placement must use the GraphQL owner command`);
+for (const marker of ["mod rest_adapter", "category_tree_rest_adapter", "rest_adapter::", "should_fallback_to_rest", "redact_rest_fallback"]) {
+  assertNotContains(transport, marker, `${transportPath}: removed REST fallback must stay absent (${marker})`);
+}
+assertNotContains(transport, "pub async fn fetch_categories", `${transportPath}: removed flat category read must stay absent`);
+assertNotContains(transport, "pub async fn reorder_category_siblings", `${transportPath}: unused sibling reorder facade must stay absent`);
 assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 
 assertContains(categoryTreeGraphqlAdapter, "forumCategoryTree", `${categoryTreeGraphqlAdapterPath}: GraphQL adapter must query canonical category tree`);
 assertContains(categoryTreeGraphqlAdapter, "MAX_CATEGORY_TREE_DEPTH", `${categoryTreeGraphqlAdapterPath}: GraphQL tree selection must cover owner depth bound`);
 assertContains(categoryTreeGraphqlAdapter, "archived_at: archivedAt", `${categoryTreeGraphqlAdapterPath}: GraphQL tree must project lifecycle state`);
-assertContains(categoryTreeRestAdapter, "/categories/tree", `${categoryTreeRestAdapterPath}: REST fallback must call canonical tree endpoint`);
 assertContains(graphqlAdapter, "moveForumCategory", `${graphqlAdapterPath}: GraphQL adapter must call moveForumCategory`);
-assertContains(graphqlAdapter, "reorderForumCategorySiblings", `${graphqlAdapterPath}: GraphQL adapter must call reorderForumCategorySiblings`);
-assertContains(restAdapter, "reqwest", `${restAdapterPath}: forum admin REST adapter must keep the REST transport contract`);
-assertContains(restAdapter, "/categories/{id}/move", `${restAdapterPath}: REST adapter must call the category move endpoint`);
-assertContains(restAdapter, "/categories/reorder", `${restAdapterPath}: REST adapter must call the sibling reorder endpoint`);
-for (const adapter of [graphqlAdapter, restAdapter]) {
-  assertNotContains(adapter, "position: Some(draft.position)", "forum admin adapters must not bypass placement owner commands through generic update");
-}
+assertNotContains(graphqlAdapter, "reorderForumCategorySiblings", `${graphqlAdapterPath}: unused sibling reorder operation must stay absent`);
+assertNotContains(graphqlAdapter, "position: Some(draft.position)", "forum admin adapter must not bypass placement owner commands through generic update");
 
 assertContains(implementationPlan, "verify-forum-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the forum fast boundary guardrail`);
-assertContains(implementationPlan, "interactive admin drag-and-drop", `${implementationPlanPath}: canonical plan must record the DnD owner-command integration`);
+assertContains(implementationPlan, "interactive drag-and-drop", `${implementationPlanPath}: canonical plan must record the DnD owner-command integration`);
 assertContains(registry, "verify-forum-admin-boundary.mjs", `${registryPath}: central readiness board must mention the forum fast boundary guardrail`);
 assertContains(registry, "forum-wave1-rollout-evidence.json", `${registryPath}: central readiness board must mention Wave 1 rollout evidence`);
 
@@ -269,10 +254,11 @@ for (const marker of [
   "passes canonical fixture",
   "rejects Leptos-specific core",
   "rejects raw api calls from UI",
-  "rejects legacy admin api module",
+  "rejects restored admin api module",
   "rejects raw busy-key strings from UI",
   "rejects flat category hierarchy reads",
   "rejects DnD generic update bypass",
+  "rejects restored REST fallback",
   "rejects missing package fixture script",
 ]) {
   assertContains(verifierTest, marker, `${verifierTestPath}: expected fixture coverage marker ${marker}`);

@@ -56,8 +56,6 @@
   "forum.form.chooseCategory": "Выберите категорию",
   "forum.form.title": "Заголовок",
   "forum.form.titleHint": "Заголовок, который показывается в ленте.",
-  "forum.form.bodyFormat": "Формат тела",
-  "forum.form.bodyFormatHint": "Обычно `markdown`.",
   "forum.form.tags": "Теги",
   "forum.form.tagsHint": "Метки через запятую для discovery.",
   "forum.form.body": "Тело",

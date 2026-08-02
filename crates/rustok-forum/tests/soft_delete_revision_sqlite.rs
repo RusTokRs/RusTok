@@ -1,9 +1,10 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{ForumModule, RevisionService};
 use rustok_outbox::OutboxModule;
-use rustok_taxonomy::TaxonomyModule;
+use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Schema,
+    Statement,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -22,7 +23,8 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
         &db,
         format!(
             "DELETE FROM forum_replies
-             WHERE tenant_id = '{}' AND id = '{}'",
+             WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+               AND lower(hex(id)) = replace('{}', '-', '')",
             reply_seed.tenant_id, reply_seed.reply_id
         ),
     )
@@ -33,7 +35,8 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
         &db,
         format!(
             "DELETE FROM forum_replies
-             WHERE tenant_id = '{}' AND id = '{}'",
+             WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+               AND lower(hex(id)) = replace('{}', '-', '')",
             reply_seed.tenant_id, reply_seed.reply_id
         ),
         "repeated reply soft delete",
@@ -52,9 +55,15 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
         .await?;
     assert_eq!(reply_revisions.len(), 2);
     assert_eq!(reply_revisions[0].revision_reason, "delete");
-    assert_eq!(reply_revisions[0].body, "Edited reply");
+    assert_eq!(
+        reply_revisions[0].body.document,
+        rustok_api::RichTextDocument::single_paragraph("Edited reply")
+    );
     assert_eq!(reply_revisions[1].revision_reason, "edit");
-    assert_eq!(reply_revisions[1].body, "Original reply");
+    assert_eq!(
+        reply_revisions[1].body.document,
+        rustok_api::RichTextDocument::single_paragraph("Original reply")
+    );
 
     let topic_seed = seed_thread(&db, "topic-soft-delete").await?;
     edit_topic_and_reply(&db, &topic_seed).await?;
@@ -64,7 +73,8 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
         &db,
         format!(
             "DELETE FROM forum_topics
-             WHERE tenant_id = '{}' AND id = '{}'",
+             WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+               AND lower(hex(id)) = replace('{}', '-', '')",
             topic_seed.tenant_id, topic_seed.topic_id
         ),
     )
@@ -75,7 +85,8 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
         &db,
         format!(
             "DELETE FROM forum_topics
-             WHERE tenant_id = '{}' AND id = '{}'",
+             WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+               AND lower(hex(id)) = replace('{}', '-', '')",
             topic_seed.tenant_id, topic_seed.topic_id
         ),
         "repeated topic soft delete",
@@ -97,28 +108,16 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
     assert_eq!(topic_revisions[1].revision_reason, "edit");
     assert_eq!(topic_revisions[1].title, "Original topic");
 
-    let cascade_seed = seed_thread(&db, "category-hard-delete").await?;
-    execute(
+    let protected_seed = seed_thread(&db, "non-empty-category-delete").await?;
+    assert_rejected(
         &db,
         format!(
             "DELETE FROM forum_categories
-             WHERE tenant_id = '{}' AND id = '{}'",
-            cascade_seed.tenant_id, cascade_seed.category_id
+             WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+               AND lower(hex(id)) = replace('{}', '-', '')",
+            protected_seed.tenant_id, protected_seed.category_id
         ),
-    )
-    .await?;
-    assert_absent(
-        &db,
-        "forum_topics",
-        cascade_seed.tenant_id,
-        cascade_seed.topic_id,
-    )
-    .await?;
-    assert_absent(
-        &db,
-        "forum_replies",
-        cascade_seed.tenant_id,
-        cascade_seed.reply_id,
+        "non-empty category delete",
     )
     .await?;
 
@@ -149,9 +148,26 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     for migration in OutboxModule.migrations() {
         migration.up(&manager).await?;
     }
-    for migration in TaxonomyModule.migrations() {
-        migration.up(&manager).await?;
+    let builder = db.get_database_backend();
+    let schema = Schema::new(builder);
+    for create in [
+        schema.create_table_from_entity(taxonomy_term::Entity),
+        schema.create_table_from_entity(taxonomy_term_translation::Entity),
+        schema.create_table_from_entity(taxonomy_term_alias::Entity),
+    ] {
+        let mut create = create;
+        create.if_not_exists();
+        db.execute(builder.build(&create)).await?;
     }
+    db.execute_unprepared(
+        "CREATE TABLE users (
+            id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE (tenant_id, id)
+        )",
+    )
+    .await?;
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }
@@ -166,6 +182,10 @@ async fn seed_thread(db: &DatabaseConnection, slug: &str) -> TestResult<ThreadSe
         reply_id: Uuid::new_v4(),
         author_id: Uuid::new_v4(),
     };
+    let original_topic_body = stored_document("Original topic body");
+    let original_reply_body = stored_document("Original reply");
+    let topic_translation_id = Uuid::new_v4();
+    let reply_body_id = Uuid::new_v4();
 
     execute(
         db,
@@ -174,65 +194,65 @@ async fn seed_thread(db: &DatabaseConnection, slug: &str) -> TestResult<ThreadSe
 INSERT INTO forum_categories
     (id, tenant_id, position, moderated, topic_count, reply_count)
 VALUES
-    ('{}', '{}', 0, 0, 0, 0);
+    (X'{}', X'{}', 0, 0, 0, 0);
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, author_id, status, metadata,
      is_pinned, is_locked, reply_count)
 VALUES
-    ('{}', '{}', '{}', '{}', 'open', '{{"seed":"{}"}}',
+    (X'{}', X'{}', X'{}', X'{}', 'open', '{{"seed":"{}"}}',
      0, 0, 0);
 
 INSERT INTO forum_topic_translations
-    (id, tenant_id, topic_id, locale, title, slug, body, body_format)
+    (id, tenant_id, topic_id, locale, title, slug, body)
 VALUES
-    ('{}', '{}', '{}', 'en', 'Original topic', '{}',
-     'Original topic body', 'markdown');
+    (X'{}', X'{}', X'{}', 'en', 'Original topic', '{}',
+     '{original_topic_body}');
 
 INSERT INTO forum_replies
     (id, tenant_id, topic_id, author_id, status, position)
 VALUES
-    ('{}', '{}', '{}', '{}', 'approved', 1);
+    (X'{}', X'{}', X'{}', X'{}', 'approved', 1);
 
 INSERT INTO forum_reply_bodies
-    (id, tenant_id, reply_id, locale, body, body_format)
+    (id, tenant_id, reply_id, locale, body)
 VALUES
-    ('{}', '{}', '{}', 'en', 'Original reply', 'markdown');
+    (X'{}', X'{}', X'{}', 'en', '{original_reply_body}');
 
 INSERT INTO forum_solutions
     (tenant_id, topic_id, reply_id, marked_by_user_id)
 VALUES
-    ('{}', '{}', '{}', '{}');
+    (X'{}', X'{}', X'{}', X'{}');
 
 INSERT INTO forum_user_stats
     (tenant_id, user_id, topic_count, reply_count, solution_count)
 VALUES
-    ('{}', '{}', 0, 0, 0);
+    (X'{}', X'{}', 0, 0, 0);
 "#,
-            seed.category_id,
-            seed.tenant_id,
-            seed.topic_id,
-            seed.tenant_id,
-            seed.category_id,
-            seed.author_id,
+            seed.category_id.simple(),
+            seed.tenant_id.simple(),
+            seed.topic_id.simple(),
+            seed.tenant_id.simple(),
+            seed.category_id.simple(),
+            seed.author_id.simple(),
             slug,
-            Uuid::new_v4(),
-            seed.tenant_id,
-            seed.topic_id,
+            topic_translation_id.simple(),
+            seed.tenant_id.simple(),
+            seed.topic_id.simple(),
             slug,
-            seed.reply_id,
-            seed.tenant_id,
-            seed.topic_id,
-            seed.author_id,
-            Uuid::new_v4(),
-            seed.tenant_id,
-            seed.reply_id,
-            seed.tenant_id,
-            seed.topic_id,
-            seed.reply_id,
-            seed.author_id,
-            seed.tenant_id,
-            seed.author_id,
+            seed.reply_id.simple(),
+            seed.tenant_id.simple(),
+            seed.topic_id.simple(),
+            seed.author_id.simple(),
+            reply_body_id.simple(),
+            seed.tenant_id.simple(),
+            seed.reply_id.simple(),
+            seed.tenant_id.simple(),
+            seed.topic_id.simple(),
+            seed.reply_id.simple(),
+            seed.author_id.simple(),
+            seed.tenant_id.simple(),
+            seed.author_id.simple(),
         ),
     )
     .await?;
@@ -241,25 +261,35 @@ VALUES
 }
 
 async fn edit_topic_and_reply(db: &DatabaseConnection, seed: &ThreadSeed) -> TestResult<()> {
+    let edited_topic_body = stored_document("Edited topic body");
+    let edited_reply_body = stored_document("Edited reply");
     execute(
         db,
         format!(
             r#"
 UPDATE forum_topic_translations
 SET title = 'Edited topic',
-    body = 'Edited topic body',
+    body = '{edited_topic_body}',
     updated_at = CURRENT_TIMESTAMP
-WHERE tenant_id = '{}' AND topic_id = '{}' AND locale = 'en';
+WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(topic_id)) = replace('{}', '-', '') AND locale = 'en';
 
 UPDATE forum_reply_bodies
-SET body = 'Edited reply',
+SET body = '{edited_reply_body}',
     updated_at = CURRENT_TIMESTAMP
-WHERE tenant_id = '{}' AND reply_id = '{}' AND locale = 'en';
+WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(reply_id)) = replace('{}', '-', '') AND locale = 'en';
 "#,
             seed.tenant_id, seed.topic_id, seed.tenant_id, seed.reply_id
         ),
     )
     .await
+}
+
+fn stored_document(text: &str) -> String {
+    serde_json::to_string(&rustok_api::RichTextDocument::single_paragraph(text))
+        .expect("richtext fixture should serialize")
+        .replace('\'', "''")
 }
 
 async fn refresh_counters(db: &DatabaseConnection, seed: &ThreadSeed) -> TestResult<()> {
@@ -269,18 +299,21 @@ async fn refresh_counters(db: &DatabaseConnection, seed: &ThreadSeed) -> TestRes
             r#"
 UPDATE forum_topics
 SET reply_count = reply_count
-WHERE tenant_id = '{}' AND id = '{}';
+WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(id)) = replace('{}', '-', '');
 
 UPDATE forum_categories
 SET topic_count = topic_count,
     reply_count = reply_count
-WHERE tenant_id = '{}' AND id = '{}';
+WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(id)) = replace('{}', '-', '');
 
 UPDATE forum_user_stats
 SET topic_count = topic_count,
     reply_count = reply_count,
     solution_count = solution_count
-WHERE tenant_id = '{}' AND user_id = '{}';
+WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(user_id)) = replace('{}', '-', '');
 "#,
             seed.tenant_id,
             seed.topic_id,
@@ -323,7 +356,8 @@ JOIN forum_categories category
 JOIN forum_user_stats stats
   ON stats.tenant_id = reply.tenant_id
  AND stats.user_id = reply.author_id
-WHERE reply.tenant_id = '{}' AND reply.id = '{}'
+WHERE lower(hex(reply.tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(reply.id)) = replace('{}', '-', '')
 "#,
                 seed.tenant_id, seed.reply_id
             ),
@@ -343,7 +377,7 @@ WHERE reply.tenant_id = '{}' AND reply.id = '{}'
     ];
     if status != "deleted"
         || is_deleted != 1
-        || body != "[deleted]"
+        || body != stored_document("Edited reply")
         || counts.iter().any(|count| *count != 0)
     {
         return Err(test_error(format!(
@@ -390,7 +424,8 @@ JOIN forum_categories category
 JOIN forum_user_stats stats
   ON stats.tenant_id = topic.tenant_id
  AND stats.user_id = topic.author_id
-WHERE topic.tenant_id = '{}' AND topic.id = '{}'
+WHERE lower(hex(topic.tenant_id)) = replace('{}', '-', '')
+  AND lower(hex(topic.id)) = replace('{}', '-', '')
 "#,
                 seed.tenant_id, seed.topic_id
             ),
@@ -417,11 +452,11 @@ WHERE topic.tenant_id = '{}' AND topic.id = '{}'
     if status != "archived"
         || is_deleted != 1
         || is_locked != 1
-        || title != "[deleted]"
-        || body != "[deleted]"
+        || title != "Edited topic"
+        || body != stored_document("Edited topic body")
         || reply_status != "deleted"
         || reply_is_deleted != 1
-        || reply_body != "[deleted]"
+        || reply_body != stored_document("Edited reply")
         || counts.iter().any(|count| *count != 0)
     {
         return Err(test_error(format!(
@@ -433,34 +468,14 @@ WHERE topic.tenant_id = '{}' AND topic.id = '{}'
     Ok(())
 }
 
-async fn assert_absent(
-    db: &DatabaseConnection,
-    table: &str,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> TestResult<()> {
-    let row = db
-        .query_one(Statement::from_string(
-            DatabaseBackend::Sqlite,
-            format!(
-                "SELECT COUNT(*) AS value
-                 FROM {table}
-                 WHERE tenant_id = '{tenant_id}' AND id = '{id}'"
-            ),
-        ))
-        .await?
-        .ok_or_else(|| test_error(format!("{table} count query returned no row")))?;
-    let count: i64 = row.try_get("", "value")?;
-    if count != 0 {
-        return Err(test_error(format!(
-            "{table} row must be physically removed by category cascade"
-        )));
-    }
-    Ok(())
-}
-
 async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
-    db.execute_unprepared(&sql).await?;
+    for statement in sql.split(';').map(str::trim).filter(|sql| !sql.is_empty()) {
+        db.execute_unprepared(statement).await.map_err(|error| {
+            test_error(format!(
+                "SQLite statement failed: {error}; SQL: {statement}"
+            ))
+        })?;
+    }
     Ok(())
 }
 

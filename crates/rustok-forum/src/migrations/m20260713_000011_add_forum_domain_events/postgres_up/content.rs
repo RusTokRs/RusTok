@@ -209,10 +209,6 @@ RETURNS trigger AS $$
 DECLARE
     translation_count bigint;
 BEGIN
-    IF NEW.title = '[deleted]' AND NEW.body = '[deleted]' THEN
-        RETURN NEW;
-    END IF;
-
     IF TG_OP = 'INSERT' THEN
         SELECT COUNT(*) INTO translation_count
         FROM forum_topic_translations
@@ -235,9 +231,9 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF ROW(OLD.title, OLD.slug, OLD.body, OLD.body_format)
+    IF ROW(OLD.title, OLD.slug, OLD.body)
        IS DISTINCT FROM
-       ROW(NEW.title, NEW.slug, NEW.body, NEW.body_format)
+       ROW(NEW.title, NEW.slug, NEW.body)
     THEN
         PERFORM forum_append_domain_event(
             NEW.tenant_id,
@@ -317,10 +313,6 @@ RETURNS trigger AS $$
 DECLARE
     body_count bigint;
 BEGIN
-    IF NEW.body = '[deleted]' THEN
-        RETURN NEW;
-    END IF;
-
     IF TG_OP = 'INSERT' THEN
         SELECT COUNT(*) INTO body_count
         FROM forum_reply_bodies
@@ -343,9 +335,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF ROW(OLD.body, OLD.body_format)
-       IS DISTINCT FROM
-       ROW(NEW.body, NEW.body_format)
+    IF OLD.body IS DISTINCT FROM NEW.body
     THEN
         PERFORM forum_append_domain_event(
             NEW.tenant_id,

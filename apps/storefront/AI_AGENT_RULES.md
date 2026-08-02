@@ -10,6 +10,34 @@ Before making any changes to Leptos storefront code or module-owned UI packages:
 
 ## Critical Rules
 
+### 0. Zero Legacy
+
+RusToK is an initial pre-release implementation. Complete cutovers atomically:
+update all repository-owned callers, routes, DTOs, transports, fixtures, tests,
+and current docs, then delete the superseded code in the same change.
+
+Never add or retain legacy adapters, deprecated aliases, old/new components,
+dual transport fallbacks, or version-suffixed internal contracts. Do not leave a
+temporary compatibility path unless the user explicitly requests one for an
+external consumer and the owner plan records its removal owner and deadline.
+Search for the removed identifiers before declaring the work complete.
+
+Do not create internal `/v2` routes, `FooV2` DTOs, versioned server functions,
+or old/new package exports. Update the canonical contract and all callers in one
+cutover. Internal versions only postpone the same migration while doubling
+tests, security fixes, docs, and plausible sources of truth; future agents then
+copy whichever version they encounter first. A genuinely published external
+protocol may carry a boundary version, but it must map to one unversioned
+internal model.
+
+Do not silence missing integration with `allow(dead_code)` or broad unused-lint
+suppression. Do not ship placeholder components, no-op handlers, dummy results,
+or fake transport success. If target functionality is required, wire it through
+the real `core/transport/ui` path and test observable behavior. If it is not
+required, delete it. If the task lacks authority to complete it, report the gap
+instead of presenting a stub as implementation. Audit and remove any existing
+suppression in files touched by the task.
+
 ### 1. Do Not Write Custom UI Components
 
 **Always check first:** [Rust UI Component Catalog](../../docs/UI/rust-ui-component-catalog.md)

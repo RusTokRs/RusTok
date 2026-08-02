@@ -5,7 +5,6 @@ use rustok_api::{
     graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
-use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
     ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
@@ -79,10 +78,6 @@ impl ForumMutation {
                     title: input.title,
                     slug: input.slug,
                     body: input.body,
-                    body_format: input
-                        .body_format
-                        .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
-                    content_json: input.content_json,
                     metadata: input.metadata.unwrap_or_else(|| serde_json::json!({})),
                     tags: input.tags,
                     channel_slugs: input.channel_slugs,
@@ -132,8 +127,6 @@ impl ForumMutation {
                     locale: input.locale,
                     title: input.title,
                     body: input.body,
-                    body_format: input.body_format,
-                    content_json: input.content_json,
                     metadata: input.metadata,
                     tags: input.tags,
                     channel_slugs: input.channel_slugs,
@@ -416,10 +409,6 @@ impl ForumMutation {
                 crate::CreateReplyInput {
                     locale: input.locale,
                     content: input.content,
-                    content_format: input
-                        .content_format
-                        .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
-                    content_json: input.content_json,
                     parent_reply_id: input.parent_reply_id,
                 },
             )
@@ -442,7 +431,7 @@ impl ForumMutation {
             author_id: reply.author_id,
             author_profile,
             content: reply.content,
-            content_format: reply.content_format,
+            content_plain_text: reply.content_plain_text,
             status: reply.status,
             vote_score: reply.vote_score,
             current_user_vote: reply.current_user_vote,
@@ -622,7 +611,7 @@ impl ForumMutation {
             author_id: reply.author_id,
             author_profile,
             content: reply.content,
-            content_format: reply.content_format,
+            content_plain_text: reply.content_plain_text,
             status: reply.status,
             vote_score: reply.vote_score,
             current_user_vote: reply.current_user_vote,
@@ -692,7 +681,7 @@ impl ForumMutation {
             author_id: reply.author_id,
             author_profile,
             content: reply.content,
-            content_format: reply.content_format,
+            content_plain_text: reply.content_plain_text,
             status: reply.status,
             vote_score: reply.vote_score,
             current_user_vote: reply.current_user_vote,
@@ -1047,8 +1036,7 @@ fn map_topic(
         title: topic.title,
         slug: topic.slug,
         body: topic.body,
-        body_format: topic.body_format,
-        content_json: topic.content_json,
+        body_plain_text: topic.body_plain_text,
         metadata: topic.metadata,
         status: topic.status,
         tags: topic.tags,

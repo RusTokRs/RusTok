@@ -10,8 +10,6 @@ pub(super) async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr
         "DROP TRIGGER IF EXISTS forum_topics_public_reply_count_update",
         "DROP TRIGGER IF EXISTS forum_replies_soft_delete",
         "DROP TRIGGER IF EXISTS forum_topics_soft_delete",
-        "DROP TRIGGER IF EXISTS forum_categories_hard_delete_context_after",
-        "DROP TRIGGER IF EXISTS forum_categories_hard_delete_context_before",
         "DROP TRIGGER IF EXISTS forum_replies_deleted_update_guard",
         "DROP TRIGGER IF EXISTS forum_topics_deleted_update_guard",
         "DROP TRIGGER IF EXISTS forum_reply_body_revision_update",
@@ -129,7 +127,6 @@ pub(super) async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr
             WHERE tenant_id = NEW.tenant_id
               AND user_id = NEW.user_id;
         END"#,
-        "DROP TABLE IF EXISTS forum_hard_delete_context",
         "DROP TABLE IF EXISTS forum_reply_revisions",
         "DROP TABLE IF EXISTS forum_topic_revisions",
         "DROP INDEX IF EXISTS idx_forum_replies_tenant_topic_deleted",

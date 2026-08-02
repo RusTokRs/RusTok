@@ -13,11 +13,9 @@ pub mod constants;
 pub mod controllers;
 pub mod dto;
 pub mod entities;
-#[allow(clippy::explicit_auto_deref)]
 pub mod error;
 pub mod graphql;
 pub mod locale;
-#[allow(clippy::collapsible_if, clippy::redundant_closure)]
 pub mod mentions;
 pub mod migrations;
 mod moderation_transport;
@@ -26,11 +24,11 @@ mod notification_source;
 pub mod openapi;
 mod reply_create_transport;
 pub mod reply_read_transport;
+pub mod richtext;
 mod search_projection;
 mod search_projection_author;
 mod seo_audience_targets;
-#[path = "seo_targets.rs"]
-mod seo_targets_legacy;
+mod seo_targets;
 pub mod services;
 pub mod state_machine;
 pub mod subscription;
@@ -73,7 +71,6 @@ pub use services::{
     ForumCategoryAudienceReadService, ForumCategoryAudienceViewer,
     ForumCategoryAudienceVisibilityService, ForumCategoryModerationAudiencePolicy,
     ForumCategoryModerationAudiencePolicyLayer, ForumCategoryModerationAudiencePolicyService,
-    ForumSearchCategoryAudienceScopeService,
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
     ForumCategoryReplyCreateAudiencePolicyService, ForumCategoryTopicCreateAudiencePolicy,
     ForumCategoryTopicCreateAudiencePolicyLayer, ForumCategoryTopicCreateAudiencePolicyService,
@@ -90,17 +87,18 @@ pub use services::{
     ForumPublicDiscoveryService, ForumQuoteCommandService, ForumReadModelService,
     ForumRelationReadService, ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
     ForumReplyCreateAudienceAuthorizationService, ForumReplyCreatesWindowFactPort,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ForumSearchResultEligibilityService, ForumStorefrontReadStateService,
-    ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage, ForumTopicAudienceListService,
-    ForumTopicAudiencePage, ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService,
-    ForumTopicAudienceReadService, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
-    ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
-    ForumTopicCreatesWindowFactPort, ForumTopicReadPostingFactPort, ForumTopicReadState,
-    ForumTopicReadStateService, ForumTopicReplyCreateAudiencePolicy,
-    ForumTopicReplyCreateAudiencePolicyService, ForumTopicUnreadSummary, ForumTopicVisibilityScope,
-    ForumTopicVisibilityService, ForumUserTrustAudienceFactsPort, ForumUserTrustChange,
-    ForumUserTrustRevision, ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
+    ForumSearchCategoryAudienceScopeService, ForumSearchResultCandidate,
+    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService,
+    ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
+    ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,
+    ForumTopicAudiencePolicyService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
+    ForumTopicAudienceVisibilityService, ForumTopicCreateAudienceAuthorization,
+    ForumTopicCreateAudienceAuthorizationService, ForumTopicCreatesWindowFactPort,
+    ForumTopicReadPostingFactPort, ForumTopicReadState, ForumTopicReadStateService,
+    ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
+    ForumTopicUnreadSummary, ForumTopicVisibilityScope, ForumTopicVisibilityService,
+    ForumUserTrustAudienceFactsPort, ForumUserTrustChange, ForumUserTrustRevision,
+    ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
     ForumVisibilityScopedReadStateService, ForumWidgetContractService,
     MAX_FORUM_POSTING_POLICY_FACTS, MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
     MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,

@@ -1,15 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use rustok_api::normalize_locale_tag;
-use rustok_core::{
-    CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1, RtJsonValidationConfig,
-    normalize_content_format, validate_and_sanitize_rt_json,
-};
+use rustok_api::{RichTextDocument, RichTextNode, normalize_locale_tag};
 use rustok_profiles::{
     ProfileError, ProfileRecord, ProfileService, ProfileStatus, ProfileVisibility, ProfilesReader,
 };
 use serde::Serialize;
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
@@ -327,37 +322,14 @@ impl ForumMentionEventCandidate {
 }
 
 pub fn extract_forum_mention_candidates(
-    body: &str,
-    body_format: &str,
-    locale: &str,
+    document: &RichTextDocument,
     policy: ForumMentionPolicy,
 ) -> ForumResult<ForumMentionCandidates> {
     let policy = policy.validated()?;
-    let format = normalize_content_format(Some(body_format)).map_err(ForumError::Validation)?;
     let mut handles = BTreeSet::new();
     let mut audiences = BTreeSet::new();
-
-    match format.as_str() {
-        CONTENT_FORMAT_MARKDOWN => {
-            collect_markdown_mentions(body, policy, &mut handles, &mut audiences)?;
-        }
-        CONTENT_FORMAT_RT_JSON_V1 => {
-            let payload: Value = serde_json::from_str(body).map_err(|_| {
-                ForumError::Validation("Forum rt_json_v1 body must be valid JSON".to_string())
-            })?;
-            let sanitized = validate_and_sanitize_rt_json(
-                &payload,
-                &RtJsonValidationConfig::for_locale(locale),
-            )
-            .map_err(ForumError::Validation)?
-            .sanitized;
-            collect_rt_json_mentions(&sanitized, policy, &mut handles, &mut audiences)?;
-        }
-        _ => {
-            return Err(ForumError::Validation(
-                "Forum mentions support only markdown and rt_json_v1 content".to_string(),
-            ));
-        }
+    for node in &document.content {
+        collect_document_mentions(node, policy, &mut handles, &mut audiences)?;
     }
 
     ForumMentionCandidates::new(handles, audiences, policy)
@@ -536,88 +508,28 @@ impl ForumMentionDiff {
     }
 }
 
-fn collect_markdown_mentions(
-    body: &str,
+fn collect_document_mentions(
+    node: &RichTextNode,
     policy: ForumMentionPolicy,
     handles: &mut BTreeSet<String>,
     audiences: &mut BTreeSet<ForumMentionAudience>,
 ) -> ForumResult<()> {
-    let mut fence: Option<(u8, usize)> = None;
-    for line in body.lines() {
-        if let Some((character, length)) = fence {
-            if let Some(value) = markdown_fence(line) {
-                if value.0 == character && value.1 >= length {
-                    fence = None;
-                }
-            }
-            continue;
-        }
-        if let Some(opening) = markdown_fence(line) {
-            fence = Some(opening);
-            continue;
-        }
-        scan_text_mentions(line, true, policy, handles, audiences)?;
-    }
-    Ok(())
-}
-
-fn markdown_fence(line: &str) -> Option<(u8, usize)> {
-    let trimmed = line.trim_start();
-    let character = *trimmed.as_bytes().first()?;
-    if character != b'`' && character != b'~' {
-        return None;
-    }
-    let length = trimmed
-        .as_bytes()
-        .iter()
-        .take_while(|value| **value == character)
-        .count();
-    (length >= 3).then_some((character, length))
-}
-
-fn collect_rt_json_mentions(
-    value: &Value,
-    policy: ForumMentionPolicy,
-    handles: &mut BTreeSet<String>,
-    audiences: &mut BTreeSet<ForumMentionAudience>,
-) -> ForumResult<()> {
-    let Some(node) = value.as_object() else {
-        return Ok(());
-    };
-    let node_type = node.get("type").and_then(Value::as_str);
-    if node_type == Some("code_block") {
+    if node.kind == "codeBlock" {
         return Ok(());
     }
-    if node_type == Some("text") && !text_node_has_code_mark(node) {
-        if let Some(text) = node.get("text").and_then(Value::as_str) {
-            scan_text_mentions(text, false, policy, handles, audiences)?;
+    if node.kind == "text" && !node.marks.iter().any(|mark| mark.kind == "code") {
+        if let Some(text) = node.text.as_deref() {
+            scan_text_mentions(text, policy, handles, audiences)?;
         }
     }
-    if let Some(content) = node.get("content").and_then(Value::as_array) {
-        for child in content {
-            collect_rt_json_mentions(child, policy, handles, audiences)?;
-        }
-    }
-    if let Some(doc) = node.get("doc") {
-        collect_rt_json_mentions(doc, policy, handles, audiences)?;
+    for child in &node.content {
+        collect_document_mentions(child, policy, handles, audiences)?;
     }
     Ok(())
-}
-
-fn text_node_has_code_mark(node: &serde_json::Map<String, Value>) -> bool {
-    node.get("marks")
-        .and_then(Value::as_array)
-        .map(|marks| {
-            marks
-                .iter()
-                .any(|mark| mark.get("type").and_then(Value::as_str) == Some("code"))
-        })
-        .unwrap_or(false)
 }
 
 fn scan_text_mentions(
     text: &str,
-    skip_inline_code: bool,
     policy: ForumMentionPolicy,
     handles: &mut BTreeSet<String>,
     audiences: &mut BTreeSet<ForumMentionAudience>,
@@ -625,30 +537,6 @@ fn scan_text_mentions(
     let mut index = 0;
     while index < text.len() {
         let byte = text.as_bytes()[index];
-        if byte == b'\\' {
-            index += 1;
-            if index < text.len() {
-                index += text[index..]
-                    .chars()
-                    .next()
-                    .map(char::len_utf8)
-                    .unwrap_or(1);
-            }
-            continue;
-        }
-        if skip_inline_code && byte == b'`' {
-            let delimiter_length = text.as_bytes()[index..]
-                .iter()
-                .take_while(|value| **value == b'`')
-                .count();
-            let delimiter = "`".repeat(delimiter_length);
-            let search_start = index + delimiter_length;
-            index = text[search_start..]
-                .find(&delimiter)
-                .map(|offset| search_start + offset + delimiter_length)
-                .unwrap_or(text.len());
-            continue;
-        }
         if byte == b'@' && mention_boundary(text, index) {
             let start = index + 1;
             let end = text.as_bytes()[start..]

@@ -61,8 +61,7 @@ pub fn topic_read_audience_port_context(
 ) -> ForumResult<PortContext> {
     if tenant_id.is_nil() || auth.tenant_id != tenant_id {
         return Err(ForumError::Validation(
-            "Forum topic-read authenticated tenant does not match the requested tenant"
-                .to_string(),
+            "Forum topic-read authenticated tenant does not match the requested tenant".to_string(),
         ));
     }
 
@@ -166,7 +165,10 @@ mod tests {
         assert_eq!(context.locale, "de-DE");
         assert_eq!(context.channel.as_deref(), Some("members"));
         assert_eq!(context.deadline_ms, Some(5_000));
-        assert_eq!(context.claims, vec![Permission::FORUM_TOPICS_READ.to_string()]);
+        assert_eq!(
+            context.claims,
+            vec![Permission::FORUM_TOPICS_READ.to_string()]
+        );
         assert!(
             context
                 .correlation_id
@@ -192,7 +194,11 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(context.correlation_id.starts_with("forum-graphql-mark-read-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-graphql-mark-read-")
+        );
     }
 
     #[test]
@@ -212,7 +218,11 @@ mod tests {
         )
         .expect("trusted list context should compose");
 
-        assert!(context.correlation_id.starts_with("forum-graphql-topic-list-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-graphql-topic-list-")
+        );
         assert_eq!(context.deadline_ms, Some(5_000));
     }
 

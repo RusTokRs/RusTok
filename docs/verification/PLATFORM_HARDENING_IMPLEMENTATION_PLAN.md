@@ -9,7 +9,7 @@ status: active
 
 ## Purpose
 
-This document is the execution plan for moving RusToK from an ambitious development platform to a reproducible, production-ready platform with explicit security, tenancy, compatibility, release and scale contracts.
+This document is the execution plan for moving RusToK from an ambitious development platform to a reproducible, production-ready platform with explicit security, tenancy, external compatibility, release and scale contracts. It also owns the repository-wide canonical-code cleanup track: internal versions, compatibility layers, suppressed dead code, placeholders, and duplicate implementations are removed rather than promoted into permanent architecture.
 
 The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-18 after completing the typed tenant profile, cross-transport tenant isolation coverage, bounded CSP violation collection, server-hosted and standalone script/style-element nonce enforcement, production WSS-only browser connections, zeroing the Rust-hosted and Next/React inline-style baselines, protecting the classic admin bootstrap, removing runtime style generation from the reviewed Next roots and completing dependency feature cleanup.
 
@@ -21,6 +21,10 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 2. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
 3. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
 4. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
+5. Several source verifiers positively require legacy modules, deprecated methods, dual delivery, compatibility fallbacks, or `#[allow(dead_code)]`. These checks preserve the defect they were intended to monitor.
+6. Repository-owned modules maintain internal contract-version families in manifests, evidence, storage envelopes, routes, and generated parity checks even though there is only one current implementation and no released internal consumer to protect.
+7. A broad production-source scan found 151 `#[allow(dead_code)]` attributes across 66 files. The largest clusters correspond to incomplete transport, owner, and UI wiring rather than unavoidable compiler blind spots.
+8. Some default production compositions use no-op publishers, activation hooks, telemetry, or persistence adapters while reporting successful completion. These are functional gaps, not harmless test doubles.
 
 ### Findings closed or materially reduced
 
@@ -72,6 +76,9 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 - Every exception must have an owner, rationale, compensating control and expiry date.
 - Every public performance claim must be backed by a reproducible benchmark specification and archived result.
 - A feature is not complete until its supported Rust, Next.js and mobile surfaces have compatibility evidence.
+- Compatibility in this plan means an independently deployed public, wire, provider, package-release, or immutable published-migration boundary. It never authorizes two implementations for repository-owned callers.
+- A repository-owned contract changes in place: update every caller and its data atomically, then delete the replaced name, format, route, adapter, verifier marker, and current documentation.
+- Static/source evidence may describe an incomplete boundary, but it cannot promote a placeholder to runtime-ready status or require a suppression, no-op, or legacy path as proof of completion.
 - Direct pushes to `main` are temporary for the initial stabilization batch only. After Phase 0, protected-branch required checks become mandatory.
 
 ## Priority Model
@@ -82,6 +89,318 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 | P1 | Production reliability, release integrity, missing required test gate, contract drift | Complete before production-ready declaration |
 | P2 | Enterprise operations, compliance evidence, resilience, performance regression prevention | Complete before enterprise support |
 | P3 | Hyper-scale isolation, regional topology, workload extraction and advanced automation | Execute after stable production baselines |
+
+## Canonical Code Cleanup Track
+
+### Outcome
+
+RusToK keeps one canonical, unversioned implementation for every repository-owned
+contract. A cutover updates code, data, callers, transports, tests, fixtures,
+evidence, scripts, and current documentation in the same slice. The replaced
+implementation is deleted; it is not renamed to `legacy`, hidden behind a
+facade, retained as a fallback, or protected by a source-marker verifier.
+
+This track implements the repository-wide zero-legacy and no-stub policy in
+[`AGENTS.md`](../../AGENTS.md). It does not remove real business revisions, optimistic concurrency,
+published module releases, or independently deployed wire protocols.
+
+### Audit baseline (2026-08-01)
+
+The following numbers are discovery inputs, not debt baselines that may remain:
+
+| Candidate surface | Snapshot | Interpretation |
+|---|---:|---|
+| Production Rust files with `#[allow(dead_code)]` | 66 files / 151 attributes | Every occurrence requires wire-or-delete review; no module-wide allowance is acceptable. |
+| `rustok-module.toml` files with one or more contract-version fields | 31 | Most describe repository-owned FBA relationships and must become canonical identities rather than compatibility ranges. |
+| JSON files with `contract_version` | 87 | Classify by actual deployment boundary; internal registry/evidence versions are cleanup scope. |
+| JSON files with `schema_version` | 398 | Not 398 automatic defects. Wire/event/import formats may retain a boundary version; fixed current-only evidence and storage envelopes may not. |
+| FBA registries containing `remote_adapter_placeholder` | 29 | A placeholder is not runtime evidence. Twenty-two of these registries also claim `boundary_ready`. |
+| Suspicious version/legacy/compatibility filenames | 49 | Includes executable debt, negative tests, documentation, and migration history; each needs classification before rename or deletion. |
+| Removed RT JSON family | Forum runtime/UI/storage references are removed | Obsolete shared validator/migration code and remaining current guidance are still cleanup scope; no owner may add a new caller. |
+| `grapesjs_v1` | 11 matches in 8 files | Input alias and stale contract wording; canonical format is `grapesjs`. |
+| `/api/v1/flex` | 21 matches in 4 files | Public-looking but no independent consumer evidence found; boundary proof is required or the route becomes `/api/flex`. |
+| `/v2/catalog` | 195 matches in 26 files | Retained external registry protocol, not an internal route family; see the retained-boundary table below. |
+
+The identifier scan also found 69 distinct `_vN` spellings after excluding
+`Uuid::new_v4`. Some are external model names, migrations, or wire formats; the
+rest include live Product Index V1/V2 branches, Page Builder formats, Index job
+envelopes, cache namespaces, idempotency strings, and internal evidence packet
+identities. No production `todo!()` or `unimplemented!()` implementation was
+found; the five textual matches are negative fixture strings in `xtask` tests.
+This does not clear behavioral no-ops, which require composition tests.
+
+The existing `node scripts/verify/verify-api-compatibility-contract.mjs` check
+currently fails because `.github/workflows/api-compatibility.yml` no longer
+contains the literal `api-breaking-approved` marker required by the verifier.
+No workflow file is changed by this planning update. Wave 0 must reconcile the
+workflow, approval helper, and structure verifier as one actual policy contract.
+
+### Classification gate
+
+| Classification | Decision rule | Required action |
+|---|---|---|
+| Internal current-only contract | Every producer and consumer is repository-owned, or only one parser/current implementation exists. | Remove the version field/suffix/range, update data and callers atomically, and retain one canonical name. |
+| Internal old/new bridge | Dual read/write/publish, retry-to-old transport, deprecated alias, compatibility re-export, shim, or wrapper delegates to a replaced implementation. | Complete the canonical path and delete the bridge in the same slice. |
+| Missing functionality | Code is unused, suppressed, no-op, fake, placeholder, or represented only by static evidence. | Wire observable behavior with runtime tests or delete the capability and mark it incomplete. |
+| Independent external boundary | A separately deployed public API, worker, event consumer, provider, or published package/migration demonstrably consumes the identity. | Keep the version only at ingress/egress, record owner and evidence, and map immediately to one unversioned internal model. |
+| Domain revision | Entity revision, optimistic-lock token, source sequence, workflow revision, cache generation, or release artifact version is business state rather than an implementation family. | Keep the semantic name and tests; do not classify it by regex alone. |
+| Historical evidence | An ADR, published migration identity, or externally relevant audit artifact must remain immutable. | Keep it outside executable/current guidance and link to the canonical current contract. |
+
+If external-consumer evidence is absent, the default classification is internal.
+An exception register must never become a list of repository debt or a numeric
+"no-regression" baseline.
+
+### Retained and pending boundary decisions
+
+| Surface | Decision | Reason and constraint |
+|---|---|---|
+| Registry `/v2/catalog/*` and its wire `schema_version` | Retain | `modules.rustok.dev`, `xtask`, and remote validation runners are independently deployed; the [Registry V2 ADR](../../DECISIONS/2026-04-19-registry-v2-clean-contract-without-runtime-compat.md) fixes the clean external protocol. There is no V1 runtime branch, and handlers must map to one canonical principal/governance model. |
+| Stripe `/v1/*`, Vault/Kubernetes/Google paths, and third-party model names such as `all-minilm-l6-v2` | Retain | Provider-owned identity; never rename or emulate it internally. |
+| Event/outbox schema versions consumed by independently deployed processes | Retain at wire boundary | One typed event is allowed. Dual legacy-plus-typed publication and adapter-to-legacy ingress are not. |
+| Cargo/npm/package SemVer and installable registry release versions | Retain | These identify released artifacts, not parallel internal code. |
+| Immutable published migration order | Retain only with publication evidence | Unreleased corrective migrations are consolidated into the canonical create/cutover migration. |
+| `/api/v1/flex/*` | Proof required in Wave 0 | Keep only if an independent deployed consumer is identified; otherwise cut over atomically to `/api/flex/*`. Do not create `/v2`. |
+| `payment-provider-webhook-v1.json` | Proof required in Wave 0 | Provider payload versions may exist at ingress, but the provider-neutral normalized RusToK model and its repository contract should be unversioned. |
+| Translation interchange, Channel policy schema, Index job envelopes, and Page Builder static artifacts | Proof required in Wave 0 | Retain a version only for a real exchanged/published artifact. Internal DB jobs, cache entries, and evidence files use the one canonical typed shape. |
+
+### Self-preserving verifier blockers
+
+These are P0 cleanup blockers because the verifier currently rewards the
+obsolete implementation. Each verifier changes only after its associated
+runtime cutover is complete, and then must reject reintroduction of the old
+path.
+
+| Owner slice | Positive legacy evidence | Canonical replacement |
+|---|---|---|
+| Forum richtext | Resolved 2026-08-01: the verifier now requires canonical document writes and rejects the deleted adapter and format strings. | Keep Next/Leptos on the shared frame and `RichTextDocument`/`RichTextView`; do not restore a format adapter. |
+| Profiles through Forum | `verify-forum-search-profile-legacy-mutation-deprecation.mjs` requires seven deprecated methods and an `allow(deprecated)`. | Verify event-atomic `ProfileMutationService`; delete old mutators, contract, and deprecation document. |
+| Search | `verify-forum-search-rebuild-scope-preservation.mjs` requires `projector_legacy.rs`, its private module, and `allow(dead_code)`. | Move the required SQL/scope behavior into one `SearchProjector`; forbid the old file/module. |
+| Inventory/Checkout | `verify-inventory-availability-quantity-context.mjs` uses `#[allow(dead_code)]` as a source boundary and requires the old checkout composition. | Verify selected staged checkout plus identity-based inventory owner port through observable behavior. |
+| Groups | Groups access/application verifiers require `LegacyGroupsService`, `self.legacy`, three legacy modules, and `include!("applications_legacy.rs")`. | Move remaining behavior into one `GroupsService` and canonical applications/invitations owners; verify lifecycle state. |
+| SEO | Bulk/diagnostics verifiers require legacy includes; diagnostics additionally pins the exact old source hash. | Verify bounded batch behavior and one diagnostics implementation; forbid old includes/files. |
+| Product admin | Primary-read/fallback verifiers require an aliased legacy executor and retry-to-GraphQL mutations. | Select exactly one configured transport per call while keeping native and GraphQL surfaces in parity; no runtime old-path retry. |
+| Commerce/Order | Checkout/read verifiers require private legacy includes, retained completion code, or unmounted compatibility handlers. | Verify durable staged checkout and typed owner read/write ports; delete retained sources and handlers. |
+| Forum Search events | Wire/publisher contracts require legacy root publication before the typed event. | Retain one versioned external event, delete dual publication, legacy ingress, and proof packets for the bridge. |
+
+### Confirmed implementation clusters
+
+| ID | Priority | Scope and evidence | Canonical end state |
+|---|---|---|---|
+| `CLEAN-001` | P0 | `disableUser` remains in the server schema, a parsing extension rejects it, and Next Admin still invokes it. | Next Admin uses `updateUser(status: INACTIVE)`; remove `disableUser`, `LegacyDisableUserPolicy`, security enum markers, tests, and current docs. |
+| `CLEAN-002` | P0 | Build defaults use no-op event publication/activation in production compositions; Page Builder has default no-op telemetry/scenario persistence. | Required operations receive real adapters and observable tests, or the unsupported capability is removed/explicitly disabled rather than reporting success. |
+| `CLEAN-010` | P0 | Forum owner cutover is complete: storage/transports/Next/Leptos use one canonical document, lifecycle deletion no longer mutates content, and stale positive verifier markers are removed. Obsolete shared helpers and migration tooling remain repository cleanup scope. | Delete the remaining `rustok-core::rt_json`/generic format helpers and obsolete migration binary/script after their remaining repository-owned callers are cut over; keep the Forum boundary target-only. |
+| `CLEAN-011` | P0 | Forum admin retries GraphQL reads through REST and suppresses whole transport modules. | Native `#[server]` is the selected Leptos path, GraphQL remains the parallel headless/CSR contract, and no request retries through a compatibility adapter. |
+| `CLEAN-020` | P1 | Product persists `VirtualCategoryRuleV1` with `{version:1}` and registers Product/Variant Index V1 and V2 simultaneously. | Keep the currently richer field/link behavior under `VirtualCategoryRule`, `product_schema`, and `product_variant_schema`; remove the envelope/version branch, rebuild pre-release projections, and register one current schema. Generic Index wire schema capability remains boundary-owned. |
+| `CLEAN-021` | P1 | Product admin aliases `transport.rs` as `legacy`, uses native-then-GraphQL fallback, and has eleven fallback mutation files. Product `richtext` attributes are plain textarea strings. | One owner facade selects one transport by host/build policy, both intentional transports reach parity, and aliased/fallback files disappear. Either implement shared richtext for the attribute kind on both hosts or remove the kind. |
+| `CLEAN-030` | P1 | Deprecated identity-less Inventory reservation methods, quantity fallback reads, Pricing decimal-plus-cent dual writes, and seven Profiles mutators remain. | Keep identity reservation, inventory levels, decimal prices, and event-atomic profile mutations. Update callers/data first, then delete old ports, columns, fallbacks, methods, and suppressions. |
+| `CLEAN-040` | P1 | Search projector wrapper, SEO bounded/unbounded generations, and Groups effective/legacy service families execute in parallel. | Consolidate each owner into one named implementation while preserving bounded reads, scope/ACL behavior, and lifecycle invariants in runtime tests. |
+| `CLEAN-050` | P1 | Commerce/Cart/Order contain hardened/legacy financial paths, journaled/legacy fulfillment, mounted/retained storefront checkout, source shims, metadata identity adoption, and duplicate cart guards. | Keep durable staged checkout, typed owner ports, journaled operations, mandatory identities, and one GraphQL owner route; remove shims, metadata adoption, retained completion, and duplicate guards. |
+| `CLEAN-051` | P1 | Cart storefront and Commerce admin each maintain separate normal and `_ssr` native adapter files with large divergent implementations. | One native adapter per package with narrow `cfg` sections and shared mapping/error code. |
+| `CLEAN-060` | P1 | Auth SSR mirrors LocalStorage into versioned browser cookies; standalone Admin accepts `x-fly-access-token`; `leptos-auth::api` re-exports `transport`. | Server-issued HttpOnly session lifecycle, canonical bearer/session context, direct `leptos_auth::transport` callers, and no browser compatibility token/cookie bridge. |
+| `CLEAN-061` | P1 | Workflow list is module-owned while host detail/create/edit code remains duplicated; UI links to a nonexistent old edit route. | `rustok-workflow/admin` owns the full Leptos workflow route family; host duplicates and old links are deleted; the Next owner package remains the sibling adapter. |
+| `CLEAN-062` | P1 | Next Admin exports an unused faker-backed production mock database; Notifications exports an unused degraded legacy state. | Delete shipped fakes/sentinels and unused dependencies/types. Tests keep isolated fixtures only. |
+| `CLEAN-063` | P1 | Rust Storefront accepts legacy `?lang=` routing and tests/docs preserve it. | Host/server effective locale plus canonical locale path only; delete query parsing and redirect propagation atomically. |
+| `CLEAN-070` | P1 | Repository-owned FBA manifests use compatibility families such as `cart.checkout.v2`, `marketplace.family.v3`, version ranges, and compound `*.v1+*.v1` strings. | One unversioned capability/port identity in manifests, DTOs, GraphQL, registries, health evidence, and verifiers. Package/release SemVer remains separate. |
+| `CLEAN-071` | P1 | Eight owner contracts have `-v1`/`-v2` filenames and internal IDs; Page Builder/Pages use `*_v1`, a lone sanitization V2, version ranges, browser keys, and the `grapesjs_v1` alias. | Rename files and IDs atomically with every registry/test/doc reference; remove current-only format/version fields and browser keys; use `grapesjs`. No alias files or redirects. |
+| `CLEAN-072` | P1 | Index replay/reconciliation/partition/evidence tools create a large current-only `*_v1` family; moderation stores an internal V1 effect envelope; Pages/SEO cache and operation labels are suffixed. | One typed unversioned internal representation per job/effect/evidence/cache contract. Preserve only proven independently deployed wire identity and historical retained evidence. |
+| `CLEAN-080` | P1 | Registry accepts legacy scalar/invalid principals; AI invents legacy resolver config; MCP combines legacy tool filtering with current authorization. | Migrate rows/configuration, require typed principals and canonical security configuration, and keep one fail-closed access policy. Registry external V2 wire identity stays unchanged. |
+| `CLEAN-081` | P1 | `rustok-core::events` re-exports contract types from `rustok-events`; `leptos-auth::api` is a compatibility export; the old/new error transition wraps both directions. | Callers import contract types from their owner, runtime types remain with their actual owner, and one domain-to-transport error mapping replaces compatibility re-exports/wrappers. |
+| `CLEAN-090` | P1 | Twenty-nine FBA registries advertise `remote_adapter_placeholder`; twenty-two simultaneously claim `boundary_ready` under a temporary static-promotion rule. | Remove placeholder entries from required matrices or implement and test real adapters; downgrade unsupported statuses and remove the temporary promotion rule. |
+| `CLEAN-100` | P1 | 151 dead-code suppressions span server, `xtask`, SEO, Search, Forum, Product, Commerce, Inventory, and other UI packages. | Resolve each occurrence by wiring, deletion, `cfg(test)`, or the narrowly documented external-symbol `expect` exception. Final count for repository-owned production code is zero. |
+
+The version-suffixed owner-contract files in `CLEAN-071` are:
+
+- `marketplace-reversal-recovery-v1.json`;
+- `fulfillment-checkout-execution-v1.json`;
+- `financial-orchestration-v2.json`;
+- `seller-balance-transfer-v1.json`;
+- `order-checkout-compensation-v1.json`;
+- `order-checkout-payment-settlement-v1.json`;
+- `payment-checkout-compensation-v1.json`;
+- `payment-checkout-execution-v1.json`.
+
+`payment-provider-webhook-v1.json` remains in the Wave 0 boundary-proof queue
+rather than being silently grouped with either outcome.
+
+### Execution waves
+
+#### Wave 0 - Freeze the rule and restore truthful status
+
+1. Record an ADR that distinguishes internal current contracts from independently
+   deployed versioned boundaries and links the accepted Registry V2 decision.
+2. Complete the pending boundary decisions above. Each retained boundary needs
+   an owner, actual consumer/deployment evidence, and the exact internal mapping.
+3. Keep `docs/api/compatibility-exceptions.json` and API-diff guidance aligned so
+   a pre-release breaking change is approved as an atomic cutover, never by adding
+   an internal V2 or permanent exception. The register wording is already aligned;
+   workflow/comparator semantics and the currently failing structure check remain
+   part of the implementation slice.
+4. Remove the temporary static `boundary_ready` promotion rule. Downgrade entries
+   supported only by source markers and remove `remote_adapter_placeholder` from
+   required runtime matrices unless the adapter is implemented in the same slice.
+5. Keep the strengthened root and frontend agent rules as the immediate guard.
+   Do not introduce a debt-count baseline while cleanup is in progress.
+
+#### Wave 1 - Remove broken and fake success paths
+
+1. Execute `CLEAN-001` so the visible user-deactivation action works through the
+   canonical mutation before deleting the tombstone mutation and rejection layer.
+2. Execute `CLEAN-002` for Build and Page Builder default compositions.
+3. Delete the production Next mock API and Notifications degraded sentinel from
+   `CLEAN-062`.
+4. Replace associated source-marker tests with observable failure/success tests.
+
+#### Wave 2 - Complete Forum and richtext
+
+1. Execute `CLEAN-010` and `CLEAN-011` as the Forum owner slice defined by the
+   richtext plan: backend/data first, then Next and Leptos authoring/read parity.
+2. Convert mentions, deletion lifecycle, revisions, Search/Index projections,
+   orchestration, and fixtures before deleting the old envelope.
+3. Remove legacy Forum/Profile verifier contracts and retain one typed Search
+   invalidation wire event without dual publication.
+4. Delete obsolete current docs only after data and runtime verification pass.
+
+#### Wave 3 - Remove internal data/model generations
+
+1. Execute `CLEAN-020` for virtual categories and Product Index, including a
+   deterministic projection rebuild.
+2. Execute `CLEAN-030` in order: Inventory identity callers, inventory read model,
+   Pricing decimal persistence, then Profiles mutations.
+3. Run PostgreSQL apply-from-zero and incremental migration smoke plus owner
+   concurrency/idempotency tests. Do not mutate an operator database implicitly.
+
+#### Wave 4 - Consolidate owner implementations
+
+1. Consolidate Search, then SEO, then Groups under `CLEAN-040`.
+2. Execute Product admin `CLEAN-021` after the Product data contract is singular.
+3. For every owner, move required behavior first, run runtime tests, delete the old
+   file/module, and invert its verifier to reject reintroduction in the same change.
+
+#### Wave 5 - Checkout and frontend ownership
+
+1. Execute `CLEAN-050` in dependency order: Order identity, Inventory identity,
+   Cart guard, Fulfillment/financial journals, Commerce staged checkout, GraphQL.
+2. Consolidate duplicate native adapter files through `CLEAN-051`.
+3. Complete Auth, Workflow, locale routing, alias fields, and misleading UI states
+   through `CLEAN-060`, `CLEAN-061`, and `CLEAN-063`.
+
+#### Wave 6 - Remove the internal compatibility system
+
+1. Execute `CLEAN-070` across manifests, manifest validators, FBA registries,
+   health evidence, DTOs, GraphQL fields, and module docs atomically by capability
+   family; do not leave version aliases between slices.
+2. Execute Page Builder/Pages and owner-contract rename work in `CLEAN-071`.
+3. Execute Index, moderation, cache, operation, and evidence identities in
+   `CLEAN-072`, preserving only boundaries approved in Wave 0.
+
+#### Wave 7 - Foundation and security bridges
+
+1. Execute `CLEAN-080`: registry principal data migration, AI configuration, and
+   MCP access policy.
+2. Execute `CLEAN-081`: event contract imports, auth export removal, and error
+   ownership. This is a graph-wide caller cutover, not a compatibility-release task.
+
+#### Wave 8 - Suppressions, migrations, documentation, and final gate
+
+1. Resolve the remaining `CLEAN-100` inventory owner by owner. Test-only helpers
+   use `cfg(test)`; Serde fields are validated/consumed or removed; target-specific
+   code uses correct `cfg` structure.
+2. Consolidate unreleased corrective migrations after proving no published history.
+   Preserve an immutable migration identity only with explicit external evidence.
+3. Delete superseded implementation documents, contracts, fixtures, proof packets,
+   and current guidance. Update every affected module plan, the implementation-plan
+   registry, the FFA/FBA readiness board, and this central ledger.
+4. Add one strict cross-platform `xtask` canonical-code check only after cleanup.
+   It must have no debt-count baseline and may recognize only the exact retained
+   external-boundary categories above.
+
+### Per-slice acceptance contract
+
+Every implementation slice is complete only when all of the following hold:
+
+1. The canonical owner and survivor are named before edits begin.
+2. Every repository-owned caller, transport, DTO/schema, persisted row, migration,
+   seed, fixture, test, verifier, evidence file, and current document is updated.
+3. The old file, symbol, route, field, format, adapter, re-export, and fallback are
+   deleted in the same change; no deprecated alias or dual read/write/publish remains.
+4. Native Leptos and parallel GraphQL/headless surfaces remain intentional parity,
+   but a request selects exactly one path rather than retrying through an old path.
+5. Behavior is verified at the narrowest real boundary. Source-marker checks may
+   supplement runtime evidence but may not declare functionality complete.
+6. Targeted forbidden-name searches return no executable/current-guidance matches.
+   Any retained hit is identified as an approved external boundary or historical
+   artifact, never ignored because it existed before the slice.
+7. Local module documentation, central registry/readiness, and `docs/index.md` are
+   synchronized where ownership, transport, API, or UI status changed.
+
+### Verification strategy
+
+Start each slice with targeted owner checks, for example:
+
+```powershell
+cargo fmt --all -- --check
+cargo xtask module validate <slug>
+cargo xtask module test <slug>
+cargo test -p <owner-crate>
+node scripts/verify/<owner-check>.mjs
+git diff --check
+```
+
+Data or migration slices additionally run the existing PostgreSQL migration smoke
+from zero and incrementally, followed by owner-specific concurrency, replay, and
+idempotency tests. Frontend slices run the affected Next tests/build plus Leptos
+SSR/hydrate checks and browser evidence where editor/session behavior changes.
+
+The final gate will be exposed as:
+
+```powershell
+cargo xtask validate-canonical-code
+cargo xtask validate-manifest
+cargo clippy --workspace --all-targets --no-deps -- -D warnings
+cargo nextest run --workspace --all-targets --all-features
+```
+
+`validate-canonical-code` must reject internal version suffixes/routes/envelopes,
+legacy/compatibility implementation names, deprecated repository aliases, broad
+dead/unused suppressions, positive legacy verifier markers, production stubs/fakes,
+and required placeholder readiness. It must distinguish UUIDs, revisions, SemVer,
+external provider identities, published migrations, and approved wire boundaries
+structurally rather than through a broad text allowlist.
+
+### Exit criteria
+
+- Repository-owned runtime/API/storage/FBA contracts have one unversioned current
+  identity and one implementation.
+- No runtime dual read/write/publish, retry-to-old transport, deprecated alias,
+  compatibility re-export, legacy shim, or source include remains.
+- `rt_json_v1`, `rt_json_v2`, `grapesjs_v1`, `VirtualCategoryRuleV1`, Product/Variant
+  V1/V2 branches, and current-only Page Builder/Index/evidence version families are
+  absent from executable code and current documentation.
+- Repository-owned production code has no `allow(dead_code)`, broad `allow(unused*)`,
+  or `allow(deprecated)`. Any compiler-blind external symbol uses the smallest
+  `expect(..., reason = "...")` plus an entry-path test.
+- No production operation succeeds through a no-op publisher, activation hook,
+  persistence adapter, fake database, or degraded sentinel.
+- FBA readiness is backed by compiled/live behavior; required matrices contain no
+  `remote_adapter_placeholder`.
+- No verifier positively requires a removed path or suppression.
+- Fresh and incremental PostgreSQL migration checks pass, and no corrective
+  pre-release migration remains without a publication-history reason.
+- Remaining version identifiers are exactly the reviewed external/domain/historical
+  categories in this plan and map to one canonical internal model.
+
+### Cleanup progress ledger
+
+| Item | Status | Evidence / next action |
+|---|---|---|
+| Zero-legacy, no-internal-version, and no-stub agent rules | Completed in working tree | Root `AGENTS.md` plus all four frontend `AI_AGENT_RULES.md`. |
+| Cross-repository discovery audit | Completed | Baseline and confirmed clusters in this section, 2026-08-01. |
+| API compatibility exception wording | Completed in working tree | `docs/api/compatibility-exceptions.json` now requires atomic pre-release cutover and forbids internal version families/compatibility layers. |
+| API compatibility workflow/verifier structure | Open | `verify-api-compatibility-contract.mjs` currently fails on the missing `api-breaking-approved` workflow marker; reconcile only with an explicitly authorized CI-policy change. |
+| External-boundary proof review | In progress | Registry V2 and provider identities classified; Flex, normalized payment webhook, interchange/policy, Index jobs, and Page Builder artifacts remain. |
+| Wave 1 | Not started | Begin with `CLEAN-001`, then real Build/Page Builder composition. |
+| Wave 2 | Not started | Resume the existing Forum/richtext owner plan. |
+| Waves 3-8 | Not started | Execute only after prerequisite owner/data cuts above. |
 
 ## Phase 0 — Baseline and Trust Restoration
 

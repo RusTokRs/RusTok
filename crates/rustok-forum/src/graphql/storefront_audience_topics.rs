@@ -133,8 +133,8 @@ async fn require_public_forum_channel_enabled(ctx: &Context<'_>) -> Result<()> {
     }
 }
 
-fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopic {
-    GqlForumTopic {
+fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopicListItem {
+    GqlForumTopicListItem {
         id: topic.id,
         requested_locale: topic.requested_locale,
         locale: topic.locale,
@@ -145,12 +145,8 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopic {
         author_profile: None,
         title: topic.title,
         slug: topic.slug,
-        body: String::new(),
-        body_format: "markdown".to_string(),
-        content_json: None,
         metadata: topic.metadata,
         status: topic.status,
-        tags: Vec::new(),
         channel_slugs: topic.channel_slugs,
         vote_score: topic.vote_score,
         current_user_vote: topic.current_user_vote,
@@ -160,6 +156,5 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopic {
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
         created_at: topic.created_at,
-        updated_at: String::new(),
     }
 }

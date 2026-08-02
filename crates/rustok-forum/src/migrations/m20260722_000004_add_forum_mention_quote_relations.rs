@@ -268,52 +268,6 @@ CREATE TRIGGER forum_quotes_immutable_guard
 BEFORE UPDATE ON forum_quotes
 FOR EACH ROW
 EXECUTE FUNCTION forum_reject_relation_update();
-
-INSERT INTO forum_relation_revisions (
-    tenant_id,
-    target_kind,
-    target_id,
-    locale,
-    projection_fingerprint
-)
-SELECT
-    translation.tenant_id,
-    'topic',
-    translation.topic_id,
-    translation.locale,
-    'legacy'
-FROM forum_topic_translations translation
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM forum_relation_revisions revision
-    WHERE revision.tenant_id = translation.tenant_id
-      AND revision.target_kind = 'topic'
-      AND revision.target_id = translation.topic_id
-      AND revision.locale = translation.locale
-);
-
-INSERT INTO forum_relation_revisions (
-    tenant_id,
-    target_kind,
-    target_id,
-    locale,
-    projection_fingerprint
-)
-SELECT
-    body.tenant_id,
-    'reply',
-    body.reply_id,
-    body.locale,
-    'legacy'
-FROM forum_reply_bodies body
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM forum_relation_revisions revision
-    WHERE revision.tenant_id = body.tenant_id
-      AND revision.target_kind = 'reply'
-      AND revision.target_id = body.reply_id
-      AND revision.locale = body.locale
-);
 "#,
         )
         .await?;
@@ -529,40 +483,6 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             BEGIN
                 SELECT RAISE(ABORT, 'forum relation projections are immutable');
             END"#,
-        r#"INSERT INTO forum_relation_revisions (
-                tenant_id, target_kind, target_id, locale, projection_fingerprint
-            )
-            SELECT
-                translation.tenant_id,
-                'topic',
-                translation.topic_id,
-                translation.locale,
-                'legacy'
-            FROM forum_topic_translations translation
-            WHERE NOT EXISTS (
-                SELECT 1 FROM forum_relation_revisions revision
-                WHERE revision.tenant_id = translation.tenant_id
-                  AND revision.target_kind = 'topic'
-                  AND revision.target_id = translation.topic_id
-                  AND revision.locale = translation.locale
-            )"#,
-        r#"INSERT INTO forum_relation_revisions (
-                tenant_id, target_kind, target_id, locale, projection_fingerprint
-            )
-            SELECT
-                body.tenant_id,
-                'reply',
-                body.reply_id,
-                body.locale,
-                'legacy'
-            FROM forum_reply_bodies body
-            WHERE NOT EXISTS (
-                SELECT 1 FROM forum_relation_revisions revision
-                WHERE revision.tenant_id = body.tenant_id
-                  AND revision.target_kind = 'reply'
-                  AND revision.target_id = body.reply_id
-                  AND revision.locale = body.locale
-            )"#,
     ] {
         connection.execute_unprepared(statement).await?;
     }

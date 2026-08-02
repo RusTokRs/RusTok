@@ -93,6 +93,7 @@ for (const sourcePath of [shimPath, writerPath]) {
 
 if (shimPath && existsSync(repoPath(shimPath))) {
   const shim = readRepo(shimPath);
+  const productionShim = shim.split('#[cfg(test)]', 1)[0];
   const reexport = shim.match(/pub use rustok_blog_owner::\{([\s\S]*?)\};/);
   if (!reexport) {
     fail(`${shimPath}: missing rustok_blog_owner re-export`);
@@ -109,7 +110,7 @@ if (shimPath && existsSync(repoPath(shimPath))) {
     }
   }
   for (const forbidden of evidence.shim?.forbidden_reexports ?? []) {
-    if (new RegExp(`\\b${forbidden}\\b`).test(shim)) {
+    if (new RegExp(`\\b${forbidden}\\b`).test(productionShim)) {
       fail(`${shimPath}: forbidden owner re-export ${forbidden}`);
     }
   }
@@ -117,11 +118,12 @@ if (shimPath && existsSync(repoPath(shimPath))) {
 
 if (writerPath && existsSync(repoPath(writerPath))) {
   const writer = readRepo(writerPath);
+  const productionWriter = writer.split('#[cfg(test)]', 1)[0];
   for (const marker of evidence.writer?.required_markers ?? []) {
-    assertContains(writer, marker, `${writerPath}: canonical AI Blog draft writer`);
+    assertContains(productionWriter, marker, `${writerPath}: canonical AI Blog draft writer`);
   }
   for (const marker of evidence.writer?.forbidden_markers ?? []) {
-    assertNotContains(writer, marker, `${writerPath}: canonical AI Blog draft writer`);
+    assertNotContains(productionWriter, marker, `${writerPath}: canonical AI Blog draft writer`);
   }
 }
 
@@ -182,7 +184,7 @@ if (
 const registry = readJson(registryPath);
 const gate = registry.verification_chain?.source_gates?.ai_richtext_boundary;
 if (
-  registry.schema_version !== 6 ||
+  registry.schema_version !== 13 ||
   gate?.package_script !== 'verify:blog:ai-richtext-boundary' ||
   gate?.test_package_script !== 'test:verify:blog:ai-richtext-boundary' ||
   gate?.verifier !== 'scripts/verify/verify-blog-ai-richtext-boundary.mjs' ||

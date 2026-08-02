@@ -97,9 +97,9 @@ async fn notification_target_open_uses_exact_recipient_role_for_topics_and_repli
                 category_id: category.id,
                 title: "Recipient-specific target".into(),
                 slug: Some("recipient-specific-target".into()),
-                body: "Notification target-open authorization must use the exact recipient.".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Notification target-open authorization must use the exact recipient.",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -114,9 +114,9 @@ async fn notification_target_open_uses_exact_recipient_role_for_topics_and_repli
             topic.id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Recipient-specific reply target".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(
+                    "Recipient-specific reply target",
+                ),
                 parent_reply_id: None,
             },
         )

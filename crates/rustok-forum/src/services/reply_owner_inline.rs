@@ -12,14 +12,8 @@ impl ReplyService {
         let (input, quote_inputs) = input.into_parts();
         enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
         let locale = normalize_locale(&input.locale)?;
-        let prepared_body = prepare_content_payload(
-            Some(&input.content_format),
-            Some(&input.content),
-            input.content_json.as_ref(),
-            &locale,
-            "Reply content",
-        )
-        .map_err(ForumError::Validation)?;
+        let document = crate::richtext::normalize_discussion(input.content)?;
+        let stored_body = crate::richtext::serialize_discussion(document.clone())?;
         let reply_id = Uuid::new_v4();
         let quotes = super::relation_quote_input::normalize_quote_inputs(quote_inputs)?;
         let prepared_relations = self
@@ -28,8 +22,7 @@ impl ReplyService {
                 tenant_id,
                 ForumContentTarget::reply(reply_id),
                 &locale,
-                &prepared_body.body,
-                &prepared_body.format,
+                &document,
                 &security,
                 quotes,
             )
@@ -91,8 +84,7 @@ impl ReplyService {
             reply_id: Set(reply_id),
             tenant_id: Set(tenant_id),
             locale: Set(locale.clone()),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
+            body: Set(stored_body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }

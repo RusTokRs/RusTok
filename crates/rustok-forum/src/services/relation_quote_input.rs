@@ -166,27 +166,37 @@ async fn lock_active_source_in_tx(
     };
     let found = match txn.get_database_backend() {
         DbBackend::Sqlite => {
-            txn.execute(Statement::from_string(
+            txn.execute(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 format!(
-                    "UPDATE {table} SET updated_at = updated_at WHERE tenant_id = '{tenant_id}' AND {id_column} = '{}' AND deleted_at IS NULL",
-                    source.id()
+                    "UPDATE {table} SET updated_at = updated_at \
+                     WHERE tenant_id = ? AND {id_column} = ? AND deleted_at IS NULL"
                 ),
+                [tenant_id.into(), source.id().into()],
             ))
             .await?
             .rows_affected()
                 == 1
         }
-        DbBackend::Postgres | DbBackend::MySql => txn
-            .query_one(Statement::from_string(
-                txn.get_database_backend(),
+        backend @ (DbBackend::Postgres | DbBackend::MySql) => {
+            let placeholders = if backend == DbBackend::Postgres {
+                ("$1", "$2")
+            } else {
+                ("?", "?")
+            };
+            txn.query_one(Statement::from_sql_and_values(
+                backend,
                 format!(
-                    "SELECT {id_column} FROM {table} WHERE tenant_id = '{tenant_id}' AND {id_column} = '{}' AND deleted_at IS NULL FOR UPDATE",
-                    source.id()
+                    "SELECT {id_column} FROM {table} \
+                     WHERE tenant_id = {} AND {id_column} = {} \
+                       AND deleted_at IS NULL FOR UPDATE",
+                    placeholders.0, placeholders.1
                 ),
+                [tenant_id.into(), source.id().into()],
             ))
             .await?
-            .is_some(),
+            .is_some()
+        }
     };
     if !found {
         return Err(deleted_error);

@@ -12,14 +12,8 @@ impl TopicService {
         validate_topic_title(&input.title)?;
         let locale = normalize_locale(&input.locale)?;
         let normalized_tags = normalize_tags(&input.tags);
-        let prepared_body = prepare_content_payload(
-            Some(&input.body_format),
-            Some(&input.body),
-            input.content_json.as_ref(),
-            &locale,
-            "Topic body",
-        )
-        .map_err(ForumError::Validation)?;
+        let document = crate::richtext::normalize_discussion(input.body)?;
+        let stored_body = crate::richtext::serialize_discussion(document.clone())?;
         let prepared_custom_fields = self
             .prepare_topic_custom_fields_for_create(tenant_id, &locale, input.metadata.clone())
             .await?;
@@ -32,8 +26,7 @@ impl TopicService {
                 tenant_id,
                 crate::mentions::ForumContentTarget::topic(topic_id),
                 &locale,
-                &prepared_body.body,
-                &prepared_body.format,
+                &document,
                 &security,
                 quotes,
             )
@@ -73,8 +66,7 @@ impl TopicService {
                 .slug
                 .map(|value| normalize_slug(&value))
                 .filter(|value| !value.is_empty())),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
+            body: Set(stored_body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -169,10 +161,11 @@ impl TopicService {
                 .one(&self.db)
                 .await?
                 .ok_or_else(ForumError::relation_revision_unavailable)?;
-            prepared_relation_body = Some(rustok_core::PreparedContent {
-                body: existing.body,
-                format: existing.body_format,
-            });
+            prepared_relation_body = Some(
+                crate::richtext::project_stored_discussion(&existing.body)?
+                    .view
+                    .document,
+            );
         }
         let relation_service =
             super::mention_relation::MentionRelationService::new(self.db.clone());
@@ -194,8 +187,7 @@ impl TopicService {
                                 tenant_id,
                                 crate::mentions::ForumContentTarget::topic(topic_id),
                                 &locale,
-                                &body.body,
-                                &body.format,
+                                body,
                                 &security,
                                 quotes,
                             )
@@ -254,8 +246,6 @@ impl TopicService {
             TopicTranslationUpsertInput {
                 title: input.title,
                 body: input.body,
-                body_format: input.body_format,
-                content_json: input.content_json,
             },
         )
         .await?;

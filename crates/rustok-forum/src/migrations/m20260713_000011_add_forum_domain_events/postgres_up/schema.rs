@@ -59,7 +59,10 @@ CREATE TABLE IF NOT EXISTS forum_domain_events (
         'forum.reply.vote_changed',
         'forum.category.subscription_changed',
         'forum.topic.subscription_changed',
-        'forum.topic.tags_changed'
+        'forum.topic.tags_changed',
+        'forum.mention.user_added',
+        'forum.mention.audience_added',
+        'forum.subscription.changed'
         ))
 );
 

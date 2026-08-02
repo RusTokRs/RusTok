@@ -338,7 +338,7 @@ impl ReplyService {
 }
 
 fn require_localized_reply_response(response: ReplyResponse) -> ForumResult<ReplyResponse> {
-    if response.content.is_empty() {
+    if response.content.document.content.is_empty() {
         return Err(ForumError::Validation(format!(
             "Reply {} has no localized body",
             response.id
@@ -364,7 +364,10 @@ fn require_localized_reply_response_page(
     page: (Vec<ReplyResponse>, u64),
 ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
     let (items, total) = page;
-    if let Some(item) = items.iter().find(|item| item.content.is_empty()) {
+    if let Some(item) = items
+        .iter()
+        .find(|item| item.content.document.content.is_empty())
+    {
         return Err(ForumError::Validation(format!(
             "Reply {} has no localized body",
             item.id

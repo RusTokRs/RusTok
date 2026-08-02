@@ -23,7 +23,7 @@ pub fn forum_storefront_count_label() {}
 pub fn forum_storefront_slug_label() {}
 pub fn forum_storefront_category_card_class() {}
 pub fn forum_storefront_topic_card_class() {}
-pub fn forum_storefront_accent_style() {}
+pub fn forum_storefront_accent_class() {}
 pub fn forum_storefront_status_badge_class() {}
 `;
 }
@@ -50,12 +50,12 @@ function packageSource({ omitVerify = false, omitAggregate = false } = {}) {
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-storefront-boundary-"));
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/lib.rs", `${options.legacyApi ? "mod api;" : ""}\npub use ui::leptos::ForumView;\n`);
+  writeFixtureFile(root, "crates/rustok-forum/storefront/src/lib.rs", `${options.restoredApi ? "mod api;" : ""}\npub use ui::leptos::ForumView;\n`);
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter;\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
+  if (options.restoredApi) writeFixtureFile(root, "crates/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
   writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-storefront-boundary.mjs\n");
   writeFixtureFile(root, "scripts/verify/verify-forum-storefront-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\n");
@@ -82,7 +82,7 @@ test("forum storefront boundary verifier rejects Leptos-specific core", () => {
 test("forum storefront boundary verifier rejects raw UI accent fallback", () => {
   const result = run(fixture({ rawAccent: true }));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /category accent fallback must stay in core/);
+  assert.match(result.stderr, /inline category accent style must stay absent/);
 });
 
 test("forum storefront boundary verifier rejects missing package aggregate wiring", () => {
@@ -91,8 +91,8 @@ test("forum storefront boundary verifier rejects missing package aggregate wirin
   assert.match(result.stderr, /aggregate FFA verifier must include forum storefront boundary verifier/);
 });
 
-test("forum storefront boundary verifier rejects legacy api module", () => {
-  const result = run(fixture({ legacyApi: true }));
+test("forum storefront boundary verifier rejects restored api module", () => {
+  const result = run(fixture({ restoredApi: true }));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /legacy api\.rs/);
+  assert.match(result.stderr, /removed api\.rs must stay absent/);
 });

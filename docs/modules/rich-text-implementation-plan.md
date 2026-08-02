@@ -41,16 +41,17 @@ The boundary ADR is accepted. The first server foundation is implemented:
   `crates/rustok-content/fixtures/richtext/`, with a committed profile
   manifest and article HTML/plain-text projections.
 
-The foundation is active. Comments and Blog articles have completed their
-target source cutovers; Forum and later opt-in fields remain separate owner
-tasks. The old implementation is not a target compatibility contract and must
-not receive new call sites.
+The foundation is active. Comments, Blog articles, and Forum topics/replies
+have completed their target source cutovers. Later opt-in fields remain
+separate owner decisions. The removed implementation is not a compatibility
+contract and must not receive new call sites.
 
 The Phase 2 browser runtime slice is now implemented in `packages/richtext`:
 the package owns the explicit Tiptap extension registry, generated profile
-contracts, bounded private-channel controller, React adapter, Leptos lifecycle
-adapter, and hashed frame assets. The Blog editor now consumes that adapter and
-the Forum reply selects the `discussion` profile. A Chromium spike verified the
+contracts, bounded private-channel controller, React adapter, browser lifecycle,
+and hashed frame assets. The shared `leptos-ui` frame owns the Leptos WASM
+lifecycle; Blog and Forum expose only thin profile/locale wrappers. The Blog
+editor selects `article` and Forum selects `discussion`. A Chromium spike verified the
 sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
 `MessageChannel`, and canonical document updates. The Leptos Trunk/SSR static
 fallback copies the same hashed frame plus browser adapter, applies dedicated
@@ -66,6 +67,15 @@ parallel for CSR/headless use, and mutation failures do not cross protocols.
 The fail-closed migration exists; the owner-specific dry-run/apply backfill
 prepares retained legacy rows. Migration, PostgreSQL, and browser execution
 evidence remain maintainer-owned.
+
+The Forum source cutover is implemented: topic/reply storage and revision
+history contain only canonical documents; REST and GraphQL use
+`RichTextDocument`/`RichTextView`; mentions walk structural nodes; deletion is
+lifecycle state rather than content mutation; Next and Leptos use shared frame
+adapters; storefront reads consume server-sanitized HTML and plain text. Native
+and WASM checks, 113 Forum unit tests, package tests, Next typecheck, the
+Forum/Blog ownership verifier, and canonical SQLite/PostgreSQL
+soft-delete/revision execution pass.
 
 ## Decisions fixed by this plan
 
@@ -106,9 +116,9 @@ others are implementation gaps, not target behavior:
   `RichTextDocument`, use the shared framed runtime, and render only
   server-projected HTML; owner, transport, storage, Search, and AI source paths
   are target-only;
-- resolved 2026-07-30: the Forum Next admin package owns its navigation,
-  GraphQL helpers, reply editor, and contained legacy format adapter; Blog and
-  Forum share only the neutral React richtext lifecycle adapter;
+- resolved 2026-08-01: the Forum Next admin package owns its navigation,
+  GraphQL helpers, and canonical reply editor; the format adapter is deleted;
+  Blog and Forum share only the neutral React richtext lifecycle adapter;
 - the prototype maintains a lossy manual mapping between snake-case RT nodes
   and Tiptap node names, exposes Markdown and raw JSON modes, contains
   hard-coded English, and embeds locale in the payload;
@@ -121,24 +131,24 @@ others are implementation gaps, not target behavior:
   does not use the platform locale contract;
 - resolved 2026-07-23: direct `rustok-comments` writes accept only
   `RichTextDocument` and always execute the owner-selected `comment` profile;
-- resolved for Blog posts and Comments: typed documents are the only write
-  source; Forum still retains its legacy string/structured compatibility;
+- resolved for Blog posts, Comments, and Forum: typed documents are the only
+  write source;
 - actual owner storage is `blog_post_translations`,
   `forum_topic_translations`, `forum_reply_bodies`, and `comment_bodies`; their
   rich JSON is serialized into `TEXT`, while locale is a separate column;
-- Forum deletion/revision/event logic still uses the literal `[deleted]` and
-  `body_format = 'markdown'` as lifecycle signals;
-- resolved for Comments and Blog: orchestration fails closed across
-  incompatible richtext profiles; Forum owner conversion remains pending;
+- resolved 2026-08-01: Forum deletion/revision/event logic preserves canonical
+  documents and uses typed lifecycle state;
+- resolved for Comments, Blog, and Forum: orchestration fails closed across
+  incompatible richtext profiles;
 - resolved for Blog Search: canonical documents are parsed through the shared
   Article plain-text policy and invalid rows roll back projection writes;
 - the legacy shared-content migration binary remains obsolete and deprecated;
   Blog now has an owner-specific dry-run-first backfill with no checkpoint
   mutation, explicit apply, and fail-closed conversion policy;
-- resolved for the Blog Leptos owner form: it mounts the framed `article`
-  lifecycle adapter; Forum Leptos authoring still requires its owner cutover;
-- resolved for Blog storefront reads: native and GraphQL paths consume the
-  server-owned projection; Forum storefront richtext parity remains pending;
+- resolved for Blog and Forum Leptos owner forms: both mount the shared frame
+  with owner-selected profiles and host-effective locale;
+- resolved for Blog and Forum storefront reads: native and GraphQL paths
+  consume the server-owned projection;
 - the parent Leptos/server CSP forbids style attributes, while ProseMirror core
   and extensions such as Dropcursor create inline styles. Loading Tiptap
   directly into the parent document would violate the current CSP contract.
@@ -722,4 +732,3 @@ and both storefronts.
 - [Leptos server functions as the internal data layer](../../DECISIONS/2026-03-29-leptos-server-functions-as-internal-data-layer.md)
 - [Port contract ownership and runtime feature boundary](../../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md)
 - [Proposed richtext capability boundary ADR](../../DECISIONS/2026-07-22-richtext-capability-boundary.md)
-- [Legacy RT JSON implementation snapshot](../standards/rt-json-v1.md)

@@ -10,11 +10,13 @@ const files = [
   'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json',
   'crates/rustok-blog/rustok-module.toml',
   'crates/rustok-blog/src/services/comment.rs',
+  'crates/rustok-blog/src/dto/comment.rs',
   'crates/rustok-blog/src/error.rs',
   'crates/rustok-comments/contracts/comments-fba-registry.json',
   'crates/rustok-seo/contracts/seo-fba-registry.json',
   'crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json',
   'crates/rustok-seo/rustok-module.toml',
+  'crates/rustok-seo/src/services/targets.rs',
   'crates/rustok-media/contracts/media-fba-registry.json',
   'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json',
   'crates/rustok-media/src/ports.rs',
@@ -52,15 +54,18 @@ fs.writeFileSync(
 );
 expectFailure(blogDrift, /blog create_comment source marker missing: ensure_post_exists/);
 
-const seoAliasDrift = fixture();
-const seoTargets = path.join(seoAliasDrift, 'crates/rustok-seo-targets/src/lib.rs');
+const seoImageBoundaryDrift = fixture();
+const seoTargets = path.join(seoImageBoundaryDrift, 'crates/rustok-seo-targets/src/lib.rs');
 fs.writeFileSync(
   seoTargets,
   fs.readFileSync(seoTargets, 'utf8').replace(
-    'pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor;',
-    'pub struct SeoTargetImageRecord;',
+    'pub struct SeoTargetImageRecord {',
+    'pub struct LegacySeoTargetImageRecord {',
   ),
 );
-expectFailure(seoAliasDrift, /seo typed image alias missing pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor/);
+expectFailure(
+  seoImageBoundaryDrift,
+  /seo independent typed image boundary missing pub struct SeoTargetImageRecord/,
+);
 
 console.log('consumer FBA runtime-order fixture regressions passed');

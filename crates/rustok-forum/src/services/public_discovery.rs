@@ -7,8 +7,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
 use super::{
-    ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
-    ForumTopicAudienceReadService,
+    ForumCategoryAudienceReadService, ForumReplyAudienceReadService, ForumTopicAudienceReadService,
 };
 
 /// Canonical public discovery owner for cross-consumer surfaces such as SEO,

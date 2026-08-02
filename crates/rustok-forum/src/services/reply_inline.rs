@@ -18,22 +18,15 @@ impl ReplyService {
             existing.author_id,
         )?;
 
-        let has_content_change = input.content.is_some()
-            || input.content_json.is_some()
-            || input.content_format.is_some();
+        let has_content_change = input.content.is_some();
         if !has_content_change && quote_inputs.is_none() {
             return self.get(tenant_id, security, reply_id, &locale).await;
         }
 
-        let prepared_body = if has_content_change {
-            prepare_content_payload(
-                input.content_format.as_deref(),
-                input.content.as_deref(),
-                input.content_json.as_ref(),
-                &locale,
-                "Reply content",
-            )
-            .map_err(ForumError::Validation)?
+        let (document, stored_body) = if let Some(content) = input.content {
+            let document = crate::richtext::normalize_discussion(content)?;
+            let stored_body = crate::richtext::serialize_discussion(document.clone())?;
+            (document, Some(stored_body))
         } else {
             let body = forum_reply_body::Entity::find()
                 .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
@@ -42,10 +35,12 @@ impl ReplyService {
                 .one(&self.db)
                 .await?
                 .ok_or_else(ForumError::relation_revision_unavailable)?;
-            rustok_core::PreparedContent {
-                body: body.body,
-                format: body.body_format,
-            }
+            (
+                crate::richtext::project_stored_discussion(&body.body)?
+                    .view
+                    .document,
+                None,
+            )
         };
         let resolved = super::relation_quote_input::resolve_inline_update_quotes(
             &self.db,
@@ -63,8 +58,7 @@ impl ReplyService {
                 tenant_id,
                 crate::mentions::ForumContentTarget::reply(reply_id),
                 &locale,
-                &prepared_body.body,
-                &prepared_body.format,
+                &document,
                 &security,
                 quotes,
             )
@@ -80,15 +74,10 @@ impl ReplyService {
             quote_expectation,
         )
         .await?;
-        self.upsert_body_in_tx(
-            &txn,
-            tenant_id,
-            reply_id,
-            &locale,
-            prepared_body.body,
-            prepared_body.format,
-        )
-        .await?;
+        if let Some(stored_body) = stored_body {
+            self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
+                .await?;
+        }
         relation_service
             .persist_in_tx(&txn, prepared_relations)
             .await?;

@@ -42,10 +42,7 @@ impl ModerationService {
         let audience =
             ForumModerationAudienceAuthorizationService::without_facts_provider(db.clone());
         Self {
-            inner: super::moderation_legacy::ModerationService::new(
-                db.clone(),
-                event_bus.clone(),
-            ),
+            inner: super::moderation_legacy::ModerationService::new(db.clone(), event_bus.clone()),
             db,
             event_bus,
             audience,
@@ -57,7 +54,8 @@ impl ModerationService {
         event_bus: TransactionalEventBus,
         facts: SharedForumAudienceFactsPort,
     ) -> Self {
-        let audience = ForumModerationAudienceAuthorizationService::new(db.clone(), Some(facts.clone()));
+        let audience =
+            ForumModerationAudienceAuthorizationService::new(db.clone(), Some(facts.clone()));
         Self {
             inner: super::moderation_legacy::ModerationService::with_audience_facts(
                 db.clone(),

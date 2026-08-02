@@ -45,7 +45,7 @@ pub use types::*;
 
 #[derive(MergedObject, Default)]
 pub struct ForumQuery(
-    query::ForumQuery,
+    query::ForumContentQuery,
     category_tree_query::ForumCategoryTreeQuery,
     category_policy::ForumCategoryTopicPolicyQuery,
     read_state::ForumReadStateQuery,

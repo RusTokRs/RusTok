@@ -131,9 +131,9 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
                 category_id: category.id,
                 title: "Private from creation".into(),
                 slug: Some("private-from-creation".into()),
-                body: "Descriptor creation must not leak this body.".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Descriptor creation must not leak this body.",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,

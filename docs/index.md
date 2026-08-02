@@ -184,13 +184,13 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Errors](./standards/errors.md)
 - [Security](./standards/security.md)
 - [Coding Standards](./standards/coding.md)
-- [Legacy RT JSON implementation snapshot](./standards/rt-json-v1.md)
 
 ## Platform Verification
 
 - [Workspace CLI Tool `xtask`](../xtask/README.md)
 - [Athanor Operations Documentation](./operations/README.md)
 - [Main Verification README](./verification/README.md)
+- [Platform Hardening and Canonical Code Cleanup Plan](./verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md) - production hardening plus the repository-wide atomic removal plan for internal versions, compatibility paths, suppressed dead code, placeholders, and duplicate implementations.
 - [Cross-platform OpenAPI/GraphQL Reference Artifacts Export](../scripts/verify/export-reference-artifacts.mjs)
 - [OpenAPI/GraphQL Reference Artifacts Verification](../scripts/verify/verify-reference-artifacts.mjs)
 - [Flex Multilingual Contract Verification](../scripts/verify/verify-flex-multilingual-contract.mjs)

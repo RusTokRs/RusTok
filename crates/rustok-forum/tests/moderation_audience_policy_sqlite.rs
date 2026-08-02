@@ -137,9 +137,9 @@ async fn create_topic(
                 category_id,
                 title: format!("Moderation audience {suffix}"),
                 slug: Some(format!("moderation-audience-{suffix}")),
-                body: "Moderation audience topic fixture".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Moderation audience topic fixture",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -165,9 +165,9 @@ async fn create_reply(
             topic_id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: format!("Moderation audience reply {suffix}"),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(format!(
+                    "Moderation audience reply {suffix}"
+                )),
                 parent_reply_id: None,
             },
         )

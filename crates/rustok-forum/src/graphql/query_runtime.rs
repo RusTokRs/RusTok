@@ -32,10 +32,10 @@ const MODULE_SLUG: &str = "forum";
 const PUBLIC_REPLY_STATUSES: [ReplyStatus; 1] = [ReplyStatus::Approved];
 
 #[derive(Default)]
-pub struct ForumQuery;
+pub struct ForumContentQuery;
 
 #[Object]
-impl ForumQuery {
+impl ForumContentQuery {
     async fn forum_categories(
         &self,
         ctx: &Context<'_>,
@@ -813,8 +813,8 @@ fn map_category_response(category: CategoryResponse) -> GqlForumCategory {
 fn map_topic_list_item(
     topic: TopicListItem,
     author_profile: Option<GqlProfileSummary>,
-) -> GqlForumTopic {
-    GqlForumTopic {
+) -> GqlForumTopicListItem {
+    GqlForumTopicListItem {
         id: topic.id,
         requested_locale: topic.requested_locale,
         locale: topic.locale,
@@ -825,12 +825,8 @@ fn map_topic_list_item(
         author_profile,
         title: topic.title,
         slug: topic.slug,
-        body: String::new(),
-        body_format: "markdown".to_string(),
-        content_json: None,
         metadata: topic.metadata,
         status: topic.status,
-        tags: Vec::new(),
         channel_slugs: topic.channel_slugs,
         vote_score: topic.vote_score,
         current_user_vote: topic.current_user_vote,
@@ -840,7 +836,6 @@ fn map_topic_list_item(
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
         created_at: topic.created_at,
-        updated_at: String::new(),
     }
 }
 
@@ -860,8 +855,7 @@ fn map_topic_response(
         title: topic.title,
         slug: topic.slug,
         body: topic.body,
-        body_format: topic.body_format,
-        content_json: topic.content_json,
+        body_plain_text: topic.body_plain_text,
         metadata: topic.metadata,
         status: topic.status,
         tags: topic.tags,
@@ -891,7 +885,7 @@ fn map_reply_response(
         author_id: reply.author_id,
         author_profile,
         content: reply.content,
-        content_format: reply.content_format,
+        content_plain_text: reply.content_plain_text,
         status: reply.status,
         vote_score: reply.vote_score,
         current_user_vote: reply.current_user_vote,

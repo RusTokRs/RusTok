@@ -65,13 +65,14 @@ for (const marker of [
   'CREATE TABLE blog_comment_projection_deliveries',
   'CREATE TABLE sys_events',
   '.max_connections(1)',
-  'SET search_path TO',
+  'SET search_path TO "{schema_name}"',
 ]) {
   requireMarker(harness, marker, harnessPath);
 }
 requireNoMarker(harness, '#[ignore]', harnessPath);
 requireNoMarker(harness, 'runtime_verified', harnessPath);
 requireNoMarker(harness, 'tokio::time::sleep(Duration::from_secs(', harnessPath);
+requireNoMarker(harness, 'SET search_path TO "{schema_name}", public', harnessPath);
 
 if (evidence) {
   if (evidence.schema_version !== 1) failures.push(`${evidencePath}: schema_version drift`);

@@ -5,7 +5,7 @@ use rustok_api::RichTextDocument;
 use crate::i18n::t;
 
 #[component]
-pub fn BlogRichTextEditor(
+pub fn ForumRichTextEditor(
     document: ReadSignal<RichTextDocument>,
     set_document: WriteSignal<RichTextDocument>,
     label: String,
@@ -20,7 +20,7 @@ pub fn BlogRichTextEditor(
             document=document
             set_document=set_document
             label=label
-            profile="article".to_string()
+            profile="discussion".to_string()
             copy=copy
         />
     }

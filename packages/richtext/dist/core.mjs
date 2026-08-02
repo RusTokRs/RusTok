@@ -2,6 +2,15 @@
 function emptyRichTextDocument() {
   return { type: "doc", content: [{ type: "paragraph" }] };
 }
+function richTextDocumentHasText(document) {
+  const stack = [...document.content];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node?.text?.trim()) return true;
+    if (node?.content) stack.push(...node.content);
+  }
+  return false;
+}
 function validateRichTextDocument(value, profile) {
   let encoded;
   try {
@@ -375,5 +384,6 @@ export {
   isRichTextMessages,
   isRichTextProfileId,
   mountLeptosRichTextFrame,
+  richTextDocumentHasText,
   validateRichTextDocument
 };

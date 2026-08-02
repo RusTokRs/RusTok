@@ -17,8 +17,7 @@ async fn inline_quote_preserve_detects_concurrent_relation_replacement() {
             tenant_id,
             ForumContentTarget::topic(topic_id),
             "en",
-            "Quoted source",
-            "markdown",
+            &document("Quoted source"),
             &security,
             [],
         )

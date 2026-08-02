@@ -54,9 +54,7 @@ impl ModerationService {
         context: PortContext,
     ) -> ForumResult<()> {
         self.inner
-            .approve_reply_with_audience_context(
-                tenant_id, reply_id, topic_id, security, context,
-            )
+            .approve_reply_with_audience_context(tenant_id, reply_id, topic_id, security, context)
             .await
     }
 
@@ -81,9 +79,7 @@ impl ModerationService {
         context: PortContext,
     ) -> ForumResult<()> {
         self.inner
-            .reject_reply_with_audience_context(
-                tenant_id, reply_id, topic_id, security, context,
-            )
+            .reject_reply_with_audience_context(tenant_id, reply_id, topic_id, security, context)
             .await
     }
 
@@ -244,7 +240,9 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.inner.archive_topic(tenant_id, topic_id, security).await
+        self.inner
+            .archive_topic(tenant_id, topic_id, security)
+            .await
     }
 
     pub async fn archive_topic_with_audience_context(
@@ -280,9 +278,7 @@ impl ModerationService {
         context: PortContext,
     ) -> ForumResult<()> {
         self.inner
-            .mark_solution_with_audience_context(
-                tenant_id, topic_id, reply_id, security, context,
-            )
+            .mark_solution_with_audience_context(tenant_id, topic_id, reply_id, security, context)
             .await
     }
 
@@ -292,7 +288,9 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.inner.clear_solution(tenant_id, topic_id, security).await
+        self.inner
+            .clear_solution(tenant_id, topic_id, security)
+            .await
     }
 
     pub async fn clear_solution_with_audience_context(

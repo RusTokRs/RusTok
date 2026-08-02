@@ -92,9 +92,7 @@ async fn create_topic(
                 category_id,
                 title: title.into(),
                 slug: Some(title.to_ascii_lowercase().replace(' ', "-")),
-                body: format!("{title} body"),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(format!("{title} body")),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -122,9 +120,7 @@ async fn add_two_public_replies_and_revision(
                 topic_id,
                 CreateReplyInput {
                     locale: "en".into(),
-                    content: content.into(),
-                    content_format: "markdown".into(),
-                    content_json: None,
+                    content: rustok_api::RichTextDocument::single_paragraph(content),
                     parent_reply_id: None,
                 },
             )
@@ -139,9 +135,9 @@ async fn add_two_public_replies_and_revision(
             UpdateTopicInput {
                 locale: "en".into(),
                 title: Some(format!("Updated {topic_id}")),
-                body: Some("Updated topic body".into()),
-                body_format: Some("markdown".into()),
-                content_json: None,
+                body: Some(rustok_api::RichTextDocument::single_paragraph(
+                    "Updated topic body",
+                )),
                 metadata: None,
                 tags: None,
                 channel_slugs: None,
@@ -418,9 +414,7 @@ async fn repeated_topic_mark_clears_late_approval_without_regression() {
             topic_id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Pending position one".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Pending position one"),
                 parent_reply_id: None,
             },
         )
@@ -433,9 +427,7 @@ async fn repeated_topic_mark_clears_late_approval_without_regression() {
             topic_id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Pending position two".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Pending position two"),
                 parent_reply_id: None,
             },
         )

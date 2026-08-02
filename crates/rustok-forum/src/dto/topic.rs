@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use rustok_core::CONTENT_FORMAT_MARKDOWN;
+use rustok_api::{RichTextDocument, RichTextView};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -14,10 +14,7 @@ pub struct CreateTopicInput {
     pub category_id: Uuid,
     pub title: String,
     pub slug: Option<String>,
-    pub body: String,
-    #[serde(default = "default_content_format")]
-    pub body_format: String,
-    pub content_json: Option<Value>,
+    pub body: RichTextDocument,
     #[serde(default)]
     pub metadata: Value,
     pub tags: Vec<String>,
@@ -30,10 +27,7 @@ pub struct CreateTopicCommandInput {
     pub category_id: Uuid,
     pub title: String,
     pub slug: Option<String>,
-    pub body: String,
-    #[serde(default = "default_content_format")]
-    pub body_format: String,
-    pub content_json: Option<Value>,
+    pub body: RichTextDocument,
     #[serde(default)]
     pub metadata: Value,
     pub tags: Vec<String>,
@@ -51,8 +45,6 @@ impl CreateTopicCommandInput {
                 title: self.title,
                 slug: self.slug,
                 body: self.body,
-                body_format: self.body_format,
-                content_json: self.content_json,
                 metadata: self.metadata,
                 tags: self.tags,
                 channel_slugs: self.channel_slugs,
@@ -70,8 +62,6 @@ impl From<CreateTopicInput> for CreateTopicCommandInput {
             title: input.title,
             slug: input.slug,
             body: input.body,
-            body_format: input.body_format,
-            content_json: input.content_json,
             metadata: input.metadata,
             tags: input.tags,
             channel_slugs: input.channel_slugs,
@@ -84,9 +74,7 @@ impl From<CreateTopicInput> for CreateTopicCommandInput {
 pub struct UpdateTopicInput {
     pub locale: String,
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub body: Option<RichTextDocument>,
     pub metadata: Option<Value>,
     pub tags: Option<Vec<String>>,
     pub channel_slugs: Option<Vec<String>>,
@@ -96,9 +84,7 @@ pub struct UpdateTopicInput {
 pub struct UpdateTopicCommandInput {
     pub locale: String,
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub body: Option<RichTextDocument>,
     pub metadata: Option<Value>,
     pub tags: Option<Vec<String>>,
     pub channel_slugs: Option<Vec<String>>,
@@ -112,8 +98,6 @@ impl UpdateTopicCommandInput {
                 locale: self.locale,
                 title: self.title,
                 body: self.body,
-                body_format: self.body_format,
-                content_json: self.content_json,
                 metadata: self.metadata,
                 tags: self.tags,
                 channel_slugs: self.channel_slugs,
@@ -129,8 +113,6 @@ impl From<UpdateTopicInput> for UpdateTopicCommandInput {
             locale: input.locale,
             title: input.title,
             body: input.body,
-            body_format: input.body_format,
-            content_json: input.content_json,
             metadata: input.metadata,
             tags: input.tags,
             channel_slugs: input.channel_slugs,
@@ -173,10 +155,6 @@ fn default_per_page() -> u64 {
     crate::dto::DEFAULT_FORUM_READ_LIMIT
 }
 
-fn default_content_format() -> String {
-    CONTENT_FORMAT_MARKDOWN.to_string()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TopicResponse {
     pub id: Uuid,
@@ -188,9 +166,8 @@ pub struct TopicResponse {
     pub author_id: Option<Uuid>,
     pub title: String,
     pub slug: String,
-    pub body: String,
-    pub body_format: String,
-    pub content_json: Option<Value>,
+    pub body: RichTextView,
+    pub body_plain_text: String,
     pub metadata: Value,
     pub status: String,
     pub tags: Vec<String>,
@@ -234,14 +211,12 @@ pub struct TopicListItem {
 mod tests {
     use super::{ListTopicsFilter, TopicResponse, UpdateTopicCommandInput};
     use crate::state_machine::TopicStatus;
+    use rustok_api::{RichTextDocument, RichTextView};
     use serde_json::json;
     use uuid::Uuid;
 
-    fn sample(
-        body: &str,
-        body_format: &str,
-        content_json: Option<serde_json::Value>,
-    ) -> TopicResponse {
+    fn sample(body: &str) -> TopicResponse {
+        let document = RichTextDocument::single_paragraph(body);
         TopicResponse {
             id: Uuid::new_v4(),
             requested_locale: "en".into(),
@@ -252,9 +227,11 @@ mod tests {
             author_id: None,
             title: "title".into(),
             slug: "slug".into(),
-            body: body.into(),
-            body_format: body_format.into(),
-            content_json,
+            body: RichTextView {
+                document,
+                html: format!("<p class=\"richtext-paragraph\">{body}</p>"),
+            },
+            body_plain_text: body.to_string(),
             metadata: json!({}),
             status: "open".into(),
             tags: vec![],
@@ -302,22 +279,17 @@ mod tests {
     }
 
     #[test]
-    fn topic_response_serde_markdown() {
-        let r = sample("plain", "markdown", None);
+    fn topic_response_serde_uses_one_richtext_view() {
+        let r = sample("plain");
         let v = serde_json::to_value(&r).expect("serialize");
-        assert_eq!(v["body_format"], "markdown");
-        assert_eq!(v["content_json"], serde_json::Value::Null);
+        assert_eq!(v["body"]["document"]["type"], "doc");
+        assert_eq!(
+            v["body"]["html"],
+            "<p class=\"richtext-paragraph\">plain</p>"
+        );
+        assert!(v.get("body_format").is_none());
+        assert!(v.get("content_json").is_none());
         let d: TopicResponse = serde_json::from_value(v).expect("deserialize");
-        assert_eq!(d.body, "plain");
-        assert!(d.content_json.is_none());
-    }
-
-    #[test]
-    fn topic_response_serde_rt_json_v1() {
-        let rich = json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
-        let r = sample(&rich.to_string(), "rt_json_v1", Some(rich.clone()));
-        let v = serde_json::to_value(&r).expect("serialize");
-        assert_eq!(v["body_format"], "rt_json_v1");
-        assert_eq!(v["content_json"], rich);
+        assert_eq!(d.body.document, RichTextDocument::single_paragraph("plain"));
     }
 }

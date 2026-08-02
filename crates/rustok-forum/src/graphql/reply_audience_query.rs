@@ -88,7 +88,10 @@ impl ForumReplyAudienceQuery {
             total,
         );
 
-        let items = replies.into_iter().map(map_reply_response).collect::<Vec<_>>();
+        let items = replies
+            .into_iter()
+            .map(map_reply_response)
+            .collect::<Vec<_>>();
         metrics::record_read_path_budget(
             "graphql",
             "forum.audience_replies",
@@ -175,7 +178,10 @@ impl ForumReplyAudienceQuery {
             total,
         );
 
-        let items = replies.into_iter().map(map_reply_response).collect::<Vec<_>>();
+        let items = replies
+            .into_iter()
+            .map(map_reply_response)
+            .collect::<Vec<_>>();
         metrics::record_read_path_budget(
             "graphql",
             "forum.storefront_audience_replies",
@@ -266,7 +272,7 @@ fn map_reply_response(reply: ReplyResponse) -> GqlForumReply {
         author_id: reply.author_id,
         author_profile: None,
         content: reply.content,
-        content_format: reply.content_format,
+        content_plain_text: reply.content_plain_text,
         status: reply.status,
         vote_score: reply.vote_score,
         current_user_vote: reply.current_user_vote,

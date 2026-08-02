@@ -439,12 +439,11 @@ async fn promote_topic_to_post(
     .await?;
 
     for translation in &translations {
-        if translation.body_format != "richtext"
-            || rustok_content::richtext::parse_json(
-                &translation.body,
-                rustok_content::richtext::RichTextProfile::Article,
-            )
-            .is_err()
+        if rustok_content::richtext::parse_json(
+            &translation.body,
+            rustok_content::richtext::RichTextProfile::Article,
+        )
+        .is_err()
         {
             return Err(ContentError::validation(
                 "Forum topic content must be canonical article-compatible richtext before promotion to Blog",
@@ -537,6 +536,17 @@ async fn demote_post_to_topic(
     let resolved = resolve_post_translation(&translations, &requested_locale)?;
     let tag_names =
         load_blog_tag_names_for_post_in_tx(txn, post.id, &resolved.effective_locale, None).await?;
+    for translation in &translations {
+        rustok_content::richtext::parse_json(
+            &translation.body,
+            rustok_content::richtext::RichTextProfile::Discussion,
+        )
+        .map_err(|_| {
+            ContentError::validation(
+                "Blog post content must be discussion-compatible richtext before demotion to Forum",
+            )
+        })?;
+    }
 
     let topic_id = Uuid::new_v4();
     let now = Utc::now();
@@ -571,7 +581,6 @@ async fn demote_post_to_topic(
             title: Set(translation.title.clone()),
             slug: Set(Some(post.slug.clone())),
             body: Set(translation.body.clone()),
-            body_format: Set("richtext".to_string()),
             created_at: Set(translation.created_at),
             updated_at: Set(translation.updated_at),
         }
@@ -708,7 +717,6 @@ async fn split_topic(
             title: Set(title),
             slug: Set(translation.slug.clone()),
             body: Set(translation.body.clone()),
-            body_format: Set(translation.body_format.clone()),
             created_at: Set(translation.created_at),
             updated_at: Set(translation.updated_at),
         }
@@ -737,7 +745,6 @@ async fn split_topic(
             title: Set(input.new_title.clone()),
             slug: Set(Some(normalize_slug(&input.new_title))),
             body: Set(translation.body.clone()),
-            body_format: Set(translation.body_format.clone()),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -1919,11 +1926,9 @@ mod tests {
                 CreateTopicInput {
                     locale: "en".to_string(),
                     category_id: category.id,
-                    title: "Legacy thread".to_string(),
-                    slug: Some("legacy-thread".to_string()),
-                    body: "Original forum body".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
+                    title: "Forum thread".to_string(),
+                    slug: Some("forum-thread".to_string()),
+                    body: rustok_api::RichTextDocument::single_paragraph("Original forum body"),
                     metadata: serde_json::json!({}),
                     tags: vec!["release".to_string(), "notes".to_string()],
                     channel_slugs: None,
@@ -1940,9 +1945,7 @@ mod tests {
                 topic.id,
                 CreateReplyInput {
                     locale: "en".to_string(),
-                    content: "First forum reply".to_string(),
-                    content_format: "markdown".to_string(),
-                    content_json: None,
+                    content: rustok_api::RichTextDocument::single_paragraph("First forum reply"),
                     parent_reply_id: None,
                 },
             )
@@ -1955,9 +1958,7 @@ mod tests {
                 topic.id,
                 CreateReplyInput {
                     locale: "en".to_string(),
-                    content: "Second forum reply".to_string(),
-                    content_format: "markdown".to_string(),
-                    content_json: None,
+                    content: rustok_api::RichTextDocument::single_paragraph("Second forum reply"),
                     parent_reply_id: None,
                 },
             )

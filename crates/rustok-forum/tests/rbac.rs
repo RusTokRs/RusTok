@@ -123,9 +123,7 @@ async fn customer_permissions_are_enforced_in_forum_services() {
                 category_id: category.id,
                 title: "Customer topic".to_string(),
                 slug: Some("customer-topic".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -143,8 +141,6 @@ async fn customer_permissions_are_enforced_in_forum_services() {
                 locale: "en".to_string(),
                 title: Some("Edited".to_string()),
                 body: None,
-                body_format: None,
-                content_json: None,
                 metadata: None,
                 tags: None,
                 channel_slugs: None,
@@ -161,9 +157,7 @@ async fn customer_permissions_are_enforced_in_forum_services() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Reply".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Reply"),
                 parent_reply_id: None,
             },
         )
@@ -177,9 +171,7 @@ async fn customer_permissions_are_enforced_in_forum_services() {
             customer.clone(),
             UpdateReplyInput {
                 locale: "en".to_string(),
-                content: Some("Edited".to_string()),
-                content_format: None,
-                content_json: None,
+                content: Some(rustok_api::RichTextDocument::single_paragraph("Edited")),
             },
         )
         .await
@@ -232,9 +224,7 @@ async fn moderation_requires_moderate_scope() {
                 category_id: category.id,
                 title: "Moderated topic".to_string(),
                 slug: Some("moderated-topic".to_string()),
-                body: "Body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -249,9 +239,7 @@ async fn moderation_requires_moderate_scope() {
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Reply".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Reply"),
                 parent_reply_id: None,
             },
         )

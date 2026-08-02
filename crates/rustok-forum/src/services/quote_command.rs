@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
-use rustok_api::{Action, Resource, normalize_locale_tag};
+use rustok_api::{Action, Resource, RichTextDocument, normalize_locale_tag};
 use rustok_core::SecurityContext;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
 };
 use uuid::Uuid;
@@ -106,21 +106,13 @@ impl ForumQuoteCommandService {
             return Err(ForumError::relation_revision_unavailable());
         }
 
-        let (owner_id, body, body_format) = self.load_source(tenant_id, source, &locale).await?;
+        let (owner_id, document) = self.load_source(tenant_id, source, &locale).await?;
         enforce_owned_scope(&security, source.resource(), Action::Update, owner_id)?;
         let quotes = normalize_quote_references(input.quotes)?;
 
         let relations = MentionRelationService::new(self.db.clone());
         let prepared = relations
-            .prepare(
-                tenant_id,
-                target,
-                &locale,
-                &body,
-                &body_format,
-                &security,
-                quotes,
-            )
+            .prepare(tenant_id, target, &locale, &document, &security, quotes)
             .await?;
         let txn = self.db.begin().await?;
         let result = relations.persist_in_tx(&txn, prepared).await?;
@@ -141,7 +133,7 @@ impl ForumQuoteCommandService {
         tenant_id: Uuid,
         source: ForumQuoteSource,
         locale: &str,
-    ) -> ForumResult<(Option<Uuid>, String, String)> {
+    ) -> ForumResult<(Option<Uuid>, RichTextDocument)> {
         match source {
             ForumQuoteSource::Topic(topic_id) => {
                 let topic = forum_topic::Entity::find_by_id(topic_id)
@@ -165,7 +157,10 @@ impl ForumQuoteCommandService {
                     .one(&self.db)
                     .await?
                     .ok_or_else(ForumError::relation_revision_unavailable)?;
-                Ok((topic.author_id, translation.body, translation.body_format))
+                let document = crate::richtext::project_stored_discussion(&translation.body)?
+                    .view
+                    .document;
+                Ok((topic.author_id, document))
             }
             ForumQuoteSource::Reply(reply_id) => {
                 let reply = forum_reply::Entity::find_by_id(reply_id)
@@ -189,7 +184,10 @@ impl ForumQuoteCommandService {
                     .one(&self.db)
                     .await?
                     .ok_or_else(ForumError::relation_revision_unavailable)?;
-                Ok((reply.author_id, body.body, body.body_format))
+                let document = crate::richtext::project_stored_discussion(&body.body)?
+                    .view
+                    .document;
+                Ok((reply.author_id, document))
             }
         }
     }
@@ -203,13 +201,20 @@ async fn ensure_not_deleted(
     source_id: Uuid,
     deleted_error: ForumError,
 ) -> ForumResult<()> {
-    let statement = Statement::from_string(
-        db.get_database_backend(),
+    let backend = db.get_database_backend();
+    let placeholders = match backend {
+        DbBackend::Postgres => ("$1", "$2"),
+        DbBackend::MySql | DbBackend::Sqlite => ("?", "?"),
+    };
+    let statement = Statement::from_sql_and_values(
+        backend,
         format!(
             "SELECT 1 AS active FROM {table} \
-             WHERE tenant_id = '{tenant_id}' AND {id_column} = '{source_id}' \
-               AND deleted_at IS NULL"
+             WHERE tenant_id = {} AND {id_column} = {} \
+               AND deleted_at IS NULL",
+            placeholders.0, placeholders.1
         ),
+        [tenant_id.into(), source_id.into()],
     );
     if db.query_one(statement).await?.is_none() {
         return Err(deleted_error);

@@ -62,9 +62,7 @@ async fn create_topic(
                 category_id,
                 title: title.into(),
                 slug: Some(title.to_ascii_lowercase().replace(' ', "-")),
-                body: format!("{title} body"),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(format!("{title} body")),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -131,9 +129,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
             reply_topic,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "First approved reply".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("First approved reply"),
                 parent_reply_id: None,
             },
         )
@@ -146,9 +142,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
             reply_topic,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Second approved reply".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Second approved reply"),
                 parent_reply_id: None,
             },
         )
@@ -182,9 +176,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
             revision_topic,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Read before edit".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Read before edit"),
                 parent_reply_id: None,
             },
         )
@@ -210,9 +202,9 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
             UpdateTopicInput {
                 locale: "en".into(),
                 title: Some("Revision topic updated".into()),
-                body: Some("Updated after the reader opened the topic".into()),
-                body_format: Some("markdown".into()),
-                content_json: None,
+                body: Some(rustok_api::RichTextDocument::single_paragraph(
+                    "Updated after the reader opened the topic",
+                )),
                 metadata: None,
                 tags: None,
                 channel_slugs: None,
@@ -437,9 +429,7 @@ async fn late_approval_below_read_position_becomes_unread() {
             topic_id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Pending position one".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Pending position one"),
                 parent_reply_id: None,
             },
         )
@@ -452,9 +442,7 @@ async fn late_approval_below_read_position_becomes_unread() {
             topic_id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: "Pending position two".into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph("Pending position two"),
                 parent_reply_id: None,
             },
         )

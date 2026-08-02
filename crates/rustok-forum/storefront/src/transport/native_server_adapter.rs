@@ -45,11 +45,10 @@ async fn storefront_forum_native(
             ForumCategoryAudienceReadService, ForumCategoryReadOperation,
             ForumCategoryReadTransport, ForumReplyAudienceReadService, ForumReplyReadOperation,
             ForumReplyReadTransport, ForumStorefrontReadStateService,
-            ForumTopicAudienceListService, ForumTopicAudienceReadService,
-            ForumTopicReadOperation, ForumTopicReadTransport, ListRepliesFilter,
-            ListTopicsFilter, ReplyStatus, SharedForumAudienceFactsPort,
-            category_read_audience_port_context, reply_read_audience_port_context,
-            topic_read_audience_port_context,
+            ForumTopicAudienceListService, ForumTopicAudienceReadService, ForumTopicReadOperation,
+            ForumTopicReadTransport, ListRepliesFilter, ListTopicsFilter, ReplyStatus,
+            SharedForumAudienceFactsPort, category_read_audience_port_context,
+            reply_read_audience_port_context, topic_read_audience_port_context,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -80,9 +79,7 @@ async fn storefront_forum_native(
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
         let category_audience_service = match audience_facts.clone() {
-            Some(facts) => {
-                ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts)
-            }
+            Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts),
             None => ForumCategoryAudienceReadService::new(db.clone()),
         };
         let topic_audience_service = match audience_facts.clone() {
@@ -120,10 +117,7 @@ async fn storefront_forum_native(
         let channel_slug = request.channel_slug.as_deref();
 
         let category_page = if let Some(auth) = auth.as_ref().filter(|auth| {
-            has_any_effective_permission(
-                &auth.permissions,
-                &[Permission::FORUM_CATEGORIES_LIST],
-            )
+            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST])
         }) {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
@@ -424,11 +418,9 @@ async fn storefront_topic_mark_read_native(
         .map_err(server_error)?;
         let db = runtime_ctx.db_clone();
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
-            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
-                db,
-                event_bus,
-                facts,
-            ),
+            Some(facts) => {
+                ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
+            }
             None => ForumStorefrontReadStateService::new(db, event_bus),
         };
         match service
@@ -658,7 +650,7 @@ fn map_topic_detail(value: rustok_forum::TopicResponse) -> ForumTopicDetail {
         title: value.title,
         slug: value.slug,
         body: value.body,
-        body_format: value.body_format,
+        body_plain_text: value.body_plain_text,
         status: value.status,
         tags: value.tags,
         is_pinned: value.is_pinned,
@@ -676,7 +668,7 @@ fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
         effective_locale: value.effective_locale,
         topic_id: value.topic_id.to_string(),
         content: value.content,
-        content_format: value.content_format,
+        content_plain_text: value.content_plain_text,
         status: value.status,
         parent_reply_id: value.parent_reply_id.map(|id| id.to_string()),
         created_at: value.created_at,

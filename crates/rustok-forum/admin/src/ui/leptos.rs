@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::RichTextDocument;
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::UiRouteContext;
@@ -32,6 +33,7 @@ use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
 use crate::transport;
 use crate::ui::category_dnd::CategoryDndGrid;
+use crate::ui::richtext::ForumRichTextEditor;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -157,8 +159,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let (topic_category_id, set_topic_category_id) = signal(String::new());
     let (topic_title, set_topic_title) = signal(String::new());
     let (topic_slug, set_topic_slug) = signal(String::new());
-    let (topic_body, set_topic_body) = signal(String::new());
-    let (topic_body_format, set_topic_body_format) = signal("markdown".to_string());
+    let (topic_body, set_topic_body) = signal(RichTextDocument::empty());
     let (topic_tags, set_topic_tags) = signal(String::new());
     let (topic_filter_category_id, set_topic_filter_category_id) = signal(String::new());
 
@@ -286,7 +287,6 @@ pub fn ForumAdmin() -> impl IntoView {
                     set_topic_title,
                     set_topic_slug,
                     set_topic_body,
-                    set_topic_body_format,
                     set_topic_tags,
                     TopicFormSnapshot::from_detail(&topic),
                 ),
@@ -297,7 +297,6 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_topic_title,
                         set_topic_slug,
                         set_topic_body,
-                        set_topic_body_format,
                         set_topic_tags,
                     );
                     set_error.set(Some(forum_admin_transport_error_message(
@@ -335,7 +334,6 @@ pub fn ForumAdmin() -> impl IntoView {
                 set_topic_title,
                 set_topic_slug,
                 set_topic_body,
-                set_topic_body_format,
                 set_topic_tags,
             ),
         },
@@ -428,7 +426,6 @@ pub fn ForumAdmin() -> impl IntoView {
             title: topic_title.get_untracked(),
             slug: topic_slug.get_untracked(),
             body: topic_body.get_untracked(),
-            body_format: topic_body_format.get_untracked(),
             tags_raw: topic_tags.get_untracked(),
         };
         let draft = match form.to_draft() {
@@ -468,7 +465,6 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_topic_title,
                         set_topic_slug,
                         set_topic_body,
-                        set_topic_body_format,
                         set_topic_tags,
                         TopicFormSnapshot::from_detail(&topic),
                     );
@@ -565,7 +561,6 @@ pub fn ForumAdmin() -> impl IntoView {
                             set_topic_title,
                             set_topic_slug,
                             set_topic_body,
-                            set_topic_body_format,
                             set_topic_tags,
                         );
                     }
@@ -626,7 +621,6 @@ pub fn ForumAdmin() -> impl IntoView {
             set_topic_title,
             set_topic_slug,
             set_topic_body,
-            set_topic_body_format,
             set_topic_tags,
         );
     });
@@ -720,8 +714,6 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_slug=set_topic_slug
                         body=topic_body
                         set_body=set_topic_body
-                        body_format=topic_body_format
-                        set_body_format=set_topic_body_format
                         tags=topic_tags
                         set_tags=set_topic_tags
                         filter_category_id=topic_filter_category_id
@@ -1205,10 +1197,8 @@ fn TopicsPage(
     set_title: WriteSignal<String>,
     slug: ReadSignal<String>,
     set_slug: WriteSignal<String>,
-    body: ReadSignal<String>,
-    set_body: WriteSignal<String>,
-    body_format: ReadSignal<String>,
-    set_body_format: WriteSignal<String>,
+    body: ReadSignal<RichTextDocument>,
+    set_body: WriteSignal<RichTextDocument>,
     tags: ReadSignal<String>,
     set_tags: WriteSignal<String>,
     filter_category_id: ReadSignal<String>,
@@ -1323,12 +1313,6 @@ fn TopicsPage(
             ui_locale.as_deref(),
             "forum.form.slugHintTopic",
             "Stable thread identifier.",
-        ),
-        t(ui_locale.as_deref(), "forum.form.bodyFormat", "Body format"),
-        t(
-            ui_locale.as_deref(),
-            "forum.form.bodyFormatHint",
-            "Usually `markdown`.",
         ),
         t(ui_locale.as_deref(), "forum.form.tags", "Tags"),
         t(
@@ -1557,15 +1541,7 @@ fn TopicsPage(
                                 placeholder=placeholders.topic_slug.clone()
                             />
                         </FieldShell>
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            <FieldShell label=topic_form_labels.body_format_label.clone() hint=topic_form_labels.body_format_hint.clone()>
-                                <input
-                                    class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
-                                    prop:value=move || body_format.get()
-                                    on:input=move |ev| set_body_format.set(event_target_value(&ev))
-                                    placeholder=placeholders.topic_body_format.clone()
-                                />
-                            </FieldShell>
+                        <div>
                             <FieldShell label=topic_form_labels.tags_label.clone() hint=topic_form_labels.tags_hint.clone()>
                                 <input
                                     class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
@@ -1591,14 +1567,12 @@ fn TopicsPage(
                             })
                         }}
 
-                        <FieldShell label=topic_form_labels.body_label.clone() hint=topic_form_labels.body_hint.clone()>
-                            <textarea
-                                class="min-h-72 w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
-                                prop:value=move || body.get()
-                                on:input=move |ev| set_body.set(event_target_value(&ev))
-                                placeholder=placeholders.topic_body.clone()
-                            ></textarea>
-                        </FieldShell>
+                        <ForumRichTextEditor
+                            document=body
+                            set_document=set_body
+                            label=topic_form_labels.body_label.clone()
+                        />
+                        <p class="text-xs text-muted-foreground">{topic_form_labels.body_hint.clone()}</p>
 
                         <div class="flex flex-wrap gap-3 pt-2">
                             <button
@@ -1917,8 +1891,7 @@ fn apply_topic_to_form(
     set_topic_category_id: WriteSignal<String>,
     set_topic_title: WriteSignal<String>,
     set_topic_slug: WriteSignal<String>,
-    set_topic_body: WriteSignal<String>,
-    set_topic_body_format: WriteSignal<String>,
+    set_topic_body: WriteSignal<RichTextDocument>,
     set_topic_tags: WriteSignal<String>,
     form: TopicFormSnapshot,
 ) {
@@ -1928,7 +1901,6 @@ fn apply_topic_to_form(
     set_topic_title.set(form.title);
     set_topic_slug.set(form.slug);
     set_topic_body.set(form.body);
-    set_topic_body_format.set(form.body_format);
     set_topic_tags.set(form.tags_raw);
 }
 
@@ -1957,15 +1929,13 @@ fn clear_topic_form(
     set_topic_category_id: WriteSignal<String>,
     set_topic_title: WriteSignal<String>,
     set_topic_slug: WriteSignal<String>,
-    set_topic_body: WriteSignal<String>,
-    set_topic_body_format: WriteSignal<String>,
+    set_topic_body: WriteSignal<RichTextDocument>,
     set_topic_tags: WriteSignal<String>,
 ) {
     set_editing_topic_id.set(None);
     set_topic_category_id.set(String::new());
     set_topic_title.set(String::new());
     set_topic_slug.set(String::new());
-    set_topic_body.set(String::new());
-    set_topic_body_format.set("markdown".to_string());
+    set_topic_body.set(RichTextDocument::empty());
     set_topic_tags.set(String::new());
 }

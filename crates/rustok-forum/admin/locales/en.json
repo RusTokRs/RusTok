@@ -56,8 +56,6 @@
   "forum.form.chooseCategory": "Choose category",
   "forum.form.title": "Title",
   "forum.form.titleHint": "Headline shown in the feed.",
-  "forum.form.bodyFormat": "Body format",
-  "forum.form.bodyFormatHint": "Usually `markdown`.",
   "forum.form.tags": "Tags",
   "forum.form.tagsHint": "Comma-separated labels for discovery.",
   "forum.form.body": "Body",

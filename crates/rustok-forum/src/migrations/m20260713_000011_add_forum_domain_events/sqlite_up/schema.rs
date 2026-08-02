@@ -33,7 +33,10 @@ pub(super) async fn schema(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         'forum.reply.vote_changed',
         'forum.category.subscription_changed',
         'forum.topic.subscription_changed',
-        'forum.topic.tags_changed'
+        'forum.topic.tags_changed',
+        'forum.mention.user_added',
+        'forum.mention.audience_added',
+        'forum.subscription.changed'
         )),
     schema_version INTEGER NOT NULL DEFAULT 1
         CHECK (schema_version = 1),

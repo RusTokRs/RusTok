@@ -7,23 +7,11 @@ pub(super) async fn apply_deletes(manager: &SchemaManager<'_>) -> Result<(), DbE
         r#"CREATE TRIGGER forum_replies_soft_delete
         BEFORE DELETE ON forum_replies
         FOR EACH ROW
-        WHEN NOT EXISTS (
-            SELECT 1
-            FROM forum_hard_delete_context context
-            WHERE context.topic_id = OLD.topic_id
-        )
         BEGIN
             SELECT CASE
                 WHEN OLD.deleted_at IS NOT NULL
                 THEN RAISE(ABORT, 'forum reply is already deleted')
             END;
-
-            UPDATE forum_reply_bodies
-            SET body = '[deleted]',
-                body_format = 'markdown',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE tenant_id = OLD.tenant_id
-              AND reply_id = OLD.id;
 
             DELETE FROM forum_solutions
             WHERE tenant_id = OLD.tenant_id
@@ -63,38 +51,11 @@ pub(super) async fn apply_deletes(manager: &SchemaManager<'_>) -> Result<(), DbE
         r#"CREATE TRIGGER forum_topics_soft_delete
         BEFORE DELETE ON forum_topics
         FOR EACH ROW
-        WHEN NOT EXISTS (
-            SELECT 1
-            FROM forum_hard_delete_context context
-            WHERE context.topic_id = OLD.id
-        )
         BEGIN
             SELECT CASE
                 WHEN OLD.deleted_at IS NOT NULL
                 THEN RAISE(ABORT, 'forum topic is already deleted')
             END;
-
-            UPDATE forum_topic_translations
-            SET title = '[deleted]',
-                slug = NULL,
-                body = '[deleted]',
-                body_format = 'markdown',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE tenant_id = OLD.tenant_id
-              AND topic_id = OLD.id;
-
-            UPDATE forum_reply_bodies
-            SET body = '[deleted]',
-                body_format = 'markdown',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE tenant_id = OLD.tenant_id
-              AND reply_id IN (
-                  SELECT reply.id
-                  FROM forum_replies reply
-                  WHERE reply.tenant_id = OLD.tenant_id
-                    AND reply.topic_id = OLD.id
-                    AND reply.deleted_at IS NULL
-              );
 
             DELETE FROM forum_solutions
             WHERE tenant_id = OLD.tenant_id

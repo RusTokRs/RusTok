@@ -1,3 +1,4 @@
+use rustok_api::{RichTextDocument, RichTextNode};
 use rustok_ui_core::{
     AdminQueryKey, UiRouteQueryIntent, normalize_optional_ui_text,
     ui_busy_key_last_segment_matches, ui_scoped_busy_key,
@@ -231,8 +232,6 @@ pub struct ForumAdminTopicFormLabels {
     pub title_hint: String,
     pub slug_label: String,
     pub slug_hint: String,
-    pub body_format_label: String,
-    pub body_format_hint: String,
     pub tags_label: String,
     pub tags_hint: String,
     pub body_label: String,
@@ -253,8 +252,6 @@ pub fn forum_admin_topic_form_labels(
     title_hint: String,
     slug_label: String,
     slug_hint: String,
-    body_format_label: String,
-    body_format_hint: String,
     tags_label: String,
     tags_hint: String,
     body_label: String,
@@ -274,8 +271,6 @@ pub fn forum_admin_topic_form_labels(
         title_hint,
         slug_label,
         slug_hint,
-        body_format_label,
-        body_format_hint,
         tags_label,
         tags_hint,
         body_label,
@@ -378,9 +373,7 @@ pub struct ForumAdminPlaceholderPolicy {
     pub category_position: String,
     pub topic_title: String,
     pub topic_slug: String,
-    pub topic_body_format: String,
     pub topic_tags: String,
-    pub topic_body: String,
 }
 
 pub fn forum_admin_placeholder_policy(default_locale: &str) -> ForumAdminPlaceholderPolicy {
@@ -400,9 +393,7 @@ pub fn forum_admin_placeholder_policy(default_locale: &str) -> ForumAdminPlaceho
         category_position: "0".to_string(),
         topic_title: "How should we structure weekly updates?".to_string(),
         topic_slug: "weekly-updates-structure".to_string(),
-        topic_body_format: "markdown".to_string(),
         topic_tags: "release, roadmap, updates".to_string(),
-        topic_body: "Write the first post here...".to_string(),
     }
 }
 
@@ -782,15 +773,14 @@ impl CategoryFormSnapshot {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TopicFormSnapshot {
     pub editing_id: Option<String>,
     pub locale: String,
     pub category_id: String,
     pub title: String,
     pub slug: String,
-    pub body: String,
-    pub body_format: String,
+    pub body: RichTextDocument,
     pub tags_raw: String,
 }
 
@@ -802,8 +792,7 @@ impl TopicFormSnapshot {
             category_id: String::new(),
             title: String::new(),
             slug: String::new(),
-            body: String::new(),
-            body_format: "markdown".to_string(),
+            body: RichTextDocument::empty(),
             tags_raw: String::new(),
         }
     }
@@ -815,8 +804,7 @@ impl TopicFormSnapshot {
             category_id: topic.category_id.clone(),
             title: topic.title.clone(),
             slug: topic.slug.clone(),
-            body: topic.body.clone(),
-            body_format: topic.body_format.clone(),
+            body: topic.body.document.clone(),
             tags_raw: topic.tags.join(", "),
         }
     }
@@ -827,15 +815,28 @@ impl TopicFormSnapshot {
             category_id: self.category_id.trim().to_string(),
             title: self.title.trim().to_string(),
             slug: self.slug.trim().to_string(),
-            body: self.body.trim().to_string(),
-            body_format: self.body_format.trim().to_string(),
+            body: self.body.clone(),
             tags: parse_tags(self.tags_raw.as_str()),
         };
-        if draft.category_id.is_empty() || draft.title.is_empty() || draft.body.is_empty() {
+        if draft.category_id.is_empty()
+            || draft.title.is_empty()
+            || !richtext_document_has_text(&draft.body)
+        {
             return Err(ForumAdminFormError::TopicRequired);
         }
         Ok(draft)
     }
+}
+
+fn richtext_document_has_text(document: &RichTextDocument) -> bool {
+    fn node_has_text(node: &RichTextNode) -> bool {
+        node.text
+            .as_deref()
+            .is_some_and(|text| !text.trim().is_empty())
+            || node.content.iter().any(node_has_text)
+    }
+
+    document.content.iter().any(node_has_text)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1210,7 +1211,6 @@ mod tests {
         let placeholders = forum_admin_placeholder_policy(" ru ");
         assert_eq!(placeholders.locale, "ru");
         assert_eq!(placeholders.category_slug, "general-discussion");
-        assert_eq!(placeholders.topic_body_format, "markdown");
 
         let default_placeholders = forum_admin_placeholder_policy("   ");
         assert_eq!(default_placeholders.locale, "en");
@@ -1370,16 +1370,17 @@ mod tests {
             category_id: "  cat-1  ".to_string(),
             title: "  Welcome  ".to_string(),
             slug: "  welcome  ".to_string(),
-            body: "  Body  ".to_string(),
-            body_format: "  markdown  ".to_string(),
+            body: rustok_api::RichTextDocument::single_paragraph("Body"),
             tags_raw: " rust, forum ,, ffa ".to_string(),
         };
         let draft = snapshot.to_draft().expect("valid topic draft");
         assert_eq!(draft.category_id, "cat-1");
         assert_eq!(draft.title, "Welcome");
         assert_eq!(draft.slug, "welcome");
-        assert_eq!(draft.body, "Body");
-        assert_eq!(draft.body_format, "markdown");
+        assert_eq!(
+            draft.body,
+            rustok_api::RichTextDocument::single_paragraph("Body")
+        );
         assert_eq!(draft.tags, vec!["rust", "forum", "ffa"]);
     }
 
@@ -1388,7 +1389,7 @@ mod tests {
         let snapshot = TopicFormSnapshot {
             category_id: "cat-1".to_string(),
             title: " ".to_string(),
-            body: "Body".to_string(),
+            body: rustok_api::RichTextDocument::single_paragraph("Body"),
             ..TopicFormSnapshot::blank("en")
         };
         assert_eq!(
@@ -1702,8 +1703,6 @@ mod tests {
             "Title hint".to_string(),
             "Slug".to_string(),
             "Slug hint".to_string(),
-            "Format".to_string(),
-            "Format hint".to_string(),
             "Tags".to_string(),
             "Tags hint".to_string(),
             "Body".to_string(),
@@ -1722,8 +1721,6 @@ mod tests {
         assert_eq!(form.title_hint, "Title hint");
         assert_eq!(form.slug_label, "Slug");
         assert_eq!(form.slug_hint, "Slug hint");
-        assert_eq!(form.body_format_label, "Format");
-        assert_eq!(form.body_format_hint, "Format hint");
         assert_eq!(form.tags_label, "Tags");
         assert_eq!(form.tags_hint, "Tags hint");
         assert_eq!(form.body_label, "Body");

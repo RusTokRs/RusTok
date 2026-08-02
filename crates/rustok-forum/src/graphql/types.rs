@@ -1,4 +1,5 @@
 use async_graphql::{InputObject, SimpleObject};
+use rustok_api::{RichTextDocument, RichTextView};
 use rustok_profiles::graphql::GqlProfileSummary;
 use serde_json::Value;
 use uuid::Uuid;
@@ -37,9 +38,8 @@ pub struct GqlForumTopic {
     pub author_profile: Option<GqlProfileSummary>,
     pub title: String,
     pub slug: String,
-    pub body: String,
-    pub body_format: String,
-    pub content_json: Option<Value>,
+    pub body: RichTextView,
+    pub body_plain_text: String,
     pub metadata: Value,
     pub status: String,
     pub tags: Vec<String>,
@@ -56,6 +56,31 @@ pub struct GqlForumTopic {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumTopicListItem {
+    pub id: Uuid,
+    pub requested_locale: String,
+    pub locale: String,
+    pub effective_locale: String,
+    pub available_locales: Vec<String>,
+    pub category_id: Uuid,
+    pub author_id: Option<Uuid>,
+    pub author_profile: Option<GqlProfileSummary>,
+    pub title: String,
+    pub slug: String,
+    pub metadata: Value,
+    pub status: String,
+    pub channel_slugs: Vec<String>,
+    pub vote_score: i32,
+    pub current_user_vote: Option<i32>,
+    pub is_subscribed: bool,
+    pub solution_reply_id: Option<Uuid>,
+    pub is_pinned: bool,
+    pub is_locked: bool,
+    pub reply_count: i32,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
 pub struct GqlForumReply {
     pub id: Uuid,
     pub requested_locale: String,
@@ -64,8 +89,8 @@ pub struct GqlForumReply {
     pub topic_id: Uuid,
     pub author_id: Option<Uuid>,
     pub author_profile: Option<GqlProfileSummary>,
-    pub content: String,
-    pub content_format: String,
+    pub content: RichTextView,
+    pub content_plain_text: String,
     pub status: String,
     pub vote_score: i32,
     pub current_user_vote: Option<i32>,
@@ -130,9 +155,7 @@ pub struct CreateForumTopicInput {
     pub category_id: Uuid,
     pub title: String,
     pub slug: Option<String>,
-    pub body: String,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub body: RichTextDocument,
     pub metadata: Option<Value>,
     pub tags: Vec<String>,
     pub channel_slugs: Option<Vec<String>>,
@@ -142,9 +165,7 @@ pub struct CreateForumTopicInput {
 pub struct UpdateForumTopicInput {
     pub locale: String,
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub body: Option<RichTextDocument>,
     pub metadata: Option<Value>,
     pub tags: Option<Vec<String>>,
     pub channel_slugs: Option<Vec<String>>,
@@ -153,9 +174,7 @@ pub struct UpdateForumTopicInput {
 #[derive(InputObject)]
 pub struct CreateForumReplyInput {
     pub locale: String,
-    pub content: String,
-    pub content_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub content: RichTextDocument,
     pub parent_reply_id: Option<Uuid>,
 }
 
@@ -185,5 +204,5 @@ pub struct UpdateForumCategoryInput {
 }
 
 pub type ForumCategoryConnection = ListConnection<GqlForumCategory>;
-pub type ForumTopicConnection = ListConnection<GqlForumTopic>;
+pub type ForumTopicConnection = ListConnection<GqlForumTopicListItem>;
 pub type ForumReplyConnection = ListConnection<GqlForumReply>;

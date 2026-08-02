@@ -11,7 +11,6 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub locale: String,
     pub body: String,
-    pub body_format: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

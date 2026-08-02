@@ -1,10 +1,9 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result};
 use rustok_api::{
-    AuthContext, Permission, TenantContext,
+    AuthContext, Permission, RichTextDocument, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
-use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{ProfileService, ProfilesReader, graphql::GqlProfileSummary};
 use sea_orm::DatabaseConnection;
@@ -36,9 +35,7 @@ pub struct CreateForumTopicWithQuotesInput {
     pub category_id: Uuid,
     pub title: String,
     pub slug: Option<String>,
-    pub body: String,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub body: RichTextDocument,
     pub metadata: Option<Value>,
     pub tags: Vec<String>,
     pub channel_slugs: Option<Vec<String>>,
@@ -50,9 +47,7 @@ pub struct CreateForumTopicWithQuotesInput {
 pub struct UpdateForumTopicWithQuotesInput {
     pub locale: String,
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub body: Option<RichTextDocument>,
     pub metadata: Option<Value>,
     pub tags: Option<Vec<String>>,
     pub channel_slugs: Option<Vec<String>>,
@@ -62,9 +57,7 @@ pub struct UpdateForumTopicWithQuotesInput {
 #[derive(InputObject)]
 pub struct CreateForumReplyWithQuotesInput {
     pub locale: String,
-    pub content: String,
-    pub content_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub content: RichTextDocument,
     pub parent_reply_id: Option<Uuid>,
     #[graphql(default)]
     pub quotes: Vec<GqlForumQuoteReferenceInput>,
@@ -73,9 +66,7 @@ pub struct CreateForumReplyWithQuotesInput {
 #[derive(InputObject)]
 pub struct UpdateForumReplyWithQuotesInput {
     pub locale: String,
-    pub content: Option<String>,
-    pub content_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub content: Option<RichTextDocument>,
     pub quotes: Option<Vec<GqlForumQuoteReferenceInput>>,
 }
 
@@ -123,10 +114,6 @@ impl ForumContentCommandMutation {
                     title: input.title,
                     slug: input.slug,
                     body: input.body,
-                    body_format: input
-                        .body_format
-                        .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
-                    content_json: input.content_json,
                     metadata: input.metadata.unwrap_or_else(|| serde_json::json!({})),
                     tags: input.tags,
                     channel_slugs: input.channel_slugs,
@@ -165,8 +152,6 @@ impl ForumContentCommandMutation {
                     locale: input.locale,
                     title: input.title,
                     body: input.body,
-                    body_format: input.body_format,
-                    content_json: input.content_json,
                     metadata: input.metadata,
                     tags: input.tags,
                     channel_slugs: input.channel_slugs,
@@ -217,10 +202,6 @@ impl ForumContentCommandMutation {
                 CreateReplyCommandInput {
                     locale: input.locale,
                     content: input.content,
-                    content_format: input
-                        .content_format
-                        .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
-                    content_json: input.content_json,
                     parent_reply_id: input.parent_reply_id,
                     quotes: map_quotes(input.quotes),
                 },
@@ -256,8 +237,6 @@ impl ForumContentCommandMutation {
                 UpdateReplyCommandInput {
                     locale: input.locale,
                     content: input.content,
-                    content_format: input.content_format,
-                    content_json: input.content_json,
                     quotes: input.quotes.map(map_quotes),
                 },
             )
@@ -342,8 +321,7 @@ fn map_topic(topic: TopicResponse, author_profile: Option<GqlProfileSummary>) ->
         title: topic.title,
         slug: topic.slug,
         body: topic.body,
-        body_format: topic.body_format,
-        content_json: topic.content_json,
+        body_plain_text: topic.body_plain_text,
         metadata: topic.metadata,
         status: topic.status,
         tags: topic.tags,
@@ -370,7 +348,7 @@ fn map_reply(reply: ReplyResponse, author_profile: Option<GqlProfileSummary>) ->
         author_id: reply.author_id,
         author_profile,
         content: reply.content,
-        content_format: reply.content_format,
+        content_plain_text: reply.content_plain_text,
         status: reply.status,
         vote_score: reply.vote_score,
         current_user_vote: reply.current_user_vote,

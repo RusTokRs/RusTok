@@ -199,8 +199,8 @@
       "status": "implemented_source_verified_no_compile",
       "path": "crates/rustok-ai/src/direct.rs",
       "required_markers": [
-        "rustok_blog::richtext::article_document_from_plain_text(&body)",
-        "content: rustok_blog::richtext::article_document_from_plain_text(body)",
+        "crate::rustok_blog::richtext::article_document_from_plain_text(&body)",
+        "content: crate::rustok_blog::richtext::article_document_from_plain_text(body)",
         "post.content_plain_text.clone()"
       ],
       "forbidden_markers": [

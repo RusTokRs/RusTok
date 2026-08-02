@@ -1,4 +1,3 @@
-use crate::i18n::t;
 use rustok_ui_core::css_hex_accent_class;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,21 +154,6 @@ pub fn topic_href(module_route_base: &str, category_id: Option<&str>, topic_id: 
     }
 }
 
-pub fn summarize_rich_content(content: &str, format: &str, locale: Option<&str>) -> String {
-    if format.eq_ignore_ascii_case("markdown") {
-        return content.trim().to_string();
-    }
-
-    let template = t(
-        locale,
-        "forum.richContent.summary",
-        "Stored in `{format}` format. Raw content length: {count} characters.",
-    );
-    template
-        .replace("{format}", format)
-        .replace("{count}", content.chars().count().to_string().as_str())
-}
-
 pub fn topic_status_class(status: &str) -> &'static str {
     match status.to_ascii_lowercase().as_str() {
         "published" | "active" | "open" | "approved" => "success",
@@ -196,18 +180,6 @@ mod tests {
         assert_eq!(
             topic_href("/forum", None, "topic-1"),
             "/forum?topic=topic-1"
-        );
-    }
-
-    #[test]
-    fn summarizes_markdown_and_non_markdown_without_framework_state() {
-        assert_eq!(
-            summarize_rich_content("  hello  ", "markdown", None),
-            "hello"
-        );
-        assert_eq!(
-            summarize_rich_content("Здравствуйте", "rt-json", Some("en")),
-            "Stored in `rt-json` format. Raw content length: 12 characters."
         );
     }
 

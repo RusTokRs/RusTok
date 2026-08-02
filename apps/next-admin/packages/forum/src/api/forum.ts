@@ -1,4 +1,5 @@
 import { graphqlRequest } from '@/lib/graphql';
+import type { RichTextDocument } from '@rustok/richtext';
 
 export interface GqlOpts {
   token?: string | null;
@@ -16,9 +17,7 @@ export interface ForumTopicSummary {
 
 interface CreateForumReplyInput {
   locale: string;
-  content: string;
-  contentFormat: 'markdown' | 'rt_json_v1';
-  contentJson?: Record<string, unknown>;
+  content: RichTextDocument;
   parentReplyId?: string;
 }
 

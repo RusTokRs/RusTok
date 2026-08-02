@@ -245,9 +245,7 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
                 category_id: category.id,
                 title: "General thread".to_string(),
                 slug: Some("general-thread".to_string()),
-                body: "English body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("English body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -264,9 +262,9 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
             UpdateTopicInput {
                 locale: "ru".to_string(),
                 title: Some("Общая тема".to_string()),
-                body: Some("Русское тело".to_string()),
-                body_format: Some("markdown".to_string()),
-                content_json: None,
+                body: Some(rustok_api::RichTextDocument::single_paragraph(
+                    "Russian body",
+                )),
                 metadata: None,
                 tags: None,
                 channel_slugs: None,
@@ -385,9 +383,7 @@ async fn topic_resolves_localized_flex_metadata_from_attached_values() {
                 category_id: category.id,
                 title: "Localized flex".to_string(),
                 slug: Some("localized-flex".to_string()),
-                body: "English body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("English body"),
                 metadata: serde_json::json!({
                     "summary": "English summary",
                     "audience": "everyone"
@@ -407,9 +403,9 @@ async fn topic_resolves_localized_flex_metadata_from_attached_values() {
             UpdateTopicInput {
                 locale: "ru".to_string(),
                 title: Some("Локализованный flex".to_string()),
-                body: Some("Русское тело".to_string()),
-                body_format: Some("markdown".to_string()),
-                content_json: None,
+                body: Some(rustok_api::RichTextDocument::single_paragraph(
+                    "Russian body",
+                )),
                 metadata: Some(serde_json::json!({
                     "summary": "Русская сводка",
                     "audience": "everyone"
@@ -546,9 +542,7 @@ async fn topic_create_applies_shared_defaults_and_persists_localized_attached_va
                 category_id: category.id,
                 title: "Defaults".to_string(),
                 slug: Some("defaults".to_string()),
-                body: "English body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("English body"),
                 metadata: serde_json::json!({
                     "summary": "English summary",
                     "unknown_custom": "keep-me"
@@ -654,9 +648,7 @@ async fn topic_create_rejects_missing_required_localized_custom_field() {
                 category_id: category.id,
                 title: "Missing summary".to_string(),
                 slug: Some("missing-summary".to_string()),
-                body: "English body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("English body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,

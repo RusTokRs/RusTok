@@ -5,17 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormInput } from '@/shared/ui/forms';
 import { RichTextEditor } from '@/shared/ui/rich-text-editor';
 import { Form } from '@/shared/ui/shadcn/form';
-import { emptyRichTextDocument, type RichTextDocument } from '@rustok/richtext';
+import {
+  emptyRichTextDocument,
+  getRichTextProfile,
+  richTextDocumentHasText,
+  validateRichTextDocument,
+  type RichTextDocument
+} from '@rustok/richtext';
 import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { createForumReply, type GqlOpts } from '../api/forum';
-import {
-  normalizeRtJsonPayload,
-  stringifyRtDoc,
-  type RtDoc
-} from './rt-json-format';
 
 export function ForumReplyEditor({
   topicId,
@@ -31,17 +32,20 @@ export function ForumReplyEditor({
   const [doc, setDoc] = useState<RichTextDocument>(emptyRichTextDocument());
 
   async function submit(values: { locale: string }) {
-    const legacyDoc = doc as RtDoc;
-    const contentJson = normalizeRtJsonPayload(legacyDoc, values.locale);
-    const plain = stringifyRtDoc(legacyDoc, values.locale);
+    const validation = validateRichTextDocument(
+      doc,
+      getRichTextProfile('discussion')
+    );
+    if (!validation.valid || !richTextDocumentHasText(doc)) {
+      toast.error(validation.error ?? 'Reply content is required.');
+      return;
+    }
     try {
       await createForumReply(
         topicId,
         {
           locale: values.locale,
-          content: plain,
-          contentFormat: 'rt_json_v1',
-          contentJson
+          content: doc
         },
         gqlOpts
       );
@@ -65,9 +69,6 @@ export function ForumReplyEditor({
             value={doc}
             onChange={setDoc}
           />
-          <pre className='bg-muted max-h-44 overflow-auto rounded-md border p-3 text-xs'>
-            {stringifyRtDoc(doc as RtDoc, form.watch('locale') || hostLocale)}
-          </pre>
           <Button type='submit'>Send reply</Button>
         </CardContent>
       </Form>

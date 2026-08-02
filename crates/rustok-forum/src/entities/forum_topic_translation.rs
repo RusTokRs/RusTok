@@ -13,7 +13,6 @@ pub struct Model {
     pub title: String,
     pub slug: Option<String>,
     pub body: String,
-    pub body_format: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

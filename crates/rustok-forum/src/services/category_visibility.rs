@@ -121,12 +121,7 @@ impl ForumCategoryVisibilityPolicyService {
         let result = CategoryVisibilitySnapshot::load(&txn, tenant_id)
             .await?
             .policy(category_id)?;
-        publish_forum_projection_scope_direct_in_tx(
-            &txn,
-            tenant_id,
-            security.user_id,
-        )
-        .await?;
+        publish_forum_projection_scope_direct_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await?;
         Ok(result)
     }

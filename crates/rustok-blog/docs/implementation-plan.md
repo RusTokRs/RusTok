@@ -21,13 +21,16 @@ acknowledgement. The utility does not execute the irreversible migration or
 trigger Search reindex.
 
 The Blog storefront selected-post path consumes the owner projection through
-both transports. It renders server-rendered `RichTextView` HTML with exactly one
-`content.html` sink and uses server-derived plain text as fallback. The public
-comments projection is Comments-owned and approved-only, and storefront comment
-pagination is route-owned and bounded consistently across GraphQL and native
-SSR. Public comment reads carry typed `AVAILABLE`, `UNAVAILABLE`, or `TIMEOUT`
+both transports. The selected post has exactly one `content.html` sink for
+server-rendered `RichTextView` HTML and uses server-derived plain text as
+fallback. The public comments projection is Comments-owned and approved-only.
+The storefront comment pagination is route-owned and bounded consistently
+across GraphQL and native SSR. Public comment reads carry typed `AVAILABLE`,
+`UNAVAILABLE`, or `TIMEOUT`
 availability across both transports, while the article remains renderable for the
 two degraded states. The active DTO/UI path has no legacy body or format field.
+The typed storefront comments availability is source-locked. The remote transport remains pending.
+The cached snapshot and comment-form fallback remain planned.
 
 The Blog admin uses typed `RichTextDocument` state and the owner
 `BlogRichTextEditor`. The fixed Article frame is isolated with an
@@ -149,10 +152,10 @@ with suggested command
 The registered `verify:blog:comments-port-boundary` verifier imports the standalone
 GraphQL verifier, and the registered `test:verify:blog:comments-port-boundary`
 self-test imports all twelve focused cases. `scripts/verify/verify-blog-fba.test.mjs`
-locks both imports alongside the HTTP composition imports. GraphQL Comments host
-selection is source-locked and mandatory inside the existing first-class Comments
-port leaf. A dedicated parallel GraphQL leaf is intentionally absent. The remote
-network transport remains pending.
+locks both imports alongside the HTTP composition imports. GraphQL Comments host selection is source-locked.
+It is mandatory inside the existing first-class Comments port leaf. Blog FBA package-chain registration remains pending
+only for a dedicated parallel GraphQL leaf, which is intentionally absent. The
+remote network transport remains pending.
 
 Storefront native SSR Comments composition is host-attached. The selected-post
 server function reads `HostRuntimeContext`, and its single `comment_service`
@@ -339,6 +342,10 @@ delete-before-create ordering, missing-post replay after source creation, and
 rollback/retry when the outbox table is unavailable. The suggested command is
 `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`.
 The target is registered as `executable_no_run`; no PostgreSQL result is recorded.
+All four Blog projection PostgreSQL harnesses set `search_path` to the generated
+test schema only. They do not include `public`, so a deliberately missing local
+table cannot fall through to a developer database table and invalidate rollback
+coverage. The three focused source verifiers reject that fallback explicitly.
 
 The retained same-process restart target is
 `crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs`. It applies
@@ -372,15 +379,22 @@ Exact commands `verify:blog:comments-event-projection` /
 port gate in that exact order. Overall status remains
 `source_verified_no_compile`; the deterministic retry policy, retry-limit target,
 concurrent duplicate race, and dispatcher duplicate replay are source-locked,
-while all target execution, naturally contended retry-frequency evidence, full
-server-host restart recovery, and all other runtime evidence remain pending.
+The four registered PostgreSQL targets passed locally against PostgreSQL 16 on
+2026-08-01: 7 main projection cases, 3 restart/process-restart cases, 1 concurrent
+duplicate-delivery race, and 1 dispatcher duplicate replay. This local run found
+and removed a `public` search-path fallback that had allowed the outbox-failure
+case to reach a developer table. Retained executable runtime evidence, naturally
+contended retry-frequency evidence, full server-host restart recovery, and all
+other runtime evidence remain pending, so the evidence status stays
+`source_verified_no_compile` / `executable_no_run`.
 
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
 mutation and Blog reindex publication share one transaction; authorization
 precedes lookup; parent and translation operations are tenant-scoped; a name
-that cannot derive a route key requires a non-empty ASCII slug; service and HTTP
-pagination clamp `per_page` to `1..100`. The retained source contract is
+that cannot derive a route key requires a non-empty ASCII slug. Service and HTTP
+pagination clamp `per_page` to `1..100`; service and HTTP pagination use the
+same bound. The retained source contract is
 `blog-category-search-reindex-contract.json`, verified by
 `verify-blog-category-search-reindex.mjs` and its focused fixture
 `verify-blog-category-search-reindex.test.mjs`. Both are registered as the
@@ -839,9 +853,11 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
   loser rolls back; the dispatcher gate requires two completed module-registered
   handler calls with zero errors and one database application. Their exact npm
   leaf commands and order immediately after the main projection gate are locked.
-  None of these targets has been run. Naturally contended PostgreSQL retry
-  frequency, full server-host restart recovery, and all execution evidence remain
-  pending.
+  All four PostgreSQL integration targets passed locally on 2026-08-01 (12 cases
+  total) after their isolated schemas were hardened to forbid fallback to
+  `public`. No retained executable output was generated, so evidence promotion,
+  naturally contended PostgreSQL retry frequency, full server-host restart
+  recovery, and retained execution evidence remain pending.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
@@ -1153,6 +1169,11 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
     regressions for both required imports, reconciled storefront evidence to remove
     the stale admin pending marker, preserved registry schema v13 and exact package
     order, and changed no runtime source or execution status.
+67. Executed all four Blog Comments projection PostgreSQL targets locally against
+    PostgreSQL 16, fixed their unique-schema isolation by removing the `public`
+    search-path fallback, and added focused fail-closed verifier regressions. The
+    12 integration cases pass; retained runtime evidence and status promotion
+    remain pending.
 
 ## Next results
 

@@ -13,8 +13,8 @@ use rustok_forum::{
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, Database,
-    DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, Database, DatabaseConnection,
+    EntityTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -94,9 +94,7 @@ async fn create_topic(
                 category_id,
                 title: title.into(),
                 slug: Some(title.to_ascii_lowercase().replace(' ', "-")),
-                body: format!("{title} body"),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(format!("{title} body")),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: Some(vec![channel_slug.into()]),
@@ -107,11 +105,7 @@ async fn create_topic(
         .id
 }
 
-async fn set_topic_cursor_time(
-    db: &DatabaseConnection,
-    topic_id: Uuid,
-    seconds_before_now: i64,
-) {
+async fn set_topic_cursor_time(db: &DatabaseConnection, topic_id: Uuid, seconds_before_now: i64) {
     let model = forum_topic::Entity::find_by_id(topic_id)
         .one(db)
         .await

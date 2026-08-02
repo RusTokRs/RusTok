@@ -29,14 +29,19 @@ function fixture(options = {}) {
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/nav.ts',
     "title: 'Forum'\n/dashboard/forum/reply");
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/api/forum.ts',
-    'export interface GqlOpts\nlistForumTopics\ncreateForumReply');
+    'export interface GqlOpts\nlistForumTopics\ncreateForumReply\ncontent: RichTextDocument;');
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/forum-reply-editor.tsx',
     `@/shared/ui/rich-text-editor
 profile='${options.articleProfile ? 'article' : 'discussion'}'
 from '../api/forum'
-from './rt-json-format'`);
-  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/rt-json-format.ts',
-    "normalizeRtJsonPayload\nstringifyRtDoc\nversion: 'rt_json_v1'");
+validateRichTextDocument
+richTextDocumentHasText
+content: doc
+${options.legacyAdapterImport ? "from './rt-json-format'" : ''}`);
+  if (options.legacyAdapterFile) {
+    writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/rt-json-format.ts',
+      "normalizeRtJsonPayload\nstringifyRtDoc\nversion: 'rt_json_v1'");
+  }
   writeFixtureFile(root, 'apps/next-admin/src/shared/ui/rich-text-editor.tsx',
     "from '@rustok/richtext/react'\nprofile: RichTextProfileId;\nframeUrl='/richtext/frame'");
   writeFixtureFile(root, 'apps/next-admin/src/modules/index.ts',
@@ -53,8 +58,8 @@ from './rt-json-format'`);
       schema_version: 1,
       module: 'blog',
       surface: 'next_admin_forum_ui_ownership',
-      status: 'source_verified_no_compile',
-      compile_policy: 'not_run_by_request',
+      status: 'verified',
+      compile_policy: 'next_typecheck',
       owner_package: options.evidenceDrift
         ? 'apps/next-admin/packages/blog/src'
         : 'apps/next-admin/packages/forum/src',
@@ -83,19 +88,31 @@ function run(root) {
 test('Blog Forum UI ownership verifier accepts the canonical owner split', () => {
   const result = run(fixture());
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Forum Next admin navigation/);
+  assert.match(result.stdout, /Forum owns its Next admin navigation/);
 });
 
 test('Blog Forum UI ownership verifier rejects Forum files returning to Blog', () => {
   const result = run(fixture({ blogOwnsForum: true }));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /must be removed from the Blog package|Blog index contains forbidden/);
+  assert.match(result.stderr, /must be absent from the canonical owner split|Blog index contains forbidden/);
 });
 
 test('Blog Forum UI ownership verifier rejects the Article profile in Forum editor', () => {
   const result = run(fixture({ articleProfile: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Forum reply editor missing profile='discussion'/);
+});
+
+test('Blog Forum UI ownership verifier rejects a restored Forum format adapter', () => {
+  const result = run(fixture({ legacyAdapterFile: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must be absent from the canonical owner split/);
+});
+
+test('Blog Forum UI ownership verifier rejects a restored Forum adapter import', () => {
+  const result = run(fixture({ legacyAdapterImport: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Forum reply editor contains forbidden/);
 });
 
 test('Blog Forum UI ownership verifier rejects a Forum route importing Blog', () => {

@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-01
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -45,17 +45,24 @@ module-owned UI packages. The verified capability baseline and the remaining
 product work are tracked in this plan's program ledger; every unfinished item
 remains explicitly marked with its current status and completion evidence.
 
-The neutral `rustok-api::richtext` contract and executable
-`rustok-content::richtext` profiles are now available. Forum topic/reply
-storage and transports remain on the legacy body/format path until the
-atomic cutover; do not add new `rt_json`/Markdown aliases,
-`content_json` fields, or a Forum-local renderer.
+Forum richtext cutover is complete. Topic and reply writes accept one
+`rustok_api::RichTextDocument`; storage contains its canonical serialized JSON;
+reads expose `RichTextView` plus server-derived plain text. The owner applies
+the `discussion` profile through `rustok-content::richtext`. Format selectors,
+parallel content fields, alternate authoring modes, and module-local renderers
+are forbidden.
+
+Forum admin category/topic operations use one GraphQL transport. The removed
+REST fallback, its unused write helpers, and tests that required fallback
+behavior are not compatibility contracts; `rustok-forum-admin` has 36 passing
+unit tests for the surviving path.
 
 The Next admin Forum surface is module-owned under
 `apps/next-admin/packages/forum/src`. It owns Forum navigation, topic/reply
-GraphQL helpers, the reply composer, and the contained legacy reply-format
-adapter. The host only registers and mounts the package; the reusable framed
-React richtext lifecycle adapter remains neutral shared UI.
+GraphQL helpers, and a canonical document reply composer. The host only
+registers and mounts the package. React and Leptos use their shared framed
+richtext lifecycle adapters; Forum supplies only the `discussion` profile and
+host-effective locale.
 
 ## Verification
 
@@ -234,7 +241,7 @@ at the end of this file remain authoritative.
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
-| `FORUM-28` | `planned` | Editor, safe renderer and renderer-version rebuilds. |
+| `FORUM-28` | `done` | Canonical editor, safe renderer, plain-text projection, Next/Leptos shared adapters, and atomic storage/transport cutover. |
 | `FORUM-29` | `planned` | Realtime acceleration with cursor/revision reconciliation. |
 | `FORUM-30` | `planned` | Complete module-owned admin product. |
 | `FORUM-31` | `planned` | Complete NodeBB-class storefront product. |
@@ -362,7 +369,7 @@ consume are stable.
 
 ## `FORUM-04` — complete the category tree
 
-**Status:** `done`  
+**Status:** `done`
 **Priority:** P0  
 **Dependencies:** completed FORUM-01/03/10
 
@@ -398,7 +405,7 @@ consume are stable.
 
 ### Delivered in `FORUM-04D` and `FORUM-04E`
 
-- forum-admin GraphQL/REST adapters route category placement through owner
+- forum-admin GraphQL transport routes category placement through owner
   commands, and the admin boundary verifier rejects generic `position` bypasses;
 - tenant-scoped category topic policy defaults to `allows_topics = true` for
   existing categories without a stored policy row;
@@ -412,7 +419,7 @@ consume are stable.
 ### Delivered in `FORUM-04F`
 
 - `CategoryService::archive_subtree` and `restore_subtree` serialize lifecycle changes with the tenant category-tree lock;
-- compatibility-default lifecycle rows preserve existing categories as active without backfill;
+- default lifecycle rows preserve existing categories as active without backfill;
 - archive writes descendants before ancestors and restore removes ancestor lifecycle rows before descendants;
 - REST, GraphQL, OpenAPI and the canonical tree expose subtree lifecycle state and owner commands;
 - PostgreSQL and SQLite reject active children beneath archived parents, partial restore and new topic placement in archived categories;
@@ -420,7 +427,9 @@ consume are stable.
 
 ### Delivered in `FORUM-04G`
 
-- forum-admin loads the bounded canonical category tree through GraphQL-first transport with REST fallback instead of reconstructing hierarchy from the flat compatibility list;
+- forum-admin loads the bounded canonical category tree through its single
+  GraphQL transport instead of reconstructing hierarchy from a second flat
+  list contract;
 - the tree is flattened in deterministic preorder with `parent_id`, `depth`, `position`, topic policy and archive state retained for rendering and drop planning;
 - interactive drag-and-drop supports moving before a sibling, nesting inside a category and moving to the end of the root set;
 - pure drop planning rejects no-op, self/subtree cycles and active moves beneath archived categories before transport execution;
@@ -482,13 +491,11 @@ contract exposes persistence services.
 ### Scope
 
 Create forum-owned mention and quote relations keyed by tenant, source target,
-source revision and mentioned user. The implemented parser currently handles
-Markdown and `rt_json_v1`; that is legacy state, not the target authoring
-contract. During the atomic richtext cutover it must traverse the validated
-`RichTextDocument` tree directly, continue to exclude code blocks/code marks,
-and remove format branching. Resolve handles through the profiles contract,
-cap mentions per revision, reject abusive mass mentions and make special
-audiences such as moderators permission-gated.
+source revision and mentioned user. Mention extraction traverses the validated
+`RichTextDocument` tree directly, excludes code blocks and code marks, and has
+no format branch. Resolve handles through the profiles contract, cap mentions
+per revision, reject abusive mass mentions and make special audiences such as
+moderators permission-gated.
 
 Editing uses a revision diff: new mention produces one semantic event, removed
 or unchanged mentions do not produce duplicate delivery. Quotes retain the
@@ -496,13 +503,11 @@ quoted target and quoted revision so edits do not rewrite history.
 
 ### Delivered in `FORUM-12A`
 
-- `extract_forum_mention_candidates` supports only canonical Markdown and
-  `rt_json_v1`, caps each revision at 32 unique targets and deduplicates handles
-  with the Profiles-owned handle grammar;
-- Markdown extraction ignores fenced code, inline code, escaped text and email
-  address `@` tokens;
-- `rt_json_v1` extraction runs after the canonical `rustok-core` sanitizer and
-  ignores `code_block` nodes and text carrying a `code` mark;
+- `extract_forum_mention_candidates` accepts `&RichTextDocument`, caps each
+  revision at 32 unique targets, and deduplicates handles with the
+  Profiles-owned handle grammar;
+- structural extraction ignores `codeBlock` nodes, text carrying a `code` mark,
+  and email address `@` tokens;
 - `@moderators` is a typed special audience and fails unless the caller supplies
   explicit moderation policy;
 - `resolve_forum_mentions` uses tenant-scoped `ProfilesReader` lookup and accepts
@@ -528,13 +533,12 @@ quoted target and quoted revision so edits do not rewrite history.
   validation and deterministic owner reads;
 - database guards validate source translation/body identity, quoted tenant/kind/
   target identity and reject direct updates to revisions or child rows;
-- migration backfills one `legacy` relation revision for every existing topic
-  translation and reply body without parsing historical copy or querying
-  Profiles-owned tables;
+- relation revisions are created only by owner commands after canonical content
+  validation; migrations do not manufacture source revisions or relation IDs;
 - the crate-private `MentionRelationService` separates profile-dependent
   `prepare` from transaction-only `persist_in_tx`;
 - `prepare` resolves handles through `ProfilesReader` and computes a SHA-256
-  replay fingerprint over canonical body, format, resolved targets and quotes;
+  replay fingerprint over the canonical document, resolved targets and quotes;
 - `persist_in_tx` locks the source stream, re-reads the persisted body in the
   same transaction, rejects prepared/body mismatch and atomically appends the
   revision plus all mention/quote rows;
@@ -556,12 +560,12 @@ quoted target and quoted revision so edits do not rewrite history.
   source command commit atomically;
 - public topic/reply facades remain the only command entrypoints and transports
   cannot invoke the persistence seam;
-- source INSERT seed triggers remain compatible during rollout and active owner
-  writes append the canonical projection after the seed identity.
+- no source INSERT seed trigger or migration-owned placeholder identity exists;
+  the owner command creates the first canonical relation revision.
 
 ### Delivered in `FORUM-12C`
 
-- the sealed v1 `ForumMentionEvent` family publishes
+- the sealed `ForumMentionEvent` family publishes
   `forum.mention.user_added` and `forum.mention.audience_added` with source
   revision and target identity only;
 - only the exact persisted added-target diff produces events; replay, removed
@@ -630,12 +634,12 @@ quoted target and quoted revision so edits do not rewrite history.
 - `forum.mention.audience_added` remains deferred until a bounded moderator
   directory owner port exists.
 
-### Compatibility and degraded mode
+### Failure and degraded mode
 
-Existing source locales retain their `legacy` seed identity until an active
-owner write appends a canonical relation revision. Existing topic/reply
-create/edit DTOs remain source-compatible; separate D1/D2 command DTOs carry
-quote relations. Legacy body edits route through D2 and preserve current quotes.
+A source locale has no relation revision until an owner command creates one;
+there is no migration seed identity or alternate read path. Existing
+topic/reply create/edit DTOs remain source-compatible; separate D1/D2 command
+DTOs carry quote relations. Body edits route through D2 and preserve current quotes.
 Notifications remain an optional downstream consumer and are never called
 synchronously from Forum transactions. When Notifications or the Forum source
 provider is absent, Forum owner commands and semantic-event commits still
@@ -2232,31 +2236,37 @@ moderator-only statistics.
 
 ## `FORUM-28` — editor, renderer and sanitization
 
-**Status:** `planned`  
-**Priority:** P0  
+**Status:** `done`
+**Priority:** P0
 **Dependencies:** FORUM-12/14/25
 
-### Scope
+### Delivered
 
-Join the platform's atomic
-[Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md).
-Forum topic and reply bodies use one `RichTextDocument` with the owner-selected
-`discussion` profile. Markdown and `rt_json_v1` remain historical migration
-inputs only; BBCode belongs only to an explicit importer. Support owner-aware
-quotes and mentions first, then add spoilers, emoji, media, attachments,
-preview, drafts, and keyboard behavior only through the shared extension and
-server-profile contract.
+- Topic/reply create and update contracts accept one `RichTextDocument`; reads
+  expose one `RichTextView` and bounded server-derived plain text.
+- The initial PostgreSQL and SQLite schema stores only canonical serialized
+  documents. Revision tables preserve the same document and deletion preserves
+  content history while lifecycle state carries deletion.
+- Mentions walk structural document nodes and relation fingerprints cover the
+  canonical serialization. No source-row seed or placeholder relation identity
+  exists.
+- HTML and plain text come only from `rustok-content::richtext` under the
+  `discussion` profile.
+- Next Forum authoring uses the shared React frame directly. Leptos Forum
+  authoring uses `leptos_ui::RichTextEditorFrame`; its WASM lifecycle is compiled
+  only for browser hydration while native SSR uses the shared component API.
+- Leptos keeps native `#[server]` as its selected internal path and GraphQL as
+  the parallel public/headless contract.
+- `cargo test -p rustok-forum --lib` passes 113 tests; native and WASM checks,
+  `@rustok/richtext` tests, Next typecheck, and the Forum/Blog ownership verifier
+  pass for this cutover.
+- SQLite and PostgreSQL soft-delete/revision tests execute against the canonical
+  document storage. Both preserve content on deletion, retain edit/delete
+  revisions, and reject physical deletion of non-empty categories.
 
-Use the single `rustok-content::richtext` HTML renderer and plain-text
-extractor. Do not persist an independently writable HTML source or implement a
-Forum renderer. Cache only a derived projection keyed by canonical document
-hash and current renderer identity when evidence requires it.
-
-Migrate active topic/reply rows and both revision tables. Deletion and domain
-events must use typed lifecycle state instead of the literal `[deleted]` and
-`body_format = 'markdown'`. Next Forum UI/API/navigation must move out of the
-Blog package; Leptos uses native `#[server]` with parallel GraphQL and never
-retries a failed mutation blindly through REST.
+Spoilers, emoji, media, attachments, preview, drafts, and richer keyboard
+behavior are future shared extension work. They must extend the same document
+and profile contracts rather than introduce another editor or storage format.
 
 ## `FORUM-29` — realtime acceleration
 
@@ -2764,6 +2774,9 @@ Release evidence is waiver-free and generated by executable runtime profiles.
 - Page Builder consumer contracts and static fallback profiles exist, but
   observed rollout evidence remains open under `FORUM-32`.
 - Hosts compose owner-owned packages and do not absorb forum policy.
+- Richtext parity evidence: the shared Leptos frame compiles for native and
+  `wasm32-unknown-unknown`; Next typecheck passes; both hosts submit the same
+  `RichTextDocument` and consume server-owned projections.
 
 # Required verification set
 

@@ -285,11 +285,6 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(ForumTopicTranslations::BodyFormat)
-                            .string_len(32)
-                            .not_null(),
-                    )
-                    .col(
                         ColumnDef::new(ForumTopicTranslations::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
@@ -473,11 +468,6 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(ForumReplyBodies::Body).text().not_null())
                     .col(
-                        ColumnDef::new(ForumReplyBodies::BodyFormat)
-                            .string_len(32)
-                            .not_null(),
-                    )
-                    .col(
                         ColumnDef::new(ForumReplyBodies::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
@@ -608,7 +598,6 @@ enum ForumTopicTranslations {
     Title,
     Slug,
     Body,
-    BodyFormat,
     CreatedAt,
     UpdatedAt,
 }
@@ -641,7 +630,6 @@ enum ForumReplyBodies {
     ReplyId,
     Locale,
     Body,
-    BodyFormat,
     CreatedAt,
     UpdatedAt,
 }

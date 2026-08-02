@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
-use rustok_core::{SecurityContext, prepare_content_payload};
+use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -19,6 +19,7 @@ use crate::dto::{
 };
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
+use crate::richtext::{normalize_discussion, project_stored_discussion, serialize_discussion};
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
@@ -57,14 +58,7 @@ impl ReplyService {
             return Err(ForumError::TopicArchived);
         }
 
-        let prepared_body = prepare_content_payload(
-            Some(&input.content_format),
-            Some(&input.content),
-            input.content_json.as_ref(),
-            &locale,
-            "Reply content",
-        )
-        .map_err(ForumError::Validation)?;
+        let stored_body = serialize_discussion(input.content)?;
 
         if let Some(parent_reply_id) = input.parent_reply_id {
             let parent = Self::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
@@ -101,8 +95,7 @@ impl ReplyService {
             reply_id: Set(reply_id),
             tenant_id: Set(tenant_id),
             locale: Set(locale.clone()),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
+            body: Set(stored_body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -162,14 +155,14 @@ impl ReplyService {
         let vote_summary = VoteService::new(self.db.clone())
             .reply_vote_summary(tenant_id, reply_id, security.user_id)
             .await?;
-        Ok(to_reply_response(
+        to_reply_response(
             reply,
             bodies,
             vote_summary,
             solution_reply_id,
             &locale,
             fallback_locale.as_deref(),
-        ))
+        )
     }
 
     #[instrument(skip(self, security, input))]
@@ -189,30 +182,14 @@ impl ReplyService {
             existing.author_id,
         )?;
 
-        if input.content.is_none() && input.content_json.is_none() && input.content_format.is_none()
-        {
+        let Some(content) = input.content else {
             return self.get(tenant_id, security, reply_id, &locale).await;
-        }
-
-        let prepared_body = prepare_content_payload(
-            input.content_format.as_deref(),
-            input.content.as_deref(),
-            input.content_json.as_ref(),
-            &locale,
-            "Reply content",
-        )
-        .map_err(ForumError::Validation)?;
+        };
+        let stored_body = serialize_discussion(content)?;
 
         let txn = self.db.begin().await?;
-        self.upsert_body_in_tx(
-            &txn,
-            tenant_id,
-            reply_id,
-            &locale,
-            prepared_body.body,
-            prepared_body.format,
-        )
-        .await?;
+        self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
+            .await?;
 
         let mut active: forum_reply::ActiveModel = existing.into();
         active.updated_at = Set(Utc::now().into());
@@ -303,12 +280,15 @@ impl ReplyService {
             .map(|reply| {
                 let bodies = bodies_map.get(&reply.id).cloned().unwrap_or_default();
                 let resolved = resolve_reply_body(&bodies, &locale, fallback_locale.as_deref());
-                let content = resolved
-                    .item
-                    .map(|body| body.body.clone())
-                    .unwrap_or_default();
-                let preview: String = content.chars().take(200).collect();
-                ReplyListItem {
+                let body = resolved.item.ok_or_else(|| {
+                    ForumError::Validation("Forum reply body is unavailable".to_string())
+                })?;
+                let preview: String = project_stored_discussion(&body.body)?
+                    .plain_text
+                    .chars()
+                    .take(200)
+                    .collect();
+                Ok(ReplyListItem {
                     id: reply.id,
                     locale: locale.clone(),
                     effective_locale: resolved.effective_locale,
@@ -326,9 +306,9 @@ impl ReplyService {
                     is_solution: Some(reply.id) == solution_reply_id,
                     parent_reply_id: reply.parent_reply_id,
                     created_at: reply.created_at.to_rfc3339(),
-                }
+                })
             })
-            .collect();
+            .collect::<ForumResult<Vec<_>>>()?;
 
         Ok((items, total))
     }
@@ -395,7 +375,7 @@ impl ReplyService {
                     fallback_locale.as_deref(),
                 )
             })
-            .collect();
+            .collect::<ForumResult<Vec<_>>>()?;
 
         Ok((items, total))
     }
@@ -533,7 +513,6 @@ impl ReplyService {
         reply_id: Uuid,
         locale: &str,
         body: String,
-        body_format: String,
     ) -> ForumResult<()> {
         let existing = forum_reply_body::Entity::find()
             .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
@@ -547,36 +526,16 @@ impl ReplyService {
             Some(existing) => {
                 let mut active: forum_reply_body::ActiveModel = existing.into();
                 active.body = Set(body);
-                active.body_format = Set(body_format);
                 active.updated_at = Set(now.into());
                 active.update(txn).await?;
             }
             None => {
-                let seed = forum_reply_body::Entity::find()
-                    .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
-                    .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
-                    .order_by_asc(forum_reply_body::Column::CreatedAt)
-                    .one(txn)
-                    .await?;
                 forum_reply_body::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     reply_id: Set(reply_id),
                     tenant_id: Set(tenant_id),
                     locale: Set(locale.to_string()),
-                    body: Set(if body.is_empty() {
-                        seed.as_ref()
-                            .map(|row| row.body.clone())
-                            .unwrap_or_default()
-                    } else {
-                        body
-                    }),
-                    body_format: Set(if body_format.is_empty() {
-                        seed.as_ref()
-                            .map(|row| row.body_format.clone())
-                            .unwrap_or_else(|| "markdown".to_string())
-                    } else {
-                        body_format
-                    }),
+                    body: Set(body),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -596,32 +555,22 @@ fn to_reply_response(
     solution_reply_id: Option<Uuid>,
     locale: &str,
     fallback_locale: Option<&str>,
-) -> ReplyResponse {
+) -> ForumResult<ReplyResponse> {
     let resolved = resolve_reply_body(&bodies, locale, fallback_locale);
-    let content = resolved
+    let body = resolved
         .item
-        .map(|body| body.body.clone())
-        .unwrap_or_default();
-    let content_format = resolved
-        .item
-        .map(|body| body.body_format.clone())
-        .unwrap_or_else(|| "markdown".to_string());
-    let content_json = if content_format == "rt_json_v1" {
-        serde_json::from_str(&content).ok()
-    } else {
-        None
-    };
+        .ok_or_else(|| ForumError::Validation("Forum reply body is unavailable".to_string()))?;
+    let content = project_stored_discussion(&body.body)?;
 
-    ReplyResponse {
+    Ok(ReplyResponse {
         id: reply.id,
         requested_locale: locale.to_string(),
         locale: locale.to_string(),
         effective_locale: resolved.effective_locale,
         topic_id: reply.topic_id,
         author_id: reply.author_id,
-        content,
-        content_format,
-        content_json,
+        content: content.view,
+        content_plain_text: content.plain_text,
         status: reply.status.to_string(),
         vote_score: vote_summary.score,
         current_user_vote: vote_summary.current_user_vote,
@@ -629,7 +578,7 @@ fn to_reply_response(
         parent_reply_id: reply.parent_reply_id,
         created_at: reply.created_at.to_rfc3339(),
         updated_at: reply.updated_at.to_rfc3339(),
-    }
+    })
 }
 
 fn normalize_locale(locale: &str) -> ForumResult<String> {
@@ -683,12 +632,16 @@ mod tests {
             .up(&manager)
             .await
             .expect("outbox migration should apply");
-        for migration in migrations::migrations() {
-            migration
-                .up(&manager)
-                .await
-                .expect("forum migration should apply");
-        }
+        db.execute_unprepared(
+            "CREATE TABLE users (
+                id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE (tenant_id, id)
+            )",
+        )
+        .await
+        .expect("identity owner table should exist for forum tests");
 
         let builder = db.get_database_backend();
         let schema = sea_orm::Schema::new(builder);
@@ -702,6 +655,13 @@ mod tests {
             db.execute(builder.build(&create))
                 .await
                 .expect("taxonomy tables should exist for forum tests");
+        }
+
+        for migration in migrations::migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("forum migration should apply");
         }
     }
 
@@ -744,9 +704,7 @@ mod tests {
                     category_id: category.id,
                     title: "Ordered topic".to_string(),
                     slug: Some("ordered-topic".to_string()),
-                    body: "Body".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
+                    body: rustok_api::RichTextDocument::single_paragraph("Body"),
                     metadata: serde_json::json!({}),
                     tags: vec![],
                     channel_slugs: None,
@@ -764,9 +722,7 @@ mod tests {
                     topic.id,
                     CreateReplyInput {
                         locale: "en".to_string(),
-                        content: content.to_string(),
-                        content_format: "markdown".to_string(),
-                        content_json: None,
+                        content: rustok_api::RichTextDocument::single_paragraph(content),
                         parent_reply_id: None,
                     },
                 )
@@ -793,9 +749,16 @@ mod tests {
         assert_eq!(replies.len(), 3);
         let contents = replies
             .into_iter()
-            .map(|reply| reply.content)
+            .map(|reply| reply.content.document)
             .collect::<Vec<_>>();
-        assert_eq!(contents, vec!["first", "second", "third"]);
+        assert_eq!(
+            contents,
+            vec![
+                rustok_api::RichTextDocument::single_paragraph("first"),
+                rustok_api::RichTextDocument::single_paragraph("second"),
+                rustok_api::RichTextDocument::single_paragraph("third"),
+            ]
+        );
     }
 }
 
@@ -816,19 +779,11 @@ impl ReplyService {
             existing.author_id,
         )?;
 
-        if input.content.is_none() && input.content_json.is_none() && input.content_format.is_none()
-        {
+        let Some(content) = input.content else {
             return self.get(tenant_id, security, reply_id, &locale).await;
-        }
-
-        let prepared_body = prepare_content_payload(
-            input.content_format.as_deref(),
-            input.content.as_deref(),
-            input.content_json.as_ref(),
-            &locale,
-            "Reply content",
-        )
-        .map_err(ForumError::Validation)?;
+        };
+        let document = normalize_discussion(content)?;
+        let stored_body = serialize_discussion(document.clone())?;
         let relation_service =
             super::mention_relation::MentionRelationService::new(self.db.clone());
         let prepared_relations = relation_service
@@ -836,23 +791,15 @@ impl ReplyService {
                 tenant_id,
                 crate::mentions::ForumContentTarget::reply(reply_id),
                 &locale,
-                &prepared_body.body,
-                &prepared_body.format,
+                &document,
                 &security,
                 std::iter::empty(),
             )
             .await?;
 
         let txn = self.db.begin().await?;
-        self.upsert_body_in_tx(
-            &txn,
-            tenant_id,
-            reply_id,
-            &locale,
-            prepared_body.body,
-            prepared_body.format,
-        )
-        .await?;
+        self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
+            .await?;
         relation_service
             .persist_in_tx(&txn, prepared_relations)
             .await?;

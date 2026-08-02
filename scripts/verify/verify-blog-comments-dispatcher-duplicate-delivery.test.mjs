@@ -25,6 +25,7 @@ function runFixture({
   missingEvidenceCase = false,
   statusDrift = false,
   runtimeStatusDrift = false,
+  publicSearchPathFallback = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-dispatcher-duplicate-'));
   const evidencePath =
@@ -78,7 +79,7 @@ event dispatcher did not complete both duplicate deliveries
 CREATE TABLE blog_comment_projection_deliveries
 CREATE TABLE sys_events
 .max_connections(1)
-SET search_path TO
+SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
 `,
   );
 
@@ -181,6 +182,12 @@ test('Blog dispatcher duplicate verifier rejects removal of the single-commit as
   const result = runFixture({ missingSingleCommit: true });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /count_outbox_events/);
+});
+
+test('Blog dispatcher duplicate verifier rejects fallback to public tables', () => {
+  const result = runFixture({ publicSearchPathFallback: true });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /forbidden SET search_path TO "\{schema_name\}", public/);
 });
 
 test('Blog dispatcher duplicate verifier rejects missing evidence coverage', () => {

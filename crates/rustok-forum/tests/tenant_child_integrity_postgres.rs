@@ -72,9 +72,9 @@ VALUES
         format!(
             r#"
 INSERT INTO forum_topic_translations
-    (id, tenant_id, topic_id, locale, title, body, body_format)
+    (id, tenant_id, topic_id, locale, title, body)
 VALUES
-    ('{}', '{tenant_b}', '{topic_a}', 'en-US', 'Wrong tenant', 'Body', 'markdown')
+    ('{}', '{tenant_b}', '{topic_a}', 'en-US', 'Wrong tenant', 'Body')
 "#,
             Uuid::new_v4()
         ),
@@ -87,9 +87,9 @@ VALUES
         format!(
             r#"
 INSERT INTO forum_reply_bodies
-    (id, tenant_id, reply_id, locale, body, body_format)
+    (id, tenant_id, reply_id, locale, body)
 VALUES
-    ('{}', '{tenant_b}', '{reply_a}', 'en-US', 'Wrong tenant', 'markdown')
+    ('{}', '{tenant_b}', '{reply_a}', 'en-US', 'Wrong tenant')
 "#,
             Uuid::new_v4()
         ),
@@ -116,9 +116,9 @@ VALUES
         format!(
             r#"
 INSERT INTO forum_topic_translations
-    (id, tenant_id, topic_id, locale, title, body, body_format)
+    (id, tenant_id, topic_id, locale, title, body)
 VALUES
-    ('{}', '{tenant_a}', '{topic_a}', 'zh-Hant-HK', 'Valid', 'Body', 'markdown')
+    ('{}', '{tenant_a}', '{topic_a}', 'zh-Hant-HK', 'Valid', 'Body')
 "#,
             Uuid::new_v4()
         ),
@@ -130,9 +130,9 @@ VALUES
         format!(
             r#"
 INSERT INTO forum_reply_bodies
-    (id, tenant_id, reply_id, locale, body, body_format)
+    (id, tenant_id, reply_id, locale, body)
 VALUES
-    ('{}', '{tenant_a}', '{reply_a}', 'zh-Hant-HK', 'Valid', 'markdown')
+    ('{}', '{tenant_a}', '{reply_a}', 'zh-Hant-HK', 'Valid')
 "#,
             Uuid::new_v4()
         ),

@@ -11,7 +11,6 @@ pub struct Model {
     pub reply_id: Uuid,
     pub locale: String,
     pub body: String,
-    pub body_format: String,
     pub revision_reason: String,
     pub created_at: DateTimeWithTimeZone,
 }

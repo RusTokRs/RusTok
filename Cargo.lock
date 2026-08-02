@@ -7272,7 +7272,11 @@ version = "0.1.0"
 dependencies = [
  "iu-leptos",
  "leptos 0.8.20",
+ "rustok-api",
  "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -12404,8 +12408,6 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
@@ -13146,8 +13148,8 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
+ "leptos-ui",
  "leptos-ui-routing",
- "reqwest 0.13.4",
  "rustok-api",
  "rustok-graphql",
  "rustok-seo-admin-support",

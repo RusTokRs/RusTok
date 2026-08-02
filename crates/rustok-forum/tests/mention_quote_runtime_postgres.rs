@@ -96,9 +96,9 @@ async fn d1_replacement_wins_before_stale_d2_preserve_on_postgres() -> TestResul
                     d2_security,
                     UpdateReplyInput {
                         locale: LOCALE.to_string(),
-                        content: Some("Stale D2 body must roll back".to_string()),
-                        content_format: None,
-                        content_json: None,
+                        content: Some(rustok_api::RichTextDocument::single_paragraph(
+                            "Stale command body must roll back",
+                        )),
                     },
                 )
                 .await
@@ -233,9 +233,9 @@ async fn soft_deleted_reply_rejects_d1_and_d2_without_mutating_relation_history(
                 security,
                 UpdateReplyInput {
                     locale: LOCALE.to_string(),
-                    content: Some("Deleted reply edit".to_string()),
-                    content_format: None,
-                    content_json: None,
+                    content: Some(rustok_api::RichTextDocument::single_paragraph(
+                        "Deleted reply edit",
+                    )),
                 },
             )
             .await
@@ -302,9 +302,7 @@ async fn mention_owner_event_commits_with_notifications_not_composed() -> TestRe
                     category_id,
                     title: "Notifications-off mention proof".to_string(),
                     slug: Some("notifications-off-mention-proof".to_string()),
-                    body: "Owner topic".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
+                    body: rustok_api::RichTextDocument::single_paragraph("Owner topic"),
                     metadata: serde_json::json!({}),
                     tags: Vec::new(),
                     channel_slugs: None,
@@ -318,9 +316,9 @@ async fn mention_owner_event_commits_with_notifications_not_composed() -> TestRe
                 topic.id,
                 CreateReplyCommandInput {
                     locale: LOCALE.to_string(),
-                    content: "@moderators please review".to_string(),
-                    content_format: "markdown".to_string(),
-                    content_json: None,
+                    content: rustok_api::RichTextDocument::single_paragraph(
+                        "@moderators please review",
+                    ),
                     parent_reply_id: None,
                     quotes: Vec::new(),
                 },
@@ -400,9 +398,7 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
                 category_id,
                 title: "Quoted source".to_string(),
                 slug: Some("quoted-source".to_string()),
-                body: "Quoted source body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Quoted source body"),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -419,9 +415,7 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
             topic.id,
             CreateReplyCommandInput {
                 locale: LOCALE.to_string(),
-                content: ORIGINAL_REPLY_BODY.to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(ORIGINAL_REPLY_BODY),
                 parent_reply_id: None,
                 quotes: vec![ForumQuoteReferenceInput {
                     target_kind: ForumQuoteTargetKindInput::Topic,

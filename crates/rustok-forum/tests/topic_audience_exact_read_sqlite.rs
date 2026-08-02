@@ -183,9 +183,9 @@ async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration
                 category_id: child,
                 title: "Exact audience read".into(),
                 slug: Some("exact-audience-read".into()),
-                body: "Exact audience owner fixture".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Exact audience owner fixture",
+                ),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: Some(vec!["web".into()]),

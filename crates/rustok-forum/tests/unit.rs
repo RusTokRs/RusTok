@@ -142,9 +142,7 @@ fn create_topic_input_fields() {
         category_id: Uuid::nil(),
         title: "Hello".to_string(),
         slug: None,
-        body: "World".to_string(),
-        body_format: "markdown".to_string(),
-        content_json: None,
+        body: rustok_api::RichTextDocument::single_paragraph("World"),
         metadata: serde_json::json!({}),
         tags: vec!["tag1".to_string()],
         channel_slugs: None,
@@ -177,11 +175,12 @@ fn create_category_input_fields() {
 fn create_reply_input_fields() {
     let input = CreateReplyInput {
         locale: "en".to_string(),
-        content: "Nice post!".to_string(),
-        content_format: "markdown".to_string(),
-        content_json: None,
+        content: rustok_api::RichTextDocument::single_paragraph("Nice post!"),
         parent_reply_id: None,
     };
-    assert_eq!(input.content, "Nice post!");
+    assert_eq!(
+        input.content,
+        rustok_api::RichTextDocument::single_paragraph("Nice post!")
+    );
     assert!(input.parent_reply_id.is_none());
 }

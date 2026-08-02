@@ -152,9 +152,7 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
 fn reply_input(content: &str) -> CreateReplyInput {
     CreateReplyInput {
         locale: "en".to_string(),
-        content: content.to_string(),
-        content_format: "markdown".to_string(),
-        content_json: None,
+        content: rustok_api::RichTextDocument::single_paragraph(content),
         parent_reply_id: None,
     }
 }
@@ -229,8 +227,8 @@ async fn seed_topic(
          (id, tenant_id, category_id, author_id, status, metadata, is_pinned, is_locked, reply_count) \
          VALUES ('{topic_id}', '{tenant_id}', '{category_id}', '{author_id}', 'open', '{{}}', 0, {}, 0); \
          INSERT INTO forum_topic_translations \
-         (id, topic_id, tenant_id, locale, title, slug, body, body_format) \
-         VALUES ('{}', '{topic_id}', '{tenant_id}', 'en', 'Topic', 'topic-{topic_id}', 'Topic body', 'markdown')",
+         (id, topic_id, tenant_id, locale, title, slug, body) \
+         VALUES ('{}', '{topic_id}', '{tenant_id}', 'en', 'Topic', 'topic-{topic_id}', 'Topic body')",
         if locked { 1 } else { 0 },
         Uuid::new_v4(),
     ))

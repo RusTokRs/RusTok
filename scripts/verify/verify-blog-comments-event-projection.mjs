@@ -171,7 +171,7 @@ for (const marker of [
   'CREATE SCHEMA',
   'DROP SCHEMA IF EXISTS',
   '.max_connections(1)',
-  'SET search_path TO',
+  'SET search_path TO "{schema_name}"',
   'async fn duplicate_delivery_updates_counter_and_outbox_once()',
   'handler.handle(&envelope).await?;',
   'async fn event_dispatcher_routes_registered_handler_and_commits_projection()',
@@ -232,6 +232,11 @@ for (const marker of [
 }
 requireNoMarker(postgresHarness, '#[ignore]', postgresHarnessPath);
 requireNoMarker(postgresHarness, 'runtime_verified', postgresHarnessPath);
+requireNoMarker(
+  postgresHarness,
+  'SET search_path TO "{schema_name}", public',
+  postgresHarnessPath,
+);
 
 for (const marker of [
   'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
@@ -240,7 +245,7 @@ for (const marker of [
   'struct PostgresBlogProjectionRestartTestDb',
   'database_url: String',
   'async fn restarted_connection(&self)',
-  'SET search_path TO',
+  'SET search_path TO "{schema_name}"',
   'async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()',
   'let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());',
   'first_handler.handle(&envelope).await?;',
@@ -290,6 +295,11 @@ if (processParentStart === -1 || processWorkerStart === -1) {
 }
 requireNoMarker(restartHarness, '#[ignore]', restartHarnessPath);
 requireNoMarker(restartHarness, 'runtime_verified', restartHarnessPath);
+requireNoMarker(
+  restartHarness,
+  'SET search_path TO "{schema_name}", public',
+  restartHarnessPath,
+);
 
 for (const marker of [
   '#[sea_orm(table_name = "blog_comment_projection_deliveries")]',

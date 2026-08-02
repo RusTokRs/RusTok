@@ -8,10 +8,6 @@ pub(super) async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbE
             r#"
 DROP TRIGGER IF EXISTS forum_02_replies_soft_delete ON forum_replies;
 DROP TRIGGER IF EXISTS forum_02_topics_soft_delete ON forum_topics;
-DROP TRIGGER IF EXISTS forum_99_categories_hard_delete_cleanup
-    ON forum_categories;
-DROP TRIGGER IF EXISTS forum_00_categories_hard_delete_context
-    ON forum_categories;
 DROP TRIGGER IF EXISTS forum_02_replies_deleted_guard ON forum_replies;
 DROP TRIGGER IF EXISTS forum_02_topics_deleted_guard ON forum_topics;
 DROP TRIGGER IF EXISTS forum_02_reply_body_revision ON forum_reply_bodies;
@@ -21,8 +17,6 @@ DROP TRIGGER IF EXISTS forum_02_topic_translation_revision
 
 DROP FUNCTION IF EXISTS forum_soft_delete_reply();
 DROP FUNCTION IF EXISTS forum_soft_delete_topic();
-DROP FUNCTION IF EXISTS forum_finish_category_hard_delete();
-DROP FUNCTION IF EXISTS forum_prepare_category_hard_delete();
 DROP FUNCTION IF EXISTS forum_guard_deleted_reply_update();
 DROP FUNCTION IF EXISTS forum_guard_deleted_topic_update();
 DROP FUNCTION IF EXISTS forum_capture_reply_body_revision();
@@ -101,7 +95,6 @@ ON forum_user_stats
 FOR EACH ROW
 EXECUTE FUNCTION forum_enforce_user_public_reply_count();
 
-DROP TABLE IF EXISTS forum_hard_delete_context;
 DROP TABLE IF EXISTS forum_reply_revisions;
 DROP TABLE IF EXISTS forum_topic_revisions;
 

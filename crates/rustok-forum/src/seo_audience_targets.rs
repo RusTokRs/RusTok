@@ -18,19 +18,19 @@ pub struct ForumTopicSeoTargetProvider;
 #[async_trait]
 impl SeoTargetProvider for ForumCategorySeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
-        legacy_category().slug()
+        category_provider().slug()
     }
 
     fn display_name(&self) -> &'static str {
-        legacy_category().display_name()
+        category_provider().display_name()
     }
 
     fn owner_module_slug(&self) -> &'static str {
-        legacy_category().owner_module_slug()
+        category_provider().owner_module_slug()
     }
 
     fn capabilities(&self) -> SeoTargetCapabilities {
-        legacy_category().capabilities()
+        category_provider().capabilities()
     }
 
     async fn load_target(
@@ -39,7 +39,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         if matches!(request.scope, SeoTargetLoadScope::Authoring) {
-            return legacy_category().load_target(runtime, request).await;
+            return category_provider().load_target(runtime, request).await;
         }
 
         let discovery = public_discovery(runtime);
@@ -56,7 +56,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
             return Ok(None);
         }
 
-        legacy_category().load_target(runtime, request).await
+        category_provider().load_target(runtime, request).await
     }
 
     async fn resolve_route(
@@ -64,7 +64,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetRouteResolveRequest<'_>,
     ) -> AnyResult<Option<SeoRouteMatchRecord>> {
-        let Some(candidate) = legacy_category().resolve_route(runtime, request).await? else {
+        let Some(candidate) = category_provider().resolve_route(runtime, request).await? else {
             return Ok(None);
         };
         let visible = self
@@ -91,7 +91,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetBulkListRequest<'_>,
     ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
-        let candidates = legacy_category()
+        let candidates = category_provider()
             .list_bulk_summaries(runtime, request)
             .await?;
         let discovery = public_discovery(runtime);
@@ -118,7 +118,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
-        let candidates = legacy_category()
+        let candidates = category_provider()
             .sitemap_candidates(runtime, request)
             .await?;
         let discovery = public_discovery(runtime);
@@ -144,19 +144,19 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
 #[async_trait]
 impl SeoTargetProvider for ForumTopicSeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
-        legacy_topic().slug()
+        topic_provider().slug()
     }
 
     fn display_name(&self) -> &'static str {
-        legacy_topic().display_name()
+        topic_provider().display_name()
     }
 
     fn owner_module_slug(&self) -> &'static str {
-        legacy_topic().owner_module_slug()
+        topic_provider().owner_module_slug()
     }
 
     fn capabilities(&self) -> SeoTargetCapabilities {
-        legacy_topic().capabilities()
+        topic_provider().capabilities()
     }
 
     async fn load_target(
@@ -165,7 +165,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         if matches!(request.scope, SeoTargetLoadScope::Authoring) {
-            return legacy_topic().load_target(runtime, request).await;
+            return topic_provider().load_target(runtime, request).await;
         }
 
         let discovery = public_discovery(runtime);
@@ -183,7 +183,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
             return Ok(None);
         }
 
-        legacy_topic().load_target(runtime, request).await
+        topic_provider().load_target(runtime, request).await
     }
 
     async fn resolve_route(
@@ -191,7 +191,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetRouteResolveRequest<'_>,
     ) -> AnyResult<Option<SeoRouteMatchRecord>> {
-        let Some(candidate) = legacy_topic().resolve_route(runtime, request).await? else {
+        let Some(candidate) = topic_provider().resolve_route(runtime, request).await? else {
             return Ok(None);
         };
         let visible = self
@@ -218,7 +218,9 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetBulkListRequest<'_>,
     ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
-        let candidates = legacy_topic().list_bulk_summaries(runtime, request).await?;
+        let candidates = topic_provider()
+            .list_bulk_summaries(runtime, request)
+            .await?;
         let discovery = public_discovery(runtime);
         let mut visible = Vec::with_capacity(candidates.len());
         for candidate in candidates {
@@ -244,7 +246,9 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
-        let candidates = legacy_topic().sitemap_candidates(runtime, request).await?;
+        let candidates = topic_provider()
+            .sitemap_candidates(runtime, request)
+            .await?;
         let discovery = public_discovery(runtime);
         let mut visible = Vec::with_capacity(candidates.len());
         for candidate in candidates {
@@ -270,10 +274,10 @@ fn public_discovery(runtime: &SeoTargetRuntimeContext) -> ForumPublicDiscoverySe
     ForumPublicDiscoveryService::new(runtime.db.clone(), runtime.event_bus.clone())
 }
 
-fn legacy_category() -> crate::seo_targets_legacy::ForumCategorySeoTargetProvider {
-    crate::seo_targets_legacy::ForumCategorySeoTargetProvider
+fn category_provider() -> crate::seo_targets::ForumCategorySeoTargetProvider {
+    crate::seo_targets::ForumCategorySeoTargetProvider
 }
 
-fn legacy_topic() -> crate::seo_targets_legacy::ForumTopicSeoTargetProvider {
-    crate::seo_targets_legacy::ForumTopicSeoTargetProvider
+fn topic_provider() -> crate::seo_targets::ForumTopicSeoTargetProvider {
+    crate::seo_targets::ForumTopicSeoTargetProvider
 }

@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS forum_topic_revisions (
     title TEXT NOT NULL,
     slug VARCHAR(255),
     body TEXT NOT NULL,
-    body_format VARCHAR(32) NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     revision_reason VARCHAR(16) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -46,7 +45,6 @@ CREATE TABLE IF NOT EXISTS forum_reply_revisions (
     reply_id UUID NOT NULL,
     locale VARCHAR(16) NOT NULL,
     body TEXT NOT NULL,
-    body_format VARCHAR(32) NOT NULL,
     revision_reason VARCHAR(16) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_forum_reply_revisions_reason
@@ -60,14 +58,6 @@ CREATE TABLE IF NOT EXISTS forum_reply_revisions (
 
 CREATE INDEX IF NOT EXISTS idx_forum_reply_revisions_tenant_reply_created
     ON forum_reply_revisions (tenant_id, reply_id, created_at DESC, id DESC);
-
-CREATE TABLE IF NOT EXISTS forum_hard_delete_context (
-    backend_pid INTEGER NOT NULL,
-    tenant_id UUID NOT NULL,
-    category_id UUID NOT NULL,
-    topic_id UUID NOT NULL,
-    PRIMARY KEY (backend_pid, topic_id)
-);
 
 CREATE OR REPLACE FUNCTION forum_capture_topic_translation_revision()
 RETURNS trigger AS $$
@@ -85,9 +75,9 @@ BEGIN
         RAISE EXCEPTION 'deleted forum topic content is immutable';
     END IF;
 
-    IF ROW(OLD.title, OLD.slug, OLD.body, OLD.body_format)
+    IF ROW(OLD.title, OLD.slug, OLD.body)
        IS DISTINCT FROM
-       ROW(NEW.title, NEW.slug, NEW.body, NEW.body_format)
+       ROW(NEW.title, NEW.slug, NEW.body)
     THEN
         INSERT INTO forum_topic_revisions (
             tenant_id,
@@ -96,7 +86,6 @@ BEGIN
             title,
             slug,
             body,
-            body_format,
             metadata,
             revision_reason
         )
@@ -107,13 +96,8 @@ BEGIN
             OLD.title,
             OLD.slug,
             OLD.body,
-            OLD.body_format,
             COALESCE(topic_metadata, '{}'::jsonb),
-            CASE
-                WHEN NEW.title = '[deleted]' AND NEW.body = '[deleted]'
-                    THEN 'delete'
-                ELSE 'edit'
-            END
+            'edit'
         );
     END IF;
 
@@ -136,7 +120,6 @@ BEGIN
             title,
             slug,
             body,
-            body_format,
             metadata,
             revision_reason
         )
@@ -147,7 +130,6 @@ BEGIN
             translation.title,
             translation.slug,
             translation.body,
-            translation.body_format,
             OLD.metadata,
             'edit'
         FROM forum_topic_translations translation
@@ -174,16 +156,13 @@ BEGIN
         RAISE EXCEPTION 'deleted forum reply content is immutable';
     END IF;
 
-    IF ROW(OLD.body, OLD.body_format)
-       IS DISTINCT FROM
-       ROW(NEW.body, NEW.body_format)
+    IF OLD.body IS DISTINCT FROM NEW.body
     THEN
         INSERT INTO forum_reply_revisions (
             tenant_id,
             reply_id,
             locale,
             body,
-            body_format,
             revision_reason
         )
         VALUES (
@@ -191,11 +170,7 @@ BEGIN
             OLD.reply_id,
             OLD.locale,
             OLD.body,
-            OLD.body_format,
-            CASE
-                WHEN NEW.body = '[deleted]' THEN 'delete'
-                ELSE 'edit'
-            END
+            'edit'
         );
     END IF;
 
@@ -209,6 +184,31 @@ BEGIN
     IF OLD.deleted_at IS NOT NULL THEN
         RAISE EXCEPTION 'deleted forum topic is immutable';
     END IF;
+
+    IF NEW.deleted_at IS NOT NULL THEN
+        INSERT INTO forum_topic_revisions (
+            tenant_id,
+            topic_id,
+            locale,
+            title,
+            slug,
+            body,
+            metadata,
+            revision_reason
+        )
+        SELECT
+            OLD.tenant_id,
+            OLD.id,
+            translation.locale,
+            translation.title,
+            translation.slug,
+            translation.body,
+            OLD.metadata,
+            'delete'
+        FROM forum_topic_translations translation
+        WHERE translation.tenant_id = OLD.tenant_id
+          AND translation.topic_id = OLD.id;
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -219,41 +219,26 @@ BEGIN
     IF OLD.deleted_at IS NOT NULL THEN
         RAISE EXCEPTION 'deleted forum reply is immutable';
     END IF;
+
+    IF NEW.deleted_at IS NOT NULL THEN
+        INSERT INTO forum_reply_revisions (
+            tenant_id,
+            reply_id,
+            locale,
+            body,
+            revision_reason
+        )
+        SELECT
+            OLD.tenant_id,
+            OLD.id,
+            body.locale,
+            body.body,
+            'delete'
+        FROM forum_reply_bodies body
+        WHERE body.tenant_id = OLD.tenant_id
+          AND body.reply_id = OLD.id;
+    END IF;
     RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION forum_prepare_category_hard_delete()
-RETURNS trigger AS $$
-BEGIN
-    INSERT INTO forum_hard_delete_context (
-        backend_pid,
-        tenant_id,
-        category_id,
-        topic_id
-    )
-    SELECT
-        pg_backend_pid(),
-        topic.tenant_id,
-        OLD.id,
-        topic.id
-    FROM forum_topics topic
-    WHERE topic.tenant_id = OLD.tenant_id
-      AND topic.category_id = OLD.id
-    ON CONFLICT (backend_pid, topic_id) DO NOTHING;
-
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION forum_finish_category_hard_delete()
-RETURNS trigger AS $$
-BEGIN
-    DELETE FROM forum_hard_delete_context
-    WHERE backend_pid = pg_backend_pid()
-      AND tenant_id = OLD.tenant_id
-      AND category_id = OLD.id;
-    RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -262,16 +247,6 @@ RETURNS trigger AS $$
 DECLARE
     category_id_value UUID;
 BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM forum_hard_delete_context context
-        WHERE context.backend_pid = pg_backend_pid()
-          AND context.tenant_id = OLD.tenant_id
-          AND context.topic_id = OLD.topic_id
-    ) THEN
-        RETURN OLD;
-    END IF;
-
     IF OLD.deleted_at IS NOT NULL THEN
         RAISE EXCEPTION 'forum reply is already deleted';
     END IF;
@@ -281,13 +256,6 @@ BEGIN
       FROM forum_topics
      WHERE tenant_id = OLD.tenant_id
        AND id = OLD.topic_id;
-
-    UPDATE forum_reply_bodies
-       SET body = '[deleted]',
-           body_format = 'markdown',
-           updated_at = CURRENT_TIMESTAMP
-     WHERE tenant_id = OLD.tenant_id
-       AND reply_id = OLD.id;
 
     DELETE FROM forum_solutions
      WHERE tenant_id = OLD.tenant_id
@@ -328,39 +296,9 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION forum_soft_delete_topic()
 RETURNS trigger AS $$
 BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM forum_hard_delete_context context
-        WHERE context.backend_pid = pg_backend_pid()
-          AND context.tenant_id = OLD.tenant_id
-          AND context.topic_id = OLD.id
-    ) THEN
-        RETURN OLD;
-    END IF;
-
     IF OLD.deleted_at IS NOT NULL THEN
         RAISE EXCEPTION 'forum topic is already deleted';
     END IF;
-
-    UPDATE forum_topic_translations
-       SET title = '[deleted]',
-           slug = NULL,
-           body = '[deleted]',
-           body_format = 'markdown',
-           updated_at = CURRENT_TIMESTAMP
-     WHERE tenant_id = OLD.tenant_id
-       AND topic_id = OLD.id;
-
-    UPDATE forum_reply_bodies body
-       SET body = '[deleted]',
-           body_format = 'markdown',
-           updated_at = CURRENT_TIMESTAMP
-      FROM forum_replies reply
-     WHERE reply.tenant_id = OLD.tenant_id
-       AND reply.topic_id = OLD.id
-       AND reply.deleted_at IS NULL
-       AND body.tenant_id = reply.tenant_id
-       AND body.reply_id = reply.id;
 
     DELETE FROM forum_solutions
      WHERE tenant_id = OLD.tenant_id
@@ -509,7 +447,7 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS forum_02_topic_translation_revision
     ON forum_topic_translations;
 CREATE TRIGGER forum_02_topic_translation_revision
-BEFORE UPDATE OF title, slug, body, body_format
+BEFORE UPDATE OF title, slug, body
 ON forum_topic_translations
 FOR EACH ROW
 EXECUTE FUNCTION forum_capture_topic_translation_revision();
@@ -523,7 +461,7 @@ EXECUTE FUNCTION forum_capture_topic_metadata_revision();
 
 DROP TRIGGER IF EXISTS forum_02_reply_body_revision ON forum_reply_bodies;
 CREATE TRIGGER forum_02_reply_body_revision
-BEFORE UPDATE OF body, body_format
+BEFORE UPDATE OF body
 ON forum_reply_bodies
 FOR EACH ROW
 EXECUTE FUNCTION forum_capture_reply_body_revision();
@@ -539,20 +477,6 @@ CREATE TRIGGER forum_02_replies_deleted_guard
 BEFORE UPDATE ON forum_replies
 FOR EACH ROW
 EXECUTE FUNCTION forum_guard_deleted_reply_update();
-
-DROP TRIGGER IF EXISTS forum_00_categories_hard_delete_context
-    ON forum_categories;
-CREATE TRIGGER forum_00_categories_hard_delete_context
-BEFORE DELETE ON forum_categories
-FOR EACH ROW
-EXECUTE FUNCTION forum_prepare_category_hard_delete();
-
-DROP TRIGGER IF EXISTS forum_99_categories_hard_delete_cleanup
-    ON forum_categories;
-CREATE TRIGGER forum_99_categories_hard_delete_cleanup
-AFTER DELETE ON forum_categories
-FOR EACH ROW
-EXECUTE FUNCTION forum_finish_category_hard_delete();
 
 DROP TRIGGER IF EXISTS forum_02_topics_soft_delete ON forum_topics;
 CREATE TRIGGER forum_02_topics_soft_delete

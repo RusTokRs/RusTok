@@ -89,9 +89,9 @@ async fn create_topic(
                 category_id,
                 title: slug.replace('-', " "),
                 slug: Some(slug.into()),
-                body: "Authenticated visibility fixture".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(
+                    "Authenticated visibility fixture",
+                ),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,

@@ -30,10 +30,7 @@ impl ForumSearchCategoryAudienceScopeService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self {
-            category_reads: ForumCategoryAudienceReadService::with_audience_facts(
-                db,
-                facts_port,
-            ),
+            category_reads: ForumCategoryAudienceReadService::with_audience_facts(db, facts_port),
         }
     }
 
@@ -48,11 +45,7 @@ impl ForumSearchCategoryAudienceScopeService {
     ) -> ForumResult<ForumSearchCategoryScope> {
         let tree = self
             .category_reads
-            .tree_public_storefront_visible_with_locale_fallback(
-                tenant_id,
-                locale,
-                fallback_locale,
-            )
+            .tree_public_storefront_visible_with_locale_fallback(tenant_id, locale, fallback_locale)
             .await?;
         expand_search_category_scope_from_visible_tree(&tree.roots, category_ids)
     }

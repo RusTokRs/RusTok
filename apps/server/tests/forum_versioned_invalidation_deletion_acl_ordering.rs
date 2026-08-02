@@ -22,14 +22,14 @@ use rustok_forum::{
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
-    ForumProjectionReconciler, ForumSearchContractIngress,
-    ForumSearchContractIngressOutcome, ForumStorefrontSearchAttributeFilter,
-    ForumStorefrontSearchRequest, SearchModule, SearchProjectionSourceFactory,
-    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
-    StorefrontSearchTransport, execute_forum_storefront_search,
+    ForumProjectionReconciler, ForumSearchContractIngress, ForumSearchContractIngressOutcome,
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
+    SearchProjectionSourceFactory, SharedStorefrontSearchCategoryScopePort,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
+    execute_forum_storefront_search,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -224,11 +224,7 @@ impl StorefrontSearchResultEligibilityPort for RealForumPublicEligibilityPort {
             .as_ref()
             .and_then(|context| context.channel_slug.as_deref());
         let allowed = ForumSearchResultEligibilityService::new(self.db.clone())
-            .filter_public_storefront_visible(
-                request.tenant_id,
-                channel_slug,
-                &forum_candidates,
-            )
+            .filter_public_storefront_visible(request.tenant_id, channel_slug, &forum_candidates)
             .await
             .map_err(|_| owner_unavailable())?;
         Ok(allowed.into_iter().map(from_forum_candidate).collect())
@@ -293,9 +289,7 @@ async fn deletion_acl_ordering_cannot_restore_denied_storefront_results() -> Tes
     Ok(())
 }
 
-async fn run_deletion_acl_ordering_proof(
-    db: &DatabaseConnection,
-) -> TestResult<ScenarioEvidence> {
+async fn run_deletion_acl_ordering_proof(db: &DatabaseConnection) -> TestResult<ScenarioEvidence> {
     let fixture = create_forum_fixture(db).await?;
     let projection_source = ForumSearchProjectionSourceFactory.build(db.clone());
     let reconciler = ForumProjectionReconciler::new(db.clone(), projection_source);
@@ -441,7 +435,10 @@ async fn run_deletion_acl_ordering_proof(
     insert_legacy_root(db, &hidden_legacy, "forum").await?;
 
     let inbox_order = load_inbox_order_after(db, baseline_ingest_sequence).await?;
-    let actual_admission = inbox_order.iter().map(|row| row.event_id).collect::<Vec<_>>();
+    let actual_admission = inbox_order
+        .iter()
+        .map(|row| row.event_id)
+        .collect::<Vec<_>>();
     if actual_admission != expected_admission || inbox_order.len() != 6 {
         return Err(test_error(format!(
             "out-of-order durable admission drifted: expected={expected_admission:?}, actual={actual_admission:?}"
@@ -667,11 +664,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
         .create(
             tenant_id,
             customer_security(),
-            topic_input(
-                category.id,
-                "D8 ACL topic d8acltopicmarker",
-                "d8-acl-topic",
-            ),
+            topic_input(category.id, "D8 ACL topic d8acltopicmarker", "d8-acl-topic"),
         )
         .await?;
     let reply = ReplyService::new(db.clone(), bus.clone())
@@ -681,9 +674,9 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
             hidden_reply_topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: format!("D8 approved reply {HIDDEN_REPLY_MARKER}"),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(format!(
+                    "D8 approved reply {HIDDEN_REPLY_MARKER}"
+                )),
                 parent_reply_id: None,
             },
         )
@@ -695,12 +688,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
         )));
     }
     ModerationService::new(db.clone(), bus)
-        .approve_reply(
-            tenant_id,
-            reply.id,
-            hidden_reply_topic.id,
-            admin.clone(),
-        )
+        .approve_reply(tenant_id, reply.id, hidden_reply_topic.id, admin.clone())
         .await?;
 
     Ok(ForumFixture {
@@ -720,9 +708,7 @@ fn topic_input(category_id: Uuid, title: &str, slug: &str) -> CreateTopicInput {
         category_id,
         title: title.to_string(),
         slug: Some(slug.to_string()),
-        body: format!("{title} body"),
-        body_format: "markdown".to_string(),
-        content_json: None,
+        body: rustok_api::RichTextDocument::single_paragraph(format!("{title} body")),
         metadata: json!({}),
         tags: Vec::new(),
         channel_slugs: None,
@@ -1223,9 +1209,7 @@ async fn connect_in_schema(
 
 fn database_url_in_schema(database_url: &str, schema_name: &str) -> String {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
-    )
+    format!("{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic")
 }
 
 async fn connect(database_url: &str, max_connections: u32) -> TestResult<DatabaseConnection> {
@@ -1272,7 +1256,9 @@ fn source_commit() -> TestResult<String> {
         .args(["rev-parse", "HEAD"])
         .output()?;
     if !output.status.success() {
-        return Err(test_error("git rev-parse HEAD failed for evidence generation"));
+        return Err(test_error(
+            "git rev-parse HEAD failed for evidence generation",
+        ));
     }
     let value = String::from_utf8(output.stdout)?;
     let value = value.trim();

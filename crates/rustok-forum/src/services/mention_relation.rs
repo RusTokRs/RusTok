@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use chrono::Utc;
-use rustok_api::{Action, Resource, normalize_locale_tag};
+use rustok_api::{Action, Resource, RichTextDocument, normalize_locale_tag};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::ForumMentionEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -101,8 +101,7 @@ impl MentionRelationService {
         tenant_id: Uuid,
         target: ForumContentTarget,
         locale: &str,
-        body: &str,
-        body_format: &str,
+        document: &RichTextDocument,
         security: &SecurityContext,
         quotes: impl IntoIterator<Item = ForumQuoteReference>,
     ) -> ForumResult<PreparedMentionRelations> {
@@ -121,7 +120,7 @@ impl MentionRelationService {
             ),
             ..ForumMentionPolicy::default()
         };
-        let candidates = extract_forum_mention_candidates(body, body_format, &locale, policy)?;
+        let candidates = extract_forum_mention_candidates(document, policy)?;
         let resolved = resolve_forum_mentions(
             self.profiles.as_ref(),
             tenant_id,
@@ -137,9 +136,9 @@ impl MentionRelationService {
             )));
         }
         let quotes = quotes.into_iter().collect::<Vec<_>>();
+        let canonical_body = crate::richtext::serialize_discussion(document.clone())?;
         let projection_fingerprint = projection_fingerprint(
-            body_format,
-            body,
+            &canonical_body,
             resolved.users(),
             resolved.audiences(),
             &quotes,
@@ -437,7 +436,7 @@ async fn ensure_prepared_matches_source_in_tx(
     txn: &DatabaseTransaction,
     prepared: &PreparedMentionRelations,
 ) -> ForumResult<()> {
-    let (body, body_format) = match prepared.target.kind() {
+    let body = match prepared.target.kind() {
         ForumContentTargetKind::Topic => {
             let row = forum_topic_translation::Entity::find()
                 .filter(forum_topic_translation::Column::TenantId.eq(prepared.tenant_id))
@@ -450,7 +449,7 @@ async fn ensure_prepared_matches_source_in_tx(
                         "Forum relation source translation is unavailable".to_string(),
                     )
                 })?;
-            (row.body, row.body_format)
+            row.body
         }
         ForumContentTargetKind::Reply => {
             let row = forum_reply_body::Entity::find()
@@ -462,11 +461,10 @@ async fn ensure_prepared_matches_source_in_tx(
                 .ok_or_else(|| {
                     ForumError::Validation("Forum relation source body is unavailable".to_string())
                 })?;
-            (row.body, row.body_format)
+            row.body
         }
     };
     let fingerprint = projection_fingerprint(
-        &body_format,
         &body,
         prepared.resolved.users(),
         prepared.resolved.audiences(),
@@ -597,14 +595,12 @@ async fn lock_source_in_tx(
 }
 
 fn projection_fingerprint(
-    body_format: &str,
     body: &str,
     users: &[crate::mentions::ResolvedForumMention],
     audiences: &[ForumMentionAudience],
     quotes: &[ForumQuoteReference],
 ) -> String {
     let mut digest = Sha256::new();
-    update_digest(&mut digest, body_format.as_bytes());
     update_digest(&mut digest, body.as_bytes());
     for mention in users {
         update_digest(&mut digest, mention.user_id().as_bytes());

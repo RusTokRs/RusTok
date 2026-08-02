@@ -1,39 +1,29 @@
-#![allow(dead_code)]
-
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
+use rustok_api::RichTextDocument;
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
-    TopicListItem,
+    CategoryDetail, CategoryDraft, ReplyListItem, TopicDetail, TopicDraft, TopicListItem,
 };
 
 pub type ApiError = String;
 
-const CATEGORIES_QUERY: &str = "query ForumAdminCategories($locale: String, $pagination: PaginationInput) { forumCategories(locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale name slug description icon color topic_count: topicCount reply_count: replyCount } } }";
 const CATEGORY_QUERY: &str = "query ForumAdminCategory($id: UUID!, $locale: String) { forumCategory(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const CREATE_CATEGORY_MUTATION: &str = "mutation ForumAdminCreateCategory($input: CreateForumCategoryInput!) { createForumCategory(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const UPDATE_CATEGORY_MUTATION: &str = "mutation ForumAdminUpdateCategory($id: UUID!, $input: UpdateForumCategoryInput!) { updateForumCategory(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const MOVE_CATEGORY_MUTATION: &str = "mutation ForumAdminMoveCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) { moveForumCategory(categoryId: $categoryId, input: $input) { moved { id } } }";
-const REORDER_CATEGORY_SIBLINGS_MUTATION: &str = "mutation ForumAdminReorderCategorySiblings($input: ReorderForumCategorySiblingsInput!) { reorderForumCategorySiblings(input: $input) { siblings { id } } }";
 const DELETE_CATEGORY_MUTATION: &str =
     "mutation ForumAdminDeleteCategory($id: UUID!) { deleteForumCategory(id: $id) }";
 const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
-const TOPIC_QUERY: &str = "query ForumAdminTopic($id: UUID!, $locale: String) { forumTopic(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
-const CREATE_TOPIC_MUTATION: &str = "mutation ForumAdminCreateTopic($input: CreateForumTopicInput!) { createForumTopic(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
-const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, $input: UpdateForumTopicInput!) { updateForumTopic(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
+const TOPIC_QUERY: &str = "query ForumAdminTopic($id: UUID!, $locale: String) { forumTopic(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
+const CREATE_TOPIC_MUTATION: &str = "mutation ForumAdminCreateTopic($input: CreateForumTopicInput!) { createForumTopic(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
+const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, $input: UpdateForumTopicInput!) { updateForumTopic(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const DELETE_TOPIC_MUTATION: &str =
     "mutation ForumAdminDeleteTopic($id: UUID!) { deleteForumTopic(id: $id) }";
-const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: content status parent_reply_id: parentReplyId created_at: createdAt } } }";
-
-#[derive(Debug, Deserialize)]
-struct CategoriesResponse {
-    #[serde(rename = "forumCategories")]
-    forum_categories: CategoryConnection,
-}
+const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
 
 #[derive(Debug, Deserialize)]
 struct CategoryResponse {
@@ -96,11 +86,6 @@ struct RepliesResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct CategoryConnection {
-    items: Vec<CategoryListItem>,
-}
-
-#[derive(Debug, Deserialize)]
 struct TopicConnection {
     items: Vec<TopicListItem>,
 }
@@ -114,12 +99,6 @@ struct ReplyConnection {
 struct PaginationInput {
     offset: i64,
     limit: i64,
-}
-
-#[derive(Debug, Serialize)]
-struct CategoriesVariables {
-    locale: Option<String>,
-    pagination: PaginationInput,
 }
 
 #[derive(Debug, Serialize)]
@@ -166,11 +145,6 @@ struct CategoryMoveVariables {
     #[serde(rename = "categoryId")]
     category_id: String,
     input: MoveCategoryInput,
-}
-
-#[derive(Debug, Serialize)]
-struct CategoryReorderVariables {
-    input: ReorderCategorySiblingsInput,
 }
 
 #[derive(Debug, Serialize)]
@@ -222,25 +196,13 @@ struct MoveCategoryInput {
 }
 
 #[derive(Debug, Serialize)]
-struct ReorderCategorySiblingsInput {
-    #[serde(rename = "parentId")]
-    parent_id: Option<String>,
-    #[serde(rename = "orderedCategoryIds")]
-    ordered_category_ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
 struct CreateTopicInput {
     locale: String,
     #[serde(rename = "categoryId")]
     category_id: String,
     title: String,
     slug: Option<String>,
-    body: String,
-    #[serde(rename = "bodyFormat")]
-    body_format: Option<String>,
-    #[serde(rename = "contentJson")]
-    content_json: Option<serde_json::Value>,
+    body: RichTextDocument,
     metadata: Option<serde_json::Value>,
     tags: Vec<String>,
     #[serde(rename = "channelSlugs")]
@@ -251,11 +213,7 @@ struct CreateTopicInput {
 struct UpdateTopicInput {
     locale: String,
     title: Option<String>,
-    body: Option<String>,
-    #[serde(rename = "bodyFormat")]
-    body_format: Option<String>,
-    #[serde(rename = "contentJson")]
-    content_json: Option<serde_json::Value>,
+    body: Option<RichTextDocument>,
     metadata: Option<serde_json::Value>,
     tags: Option<Vec<String>>,
     #[serde(rename = "channelSlugs")]
@@ -301,27 +259,6 @@ where
     )
     .await
     .map_err(|err| err.to_string())
-}
-
-pub async fn fetch_categories(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    locale: String,
-) -> Result<Vec<CategoryListItem>, ApiError> {
-    let response: CategoriesResponse = request(
-        CATEGORIES_QUERY,
-        CategoriesVariables {
-            locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 50,
-            },
-        },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.forum_categories.items)
 }
 
 pub async fn fetch_category(
@@ -397,27 +334,6 @@ pub async fn move_category(
             input: MoveCategoryInput {
                 parent_id,
                 position,
-            },
-        },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(())
-}
-
-pub async fn reorder_category_siblings(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    parent_id: Option<String>,
-    ordered_category_ids: Vec<String>,
-) -> Result<(), ApiError> {
-    let _: serde_json::Value = request(
-        REORDER_CATEGORY_SIBLINGS_MUTATION,
-        CategoryReorderVariables {
-            input: ReorderCategorySiblingsInput {
-                parent_id,
-                ordered_category_ids,
             },
         },
         token,
@@ -601,8 +517,6 @@ fn create_topic_input(draft: TopicDraft) -> CreateTopicInput {
         title: draft.title,
         slug: optional_text(draft.slug),
         body: draft.body,
-        body_format: Some(draft.body_format),
-        content_json: None,
         metadata: None,
         tags: draft.tags,
         channel_slugs: None,
@@ -614,8 +528,6 @@ fn update_topic_input(draft: TopicDraft) -> UpdateTopicInput {
         locale: draft.locale,
         title: Some(draft.title),
         body: Some(draft.body),
-        body_format: Some(draft.body_format),
-        content_json: None,
         metadata: None,
         tags: Some(draft.tags),
         channel_slugs: None,

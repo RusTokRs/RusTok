@@ -40,7 +40,7 @@ BEGIN
         event_revision := OLD.revision + 1;
     END IF;
     PERFORM forum_append_domain_event(
-        event_tenant, 'category', event_target, 'forum.subscription.changed.v1', event_user,
+        event_tenant, 'category', event_target, 'forum.subscription.changed', event_user,
         jsonb_build_object(
             'target_type', 'category', 'target_id', event_target, 'user_id', event_user,
             'previous_level', old_level, 'level', new_level,
@@ -88,7 +88,7 @@ BEGIN
         event_revision := OLD.revision + 1;
     END IF;
     PERFORM forum_append_domain_event(
-        event_tenant, 'topic', event_target, 'forum.subscription.changed.v1', event_user,
+        event_tenant, 'topic', event_target, 'forum.subscription.changed', event_user,
         jsonb_build_object(
             'target_type', 'topic', 'target_id', event_target, 'user_id', event_user,
             'previous_level', old_level, 'level', new_level,

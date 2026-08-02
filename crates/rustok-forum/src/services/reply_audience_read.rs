@@ -71,13 +71,7 @@ impl ForumReplyAudienceReadService {
         }
 
         self.reply_service
-            .get_with_locale_fallback(
-                tenant_id,
-                security,
-                reply_id,
-                &locale,
-                fallback_locale,
-            )
+            .get_with_locale_fallback(tenant_id, security, reply_id, &locale, fallback_locale)
             .await
     }
 
@@ -114,13 +108,7 @@ impl ForumReplyAudienceReadService {
 
         match self
             .reply_service
-            .get_with_locale_fallback(
-                tenant_id,
-                security,
-                reply_id,
-                locale,
-                fallback_locale,
-            )
+            .get_with_locale_fallback(tenant_id, security, reply_id, locale, fallback_locale)
             .await
         {
             Ok(reply) => Ok(Some(reply)),

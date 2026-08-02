@@ -81,9 +81,7 @@ async fn create_topic_with_revision_and_two_public_replies(
                 category_id: category.id,
                 title: "Monotonic state".into(),
                 slug: Some("monotonic-state".into()),
-                body: "Body".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -99,9 +97,9 @@ async fn create_topic_with_revision_and_two_public_replies(
             UpdateTopicInput {
                 locale: "en".into(),
                 title: Some("Monotonic state updated".into()),
-                body: Some("Updated body".into()),
-                body_format: Some("markdown".into()),
-                content_json: None,
+                body: Some(rustok_api::RichTextDocument::single_paragraph(
+                    "Updated body",
+                )),
                 metadata: None,
                 tags: None,
                 channel_slugs: None,
@@ -119,9 +117,7 @@ async fn create_topic_with_revision_and_two_public_replies(
                 topic.id,
                 CreateReplyInput {
                     locale: "en".into(),
-                    content: content.into(),
-                    content_format: "markdown".into(),
-                    content_json: None,
+                    content: rustok_api::RichTextDocument::single_paragraph(content),
                     parent_reply_id: None,
                 },
             )

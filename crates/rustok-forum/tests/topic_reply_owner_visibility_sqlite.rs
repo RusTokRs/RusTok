@@ -89,9 +89,7 @@ async fn create_topic(
                 category_id,
                 title: slug.replace('-', " "),
                 slug: Some(slug.into()),
-                body: "Owner visibility fixture".into(),
-                body_format: "markdown".into(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Owner visibility fixture"),
                 metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
@@ -117,9 +115,7 @@ async fn create_reply(
             topic_id,
             CreateReplyInput {
                 locale: "en".into(),
-                content: content.into(),
-                content_format: "markdown".into(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(content),
                 parent_reply_id: None,
             },
         )

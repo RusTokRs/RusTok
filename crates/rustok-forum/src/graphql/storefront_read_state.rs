@@ -15,8 +15,7 @@ use crate::{
 };
 
 use super::{
-    ForumGraphqlRuntimeData, GqlForumTopicsReadBatchResult,
-    MarkForumTopicsReadBatchGraphqlInput,
+    ForumGraphqlRuntimeData, GqlForumTopicsReadBatchResult, MarkForumTopicsReadBatchGraphqlInput,
 };
 
 const MODULE_SLUG: &str = "forum";

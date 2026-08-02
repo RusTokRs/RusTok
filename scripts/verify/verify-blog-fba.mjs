@@ -76,6 +76,7 @@ sameSet(
   commentsEventProjection.postgres_harness?.cases ?? [],
   [
     'duplicate_delivery_updates_counter_and_outbox_once',
+    'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
     'delete_before_create_stays_non_negative_and_replays_in_order',
     'missing_post_replay_commits_only_after_source_appears',
     'outbox_failure_rolls_back_counter_and_delivery_before_retry',
@@ -199,7 +200,7 @@ hasAll(
 const manifest = read('crates/rustok-blog/rustok-module.toml');
 hasAll(manifest, ['[fba.consumer]', 'registry = "contracts/blog-fba-registry.json"', 'profile = "blog_post_comments"', 'comments.thread.v1'], 'manifest');
 
-if (evidence.schema_version !== 2 || evidence.surface !== 'comments_port_boundary') fail('comments port matrix schema/identity drift');
+if (evidence.schema_version !== 3 || evidence.surface !== 'comments_port_boundary') fail('comments port matrix schema/identity drift');
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 if (evidence.compile_policy !== 'not_run_by_request') fail('comments port matrix compile policy drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');

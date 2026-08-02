@@ -1,3 +1,4 @@
+use rustok_api::RichTextView;
 use rustok_ui_core::normalize_css_hex_color;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -99,9 +100,9 @@ pub struct ForumTopicDetail {
     pub category_id: String,
     pub title: String,
     pub slug: String,
-    pub body: String,
-    #[serde(rename = "bodyFormat")]
-    pub body_format: String,
+    pub body: RichTextView,
+    #[serde(rename = "bodyPlainText")]
+    pub body_plain_text: String,
     pub status: String,
     pub tags: Vec<String>,
     #[serde(rename = "isPinned")]
@@ -123,9 +124,9 @@ pub struct ForumReplyDetail {
     pub effective_locale: String,
     #[serde(rename = "topicId")]
     pub topic_id: String,
-    pub content: String,
-    #[serde(rename = "contentFormat")]
-    pub content_format: String,
+    pub content: RichTextView,
+    #[serde(rename = "contentPlainText")]
+    pub content_plain_text: String,
     pub status: String,
     #[serde(rename = "parentReplyId")]
     pub parent_reply_id: Option<String>,
