@@ -1,43 +1,60 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-07-30",
+  "reviewed_at": "2026-08-01",
   "status": "payment_storefront_graphql_error_safety_source_reviewed_unvalidated",
-  "base_main": "3b11116c73b93894ee5e7228ac0b119b57eedf52",
+  "base_main": "d0c554d4a7b107215f113cf00d52dfdf3b8ab3e6",
+  "scope": "payment storefront GraphQL public and diagnostic boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-payment/storefront/Cargo.toml",
     "crates/rustok-payment/storefront/src/transport.rs",
     "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-payment/storefront/src/transport/graphql_error_safety.rs",
     "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-payment/contracts/evidence/payment-storefront-graphql-error-safety-source.json",
+    "crates/rustok-payment/docs/storefront-graphql-error-safety.md",
+    "scripts/verify/verify-payment-storefront-graphql-error-safety.mjs",
     "crates/rustok-graphql/src/lib.rs",
-    "crates/rustok-ui-transport/src/lib.rs",
-    "scripts/verify/verify-payment-storefront-native-error-safety.mjs"
+    "crates/rustok-ui-transport/src/lib.rs"
   ],
-  "findings": {
-    "master_mapper_cleanup_open": true,
-    "graphql_adapter_private": true,
-    "raw_graphql_display_handoffs": 3,
-    "ui_transport_preserves_graphql_display": true,
-    "native_transport_has_static_owner_envelopes": true,
-    "graphql_http_error_variants_reviewed": [
-      "Network",
-      "Http",
-      "Unauthorized",
-      "Graphql"
-    ],
-    "graphql_http_error_display_round_trip_available": true,
-    "covered_public_operations": [
-      "create_payment_collection",
-      "fetch_payment_collection",
-      "fetch_refund_summary"
-    ],
-    "native_calls_preserved": true,
-    "transport_selection_preserved": true,
-    "graphql_queries_preserved": true,
-    "request_response_dtos_preserved": true,
-    "validation_errors_pass_through": true,
-    "raw_tenant_slug_excluded_from_diagnostics": true,
-    "graphql_variables_excluded_from_diagnostics": true
+  "findings": [
+    {
+      "id": "payment-storefront-static-public-envelope-preserved",
+      "severity": "preservation",
+      "finding": "All three public GraphQL operations already reparse the private adapter display through GraphqlHttpError and return static payment-owned messages."
+    },
+    {
+      "id": "payment-storefront-raw-diagnostic-payload",
+      "severity": "diagnostic_safety",
+      "finding": "The shared safety mapper still copied the complete private GraphQL display handoff and Debug representation of the parsed typed error into structured events."
+    },
+    {
+      "id": "payment-storefront-operation-coverage",
+      "severity": "preservation",
+      "finding": "create payment collection, read payment collection, and read order refunds all use the same GraphqlCallContext while retaining distinct owner operations."
+    },
+    {
+      "id": "payment-storefront-transport-separation",
+      "severity": "preservation",
+      "finding": "The native path, validation pass-through, private GraphQL queries, DTOs, explicit selection, and no-fallback behavior remain separate and unchanged."
+    }
+  ],
+  "implementation_review": {
+    "typed_graphql_variant_policy": true,
+    "static_public_graphql_messages": true,
+    "raw_graphql_detail_logging_removed": true,
+    "parsed_graphql_error_debug_logging_removed": true,
+    "bounded_graphql_error_shape_retained": true,
+    "all_three_public_operations_preserved": true,
+    "per_call_correlation_id": true,
+    "tenant_shape_only": true,
+    "private_graphql_adapter_changed": false,
+    "native_path_changed": false,
+    "validation_path_changed": false,
+    "graphql_queries_changed": false,
+    "transport_selection_changed": false,
+    "request_response_dto_changed": false,
+    "runtime_evidence_claimed": false
   },
   "execution": {
     "commands": [],
@@ -48,11 +65,11 @@
     "workflows": [],
     "ci": []
   },
-  "nonclaims": [
-    "No focused verifier was executed.",
-    "No Cargo command or test was executed.",
-    "No browser, GraphQL server, mounted transport, workflow, or CI behavior was proven.",
-    "The generic rustok-graphql client and rustok-ui-transport envelope were not changed.",
-    "The broad ecommerce correlation-safe mapper cleanup remains open."
+  "remaining_scope": [
+    "payment checkout execution and compensation diagnostics",
+    "remaining ecommerce storefront and admin GraphQL adapters",
+    "remaining non-PortError public and diagnostic envelopes",
+    "browser and mounted GraphQL runtime evidence",
+    "broad ecommerce correlation-safe mapper cleanup"
   ]
 }

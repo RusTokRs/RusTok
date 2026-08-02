@@ -1,0 +1,51 @@
+{
+  "contract": "forum_search_versioned_invalidation_retained_evidence_promotion_v1",
+  "task": "FORUM-23B2G2B3D12",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "aggregate_artifact": "target/forum-search-versioned-invalidation-runtime-evidence.json",
+  "reviewer": "scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs",
+  "verifier": "scripts/verify/verify-forum-search-versioned-invalidation-retained-evidence-promotion.mjs",
+  "promotion_candidate": {
+    "path": "target/forum-search-versioned-invalidation-runtime-promotion-candidate.json",
+    "generation": "reviewer_only_after_retained_aggregate_validation",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "atomic_replace": true,
+    "automatic_canonical_source_mutation": false
+  },
+  "required_attestations": [
+    "RUSTOK_FORUM_EVIDENCE_REVIEWER",
+    "RUSTOK_FORUM_EVIDENCE_RETENTION_REF",
+    "RUSTOK_FORUM_EVIDENCE_RETAINED_SHA256"
+  ],
+  "fail_closed_requirements": [
+    "the D0 parent remains source_ready_maintainer_execution_pending before review",
+    "the aggregate artifact has exact D0 identity and runtime_evidence_assembled status",
+    "the aggregate source_commit is one lowercase forty-character SHA equal to git rev-parse HEAD",
+    "the aggregate parent-contract digest equals the current D0 parent bytes",
+    "all ten frozen scenarios exist exactly once in canonical order with passed results and non-empty facts",
+    "all nine D2 through D10 source artifacts exist and match the aggregate path, task, contract, source commit, byte length and SHA-256 digest",
+    "every grouped D0 required evidence field contains only source-attributed non-empty facts from the retained source-artifact set",
+    "the assembly record reports complete validation, one source commit, current-head equality, nine inputs and ten frozen scenarios",
+    "the reviewer identity and retention reference are bounded non-empty values without control characters",
+    "the maintainer-supplied retained SHA-256 equals the exact aggregate artifact digest",
+    "the promotion candidate is written only after complete validation by same-directory atomic rename",
+    "the reviewer never edits the D0 parent, canonical plan or LINK-FORUM-03 status"
+  ],
+  "proposed_transition": {
+    "from": "source_ready_maintainer_execution_pending",
+    "to": "runtime_evidence_reviewed",
+    "requires_separate_canonical_source_pull_request": true,
+    "closes_forum_23": false,
+    "closes_link_forum_03": false
+  },
+  "maintainer_command": "RUSTOK_FORUM_EVIDENCE_REVIEWER=\"<reviewer>\" RUSTOK_FORUM_EVIDENCE_RETENTION_REF=\"<immutable-retention-reference>\" RUSTOK_FORUM_EVIDENCE_RETAINED_SHA256=\"<aggregate-sha256>\" node scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs",
+  "non_claims": [
+    "this source-ready gate does not claim that D2 through D10 or the D11 assembler ran",
+    "this gate does not retrieve or independently authenticate an external retention service",
+    "this gate records an explicit retained-digest attestation but does not sign it cryptographically",
+    "this gate does not automatically edit or promote the D0 parent contract or canonical Forum plan",
+    "this gate does not close FORUM-23 or LINK-FORUM-03"
+  ]
+}

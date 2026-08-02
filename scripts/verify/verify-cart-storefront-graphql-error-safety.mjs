@@ -24,6 +24,8 @@ const files = {
   nativeSafety: "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
   evidence: "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
   review: "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+  doc: "crates/rustok-cart/docs/storefront-graphql-error-safety.md",
+  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
 };
 
 for (const filePath of Object.values(files)) {
@@ -38,6 +40,8 @@ const safety = read(files.safety);
 const nativeSafety = read(files.nativeSafety);
 const evidence = JSON.parse(read(files.evidence));
 const review = JSON.parse(read(files.review));
+const doc = read(files.doc);
+const masterPlan = read(files.masterPlan);
 
 for (const [value, label] of [
   ["mod graphql_error_safety;", "safety module wiring"],
@@ -50,14 +54,8 @@ for (const [value, label] of [
   [".map_err(|error| context.map_error(error))", "consumer-boundary mapping"],
   ["NativeClientErrorContext::fetch_cart(&native_request)", "native fetch context preservation"],
   ["native_server_adapter::fetch_cart(native_request)", "native fetch preservation"],
-  [
-    "NativeClientErrorContext::decrement_line_item(",
-    "native decrement context preservation",
-  ],
-  [
-    "native_server_adapter::decrement_line_item(native_request)",
-    "native decrement preservation",
-  ],
+  ["NativeClientErrorContext::decrement_line_item(", "native decrement context preservation"],
+  ["native_server_adapter::decrement_line_item(native_request)", "native decrement preservation"],
   ["NativeClientErrorContext::remove_line_item(", "native remove context preservation"],
   ["native_server_adapter::remove_line_item(native_request)", "native remove preservation"],
 ]) requireText(transport, value, label);
@@ -73,13 +71,22 @@ for (const [value, label] of [
 ]) requireText(adapter, value, label);
 
 for (const [value, label] of [
-  ["GraphqlHttpError::from_str", "typed GraphQL display reparse"],
+  ["pub(super) struct GraphqlCallContext", "private call context"],
   ["let ApiError::Graphql(raw_error) = error else", "GraphQL-only mapping"],
   ["return error;", "non-GraphQL pass-through"],
+  ["let raw_error_present = !raw_error.trim().is_empty();", "raw display presence fact"],
+  ["let raw_error_length = raw_error.chars().count();", "raw display length fact"],
+  ["GraphqlHttpError::from_str(raw_error.as_str())", "typed GraphQL display reparse"],
+  ["let parsed_error_valid = parsed_error.is_ok();", "typed parse validity fact"],
   ["GraphqlHttpError::Network", "network policy"],
   ["GraphqlHttpError::Http(_)", "HTTP policy"],
   ["GraphqlHttpError::Unauthorized", "unauthorized policy"],
   ["GraphqlHttpError::Graphql(_)", "GraphQL rejection policy"],
+  ['"network"', "closed network category"],
+  ['"http"', "closed HTTP category"],
+  ['"unauthorized"', "closed authentication category"],
+  ['"graphql"', "closed GraphQL category"],
+  ['"unknown"', "closed unknown category"],
   ["cart.storefront_graphql_network_unavailable", "network code"],
   ["cart.storefront_graphql_http_unavailable", "HTTP code"],
   ["cart.storefront_graphql_authentication_required", "authentication code"],
@@ -89,6 +96,9 @@ for (const [value, label] of [
   ["Cart authentication is required", "authentication public envelope"],
   ["Cart request could not be completed", "request public envelope"],
   ["Uuid::new_v4()", "unique correlation id"],
+  ["raw_error_present,", "bounded raw display presence diagnostics"],
+  ["raw_error_length,", "bounded raw display length diagnostics"],
+  ["parsed_error_valid,", "bounded typed parse diagnostics"],
   ["owner_operation = self.owner_operation", "owner operation diagnostics"],
   ["correlation_id = %self.correlation_id", "correlation diagnostics"],
   ["tenant_slug_length", "safe tenant fact"],
@@ -97,18 +107,29 @@ for (const [value, label] of [
   ["cart_id_length", "safe cart fact"],
   ["line_item_id_length", "safe line-item fact"],
   ["command_kind", "safe command fact"],
-  ["raw_error = %raw_error", "private raw cause diagnostics"],
+  ["error_kind,", "closed error category diagnostics"],
+  ["code,", "stable code diagnostics"],
   ["ApiError::Graphql(public_message.to_string())", "static public remap"],
 ]) requireText(safety, value, label);
 
 for (const forbidden of [
+  "raw_error = %raw_error",
+  "raw_error = ?raw_error",
+  "parsed_error = ?parsed_error",
+  "parsed_error = %parsed_error",
   "tenant_slug = %",
+  "tenant_slug = ?",
   "selected_cart_id = %",
+  "selected_cart_id = ?",
   "locale = %",
+  "locale = ?",
   "cart_id = %",
+  "cart_id = ?",
   "line_item_id = %",
+  "line_item_id = ?",
   "graphql_url =",
   "query = %",
+  "query = ?",
   "variables =",
   "token =",
 ]) forbidText(safety, forbidden, "safe GraphQL diagnostics");
@@ -140,10 +161,35 @@ for (const [key, expected] of Object.entries({
   raw_request_identifiers_logged: false,
   raw_tenant_slug_logged: false,
   raw_graphql_error_public: false,
+  raw_graphql_detail_logged: false,
+  parsed_graphql_error_debug_logged: false,
+  raw_graphql_detail_shape_logged: true,
+  typed_parse_validity_logged: true,
+  closed_graphql_error_category_logged: true,
   non_graphql_errors_pass_through: true,
+  broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`evidence source_contract.${key} must be ${expected}`);
+  }
+}
+for (const [key, expected] of Object.entries({
+  typed_graphql_variant_policy: true,
+  static_public_graphql_messages: true,
+  raw_graphql_detail_logging_removed: true,
+  parsed_graphql_error_debug_logging_removed: true,
+  bounded_graphql_error_shape_retained: true,
+  all_three_operations_preserved: true,
+  per_call_correlation_id: true,
+  safe_request_shape_only: true,
+  private_graphql_adapter_changed: false,
+  native_path_changed: false,
+  graphql_documents_changed: false,
+  transport_selection_changed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (review.implementation_review?.[key] !== expected) {
+    failures.push(`review implementation_review.${key} must be ${expected}`);
   }
 }
 for (const key of [
@@ -162,6 +208,19 @@ for (const key of [
     failures.push(`evidence validation.${key} must remain false`);
   }
 }
+for (const marker of [
+  "Status: source-unvalidated",
+  "Raw GraphQL display text is not written to the event.",
+  "Debug output from the parsed typed error is not written to the event.",
+  "raw-display presence and character length",
+  "The broad ecommerce correlation-safe mapper cleanup remains open.",
+  "No tests, verifiers, Cargo commands, formatting, workflows, or CI were run",
+]) requireText(doc, marker, `${files.doc}: truthful documentation`);
+requireText(
+  masterPlan,
+  "Finish correlation-safe mapper cleanup",
+  `${files.masterPlan}: broad mapper cleanup remains open`,
+);
 
 if (failures.length > 0) {
   console.error("Cart storefront GraphQL error-safety verification failed:");
@@ -170,5 +229,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ cart storefront GraphQL failures use static public envelopes with correlation-aware private diagnostics; source evidence remains unvalidated",
+  "✔ cart storefront GraphQL failures retain bounded error/request shape and static public envelopes; source evidence remains unvalidated",
 );

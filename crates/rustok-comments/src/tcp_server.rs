@@ -5,11 +5,13 @@ use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use tokio::{net::TcpStream, time::timeout};
 
 use crate::tcp_protocol::{
-    DEFAULT_MAX_COMMENTS_FRAME_BYTES, io_error, read_frame, validate_frame_limit, write_frame,
+    DEFAULT_MAX_COMMENTS_FRAME_BYTES, read_frame, validate_frame_limit, write_frame,
 };
 use crate::{
-    COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpCredential, CommentsTcpRequestEnvelope,
-    CommentsThreadPort, CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransportReply,
+    BoxCommentsTcpIo, COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpCredential,
+    CommentsTcpIo, CommentsTcpRequestEnvelope, CommentsTcpServerChannelAcceptor,
+    CommentsThreadPort, CommentsThreadRequest, CommentsThreadResponse,
+    CommentsThreadTransportReply, PlaintextLoopbackCommentsTcpChannel,
 };
 
 /// Stable operation identity exposed to host-owned TCP authority resolvers.
@@ -125,12 +127,13 @@ pub trait CommentsTcpAuthorityResolver: Send + Sync {
     ) -> Result<TrustedCommentsTcpAuthority, PortError>;
 }
 
-/// Provider-side adapter for one length-prefixed JSON request per accepted TCP stream.
+/// Provider-side adapter for one length-prefixed JSON request per accepted channel.
 ///
-/// The host owns listener lifecycle and passes each accepted stream with its peer
-/// address. This adapter decodes one versioned envelope, requires trusted
-/// authority, invokes the host-selected Comments provider, writes one typed
-/// reply, and returns.
+/// The host owns listener lifecycle and passes each accepted raw socket through a
+/// channel acceptor. The acceptor may retain the built-in plaintext loopback
+/// profile or complete a bounded authenticated encrypted handshake. This adapter
+/// then decodes one versioned envelope, requires trusted authority, invokes the
+/// host-selected Comments provider, writes one typed reply, and returns.
 #[derive(Clone)]
 pub struct TcpJsonCommentsServerAdapter {
     provider: Arc<dyn CommentsThreadPort>,
@@ -167,24 +170,59 @@ impl TcpJsonCommentsServerAdapter {
         self.max_frame_bytes
     }
 
-    /// Handles exactly one request/reply exchange on an accepted stream.
+    /// Handles exactly one request/reply exchange using the built-in plaintext
+    /// loopback-only compatibility acceptor.
     pub async fn handle_connection(
         &self,
         stream: TcpStream,
         peer_addr: SocketAddr,
     ) -> Result<(), PortError> {
-        self.handle_connection_inner(stream, peer_addr, None).await
+        let acceptor = PlaintextLoopbackCommentsTcpChannel;
+        self.handle_connection_with_acceptor(stream, peer_addr, &acceptor)
+            .await
     }
 
-    /// Handles one exchange while bounding how long an accepted peer may remain
-    /// idle before sending the complete first request frame.
-    ///
-    /// The request's own `PortContext` deadline continues to bound trusted
-    /// authority resolution and provider dispatch after the frame is decoded.
+    /// Handles one plaintext loopback exchange while bounding how long an
+    /// accepted peer may remain idle before sending the complete first frame.
     pub async fn handle_connection_with_pre_request_timeout(
         &self,
         stream: TcpStream,
         peer_addr: SocketAddr,
+        pre_request_timeout: Duration,
+    ) -> Result<(), PortError> {
+        let acceptor = PlaintextLoopbackCommentsTcpChannel;
+        self.handle_connection_with_acceptor_and_pre_request_timeout(
+            stream,
+            peer_addr,
+            &acceptor,
+            pre_request_timeout,
+        )
+        .await
+    }
+
+    /// Handles one request/reply exchange through a host-provided channel
+    /// acceptor. A TLS/mTLS acceptor owns and bounds its handshake before this
+    /// method starts reading the typed request frame.
+    pub async fn handle_connection_with_acceptor(
+        &self,
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        acceptor: &dyn CommentsTcpServerChannelAcceptor,
+    ) -> Result<(), PortError> {
+        self.accept_and_handle(stream, peer_addr, acceptor, None)
+            .await
+    }
+
+    /// Handles one exchange through a host-provided channel acceptor and bounds
+    /// receipt of the first complete request frame after channel establishment.
+    ///
+    /// The request's own `PortContext` deadline continues to bound trusted
+    /// authority resolution and provider dispatch after the frame is decoded.
+    pub async fn handle_connection_with_acceptor_and_pre_request_timeout(
+        &self,
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        acceptor: &dyn CommentsTcpServerChannelAcceptor,
         pre_request_timeout: Duration,
     ) -> Result<(), PortError> {
         if pre_request_timeout.is_zero() {
@@ -193,22 +231,35 @@ impl TcpJsonCommentsServerAdapter {
                 "comments TCP pre-request timeout must be greater than zero",
             ));
         }
-        self.handle_connection_inner(stream, peer_addr, Some(pre_request_timeout))
+        self.accept_and_handle(
+            stream,
+            peer_addr,
+            acceptor,
+            Some(pre_request_timeout),
+        )
+        .await
+    }
+
+    async fn accept_and_handle(
+        &self,
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        acceptor: &dyn CommentsTcpServerChannelAcceptor,
+        pre_request_timeout: Option<Duration>,
+    ) -> Result<(), PortError> {
+        let channel = acceptor.accept(stream, peer_addr).await?;
+        self.handle_channel_inner(channel, peer_addr, pre_request_timeout)
             .await
     }
 
-    async fn handle_connection_inner(
+    async fn handle_channel_inner(
         &self,
-        mut stream: TcpStream,
+        mut channel: BoxCommentsTcpIo,
         peer_addr: SocketAddr,
         pre_request_timeout: Option<Duration>,
     ) -> Result<(), PortError> {
-        stream
-            .set_nodelay(true)
-            .map_err(|error| io_error("server_set_nodelay", error))?;
-
         let reply = match self
-            .read_authorize_and_dispatch(&mut stream, peer_addr, pre_request_timeout)
+            .read_authorize_and_dispatch(&mut *channel, peer_addr, pre_request_timeout)
             .await
         {
             Ok(response) => CommentsThreadTransportReply::Success(response),
@@ -220,17 +271,17 @@ impl TcpJsonCommentsServerAdapter {
                 "comments TCP server reply could not be encoded",
             )
         })?;
-        write_frame(&mut stream, &reply_payload, self.max_frame_bytes).await
+        write_frame(&mut *channel, &reply_payload, self.max_frame_bytes).await
     }
 
     async fn read_authorize_and_dispatch(
         &self,
-        stream: &mut TcpStream,
+        channel: &mut dyn CommentsTcpIo,
         peer_addr: SocketAddr,
         pre_request_timeout: Option<Duration>,
     ) -> Result<CommentsThreadResponse, PortError> {
         let request_payload = match pre_request_timeout {
-            Some(duration) => timeout(duration, read_frame(stream, self.max_frame_bytes))
+            Some(duration) => timeout(duration, read_frame(channel, self.max_frame_bytes))
                 .await
                 .map_err(|_| {
                     PortError::timeout(
@@ -238,7 +289,7 @@ impl TcpJsonCommentsServerAdapter {
                         "comments TCP peer did not send a complete request frame before the idle timeout",
                     )
                 })??,
-            None => read_frame(stream, self.max_frame_bytes).await?,
+            None => read_frame(channel, self.max_frame_bytes).await?,
         };
         let envelope = serde_json::from_slice::<CommentsTcpRequestEnvelope>(&request_payload)
             .map_err(|_| {
@@ -459,8 +510,9 @@ mod tests {
     }
 
     #[test]
-    fn pre_request_timeout_api_is_source_visible() {
-        let handler = TcpJsonCommentsServerAdapter::handle_connection_with_pre_request_timeout;
+    fn channel_acceptor_api_is_source_visible() {
+        let handler =
+            TcpJsonCommentsServerAdapter::handle_connection_with_acceptor_and_pre_request_timeout;
         let _ = handler;
     }
 }

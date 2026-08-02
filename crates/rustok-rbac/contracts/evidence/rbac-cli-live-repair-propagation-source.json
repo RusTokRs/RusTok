@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-CLI-LIVE-REPAIR-PROPAGATION-SOURCE-20260801",
+  "generated_at": "2026-08-01T17:36:00Z",
+  "status": "source_ready_unvalidated",
+  "base_revision": "c8cb49558f84c86dcd9e74d50466c198ddccecc8",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "severity": "P0",
+  "topology": {
+    "database": "isolated_postgresql_database",
+    "observer_processes": 2,
+    "cli_processes": 1,
+    "independent_os_processes": true,
+    "shared_process_cache": false,
+    "redis_configured": false,
+    "observer_restart_allowed": false
+  },
+  "repair_fixture": {
+    "tenant_count": 1,
+    "affected_user_count": 2,
+    "role": "manager",
+    "drift": "extra_settings_manage_permission_link",
+    "initial_cached_decision": "allow",
+    "authoritative_decision_after_repair": "deny"
+  },
+  "cli_path": {
+    "runner": "rustok_cli::run_with_runtime",
+    "registry": "rustok_cli_registry::selected_distribution_registry",
+    "namespace": "rbac",
+    "command": "repair-system-roles",
+    "arguments": [
+      "--apply",
+      "--tenant-id"
+    ],
+    "runtime_database_present": true,
+    "runtime_cache_handle_present": false,
+    "runtime_redis_handle_present": false,
+    "expected_exit_code": 0,
+    "expected_applied": true,
+    "expected_runtime_restart_required": false,
+    "expected_durable_generation": 1
+  },
+  "replica_recovery": {
+    "listener": "start_rbac_cache_invalidation_listener",
+    "watchdog": "start_rbac_invalidation_generation_watchdog",
+    "initial_listener_recovery_before_cache_warm": true,
+    "only_cross_process_recovery_path": "database_generation_watchdog",
+    "recovery_reason": "generation_advanced",
+    "full_clear_required_per_replica": true,
+    "maximum_recovery_ms": 7000,
+    "expected_final_decision": "deny",
+    "same_process_id_before_and_after": true
+  },
+  "forbidden_shortcuts": [
+    "direct_apply_system_role_repair_in_transaction_from_harness",
+    "direct_reserve_permission_invalidation_generation_from_harness",
+    "server_repair_system_roles_committed_entrypoint",
+    "manual_permission_cache_clear",
+    "direct_generation_update_sql",
+    "synthetic_invalidation_publication",
+    "redis_fast_path",
+    "same_process_replica_simulation",
+    "observer_process_restart"
+  ],
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "postgresql_runtime_executed": false,
+    "redis_runtime_executed": false,
+    "subprocess_runtime_executed": false,
+    "format_checked": false,
+    "cargo_checked": false,
+    "ci_observed": false
+  },
+  "remaining_gates": {
+    "same_revision_compile_and_module_gates": false,
+    "live_negative_transport_requests": false,
+    "retained_incident_packet_execution": false,
+    "retained_postgresql_concurrency_execution": false,
+    "retained_multi_replica_execution": false,
+    "core_rbac_complete": false
+  },
+  "cursor_advanced": false
+}

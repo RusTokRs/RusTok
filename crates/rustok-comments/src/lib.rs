@@ -18,13 +18,21 @@ pub mod services;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_auth;
 #[cfg(feature = "tcp-transport")]
+pub mod tcp_channel;
+#[cfg(feature = "tcp-transport")]
 pub mod tcp_delegation;
+#[cfg(feature = "tcp-transport")]
+pub mod tcp_delegation_reload;
+#[cfg(feature = "tcp-transport")]
+pub mod tcp_delegation_schedule;
 #[cfg(feature = "tcp-transport")]
 mod tcp_protocol;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_server;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_transport;
+#[cfg(feature = "tcp-transport")]
+pub mod tcp_transport_reload;
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;
@@ -56,12 +64,32 @@ pub use tcp_auth::{
     CommentsTcpRequestEnvelope,
 };
 #[cfg(feature = "tcp-transport")]
+pub use tcp_channel::{
+    BoxCommentsTcpIo, CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
+    CommentsTcpIo, CommentsTcpServerChannelAcceptor, PlaintextLoopbackCommentsTcpChannel,
+};
+#[cfg(feature = "tcp-transport")]
 pub use tcp_delegation::{
     COMMENTS_TCP_DELEGATION_VERSION, CommentsTcpDelegatingAuthorityResolver,
-    CommentsTcpDelegationConfigError, CommentsTcpDelegationSecret, CommentsTcpDelegationSigner,
+    CommentsTcpDelegationConfigError, CommentsTcpDelegationKeyId,
+    CommentsTcpDelegationKeyring, CommentsTcpDelegationSecret, CommentsTcpDelegationSigner,
     DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
     DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
+    MAX_COMMENTS_TCP_DELEGATION_KEY_ID_BYTES, MAX_COMMENTS_TCP_DELEGATION_KEYS,
     MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
+};
+#[cfg(feature = "tcp-transport")]
+pub use tcp_delegation_reload::{
+    CommentsTcpDelegationKeyringProvider,
+    ReloadableCommentsTcpDelegatingAuthorityResolver,
+    ReloadableCommentsTcpDelegationSigner,
+};
+#[cfg(feature = "tcp-transport")]
+pub use tcp_delegation_schedule::{
+    CommentsTcpDelegationSchedule, CommentsTcpDelegationScheduleConfigError,
+    CommentsTcpDelegationScheduledKey,
+    MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS,
+    MAX_COMMENTS_TCP_DELEGATION_SCHEDULE_CLOCK_SKEW_MS,
 };
 #[cfg(feature = "tcp-transport")]
 pub use tcp_server::{
@@ -70,6 +98,8 @@ pub use tcp_server::{
 };
 #[cfg(feature = "tcp-transport")]
 pub use tcp_transport::{CommentsTcpTransportConfigError, TcpJsonCommentsTransport};
+#[cfg(feature = "tcp-transport")]
+pub use tcp_transport_reload::ReloadableTcpJsonCommentsTransport;
 
 #[cfg(feature = "server")]
 pub struct CommentsModule;

@@ -1,0 +1,89 @@
+{
+  "contract": "forum_search_link_forum_03_complete_evidence_assembler_v1",
+  "task": "FORUM-23B2G2B3D17",
+  "target_link": "LINK-FORUM-03",
+  "coverage": "complete_canonical_runtime_scope_review_pending",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "assembler": "scripts/evidence/assemble-link-forum-03-complete-forum-search-evidence.mjs",
+  "verifier": "scripts/verify/verify-link-forum-03-complete-forum-search-evidence.mjs",
+  "required_contracts": [
+    "crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json",
+    "crates/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json",
+    "crates/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json",
+    "crates/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json"
+  ],
+  "required_inputs": [
+    "target/link-forum-03-forum-index-search-ordering-visibility-evidence.json",
+    "target/forum-search-link-forum-03-translation-moderation-evidence.json",
+    "target/forum-search-link-forum-03-private-trusted-exclusion-evidence.json",
+    "target/forum-search-link-forum-03-topic-move-evidence.json"
+  ],
+  "required_scenarios": [
+    "normal_delivery",
+    "deletion_acl_ordering",
+    "search_disabled_profile",
+    "translation_and_moderation_approval",
+    "private_and_trusted_channel_exclusion",
+    "topic_move_category_scope"
+  ],
+  "output_artifact": {
+    "path": "target/link-forum-03-forum-index-search-complete-evidence.json",
+    "status": "complete_runtime_evidence_assembled_review_pending",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "same_commit_inputs_required": true,
+    "atomic_replace": true,
+    "automatic_canonical_source_mutation": false
+  },
+  "fail_closed_requirements": [
+    "the canonical Forum plan still records FORUM-23 in_progress and LINK-FORUM-03 planned",
+    "the D13 partial core artifact has exact contract task slice status coverage and current source commit",
+    "the D13 artifact retains the reviewed D12 lineage and all three exact core scenarios with non-empty facts",
+    "the D14 D15 and D16 source contracts remain source_ready_maintainer_execution_pending and point to exact tests verifiers and evidence paths",
+    "the D14 D15 and D16 runtime artifacts have exact contracts tasks current source commit PostgreSQL backend and broker_used false",
+    "each D14 D15 and D16 runtime artifact contains exactly one expected passed scenario with non-empty facts",
+    "translation and moderation facts retain English and French visibility pending exclusion and approved visibility",
+    "private and trusted-channel facts retain zero legitimate restricted documents and the complete allow-deny storefront matrix",
+    "topic-move facts retain topic and reply identity old-scope exclusion new-scope visibility and exact replay idempotency",
+    "the exact bytes SHA-256 byte length generated time source commit and scenario identity of every input are recorded",
+    "the output declares runtime coverage complete but independent review and retention still required",
+    "the output cannot directly change FORUM-21 FORUM-23 or LINK-FORUM-03 canonical status",
+    "the output is written only after all validation succeeds by same-directory atomic rename",
+    "the assembler accepts no arguments overrides missing-artifact mode skipped result or static fallback"
+  ],
+  "proves_after_maintainer_execution": [
+    "the reviewed normal delivery ordering visibility and Search-disabled core remains intact",
+    "English and French Forum translations converge through Search and storefront retrieval",
+    "a real pending-to-approved moderation transition changes exact reply Search visibility",
+    "private and trusted-channel content remains excluded unless exact current owner authorization permits it",
+    "a real idempotent topic move transfers exact topic and reply category scope without identity drift",
+    "all canonical LINK-FORUM-03 runtime scenarios are assembled from one exact source commit"
+  ],
+  "remaining_after_assembly": [
+    "independent maintainer review and immutable retention attestation for the complete artifact",
+    "a separate canonical-source pull request after review",
+    "independent FORUM-21 owner-task promotion remains outside this LINK artifact"
+  ],
+  "maintainer_commands": [
+    "node scripts/verify/verify-link-forum-03-forum-search-evidence.mjs",
+    "node scripts/evidence/assemble-link-forum-03-forum-search-evidence.mjs",
+    "node scripts/verify/verify-forum-search-link-forum-03-translation-moderation-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_translation_moderation -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-link-forum-03-private-trusted-exclusion-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_private_trusted_exclusion -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-link-forum-03-topic-move-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_topic_move -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-link-forum-03-complete-forum-search-evidence.mjs",
+    "node scripts/evidence/assemble-link-forum-03-complete-forum-search-evidence.mjs"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that any verifier test assembler PostgreSQL Iggy storefront workflow or CI command ran",
+    "this assembler does not regenerate repair or infer any missing input artifact",
+    "this assembler does not independently authenticate the external retention reference inherited from D13",
+    "this artifact is not reviewed or retained merely because complete runtime coverage was assembled",
+    "this artifact cannot mark LINK-FORUM-03 done or promote FORUM-23",
+    "this artifact cannot promote the independent FORUM-21 owner task",
+    "this slice does not modify D0 D12 D13 D14 D15 D16 or canonical source"
+  ]
+}

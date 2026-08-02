@@ -12596,11 +12596,24 @@ name = "rustok-cli"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
+ "rustok-api",
  "rustok-cli-core",
  "rustok-cli-registry",
+ "rustok-core",
+ "rustok-migrations",
+ "rustok-rbac",
  "rustok-runtime",
+ "rustok-server",
+ "rustok-telemetry",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

@@ -21,6 +21,11 @@ const docs = read('crates/rustok-order/docs/storefront-graphql-error-safety.md')
 const evidence = JSON.parse(
   read('crates/rustok-order/contracts/evidence/storefront-graphql-error-safety-source.json'),
 );
+const review = JSON.parse(
+  read(
+    'crates/rustok-order/contracts/evidence/storefront-graphql-error-safety-source-review.json',
+  ),
+);
 
 const failures = [];
 const requireText = (content, value, label) => {
@@ -55,18 +60,33 @@ for (const [value, label] of [
   ['let CheckoutCompletionTransportError::Graphql(raw_error) = error else', 'GraphQL-only mapping'],
   ['return error;', 'non-GraphQL pass-through'],
   ['Uuid::new_v4()', 'unique correlation id'],
+  ['let raw_error_present = !raw_error.trim().is_empty();', 'raw display presence fact'],
+  ['let raw_error_length = raw_error.chars().count();', 'raw display length fact'],
+  ['let parsed_error_valid = parsed_error.is_ok();', 'typed parse validity fact'],
   ['correlation_id = %self.correlation_id', 'correlation diagnostics'],
   ['tenant_slug_configured = self.tenant_slug_length.is_some()', 'tenant configured fact'],
   ['tenant_slug_length = ?self.tenant_slug_length', 'tenant length fact'],
   ['cart_id_length = self.cart_id_length', 'cart id length fact'],
   ['idempotency_key_length = self.idempotency_key_length', 'idempotency length fact'],
   ['create_fulfillment = self.create_fulfillment', 'fulfillment policy fact'],
-  ['raw_error = %raw_error', 'internal raw cause diagnostics'],
-  ['parsed_error = ?parsed_error', 'typed cause diagnostics'],
+  ['raw_error_present,', 'bounded raw display presence logging'],
+  ['raw_error_length,', 'bounded raw display length logging'],
+  ['parsed_error_valid,', 'bounded typed parse logging'],
+  ['error_kind,', 'closed error category logging'],
+  ['code,', 'stable code logging'],
   ['boundary = ORDER_STOREFRONT_GRAPHQL_BOUNDARY', 'boundary diagnostics'],
 ]) requireText(safety, value, label);
 
 for (const [value, label] of [
+  ['GraphqlHttpError::Network', 'network policy'],
+  ['GraphqlHttpError::Http(_)', 'HTTP policy'],
+  ['GraphqlHttpError::Unauthorized', 'authentication policy'],
+  ['GraphqlHttpError::Graphql(_)', 'GraphQL rejection policy'],
+  ['"network"', 'closed network category'],
+  ['"http"', 'closed HTTP category'],
+  ['"unauthorized"', 'closed unauthorized category'],
+  ['"graphql"', 'closed GraphQL category'],
+  ['"unknown"', 'closed unknown category'],
   ['order.storefront_graphql_network_unavailable', 'network stable code'],
   ['order.storefront_graphql_http_unavailable', 'HTTP stable code'],
   ['order.storefront_graphql_authentication_required', 'authentication stable code'],
@@ -77,6 +97,21 @@ for (const [value, label] of [
   ['Checkout request could not be completed', 'rejection public message'],
   ['CheckoutCompletionTransportError::Graphql(public_message.to_string())', 'static public envelope'],
 ]) requireText(safety, value, label);
+
+for (const value of [
+  'raw_error = %raw_error',
+  'raw_error = ?raw_error',
+  'parsed_error = ?parsed_error',
+  'parsed_error = %parsed_error',
+  'tenant_slug = %',
+  'cart_id = %',
+  'idempotency_key = %',
+  'metadata = ?',
+  'source_module = %',
+  'source_surface = %',
+  'command = %',
+  'owner_module = %',
+]) forbidText(safety, value, 'raw diagnostic payload');
 
 for (const [value, label] of [
   ['COMPLETE_STOREFRONT_CHECKOUT_MUTATION', 'checkout mutation'],
@@ -98,17 +133,6 @@ for (const value of [
   'UiTransportError::graphql("order", error)',
 ]) forbidText(transport, value, 'unsanitized public GraphQL delegation');
 
-for (const value of [
-  'tenant_slug = %',
-  'cart_id = %',
-  'idempotency_key = %',
-  'metadata = ?',
-  'source_module = %',
-  'source_surface = %',
-  'command = %',
-  'owner_module = %',
-]) forbidText(safety, value, 'raw request diagnostics');
-
 for (const [value, label] of [
   ['CheckoutCompletionTransportError::ServerFn(', 'native outer transport variant'],
   ['Checkout transport is temporarily unavailable', 'native outer public message'],
@@ -118,6 +142,9 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['Status: source-unvalidated', 'documentation source status'],
+  ['Raw GraphQL display text is not written to the event.', 'raw diagnostic removal'],
+  ['Debug output from the parsed typed error is not written to the event.', 'typed debug removal'],
+  ['raw-display presence and character length', 'bounded display shape'],
   ['The broad ecommerce correlation-safe mapper cleanup remains open.', 'broad-plan nonclaim'],
   ['No tests, verifiers, Cargo commands, formatting, workflows, or CI were run', 'execution nonclaim'],
 ]) requireText(docs, value, label);
@@ -135,12 +162,18 @@ for (const [key, expected] of Object.entries({
   transport_selection_changed: false,
   native_to_graphql_fallback_added: false,
   graphql_http_error_reparsed: true,
+  raw_graphql_detail_logged: false,
+  parsed_graphql_error_debug_logged: false,
+  raw_graphql_detail_shape_logged: true,
+  typed_parse_validity_logged: true,
+  closed_graphql_error_category_logged: true,
   raw_cart_id_logged: false,
   raw_idempotency_key_logged: false,
   raw_tenant_slug_logged: false,
   raw_command_metadata_logged: false,
   raw_graphql_error_public: false,
   non_graphql_errors_pass_through: true,
+  broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`evidence source_contract.${key} must be ${expected}`);
@@ -163,6 +196,31 @@ for (const key of [
   }
 }
 
+if (
+  review.status !==
+  'order_storefront_graphql_error_safety_source_reviewed_unvalidated'
+) failures.push(`review status mismatch: ${review.status}`);
+for (const [key, expected] of Object.entries({
+  typed_graphql_variant_policy: true,
+  static_public_graphql_messages: true,
+  raw_graphql_detail_logging_removed: true,
+  parsed_graphql_error_debug_logging_removed: true,
+  bounded_graphql_error_shape_retained: true,
+  per_call_correlation_id: true,
+  safe_shape_only_request_facts: true,
+  private_graphql_adapter_changed: false,
+  native_path_changed: false,
+  validation_path_changed: false,
+  graphql_document_changed: false,
+  transport_selection_changed: false,
+  request_response_dto_changed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (review.implementation_review?.[key] !== expected) {
+    failures.push(`review implementation_review.${key} must be ${expected}`);
+  }
+}
+
 if (failures.length > 0) {
   console.error('Order storefront GraphQL error-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
@@ -170,5 +228,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ order storefront GraphQL failures retain correlation diagnostics and static public envelopes; runtime evidence remains open',
+  '✔ order storefront GraphQL failures retain bounded error/request shape and static public envelopes; runtime evidence remains open',
 );

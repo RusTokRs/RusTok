@@ -4,30 +4,38 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice closes the public GraphQL error boundary for the fulfillment-owned storefront shipping-selection operation:
+This slice closes both the public and private diagnostic GraphQL error boundary for
+the fulfillment-owned storefront shipping-selection operation:
 
 - `select_storefront_shipping_option`;
 - public facade `rustok_fulfillment_storefront::transport::select_shipping_option`;
 - selected GraphQL transport path;
 - boundary `fulfillment_storefront_graphql_transport`.
 
-The private GraphQL adapter, native server functions, shipping-selection DTOs, selection planning, GraphQL document, feature-based transport selection, and Commerce compatibility delegation remain unchanged.
+The private GraphQL adapter, native server functions, shipping-selection DTOs,
+selection planning, GraphQL document, feature-based transport selection, and Commerce
+compatibility delegation remain unchanged.
 
-## Problem
+## Rechecked gap
 
-The private GraphQL adapter intentionally converted `GraphqlHttpError` into the transport-owned variant:
+The public transport facade already reparsed the private GraphQL display handoff through
+`GraphqlHttpError` and returned static transport-owned messages. The source therefore
+prevented resolver and HTTP detail from reaching the storefront caller.
 
-```text
-ShippingSelectionTransportError::Graphql(error.to_string())
-```
+The structured event still copied two complete private values:
 
-Before this slice, the public transport facade delegated that variant directly to `execute_selected_transport`. `UiTransportError::graphql` stores the delegated display string in its public `graphql_error` field, so resolver messages and HTTP detail could reach the storefront caller.
+- `raw_error = %raw_error`;
+- `parsed_error = ?parsed_error`.
 
-This is a non-`PortError` public-envelope gap in the ecommerce correlation-safe mapper cleanup.
+That display text and Debug representation were not required to correlate the call or
+distinguish the five closed transport categories. This was a remaining non-`PortError`
+diagnostic-envelope gap in the ecommerce correlation-safe mapper cleanup.
 
 ## Boundary policy
 
-The public facade now creates a `GraphqlCallContext` before invoking the private adapter. Only `ShippingSelectionTransportError::Graphql` is classified. Other variants are returned unchanged.
+The public facade creates a `GraphqlCallContext` before invoking the private adapter.
+Only `ShippingSelectionTransportError::Graphql` is classified. Other variants are
+returned unchanged.
 
 The adapter display handoff is reparsed through the typed `GraphqlHttpError` contract:
 
@@ -39,21 +47,25 @@ The adapter display handoff is reparsed through the typed `GraphqlHttpError` con
 | GraphQL rejection | `fulfillment.storefront_graphql_request_rejected` | `Shipping selection request could not be completed` | warning |
 | unknown display handoff | `fulfillment.storefront_graphql_unknown_failure` | `Shipping selection request could not be completed` | error |
 
-The raw GraphQL detail is never copied into the returned `ShippingSelectionTransportError::Graphql`.
+The raw GraphQL detail is never copied into the returned
+`ShippingSelectionTransportError::Graphql`.
 
-## Correlation and diagnostics
+## Correlation and bounded diagnostics
 
-Each selected GraphQL invocation receives a generated correlation id with the fulfillment owner operation embedded in its prefix.
+Each selected GraphQL invocation receives a generated correlation id with the
+fulfillment owner operation embedded in its prefix.
 
-Internal events retain:
+Internal events retain only:
 
 - owner `rustok_fulfillment.storefront`;
 - owner operation `select_storefront_shipping_option`;
 - boundary `fulfillment_storefront_graphql_transport`;
 - per-call correlation id;
-- parsed GraphQL error category;
+- one closed error category: `network`, `http`, `unauthorized`, `graphql`, or
+  `unknown`;
 - stable internal code;
-- raw GraphQL display detail for operator diagnostics;
+- raw-display presence and character length;
+- whether typed `GraphqlHttpError` parsing succeeded;
 - whether a tenant slug is configured and its character length;
 - cart-id character length;
 - delivery-group count;
@@ -61,7 +73,10 @@ Internal events retain:
 - seller-id presence;
 - shipping-option-id presence.
 
-The events deliberately do not retain:
+Raw GraphQL display text is not written to the event.
+Debug output from the parsed typed error is not written to the event.
+
+The events also do not retain:
 
 - tenant slug value;
 - cart id value;
@@ -90,9 +105,11 @@ This work does not change:
 - native server-function endpoint or native safety policy;
 - feature-based `NativeServer` versus `Graphql` selection;
 - the no-fallback transport contract;
-- Commerce delegation to the fulfillment-owned facade.
+- Commerce delegation to the fulfillment-owned facade;
+- static public messages, category severity, or non-GraphQL pass-through behavior.
 
-Validation errors remain pass-through because they are local, user-actionable failures and are not GraphQL runtime envelopes.
+Validation errors remain pass-through because they are local, user-actionable failures
+and are not GraphQL runtime envelopes.
 
 ## Static evidence
 
@@ -104,13 +121,17 @@ Validation errors remain pass-through because they are local, user-actionable fa
 - static public messages for every typed category;
 - error versus warning severity;
 - correlation and safe request-shape diagnostics;
+- bounded raw-display presence/length and typed-parse validity;
+- absence of raw GraphQL display text and parsed-error Debug output;
 - absence of raw request identity fields in diagnostics;
 - unchanged private GraphQL adapter handoff and GraphQL document;
 - unchanged native path and transport variant;
 - unchanged explicit transport selection;
 - unvalidated evidence flags.
 
-The focused guard is imported by `verify-fulfillment-storefront-boundary.mjs` so the ordinary fulfillment storefront boundary check also rejects restoration of the raw public GraphQL mapping.
+The focused guard is imported by `verify-fulfillment-storefront-boundary.mjs`, so the
+ordinary fulfillment storefront boundary check also rejects restoration of raw public
+or diagnostic GraphQL payloads.
 
 Evidence files:
 
@@ -119,7 +140,8 @@ Evidence files:
 
 ## Evidence boundary
 
-The source status is `fulfillment_storefront_graphql_error_safety_source_unvalidated`.
+The source status is
+`fulfillment_storefront_graphql_error_safety_source_unvalidated`.
 
 Source inspection does not prove:
 
@@ -132,7 +154,9 @@ Source inspection does not prove:
 - FFA or FBA promotion;
 - production readiness.
 
-The broad ecommerce correlation-safe mapper task remains open for remaining storefront/admin GraphQL adapters, customer and other non-`PortError` envelopes, and runtime evidence.
+The broad ecommerce correlation-safe mapper task remains open for fulfillment checkout
+execution diagnostics, remaining storefront/admin GraphQL adapters, other non-`PortError`
+envelopes, and runtime evidence.
 
 ## Suggested maintainer checks
 

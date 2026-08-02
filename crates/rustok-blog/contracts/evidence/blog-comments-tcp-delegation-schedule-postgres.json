@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_delegation_schedule_postgres_persistence",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-82.md",
+  "source_contract": {
+    "runtime_facade": "apps/server/src/services/comments_provider_runtime.rs",
+    "postgres_adapter": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres.rs",
+    "persistence_contract_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence.rs",
+    "persisted_trigger_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persisted_trigger.rs",
+    "persist_before_publish_bridge_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_bridge.rs",
+    "migration_registry": "crates/rustok-blog/src/migrations/mod.rs",
+    "migration": "crates/rustok-blog/src/migrations/m20260801_000007_create_blog_comments_delegation_schedule_state.rs"
+  },
+  "table": {
+    "name": "blog_comments_tcp_delegation_schedule_state",
+    "state_key": "comments_tcp_delegation_schedule",
+    "singleton_primary_key": true,
+    "columns": [
+      "state_key",
+      "schema_version",
+      "source",
+      "generation",
+      "schedule_digest_hex",
+      "updated_at"
+    ],
+    "schema_version": 1,
+    "source_values": [
+      "host_provided",
+      "file"
+    ],
+    "positive_generation": true,
+    "digest_hex_length": 64,
+    "key_ids": false,
+    "secret_values": false,
+    "schedule_json": false,
+    "credentials": false,
+    "nonces": false,
+    "tokens": false,
+    "actor_identity": false,
+    "request_identity": false,
+    "file_path": false,
+    "raw_backend_error": false,
+    "down_migration": "intentionally_irreversible"
+  },
+  "adapter": {
+    "type": "PostgresCommentsTcpDelegationSchedulePersistenceStore",
+    "database_backend": "postgresql_only",
+    "host_database_connection": true,
+    "accepts_connection_url": false,
+    "accepts_credentials": false,
+    "implements_slice_81_store_trait": true,
+    "shared_conversion": "into_shared",
+    "new_direct_dependencies": []
+  },
+  "sync_async_bridge": {
+    "dedicated_os_thread": true,
+    "tokio_runtime": "current_thread",
+    "bounded_command_queue": true,
+    "command_queue_capacity": 1,
+    "response_channel_per_operation": true,
+    "schedule_document_crosses_worker_boundary": false,
+    "secret_material_crosses_worker_boundary": false,
+    "complete_persistence_record_only": true
+  },
+  "verify_current": {
+    "reads_singleton": true,
+    "compares_schema_version": true,
+    "compares_source": true,
+    "compares_generation": true,
+    "compares_digest": true,
+    "missing_is_conflict": true,
+    "different_record_is_conflict": true,
+    "database_failure_is_unavailable": true
+  },
+  "bootstrap": {
+    "transaction": true,
+    "statement": "insert_on_conflict_do_nothing",
+    "exactly_one_row_required": true,
+    "existing_row_is_conflict": true
+  },
+  "replacement": {
+    "transaction": true,
+    "single_predicate_update": true,
+    "predicate_fields": [
+      "state_key",
+      "schema_version",
+      "source",
+      "generation",
+      "schedule_digest_hex"
+    ],
+    "candidate_fields": [
+      "schema_version",
+      "source",
+      "generation",
+      "schedule_digest_hex",
+      "updated_at"
+    ],
+    "exactly_one_row_required": true,
+    "zero_rows_is_conflict": true,
+    "application_read_then_write_gap": false
+  },
+  "commit": {
+    "commit_after_exactly_one_row": true,
+    "success_after_commit_acknowledgement": true,
+    "execution_error_rolls_back": true,
+    "unexpected_row_count_rolls_back": true,
+    "ambiguous_commit_reconciled": true,
+    "reconciliation_attempts": 20,
+    "reconciliation_delay_ms": 100,
+    "candidate_readback_is_success": true,
+    "expected_readback_is_unavailable": true,
+    "third_state_fail_stop": true,
+    "unreadable_after_retries_fail_stop": true,
+    "fail_stop": "std::process::abort",
+    "indeterminate_error_returned": false,
+    "stale_snapshot_continuation_after_indeterminate": false
+  },
+  "ordering": {
+    "slice_81_schedule_write_lock_preserved": true,
+    "slice_81_invariants_before_store": true,
+    "postgres_transaction_before_publish": true,
+    "postgres_commit_before_publish": true,
+    "snapshot_assignment_after_definitive_store_result": true,
+    "final_process_local_audit_after_publish": true
+  },
+  "concurrency": {
+    "postgres_row_predicate_cas": true,
+    "complete_expected_record_cas": true,
+    "multiple_processes_same_database": "source_level_supported",
+    "executed_concurrent_postgres_evidence": false,
+    "distributed_clock_coordination": false,
+    "distributed_atomic_activation": false
+  },
+  "bounds": {
+    "database_generation_type": "bigint",
+    "maximum_representable_generation": 9223372036854775807,
+    "larger_generation_write_attempt": "unavailable_without_write",
+    "digest_storage": "lowercase_sha256_hex"
+  },
+  "preserved_blobs": {
+    "slice_79_schedule_base": "7d0c48df3dcea5a77bebe99dcdd4f02292f7ef47",
+    "slice_79_schedule_guard": "af2d688d43286a8118823c31408dd5dc7e3f6202",
+    "slice_80_process_local_trigger": "f44f386c36ac81d51da89ee5568ffd9af083cda0",
+    "comments_lifecycle_schedule": "7701953d2892e1b68b4830135639d841ebdd6ed1",
+    "slice_81_persistence_contract": "85df8deb3203ff90be55a8fe114294ce3a1f3749",
+    "slice_81_persisted_trigger": "f3b37405f06e3cc4bd077cf8bd49f92d9e2cbe7a",
+    "slice_81_persistence_bridge": "a90bdd8e4787532bd39c1739dfef8b6a18eaa981"
+  },
+  "dependency_contract": {
+    "manifest_changed": false,
+    "cargo_lock_changed": false,
+    "feature_changed": false,
+    "new_direct_dependencies": [],
+    "existing_sea_orm_reused": true,
+    "existing_tokio_reused": true,
+    "existing_hex_reused": true
+  },
+  "non_claims": [
+    "executed_postgresql_migration",
+    "executed_postgresql_queries",
+    "crash_injection_evidence",
+    "network_partition_evidence",
+    "postgres_storage_configuration_durability",
+    "durable_audit",
+    "transactional_audit_outbox",
+    "automatic_state_repair",
+    "automatic_fail_stop_recovery",
+    "clock_synchronization",
+    "distributed_atomic_activation",
+    "shared_replay_store",
+    "durable_replay_store",
+    "restart_safe_replay_prevention",
+    "http_trigger",
+    "graphql_trigger",
+    "native_rpc_trigger",
+    "mcp_trigger",
+    "cli_trigger",
+    "signal_reload",
+    "automatic_file_watch",
+    "polling",
+    "cloud_secret_manager_sdk",
+    "kms_hsm",
+    "secret_zeroization",
+    "locked_memory",
+    "tls_mtls",
+    "non_loopback_publication",
+    "runtime_execution"
+  ],
+  "execution": {
+    "rust_tests_run": false,
+    "javascript_verifiers_run": false,
+    "cargo_commands_run": false,
+    "formatting_run": false,
+    "postgresql_run": false,
+    "tcp_runtime_run": false,
+    "database_run": false,
+    "browser_run": false,
+    "workflow_run": false,
+    "ci_run": false
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-POSTGRES-CONCURRENCY-SOURCE-20260801",
+  "generated_at": "2026-08-01T14:35:00Z",
+  "status": "source_ready_unvalidated",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "base_revision": "1aa051a04471f06863cce592f79c2c739443f808",
+  "test_source": "apps/server/tests/rbac_postgres_concurrency.rs",
+  "fixture": {
+    "backend": "postgresql",
+    "isolated_database_per_test": true,
+    "admin_url_env": "RUSTOK_MIGRATION_SMOKE_ADMIN_URL",
+    "full_workspace_migrator": true,
+    "two_independent_database_connections": true,
+    "barrier_synchronized_starts": true,
+    "ignored_by_default": true
+  },
+  "scenarios": {
+    "same_target_role_replacement": {
+      "production_entrypoint": "RbacService::replace_user_role_committed",
+      "concurrent_writers": 2,
+      "expected_final_assignments": 1,
+      "expected_generation_delta": 2,
+      "accepted_final_roles": [
+        "admin",
+        "manager"
+      ]
+    },
+    "last_active_super_admin": {
+      "production_entrypoint": "RbacService::replace_user_role_committed",
+      "concurrent_demotions": 2,
+      "expected_successes": 1,
+      "expected_rejections": 1,
+      "expected_remaining_super_admin_assignments": 1,
+      "expected_generation_delta": 1
+    },
+    "generation_allocation": {
+      "production_entrypoint": "reserve_permission_invalidation_generation",
+      "concurrent_transactions": 8,
+      "expected_unique": true,
+      "expected_contiguous": true,
+      "expected_committed_generation_delta": 8
+    }
+  },
+  "shortcuts_forbidden": {
+    "sqlite_fixture": true,
+    "mock_database": true,
+    "manual_generation_update_sql": true,
+    "manual_role_lock_sql": true,
+    "test_only_role_replacement_implementation": true
+  },
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "formatting_executed": false,
+    "cargo_check_executed": false,
+    "postgresql_runtime_executed": false,
+    "workflow_or_ci_executed": false
+  },
+  "multi_replica_evidence": false,
+  "redis_transport_evidence": false,
+  "cli_repair_live_replica_evidence": false,
+  "broad_rbac_verification_complete": false,
+  "cursor_advanced": false
+}

@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "product_storefront_graphql_error_safety_source_reviewed_unvalidated",
-  "base_main_sha": "aef96f57d3babc2efdc65cc0c57cfea6fb48b5ad",
+  "base_main_sha": "ba2b49ac520253f8d648123be712164abb9d7cda",
+  "scope": "product storefront GraphQL public and diagnostic boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-product/storefront/Cargo.toml",
@@ -13,31 +14,51 @@
     "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs",
     "crates/rustok-product/storefront/src/transport/catalog_list_native.rs",
     "crates/rustok-product/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/rustok-product/docs/storefront-graphql-error-safety.md",
+    "scripts/verify/verify-product-storefront-graphql-error-safety.mjs",
     "crates/rustok-ui-transport/src/lib.rs",
-    "crates/rustok-graphql/src/lib.rs",
-    "scripts/verify/verify-product-storefront-boundary.mjs",
-    "scripts/verify/verify-product-storefront-catalog-native-error-safety.mjs"
+    "crates/rustok-graphql/src/lib.rs"
   ],
   "findings": [
     {
-      "id": "product-storefront-graphql-public-detail",
-      "severity": "p1",
-      "finding": "The product storefront facade delegated both selected GraphQL closures directly to the private adapter, whose GraphqlHttpError conversion retained display text in UiTransportError.graphql_error.",
-      "resolution": "Create owner-specific per-call contexts at the public consumer boundary and map only ApiError::Graphql to static public envelopes."
+      "id": "product-storefront-static-public-envelope-preserved",
+      "severity": "preservation",
+      "finding": "Both selected public GraphQL operations already reparse the private adapter display through GraphqlHttpError and return static product-owned messages."
+    },
+    {
+      "id": "product-storefront-raw-diagnostic-payload",
+      "severity": "diagnostic_safety",
+      "finding": "The shared safety mapper still copied the complete private GraphQL display handoff and Debug representation of the parsed typed error into structured events."
     },
     {
       "id": "product-storefront-multi-request-catalog",
-      "severity": "contract",
-      "finding": "fetch_products may execute catalog list, selected detail, and pricing GraphQL requests under one public operation.",
-      "resolution": "Sanitize once at the facade operation boundary without changing the four private GraphQL documents, request order, DTO mapping, or pricing-context construction."
+      "severity": "preservation",
+      "finding": "fetch_products may execute catalog list, selected detail, and pricing requests under one public operation while fetch_catalog_search_options uses its own operation context."
     },
     {
-      "id": "product-storefront-correlation-context",
-      "severity": "contract",
-      "finding": "The client-side GraphQL path had no product-owner correlation event and could expose raw query or HTTP detail.",
-      "resolution": "Generate a unique per-call correlation id and retain only optional-field presence, string lengths, and collection counts in internal diagnostics."
+      "id": "product-storefront-request-shape",
+      "severity": "preservation",
+      "finding": "Existing diagnostics already bounded optional request values to presence, character lengths, booleans, and collection counts."
     }
   ],
+  "implementation_review": {
+    "typed_graphql_variant_policy": true,
+    "static_public_graphql_messages": true,
+    "raw_graphql_detail_logging_removed": true,
+    "parsed_graphql_error_debug_logging_removed": true,
+    "bounded_graphql_error_shape_retained": true,
+    "both_public_operations_preserved": true,
+    "per_call_correlation_id": true,
+    "safe_request_shape_only": true,
+    "private_graphql_adapter_changed": false,
+    "native_paths_changed": false,
+    "graphql_documents_changed": false,
+    "pricing_context_changed": false,
+    "transport_selection_changed": false,
+    "request_response_dto_changed": false,
+    "runtime_evidence_claimed": false
+  },
   "preserved_behavior": [
     "explicit feature-based transport selection",
     "no native-to-GraphQL fallback",
@@ -47,7 +68,8 @@
     "request and response DTOs",
     "pricing-context derivation",
     "native catalog-list and search-options paths",
-    "native error-safety policy"
+    "native error-safety policy",
+    "static public messages, stable codes, category severity, and non-GraphQL pass-through"
   ],
   "execution": {
     "commands": [],
@@ -67,5 +89,12 @@
     "ffa_promoted": false,
     "fba_promoted": false,
     "production_promoted": false
-  }
+  },
+  "remaining_scope": [
+    "remaining ecommerce storefront and admin GraphQL adapters",
+    "payment and fulfillment checkout execution diagnostics",
+    "remaining non-PortError public and diagnostic envelopes",
+    "browser and mounted GraphQL runtime evidence",
+    "broad ecommerce correlation-safe mapper cleanup"
+  ]
 }

@@ -1,3 +1,4 @@
+use super::AuthPrincipalKind;
 use crate::{Action, Permission, Resource};
 use axum::{
     extract::FromRequestParts,
@@ -240,8 +241,23 @@ pub struct AuthContext {
     pub grant_type: String,
 }
 
+/// Explicit trusted principal kind carried separately from transport metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuthPrincipalContext {
+    pub kind: AuthPrincipalKind,
+}
+
+impl AuthPrincipalContext {
+    pub const fn new(kind: AuthPrincipalKind) -> Self {
+        Self { kind }
+    }
+}
+
 #[derive(Clone)]
 pub struct AuthContextExtension(pub AuthContext);
+
+#[derive(Clone, Copy)]
+pub struct AuthPrincipalContextExtension(pub AuthPrincipalContext);
 
 impl AuthContext {
     /// Check if the current context has the required scope.
@@ -275,6 +291,24 @@ where
             .ok_or((
                 StatusCode::UNAUTHORIZED,
                 "Authentication required".to_string(),
+            ))
+    }
+}
+
+impl<S> FromRequestParts<S> for AuthPrincipalContext
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthPrincipalContextExtension>()
+            .map(|ext| ext.0)
+            .ok_or((
+                StatusCode::UNAUTHORIZED,
+                "Authenticated principal kind is unavailable".to_string(),
             ))
     }
 }

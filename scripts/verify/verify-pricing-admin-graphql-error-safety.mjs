@@ -31,6 +31,7 @@ const reviewPath =
   "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json";
 const docPath = "crates/rustok-pricing/docs/admin-graphql-error-safety.md";
 const planPath = "crates/rustok-pricing/docs/implementation-plan.md";
+const masterPlanPath = "crates/rustok-commerce/docs/implementation-plan.md";
 
 const cargo = read(cargoPath);
 const transport = read(transportPath);
@@ -41,6 +42,7 @@ const evidence = JSON.parse(read(evidencePath));
 const review = JSON.parse(read(reviewPath));
 const doc = read(docPath);
 const plan = read(planPath);
+const masterPlan = read(masterPlanPath);
 
 requireText(cargo, "tracing.workspace = true", `${cargoPath}: all-profile tracing`);
 requireText(cargo, "uuid.workspace = true", `${cargoPath}: correlation UUID`);
@@ -87,11 +89,21 @@ for (const marker of [
   "pub(super) struct GraphqlCallContext",
   "pricing-admin-graphql:{operation}:{}",
   "Uuid::new_v4()",
+  "let ApiError::Graphql(raw_error) = error else",
+  "return error;",
+  "let raw_error_present = !raw_error.trim().is_empty();",
+  "let raw_error_length = raw_error.chars().count();",
   "GraphqlHttpError::from_str(raw_error.as_str())",
+  "let parsed_error_valid = parsed_error.is_ok();",
   "Ok(GraphqlHttpError::Network)",
   "Ok(GraphqlHttpError::Http(_))",
   "Ok(GraphqlHttpError::Unauthorized)",
   "Ok(GraphqlHttpError::Graphql(_))",
+  '"network"',
+  '"http"',
+  '"unauthorized"',
+  '"graphql"',
+  '"unknown"',
   "Pricing admin service is temporarily unavailable",
   "Pricing admin authentication is required",
   "Pricing admin request could not be completed",
@@ -100,16 +112,26 @@ for (const marker of [
   "pricing.admin_graphql_authentication_required",
   "pricing.admin_graphql_request_rejected",
   "pricing.admin_graphql_unknown_failure",
-  "raw_error = %raw_error",
-  "parsed_error = ?parsed_error",
+  "raw_error_present,",
+  "raw_error_length,",
+  "parsed_error_valid,",
+  "owner = PRICING_ADMIN_GRAPHQL_OWNER",
+  "owner_operation = self.operation",
+  "correlation_id = %self.correlation_id",
   "tenant_id_length = ?self.tenant_id_length",
   "resource_id_length = ?self.resource_id_length",
   "search_length = ?self.search_length",
   "quantity_present = self.quantity_present",
+  "error_kind,",
+  "code,",
   "ApiError::Graphql(public_message.to_string())",
 ]) requireText(safety, marker, `${safetyPath}: bounded GraphQL policy`);
 
 for (const marker of [
+  "raw_error = %raw_error",
+  "raw_error = ?raw_error",
+  "parsed_error = ?parsed_error",
+  "parsed_error = %parsed_error",
   "tenant_slug = %",
   "tenant_slug = ?",
   "tenant_id = %",
@@ -134,7 +156,7 @@ for (const marker of [
   "channel_slug = ?",
   "quantity = %",
   "quantity = ?",
-]) forbidText(safety, marker, `${safetyPath}: raw request value diagnostics`);
+]) forbidText(safety, marker, `${safetyPath}: raw diagnostic or request payload`);
 
 requireText(native, "pub enum ApiError", `${nativePath}: shared error envelope`);
 requireText(native, "pricing_admin_bootstrap_native", `${nativePath}: native read preserved`);
@@ -147,15 +169,24 @@ if (evidence.status !== "pricing_admin_graphql_error_safety_source_unvalidated")
 for (const [key, expected] of Object.entries({
   context_before_each_graphql_call: true,
   unique_correlation_id_per_call: true,
+  network_static_public_envelope: true,
+  http_static_public_envelope: true,
+  authentication_static_public_envelope: true,
+  graphql_rejection_static_public_envelope: true,
   raw_graphql_http_display_public: false,
   raw_request_values_logged: false,
-  private_graphql_error_diagnostics: true,
+  raw_graphql_detail_logged: false,
+  parsed_graphql_error_debug_logged: false,
+  raw_graphql_detail_shape_logged: true,
+  typed_parse_validity_logged: true,
+  closed_graphql_error_category_logged: true,
   request_validation_messages_preserved: true,
   native_adapter_changed: false,
   graphql_documents_changed: false,
   transport_selection_changed: false,
   fallback_added: false,
   native_only_mutations_changed: false,
+  broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${evidencePath}: source_contract.${key} must be ${expected}`);
@@ -184,8 +215,40 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 if (review.status !== "pricing_admin_graphql_error_safety_source_reviewed_unvalidated") {
   failures.push(`${reviewPath}: status mismatch`);
 }
-requireText(doc, "Status: **source-ready / unvalidated**", `${docPath}: source status`);
+for (const [key, expected] of Object.entries({
+  typed_graphql_variant_policy: true,
+  static_public_graphql_messages: true,
+  raw_graphql_detail_logging_removed: true,
+  parsed_graphql_error_debug_logging_removed: true,
+  bounded_graphql_error_shape_retained: true,
+  all_four_read_operations_preserved: true,
+  per_call_correlation_id: true,
+  safe_request_shape_only: true,
+  private_graphql_adapter_changed: false,
+  native_reads_changed: false,
+  native_only_mutations_changed: false,
+  graphql_documents_changed: false,
+  transport_selection_changed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (review.implementation_review?.[key] !== expected) {
+    failures.push(`${reviewPath}: implementation_review.${key} must be ${expected}`);
+  }
+}
+for (const marker of [
+  "Status: **source-ready / unvalidated**",
+  "Raw GraphQL display text is not written to the event.",
+  "Debug output from the parsed typed error is not written to the event.",
+  "raw-display presence and character length",
+  "The ecommerce correlation-safe mapper cleanup remains open",
+  "No tests, verifiers, Cargo commands, formatting, workflows, or CI were run",
+]) requireText(doc, marker, `${docPath}: truthful documentation`);
 requireText(plan, "admin GraphQL public errors", `${planPath}: local plan record`);
+requireText(
+  masterPlan,
+  "Finish correlation-safe mapper cleanup",
+  `${masterPlanPath}: broad mapper cleanup remains open`,
+);
 
 if (failures.length > 0) {
   console.error("Pricing admin GraphQL error-safety verification failed:");
@@ -194,5 +257,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ Pricing admin GraphQL reads use correlation-safe static public envelopes; execution evidence remains maintainer-owned",
+  "✔ Pricing admin GraphQL reads retain bounded error/request shape and static public envelopes; execution evidence remains maintainer-owned",
 );

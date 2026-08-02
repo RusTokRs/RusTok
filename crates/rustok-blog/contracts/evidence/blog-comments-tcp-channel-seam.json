@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "provider": "comments",
+  "surface": "comments_tcp_channel_seam",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-74.md",
+  "source_contract": {
+    "channel": "crates/rustok-comments/src/tcp_channel.rs",
+    "framing": "crates/rustok-comments/src/tcp_protocol.rs",
+    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
+    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "provider_manifest": "crates/rustok-comments/Cargo.toml",
+    "lockfile": "Cargo.lock"
+  },
+  "channel_io": {
+    "trait": "CommentsTcpIo",
+    "async_read": true,
+    "async_write": true,
+    "unpin": true,
+    "send": true,
+    "boxed_alias": "BoxCommentsTcpIo",
+    "concrete_stream_erased_after_establishment": true
+  },
+  "protection_classification": {
+    "enum": "CommentsTcpChannelProtection",
+    "values": [
+      "PlaintextLoopback",
+      "AuthenticatedEncrypted"
+    ],
+    "classification_is_runtime_evidence": false,
+    "classification_mints_comments_authority": false
+  },
+  "client_connector": {
+    "trait": "CommentsTcpClientChannelConnector",
+    "endpoint_type": "SocketAddr",
+    "returns": "BoxCommentsTcpIo",
+    "host_injectable": true,
+    "establishment_inside_port_deadline": true,
+    "default": "PlaintextLoopbackCommentsTcpChannel"
+  },
+  "server_acceptor": {
+    "trait": "CommentsTcpServerChannelAcceptor",
+    "input_stream": "tokio::net::TcpStream",
+    "input_peer": "SocketAddr",
+    "returns": "BoxCommentsTcpIo",
+    "runs_before_first_frame_read": true,
+    "concrete_tls_acceptor_must_bound_handshake": true,
+    "pre_request_timeout_starts_after_channel_establishment": true,
+    "default": "PlaintextLoopbackCommentsTcpChannel"
+  },
+  "plaintext_profile": {
+    "client_endpoint_loopback_required": true,
+    "server_peer_loopback_required": true,
+    "non_loopback_error_code": "comments.tcp_plaintext_non_loopback",
+    "host_non_loopback_enabled": false
+  },
+  "framing": {
+    "generic_async_reader": true,
+    "generic_async_writer": true,
+    "owns_tcp_stream": false,
+    "length_prefix": "u32_big_endian",
+    "default_max_frame_bytes": 8388608,
+    "one_request_one_reply": true
+  },
+  "client_transport": {
+    "connector_storage": "Arc<dyn CommentsTcpClientChannelConnector>",
+    "existing_plaintext_constructors_retained": true,
+    "connector_only_constructor": true,
+    "connector_bearer_constructor": true,
+    "connector_bearer_delegation_constructor": true,
+    "connector_frame_limit_constructor": true,
+    "channel_protection_visible": true,
+    "bearer_redaction_retained": true,
+    "delegation_redaction_retained": true
+  },
+  "server_adapter": {
+    "existing_plaintext_methods_retained": true,
+    "acceptor_method": "handle_connection_with_acceptor",
+    "acceptor_idle_method": "handle_connection_with_acceptor_and_pre_request_timeout",
+    "protocol_validation_after_channel_establishment": true,
+    "authority_before_provider_dispatch": true,
+    "tenant_match_retained": true,
+    "principal_replacement_retained": true
+  },
+  "deadline": {
+    "client_source": "PortContext.deadline_ms",
+    "client_scope": "credential_prepare_encode_channel_connect_write_read_decode",
+    "server_channel_handshake_bound_owner": "channel_acceptor",
+    "server_pre_request_scope": "first_complete_frame_after_channel_establishment",
+    "server_provider_source": "PortContext.deadline_ms"
+  },
+  "dependency_contract": {
+    "new_direct_dependencies": [],
+    "rustok_comments_manifest_changed": false,
+    "cargo_lock_changed": false,
+    "rustls_adapter_implemented": false,
+    "tokio_rustls_adapter_implemented": false
+  },
+  "retained_authority": {
+    "bearer_reads": true,
+    "signed_user_writes": true,
+    "service_moderation": true,
+    "process_local_replay": true,
+    "channel_replaces_application_authority": false
+  },
+  "pending": [
+    "concrete_rustls_client_connector",
+    "concrete_rustls_server_acceptor",
+    "mutual_certificate_verification",
+    "server_name_validation",
+    "tls_handshake_timeout",
+    "host_mtls_configuration",
+    "encrypted_runtime_execution",
+    "non_loopback_runtime_evidence",
+    "shared_replay_store",
+    "certificate_rotation"
+  ],
+  "non_claims": {
+    "tls_implemented": false,
+    "mtls_implemented": false,
+    "encrypted_host_profile": false,
+    "non_loopback_safe": false,
+    "certificate_identity_authority": false,
+    "compile_passed": false,
+    "source_verifier_executed": false,
+    "runtime_executed": false
+  }
+}

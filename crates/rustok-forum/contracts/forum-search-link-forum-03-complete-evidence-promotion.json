@@ -1,0 +1,73 @@
+{
+  "contract": "forum_search_link_forum_03_complete_evidence_promotion_v1",
+  "task": "FORUM-23B2G2B3D18",
+  "target_link": "LINK-FORUM-03",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "complete_assembler_contract": "crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json",
+  "complete_artifact": "target/link-forum-03-forum-index-search-complete-evidence.json",
+  "reviewer": "scripts/evidence/review-link-forum-03-complete-forum-search-evidence.mjs",
+  "verifier": "scripts/verify/verify-link-forum-03-complete-forum-search-evidence-promotion.mjs",
+  "promotion_candidate": {
+    "path": "target/link-forum-03-forum-index-search-complete-promotion-candidate.json",
+    "generation": "reviewer_only_after_complete_artifact_and_source_revalidation",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true,
+    "atomic_replace": true,
+    "automatic_canonical_source_mutation": false
+  },
+  "required_attestations": [
+    "RUSTOK_LINK_FORUM_03_EVIDENCE_REVIEWER",
+    "RUSTOK_LINK_FORUM_03_EVIDENCE_RETENTION_REF",
+    "RUSTOK_LINK_FORUM_03_EVIDENCE_RETAINED_SHA256"
+  ],
+  "required_scenarios": [
+    "normal_delivery",
+    "deletion_acl_ordering",
+    "search_disabled_profile",
+    "translation_and_moderation_approval",
+    "private_and_trusted_channel_exclusion",
+    "topic_move_category_scope"
+  ],
+  "required_source_artifacts": [
+    "target/link-forum-03-forum-index-search-ordering-visibility-evidence.json",
+    "target/forum-search-link-forum-03-translation-moderation-evidence.json",
+    "target/forum-search-link-forum-03-private-trusted-exclusion-evidence.json",
+    "target/forum-search-link-forum-03-topic-move-evidence.json"
+  ],
+  "fail_closed_requirements": [
+    "the canonical Forum plan still records FORUM-21 planned FORUM-23 in_progress and LINK-FORUM-03 planned before review",
+    "the D17 contract remains source_ready_maintainer_execution_pending and points to the exact complete artifact reviewer verifier and scenario order",
+    "the complete artifact has exact contract task source slice status coverage source commit and six canonical scenarios",
+    "the complete artifact source commit equals git rev-parse HEAD and every retained source artifact reports the same commit",
+    "the reviewed D13 core lineage remains present and D18 does not claim to authenticate the inherited external retention service",
+    "the exact D13 D14 D15 and D16 source artifact bytes match the complete artifact SHA-256 byte length generated time source commit and scenario metadata",
+    "the complete scenario facts equal the exact retained source scenario facts and remain non-empty",
+    "the complete artifact records independent review and retention as false before D18 review",
+    "the reviewer identity and retention reference are bounded non-empty values without control characters",
+    "the maintainer-supplied retained SHA-256 equals the exact complete artifact digest",
+    "the promotion candidate records exact D17 contract complete artifact canonical plan and source artifact digests",
+    "the promotion candidate is written only after complete validation by same-directory atomic rename",
+    "the reviewer accepts no arguments overrides missing-artifact mode skipped results or static fallback",
+    "the reviewer never edits the canonical plan D17 artifact FORUM-21 FORUM-23 or LINK-FORUM-03 status"
+  ],
+  "proposed_transition": {
+    "task": "LINK-FORUM-03",
+    "from": "planned",
+    "to": "done",
+    "requires_separate_canonical_source_pull_request": true,
+    "canonical_source_mutated_by_reviewer": false,
+    "promotes_forum_21": false,
+    "promotes_forum_23": false
+  },
+  "maintainer_command": "RUSTOK_LINK_FORUM_03_EVIDENCE_REVIEWER=\"<reviewer>\" RUSTOK_LINK_FORUM_03_EVIDENCE_RETENTION_REF=\"<immutable-retention-reference>\" RUSTOK_LINK_FORUM_03_EVIDENCE_RETAINED_SHA256=\"<complete-artifact-sha256>\" node scripts/evidence/review-link-forum-03-complete-forum-search-evidence.mjs",
+  "non_claims": [
+    "this source-ready gate does not claim that D13 D14 D15 D16 D17 or any runtime command ran",
+    "this gate does not retrieve or independently authenticate an external retention service",
+    "this gate records an explicit retained-digest attestation but does not sign it cryptographically",
+    "this gate does not automatically edit or promote the canonical Forum plan",
+    "this gate does not promote the independent FORUM-21 owner task",
+    "this gate does not mark FORUM-23 done",
+    "a generated promotion candidate supports but does not itself perform the LINK-FORUM-03 canonical transition"
+  ]
+}

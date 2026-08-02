@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "status": "customer_read_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-customer/src/read_context.rs",
+    "crates/rustok-customer/src/ports.rs",
+    "crates/rustok-customer/src/lib.rs",
+    "scripts/verify/verify-customer-read-local-context.mjs",
+    "scripts/verify/verify-customer-read-policy-context.mjs",
+    "crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json",
+    "crates/rustok-customer/docs/read-local-context.md",
+    "crates/rustok-customer/docs/read-port-policy-context.md",
+    "crates/rustok-customer/docs/implementation-plan.md"
+  ],
+  "review_findings": {
+    "all_four_read_operations_preserved": true,
+    "canonical_root_factory_preserved": true,
+    "compatibility_factory_preserved": true,
+    "exact_owner_delegation_preserved": true,
+    "exact_local_classification_preserved": true,
+    "unknown_error_pass_through_preserved": true,
+    "complete_wrapper_error_removed": true,
+    "raw_wrapper_context_removed": true,
+    "raw_customer_and_user_ids_removed": true,
+    "exact_wrapper_pagination_and_counts_removed": true,
+    "owner_list_validation_contract_preserved": true,
+    "bounded_context_shape_retained": true,
+    "bounded_request_shape_retained": true,
+    "same_delegated_error_returned": true,
+    "owner_policy_source_already_bounded": true,
+    "stale_policy_verifier_corrected": true,
+    "customer_status_not_promoted": true,
+    "broad_ecommerce_cleanup_remains_open": true,
+    "runtime_evidence_claimed": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation were executed."
+}

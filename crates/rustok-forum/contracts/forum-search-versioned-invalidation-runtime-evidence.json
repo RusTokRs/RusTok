@@ -7,13 +7,7 @@
   "rollout_decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
   "baseline": {
     "main_commit": "bd25ea3577b164225359beba86f973e907b74bef",
-    "merged_pull_requests": [
-      2731,
-      2738,
-      2741,
-      2749,
-      2753
-    ],
+    "merged_pull_requests": [2731, 2738, 2741, 2749, 2753],
     "owner_revision_checkpoint": "FORUM-23B2G2B2",
     "wire_contract": "FORUM-23B2G2B3A",
     "caused_publication_api": "FORUM-23B2G2B3B1",
@@ -28,162 +22,88 @@
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-postgres-ingress-proof.json",
       "test": "crates/rustok-search/tests/forum_versioned_invalidation_postgres.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-postgres-ingress-evidence.json",
-      "covers": [
-        "typed_ingress_admission",
-        "legacy_first_duplicate",
-        "typed_first_duplicate",
-        "semantic_identity_conflict_classification"
-      ],
-      "does_not_cover": [
-        "broker_acknowledgement_or_restart",
-        "poison_receipt_or_dlq_publication",
-        "projector_or_owner_checkpoint",
-        "multi_process_or_visibility_end_to_end"
-      ]
+      "covers": ["typed_ingress_admission", "legacy_first_duplicate", "typed_first_duplicate", "semantic_identity_conflict_classification"],
+      "does_not_cover": ["broker_acknowledgement_or_restart", "poison_receipt_or_dlq_publication", "projector_or_owner_checkpoint", "multi_process_or_visibility_end_to_end"]
     },
     {
       "task": "FORUM-23B2G2B3D3",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json",
       "test": "apps/server/tests/forum_versioned_invalidation_ack_restart_iggy.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-ack-restart-evidence.json",
-      "covers": [
-        "durable_ingress_before_acknowledgement",
-        "injected_acknowledgement_token_failure",
-        "same_offset_redelivery_after_consumer_restart",
-        "one_inbox_row_and_stable_ingest_sequence_after_redelivery",
-        "successful_restart_acknowledgement_advances_to_next_event"
-      ],
-      "does_not_cover": [
-        "server_worker_retry_backoff",
-        "poison_receipt_or_dlq_publication",
-        "projector_or_owner_checkpoint",
-        "multi_process_or_visibility_end_to_end"
-      ]
+      "covers": ["durable_ingress_before_acknowledgement", "injected_acknowledgement_token_failure", "same_offset_redelivery_after_consumer_restart", "one_inbox_row_and_stable_ingest_sequence_after_redelivery", "successful_restart_acknowledgement_advances_to_next_event"],
+      "does_not_cover": ["server_worker_retry_backoff", "poison_receipt_or_dlq_publication", "projector_or_owner_checkpoint", "multi_process_or_visibility_end_to_end"]
     },
     {
       "task": "FORUM-23B2G2B3D4",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-raw-poison-proof.json",
       "test": "apps/server/tests/forum_versioned_invalidation_raw_poison_iggy.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-raw-poison-evidence.json",
-      "covers": [
-        "stable_connector_delivery_identity",
-        "durable_publishing_and_published_before_source_acknowledgement",
-        "deterministic_dlq_broker_message_identity",
-        "same_offset_poison_redelivery_after_consumer_restart",
-        "already_published_suppresses_duplicate_dlq_publication",
-        "source_acknowledgement_then_acknowledged_state_and_group_advancement"
-      ],
-      "does_not_cover": [
-        "server_worker_retry_backoff",
-        "dlq_publish_failure_or_publish_mark_ambiguity",
-        "semantic_identity_conflict_poison",
-        "projector_or_owner_checkpoint",
-        "multi_process_or_visibility_end_to_end"
-      ]
+      "covers": ["stable_connector_delivery_identity", "durable_publishing_and_published_before_source_acknowledgement", "deterministic_dlq_broker_message_identity", "same_offset_poison_redelivery_after_consumer_restart", "already_published_suppresses_duplicate_dlq_publication", "source_acknowledgement_then_acknowledged_state_and_group_advancement"],
+      "does_not_cover": ["server_worker_retry_backoff", "dlq_publish_failure_or_publish_mark_ambiguity", "semantic_identity_conflict_poison", "projector_or_owner_checkpoint", "multi_process_or_visibility_end_to_end"]
     },
     {
       "task": "FORUM-23B2G2B3D5",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json",
       "test": "apps/server/tests/forum_versioned_invalidation_semantic_poison_iggy.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-semantic-poison-evidence.json",
-      "covers": [
-        "non_retryable_semantic_identity_conflict",
-        "durable_conflict_row_preserved_and_unique",
-        "stable_connector_and_deterministic_dlq_identity_for_typed_bytes",
-        "published_receipt_before_source_acknowledgement",
-        "same_offset_redelivery_and_already_published_duplicate_suppression",
-        "acknowledged_receipt_and_group_advancement_to_valid_event"
-      ],
-      "does_not_cover": [
-        "server_worker_retry_backoff",
-        "dlq_publish_failure_or_publish_mark_ambiguity",
-        "projector_or_owner_checkpoint",
-        "missing_delivery_repair",
-        "multi_process_or_visibility_end_to_end"
-      ]
+      "covers": ["non_retryable_semantic_identity_conflict", "durable_conflict_row_preserved_and_unique", "stable_connector_and_deterministic_dlq_identity_for_typed_bytes", "published_receipt_before_source_acknowledgement", "same_offset_redelivery_and_already_published_duplicate_suppression", "acknowledged_receipt_and_group_advancement_to_valid_event"],
+      "does_not_cover": ["server_worker_retry_backoff", "dlq_publish_failure_or_publish_mark_ambiguity", "projector_or_owner_checkpoint", "missing_delivery_repair", "multi_process_or_visibility_end_to_end"]
     },
     {
       "task": "FORUM-23B2G2B3D6",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-missing-delivery-repair-proof.json",
       "test": "crates/rustok-search/tests/forum_versioned_invalidation_missing_delivery_repair.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-missing-delivery-repair-evidence.json",
-      "covers": [
-        "bounded_owner_tenant_and_revision_scan",
-        "missing_delivery_detected_by_owner_event_identity",
-        "failed_rebuild_leaves_projection_and_checkpoint_unchanged",
-        "one_successful_current_state_rebuild_repairs_projection",
-        "checkpoint_audit_advances_exactly_1_2_3_after_rebuild",
-        "caught_up_repeat_suppresses_duplicate_rebuild"
-      ],
-      "does_not_cover": [
-        "host_worker_polling_loop",
-        "iggy_delivery_acknowledgement_or_poison",
-        "multi_process_lock_or_scan_cursor_contention",
-        "deletion_acl_or_storefront_visibility",
-        "search_disabled_profile_or_link_forum_03"
-      ]
+      "covers": ["bounded_owner_tenant_and_revision_scan", "missing_delivery_detected_by_owner_event_identity", "failed_rebuild_leaves_projection_and_checkpoint_unchanged", "one_successful_current_state_rebuild_repairs_projection", "checkpoint_audit_advances_exactly_1_2_3_after_rebuild", "caught_up_repeat_suppresses_duplicate_rebuild"],
+      "does_not_cover": ["host_worker_polling_loop", "iggy_delivery_acknowledgement_or_poison", "multi_process_lock_or_scan_cursor_contention", "deletion_acl_or_storefront_visibility", "search_disabled_profile_or_link_forum_03"]
     },
     {
       "task": "FORUM-23B2G2B3D7",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-multi-process-proof.json",
       "test": "apps/server/tests/forum_versioned_invalidation_multi_process_serialization.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-multi-process-evidence.json",
-      "covers": [
-        "independent_host_os_process_contention",
-        "postgresql_tenant_advisory_lock_exclusion",
-        "blocked_contender_never_enters_projection",
-        "stale_scan_cursor_compare_and_set_suppressed",
-        "first_tenant_exact_checkpoint_order_1_2",
-        "next_tenant_discovered_without_cursor_skip_or_regression",
-        "second_tenant_checkpoint_revision_1"
-      ],
-      "does_not_cover": [
-        "long_running_host_polling_or_restart_timing",
-        "iggy_delivery_acknowledgement_or_poison",
-        "deletion_acl_or_storefront_visibility",
-        "search_disabled_profile_or_link_forum_03"
-      ]
+      "covers": ["independent_host_os_process_contention", "postgresql_tenant_advisory_lock_exclusion", "blocked_contender_never_enters_projection", "stale_scan_cursor_compare_and_set_suppressed", "first_tenant_exact_checkpoint_order_1_2", "next_tenant_discovered_without_cursor_skip_or_regression", "second_tenant_checkpoint_revision_1"],
+      "does_not_cover": ["long_running_host_polling_or_restart_timing", "iggy_delivery_acknowledgement_or_poison", "deletion_acl_or_storefront_visibility", "search_disabled_profile_or_link_forum_03"]
     },
     {
       "task": "FORUM-23B2G2B3D8",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-deletion-acl-ordering-proof.json",
       "test": "apps/server/tests/forum_versioned_invalidation_deletion_acl_ordering.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json",
-      "covers": [
-        "owner_hide_delete_and_richer_acl_revisions",
-        "legacy_and_typed_dual_path_out_of_order_admission",
-        "durable_duplicate_root_suppression",
-        "current_state_rebuild_and_stale_category_refresh_non_restoration",
-        "search_projection_denied_objects_absent",
-        "storefront_owner_reauthorization_rejects_stale_rows",
-        "visible_totals_items_and_facets_exclude_denied_content"
-      ],
-      "does_not_cover": [
-        "long_running_host_polling_or_restart_timing",
-        "iggy_acknowledgement_poison_or_dlq",
-        "search_disabled_profile_or_link_forum_03"
-      ]
+      "covers": ["owner_hide_delete_and_richer_acl_revisions", "legacy_and_typed_dual_path_out_of_order_admission", "durable_duplicate_root_suppression", "current_state_rebuild_and_stale_category_refresh_non_restoration", "search_projection_denied_objects_absent", "storefront_owner_reauthorization_rejects_stale_rows", "visible_totals_items_and_facets_exclude_denied_content"],
+      "does_not_cover": ["long_running_host_polling_or_restart_timing", "iggy_acknowledgement_poison_or_dlq", "search_disabled_profile_or_link_forum_03"]
     },
     {
       "task": "FORUM-23B2G2B3D9",
       "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-search-disabled-recovery-proof.json",
       "test": "apps/server/tests/forum_versioned_invalidation_search_disabled_recovery.rs",
       "evidence_artifact": "target/forum-search-versioned-invalidation-search-disabled-recovery-evidence.json",
-      "covers": [
-        "forum_owner_commands_commit_without_search_storage",
-        "legacy_and_typed_owner_events_persist_without_search_runtime",
-        "contiguous_owner_revisions_survive_disabled_period",
-        "late_search_enable_starts_without_inbox_or_checkpoint_state",
-        "bounded_real_owner_ledger_scan_repairs_projection_once",
-        "checkpoint_advances_exactly_1_2_3_after_rebuild",
-        "forum_owner_state_and_event_history_remain_unchanged",
-        "caught_up_repeat_suppresses_duplicate_recovery"
-      ],
-      "does_not_cover": [
-        "long_running_host_process_restart_or_polling_cadence",
-        "iggy_acknowledgement_poison_or_dlq",
-        "deployment_orchestration_or_link_forum_03"
-      ]
+      "covers": ["forum_owner_commands_commit_without_search_storage", "legacy_and_typed_owner_events_persist_without_search_runtime", "contiguous_owner_revisions_survive_disabled_period", "late_search_enable_starts_without_inbox_or_checkpoint_state", "bounded_real_owner_ledger_scan_repairs_projection_once", "checkpoint_advances_exactly_1_2_3_after_rebuild", "forum_owner_state_and_event_history_remain_unchanged", "caught_up_repeat_suppresses_duplicate_recovery"],
+      "does_not_cover": ["long_running_host_process_restart_or_polling_cadence", "iggy_acknowledgement_poison_or_dlq", "deployment_orchestration_or_link_forum_03"]
+    },
+    {
+      "task": "FORUM-23B2G2B3D10",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-normal-delivery-proof.json",
+      "test": "apps/server/tests/forum_versioned_invalidation_normal_delivery_iggy.rs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-normal-delivery-evidence.json",
+      "covers": ["one_correlated_normal_owner_delivery_trace", "real_forum_owner_transaction_and_dual_outbox_publication", "external_iggy_persistent_group_delivery", "durable_ingress_before_source_acknowledgement", "production_projection_completion", "delivery_covered_checkpoint_order_1_2", "storefront_exact_topic_visibility", "caught_up_repeat_suppression"],
+      "does_not_cover": ["acknowledgement_failure_restart_or_poison_dlq", "multi_process_deletion_acl_or_search_disabled_profiles", "aggregate_d0_artifact_assembly_or_link_forum_03"]
+    },
+    {
+      "task": "FORUM-23B2G2B3D11",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-aggregate-evidence-assembler.json",
+      "assembler": "scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs",
+      "evidence_artifact": "target/forum-search-versioned-invalidation-runtime-evidence.json",
+      "covers": ["all_nine_runtime_subproof_artifacts_required", "same_source_commit_aggregate_assembly", "exact_ten_scenario_mapping", "input_sha256_and_parent_digest_retention", "atomic_output_after_complete_validation"],
+      "does_not_cover": ["runtime_execution_or_d0_status_promotion", "link_forum_03_or_release_completion"]
+    },
+    {
+      "task": "FORUM-23B2G2B3D12",
+      "contract": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json",
+      "reviewer": "scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs",
+      "promotion_candidate": "target/forum-search-versioned-invalidation-runtime-promotion-candidate.json",
+      "covers": ["retained_aggregate_digest_attestation", "all_nine_source_artifact_digest_revalidation", "exact_ten_scenario_review", "promotion_candidate_without_source_mutation"],
+      "does_not_cover": ["runtime_execution", "canonical_d0_status_promotion", "forum_23_completion", "link_forum_03"]
     }
   ],
   "required_runtime": {
@@ -202,110 +122,22 @@
     "Forum owner_revision is never compared numerically with Search ingest_sequence"
   ],
   "required_scenarios": [
-    {
-      "id": "normal_delivery",
-      "requires": [
-        "one owner transaction commits owner state, legacy root, caused typed event and ledger row",
-        "the typed consumer durably admits exactly one matching Search inbox row",
-        "the existing projector completes and the owner checkpoint advances only after projection success"
-      ]
-    },
-    {
-      "id": "legacy_first_duplicate",
-      "requires": [
-        "legacy delivery creates the shared inbox row before typed delivery",
-        "typed delivery recognizes the exact durable duplicate",
-        "one projection identity and one projector execution lane remain"
-      ]
-    },
-    {
-      "id": "typed_first_duplicate",
-      "requires": [
-        "typed delivery creates the shared inbox row before legacy delivery",
-        "legacy delivery collapses on the same root event identity",
-        "one ingest sequence is allocated for the shared inbox row"
-      ]
-    },
-    {
-      "id": "acknowledgement_failure_restart",
-      "requires": [
-        "durable inbox admission completes before the injected acknowledgement failure",
-        "the exact broker offset remains uncommitted",
-        "a restarted consumer recognizes the same durable root row and acknowledges without a second projection row"
-      ]
-    },
-    {
-      "id": "raw_poison_dlq_redelivery",
-      "requires": [
-        "decode or schema poison creates one durable connector-owned poison receipt",
-        "DLQ publication uses the deterministic message identity",
-        "redelivery reuses the durable receipt and does not duplicate DLQ publication",
-        "source acknowledgement occurs only after the durable terminal result"
-      ]
-    },
-    {
-      "id": "semantic_poison_identity_conflict",
-      "requires": [
-        "a conflicting pre-existing root event UUID fails with forum.search_projection.contract_inbox_identity_conflict",
-        "the conflicting row never enters the projector",
-        "the semantic poison uses the same durable receipt and DLQ protocol as raw poison"
-      ]
-    },
-    {
-      "id": "missing_delivery_owner_repair",
-      "requires": [
-        "an owner ledger revision exists without a Search inbox delivery",
-        "the bounded owner scan discovers the tenant",
-        "one current-state rebuild repairs projection state",
-        "the owner checkpoint advances in exact contiguous revision order only after rebuild success"
-      ]
-    },
-    {
-      "id": "multi_process_serialization",
-      "requires": [
-        "at least two server processes contend for the same tenant",
-        "the shared advisory lock prevents concurrent tenant projection and checkpoint advancement",
-        "cursor compare-and-set and exact +1 checkpoint guards prevent regression or skips"
-      ]
-    },
-    {
-      "id": "deletion_acl_ordering",
-      "requires": [
-        "published content is searchable before the owner change",
-        "hide, delete and richer ACL changes each issue owner revisions",
-        "out-of-order and duplicate deliveries cannot restore denied content",
-        "the final storefront Search result excludes the content for the denied viewer"
-      ]
-    },
-    {
-      "id": "search_disabled_profile",
-      "requires": [
-        "Forum owner commands and transactional events still commit with Search disabled",
-        "no synchronous Search dependency is introduced",
-        "reenabling Search permits bounded owner-ledger reconciliation without owner-state loss"
-      ]
-    }
+    {"id": "normal_delivery", "requires": ["one owner transaction commits owner state, legacy root, caused typed event and ledger row", "the typed consumer durably admits exactly one matching Search inbox row", "the existing projector completes and the owner checkpoint advances only after projection success"]},
+    {"id": "legacy_first_duplicate", "requires": ["legacy delivery creates the shared inbox row before typed delivery", "typed delivery recognizes the exact durable duplicate", "one projection identity and one projector execution lane remain"]},
+    {"id": "typed_first_duplicate", "requires": ["typed delivery creates the shared inbox row before legacy delivery", "legacy delivery collapses on the same root event identity", "one ingest sequence is allocated for the shared inbox row"]},
+    {"id": "acknowledgement_failure_restart", "requires": ["durable inbox admission completes before the injected acknowledgement failure", "the exact broker offset remains uncommitted", "a restarted consumer recognizes the same durable root row and acknowledges without a second projection row"]},
+    {"id": "raw_poison_dlq_redelivery", "requires": ["decode or schema poison creates one durable connector-owned poison receipt", "DLQ publication uses the deterministic message identity", "redelivery reuses the durable receipt and does not duplicate DLQ publication", "source acknowledgement occurs only after the durable terminal result"]},
+    {"id": "semantic_poison_identity_conflict", "requires": ["a conflicting pre-existing root event UUID fails with forum.search_projection.contract_inbox_identity_conflict", "the conflicting row never enters the projector", "the semantic poison uses the same durable receipt and DLQ protocol as raw poison"]},
+    {"id": "missing_delivery_owner_repair", "requires": ["an owner ledger revision exists without a Search inbox delivery", "the bounded owner scan discovers the tenant", "one current-state rebuild repairs projection state", "the owner checkpoint advances in exact contiguous revision order only after rebuild success"]},
+    {"id": "multi_process_serialization", "requires": ["at least two server processes contend for the same tenant", "the shared advisory lock prevents concurrent tenant projection and checkpoint advancement", "cursor compare-and-set and exact +1 checkpoint guards prevent regression or skips"]},
+    {"id": "deletion_acl_ordering", "requires": ["published content is searchable before the owner change", "hide, delete and richer ACL changes each issue owner revisions", "out-of-order and duplicate deliveries cannot restore denied content", "the final storefront Search result excludes the content for the denied viewer"]},
+    {"id": "search_disabled_profile", "requires": ["Forum owner commands and transactional events still commit with Search disabled", "no synchronous Search dependency is introduced", "reenabling Search permits bounded owner-ledger reconciliation without owner-state loss"]}
   ],
   "evidence_artifact": {
     "path": "target/forum-search-versioned-invalidation-runtime-evidence.json",
     "generation": "executable_runtime_only",
     "hand_editing_forbidden": true,
-    "required_fields": [
-      "contract",
-      "source_commit",
-      "database_backend",
-      "delivery_profile",
-      "consumer_group",
-      "scenario_results",
-      "owner_revision_rows",
-      "typed_and_root_event_ids",
-      "search_inbox_rows",
-      "ingest_sequences",
-      "owner_checkpoints",
-      "poison_receipts",
-      "dlq_receipts",
-      "storefront_visibility_assertions"
-    ]
+    "required_fields": ["contract", "source_commit", "database_backend", "delivery_profile", "consumer_group", "scenario_results", "owner_revision_rows", "typed_and_root_event_ids", "search_inbox_rows", "ingest_sequences", "owner_checkpoints", "poison_receipts", "dlq_receipts", "storefront_visibility_assertions"]
   },
   "maintainer_commands": [
     "node scripts/verify/verify-forum-search-versioned-invalidation-runtime-evidence.mjs",
@@ -325,6 +157,12 @@
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_deletion_acl_ordering -- --nocapture --test-threads=1",
     "node scripts/verify/verify-forum-search-versioned-invalidation-search-disabled-recovery-proof.mjs",
     "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_search_disabled_recovery -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-normal-delivery-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-server --test forum_versioned_invalidation_normal_delivery_iggy -- --nocapture --test-threads=1",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-aggregate-evidence-assembler.mjs",
+    "node scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs",
+    "node scripts/verify/verify-forum-search-versioned-invalidation-retained-evidence-promotion.mjs",
+    "RUSTOK_FORUM_EVIDENCE_REVIEWER=\"<reviewer>\" RUSTOK_FORUM_EVIDENCE_RETENTION_REF=\"<immutable-retention-reference>\" RUSTOK_FORUM_EVIDENCE_RETAINED_SHA256=\"<aggregate-sha256>\" node scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs",
     "cargo run -p rustok-events --example event_contract_digests",
     "cargo test -p rustok-events",
     "cargo test -p rustok-search forum_contract_ingress -- --nocapture",

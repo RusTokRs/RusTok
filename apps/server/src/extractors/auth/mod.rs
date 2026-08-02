@@ -16,7 +16,7 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use rustok_api::{
-    Permission,
+    AuthPrincipalKind, Permission,
     context::{restrict_permissions_to_scopes, scope_matches},
 };
 use rustok_core::{SecurityActorKind, UserRole};
@@ -29,12 +29,6 @@ const DIRECT_GRANT_TYPE: &str = "direct";
 const AUTHORIZATION_CODE_GRANT_TYPE: &str = "authorization_code";
 const CLIENT_CREDENTIALS_GRANT_TYPE: &str = "client_credentials";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AccessTokenSubjectKind {
-    User,
-    Service,
-}
-
 #[derive(Debug)]
 pub struct CurrentUser {
     pub user: users::Model,
@@ -42,6 +36,7 @@ pub struct CurrentUser {
     pub permissions: Vec<Permission>,
     pub inferred_role: UserRole,
     pub actor_kind: SecurityActorKind,
+    pub principal_kind: AuthPrincipalKind,
     pub client_id: Option<uuid::Uuid>,
     pub scopes: Vec<String>,
     pub grant_type: String,
@@ -65,26 +60,16 @@ impl CurrentUser {
 
 fn classify_access_token_claims(
     claims: &crate::auth::Claims,
-) -> Result<AccessTokenSubjectKind, (StatusCode, &'static str)> {
-    match claims.grant_type.as_str() {
-        DIRECT_GRANT_TYPE if claims.client_id.is_none() && !claims.session_id.is_nil() => {
-            Ok(AccessTokenSubjectKind::User)
-        }
-        AUTHORIZATION_CODE_GRANT_TYPE
-            if claims.client_id.is_some() && claims.session_id.is_nil() =>
-        {
-            Ok(AccessTokenSubjectKind::User)
-        }
-        CLIENT_CREDENTIALS_GRANT_TYPE
-            if claims.client_id.is_some() && claims.session_id.is_nil() =>
-        {
-            Ok(AccessTokenSubjectKind::Service)
-        }
-        _ => Err((
-            StatusCode::UNAUTHORIZED,
-            "Invalid token subject or grant invariants",
-        )),
-    }
+) -> Result<AuthPrincipalKind, (StatusCode, &'static str)> {
+    AuthPrincipalKind::from_authenticated_facts(
+        &claims.grant_type,
+        claims.client_id,
+        claims.session_id,
+    )
+    .ok_or((
+        StatusCode::UNAUTHORIZED,
+        "Invalid token subject or grant invariants",
+    ))
 }
 
 fn validate_oauth_token_scopes(
@@ -249,9 +234,9 @@ pub async fn resolve_current_user_from_access_token(
         return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
     }
 
-    let subject_kind = classify_access_token_claims(&claims)?;
+    let principal_kind = classify_access_token_claims(&claims)?;
 
-    if claims.grant_type == DIRECT_GRANT_TYPE {
+    if principal_kind == AuthPrincipalKind::DirectUser {
         let session = Sessions::find_by_id(claims.session_id)
             .one(db)
             .await
@@ -265,7 +250,7 @@ pub async fn resolve_current_user_from_access_token(
         if session.tenant_id != tenant_id || !session.is_active() {
             return Err((StatusCode::UNAUTHORIZED, "Session expired"));
         }
-    } else if claims.grant_type == AUTHORIZATION_CODE_GRANT_TYPE {
+    } else if principal_kind == AuthPrincipalKind::DelegatedUser {
         let client_id = claims.client_id.ok_or((
             StatusCode::UNAUTHORIZED,
             "OAuth user token is missing client_id",
@@ -281,8 +266,8 @@ pub async fn resolve_current_user_from_access_token(
         validate_active_user_consent(db, &app, tenant_id, claims.sub, &claims.scopes).await?;
     }
 
-    let (user, permissions, inferred_role, session_id, actor_kind) = match subject_kind {
-        AccessTokenSubjectKind::User => {
+    let (user, permissions, inferred_role, session_id, actor_kind) = match principal_kind {
+        AuthPrincipalKind::DirectUser | AuthPrincipalKind::DelegatedUser => {
             let user = Users::find_by_id(claims.sub)
                 .one(db)
                 .await
@@ -302,7 +287,7 @@ pub async fn resolve_current_user_from_access_token(
                     .await
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-            let effective_permissions = if claims.client_id.is_some() {
+            let effective_permissions = if principal_kind == AuthPrincipalKind::DelegatedUser {
                 restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
             } else {
                 granted_permissions
@@ -327,7 +312,7 @@ pub async fn resolve_current_user_from_access_token(
                 SecurityActorKind::User,
             )
         }
-        AccessTokenSubjectKind::Service => {
+        AuthPrincipalKind::Service => {
             let client_id = claims.client_id.ok_or((
                 StatusCode::UNAUTHORIZED,
                 "OAuth service token is missing client_id",
@@ -358,6 +343,7 @@ pub async fn resolve_current_user_from_access_token(
         permissions,
         inferred_role,
         actor_kind,
+        principal_kind,
         client_id: claims.client_id,
         scopes: claims.scopes,
         grant_type: claims.grant_type,

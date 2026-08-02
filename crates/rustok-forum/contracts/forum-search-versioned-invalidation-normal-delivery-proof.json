@@ -1,0 +1,52 @@
+{
+  "contract": "forum_search_versioned_invalidation_normal_delivery_proof_v1",
+  "task": "FORUM-23B2G2B3D10",
+  "status": "source_ready_maintainer_execution_pending",
+  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "test": "apps/server/tests/forum_versioned_invalidation_normal_delivery_iggy.rs",
+  "evidence_artifact": {
+    "path": "target/forum-search-versioned-invalidation-normal-delivery-evidence.json",
+    "generation": "executable_test_only",
+    "hand_editing_forbidden": true,
+    "source_commit_required": true
+  },
+  "required_runtime": {
+    "database": "postgresql",
+    "database_env": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "broker": "external_iggy",
+    "broker_env": "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS",
+    "delivery_profile": "outbox_iggy",
+    "consumer_group": "rustok-search-forum-projection-v1",
+    "topic": "domain",
+    "host_package": "rustok-server"
+  },
+  "scenario": {
+    "id": "normal_delivery",
+    "proves": [
+      "real Forum category and topic owner transactions commit owner state, legacy roots, caused typed invalidations and contiguous owner ledger revisions",
+      "the exact typed outbox envelopes are published to an external Iggy stream in owner revision order",
+      "the persistent Forum Search consumer group receives each typed envelope with its exact transport ID, causation root ID and broker offset",
+      "production Forum Search contract ingress durably admits one Search inbox row per root before source acknowledgement",
+      "successful source acknowledgement advances the persistent group without duplicate delivery or synthetic inbox identity",
+      "the production Forum projector completes both inbox rows and materializes current category and topic documents",
+      "owner checkpoint reconciliation advances exactly through revisions 1 and 2 with delivery_covered after projection success and without a repair rebuild",
+      "the production anonymous storefront Search path returns the exact topic created by the correlated owner transaction"
+    ]
+  },
+  "identity_invariants": [
+    "forum_projection_revision_ledger.event_id equals the legacy root envelope id",
+    "ContractEventEnvelope.causation_id equals the same legacy root envelope id",
+    "search_projection_inbox.event_id equals the same legacy root envelope id",
+    "typed envelope id remains transport identity and differs from the root projection identity",
+    "Iggy offsets and Search ingest_sequence are independently monotonic",
+    "Forum owner_revision is never compared numerically with Search ingest_sequence"
+  ],
+  "maintainer_command": "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS=\"127.0.0.1:8090\" cargo test -p rustok-server --test forum_versioned_invalidation_normal_delivery_iggy -- --nocapture --test-threads=1",
+  "non_claims": [
+    "this source-ready proof does not claim that PostgreSQL or Iggy execution passed",
+    "this proof does not validate acknowledgement failure, restart redelivery, poison or DLQ behavior",
+    "this proof does not validate multi-process contention, deletion ACL ordering or Search-disabled recovery",
+    "this proof does not assemble or retain the aggregate D0 runtime artifact",
+    "this proof does not close FORUM-23 or LINK-FORUM-03"
+  ]
+}

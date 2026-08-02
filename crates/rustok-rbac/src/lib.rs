@@ -16,6 +16,7 @@ mod m20260716_000001_artifact_permission_catalog;
 mod m20260717_000001_artifact_role_permissions;
 pub mod ports;
 mod repair;
+mod role_mutation;
 pub mod services;
 
 pub use artifact_permission_assignment::{
@@ -45,6 +46,10 @@ pub use ports::*;
 pub use repair::{
     RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
     RbacSystemRoleRepairReport,
+};
+pub use role_mutation::{
+    RbacRoleMutationChange, RbacRoleMutationFacts, RbacRoleMutationOutcome,
+    RbacRoleMutationPlan, RbacRoleMutationPolicyError, plan_user_role_mutation,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{

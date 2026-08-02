@@ -1,0 +1,169 @@
+#!/usr/bin/env node
+
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
+const root = configuredRoot
+  ? path.resolve(configuredRoot)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8");
+const failures = [];
+const requireText = (source, value, label) => {
+  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+};
+const forbidText = (source, value, label) => {
+  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+};
+
+const files = {
+  packet: "apps/server/tests/rbac_policy_incident_trace.rs",
+  service: "apps/server/src/services/rbac_service.rs",
+  authoritative: "apps/server/src/services/rbac_authoritative.rs",
+  runtime: "apps/server/src/services/rbac_runtime.rs",
+  generation: "apps/server/src/services/rbac_invalidation_generation.rs",
+  metrics: "crates/rustok-telemetry/src/rbac_invalidation_metrics.rs",
+  testDb: "crates/rustok-test-utils/src/db.rs",
+  evidence:
+    "crates/rustok-rbac/contracts/evidence/rbac-policy-incident-trace-source.json",
+  docs: "crates/rustok-rbac/docs/policy-incident-trace.md",
+  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+  master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
+};
+
+const sources = Object.fromEntries(
+  Object.entries(files).map(([name, relativePath]) => [name, read(relativePath)]),
+);
+
+for (const marker of [
+  "struct RbacPolicyIncidentPacket",
+  "missed_publication_incident_connects_decision_relations_cache_generation_and_recovery",
+  "setup_test_db_with_migrations::<Migrator>()",
+  "RbacRoleAssignmentDbWriter::new(db.clone())",
+  "replace_user_role_committed",
+  "assert!(initial_generation > 0)",
+  "RbacService::has_permission",
+  "RbacService::get_user_permissions_authoritative",
+  "RbacService::get_user_permissions",
+  "reserve_permission_invalidation_generation(&transaction)",
+  "commit relation mutation and durable generation",
+  "durable_generation > applied_generation_before",
+  "permission_cache_hits + 1",
+  "RBAC_INVALIDATION_RECOVERIES_TOTAL",
+  "RBAC_INVALIDATION_FULL_CLEARS_TOTAL",
+  'recovery_action: "generation_advanced_full_clear"',
+  '"rbac policy incident packet"',
+  'println!("rbac policy incident packet: {packet:?}")',
+  "assert!(!packet.evaluator_allowed_after_recovery)",
+]) requireText(sources.packet, marker, `${files.packet}: packet scenario`);
+
+for (const forbidden of [
+  "publish_user_rbac_invalidation(",
+  "publish_all_rbac_invalidation(",
+  "invalidate_all_user_permissions_cache(",
+  "invalidate_user_permissions_cache(",
+  "password_hash =",
+  "access_token =",
+  "bearer =",
+]) forbidText(sources.packet, forbidden, `${files.packet}: injected shortcut or secret`);
+
+for (const marker of [
+  "rbac resolver decision (single permission check)",
+  "permissions_count",
+  "cache_hit",
+  "allowed",
+]) requireText(sources.service, marker, `${files.service}: canonical evaluator`);
+
+for (const marker of [
+  "get_user_permissions_authoritative",
+  "user_belongs_to_tenant",
+  "user_roles::Entity::find()",
+  "role_permissions::Entity::find()",
+  "permissions::Entity::find()",
+]) requireText(sources.authoritative, marker, `${files.authoritative}: relation truth`);
+
+for (const marker of [
+  "CachedPermissionSnapshot",
+  "PermissionCacheLookup",
+  "permission_cache_hits",
+  "invalidate_all_user_permissions_cache",
+]) requireText(sources.runtime, marker, `${files.runtime}: cache snapshot`);
+
+for (const marker of [
+  "read_rbac_invalidation_generation",
+  '"generation_advanced"',
+  "invalidate_all_user_permissions_cache().await",
+  "state.observe_applied(generation)",
+]) requireText(sources.generation, marker, `${files.generation}: durable recovery`);
+
+for (const marker of [
+  "RBAC_INVALIDATION_DURABLE_GENERATION",
+  "RBAC_INVALIDATION_APPLIED_GENERATION",
+  "RBAC_INVALIDATION_RECOVERIES_TOTAL",
+  "RBAC_INVALIDATION_FULL_CLEARS_TOTAL",
+]) requireText(sources.metrics, marker, `${files.metrics}: bounded metrics`);
+
+for (const marker of [
+  "Sets up a test database with specific migrations.",
+  '"sqlite:file:rustok_test_{}?mode=memory&cache=shared"',
+  "opts.max_connections(1)",
+]) requireText(sources.testDb, marker, `${files.testDb}: SQLite fixture`);
+
+const evidence = JSON.parse(sources.evidence);
+const evidenceChecks = [
+  [evidence.status === "source_ready_unvalidated", "status must remain source_ready_unvalidated"],
+  [evidence.cycle === "cycle-001", "cycle must remain cycle-001"],
+  [evidence.component === "core/rbac", "component must remain core/rbac"],
+  [evidence.fixture_backend === "sqlite_in_memory", "fixture backend must remain in-memory SQLite"],
+  [evidence.postgresql_evidence === false, "PostgreSQL evidence must not be claimed"],
+  [evidence.multi_replica_evidence === false, "multi-replica evidence must not be claimed"],
+  [evidence.failure_injection?.publisher_intentionally_not_called === true, "publisher omission must be explicit"],
+  [evidence.failure_injection?.watchdog_is_the_recovery_actor === true, "watchdog must remain the recovery actor"],
+  [evidence.failure_injection?.manual_test_only_cache_clear === false, "manual cache clear must remain forbidden"],
+  [evidence.packet_contract?.raw_permission_list_logged === false, "raw permission lists must not be logged"],
+  [evidence.validation?.rust_test_executed === false, "Rust execution must not be claimed"],
+  [evidence.validation?.source_verifier_executed === false, "source verifier execution must not be claimed"],
+  [evidence.validation?.sqlite_runtime_executed === false, "SQLite execution must not be claimed"],
+  [evidence.validation?.postgresql_runtime_executed === false, "PostgreSQL execution must not be claimed"],
+  [evidence.broad_rbac_verification_complete === false, "broad RBAC verification must remain open"],
+  [evidence.cursor_advanced === false, "cursor must not advance"],
+];
+for (const [passed, message] of evidenceChecks) {
+  if (!passed) failures.push(`${files.evidence}: ${message}`);
+}
+
+for (const marker of [
+  "dedicated integration scenario",
+  "single-connection in-memory SQLite database",
+  "It is not PostgreSQL",
+  "missed post-commit publication",
+  "generation_advanced_full_clear",
+  "The only recovery actor is the existing durable-generation watchdog.",
+  "does not replace retained real-PostgreSQL concurrency",
+  "The source file and evidence JSON do not claim",
+  "core/rbac` cursor",
+]) requireText(sources.docs, marker, `${files.docs}: incident contract`);
+
+for (const marker of [
+  "### P1. Invalidation observability and incident operations",
+  "Make one policy incident traceable",
+  "Retain one real or dedicated integration incident packet",
+  "Status: `in_progress`",
+]) requireText(sources.plan, marker, `${files.plan}: open owner gate`);
+
+for (const marker of [
+  "Current item: `core/rbac`",
+  "Next item: `core/rbac`",
+  "one complete incident trace",
+]) requireText(sources.master, marker, `${files.master}: active cursor`);
+
+if (failures.length > 0) {
+  console.error("RBAC policy incident trace verification failed:");
+  for (const failure of failures) console.error(`✗ ${failure}`);
+  process.exit(Math.min(failures.length, 255));
+}
+
+console.log(
+  "✔ one source-ready SQLite RBAC policy incident packet connects evaluator, relation truth, stale cache, durable generation, watchdog recovery, and final denial without claiming PostgreSQL or multi-replica evidence",
+);

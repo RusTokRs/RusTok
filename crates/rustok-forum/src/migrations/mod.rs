@@ -38,6 +38,10 @@ mod m20260728_000005_add_forum_approved_posts_indexes;
 mod m20260728_000006_add_forum_create_window_indexes;
 mod m20260731_000007_add_forum_projection_revision_ledger;
 mod m20260731_000008_harden_forum_projection_revision_counter;
+mod m20260801_000009_add_forum_topic_move_operations;
+mod m20260801_000010_add_forum_topic_merge_operations;
+mod m20260801_000011_add_forum_topic_merge_subscription_reconciliations;
+mod m20260801_000012_add_forum_topic_merge_read_state_reconciliations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -84,6 +88,14 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260728_000006_add_forum_create_window_indexes::Migration),
         Box::new(m20260731_000007_add_forum_projection_revision_ledger::Migration),
         Box::new(m20260731_000008_harden_forum_projection_revision_counter::Migration),
+        Box::new(m20260801_000009_add_forum_topic_move_operations::Migration),
+        Box::new(m20260801_000010_add_forum_topic_merge_operations::Migration),
+        Box::new(
+            m20260801_000011_add_forum_topic_merge_subscription_reconciliations::Migration,
+        ),
+        Box::new(
+            m20260801_000012_add_forum_topic_merge_read_state_reconciliations::Migration,
+        ),
     ]
 }
 

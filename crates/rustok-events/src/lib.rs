@@ -5,6 +5,7 @@ mod forum_mention;
 mod forum_search_projection;
 mod marketplace_listing;
 mod marketplace_seller;
+mod rbac_role_mutation;
 mod schema;
 mod social_graph;
 mod translation_workflow;
@@ -26,6 +27,10 @@ pub use marketplace_listing::{
 };
 pub use marketplace_seller::{
     MARKETPLACE_SELLER_EVENT_SCHEMAS, MarketplaceSellerEvent, marketplace_seller_event_schema,
+};
+pub use rbac_role_mutation::{
+    RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED,
+    RBAC_ROLE_MUTATION_EVENT_SCHEMAS, RbacRoleMutationEvent, rbac_role_mutation_event_schema,
 };
 pub use schema::{
     EVENT_SCHEMAS, EventContractDigests, EventSchema, FieldSchema,
@@ -51,6 +56,7 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
         .or_else(|| forum_search_projection_event_schema(event_type))
         .or_else(|| marketplace_listing_event_schema(event_type))
         .or_else(|| marketplace_seller_event_schema(event_type))
+        .or_else(|| rbac_role_mutation_event_schema(event_type))
         .or_else(|| social_graph_relation_event_schema(event_type))
         .or_else(|| translation_workflow_event_schema(event_type))
 }
@@ -62,6 +68,7 @@ pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
         .chain(FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_SELLER_EVENT_SCHEMAS.iter())
+        .chain(RBAC_ROLE_MUTATION_EVENT_SCHEMAS.iter())
         .chain(SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS.iter())
         .chain(TRANSLATION_WORKFLOW_EVENT_SCHEMAS.iter())
 }

@@ -4,8 +4,8 @@ Status: source-unvalidated
 
 ## Scope
 
-This source slice hardens the product-owned storefront GraphQL transport for two
-public operations:
+This source slice hardens both the public and private diagnostic boundary for the
+product-owned storefront GraphQL transport used by two public operations:
 
 - `fetch_products`;
 - `fetch_catalog_search_options`.
@@ -15,25 +15,30 @@ GraphQL adapter remains private and continues to own the catalog-list, selected
 product, pricing-product, and catalog-search-options documents, variables,
 response decoding, request ordering, and DTO mapping.
 
-## Previous gap
+## Rechecked gap
 
-Both selected GraphQL closures delegated directly to the private adapter. The
-adapter converted `GraphqlHttpError` into `ApiError::Graphql(value.to_string())`,
-and `execute_selected_transport` retained that display string in the public
-`UiTransportError.graphql_error` field.
+The public consumer already created a `GraphqlCallContext`, reparsed each private
+adapter display handoff through `GraphqlHttpError::from_str`, and returned static
+product-owned messages. GraphQL server messages and HTTP/client detail therefore
+did not cross the public storefront envelope.
 
-Consequently, server-provided GraphQL messages and HTTP detail could cross the
-storefront UI boundary without a product-owned public-envelope policy. The
-native catalog-list and catalog-search-options paths already had their own
-owner mappings, but those mappings did not cover the GraphQL path.
+The shared structured event still copied two complete private values:
+
+- `raw_error = %raw_error`;
+- `parsed_error = ?parsed_error`.
+
+Those payloads were unnecessary for correlation, exact owner-operation
+attribution, or the closed five-category transport policy. This was a remaining
+non-`PortError` diagnostic-envelope gap in the ecommerce correlation-safe mapper
+cleanup.
 
 ## Public consumer policy
 
-`transport/mod.rs` now creates a private `GraphqlCallContext` before invoking
-each GraphQL adapter operation. The context reparses the adapter's display
-handoff through `GraphqlHttpError::from_str` and maps only `ApiError::Graphql`.
+`transport/mod.rs` creates a private `GraphqlCallContext` before invoking each
+GraphQL adapter operation. The context reparses the adapter's display handoff
+through `GraphqlHttpError::from_str` and maps only `ApiError::Graphql`.
 
-The stable public messages are:
+The stable public messages remain:
 
 | Typed failure | Public message |
 | --- | --- |
@@ -46,17 +51,20 @@ The stable public messages are:
 `ApiError::ServerFn` is returned unchanged. This preserves the independent
 native transport policy.
 
-## Correlation diagnostics
+## Correlation and bounded diagnostics
 
 Every selected GraphQL call creates a unique correlation identifier using the
-owner operation and a new UUID. Internal tracing events retain:
+owner operation and a new UUID. Internal tracing events retain only:
 
 - owner `rustok_product.storefront`;
 - operation `fetch_products` or `fetch_catalog_search_options`;
 - boundary `product_storefront_graphql_transport`;
 - correlation identifier;
-- typed error kind and stable code;
-- raw and reparsed GraphQL cause for internal diagnosis;
+- one closed error category: `network`, `http`, `unauthorized`, `graphql`, or
+  `unknown`;
+- stable internal code;
+- raw-display presence and character length;
+- whether typed `GraphqlHttpError` parsing succeeded;
 - whether a tenant slug is configured and its character length;
 - optional selected-handle, locale, currency, region, price-list, channel-id,
   channel-slug, search, and category-id presence and character lengths;
@@ -64,13 +72,25 @@ owner operation and a new UUID. Internal tracing events retain:
 - sort-field and sort-direction presence;
 - attribute-filter count.
 
-The mapper does not log raw tenant slug, selected handle, locale, currency,
+Raw GraphQL display text is not written to the event.
+Debug output from the parsed typed error is not written to the event.
+
+The mapper also does not log raw tenant slug, selected handle, locale, currency,
 region id, price-list id, channel id, channel slug, quantity, search text,
 category id, sort values, attribute-filter values, GraphQL endpoint, documents,
 variables, tokens, or returned product data.
 
-Technical network, HTTP, and unknown failures use error-level diagnostics.
-Unauthorized and ordinary GraphQL rejection use warning-level diagnostics.
+Technical network, HTTP, and unknown failures continue to use error-level
+diagnostics. Unauthorized and ordinary GraphQL rejection continue to use
+warning-level diagnostics.
+
+## Covered operations
+
+`fetch_products` retains its existing catalog-list, optional selected-product,
+and optional pricing request sequence under one owner context.
+
+`fetch_catalog_search_options` retains its independent owner context and the
+existing catalog-search-options request.
 
 ## Preserved behavior
 
@@ -90,7 +110,9 @@ This slice does not change:
 - pricing-context construction;
 - native owner catalog-list execution;
 - native catalog-search-options server function;
-- native error-safety policy.
+- native error-safety policy;
+- static public messages, stable codes, category severity, or non-GraphQL
+  pass-through behavior.
 
 The adapter still creates the exact typed GraphQL display handoff. Sanitization
 occurs once at the public consumer boundary, avoiding duplicate diagnostics and
@@ -104,10 +126,11 @@ The focused verifier is:
 node scripts/verify/verify-product-storefront-graphql-error-safety.mjs
 ```
 
-It checks the typed mapping policy, static public messages, stable codes,
-correlation and safe request-shape diagnostics, GraphQL-only remapping,
-private-adapter preservation, native-path preservation, evidence status, and
-validation nonclaims.
+It checks the typed mapping policy, all five static public categories, stable
+codes, correlation and bounded request-shape diagnostics, absence of raw GraphQL
+and parsed Debug payloads, GraphQL-only remapping, private-adapter preservation,
+native-path preservation, truthful source/review evidence, and validation
+nonclaims.
 
 The general owner boundary verifier imports the focused guard:
 

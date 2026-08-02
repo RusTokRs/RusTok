@@ -106,11 +106,21 @@ for (const [marker, label] of [
     "correlation namespace",
   ],
   ["pub(super) fn map_error(&self, error: ApiError)", "final adapter error mapper"],
+  ["let ApiError::Graphql(raw_error) = error else", "GraphQL-only remap"],
+  ["return error;", "non-GraphQL pass-through"],
+  ["let raw_error_present = !raw_error.trim().is_empty();", "raw display presence fact"],
+  ["let raw_error_length = raw_error.chars().count();", "raw display length fact"],
   ["GraphqlHttpError::from_str(raw_error.as_str())", "known GraphQL HTTP classifier"],
+  ["let parsed_error_valid = parsed_error.is_ok();", "typed parse validity fact"],
   ["Ok(GraphqlHttpError::Network)", "network classification"],
   ["Ok(GraphqlHttpError::Http(_))", "HTTP classification"],
   ["Ok(GraphqlHttpError::Unauthorized)", "authentication classification"],
   ["Ok(GraphqlHttpError::Graphql(_))", "GraphQL rejection classification"],
+  ['"network"', "closed network category"],
+  ['"http"', "closed HTTP category"],
+  ['"unauthorized"', "closed authentication category"],
+  ['"graphql"', "closed GraphQL category"],
+  ['"unknown"', "closed unknown category"],
   ['"Storefront pricing is temporarily unavailable"', "unavailable public envelope"],
   ['"Pricing storefront authentication is required"', "authentication public envelope"],
   ['"Pricing storefront request could not be completed"', "request-rejected public envelope"],
@@ -119,8 +129,9 @@ for (const [marker, label] of [
   ['"pricing.storefront_graphql_authentication_required"', "authentication stable code"],
   ['"pricing.storefront_graphql_request_rejected"', "request-rejected stable code"],
   ['"pricing.storefront_graphql_unknown_failure"', "unknown stable code"],
-  ["raw_error = %raw_error", "private raw GraphQL diagnostics"],
-  ["parsed_error = ?parsed_error", "private parsed diagnostics"],
+  ["raw_error_present,", "bounded raw display presence diagnostics"],
+  ["raw_error_length,", "bounded raw display length diagnostics"],
+  ["parsed_error_valid,", "bounded typed parse diagnostics"],
   ["correlation_id = %self.correlation_id", "correlation diagnostics"],
   ["tenant_slug_length = ?self.tenant_slug_length", "tenant shape diagnostics"],
   ["selected_handle_length = ?self.selected_handle_length", "handle shape diagnostics"],
@@ -131,10 +142,16 @@ for (const [marker, label] of [
   ["channel_id_length = ?self.channel_id_length", "channel-id shape diagnostics"],
   ["channel_slug_length = ?self.channel_slug_length", "channel-slug shape diagnostics"],
   ["quantity_present = self.quantity_present", "quantity presence diagnostics"],
+  ["error_kind,", "closed error category diagnostics"],
+  ["code,", "stable code diagnostics"],
   ["ApiError::Graphql(public_message.to_string())", "static public mapping"],
 ]) requireText(safety, marker, `${safetyPath}: ${label}`);
 
 for (const marker of [
+  "raw_error = %raw_error",
+  "raw_error = ?raw_error",
+  "parsed_error = ?parsed_error",
+  "parsed_error = %parsed_error",
   "selected_handle = %",
   "selected_handle = ?",
   "locale = %",
@@ -154,7 +171,7 @@ for (const marker of [
   "tenant_slug = %",
   "tenant_slug = ?",
   "query = ?query",
-]) forbidText(safety, marker, `${safetyPath}: raw query or public cause mapping`);
+]) forbidText(safety, marker, `${safetyPath}: raw diagnostic or query payload`);
 
 for (const marker of [
   "pub(crate) struct StorefrontPricingQuery",
@@ -193,12 +210,17 @@ for (const [key, expected] of Object.entries({
   graphql_rejection_static_public_envelope: true,
   raw_graphql_http_display_public: false,
   raw_query_values_logged: false,
-  private_graphql_error_diagnostics: true,
+  raw_graphql_detail_logged: false,
+  parsed_graphql_error_debug_logged: false,
+  raw_graphql_detail_shape_logged: true,
+  typed_parse_validity_logged: true,
+  closed_graphql_error_category_logged: true,
   transport_validation_messages_preserved: true,
   native_adapter_changed: false,
   query_contract_changed: false,
   transport_selection_changed: false,
   fallback_added: false,
+  broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${evidencePath}: source_contract.${key} must be ${expected}`);
@@ -227,7 +249,33 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 if (review.status !== "pricing_storefront_graphql_error_safety_source_reviewed_unvalidated") {
   failures.push(`${reviewPath}: status mismatch`);
 }
-requireText(doc, "Status: **source-ready / unvalidated**", `${docPath}: source status`);
+for (const [key, expected] of Object.entries({
+  typed_graphql_variant_policy: true,
+  static_public_graphql_messages: true,
+  raw_graphql_detail_logging_removed: true,
+  parsed_graphql_error_debug_logging_removed: true,
+  bounded_graphql_error_shape_retained: true,
+  pricing_operation_preserved: true,
+  per_call_correlation_id: true,
+  safe_query_shape_only: true,
+  private_graphql_adapter_changed: false,
+  native_path_changed: false,
+  query_contract_changed: false,
+  transport_selection_changed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (review.implementation_review?.[key] !== expected) {
+    failures.push(`${reviewPath}: implementation_review.${key} must be ${expected}`);
+  }
+}
+for (const marker of [
+  "Status: **source-ready / unvalidated**",
+  "Raw GraphQL display text is not written to the event.",
+  "Debug output from the parsed typed error is not written to the event.",
+  "raw-display presence and character length",
+  "The master ecommerce correlation-safe mapper cleanup remains open",
+  "No tests, verifiers, Cargo commands, formatting, workflows, or CI were run",
+]) requireText(doc, marker, `${docPath}: truthful documentation`);
 requireText(
   masterPlan,
   "Finish correlation-safe mapper cleanup",
@@ -241,5 +289,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ Pricing storefront GraphQL failures use correlation-safe static public envelopes; validation and runtime evidence remain unchanged",
+  "✔ Pricing storefront GraphQL failures retain bounded error/query shape and static public envelopes; validation and runtime evidence remain unchanged",
 );

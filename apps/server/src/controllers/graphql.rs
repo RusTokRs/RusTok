@@ -13,7 +13,7 @@ use axum::{
     routing::get,
 };
 use futures_util::{SinkExt, StreamExt};
-use rustok_api::{Action, Permission};
+use rustok_api::{Action, AuthPrincipalContext, Permission};
 use rustok_core::i18n::Locale;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -105,6 +105,7 @@ async fn graphql_handler(
     });
 
     if let Some(current_user) = current_user {
+        let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
         let auth_ctx = AuthContext {
             user_id: current_user.user.id,
             session_id: current_user.session_id,
@@ -114,7 +115,7 @@ async fn graphql_handler(
             scopes: current_user.scopes,
             grant_type: current_user.grant_type,
         };
-        request = request.data(auth_ctx);
+        request = request.data(auth_ctx).data(principal_context);
         if let Some(scope) = rbac_scope.as_ref() {
             request = request.data(scope.clone());
         }
@@ -377,6 +378,7 @@ async fn build_ws_connection_data(
         .and_then(Locale::parse)
         .or_else(|| Locale::parse(&tenant_ctx.default_locale))
         .unwrap_or_default();
+    let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
     let auth_ctx = AuthContext {
         user_id: current_user.user.id,
         session_id: current_user.session_id,
@@ -394,6 +396,7 @@ async fn build_ws_connection_data(
     data.insert(locale);
     data.insert(tenant_ctx);
     data.insert(auth_ctx);
+    data.insert(principal_context);
     data.insert(request_scope);
     Ok(data)
 }

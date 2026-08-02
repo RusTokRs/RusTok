@@ -4,7 +4,8 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens the four Pricing admin GraphQL read operations selected by
+This slice hardens the public and diagnostic boundary for the four Pricing admin
+GraphQL read operations selected by
 `crates/rustok-pricing/admin/src/transport.rs`:
 
 - `fetch_bootstrap`;
@@ -12,30 +13,41 @@ This slice hardens the four Pricing admin GraphQL read operations selected by
 - `fetch_products`;
 - `fetch_product`.
 
-The GraphQL documents, variables, request normalization, result mapping, native server
-functions, and native-only Pricing mutations remain unchanged.
+The GraphQL documents, variables, request normalization, result mapping, native
+server functions, and native-only Pricing mutations remain unchanged.
 
-## Confirmed gap
+## Rechecked gap
 
-The Pricing admin GraphQL adapter captures `GraphqlHttpError` as
-`ApiError::Graphql(value.to_string())`. Before this slice, the selected transport facade
-returned that display directly. GraphQL server messages, HTTP status text, and transport
-classification details could therefore cross the final admin UI boundary.
+The Pricing admin transport already creates a `GraphqlCallContext` before each
+adapter call, reparses the private adapter display through
+`GraphqlHttpError::from_str`, and returns only stable Pricing-owned messages.
+GraphQL server messages and HTTP status text therefore do not cross the final
+admin UI envelope.
+
+The shared tracing event still copied two complete private values:
+
+- `raw_error = %raw_error`;
+- `parsed_error = ?parsed_error`.
+
+Those payloads were not required for correlation, exact operation attribution,
+the closed five-category policy, or request-shape diagnosis. They were a
+remaining non-`PortError` diagnostic-envelope gap in the ecommerce
+correlation-safe mapper cleanup.
 
 ## Boundary placement
 
-Each GraphQL branch now creates a `GraphqlCallContext` before calling the adapter. The
-context receives the final `ApiError` after the adapter returns and before the admin UI can
-render it.
+Each GraphQL branch retains a `GraphqlCallContext` created before the private
+adapter call. The context maps only `ApiError::Graphql` after the adapter returns
+and before the admin UI can render the selected transport error.
 
-Only `ApiError::Graphql` is reclassified. Existing `ApiError::ServerFn` request-validation
-results pass through unchanged.
-
-Every call receives a unique correlation id in the namespace:
+Existing `ApiError::ServerFn` request-validation results pass through unchanged.
+Every call retains a unique correlation id in the namespace:
 
 ```text
 pricing-admin-graphql:<operation>:<uuid>
 ```
+
+No fallback is introduced, and the selected transport path remains unchanged.
 
 ## Public policy
 
@@ -47,34 +59,41 @@ pricing-admin-graphql:<operation>:<uuid>
 | GraphQL response rejection | `Pricing admin request could not be completed` |
 | Unrecognized captured display | `Pricing admin request could not be completed` |
 
-No fallback is introduced, and the selected transport path remains unchanged.
+Technical network, HTTP, and unknown failures retain error severity.
+Unauthorized and ordinary GraphQL rejection retain warning severity.
 
-## Internal diagnostics
+## Bounded internal diagnostics
 
-The original captured GraphQL display and parsed `GraphqlHttpError` remain private tracing
-fields. Structured diagnostics record only:
+Structured events retain only:
 
-- owner, operation, boundary, stable code, error kind, and correlation id;
+- owner, exact operation, boundary, stable code, closed error category, and
+  correlation id;
 - tenant slug presence and character length;
 - tenant id and requested resource id presence and character length;
-- locale, search, status, currency, region, price-list, channel id, and channel slug
-  presence and character length;
-- quantity presence.
+- locale, search, status, currency, region, price-list, channel id, and channel
+  slug presence and character length;
+- quantity presence;
+- raw-display presence and character length;
+- whether typed `GraphqlHttpError` parsing succeeded.
 
-The actual tenant, identifier, locale, search, status, pricing-context, channel, or
-quantity values are not recorded as structured fields.
+Raw GraphQL display text is not written to the event.
+Debug output from the parsed typed error is not written to the event.
+
+The actual tenant, identifier, locale, search, status, pricing-context, channel,
+or quantity values are also not recorded as structured fields.
 
 ## Preserved behavior
 
-This slice does not change:
+This work does not change:
 
 - Pricing admin GraphQL queries or variables;
 - bootstrap, active-price-list, product-list, or product-detail response mapping;
 - UUID, channel, resolution-context, locale, search, or status normalization;
+- request-validation messages or non-GraphQL pass-through;
 - native server-function reads;
 - variant price, discount, price-list rule, or price-list scope mutations;
 - native versus GraphQL selection;
-- fallback behavior;
+- stable public messages, codes, category severity, or fallback behavior;
 - FFA, FBA, browser, runtime, workflow, CI, or production status.
 
 ## Static evidence
@@ -83,15 +102,24 @@ This slice does not change:
 - `crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json`;
 - `scripts/verify/verify-pricing-admin-graphql-error-safety.mjs`.
 
-The focused verifier is imported by `scripts/verify/verify-pricing-admin-boundary.mjs`.
-All execution flags remain `false`; source review alone does not prove compilation,
-GraphQL/browser runtime, or mounted parity.
+The focused verifier is imported by
+`scripts/verify/verify-pricing-admin-boundary.mjs`. It requires bounded error
+facts, forbids complete raw and parsed payload fields, preserves all four read
+operations and native-only mutations, and checks truthful source/review evidence.
+
+All execution flags remain `false`; source review alone does not prove
+compilation, GraphQL/browser runtime, mounted parity, workflow, CI, or production
+behavior.
 
 ## Remaining work
 
-The ecommerce correlation-safe mapper cleanup remains open for other storefront/admin
-adapters and non-`PortError` public envelopes, including inventory, customer, tax,
-promotion, and remaining owner-specific paths.
+The ecommerce correlation-safe mapper cleanup remains open for other
+storefront/admin adapters, payment and fulfillment execution diagnostics,
+remaining non-`PortError` public or diagnostic envelopes, and runtime or
+mounted-parity evidence.
+
+No tests, verifiers, Cargo commands, formatting, workflows, or CI were run per
+maintainer instruction.
 
 ## Suggested maintainer checks
 

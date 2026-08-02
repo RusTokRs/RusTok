@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-01",
   "status": "cart_storefront_graphql_error_safety_source_reviewed_unvalidated",
-  "base_main_sha": "57ad4a48b8d27ecf168d67a4bba98015be627e9a",
+  "base_main_sha": "1bd2286cef47fe79f9f53c5788ff0ba008124dfe",
+  "scope": "Cart storefront GraphQL public and diagnostic error boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-cart/storefront/Cargo.toml",
@@ -12,29 +13,54 @@
     "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs",
     "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
     "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+    "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/rustok-cart/docs/storefront-graphql-error-safety.md",
     "crates/rustok-graphql/src/lib.rs",
-    "crates/rustok-ui-transport/src/lib.rs",
-    "scripts/verify/verify-cart-storefront-boundary.mjs"
+    "scripts/verify/verify-cart-storefront-graphql-error-safety.mjs"
   ],
   "findings": [
     {
-      "id": "cart-storefront-graphql-public-detail",
-      "severity": "p1",
-      "finding": "The cart storefront GraphQL adapter converted GraphqlHttpError to ApiError::Graphql using the full display string, and all three public facade closures delegated to that adapter without an owner sanitizer.",
-      "resolution": "Create an operation-specific per-call context at the public consumer boundary and map only ApiError::Graphql to static public envelopes."
+      "id": "cart-storefront-static-public-envelope-preserved",
+      "severity": "preservation",
+      "finding": "All three Cart storefront GraphQL operations already reparse the private adapter display through GraphqlHttpError and return stable Cart-owned public messages."
     },
     {
-      "id": "cart-storefront-validation-preservation",
-      "severity": "contract",
-      "finding": "Cart UUID, line-item UUID, and quantity-command validation execute before the GraphQL request and return ApiError::Validation.",
-      "resolution": "Pass Validation and ServerFn variants through unchanged and leave the private adapter and core policy unmodified."
+      "id": "cart-storefront-raw-diagnostic-payload",
+      "severity": "diagnostic_safety",
+      "finding": "The shared mapper still copied the complete private GraphQL display and Debug representation of the parsed typed error into both technical and rejection tracing events."
     },
     {
-      "id": "cart-storefront-correlation-context",
-      "severity": "contract",
-      "finding": "The selected GraphQL paths had no cart-owner correlation event retaining operation and safe request-shape context.",
-      "resolution": "Generate a unique per-call correlation id and retain only configuration facts, identifier lengths, optional-field presence, and command kind in internal diagnostics."
+      "id": "cart-storefront-request-shape-preservation",
+      "severity": "preservation",
+      "finding": "Correlation, exact operation attribution, identifier lengths, optional-field presence, and bounded command kind can be retained without recording raw request identifiers or backend error payloads."
+    },
+    {
+      "id": "cart-storefront-transport-separation",
+      "severity": "preservation",
+      "finding": "The private GraphQL documents, validation, DTO mapping, native SSR path, selected transport, and no-fallback behavior remain unchanged."
     }
+  ],
+  "implementation_review": {
+    "typed_graphql_variant_policy": true,
+    "static_public_graphql_messages": true,
+    "raw_graphql_detail_logging_removed": true,
+    "parsed_graphql_error_debug_logging_removed": true,
+    "bounded_graphql_error_shape_retained": true,
+    "all_three_operations_preserved": true,
+    "per_call_correlation_id": true,
+    "safe_request_shape_only": true,
+    "private_graphql_adapter_changed": false,
+    "native_path_changed": false,
+    "graphql_documents_changed": false,
+    "transport_selection_changed": false,
+    "runtime_evidence_claimed": false
+  },
+  "changed_files_expected": [
+    "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+    "crates/rustok-cart/docs/storefront-graphql-error-safety.md",
+    "scripts/verify/verify-cart-storefront-graphql-error-safety.mjs"
   ],
   "preserved_behavior": [
     "explicit feature-based transport selection",
@@ -45,6 +71,12 @@
     "decrement quantity command policy",
     "native SSR error-safety policy",
     "Commerce aggregate cart and payment composition"
+  ],
+  "remaining_scope": [
+    "remaining ecommerce adapters and non-PortError public or diagnostic envelopes",
+    "Cart storefront verifier and Cargo execution",
+    "GraphQL/browser runtime and mounted parity evidence",
+    "broad ecommerce correlation-safe mapper cleanup"
   ],
   "execution": {
     "commands": [],

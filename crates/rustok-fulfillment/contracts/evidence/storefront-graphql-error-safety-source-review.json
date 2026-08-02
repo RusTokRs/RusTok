@@ -1,45 +1,55 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-07-30",
+  "reviewed_at": "2026-08-01",
   "status": "fulfillment_storefront_graphql_error_safety_source_reviewed_unvalidated",
-  "base_main_sha": "83e3f7254bc30d46142c09259f80dc23d6aad0c4",
-  "scope": "fulfillment storefront shipping-selection GraphQL error boundary",
+  "base_main_sha": "2e24ce69682b2c303267994df948c5049145fa45",
+  "scope": "fulfillment storefront shipping-selection GraphQL public and diagnostic boundary",
   "reviewed_files": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-fulfillment/storefront/Cargo.toml",
     "crates/rustok-fulfillment/storefront/src/transport.rs",
     "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-fulfillment/storefront/src/transport/graphql_error_safety.rs",
     "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/rustok-fulfillment/docs/storefront-graphql-error-safety.md",
+    "scripts/verify/verify-fulfillment-storefront-graphql-error-safety.mjs",
     "crates/rustok-graphql/src/lib.rs",
-    "crates/rustok-ui-transport/src/lib.rs",
-    "scripts/verify/verify-fulfillment-storefront-boundary.mjs"
+    "crates/rustok-ui-transport/src/lib.rs"
   ],
   "findings": [
     {
-      "id": "fulfillment-storefront-graphql-raw-public-envelope",
-      "severity": "public_error_safety",
-      "finding": "The private GraphQL adapter converted GraphqlHttpError into ShippingSelectionTransportError::Graphql(error.to_string()), and the public facade passed that value directly into UiTransportError.graphql_error. GraphQL resolver text and HTTP detail could therefore reach the storefront caller."
+      "id": "fulfillment-storefront-graphql-static-public-envelope-preserved",
+      "severity": "preservation",
+      "finding": "The public facade already maps network, HTTP, unauthorized, GraphQL rejection, and unknown handoff failures to static transport-owned messages."
+    },
+    {
+      "id": "fulfillment-storefront-graphql-raw-diagnostic-payload",
+      "severity": "diagnostic_safety",
+      "finding": "The safety mapper still copied the complete private GraphQL display handoff and Debug representation of the parsed typed error into structured events. Those payloads were unnecessary for correlation or closed classification."
     },
     {
       "id": "fulfillment-storefront-native-already-sanitized",
       "severity": "context",
-      "finding": "The native server-function path already retains internal diagnostics and static public messages under fulfillment_storefront_native_transport, so this slice is limited to the GraphQL path."
+      "finding": "The native server-function path remains separate and unchanged under fulfillment_storefront_native_transport."
     },
     {
       "id": "fulfillment-storefront-explicit-transport-selection",
       "severity": "preservation",
-      "finding": "The facade intentionally selects one transport by feature profile and does not perform native-to-GraphQL fallback; that behavior must remain unchanged."
+      "finding": "The facade intentionally selects one transport by feature profile and does not perform native-to-GraphQL fallback; that behavior remains unchanged."
     },
     {
       "id": "fulfillment-storefront-validation-pass-through",
       "severity": "preservation",
-      "finding": "Local shipping-selection validation errors are user-actionable and are not GraphqlHttpError envelopes, so they remain unchanged."
+      "finding": "Local shipping-selection validation errors remain user-actionable non-GraphQL failures and pass through unchanged."
     }
   ],
   "implementation_review": {
     "typed_graphql_variant_policy": true,
     "static_public_graphql_messages": true,
-    "raw_graphql_detail_internal_only": true,
+    "raw_graphql_detail_logging_removed": true,
+    "parsed_graphql_error_debug_logging_removed": true,
+    "bounded_graphql_error_shape_retained": true,
     "per_call_correlation_id": true,
     "safe_shape_only_request_facts": true,
     "native_path_changed": false,
@@ -47,7 +57,8 @@
     "graphql_adapter_changed": false,
     "graphql_document_changed": false,
     "transport_selection_changed": false,
-    "request_response_dto_changed": false
+    "request_response_dto_changed": false,
+    "runtime_evidence_claimed": false
   },
   "execution": {
     "commands_run": [],
@@ -58,7 +69,8 @@
   },
   "remaining_scope": [
     "remaining ecommerce storefront and admin GraphQL adapters",
-    "remaining customer and non-PortError public envelopes",
+    "remaining non-PortError public and diagnostic envelopes",
+    "fulfillment checkout execution owner diagnostics",
     "browser and mounted GraphQL runtime evidence",
     "broad ecommerce correlation-safe mapper cleanup"
   ]
