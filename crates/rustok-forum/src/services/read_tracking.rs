@@ -258,7 +258,6 @@ impl ForumTopicReadStateService {
 
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::DeletedAt.is_null())
             .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
             .filter(forum_topic::Column::CreatedAt.lte(snapshot_at.clone()));
         if let Some(category_ids) = category_ids {
