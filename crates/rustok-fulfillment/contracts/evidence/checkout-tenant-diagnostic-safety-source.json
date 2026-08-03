@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "fulfillment_checkout_tenant_diagnostic_safety_source_unvalidated",
+  "scope": "Fulfillment checkout execution tenant UUID parse-failure diagnostics only",
+  "source_contract": {
+    "tenant_parser_bounded": true,
+    "complete_tenant_port_error_logged": false,
+    "tenant_parse_cause_type_only": true,
+    "tenant_internal_message_text_logged": false,
+    "tenant_context_shape_only": true,
+    "tenant_correlation_preserved": true,
+    "tenant_owner_operations_preserved": true,
+    "tenant_validation_phase_preserved": true,
+    "tenant_error_kind_closed": true,
+    "tenant_warning_severity_preserved": true,
+    "tenant_parse_failure_fact_preserved": true,
+    "original_tenant_port_error_returned": true,
+    "tenant_parse_behavior_preserved": true,
+    "causation_validation_unchanged": true,
+    "admission_mapper_unchanged": true,
+    "local_porterror_mapper_unchanged": true,
+    "canonical_fulfillment_error_mapper_cleanup_out_of_scope": true,
+    "execution_behavior_changed": false,
+    "public_port_error_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "preserved_acceptance_rules": [
+    "valid tenant UUID is accepted",
+    "invalid tenant UUID is rejected"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-fulfillment-checkout-context-validation.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-admission-context.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs",
+    "cargo check -p rustok-fulfillment --lib"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

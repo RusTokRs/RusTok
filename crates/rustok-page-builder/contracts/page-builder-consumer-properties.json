@@ -1,9 +1,12 @@
 {
-  "status": "source_connected_legacy_form_pending",
+  "status": "metadata_surface_cutover_complete",
   "format": "page_builder_consumer_properties_v1",
+  "parity_plan": "docs/modules/pages-page-builder-parity-continuation-plan.md",
   "provider": {
     "contract_source": "crates/rustok-page-builder/admin/src/consumer_properties.rs",
     "panel_source": "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "module_export_source": "crates/rustok-page-builder/admin/src/editor/mod.rs",
+    "panel_export_source": "crates/rustok-page-builder/admin/src/lib.rs",
     "facade_source": "crates/rustok-page-builder/admin/src/transport/mod.rs",
     "composition_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
     "schema": "ConsumerPropertyEditorSchema",
@@ -30,12 +33,24 @@
       "current_adapter": "leptos",
       "future_adapter": "dioxus"
     },
+    "standalone_host_surface": {
+      "component": "ConsumerPropertiesPanel",
+      "state": "source_ready",
+      "requires_fly_canvas": false,
+      "required_inputs": [
+        "ConsumerPropertyEditorRuntime",
+        "ContributionAssemblyResult"
+      ],
+      "purpose": "render_registered_consumer_properties_in_non_canvas_host_surfaces"
+    },
     "persistence_owned": false
   },
   "pages_consumer": {
     "contribution_source": "crates/rustok-pages/admin/src/contributions.rs",
     "owner_port_source": "crates/rustok-pages/admin/src/metadata_properties.rs",
     "composition_source": "crates/rustok-pages/admin/src/lib.rs",
+    "workspace_source": "crates/rustok-pages/admin/src/composition.rs",
+    "published_surface_source": "crates/rustok-pages/admin/src/standalone_metadata.rs",
     "contribution_id": "rustok.pages.metadata",
     "property_editor_id": "rustok.pages.metadata.editor",
     "provider": "rustok.pages",
@@ -56,11 +71,53 @@
     "fly_document_write": false,
     "owner_persistence": "pages",
     "workspace_refresh": "owner_callback_after_advancing_version",
+    "draft_surface": {
+      "state": "source_connected",
+      "host": "fly_properties_column",
+      "fly_canvas_mounted": true,
+      "runtime": "existing_pages_metadata_property_runtime"
+    },
+    "published_surface": {
+      "component": "PagesPublishedMetadataSurface",
+      "state": "source_connected",
+      "selection": "selected_published_page_only",
+      "admission": "exact_status_published_case_insensitive",
+      "draft_hidden": true,
+      "archived_hidden": true,
+      "missing_selection_hidden": true,
+      "fly_canvas_mounted": false,
+      "document_authoring_mounted": false,
+      "runtime": "existing_pages_metadata_property_runtime",
+      "contribution_assembly": "pages_admin_contribution_policy",
+      "persistence": "delegated_to_pages_metadata_owner_port",
+      "workspace_refresh": "shared_refresh_generation",
+      "dom_contract": {
+        "surface": "data-pages-published-metadata-surface=registered",
+        "admission": "data-pages-published-metadata-admission=published-only",
+        "fly_canvas": "data-pages-fly-canvas-mounted=false",
+        "document_authoring": "data-pages-document-authoring=false",
+        "runtime": "data-pages-metadata-runtime=registered",
+        "persistence": "data-pages-metadata-persistence=owner-port"
+      }
+    },
     "legacy_form": {
       "source": "crates/rustok-pages/admin/src/composition.rs",
       "component": "PageMetadataEditor",
-      "state": "pending_removal",
-      "required_cutover": "replace_bespoke_form_with_registered_consumer_property_surface_for_draft_and_published_metadata"
+      "state": "removed",
+      "direct_persistence_path_removed": true,
+      "replacement": "registered_consumer_property_surfaces"
+    },
+    "source_evidence": {
+      "metadata_revision_isolation": {
+        "state": "source_ready_execution_pending",
+        "contract": "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
+        "verifier": "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      },
+      "published_metadata_surface": {
+        "state": "source_ready_execution_pending",
+        "contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+        "verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+      }
     }
   },
   "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",

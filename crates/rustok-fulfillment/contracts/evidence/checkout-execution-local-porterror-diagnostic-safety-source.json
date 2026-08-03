@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "fulfillment_checkout_local_porterror_diagnostic_safety_source_unvalidated",
+  "scope": "Fulfillment checkout execution post-delegation local PortError mapper only",
+  "source_contract": {
+    "local_mapper_bounded": true,
+    "complete_local_port_error_logged": false,
+    "local_internal_message_text_logged": false,
+    "local_context_shape_only": true,
+    "local_correlation_preserved": true,
+    "local_owner_operations_preserved": true,
+    "local_error_kind_closed": true,
+    "local_severity_split_preserved": true,
+    "original_port_error_returned": true,
+    "local_mapper_call_sites_preserved": true,
+    "admission_diagnostic_cleanup_source_closed_separately": true,
+    "causation_tenant_parser_cleanup_out_of_scope": true,
+    "canonical_fulfillment_error_mapper_cleanup_out_of_scope": true,
+    "execution_behavior_changed": false,
+    "public_port_error_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "preserved_local_operations": [
+    "validate_request",
+    "validate_fulfillment",
+    "collect_checkout_fulfillment_set",
+    "require_complete_checkout_fulfillment_set",
+    "find_checkout_fulfillment_by_key"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-admission-context.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs",
+    "cargo check -p rustok-fulfillment --lib"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

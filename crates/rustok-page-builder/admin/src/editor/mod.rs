@@ -63,7 +63,7 @@ pub(crate) use canvas_protocol::CanvasBridgeMessage;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::decode_canvas_message;
 pub(crate) use capability_controls::{CapabilityFieldset, CapabilityPolicyPanel};
-pub(crate) use consumer_properties::ConsumerPropertiesPanel;
+pub use consumer_properties::ConsumerPropertiesPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;
 pub(crate) use context_dependency_panel::ContextDependencyPanel;
 pub(crate) use context_schema_panel::ContextSchemaPanel;

@@ -1,3 +1,4 @@
+mod drift_finding_inspector;
 mod mutation_store;
 mod partition_admission;
 mod query_port;
@@ -9,7 +10,9 @@ mod secondary_index;
 mod source_factory;
 mod source_reconciliation_dead_letter_inspector;
 mod source_reconciliation_recovery;
+mod source_reconciliation_retry;
 mod source_reconciliation_runner;
+mod source_reconciliation_scheduler;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_retry;
@@ -34,6 +37,10 @@ mod source_replay_job_tests;
 #[cfg(test)]
 mod source_replay_runner_tests;
 
+pub use drift_finding_inspector::{
+    IndexDriftFindingInspection, IndexDriftFindingInspectionError, IndexDriftFindingScope,
+    IndexDriftFindingSeverity, PostgresIndexDriftFindingInspector,
+};
 pub use mutation_store::{
     MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
 };
@@ -76,11 +83,23 @@ pub use source_reconciliation_recovery::{
     IndexReconciliationRecoveryError, IndexReconciliationRequeueOutcome,
     IndexReconciliationRequeueRequest, PostgresIndexReconciliationRecoveryStore,
 };
+pub use source_reconciliation_retry::{
+    IndexReconciliationRetryDisposition, IndexReconciliationRetryError,
+    IndexReconciliationRetryFailure, IndexReconciliationRetryFailureKind,
+    IndexReconciliationRetryLease, IndexReconciliationRetryPolicy,
+    PostgresIndexReconciliationRetryStore,
+};
 pub use source_reconciliation_runner::{
     IndexReconciliationCancelOutcome, IndexReconciliationRunError,
     IndexReconciliationRunOutcome, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
     IndexReconciliationTerminalState, PostgresIndexReconciliationRunner,
 };
+pub use source_reconciliation_scheduler::{
+    INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerCompositionError,
+    IndexReconciliationSchedulerPolicy, PostgresIndexReconciliationWorkAdapter,
+    register_postgres_index_reconciliation_work,
+};
+pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,

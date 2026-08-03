@@ -4,19 +4,11 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the delegated-context diagnostic gap for locally produced request,
+This source slice closes the delegated-context attribution gap for locally produced request,
 set, identity, and immutable-plan failures inside `CheckoutFulfillmentExecutionPort` in
 `crates/rustok-fulfillment/src/checkout_execution.rs`.
 
-The preceding fulfillment checkout slices retained:
-
-- read/write admission rejection context;
-- tenant UUID rejection context;
-- checkout causation identity rejection context;
-- existing `FulfillmentError` service-operation context.
-
-The remaining local paths still returned stable `PortError` values without retaining the
-complete delegated `PortContext`, exact public owner operation, and exact local operation:
+The covered local paths are:
 
 - ensure/read request validation;
 - duplicate fulfillment identity while collecting a read set;
@@ -25,20 +17,18 @@ complete delegated `PortContext`, exact public owner operation, and exact local 
 - duplicate fulfillment identity during idempotent key lookup;
 - immutable fulfillment header, item, and checkout metadata validation after ensure/read.
 
-This slice changes only those local error boundaries.
+Every covered result passes through `map_checkout_fulfillment_local_port_error` with the
+retained `PortContext`, exact public owner operation, truthful local operation, and the already
+selected `PortError`.
 
-## Delivered source contract
+## Preserved owner and local attribution
 
-Every covered local result now passes through
-`map_checkout_fulfillment_local_port_error`, with:
+The public owner operations remain:
 
-- the retained `PortContext`;
-- exact public owner operation `ensure_checkout_fulfillments` or
-  `read_checkout_fulfillments`;
-- a truthful local operation label;
-- the already selected `PortError`.
+- `ensure_checkout_fulfillments`;
+- `read_checkout_fulfillments`.
 
-The local operation labels are:
+The local operation labels remain:
 
 - `validate_request`;
 - `validate_fulfillment`;
@@ -46,38 +36,43 @@ The local operation labels are:
 - `require_complete_checkout_fulfillment_set`;
 - `find_checkout_fulfillment_by_key`.
 
-The idempotent lookup helper now receives public owner operation and delegated service
-operation separately. Storage failures continue to use the existing truthful service labels
+The idempotent lookup helper continues to receive public owner operation and delegated service
+operation separately. Storage failures retain the service labels
 `find_checkout_fulfillment_before_create` and
 `adopt_checkout_fulfillment_after_create_error`, while a locally detected duplicate identity
-is attributed to the public ensure operation and the exact lookup-local operation.
+is attributed to the public ensure operation and exact lookup-local operation.
+
+## Bounded diagnostic context
 
 The mapper emits structured diagnostics and returns the same `PortError` unchanged. It does
-not construct a replacement public envelope.
+not construct a replacement public envelope and does not log the complete `PortError`.
 
-## Diagnostic context
-
-Diagnostics attribute failures to:
+Diagnostics retain:
 
 - truthful owner `rustok_fulfillment`;
 - exact public owner operation;
 - exact local operation;
-- boundary `checkout_fulfillment_execution_port`.
+- boundary `checkout_fulfillment_execution_port`;
+- correlation id;
+- stable code and retryability;
+- one closed `PortErrorKind` label;
+- message presence and character length;
+- tenant-id and actor-id character lengths;
+- closed actor-kind label;
+- claim and role counts;
+- channel presence and optional length;
+- locale length;
+- causation-id, traceparent, and idempotency-key presence plus optional lengths;
+- optional deadline milliseconds.
 
-They retain:
-
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- stable code and message;
-- typed error kind and retryability;
-- the mapped `PortError` itself.
+The mapper does not record raw tenant, actor, channel, locale, causation, traceparent, or
+idempotency values. Human-readable `PortError.message` text and complete Debug output are not
+recorded.
 
 Unavailable, timeout, and invariant failures use error severity. Validation, conflict,
-not-found, forbidden, and other ordinary owner rejections use warning severity. All currently
-covered local paths are validation or conflict outcomes and therefore remain ordinary warning
-events.
+not-found, forbidden, and other ordinary owner rejections use warning severity. The currently
+covered local paths remain validation or conflict outcomes and therefore remain ordinary
+warning events.
 
 ## Preserved public envelopes
 
@@ -114,7 +109,7 @@ This slice does not change:
 - duplicate or missing identity detection;
 - immutable plan comparison rules;
 - create, adoption, lookup, or read service ordering;
-- stable `FulfillmentError` mapping;
+- stable `FulfillmentError` public mapping;
 - fulfillment or item metadata construction;
 - fulfillment sorting;
 - FBA, FFA, or ecommerce audit status.
@@ -126,45 +121,72 @@ delegated context value is copied into a new public envelope.
 
 `scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs` guards:
 
-- eight local mapper callsites and one mapper definition;
+- eight local mapper call sites and one mapper definition;
 - exact ensure/read owner attribution;
 - exact request, fulfillment, set, and lookup-local operations;
 - public-owner versus service-operation separation in idempotent lookup;
-- full available delegated context and mapped error evidence;
+- bounded delegated context and mapped-error evidence;
 - technical-versus-ordinary severity;
 - diagnostics before returning the same mapped error;
 - all existing stable codes and messages;
-- absence of the superseded context-dropping callsite shapes;
+- absence of superseded context-dropping call-site shapes;
 - preservation of admission, tenant, causation, service mapping, input construction, metadata,
   and service-operation behavior.
 
-The existing admission and tenant/causation verifiers are synchronized only for the two
-additional owner/boundary diagnostic branches. The execution error-safety verifier is
-synchronized only for the explicit public-owner/service-operation split in `find_by_key`.
+The dedicated local payload-safety guard is:
 
-## Remaining gaps
+- `scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs`.
 
-The master ecommerce correlation-safe mapper task remains open for:
+Its source evidence and detailed policy are recorded in:
 
-- order settlement and compensation owner admission and validation;
-- inventory reservation owner admission and validation;
-- remaining payment execution and compensation consumers;
-- GraphQL query customer reads and the shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
+- `crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md`.
 
-No architecture status is promoted from source inspection alone.
+Admission diagnostics are source-ready / unvalidated under their separate bounded contract:
+
+- `scripts/verify/verify-fulfillment-checkout-admission-context.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
+
+Causation validation and tenant UUID parse-failure diagnostics are source-ready / unvalidated
+under their context-validation contracts:
+
+- `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+
+The context guard preserves exact parsing and matching behavior while forbidding complete errors,
+complete parse causes, raw delegated values, message text, and Debug kind output inside both
+covered validators.
+
+Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under their own bounded
+contract:
+
+- `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+
+The canonical mapper preserves all five static public envelopes and the existing warning/error
+severity while recording only bounded variant and context facts.
+
+## Checkout execution source boundary
+
+The local, admission, causation, tenant, and canonical owner contracts now make the mounted
+Fulfillment checkout execution diagnostic mapper surface source-complete.
+
+Compile, runtime, replay, restart, remote-port, workflow, and CI evidence remain open. The
+broad ecommerce correlation-safe mapper cleanup and FFA/FBA status are not promoted.
 
 ## Suggested maintainer checks
 
 These commands were intentionally not run by the implementation agent:
 
 ```bash
+node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs
 node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs
 node scripts/verify/verify-fulfillment-checkout-context-validation.mjs
 node scripts/verify/verify-fulfillment-checkout-admission-context.mjs
 node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs
-node scripts/verify/verify-fulfillment-checkout-lifecycle-error-safety.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-fulfillment --lib
 ```

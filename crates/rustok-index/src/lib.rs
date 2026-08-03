@@ -7,11 +7,12 @@
 //! replay dry-run validation, one-page replay orchestration with durable fenced
 //! checkpoint progression, bounded multi-page replay coordination with
 //! heartbeat/yield/cancellation semantics, bounded multi-pass source reconciliation
-//! with durable pass/cursor progression, host-published replay and query capabilities,
-//! host-database-aware source factory composition, durable replay-job and
-//! schema-application leases, schema-derived secondary-index lifecycle, fail-closed
-//! measured partition admission, and the PostgreSQL execution adapter for structured
-//! Index queries.
+//! with durable pass/cursor progression, bounded reconciliation retry transitions,
+//! host-owned due reconciliation scheduling through the generic module-work lifecycle,
+//! host-published replay and query capabilities, host-database-aware source factory
+//! composition, durable replay-job and schema-application leases, schema-derived
+//! secondary-index lifecycle, fail-closed measured partition admission, and the
+//! PostgreSQL execution adapter for structured Index queries.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -32,11 +33,17 @@ pub use replay_dry_run::*;
 pub use infrastructure::postgres::{
     evaluate_partition_admission, materialize_postgres_index_query_runtime,
     materialize_postgres_index_replay_runtime, materialize_postgres_index_sources,
-    register_postgres_index_source_factory, IndexQueryRuntimeCompositionError,
-    IndexReconciliationCancelOutcome, IndexReconciliationRunError,
+    register_postgres_index_reconciliation_work, register_postgres_index_source_factory,
+    IndexQueryRuntimeCompositionError,
+    IndexReconciliationCancelOutcome, IndexReconciliationRetryDisposition,
+    IndexReconciliationRetryError, IndexReconciliationRetryFailure,
+    IndexReconciliationRetryFailureKind, IndexReconciliationRetryLease,
+    IndexReconciliationRetryPolicy, IndexReconciliationRunError,
     IndexReconciliationRunOutcome, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
-    IndexReconciliationTerminalState, IndexReplayCancelOutcome, IndexReplayJobAcquireOutcome,
-    IndexReplayJobError, IndexReplayJobLease, IndexReplayJobLeaseRequest, IndexReplayRunError,
+    IndexReconciliationSchedulerCompositionError, IndexReconciliationSchedulerPolicy,
+    IndexReconciliationTerminalState,
+    IndexReplayCancelOutcome, IndexReplayJobAcquireOutcome, IndexReplayJobError,
+    IndexReplayJobLease, IndexReplayJobLeaseRequest, IndexReplayRunError,
     IndexReplayRunOutcome, IndexReplayRunRequest, IndexReplayRunStatus,
     IndexReplayRuntimeCompositionError, IndexReplayTerminalState, MutationApplyOutcome,
     MutationDelivery, MutationStorageError, PartitionAdmissionError, PartitionAdmissionOutcome,
@@ -44,7 +51,8 @@ pub use infrastructure::postgres::{
     PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
     PartitionShadowEvidence, PartitionShadowPlan, PartitionStrategy,
     PersistedSchemaRegistrationOutcome, PostgresIndexQueryPort,
-    PostgresIndexReconciliationRunner, PostgresIndexReplayCheckpointStore,
+    PostgresIndexReconciliationRetryStore, PostgresIndexReconciliationRunner,
+    PostgresIndexReconciliationWorkAdapter, PostgresIndexReplayCheckpointStore,
     PostgresIndexReplayJobStore, PostgresIndexReplayRunner, PostgresIndexSourceFactory,
     PostgresIndexSourceFactoryCatalog, PostgresIndexSourceFactoryDescriptor,
     PostgresIndexSourceFactoryError, PostgresMutationStore, PostgresSchemaLeaseStore,
@@ -53,7 +61,7 @@ pub use infrastructure::postgres::{
     SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
-    SharedIndexReplayRuntime,
+    SharedIndexReplayRuntime, INDEX_RECONCILIATION_WORKER,
 };
 
 pub struct IndexModule;

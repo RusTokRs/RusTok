@@ -47,6 +47,8 @@ mod m20260803_000014_add_forum_topic_merge_vote_reconciliations;
 mod m20260803_000015_add_forum_topic_merge_audience_reconciliations;
 mod m20260803_000016_add_forum_topic_merge_solution_policy;
 mod m20260803_000017_add_forum_topic_canonical_resolution;
+mod m20260803_000018_add_forum_topic_merge_solution_resolution;
+mod m20260803_000019_allow_cross_category_topic_merge_redirect_edges;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -106,6 +108,10 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260803_000015_add_forum_topic_merge_audience_reconciliations::Migration),
         Box::new(m20260803_000016_add_forum_topic_merge_solution_policy::Migration),
         Box::new(m20260803_000017_add_forum_topic_canonical_resolution::Migration),
+        Box::new(m20260803_000018_add_forum_topic_merge_solution_resolution::Migration),
+        Box::new(
+            m20260803_000019_allow_cross_category_topic_merge_redirect_edges::Migration,
+        ),
     ]
 }
 

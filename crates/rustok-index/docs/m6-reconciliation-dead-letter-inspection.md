@@ -4,74 +4,45 @@ Status: `source_complete_transport_pending`.
 
 ## Purpose
 
-`PostgresIndexReconciliationDeadLetterInspector` provides a bounded, read-only view of one terminal failed reconciliation job after ordinary admission has blocked its exact tenant/schema scope.
+`PostgresIndexReconciliationDeadLetterInspector` provides a bounded, read-only view of one terminal failed reconciliation job after ordinary admission blocks its exact tenant/schema scope.
 
-The adapter requires an exact non-nil tenant UUID and job UUID. Its query is restricted to the exact tenant/job with `kind = 'reconcile'` and `state = 'failed'`. Cross-tenant, active, pending, successful, cancelled, non-reconciliation, and unknown jobs therefore return no inspection.
-
-The adapter is published through `rustok_index::infrastructure::postgres`. It is a storage capability, not a public endpoint or an authorization boundary.
+The query is restricted to exact tenant/job, `kind = 'reconcile'`, and `state = 'failed'`. Cross-tenant, active, pending, successful, cancelled, non-reconciliation, and unknown jobs return no inspection.
 
 ## Returned contract
 
-A successful inspection contains only:
+A successful inspection contains only failed job UUID, positive attempt count, optional bounded `last_error_code`, bounded dependency code from `index_reconciliation_run_failure_v1`, and retryability.
 
-- failed job UUID;
-- positive durable attempt count;
-- optional bounded `last_error_code`;
-- bounded `dependency_code` from `index_reconciliation_run_failure_v1`;
-- retryability boolean.
+Diagnostics use `deny_unknown_fields`; malformed contracts, codes, JSON, zero attempts, and overflow fail closed. Raw diagnostic JSON is never returned.
 
-Both machine codes are limited to 128 ASCII bytes and lowercase letters, digits, `.`, `_`, or `-`.
+The query selects only attempt count, machine code, and diagnostic object. It does not expose tenant identity, request/cursor JSON, source/worker/lease/timestamps, payloads, SQL, database causes, transport, or stack text.
 
-Stored diagnostics use `#[serde(deny_unknown_fields)]` and must match the exact three-field reconciliation failure contract. Unknown fields, malformed JSON, unsupported contract versions, invalid machine codes, zero attempts, and overflowing attempts fail closed through `InvalidStoredJob`.
-
-## Privacy and read-only boundary
-
-Unlike ordinary dead-letter admission, inspection deliberately reads `last_error_details` so it can decode the bounded dependency code and retryability flag. The raw JSON object is never returned.
-
-The query selects only attempt count, `last_error_code`, and `last_error_details`. It does not select or return:
-
-- tenant identity;
-- schema request or cursor JSON;
-- source name, worker identity, lease ownership, or timestamps;
-- entity, relation, inbox, or mutation payloads;
-- SQL, database causes, transport context, or stack text.
-
-Database failures map to one stable `Storage` error with no embedded database detail. The inspector performs no insert, update, delete, retry, requeue, reset, scheduling, polling, sleep, or task creation.
+The inspector performs no insert, update, delete, retry, requeue, reset, scheduling, polling, sleep, or task creation.
 
 ## Authorized server composition
 
-The server-owned `IndexReconciliationOperatorRuntime` composes this inspector beside the canonical reconciliation runner and audited recovery store.
+`IndexReconciliationOperatorRuntime` composes the inspector beside the canonical runner and audited recovery store. Inspection accepts one validated context and job UUID; there is no caller-supplied tenant parameter.
 
-Inspection accepts only:
+Before adapter validation or database access, the server requires the exact request-scoped tenant/actor snapshot and effective `modules:manage`. The server returns only the bounded inspection object or typed bounded errors.
 
-- one validated `IndexReconciliationOperatorContext`;
-- one job UUID.
+GraphQL, HTTP, CLI, MCP, and admin transports remain open.
 
-The delegated tenant is derived exclusively from the context. There is no caller-supplied tenant parameter.
+## Scheduler compatibility
 
-Before adapter validation or database access, the server boundary reads the exact request-scoped tenant/actor permission snapshot and requires effective `modules:manage`. Missing request authority and insufficient permission fail before delegation. The server returns only the bounded inspection object or typed bounded errors; it does not expose the database adapter or raw diagnostic JSON.
+The module-owned host scheduler changes no inspector SQL or returned data. Retryable jobs remain pending and are not inspectable. Permanent or exhausted jobs become failed through the canonical retry store and retain the strict inspection-compatible diagnostic.
 
-The same guarded runtime also exposes manual audited requeue. That write operation is owned by `PostgresIndexReconciliationRecoveryStore`, not by the inspector, and requires the same request-bound context plus an explicit bounded reason. Tenant and actor are derived only from the authorized context.
-
-GraphQL, HTTP, CLI, MCP, and admin transports remain open. This slice publishes internal guarded capabilities only.
-
-## Compatibility
-
-Inspection remains read-only and changes no reconciliation query, failed-scope admission, retry policy, lease fence, cursor, source, mutation, schema, cancellation, or success behavior.
-
-The authorized recovery composition is additive: it delegates to the separately merged scope-locked same-job reset and immutable actor/reason audit contract without modifying inspector SQL or returned data.
+Manual audited requeue remains separately owned by `PostgresIndexReconciliationRecoveryStore`.
 
 ## Explicitly open
 
 - inspection and recovery transport mapping;
-- automatic retry, backoff, exhaustion, scheduling, and graceful shutdown;
+- retained PostgreSQL inspection, authorization, scheduler contention, and recovery evidence;
+- operator-visible scheduler health and metrics;
 - source/index digest comparison and orphan diagnosis;
 - targeted, full, or shadow repair admission;
 - locale or partition checkpoint dimensions;
-- retained PostgreSQL inspection, authorization, concurrency, and recovery evidence;
 - complete drift repair.
 
-The canonical bounded retry/global scheduling and drift-diagnosis/targeted-repair roadmap items remain open.
+The canonical bounded retry/global scheduling item remains open pending owner-retained production and multi-host evidence. The drift-diagnosis/targeted-repair item remains open.
 
 ## Validation ownership
 

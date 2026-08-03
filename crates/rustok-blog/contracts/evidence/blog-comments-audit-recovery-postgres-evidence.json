@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-08-03T15:55:00Z",
+  "review_base": "2075961312c0ad3ee1f38804b911abf8e4a8f4d1",
+  "status": "recovery_postgres_evidence_source_ready_maintainer_execution_pending",
+  "scope": "Blog Comments schedule audit request-bound recovery PostgreSQL retained evidence",
+  "harness": {
+    "module": "comments_provider_runtime::keyring_schedule_audit_operator::retained_postgres_evidence",
+    "cfg_test_only": true,
+    "mod_blog_feature_required": true,
+    "database_env": "RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL",
+    "database_url_fallback": "DATABASE_URL",
+    "postgresql_required": true,
+    "unique_schema_per_scenario": true,
+    "single_connection_per_handle": true,
+    "peer_connections_supported": true,
+    "schema_cleanup_after_scenario": true,
+    "production_capability_added": false
+  },
+  "migrations": {
+    "uses_real_blog_migrations": true,
+    "ordered_subset": [
+      "m20260801_000007_create_blog_comments_delegation_schedule_state",
+      "m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox",
+      "m20260803_000009_add_blog_comments_audit_canonical_handoff",
+      "m20260803_000010_add_blog_comments_audit_source_retry_policy",
+      "m20260803_000011_create_blog_comments_audit_recovery"
+    ],
+    "alternate_test_schema_ddl_added": false,
+    "legacy_rows_rewritten": false
+  },
+  "authorization_ordering": {
+    "empty_schema_used": true,
+    "missing_authority_before_storage": true,
+    "modules_read_forbidden_before_storage": true,
+    "tenant_mismatch_before_permission_lookup": true,
+    "authorized_inspection_reaches_storage": true,
+    "requeue_authorization_before_dto_validation": true,
+    "authorized_invalid_requeue_reaches_dto_validation": true,
+    "raw_database_error_returned": false
+  },
+  "exact_inspection": {
+    "exact_request_id": true,
+    "attempt_count": true,
+    "recovery_epoch": true,
+    "closed_failure_code": true,
+    "closed_dead_letter_reason": true,
+    "payload_exposed": false,
+    "claim_token_exposed": false,
+    "timestamps_exposed": false
+  },
+  "atomic_requeue": {
+    "exact_attempt_fence": true,
+    "exact_recovery_epoch_fence": true,
+    "terminal_dead_letter_fence": true,
+    "attempt_count_reset_to_zero": true,
+    "recovery_epoch_incremented": true,
+    "claim_state_cleared": true,
+    "deferred_retry_cleared": true,
+    "failure_state_cleared": true,
+    "dead_letter_state_cleared": true,
+    "audit_tenant_verified": true,
+    "audit_actor_verified": true,
+    "audit_reason_verified": true,
+    "audit_prior_attempt_verified": true,
+    "audit_epoch_verified": true,
+    "audit_update_rejected": true,
+    "audit_delete_rejected": true,
+    "post_requeue_inspection_empty": true
+  },
+  "closed_denials": {
+    "stale_attempt_returns_stale_inspection": true,
+    "stale_epoch_returns_stale_inspection": true,
+    "pending_row_returns_not_dead_letter": true,
+    "source_state_preserved": true,
+    "recovery_audit_not_appended": true
+  },
+  "concurrency": {
+    "separate_postgres_connections": true,
+    "same_request_attempt_epoch": true,
+    "exactly_one_requeued": true,
+    "loser_fails_closed": true,
+    "exactly_one_recovery_audit": true,
+    "recovery_epoch_one": true
+  },
+  "worker_admission": {
+    "uses_claim_next_retry_ready": true,
+    "recovered_request_id_preserved": true,
+    "first_attempt_is_one": true,
+    "recovery_epoch_preserved": true,
+    "claim_token_non_nil": true,
+    "replacement_source_row_created": false,
+    "worker_task_started": false,
+    "canonical_writer_invoked": false
+  },
+  "preserved_contracts": {
+    "production_operator_changed": false,
+    "production_recovery_store_changed": false,
+    "production_handoff_owner_changed": false,
+    "source_retry_policy_changed": false,
+    "worker_cycle_changed": false,
+    "server_bootstrap_changed": false,
+    "lifecycle_reservation_changed": false,
+    "shutdown_changed": false,
+    "canonical_writer_changed": false,
+    "publication_transaction_changed": false,
+    "registered_event_changed": false,
+    "event_digest_changed": false,
+    "sys_events_schema_changed": false,
+    "outbox_relay_changed": false,
+    "comments_listener_changed": false,
+    "module_manifest_changed": false,
+    "dependency_topology_changed": false
+  },
+  "transport": {
+    "http_added": false,
+    "graphql_added": false,
+    "cli_added": false,
+    "mcp_added": false,
+    "admin_endpoint_added": false,
+    "automatic_requeue_added": false,
+    "bulk_requeue_added": false
+  },
+  "validation": {
+    "cargo_check_run": false,
+    "rust_unit_tests_run": false,
+    "rust_postgresql_tests_run": false,
+    "javascript_verifier_run": false,
+    "formatting_run": false,
+    "clippy_run": false,
+    "migration_apply_run": false,
+    "authorization_run": false,
+    "concurrency_run": false,
+    "workflow_run": false,
+    "runtime_run": false,
+    "production_run": false
+  },
+  "next_cursor": {
+    "record_successful_maintainer_execution": true,
+    "prove_restart_behavior": true,
+    "prove_ambiguous_commit_behavior": true,
+    "prove_canonical_relay_separately": true,
+    "define_source_row_retention": true,
+    "define_recovery_audit_retention": true
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "pages_published_metadata_surface_source_unvalidated",
+  "scope": "Pages selected published metadata standalone registered surface without Fly authoring",
+  "source_contract": {
+    "selected_page_read_preserved": true,
+    "published_status_case_insensitive": true,
+    "published_page_admits_registered_surface": true,
+    "draft_page_admits_registered_surface": false,
+    "archived_page_admits_registered_surface": false,
+    "missing_page_admits_registered_surface": false,
+    "registered_consumer_properties_panel_used": true,
+    "existing_metadata_runtime_reused": true,
+    "pages_contribution_assembly_reused": true,
+    "shared_refresh_generation_preserved": true,
+    "fly_canvas_mounted": false,
+    "document_authoring_mounted": false,
+    "page_builder_facade_mounted": false,
+    "direct_metadata_patch_in_surface": false,
+    "metadata_persistence_delegated_to_owner_port": true,
+    "metadata_revision_isolation_evidence_linked": true,
+    "stable_dom_contract_added": true,
+    "unit_regressions_added": true,
+    "execution_behavior_changed": false,
+    "public_transport_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "dom_contract": {
+    "surface": "data-pages-published-metadata-surface=registered",
+    "admission": "data-pages-published-metadata-admission=published-only",
+    "fly_canvas": "data-pages-fly-canvas-mounted=false",
+    "document_authoring": "data-pages-document-authoring=false",
+    "runtime": "data-pages-metadata-runtime=registered",
+    "persistence": "data-pages-metadata-persistence=owner-port"
+  },
+  "unit_regressions": [
+    "published_page_admits_registered_metadata_surface",
+    "non_published_or_missing_page_hides_registered_metadata_surface"
+  ],
+  "linked_source_evidence": [
+    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+  ],
+  "suggested_execution": [
+    "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
+    "cargo test -p rustok-pages-admin published_page_admits_registered_metadata_surface",
+    "cargo test -p rustok-pages-admin non_published_or_missing_page_hides_registered_metadata_surface",
+    "cargo check -p rustok-pages-admin --all-targets"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "browser_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

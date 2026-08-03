@@ -20,6 +20,8 @@ const requireMarkers = (relative, markers) => {
 
 const runnerPath =
   'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
+const retryPath =
+  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_retry.rs';
 const targetPath =
   'crates/rustok-index/tests/source_reconciliation_dead_letter_admission_postgres_test.rs';
 const docsPath =
@@ -37,6 +39,8 @@ const runner = requireMarkers(runnerPath, [
   'last_error_code: Option<String>,',
   '.try_get("", "last_error_code")',
   'last_error_code is outside the reconciliation error contract',
+  'IndexReconciliationRunStatus::FailedPermanent',
+  'IndexReconciliationRunStatus::FailedExhausted',
 ]);
 
 const acquireStart = runner.indexOf('async fn acquire_in_transaction(');
@@ -71,16 +75,9 @@ if (
 ) {
   fail(`${runnerPath} must preserve succeeded, active, failed, then create precedence`);
 }
-const deadLetterBlock = acquire.slice(
-  failedBranch,
-  acquire.indexOf('state => {', failedBranch),
-);
+const deadLetterBlock = acquire.slice(failedBranch, acquire.indexOf('state => {', failedBranch));
 for (const forbidden of [
-  'last_error_details',
-  'INSERT INTO index_jobs',
-  'UPDATE index_jobs',
-  'Uuid::new_v4()',
-  '.scan(',
+  'last_error_details', 'INSERT INTO index_jobs', 'UPDATE index_jobs', 'Uuid::new_v4()', '.scan(',
 ]) {
   if (deadLetterBlock.includes(forbidden)) {
     fail(`${runnerPath} dead-letter branch contains forbidden marker ${forbidden}`);
@@ -89,9 +86,6 @@ for (const forbidden of [
 
 const selectStart = runner.indexOf('fn select_jobs_sql(');
 const selectEnd = runner.indexOf('\nfn insert_job_sql(', selectStart);
-if (selectStart < 0 || selectEnd <= selectStart) {
-  fail(`${runnerPath} must retain one bounded job-selection function`);
-}
 const select = runner.slice(selectStart, selectEnd);
 for (const marker of [
   'SELECT job_id, state, request, cursor, last_error_code',
@@ -109,9 +103,6 @@ if (select.includes('last_error_details')) {
 
 const storedStart = runner.indexOf('fn stored_job(');
 const storedEnd = runner.indexOf('\nasync fn lock_reconciliation_scope(', storedStart);
-if (storedStart < 0 || storedEnd <= storedStart) {
-  fail(`${runnerPath} stored-job decoder is missing`);
-}
 const stored = runner.slice(storedStart, storedEnd);
 for (const marker of [
   'u32::try_from(attempt_count)',
@@ -121,12 +112,29 @@ for (const marker of [
   if (!stored.includes(marker)) fail(`${runnerPath} stored-job decoder is missing ${marker}`);
 }
 
+const retry = requireMarkers(retryPath, [
+  'fn terminal_failure_sql(',
+  "state = 'failed'",
+  'completed_at = CURRENT_TIMESTAMP',
+  'last_error_code = {prefix}5',
+  'last_error_details = {prefix}6',
+  'lease_owner = {prefix}3',
+  'attempt_count = {prefix}4',
+  'lease_expires_at > CURRENT_TIMESTAMP',
+  'cancel_requested = FALSE',
+]);
+if (runner.includes('fn finish_failure_sql(')) {
+  fail(`${runnerPath} must not retain the superseded terminal failure SQL`);
+}
+
 const target = requireMarkers(targetPath, [
   'failed_reconciliation_scope_blocks_new_jobs_without_exposing_details',
   'RUSTOK_INDEX_TEST_DATABASE_URL',
   'IndexModule.migrations()',
   'owner_source_permanent_dead_letter',
-  'IndexReconciliationRunError::Source',
+  'IndexReconciliationRunStatus::FailedPermanent',
+  'first_outcome.retry_after(), None',
+  'first_outcome.next_attempt(), None',
   'IndexReconciliationRunError::DeadLettered',
   'private-reconciliation-failure-detail',
   'assert!(!debug.contains(PRIVATE_MARKER))',
@@ -140,24 +148,22 @@ const target = requireMarkers(targetPath, [
   'DROP SCHEMA IF EXISTS',
 ]);
 for (const forbidden of [
+  'IndexReconciliationRunError::Source(',
   'tokio::time::sleep',
   'std::thread::sleep',
   'DELETE FROM index_jobs',
   'INSERT INTO index_jobs',
 ]) {
-  if (target.includes(forbidden)) {
-    fail(`${targetPath} contains forbidden recovery shortcut ${forbidden}`);
-  }
+  if (target.includes(forbidden)) fail(`${targetPath} contains superseded or forbidden marker ${forbidden}`);
 }
 
 requireMarkers(docsPath, [
   'Status: `source_complete_operator_recovery_pending`.',
-  'ordinary runs for the same exact tenant and schema scope',
-  'Scope selection includes `pending`, `running`, `succeeded`, and `failed` rows',
+  'due pending retry work keep their existing reclaim path',
   'does not select `last_error_details`',
+  '`IndexReconciliationRunStatus::FailedPermanent`',
   'does not call the source, insert another `index_jobs` row',
-  'guarded server reconciliation runtime merged separately',
-  'canonical M6 drift-diagnosis and targeted-repair roadmap item remains open',
+  'canonical M6 retry/global-scheduling and drift-diagnosis/targeted-repair roadmap items remain open',
   'maintainer-run',
 ]);
 requireMarkers(docsIndexPath, [
@@ -169,6 +175,7 @@ requireMarkers(planPath, [
 ]);
 requireMarkers(aggregatePath, [
   "'verify-index-server-reconciliation-guard.mjs'",
+  "'verify-index-reconciliation-runner-retry.mjs'",
   "'verify-index-reconciliation-dead-letter-admission.mjs'",
   "'verify-index-replay-dead-letter-admission.mjs'",
 ]);

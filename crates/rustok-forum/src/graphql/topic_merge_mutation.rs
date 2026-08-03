@@ -44,6 +44,34 @@ impl ForumTopicMergeMutation {
         )
         .await
     }
+
+    async fn merge_forum_topic_resolving_solution(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        target_topic_id: Uuid,
+        input: ResolveForumTopicMergeSolutionGraphqlInput,
+    ) -> Result<GqlForumTopicMergeSolutionResolution> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+            .clone();
+        let tenant = ctx.data::<TenantContext>()?;
+
+        execute_merge_forum_topic_resolving_solution(
+            db,
+            event_bus,
+            tenant,
+            &auth,
+            tenant_id,
+            target_topic_id,
+            input,
+        )
+        .await
+    }
 }
 
 async fn execute_merge_forum_topic(
@@ -77,6 +105,42 @@ async fn execute_merge_forum_topic(
     Ok(result.into())
 }
 
+async fn execute_merge_forum_topic_resolving_solution(
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    requested_tenant_id: Option<Uuid>,
+    target_topic_id: Uuid,
+    input: ResolveForumTopicMergeSolutionGraphqlInput,
+) -> Result<GqlForumTopicMergeSolutionResolution> {
+    require_topic_manage_permission(auth)?;
+    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
+    let selected_solution_reply_id = input.selected_solution_reply_id;
+
+    let result = ForumTopicMergeService::new(db.clone(), event_bus.clone())
+        .merge_topic_resolving_solution(
+            tenant_id,
+            target_topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            selected_solution_reply_id,
+            MergeForumTopicInput {
+                operation_id: input.operation_id,
+                source_topic_id: input.source_topic_id,
+                reason: input.reason,
+            },
+        )
+        .await?;
+
+    Ok(GqlForumTopicMergeSolutionResolution {
+        selected_solution_reply_id,
+        merge: result.into(),
+    })
+}
+
 fn require_topic_manage_permission(auth: &AuthContext) -> Result<()> {
     if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]) {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -105,6 +169,14 @@ pub struct MergeForumTopicGraphqlInput {
     pub reason: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, InputObject)]
+pub struct ResolveForumTopicMergeSolutionGraphqlInput {
+    pub operation_id: Uuid,
+    pub source_topic_id: Uuid,
+    pub selected_solution_reply_id: Uuid,
+    pub reason: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
 pub struct GqlForumTopicMerge {
     pub operation_id: Uuid,
@@ -119,6 +191,12 @@ pub struct GqlForumTopicMerge {
     pub resulting_published_reply_count: i32,
     pub position_offset: i64,
     pub merged_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
+pub struct GqlForumTopicMergeSolutionResolution {
+    pub selected_solution_reply_id: Uuid,
+    pub merge: GqlForumTopicMerge,
 }
 
 impl From<ForumTopicMergeResult> for GqlForumTopicMerge {

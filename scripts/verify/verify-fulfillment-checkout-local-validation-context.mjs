@@ -120,34 +120,56 @@ for (const [value, label] of [
   ["owner_operation: &'static str", 'exact owner operation input'],
   ["local_operation: &'static str", 'exact local operation input'],
   ['error: PortError', 'mapped error input'],
+  ['let error_kind = match &error.kind', 'closed error-kind classification'],
   [
     'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
     'technical severity classification',
   ],
   ['tracing::error!(', 'technical severity'],
   ['tracing::warn!(', 'ordinary severity'],
-  ['error = ?error', 'mapped error evidence'],
   ['owner = CHECKOUT_FULFILLMENT_OWNER', 'truthful owner field'],
   ['owner_operation,', 'exact owner operation field'],
   ['local_operation,', 'exact local operation field'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
+  ['tenant_id_length', 'tenant context shape'],
+  ['actor_kind', 'actor kind shape'],
+  ['actor_id_length', 'actor identity shape'],
+  ['claim_count', 'claim count'],
+  ['role_count', 'role count'],
+  ['channel_present', 'channel presence'],
+  ['channel_length = ?channel_length', 'channel length'],
+  ['locale_length', 'locale length'],
+  ['causation_id_present', 'causation presence'],
+  ['causation_id_length = ?causation_id_length', 'causation length'],
+  ['traceparent_present', 'trace presence'],
+  ['traceparent_length = ?traceparent_length', 'trace length'],
+  ['idempotency_key_present', 'idempotency presence'],
+  ['idempotency_key_length = ?idempotency_key_length', 'idempotency length'],
   ['deadline_ms = ?context.deadline_ms', 'deadline context'],
   ['internal_code = %error.code', 'stable code evidence'],
-  ['internal_message = %error.message', 'stable message evidence'],
-  ['error_kind = ?error.kind', 'typed kind evidence'],
+  ['internal_message_present', 'bounded message presence'],
+  ['internal_message_length', 'bounded message length'],
+  ['error_kind', 'closed kind evidence'],
   ['retryable = error.retryable', 'retryability evidence'],
   ['boundary = CHECKOUT_FULFILLMENT_BOUNDARY', 'fulfillment boundary'],
   ['"checkout fulfillment local owner operation failed"', 'technical local event'],
   ['"checkout fulfillment local owner operation was rejected"', 'ordinary local event'],
   ['error\n}', 'same mapped error returned'],
 ]) requireText(mapper, value, label);
+
+for (const value of [
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+]) forbidText(mapper, value, 'unsafe local mapper diagnostic payload');
 
 const technicalLogIndex = mapper.indexOf('tracing::error!(');
 const ordinaryLogIndex = mapper.indexOf('tracing::warn!(');
@@ -214,8 +236,8 @@ for (const [pattern, expected, label] of [
   [/"collect_checkout_fulfillment_set"/g, 1, 'set collection operation count'],
   [/"require_complete_checkout_fulfillment_set"/g, 2, 'set completeness operation count'],
   [/"find_checkout_fulfillment_by_key"/g, 1, 'identity lookup operation count'],
-  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 6, 'owner diagnostic count'],
-  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 6, 'boundary diagnostic count'],
+  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 11, 'owner diagnostic count'],
+  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 11, 'boundary diagnostic count'],
 ]) {
   const count = source.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
@@ -242,5 +264,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Fulfillment checkout request, set, identity, and immutable-plan failures retain full PortContext, exact owner/local operations, stable PortError envelopes, and unchanged owner behavior',
+  '✔ Fulfillment checkout request, set, identity, and immutable-plan failures retain bounded PortContext shape, exact owner/local operations, stable PortError envelopes, and unchanged owner behavior',
 );

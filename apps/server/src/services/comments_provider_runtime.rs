@@ -64,10 +64,13 @@ mod keyring_schedule_audit_source_retry_postgres {
 
 mod keyring_schedule_audit_recovery_postgres {
     include!("comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs");
+    include!("comments_provider_runtime_keyring_schedule_audit_recovery_postgres_test_support.rs");
 }
 
 mod keyring_schedule_audit_operator {
     include!("comments_provider_runtime_keyring_schedule_audit_operator.rs");
+    include!("comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs");
+    include!("comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs");
 }
 
 mod keyring_schedule_persisted_trigger {

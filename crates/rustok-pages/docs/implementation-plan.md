@@ -84,9 +84,14 @@ Pages persistence, cache scope or tenant policy.
   multiple scenarios require an explicit exact selection.
 - [x] Missing baseline, empty scenarios, missing selection, stale selection and
   foreign scenario ids fail closed before the reviewed command is built.
-- [ ] Add the rollback action to the Pages workspace header using the typed admin
-  transport; transport and receipt validation are already connected.
-- [ ] Metadata editing still needs a typed metadata-only property contribution.
+- [x] `PagesRollbackControl` mounts the typed rollback action for selected published
+  pages, requires prepare/confirm and refreshes the workspace from the returned
+  advancing result version.
+- [x] Pages registers the typed `rustok.pages.metadata` contribution and renders the
+  canonical consumer-property panel inside draft Fly and in a published-only
+  standalone host without mounting an editable published Fly document.
+- [x] The bespoke `PageMetadataEditor` and its direct workspace persistence path are
+  removed; metadata persistence remains owned by `PagesMetadataPropertyPort`.
 
 ### Storefront FFA
 
@@ -165,15 +170,16 @@ Pages persistence, cache scope or tenant policy.
 
 ## FFA/FBA status
 
-- **FFA:** `in_progress` — reviewed publication, rollback transport, explicit
-  promoted-scenario selection and generation-aware storefront/artifact readers are
-  connected; the workspace rollback action, typed metadata properties and inline
-  edit mode remain open.
+- **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
+  promoted-scenario selection, registered draft/published metadata surfaces and
+  generation-aware storefront/artifact readers are connected. Executed metadata
+  conflict/isolation packets, inline edit mode and anonymous bundle evidence remain
+  open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and cache
-  invalidation/read boundaries are integrated at source level. Executed rollback
-  and cache proof, verification and observed rollout evidence remain open.
+  invalidation/read boundaries are integrated at source level. Executed metadata,
+  rollback and cache proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -349,14 +355,33 @@ Invariants:
   machine contracts.
 - Source guards and runtime tests were not executed in this slice.
 
+## Completed slice — 2026-08-03
+
+- Mounted the typed Pages rollback prepare/confirm control for published pages.
+- Registered six typed metadata fields and one Pages-owned optimistic metadata
+  owner port.
+- Exported and reused the canonical consumer-property panel for draft and published
+  Pages lifecycle surfaces.
+- Removed the bespoke metadata editor and its direct workspace persistence path.
+- Added private source-test transport injection, exact conflict-before-patch ordering
+  and focused stale-revision / dirty-Fly isolation regressions.
+- Added machine-readable source evidence and static guards while retaining empty
+  execution packets and false validation flags.
+- Tests, verifiers, formatters, Cargo commands, browser scenarios, workflows and CI
+  were not executed in this slice.
+
 ## Next implementation order
 
 ### P0 — separate metadata and document writes
 
-- [ ] Finish Pages-owned typed metadata property contributions.
-- [ ] Track metadata and document revisions independently in every transport.
-- [ ] Add conflict tests proving metadata saves cannot replace a dirty/current Fly
-  document and Fly saves cannot revert metadata.
+- [x] Finish Pages-owned typed metadata property contributions.
+- [x] Track metadata and document revisions independently in source transports.
+- [x] Add source regressions proving stale metadata saves stop before patch transport
+  and a metadata-only save cannot mutate an unsaved dirty Fly sentinel.
+- [ ] Retain executed conflict and dirty-Fly isolation packets from the focused tests
+  and static verifier.
+- [ ] Retain a browser packet proving published metadata saves advance only metadata
+  version while the editable Fly canvas remains unmounted.
 
 ### P0 — atomic artifact publication
 
@@ -380,7 +405,7 @@ Invariants:
   delivery reader.
 - [x] Add idempotent rollback to the previous distinct immutable artifact set with a
   separate receipt and transactional outbox semantics.
-- [ ] Add the typed rollback action to the Pages workspace header.
+- [x] Add the typed rollback action to the Pages workspace header.
 - [ ] Retain accepted evidence for publish/rollback outbox event → handler receipt →
   generation rotation → cache miss/refill.
 - [ ] Correlate publish/rollback receipt, editor save, page/body revisions, runtime
@@ -427,6 +452,10 @@ Invariants:
 - `cargo test -p rustok-pages-admin --lib`
 - `cargo check -p rustok-pages-storefront --lib`
 - `cargo clippy -p rustok-pages-storefront --lib -- -D warnings`
+- `node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`
+- `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`
+- `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`

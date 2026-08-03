@@ -6,91 +6,61 @@ Status: `source_complete_authorized_server_composition_transport_pending`.
 
 `PostgresIndexReconciliationRecoveryStore` provides one explicit engine-level recovery operation for an exact terminal failed reconciliation job.
 
-The operation preserves the existing job UUID. It does not create a replacement job. Instead, it moves the same failed row back to `pending`, resets its bounded execution state, increments a durable retry epoch, and appends an immutable actor/reason audit record in the same database transaction.
+The operation preserves the existing job UUID. It moves the same failed row back to `pending`, resets bounded execution state, increments a durable retry epoch, and appends an immutable actor/reason audit record in the same database transaction.
 
-The server publishes this operation only through the request-bound `IndexReconciliationOperatorRuntime`; no transport is added by this slice.
+The server publishes this operation only through the request-bound `IndexReconciliationOperatorRuntime`; no transport is added.
 
-## Request contract
+## Request and scope contract
 
-`IndexReconciliationRequeueRequest` requires:
+`IndexReconciliationRequeueRequest` requires non-nil tenant, failed-job, and actor UUIDs plus one explicit trimmed, control-character-free reason of at most 512 UTF-8 bytes.
 
-- one non-nil tenant UUID;
-- one non-nil failed job UUID;
-- one non-nil actor UUID;
-- one explicit reason bounded to 512 UTF-8 bytes.
-
-The reason must be non-empty, trimmed, and free of control characters. The crate adapter does not infer an actor or reason.
-
-## Scope locking
-
-The recovery store first resolves the exact `kind = 'reconcile'` job and validates that it has schema scope.
-
-Before changing state it acquires the same PostgreSQL transaction-scoped advisory lock used by normal reconciliation admission:
+The store resolves the exact schema-scoped reconciliation job and acquires the same PostgreSQL transaction-scoped advisory lock used by normal reconciliation admission:
 
 ```text
 reconcile␟tenant␟module␟entity␟schema-version
 ```
 
-The row is then selected again under the lock. A missing job returns `NotFound`; a non-failed job returns `NotFailed`. A concurrent state or epoch change fails closed.
+It then rereads under the lock. Missing jobs return `NotFound`; non-failed jobs return `NotFailed`; concurrent state or epoch changes fail closed.
 
-## Atomic reset
+## Atomic reset and immutable audit
 
-For an exact failed row, one transaction:
+One transaction:
 
 1. increments `retry_epoch`;
-2. changes `state` from `failed` to `pending`;
+2. changes `failed -> pending`;
 3. resets `attempt_count` to zero;
 4. installs a fresh `index_reconciliation_cursor_v1` cursor;
 5. clears lease, heartbeat, cancellation, error, and completion fields;
-6. makes the job immediately available;
-7. appends one audit record containing the exact tenant, job, actor, action, reason, prior attempt count, and new retry epoch.
+6. sets immediate availability;
+7. appends tenant/job/actor/action/reason/prior-attempt/new-epoch audit evidence.
 
-The next ordinary runner admission claims the same pending job and begins attempt one of the new retry epoch.
-
-The audit insert and job reset commit or roll back together.
-
-## Immutable audit ledger
-
-`index_reconciliation_recovery_audits` is append-only.
-
-The migration installs database-level `BEFORE UPDATE` and `BEFORE DELETE` rejection triggers for PostgreSQL and SQLite. Each tenant/job/retry-epoch tuple is unique, preventing duplicate audit admission for the same recovery epoch.
-
-The audit ledger does not contain raw failure diagnostics, request or cursor JSON, worker or lease fields, SQL, database causes, or transport context.
+The audit insert and job reset commit or roll back together. Database triggers reject audit update/delete, and `(tenant_id, job_id, retry_epoch)` is unique.
 
 ## Authorized server composition
 
 `IndexReconciliationOperatorRuntime::requeue_dead_letter(context, job_id, reason)` accepts no tenant or actor argument.
 
-The method performs these steps in order:
-
-1. authorizes the exact request-bound context through `permissions_for(context.tenant_id(), context.actor_id())`;
-2. requires effective `Permission::MODULES_MANAGE`;
-3. constructs the crate request with `context.tenant_id()` and `context.actor_id()`;
-4. delegates to `PostgresIndexReconciliationRecoveryStore::requeue_failed`.
-
-Authorization occurs before job/reason validation and before database access. Missing request authority and insufficient permission therefore fail before recovery DTO validation.
-
-The server returns only the bounded crate outcome and typed errors. It does not expose the database connection, recovery store, direct SQL, raw failure diagnostics, request/cursor payload, or audit-row mutation capability.
-
-Composition constructs the recovery store beside the canonical reconciliation runner and read-only dead-letter inspector after the immutable source/schema registries have been frozen. Missing sources publish no false capability, incomplete registry composition fails closed, and duplicate materialization remains rejected.
-
-## Transport boundary
+It authorizes the request-bound context, requires effective `Permission::MODULES_MANAGE`, derives tenant and actor from the context, constructs the bounded request, and delegates to the recovery store. Authorization occurs before job/reason validation and database access.
 
 GraphQL, HTTP, CLI, MCP, native admin, and other command transports remain open.
 
-A future transport must obtain the existing request-bound operator context, accept only job UUID plus explicit reason, and preserve the stable typed error mapping. It must not accept an independent tenant or actor identity.
+## Scheduler interaction
+
+The module-owned host scheduler is additive and unchanged by manual recovery. Requeue makes the same job immediately pending in a new retry epoch; generic due discovery can then submit it to the canonical runner. Actual claim, attempt-one fencing, cancellation, retry, exhaustion, and terminal state remain runner-owned.
+
+Automatic retry creates no recovery audit and never increments the manual retry epoch.
 
 ## Explicitly open
 
 - command transport mapping;
-- automatic retry, backoff, exhaustion, scheduling, and graceful shutdown;
-- retained PostgreSQL concurrency, authorization, and recovery execution evidence;
+- retained PostgreSQL concurrency, authorization, recovery, due scheduling, restart, and multi-host evidence;
+- operator-visible scheduler health and metrics;
 - source/index digest comparison and orphan diagnosis;
 - targeted, full, or shadow repair admission;
 - locale or partition checkpoint dimensions;
 - complete drift repair.
 
-The canonical bounded retry/global scheduling and drift-diagnosis/targeted-repair roadmap items remain open.
+The canonical bounded retry/global scheduling item remains open pending owner-retained production and multi-host evidence. The drift-diagnosis/targeted-repair item remains open.
 
 ## Validation ownership
 

@@ -60,17 +60,26 @@ resolves the exact registered property schema from `ContributionAssemblyResult`,
 schema equality with the runtime, loads an optimistic-revision snapshot through the consumer port and
 returns only a typed save receipt. The current Leptos panel is an adapter; persistence, transport,
 revision semantics and field values remain consumer-owned. A facade may supply the runtime directly,
-or an owner composition root may provide it through Leptos context. The same contract is intended for
-a future Dioxus adapter without changing consumer persistence.
+or an owner composition root may provide it through Leptos context. The exported
+`ConsumerPropertiesPanel` can render in a canvas or standalone host without transferring persistence
+ownership. The same contract is intended for a future Dioxus adapter without changing consumer
+persistence.
 
 `rustok-pages` is the first production contextual consumer. Preview projects the active Fly page,
 passes selected runtime context/scenario and rejects late responses when project hash, active page,
-context or scenario changed. Pages now also registers `rustok.pages.metadata` with six typed fields and
+context or scenario changed. Pages registers `rustok.pages.metadata` with six typed fields and
 provides a port that loads through `fetch_page`, saves through `patch_page_metadata`, binds the command
 to `pages:{page_id}:metadata:v{version}`, rejects stale versions and never writes the Fly document.
-The executable panel is mounted in the Fly properties column for draft workspaces. The older bespoke
-`PageMetadataEditor` still exists in the Pages composition and must be removed in a separate cutover
-that preserves metadata editing for published pages.
+The canonical panel is mounted in the Fly properties column for draft workspaces and in the
+Pages-owned standalone published surface without mounting an editable Fly canvas. The bespoke
+`PageMetadataEditor` and its direct workspace persistence path are removed.
+
+The metadata owner port also exposes a private source-test transport seam. Production still delegates
+to the same Pages fetch and patch transports. Focused regressions require the current metadata version
+to be rechecked before patch transport, require exact `REVISION_CONFLICT` on stale input with zero
+patch calls, and record a metadata-only request while an external dirty Fly sentinel remains unchanged.
+These regressions and the corresponding static evidence are source-ready and unvalidated; no executed
+packet is claimed.
 
 For durable page publication, Pages owns one atomic service boundary:
 
@@ -146,7 +155,8 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 
 - `contracts/page-builder-service-boundary.json` records capability/preview ports and composition.
 - `contracts/page-builder-consumer-properties.json` records the framework-neutral property schema,
-  port/runtime, Pages owner adapter, independent metadata revision and pending bespoke-form removal.
+  port/runtime, Pages owner adapter, independent metadata revision, complete registered UI cutover and
+  the source-ready metadata revision/isolation evidence registration.
 - `contracts/page-builder-fba-registry.json` records provider/consumer versions, executable consumer
   properties, policy-bound sanitization/materialization persistence, exact publish manifests,
   immutable rollback and the Pages cache consumer boundary.
@@ -160,8 +170,11 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
   non-builder lifecycle boundaries.
 - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs` source-locks exact
-  contribution-schema binding, Pages ownership, optimistic metadata revision and the absence of Fly
-  document writes. Its current contract explicitly reports the bespoke form as pending removal.
+  contribution-schema binding, Pages ownership, optimistic metadata revision, registered draft and
+  published surfaces, legacy-form absence and the absence of production Fly document writes.
+- `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs` source-locks
+  conflict-before-patch ordering, exact stale conflict, metadata-only transport shape, dirty Fly
+  isolation regressions and the unvalidated machine evidence boundary.
 - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs` source-locks Pages ownership
   of cache scopes/keys, event-driven invalidation, neutral server capabilities and authorization/cache/
   owner-source ordering in storefront and artifact readers.
@@ -172,9 +185,9 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 ## FFA/FBA status
 
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
-  rollback transport, generation-aware Pages storefront/artifact readers and executable typed Pages
-  metadata properties are connected. Removing the bespoke metadata form, preserving the property
-  surface for published pages and inline edit mode remain open.
+  typed rollback control, generation-aware Pages storefront/artifact readers and registered draft and
+  published Pages metadata properties are connected. Executed metadata conflict/isolation evidence,
+  inline edit mode and anonymous bundle evidence remain open.
 - **FBA:** `boundary_ready` for preview, consumer-property contracts and policy-bound
   sanitization/materialization, and `service_and_public_transport_integrated` for Pages reviewed
   publication and immutable rollback. The default-runtime lifecycle is removed and source-level cache
@@ -198,7 +211,11 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
   - `admin/src/editor/publish_scenario_selector.rs`;
   - `crates/rustok-pages/admin/src/contributions.rs`;
   - `crates/rustok-pages/admin/src/metadata_properties.rs`;
+  - `crates/rustok-pages/admin/src/standalone_metadata.rs`;
   - `crates/rustok-pages/admin/src/lib.rs`;
+  - `crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json`;
+  - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
+  - `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
   - `crates/rustok-pages/src/dto/page.rs`;
   - `crates/rustok-pages/src/services/page/reviewed_publish.rs`;
   - `crates/rustok-pages/src/services/page/rollback.rs`;
@@ -219,16 +236,14 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
   - `crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs`;
   - `scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
   - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
   - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
   - `crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`.
 
 ## Open results
 
-1. Remove the bespoke Pages `PageMetadataEditor` and render the registered consumer property surface
-   for both draft and published metadata without mounting an editable Fly document for published pages.
-2. Retain an accepted metadata packet proving independent revision conflicts and that metadata saves
-   cannot mutate or replace a dirty Fly document.
+1. Run and retain the focused stale metadata revision and dirty Fly isolation packets.
+2. Retain a published metadata browser packet proving the registered save advances only metadata
+   version while the editable Fly canvas remains unmounted.
 3. Retain an accepted sanitizer packet covering unsafe authoring input and runtime-injected URL/CSS
    rejection with policy hash, reviewed publish receipt and zero persisted artifact/event side effects.
 4. Retain accepted publish and rollback cache packets correlating receipt, `NodePublished`, handler
@@ -248,6 +263,9 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
+- `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`;
+- `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
