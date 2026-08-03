@@ -1,0 +1,60 @@
+name: Fix RBAC installation binding harness
+
+on:
+  push:
+    branches:
+      - agent/core-rbac-cycle-001-20260803
+    paths:
+      - .github/workflows/fix-rbac-installation-binding-harness.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-harness:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out verification branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/core-rbac-cycle-001-20260803
+          fetch-depth: 1
+
+      - name: Require both installation count assertions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/patch-rbac-installation-scope-binding.yml')
+          text = path.read_text()
+          old = """          upgrade = replace_once(
+              upgrade,
+              '    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);',
+              '    assert_eq!(count(&db, \"rbac_artifact_permission_installations\").await, 1);\\n    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);',
+              \"upgrade binding count assertion\",
+          )
+"""
+          new = """          binding_definition_count = '    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);'
+          binding_definition_count_with_installation = '    assert_eq!(count(&db, \"rbac_artifact_permission_installations\").await, 1);\\n    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);'
+          if upgrade.count(binding_definition_count) != 2:
+              raise SystemExit(
+                  f\"upgrade binding count assertion: expected two matches, found {upgrade.count(binding_definition_count)}\"
+              )
+          upgrade = upgrade.replace(
+              binding_definition_count,
+              binding_definition_count_with_installation,
+          )
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'count assertion harness: expected one block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit harness repair
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/patch-rbac-installation-scope-binding.yml
+          git commit -m "ci: require both RBAC installation count assertions"
+          git push origin HEAD:agent/core-rbac-cycle-001-20260803
