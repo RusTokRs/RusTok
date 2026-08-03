@@ -53,8 +53,12 @@ impl CatalogSearchOptionsErrorContext {
     }
 
     fn map_error(&self, raw_error: String) -> String {
+        let raw_error_present = !raw_error.is_empty();
+        let raw_error_length = raw_error.chars().count();
+
         tracing::error!(
-            raw_error = %raw_error,
+            raw_error_present,
+            raw_error_length,
             owner = PRODUCT_ADMIN_CATALOG_OPTIONS_OWNER,
             owner_operation = PRODUCT_ADMIN_CATALOG_OPTIONS_OPERATION,
             correlation_id = %self.correlation_id,

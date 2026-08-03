@@ -105,7 +105,10 @@ for (const marker of [
   "uuid::Uuid::new_v4()",
   '"product-admin-catalog-options:{PRODUCT_ADMIN_CATALOG_OPTIONS_OPERATION}:{}"',
   "fn map_error(&self, raw_error: String) -> String",
-  "raw_error = %raw_error",
+  "let raw_error_present = !raw_error.is_empty();",
+  "let raw_error_length = raw_error.chars().count();",
+  "raw_error_present,",
+  "raw_error_length,",
   "correlation_id = %self.correlation_id",
   "token_present = self.token_present",
   "tenant_slug_length = ?self.tenant_slug_length",
@@ -117,6 +120,10 @@ for (const marker of [
   requireText(publicTransport, marker, `${paths.publicTransport}: correlation-safe static mapping`);
 }
 for (const marker of [
+  "raw_error = %raw_error",
+  "raw_error = ?raw_error",
+  "error = %raw_error",
+  "error = ?raw_error",
   "token = %",
   "token = ?",
   "tenant_slug = %",
@@ -126,7 +133,7 @@ for (const marker of [
   "tenant_id = %",
   "tenant_id = ?",
 ]) {
-  forbidText(publicTransport, marker, `${paths.publicTransport}: raw request values must not be logged`);
+  forbidText(publicTransport, marker, `${paths.publicTransport}: raw diagnostic or request values must not be logged`);
 }
 
 const legacyBlock = between(
@@ -190,7 +197,9 @@ if (
 for (const [key, expected] of Object.entries({
   native_first_preserved: true,
   graphql_bootstrap_categories_attributes_order_preserved: true,
-  legacy_raw_error_capture_private: true,
+  legacy_raw_error_capture_private: false,
+  raw_error_shape_only: true,
+  raw_graphql_error_logged: false,
   raw_graphql_error_public: false,
   unique_correlation_id: true,
   safe_request_shape_only: true,
@@ -204,6 +213,17 @@ for (const [key, expected] of Object.entries({
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
   }
+}
+for (const marker of [
+  "raw_error_present",
+  "raw_error_length",
+]) {
+  if (!evidence.safe_diagnostics?.includes(marker)) {
+    failures.push(`${paths.evidence}: safe_diagnostics must include ${marker}`);
+  }
+}
+if (evidence.safe_diagnostics?.includes("private_raw_graphql_error")) {
+  failures.push(`${paths.evidence}: safe_diagnostics must not retain private_raw_graphql_error`);
 }
 for (const key of [
   "tests_run",
@@ -237,6 +257,7 @@ requireText(
   `${paths.doc}: static public contract`,
 );
 requireText(doc, "native-first fallback policy", `${paths.doc}: preserved fallback policy`);
+requireText(doc, "does not write the captured error text", `${paths.doc}: bounded diagnostic policy`);
 
 if (failures.length > 0) {
   console.error("Product Admin catalog search-options error-safety verification failed:");
@@ -245,5 +266,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Product Admin catalog search-option failures use one correlation-safe static public String; execution evidence remains open",
+  "Product Admin catalog search-option failures use one static public String and bounded private diagnostics; execution evidence remains open",
 );
