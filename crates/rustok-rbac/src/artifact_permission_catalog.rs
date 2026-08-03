@@ -115,6 +115,10 @@ fn storage_error(error: impl std::fmt::Display) -> PortError {
 
 fn validate_request(request: &ArtifactPermissionRegistrationRequest) -> Result<(), PortError> {
     if request.installation_id.is_nil()
+        || matches!(
+            &request.scope,
+            ArtifactPermissionScope::Tenant { tenant_id } if tenant_id.is_nil()
+        )
         || request.module_slug.trim().is_empty()
         || request.release_digest.trim().is_empty()
         || request.permissions.is_empty()
@@ -288,6 +292,24 @@ mod tests {
             .await
             .expect_err("identity rebinding must fail closed");
         assert_eq!(error.code, "rbac.artifact_permission_identity_conflict");
+    }
+
+    #[tokio::test]
+    async fn registration_rejects_nil_tenant_scope() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        let catalog = RbacArtifactPermissionCatalog::new(database);
+        let mut request = request(Uuid::new_v4());
+        request.scope = ArtifactPermissionScope::Tenant {
+            tenant_id: Uuid::nil(),
+        };
+
+        let error = catalog
+            .register_admitted_permissions(request)
+            .await
+            .expect_err("nil tenant scope must fail closed");
+        assert_eq!(error.code, "rbac.artifact_permission_registration_invalid");
     }
 
     #[tokio::test]
