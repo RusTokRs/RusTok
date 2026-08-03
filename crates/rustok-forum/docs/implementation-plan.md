@@ -1140,6 +1140,9 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
   `category_visibility_policy_sqlite` and
   `verify-forum-category-visibility-policy.mjs` lock inheritance, tenant
   isolation, monotonic narrowing and database enforcement;
+- the static audit also repairs the already-merged FORUM-20A storefront drift
+  error to construct the typed `rustok_core::Error` required by
+  `ForumError::Internal`;
 - this slice adds no transport, storefront, topic/reply read composition, role,
   trust, group or explicit allow/deny behavior.
 
@@ -2497,9 +2500,8 @@ grouping, digests, retention and delivery attempts. It does not own source
 subscriptions, SMTP, push vendor SDKs, user identity or source authorization.
 
 Define source-provider registration for semantic event descriptors, bounded
-audience resolution and per-recipient target-open authorization. Producer
-modules declare an optional capability and continue to work when notifications
-is absent.
+audience resolution and target-open authorization. Producer modules declare an
+optional capability and continue to work when notifications is absent.
 
 ### Delivered in `NOTIFY-00A`
 
