@@ -23,6 +23,7 @@ const paths = {
   nextUi: "apps/next-admin/packages/forum/src/components/forum-topic-merge.tsx",
   nextNav: "apps/next-admin/packages/forum/src/nav.ts",
   nextPage: "apps/next-admin/src/app/dashboard/forum/merge/page.tsx",
+  nextProxy: "apps/next-admin/src/app/api/rustok/graphql/route.ts",
   nextEn: "apps/next-admin/packages/forum/src/locales/en.json",
   nextRu: "apps/next-admin/packages/forum/src/locales/ru.json",
 };
@@ -52,6 +53,7 @@ const nextApi = read(paths.nextApi);
 const nextUi = read(paths.nextUi);
 const nextNav = read(paths.nextNav);
 const nextPage = read(paths.nextPage);
+const nextProxy = read(paths.nextProxy);
 const nextEn = JSON.parse(read(paths.nextEn));
 const nextRu = JSON.parse(read(paths.nextRu));
 
@@ -71,6 +73,9 @@ assert.equal(contract.leptos_admin.native_server_path_claimed, false);
 assert.equal(contract.leptos_admin.access_token_in_server_function_dto, false);
 assert.equal(contract.leptos_admin.rest_fallback, false);
 assert.equal(contract.next_admin.candidate_limit, 100);
+assert.equal(contract.next_admin.browser_transport, "same_origin_graphql_proxy");
+assert.equal(contract.next_admin.proxy_session_authentication, true);
+assert.equal(contract.next_admin.client_access_token_serialized, false);
 assert.equal(contract.command_policy.exact_retry_reuses_operation_id, true);
 assert.equal(
   contract.command_policy.source_target_reason_or_solution_change_rotates_operation_id,
@@ -194,6 +199,7 @@ includesAll(
 includesAll(
   nextUi,
   [
+    "type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>",
     "buildForumTopicMergeCommand",
     "commandShapeChanged",
     "mergeForumTopics",
@@ -203,6 +209,7 @@ includesAll(
   "Next merge UI",
 );
 assert.ok(!nextUi.includes("fetch("));
+assert.ok(!nextUi.includes("gqlOpts?: GqlOpts"));
 includesAll(
   nextNav,
   [
@@ -214,15 +221,21 @@ includesAll(
 );
 includesAll(
   nextPage,
-  [
-    "getSession",
-    "listForumTopics",
-    "ForumTopicMerge",
-    "tenantId",
-  ],
+  ["auth", "listForumTopics", "ForumTopicMerge", "tenantId"],
   "Next host composition",
 );
 assert.ok(!nextPage.includes("mergeForumTopic"));
+assert.ok(!nextPage.includes("gqlOpts={{ token"));
+includesAll(
+  nextProxy,
+  [
+    "import { auth } from '@/auth'",
+    "if (!headers.has('authorization'))",
+    "session?.user?.rustokToken",
+    "headers.set('authorization'",
+  ],
+  "Next authenticated GraphQL proxy",
+);
 assert.equal(nextEn.title, "Merge forum topics");
 assert.equal(nextRu.title, "Объединение тем форума");
 
@@ -233,6 +246,7 @@ includesAll(
     "`source_ready_maintainer_execution_pending`",
     paths.contract,
     "single-adapter GraphQL state",
+    "never serializes that token into the client component",
     "No command above was run by the implementation agent",
   ],
   "FORUM-21N handoff",
