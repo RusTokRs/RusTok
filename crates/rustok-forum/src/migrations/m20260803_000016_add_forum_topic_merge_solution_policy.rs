@@ -174,7 +174,7 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS forum_00_topic_solution_scope_update
-BEFORE UPDATE OF tenant_id, topic_id, reply_id ON forum_solutions
+BEFORE UPDATE ON forum_solutions
 FOR EACH ROW
 BEGIN
     INSERT INTO forum_topic_solution_locks (tenant_id, topic_id, touched_at)
