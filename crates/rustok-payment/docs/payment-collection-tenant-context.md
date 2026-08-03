@@ -78,8 +78,7 @@ This slice does not change:
 - reusable collection lookup, create, or race-adoption behavior;
 - collection status reads or snapshot conversion;
 - the admission diagnostic mapper closed by the preceding source slice;
-- canonical `PaymentError` variant mapping;
-- provider, lifecycle, reconciliation, configuration, or database public envelopes;
+- provider, lifecycle, reconciliation, configuration, or database public kinds/retryability;
 - checkout execution or compensation consumers;
 - Commerce orchestration;
 - ecommerce audit, Payment FFA, or Payment FBA status.
@@ -100,7 +99,7 @@ It requires:
 - bounded context and message-shape facts;
 - one warning path followed by return of the same constructed error;
 - unchanged admission helpers and collection flow;
-- explicit preservation of the canonical Payment mapper as a separate open boundary;
+- the separately closed canonical Payment owner mapper contract;
 - absence of complete parse errors, complete `PortError`, raw context, message text, and Debug kind
   output inside the covered parser.
 
@@ -110,11 +109,20 @@ Source evidence is recorded in:
 
 The evidence remains source-only: `execution` is empty and every validation flag is false.
 
-## Remaining diagnostic boundary
+## Related owner mapper contract
 
-Canonical `payment_error_to_port_error` remains the next separate cleanup slice. It still contains
-raw validation and transition text, provider identifiers and operations, database errors, raw
-tenant values, and public not-found messages that interpolate owner UUIDs.
+Canonical `payment_error_to_port_error` is now closed by a separate source-only contract:
+
+- verifier: `scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs`;
+- evidence:
+  `crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`;
+- documentation:
+  `crates/rustok-payment/docs/payment-collection-owner-error-diagnostic-safety.md`.
+
+That contract replaces raw validation/transition text, provider identifiers and operations,
+database errors, raw delegated context, and UUID-bearing public not-found messages with closed
+variant and aggregate shape facts plus static public envelopes. Stable codes, kinds, retryability,
+owner operations, and technical-versus-ordinary severity remain explicit.
 
 Compile, runtime, replay, restart, remote-port parity, workflows, CI, and production evidence
 remain open. The broad ecommerce correlation-safe mapper cleanup remains open, and no FFA/FBA
@@ -126,6 +134,7 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-payment-collection-tenant-context.mjs
+node scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs
 node scripts/verify/verify-payment-collection-admission-context.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-payment --lib

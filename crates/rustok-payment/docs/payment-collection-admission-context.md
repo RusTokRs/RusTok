@@ -86,8 +86,7 @@ This slice does not change:
 - tenant UUID validation envelope;
 - reusable collection lookup, create, or race-adoption behavior;
 - collection status reads or snapshot conversion;
-- `PaymentError` variant mapping;
-- provider, lifecycle, reconciliation, configuration, or database public envelopes;
+- provider, lifecycle, reconciliation, configuration, or database public kinds/retryability;
 - checkout execution or compensation consumers;
 - Commerce orchestration;
 - ecommerce audit, Payment FFA, or Payment FBA status.
@@ -117,25 +116,27 @@ Source evidence is recorded in:
 
 The evidence remains source-only: `execution` is empty and every validation flag is false.
 
-## Related tenant contract
+## Related tenant and owner contracts
 
-Tenant UUID parsing is now closed by a separate source-only contract:
+Tenant UUID parsing and canonical `payment_error_to_port_error` are now closed by separate
+source-only contracts:
 
-- verifier: `scripts/verify/verify-payment-collection-tenant-context.mjs`;
-- evidence:
+- tenant verifier: `scripts/verify/verify-payment-collection-tenant-context.mjs`;
+- tenant evidence:
   `crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`;
-- documentation: `crates/rustok-payment/docs/payment-collection-tenant-context.md`.
+- owner mapper verifier:
+  `scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs`;
+- owner mapper evidence:
+  `crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`.
 
-That contract replaces the complete parse error, complete constructed `PortError`, raw delegated
-context, internal message text, and Debug kind output with type/shape-only facts while preserving
-the same parser call sites and validation envelope. It does not change the admission mapper
-covered here.
+The tenant contract replaces the complete parse error, complete constructed `PortError`, raw
+delegated context, internal message text, and Debug kind output with type/shape-only facts while
+preserving parser call sites and the validation envelope.
 
-## Remaining diagnostic boundary
-
-Canonical `payment_error_to_port_error` remains the next open collection boundary. It still
-contains raw validation and transition text, provider identifiers and operations, database errors,
-raw tenant values, and public not-found messages that interpolate owner UUIDs.
+The owner mapper contract replaces raw validation/transition text, provider identifiers and
+operations, database errors, raw delegated context, and UUID-bearing public not-found messages with
+closed variant and aggregate shape facts plus static public envelopes. Stable codes, kinds,
+retryability, exact owner operations, and technical-versus-ordinary severity remain explicit.
 
 Compile, runtime, replay, restart, remote-port parity, workflows, CI, and production evidence
 remain open. The broad ecommerce correlation-safe mapper cleanup remains open, and no FFA/FBA
@@ -148,6 +149,7 @@ These commands were intentionally not run by the implementation agent:
 ```bash
 node scripts/verify/verify-payment-collection-admission-context.mjs
 node scripts/verify/verify-payment-collection-tenant-context.mjs
+node scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-payment --lib
 ```

@@ -37,8 +37,7 @@ const order = read('crates/rustok-order/src/ports.rs');
 const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
 const orderPaymentSettlement = read('crates/rustok-order/src/checkout_payment_settlement.rs');
 const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs');
-const orderCheckoutAdapters =
-  orderCompensation + orderPaymentSettlement + orderRecovery;
+const orderCheckoutAdapters = orderCompensation + orderPaymentSettlement + orderRecovery;
 
 for (const [source, label] of [
   [channel, 'channel port'],
@@ -115,8 +114,27 @@ forbidAll(payment, [
   'format!("payment provider `{provider_id}` is unavailable for `{operation}`")',
   'format!("payment provider `{provider_id}` rejected `{operation}`")',
   'format!("payment provider `{provider_id}` outcome is unknown for `{operation}`")',
+  'format!("payment collection {id} not found")',
+  'format!("payment for collection {id} not found")',
+  'format!("refund {id} not found")',
   '.map_err(payment_error_to_port_error)',
 ], 'payment collection public error mapping');
+forbidAll(payment, [
+  'cause = %message',
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'provider_id = %provider_id',
+  'provider_operation = %operation',
+  'from = %from',
+  'to = %to',
+], 'payment collection payload diagnostics');
 
 forbidAll(paymentCompensation, [
   'fn manual_reconciliation(message: impl Into<String>)',
@@ -222,27 +240,11 @@ requireText(payment, 'operation = owner_operation', 'payment owner operation log
 requireText(fulfillment, 'correlation_id = %context.correlation_id', 'fulfillment correlation logging');
 requireText(customer, 'correlation_id = %context.correlation_id', 'customer correlation logging');
 requireText(inventory, 'correlation_id = %context.correlation_id', 'inventory correlation logging');
-requireText(
-  inventory,
-  'storage_unavailable_with_context(&context, owner_operation, error)',
-  'inventory identity storage mapping',
-);
-requireText(
-  inventory,
-  'storage_unavailable_with_context(context, owner_operation, error)',
-  'inventory helper storage mapping',
-);
+requireText(inventory, 'storage_unavailable_with_context(&context, owner_operation, error)', 'inventory identity storage mapping');
+requireText(inventory, 'storage_unavailable_with_context(context, owner_operation, error)', 'inventory helper storage mapping');
 requireText(order, 'correlation_id = %context.correlation_id', 'order generic correlation logging');
-requireText(
-  orderCompensation,
-  'correlation_id = %context.correlation_id',
-  'order compensation correlation logging',
-);
-requireText(
-  orderRecovery,
-  'correlation_id = %context.correlation_id',
-  'order recovery correlation logging',
-);
+requireText(orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging');
+requireText(orderRecovery, 'correlation_id = %context.correlation_id', 'order recovery correlation logging');
 
 const required = [
   [pricing, [
@@ -287,23 +289,43 @@ const required = [
     'let owner_operation = "upsert_variant_price"',
   ], 'pricing'],
   [payment, [
+    'struct PaymentCollectionOwnerErrorFacts',
+    'fn payment_collection_owner_error_facts(',
+    'fn payment_collection_owner_error_code(',
+    'fn payment_collection_owner_error_is_technical(',
+    'owner_error_variant = error_facts.error_variant',
+    'owner_error_text_field_count = error_facts.text_field_count',
+    'owner_error_text_total_length = error_facts.text_total_length',
+    'owner_error_uuid_field_count = error_facts.uuid_field_count',
+    'owner_error_uuid_non_nil_count = error_facts.uuid_non_nil_count',
+    'owner_error_opaque_payload_present = error_facts.opaque_payload_present',
     'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
+    'tenant_id_length',
+    'actor_kind',
+    'claim_count',
+    'role_count',
     'operation = owner_operation',
-    'code = "payment.validation"',
-    'code = "payment.invalid_transition"',
-    'code = "payment.provider_unavailable"',
-    'code = "payment.provider_rejected"',
-    'code = "payment.provider_invalid_response"',
-    'code = "payment.provider_outcome_unknown"',
-    'code = "payment.provider_not_configured"',
-    'code = "payment.database_unavailable"',
+    'boundary = PAYMENT_COLLECTION_PORT_BOUNDARY',
+    '"payment.validation"',
+    '"payment.collection_not_found"',
+    '"payment.payment_not_found"',
+    '"payment.refund_not_found"',
+    '"payment.invalid_transition"',
+    '"payment.provider_unavailable"',
+    '"payment.provider_rejected"',
+    '"payment.provider_invalid_response"',
+    '"payment.provider_outcome_unknown"',
+    '"payment.provider_not_configured"',
+    '"payment.database_unavailable"',
+    '"payment collection was not found"',
+    '"payment was not found"',
+    '"refund was not found"',
     '"payment storage is temporarily unavailable"',
     '"payment provider outcome requires reconciliation"',
     '"payment provider response could not be applied safely"',
     '"payment provider rejected the requested operation"',
     '"payment request is invalid"',
-    'payment_error_to_port_error(&context, "read_collection_status"',
+    'payment_error_to_port_error(&context, owner_operation, error)',
   ], 'payment'],
   [paymentCompensation, [
     'correlation_id = %context.correlation_id',
