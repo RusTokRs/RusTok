@@ -115,7 +115,7 @@ requireAll('existing recovery reconciliation', recovery, [
 requireAll('production canonical writer', writer, [
   'RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter',
   'publish_contract_once_direct_in_tx_with_envelope_id',
-  'Delivery remains owned by',
+  'delivery remains owned by',
 ]);
 
 requireAll('restart ambiguity harness', harness, [
