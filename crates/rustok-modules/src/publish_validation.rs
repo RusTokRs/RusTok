@@ -1,8 +1,11 @@
 //! Pure owner validation for registry publish bundles.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{ModulePublicationArtifactOrigin, ModulePublishValidationContract};
+use crate::{
+    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, ModuleArtifactSourceManifest,
+    ModulePublicationArtifactOrigin, ModulePublishValidationContract,
+};
 
 /// Maximum accepted serialized publish bundle size. The bundle carries only
 /// registry metadata and bounded manifest text, never an executable payload.
@@ -16,12 +19,88 @@ pub const MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES: usize = 1024 * 1024;
 
 /// Required `artifact_type` for an uploaded registry publish bundle.
 pub const MODULE_PUBLISH_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
+/// Canonical media type for the bounded registry metadata bundle.
+pub const MODULE_PUBLISH_BUNDLE_CONTENT_TYPE: &str = "application/json";
 
 /// Content-free validation evidence suitable for durable governance events.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ModulePublishBundleValidation {
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
+}
+
+/// Current authoring files embedded in the bounded registry metadata bundle.
+/// Executable Component bytes are published and addressed separately in OCI.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModulePublishBundleFiles {
+    pub source_manifest: String,
+    pub crate_manifest: String,
+    pub admin_manifest: Option<String>,
+    pub storefront_manifest: Option<String>,
+}
+
+/// Builds the one canonical metadata bundle and immediately validates the
+/// serialized representation against the same owner contract used by the
+/// isolated registry-validation worker.
+pub fn build_module_publish_bundle(
+    contract: &ModulePublishValidationContract,
+    files: ModulePublishBundleFiles,
+) -> Result<Vec<u8>, ModulePublishBundleValidation> {
+    let bundle = Bundle {
+        schema_version: 1,
+        artifact_type: MODULE_PUBLISH_BUNDLE_TYPE.to_string(),
+        module: BundleModule {
+            slug: contract.slug.clone(),
+            version: contract.version.clone(),
+            crate_name: contract.crate_name.clone(),
+            module_name: contract.module_name.clone(),
+            module_description: contract.module_description.clone(),
+            ownership: contract.ownership.clone(),
+            trust_level: contract.trust_level.clone(),
+            license: contract.license.clone(),
+            module_entry_type: contract.entry_type.clone(),
+            marketplace: BundleMarketplace {
+                category: contract.marketplace_category.clone(),
+                tags: normalize_string_list(&contract.marketplace_tags),
+            },
+            ui_packages: BundleUiPackages {
+                admin: contract
+                    .admin_ui_crate_name
+                    .as_ref()
+                    .map(|crate_name| BundleUiPackage {
+                        crate_name: crate_name.clone(),
+                    }),
+                storefront: contract
+                    .storefront_ui_crate_name
+                    .as_ref()
+                    .map(|crate_name| BundleUiPackage {
+                        crate_name: crate_name.clone(),
+                    }),
+            },
+        },
+        files: BundleFiles {
+            source_manifest: Some(files.source_manifest),
+            crate_manifest: Some(files.crate_manifest),
+            admin_manifest: files.admin_manifest,
+            storefront_manifest: files.storefront_manifest,
+        },
+    };
+    let bytes = match serde_json::to_vec(&bundle) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Err(ModulePublishBundleValidation {
+                warnings: Vec::new(),
+                errors: vec!["Registry publish bundle serialization failed.".to_string()],
+            });
+        }
+    };
+    let validation =
+        validate_module_publish_bundle(contract, MODULE_PUBLISH_BUNDLE_CONTENT_TYPE, &bytes);
+    if validation.errors.is_empty() {
+        Ok(bytes)
+    } else {
+        Err(validation)
+    }
 }
 
 /// Validates the delivery representation selected by immutable artifact
@@ -57,7 +136,7 @@ fn validate_alloy_workspace_delivery(
         ));
         return validation;
     }
-    if content_type != crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE {
+    if content_type != rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE {
         validation
             .errors
             .push("Alloy workspace artifact content type is unsupported.".to_string());
@@ -102,7 +181,7 @@ fn validate_alloy_workspace_delivery(
     validation
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Bundle {
     schema_version: u32,
     artifact_type: String,
@@ -110,7 +189,7 @@ struct Bundle {
     files: BundleFiles,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BundleModule {
     slug: String,
     version: String,
@@ -125,28 +204,28 @@ struct BundleModule {
     ui_packages: BundleUiPackages,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct BundleMarketplace {
     category: Option<String>,
     #[serde(default)]
     tags: Vec<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct BundleUiPackages {
     admin: Option<BundleUiPackage>,
     storefront: Option<BundleUiPackage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BundleUiPackage {
     crate_name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BundleFiles {
-    #[serde(rename = "rustok-module.toml")]
-    package_manifest: Option<String>,
+    #[serde(rename = "module-artifact.json")]
+    source_manifest: Option<String>,
     #[serde(rename = "Cargo.toml")]
     crate_manifest: Option<String>,
     #[serde(rename = "admin/Cargo.toml")]
@@ -304,9 +383,9 @@ fn validate_file_contract(
     bundle: &Bundle,
     validation: &mut ModulePublishBundleValidation,
 ) {
-    let package_manifest = require_file(
-        "rustok-module.toml",
-        bundle.files.package_manifest.as_deref(),
+    let source_manifest = require_file(
+        MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
+        bundle.files.source_manifest.as_deref(),
         validation,
     );
     let crate_manifest = require_file(
@@ -336,8 +415,8 @@ fn validate_file_contract(
         storefront_manifest.is_some(),
         validation,
     );
-    if let Some(source) = package_manifest {
-        validate_package_manifest(source, contract, validation);
+    if let Some(source) = source_manifest {
+        validate_source_manifest(source, contract, validation);
     }
     if let Some(source) = crate_manifest {
         validate_cargo_manifest(
@@ -390,98 +469,30 @@ fn validate_ui_file_presence(
     }
 }
 
-fn validate_package_manifest(
+fn validate_source_manifest(
     source: &str,
     contract: &ModulePublishValidationContract,
     validation: &mut ModulePublishBundleValidation,
 ) {
-    let manifest = match source.parse::<toml::Table>() {
-        Ok(manifest) => toml::Value::Table(manifest),
+    let manifest = match ModuleArtifactSourceManifest::parse(source.as_bytes()) {
+        Ok(manifest) => manifest,
         Err(_) => {
-            validation
-                .errors
-                .push("Artifact file rustok-module.toml is not valid TOML.".to_string());
+            validation.errors.push(format!(
+                "Artifact file {MODULE_ARTIFACT_SOURCE_MANIFEST_FILE} is not a valid current source manifest."
+            ));
             return;
         }
     };
-    validate_toml_string(
-        &manifest,
-        &["module", "slug"],
-        "rustok-module.toml [module].slug",
-        &contract.slug,
-        validation,
-    );
-    validate_toml_string(
-        &manifest,
-        &["module", "name"],
-        "rustok-module.toml [module].name",
-        &contract.module_name,
-        validation,
-    );
-    validate_toml_string(
-        &manifest,
-        &["module", "version"],
-        "rustok-module.toml [module].version",
-        &contract.version,
-        validation,
-    );
-    validate_toml_string(
-        &manifest,
-        &["module", "description"],
-        "rustok-module.toml [module].description",
-        &contract.module_description,
-        validation,
-    );
-    validate_toml_string(
-        &manifest,
-        &["module", "ownership"],
-        "rustok-module.toml [module].ownership",
-        &contract.ownership,
-        validation,
-    );
-    validate_toml_string(
-        &manifest,
-        &["module", "trust_level"],
-        "rustok-module.toml [module].trust_level",
-        &contract.trust_level,
-        validation,
-    );
-    validate_toml_optional(
-        &manifest,
-        &["marketplace", "category"],
-        "rustok-module.toml [marketplace].category",
-        contract.marketplace_category.as_deref(),
-        validation,
-    );
-    validate_toml_optional(
-        &manifest,
-        &["crate", "entry_type"],
-        "rustok-module.toml [crate].entry_type",
-        contract.entry_type.as_deref(),
-        validation,
-    );
-    if toml_string_list(&manifest, &["marketplace", "tags"])
-        != normalize_string_list(&contract.marketplace_tags)
-    {
+    if manifest.slug() != contract.slug {
+        validation
+            .errors
+            .push("Artifact source manifest slug does not match the publish request.".to_string());
+    }
+    if manifest.version() != contract.version {
         validation.errors.push(
-            "Artifact file rustok-module.toml [marketplace].tags does not match the publish request."
-                .to_string(),
+            "Artifact source manifest version does not match the publish request.".to_string(),
         );
     }
-    validate_toml_optional(
-        &manifest,
-        &["provides", "admin_ui", "leptos_crate"],
-        "rustok-module.toml [provides.admin_ui].leptos_crate",
-        contract.admin_ui_crate_name.as_deref(),
-        validation,
-    );
-    validate_toml_optional(
-        &manifest,
-        &["provides", "storefront_ui", "leptos_crate"],
-        "rustok-module.toml [provides.storefront_ui].leptos_crate",
-        contract.storefront_ui_crate_name.as_deref(),
-        validation,
-    );
 }
 
 fn validate_cargo_manifest(
@@ -626,24 +637,6 @@ fn toml_string(value: &toml::Value, path: &[&str]) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn toml_string_list(value: &toml::Value, path: &[&str]) -> Vec<String> {
-    toml_value_at_path(value, path)
-        .and_then(toml::Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(str::trim).map(ToString::to_string))
-                .filter(|value| !value.is_empty())
-                .collect::<Vec<_>>()
-        })
-        .map(|mut values| {
-            values.sort();
-            values.dedup();
-            values
-        })
-        .unwrap_or_default()
-}
-
 fn toml_is_workspace_inherited(value: &toml::Value, path: &[&str]) -> bool {
     toml_value_at_path(value, path)
         .and_then(toml::Value::as_table)
@@ -660,24 +653,6 @@ fn validate_toml_string(
     validation: &mut ModulePublishBundleValidation,
 ) {
     if toml_string(manifest, path).as_deref() != Some(expected.trim()) {
-        validation.errors.push(format!(
-            "Artifact file {label} does not match the publish request."
-        ));
-    }
-}
-
-fn validate_toml_optional(
-    manifest: &toml::Value,
-    path: &[&str],
-    label: &str,
-    expected: Option<&str>,
-    validation: &mut ModulePublishBundleValidation,
-) {
-    let expected = expected
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
-    if toml_string(manifest, path) != expected {
         validation.errors.push(format!(
             "Artifact file {label} does not match the publish request."
         ));
@@ -722,7 +697,7 @@ mod tests {
 
     fn contract() -> ModulePublishValidationContract {
         ModulePublishValidationContract {
-            slug: "sample-module".to_string(),
+            slug: "sample_module".to_string(),
             version: "1.0.0".to_string(),
             crate_name: "sample_module".to_string(),
             module_name: "Sample module".to_string(),
@@ -743,7 +718,7 @@ mod tests {
             "schema_version": 1,
             "artifact_type": MODULE_PUBLISH_BUNDLE_TYPE,
             "module": {
-                "slug": "sample-module",
+                "slug": "sample_module",
                 "version": "1.0.0",
                 "crate_name": "sample_module",
                 "module_name": "Sample module",
@@ -756,7 +731,26 @@ mod tests {
                 "ui_packages": { "admin": null, "storefront": null }
             },
             "files": {
-                "rustok-module.toml": "[module]\nslug = \"sample-module\"\nname = \"Sample module\"\nversion = \"1.0.0\"\ndescription = \"Sample module description\"\nownership = \"first_party\"\ntrust_level = \"sandboxed\"\n\n[marketplace]\ntags = []\n",
+                "module-artifact.json": serde_json::to_string(&serde_json::json!({
+                    "schema_version": crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+                    "slug": "sample_module",
+                    "version": "1.0.0",
+                    "payload_kind": "wasm_component",
+                    "module_kind": "optional",
+                    "runtime_abi": crate::MODULE_BUILD_RUNTIME_ABI,
+                    "platform_compatibility": "^0.1",
+                    "required_features": [],
+                    "entrypoint": "run",
+                    "capabilities": [],
+                    "bindings": [],
+                    "dependencies": [],
+                    "permissions": [],
+                    "schema_documents": [],
+                    "settings_schema_digest": null,
+                    "data_schema_digest": null,
+                    "ui_contributions": [],
+                    "persistence_contract": null
+                })).expect("source manifest JSON"),
                 "Cargo.toml": "[package]\nname = \"sample_module\"\nversion = \"1.0.0\"\nlicense = \"MIT\"\n"
             }
         })
@@ -771,6 +765,37 @@ mod tests {
     }
 
     #[test]
+    fn canonical_writer_emits_the_current_source_manifest_bundle() {
+        let fixture = bundle();
+        let bytes = build_module_publish_bundle(
+            &contract(),
+            ModulePublishBundleFiles {
+                source_manifest: fixture["files"]["module-artifact.json"]
+                    .as_str()
+                    .expect("source manifest")
+                    .to_string(),
+                crate_manifest: fixture["files"]["Cargo.toml"]
+                    .as_str()
+                    .expect("Cargo manifest")
+                    .to_string(),
+                admin_manifest: None,
+                storefront_manifest: None,
+            },
+        )
+        .expect("canonical bundle");
+        let written: serde_json::Value = serde_json::from_slice(&bytes).expect("bundle JSON");
+
+        assert_eq!(written["artifact_type"], MODULE_PUBLISH_BUNDLE_TYPE);
+        assert!(written["files"]["module-artifact.json"].is_string());
+        assert!(written["files"].get("rustok-module.toml").is_none());
+        assert!(
+            validate_module_publish_bundle(&contract(), MODULE_PUBLISH_BUNDLE_CONTENT_TYPE, &bytes)
+                .errors
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn registry_bundle_fixture_binds_metadata_and_manifests_to_owner_contract() {
         let accepted = validate_bundle(&bundle());
         assert!(accepted.errors.is_empty(), "{:?}", accepted.errors);
@@ -780,9 +805,15 @@ mod tests {
         assert!(!validate_bundle(&substituted_metadata).errors.is_empty());
 
         let mut substituted_package_manifest = bundle();
-        substituted_package_manifest["files"]["rustok-module.toml"] = serde_json::json!(
-            "[module]\nslug = \"other-module\"\nname = \"Sample module\"\nversion = \"1.0.0\"\ndescription = \"Sample module description\"\nownership = \"first_party\"\ntrust_level = \"sandboxed\"\n\n[marketplace]\ntags = []\n"
-        );
+        let mut source_manifest: serde_json::Value = serde_json::from_str(
+            substituted_package_manifest["files"]["module-artifact.json"]
+                .as_str()
+                .expect("source manifest text"),
+        )
+        .expect("source manifest JSON");
+        source_manifest["slug"] = serde_json::json!("other_module");
+        substituted_package_manifest["files"]["module-artifact.json"] =
+            serde_json::json!(serde_json::to_string(&source_manifest).expect("source manifest"));
         assert!(
             !validate_bundle(&substituted_package_manifest)
                 .errors
@@ -824,7 +855,7 @@ mod tests {
         let accepted = validate_module_publish_artifact(
             ModulePublicationArtifactOrigin::AlloyAuthored,
             &contract(),
-            crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE,
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
             workspace,
         );
         assert!(accepted.errors.is_empty());
@@ -840,7 +871,7 @@ mod tests {
         let oversized = validate_module_publish_artifact(
             ModulePublicationArtifactOrigin::AlloyAuthored,
             &contract(),
-            crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE,
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
             &vec![b'x'; MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES + 1],
         );
         assert_eq!(oversized.errors.len(), 1);

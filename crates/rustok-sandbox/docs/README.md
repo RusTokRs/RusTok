@@ -33,8 +33,12 @@ readiness. Owner policy adapters may use these facts to deny an admitted
 payload whose concrete executor or required placement is unavailable; merely
 injecting an execution port is not readiness evidence. Placement describes the
 registered adapter, not proof of process isolation. The supervised worker
-transport and deployment resource controls remain required before untrusted
-production Rhai can select `isolated_worker`.
+transport now exists in `rustok-sandbox-transport`, and artifact server
+composition selects it through mTLS readiness with no fallback. The standalone
+`rustok-sandbox-worker` revalidates a digest-pinned gVisor/Kata attestation and
+the request resource envelope before execution. Hardened deployment controls
+and retained kill/OOM/restart evidence remain required. Artifact and Alloy
+production composition both use the same readiness-checked worker client.
 
 The `platform.http` grant requires typed `hosts`, `methods`, and
 `path_prefixes` constraints. All three lists must be non-empty; host and method
@@ -111,8 +115,11 @@ its consumed instructions, Wasmtime reports consumed fuel through the same
 field, and both executors report serialized output size. Wasmtime also reports
 the observed aggregate peak of non-shared guest linear memory through its
 resource limiter; failed allocations are excluded and configured limits are not
-reported as usage. Rhai leaves peak memory absent until the isolated-worker
-profile can measure it truthfully.
+reported as usage. Production Rhai execution runs one request per isolated
+worker process; that worker samples its cgroup v2
+`memory.current` value and reports the observed worker-cgroup peak through the
+same metric. Missing or invalid cgroup observation makes worker startup,
+readiness, admission, and execution fail closed.
 
 `SandboxRuntime::execute_with_cancellation` accepts the same request contract
 plus a request-scoped `SandboxCancellation` handle. The runtime rejects a
@@ -129,17 +136,24 @@ error; no enabled executor may continue after its deadline.
 It gates concurrent executions globally and by executor, tenant, and admitted
 artifact digest; an internal permit releases automatically when execution exits.
 
-`RhaiHostExtension` may register request-scoped functions, populate the Rhai
-scope after the neutral envelope is present, and adapt a successful value into
-the consumer's typed output binding. The extension receives no global runtime
-state and must not introduce another executor or bypass the capability broker.
+`RhaiHostExtension` may register request-scoped functions. The extension
+receives no global runtime state and must not introduce another executor or
+bypass the capability broker. Canonical workspace resolution and serialized
+scope population/output are neutral executor responsibilities, not extension
+hooks.
 Its only platform handle is the scoped `SandboxHost`; broker implementations,
 infrastructure clients, and credentials are never exposed to an adapter.
 `RhaiCapabilityBridge` is the standard neutral extension for installed
-artifacts: it exposes only `capability_call(name, operation, input)` and returns
+artifacts and Alloy drafts. It exposes `capability_call(name, operation, input)`
+plus brokered `http_*` helpers and returns
 `{ ok, output }` on success or `{ ok: false, error_code }` on denial/failure.
 The named call remains subject to the same policy, identity, limit, audit, and
 cancellation checks as a WIT capability invocation.
+
+`RhaiWorkspace` owns the bounded canonical source graph and request-private
+in-memory import resolver. `RhaiScopeInput` carries bounded constants and typed
+records across both in-process tests and the worker transport; mutable record
+changes return only through `RhaiScopeOutput`.
 The synchronous Rhai/WIT bridge admits only one native thread per execution, so
 guest code cannot create an unbounded number of blocking broker threads.
 
@@ -150,15 +164,17 @@ guest sees the subject-owned `input` value inside the neutral envelope; subject
 owners decode the result before interpreting their own payload.
 
 The optional `wasm-component` feature provides `WasmComponentExecutor`. Its
-frozen v1 ABI is package `rustok:module@1.0.0`, world `module-runtime`, and
-entrypoint `run`: `(string) -> result<string, string>`. Input and successful
-output use `application/json`; a guest error is the WIT result's string error
-and maps to the stable sandbox trap outcome. It grants neither WASI nor ambient
-imports. The only accepted WIT import is
+current external ABI is package `rustok:module@1.0.0`, world `module-runtime`,
+and entrypoint `run`: `(string) -> result<string, string>`. The canonical WIT
+file lives in `rustok-module-sdk`; Bytecode Alliance macros generate both guest
+bindings and this host binding from that one source. Input and successful output
+use `application/json`; a guest error is the WIT result's string error and maps
+to the stable sandbox trap outcome. It grants neither WASI nor ambient imports.
+The only accepted WIT import is
 `rustok:module/host.invoke(capability, operation, json)`; it is converted to a
 `SandboxHost` capability call and still requires an explicit policy grant.
-Compatibility is exact within v1: a package, world, entrypoint, or wire-encoding
-change requires a new ABI version rather than a permissive fallback.
+Compatibility is exact for the published package identity: a package, world,
+entrypoint, or wire-encoding change cannot activate a permissive fallback.
 
 `LocalSandboxHarness` is the authoring/test entry point for the same
 `SandboxRequest`, policy validation, runtime execution, cancellation, and error
@@ -167,6 +183,16 @@ caller-supplied deterministic JSON by exact capability/operation; an
 unregistered fixture is denied. The harness never reads deployment
 configuration or exposes network, filesystem, database, secret, MCP, or other
 production clients.
+
+`LocalSandboxScenario` is the single machine-readable local test contract. Its
+bounded JSON contains an input, the exact `SandboxPolicy`, explicit
+capability/operation fixture responses, and either an exact successful output
+or stable expected error code. Parsing rejects unknown fields, oversized
+inputs, duplicate or ungranted fixtures, duplicate grants, invalid operations,
+and limits outside the local authoring envelope. The optional
+`LocalSandboxHarness::wasm_component` constructor registers the real Wasmtime
+Component executor in process only for local authoring; production placement is
+unchanged and never falls back to it.
 
 The Wasmtime executor keeps a bounded node-local LRU cache of serialized
 compiled Components. Its key includes the pinned Wasmtime engine version, host

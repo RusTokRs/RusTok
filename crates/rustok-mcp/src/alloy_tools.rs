@@ -9,7 +9,7 @@ pub use crate::alloy_scaffold::{
     ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModulePreview,
     ScaffoldModuleRequest, StageModuleScaffoldResponse, StagedModuleScaffold,
 };
-use alloy::model::{AlloyWorkspace, Script, ScriptStatus, ScriptTrigger};
+use alloy::model::{RhaiWorkspace, Script, ScriptStatus, ScriptTrigger};
 use alloy::runner::ExecutionOutcome;
 use alloy::storage::{ScriptQuery, ScriptRegistry};
 use alloy::utils::{dynamic_to_json, json_to_dynamic};
@@ -102,7 +102,7 @@ pub struct AlloyScriptInfo {
     pub name: String,
     pub description: Option<String>,
     #[schemars(with = "serde_json::Value")]
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
     pub trigger_type: String,
     pub status: String,
     pub version: u32,
@@ -160,7 +160,7 @@ pub struct GetScriptRequest {
 pub struct CreateScriptRequest {
     pub name: String,
     #[schemars(with = "serde_json::Value")]
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
     pub description: Option<String>,
     /// JSON-encoded trigger object. Examples:
     /// `{"type":"manual"}`,
@@ -177,7 +177,7 @@ pub struct UpdateScriptRequest {
     pub id: String,
     pub expected_version: u32,
     #[schemars(with = "Option<serde_json::Value>")]
-    pub workspace: Option<AlloyWorkspace>,
+    pub workspace: Option<RhaiWorkspace>,
     pub description: Option<String>,
     /// New status: draft, active, paused, disabled, archived
     pub status: Option<String>,
@@ -531,21 +531,36 @@ pub fn alloy_validate_script<R: ScriptRegistry>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::{
-        InMemoryStorage, ScriptOrchestrator, create_default_alloy_draft_runtime,
-        create_default_engine,
-    };
+    use alloy::{AlloyDraftRuntime, InMemoryStorage, ScriptOrchestrator, create_default_engine};
     use anyhow::Result as AnyhowResult;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::runtime::McpScaffoldDraftStore;
 
+    fn test_draft_runtime() -> AlloyDraftRuntime {
+        let mut executors = rustok_sandbox::ExecutorRegistry::new();
+        executors
+            .register_in_process(
+                rustok_sandbox::rhai::RhaiExecutor::new()
+                    .with_extension(Arc::new(rustok_sandbox::RhaiStandardLibrary))
+                    .with_extension(Arc::new(rustok_sandbox::RhaiCapabilityBridge)),
+            )
+            .expect("test Rhai executor");
+        AlloyDraftRuntime::new(
+            rustok_sandbox::SandboxRuntime::new(
+                executors,
+                Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
+            ),
+            rustok_sandbox::SandboxPolicy::default(),
+        )
+    }
+
     fn test_state() -> AlloyMcpState<InMemoryStorage> {
         let engine = Arc::new(create_default_engine());
         let storage = Arc::new(InMemoryStorage::new());
         let orchestrator = Arc::new(ScriptOrchestrator::new(
-            create_default_alloy_draft_runtime(),
+            test_draft_runtime(),
             storage.clone(),
         ));
         AlloyMcpState::new(storage, engine, orchestrator)

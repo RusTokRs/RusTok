@@ -51,7 +51,11 @@ to pull ecommerce or content surfaces it doesn't need.
   providers. Local-only operation composes no synthetic remote provider; every
   registry in `RUSTOK_MARKETPLACE_REGISTRIES` is unknown until its first
   successful fetch and degraded after any failed fetch. The check performs no
-  network request itself.
+  network request itself. Operator detail is exposed separately through the
+  owner-backed `marketplaceRegistryFreshness` GraphQL query and matching native
+  admin transport. Both require `modules.manage` and return logical registry
+  ID, typed status, last-success time, and consecutive failures without
+  endpoint URLs or remote error content.
 - `tenant_cache_invalidation` — non-critical check of the durable tenant-cache generation listener for cross-instance invalidation;
 - `event_transport` — critical check of event transport initialization;
 - `search_backend` — non-critical check of search connectivity;

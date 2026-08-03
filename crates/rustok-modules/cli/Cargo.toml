@@ -1,0 +1,27 @@
+[package]
+name = "rustok-modules-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Authoring command adapters for the RusToK module control plane"
+
+[dependencies]
+async-trait.workspace = true
+hex.workspace = true
+rustok-build-source.workspace = true
+rustok-cli-core.workspace = true
+rustok-module-sdk.workspace = true
+rustok-module-template.workspace = true
+rustok-modules.workspace = true
+rustok-runtime.workspace = true
+rustok-sandbox = { workspace = true, features = ["wasm-component"] }
+semver = "1.0"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+toml.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]

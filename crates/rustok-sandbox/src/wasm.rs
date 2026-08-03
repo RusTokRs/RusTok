@@ -1,6 +1,6 @@
 //! Wasmtime Component Model executor for untrusted module artifacts.
 //!
-//! The v1 component ABI is intentionally narrow: an artifact exports the
+//! The component ABI is intentionally narrow: an artifact exports the
 //! descriptor entrypoint with `(string) -> result<string, string>`. Input and
 //! output strings carry canonical JSON. Components receive no WASI or other
 //! ambient imports. Its one typed WIT import bridges through `SandboxHost`,
@@ -24,7 +24,7 @@ use crate::{
     SandboxResult, SandboxSubject,
 };
 
-/// Immutable v1 Component Model ABI identity and wire encoding.
+/// Immutable current Component Model ABI identity and wire encoding.
 pub const WASM_COMPONENT_ABI_VERSION: &str = "v1";
 pub const WASM_COMPONENT_WIT_PACKAGE: &str = "rustok:module@1.0.0";
 pub const WASM_COMPONENT_WIT_WORLD: &str = "module-runtime";
@@ -42,18 +42,8 @@ const MAX_COMPONENT_CACHE_ENTRIES: usize = 64;
 const MAX_COMPONENT_CACHE_BYTES: usize = 128 * 1024 * 1024;
 
 wasmtime::component::bindgen!({
-    inline: r#"
-        package rustok:module@1.0.0;
-
-        interface host {
-            invoke: func(capability: string, operation: string, input: string) -> result<string, string>;
-        }
-
-        world module-runtime {
-            import host;
-            export run: func(input: string) -> result<string, string>;
-        }
-    "#,
+    path: "../rustok-module-sdk/wit",
+    world: "module-runtime",
 });
 
 /// Bounded node-local policy for serialized compiled Components.
@@ -437,6 +427,7 @@ impl WasmComponentExecutor {
             Ok(SandboxOutcome {
                 execution_id: request.context.execution_id,
                 output,
+                rhai_scope: None,
                 metrics: ExecutionMetrics {
                     instructions_consumed: Some(
                         request
@@ -506,7 +497,7 @@ mod tests {
     use wasmtime::ResourceLimiter;
 
     #[test]
-    fn v1_abi_constants_match_the_component_contract() {
+    fn abi_constants_match_the_component_contract() {
         assert_eq!(super::WASM_COMPONENT_ABI_VERSION, "v1");
         assert_eq!(super::WASM_COMPONENT_WIT_PACKAGE, "rustok:module@1.0.0");
         assert_eq!(super::WASM_COMPONENT_WIT_WORLD, "module-runtime");
@@ -630,6 +621,7 @@ mod tests {
                 bytes: Vec::new(),
             },
             input: Value::Null,
+            rhai_scope: None,
             policy: SandboxPolicy::default(),
         }
     }

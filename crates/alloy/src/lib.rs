@@ -1,10 +1,8 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
-use rustok_sandbox::{
-    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutorRegistry,
-    SandboxError, SandboxResult, SandboxRuntime,
-};
+#[cfg(test)]
+use rustok_sandbox::{CapabilityBrokerRouter, ExecutorRegistry, SandboxRuntime};
 use sea_orm_migration::MigrationTrait;
 
 pub mod api;
@@ -32,7 +30,7 @@ pub use artifact::{
     AlloyArtifactError, fork_rhai_module_release, package_rhai_module_release,
     stage_rhai_module_release,
 };
-pub use bridge::{Bridge, HttpCapabilityBridge, PhaseCapabilities};
+pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
 pub use controllers::{EXECUTION_HISTORY_ROUTES, axum_router};
 pub use engine::{RhaiConfig, RhaiLimits, ScriptEngine};
@@ -46,11 +44,11 @@ pub use migration::ScriptsMigration;
 pub use model::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
     AlloyPublicationSmokeEvidence, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
-    AlloyReleaseError, AlloyReleaseStageCommand, AlloyWorkspace, EntityProxy, EventType,
-    HttpMethod, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus, Script, ScriptId,
-    ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim,
-    TestRunCompletion, TestRunError, TestRunLease, TestRunStatus, WorkspaceError, WorkspaceFile,
-    WorkspaceFileKind, register_entity_proxy,
+    AlloyReleaseError, AlloyReleaseStageCommand, EntityProxy, EventType, HttpMethod, ReviewCommand,
+    ReviewDecision, ReviewError, ReviewStatus, RhaiWorkspace, RhaiWorkspaceError,
+    RhaiWorkspaceFile, RhaiWorkspaceFileKind, Script, ScriptId, ScriptSourceRevision, ScriptStatus,
+    ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunError,
+    TestRunLease, TestRunStatus, register_entity_proxy,
 };
 pub use runner::{
     AlloyPublishedRhaiSourceProvider, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
@@ -59,9 +57,8 @@ pub use runner::{
 };
 pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use sandbox_request::{
-    ALLOY_DRAFT_RHAI_MEDIA_TYPE, AlloyDraftBindingError, AlloyDraftEntitySnapshot, AlloyDraftInput,
-    AlloyDraftOutput, AlloyDraftRequestBuilder, AlloyDraftRequestError, AlloyDraftRuntime,
-    AlloyDraftScopeExtension, AlloyExecutionEvidence,
+    AlloyDraftBindingError, AlloyDraftEntitySnapshot, AlloyDraftInput, AlloyDraftRequestBuilder,
+    AlloyDraftRequestError, AlloyDraftRuntime, AlloyExecutionEvidence,
 };
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
@@ -76,7 +73,10 @@ pub fn create_default_engine() -> ScriptEngine {
 pub fn create_engine_with_config(config: engine::RhaiConfig) -> ScriptEngine {
     let mut engine = ScriptEngine::new(config);
 
-    bridge::register_utils(engine.engine_mut());
+    rustok_sandbox::rhai::register_standard_library(
+        engine.engine_mut(),
+        rustok_sandbox::ExecutionPhase::Manual,
+    );
     register_entity_proxy(engine.engine_mut());
 
     engine
@@ -92,60 +92,26 @@ pub fn create_engine_for_phase(phase: context::ExecutionPhase) -> ScriptEngine {
     engine
 }
 
-/// Builds the Rhai executor used for Alloy drafts and marketplace Rhai
-/// artifacts. HTTP is available only through `SandboxHost` capability grants.
-pub fn create_sandbox_rhai_executor() -> rustok_sandbox::rhai::RhaiExecutor {
+#[cfg(test)]
+fn create_test_sandbox_rhai_executor() -> rustok_sandbox::rhai::RhaiExecutor {
     rustok_sandbox::rhai::RhaiExecutor::new()
-        .with_extension(std::sync::Arc::new(AlloyDraftScopeExtension))
-        .with_extension(std::sync::Arc::new(HttpCapabilityBridge))
+        .with_extension(std::sync::Arc::new(rustok_sandbox::RhaiStandardLibrary))
+        .with_extension(std::sync::Arc::new(rustok_sandbox::RhaiCapabilityBridge))
 }
 
-/// Builds the neutral runtime used for every Alloy production execution. Host
-/// capability handling is injected by the deployment; the Alloy crate never
-/// opens infrastructure clients directly.
-pub fn create_alloy_sandbox_runtime(
-    broker: std::sync::Arc<dyn CapabilityBroker>,
-) -> SandboxResult<SandboxRuntime> {
+#[cfg(test)]
+pub(crate) fn create_test_alloy_draft_runtime() -> AlloyDraftRuntime {
     let mut executors = ExecutorRegistry::new();
-    executors.register_in_process(create_sandbox_rhai_executor())?;
-    Ok(SandboxRuntime::new(executors, broker))
-}
-
-/// Default-deny runtime for deployments that have not yet supplied a host
-/// capability broker. This preserves the existing Alloy production surface,
-/// which never exposed direct HTTP or storage clients.
-pub fn create_default_alloy_sandbox_runtime() -> SandboxRuntime {
-    create_alloy_sandbox_runtime(std::sync::Arc::new(DenyAlloyCapabilityBroker))
-        .expect("Alloy Rhai executor registration must be unique")
-}
-
-/// Default-deny draft adapter for Alloy-owned callers that do not receive a
-/// deployment capability broker yet.
-pub fn create_default_alloy_draft_runtime() -> AlloyDraftRuntime {
+    executors
+        .register_in_process(create_test_sandbox_rhai_executor())
+        .expect("test Rhai executor registration must be unique");
     AlloyDraftRuntime::new(
-        create_default_alloy_sandbox_runtime(),
+        SandboxRuntime::new(
+            executors,
+            std::sync::Arc::new(CapabilityBrokerRouter::new()),
+        ),
         rustok_sandbox::SandboxPolicy::default(),
     )
-}
-
-struct DenyAlloyCapabilityBroker;
-
-#[async_trait]
-impl CapabilityBroker for DenyAlloyCapabilityBroker {
-    async fn invoke(
-        &self,
-        call: &CapabilityCall,
-        _grant: &CapabilityGrant,
-    ) -> SandboxResult<CapabilityResponse> {
-        Err(SandboxError::CapabilityDenied(call.capability.clone()))
-    }
-}
-
-pub fn create_orchestrator<R: ScriptRegistry>(
-    registry: std::sync::Arc<R>,
-) -> ScriptOrchestrator<R> {
-    let runtime = create_default_alloy_draft_runtime();
-    ScriptOrchestrator::new(runtime, registry)
 }
 
 pub fn create_orchestrator_with_sandbox<R: ScriptRegistry>(
@@ -298,7 +264,10 @@ mod tests {
             ..Default::default()
         };
         let mut engine = ScriptEngine::new(config);
-        bridge::register_utils(engine.engine_mut());
+        rustok_sandbox::rhai::register_standard_library(
+            engine.engine_mut(),
+            rustok_sandbox::ExecutionPhase::Manual,
+        );
 
         let ctx = ExecutionContext::new(ExecutionPhase::Manual);
 
@@ -339,7 +308,10 @@ mod tests {
             ..Default::default()
         };
         let mut engine = ScriptEngine::new(config);
-        bridge::register_utils(engine.engine_mut());
+        rustok_sandbox::rhai::register_standard_library(
+            engine.engine_mut(),
+            rustok_sandbox::ExecutionPhase::Manual,
+        );
 
         let ctx = ExecutionContext::new(ExecutionPhase::Manual);
         let result = engine.execute(
@@ -482,11 +454,12 @@ mod tests {
     #[tokio::test]
     async fn test_orchestrator_integration() {
         let storage = Arc::new(InMemoryStorage::new());
-        let orchestrator = create_orchestrator(storage.clone());
+        let orchestrator =
+            create_orchestrator_with_sandbox(create_test_alloy_draft_runtime(), storage.clone());
 
         let mut script = Script::new(
             "test_validation",
-            AlloyWorkspace::single_source(
+            RhaiWorkspace::single_source(
                 r#"
                 if entity["value"] < 0 {
                     abort("Value must be positive");
@@ -523,14 +496,14 @@ mod tests {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
         let orchestrator = ScriptOrchestrator::with_execution_log(
-            create_default_alloy_draft_runtime(),
+            create_test_alloy_draft_runtime(),
             Arc::clone(&storage),
             execution_log.clone(),
         );
 
         let mut script = Script::new(
             "manual_audit_smoke",
-            AlloyWorkspace::single_source(r#"params["value"] + 1"#),
+            RhaiWorkspace::single_source(r#"params["value"] + 1"#),
             ScriptTrigger::Manual,
         );
         script.tenant_id = uuid::Uuid::new_v4();
@@ -566,14 +539,14 @@ mod tests {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
         let orchestrator = ScriptOrchestrator::with_execution_log(
-            create_default_alloy_draft_runtime(),
+            create_test_alloy_draft_runtime(),
             Arc::clone(&storage),
             execution_log.clone(),
         );
 
         let mut script = Script::new(
             "before_audit_smoke",
-            AlloyWorkspace::single_source(r#"entity["status"] = "approved";"#),
+            RhaiWorkspace::single_source(r#"entity["status"] = "approved";"#),
             ScriptTrigger::Event {
                 entity_type: "order".into(),
                 event: EventType::BeforeUpdate,
@@ -631,7 +604,7 @@ mod tests {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
         let orchestrator = ScriptOrchestrator::with_execution_log(
-            create_default_alloy_draft_runtime(),
+            create_test_alloy_draft_runtime(),
             Arc::clone(&storage),
             execution_log.clone(),
         );
@@ -639,7 +612,7 @@ mod tests {
         for script_name in ["on_commit_audit_one", "on_commit_audit_two"] {
             let mut script = Script::new(
                 script_name,
-                AlloyWorkspace::single_source("1"),
+                RhaiWorkspace::single_source("1"),
                 ScriptTrigger::Event {
                     entity_type: "invoice".into(),
                     event: EventType::OnCommit,

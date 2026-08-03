@@ -18,6 +18,11 @@ worker exposes `VerificationGrpcService` through the typed tonic transport;
 host deployment supplies the listener and worker credentials. The worker does
 not own CAS, database state, outbox writes, or artifact execution.
 
+Verification RPCs use the shared process-wide bounded admission policy while
+readiness remains available during saturation. SIGTERM/Ctrl+C initiates tonic
+graceful shutdown, and every spawned Cosign process is killed if its future is
+cancelled.
+
 ## Entry points
 
 - `src/lib.rs` — worker policy and verification boundary;

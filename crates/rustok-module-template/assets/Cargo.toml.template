@@ -1,0 +1,29 @@
+[package]
+name = "{{package_name}}"
+version = "{{version}}"
+edition = "2024"
+rust-version = "{{rust_toolchain}}"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustok-module-sdk = { version = "={{sdk_version}}" }
+
+[package.metadata.rustok]
+template_version = "{{template_version}}"
+sdk_version = "{{sdk_version}}"
+runtime_abi = "{{runtime_abi}}"
+wit_world = "{{wit_world}}"
+wit_version = "{{wit_version}}"
+component_target = "{{component_target}}"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = "symbols"
+
+[workspace]

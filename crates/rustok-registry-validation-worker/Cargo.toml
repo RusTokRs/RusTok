@@ -11,12 +11,17 @@ name = "rustok-registry-validation-worker"
 path = "src/main.rs"
 
 [dependencies]
+async-trait.workspace = true
 hex.workspace = true
 rustok-modules.workspace = true
 rustok-storage = { workspace = true, features = ["s3"] }
 object_store.workspace = true
+rustok-build-publication.workspace = true
+rustok-verification-transport = { path = "../rustok-verification-transport" }
+rustok-worker-transport.workspace = true
 sea-orm.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
 tracing.workspace = true

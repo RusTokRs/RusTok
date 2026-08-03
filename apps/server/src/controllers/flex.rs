@@ -440,6 +440,7 @@ mod tests {
             ],
             inferred_role: UserRole::Admin,
             actor_kind: rustok_core::SecurityActorKind::User,
+            principal_kind: rustok_api::AuthPrincipalKind::DirectUser,
             client_id: None,
             scopes: Vec::new(),
             grant_type: "direct".to_string(),

@@ -163,7 +163,6 @@ dependencies = [
  "axum",
  "chrono",
  "cron",
- "email_address",
  "hex",
  "parking_lot",
  "rhai",
@@ -8073,6 +8072,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
+name = "macro-string"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59a9dbbfc75d2688ed057456ce8a3ee3f48d12eec09229f560f3643b9f275653"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
 name = "macro_rules_attribute"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12474,6 +12484,7 @@ dependencies = [
  "serde",
  "sha2 0.11.0",
  "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
@@ -12657,6 +12668,7 @@ dependencies = [
  "rustok-cli-platform",
  "rustok-installer-cli",
  "rustok-media-cli",
+ "rustok-modules-cli",
  "rustok-profiles-cli",
  "rustok-rbac-cli",
  "rustok-runtime",
@@ -13724,6 +13736,7 @@ dependencies = [
  "rmcp 2.2.0",
  "rustok-api",
  "rustok-core",
+ "rustok-sandbox",
  "schemars 1.2.1",
  "sea-orm-migration",
  "serde",
@@ -13974,6 +13987,7 @@ dependencies = [
  "prost",
  "protoc-bin-vendored",
  "rustok-modules",
+ "rustok-worker-transport",
  "serde_json",
  "tokio",
  "tonic",
@@ -14001,7 +14015,25 @@ dependencies = [
  "tonic",
  "uuid",
  "wasmparser 0.253.0",
- "wit-parser",
+ "wit-parser 0.251.0",
+]
+
+[[package]]
+name = "rustok-module-sdk"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "rustok-module-template"
+version = "0.1.0"
+dependencies = [
+ "rustok-module-sdk",
+ "rustok-modules",
+ "rustok-sandbox",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -14022,6 +14054,7 @@ dependencies = [
  "oci-distribution",
  "pubgrub",
  "rustok-api",
+ "rustok-build-source",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
@@ -14039,6 +14072,28 @@ dependencies = [
  "tokio",
  "toml 1.1.2+spec-1.1.0",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-modules-cli"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "hex",
+ "rustok-build-source",
+ "rustok-cli-core",
+ "rustok-module-sdk",
+ "rustok-module-template",
+ "rustok-modules",
+ "rustok-runtime",
+ "rustok-sandbox",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
  "uuid",
 ]
 
@@ -14823,14 +14878,19 @@ dependencies = [
 name = "rustok-registry-validation-worker"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "hex",
  "object_store 0.14.1",
+ "rustok-build-publication",
  "rustok-modules",
  "rustok-storage",
+ "rustok-verification-transport",
+ "rustok-worker-transport",
  "sea-orm",
  "serde_json",
  "sha2 0.11.0",
  "tokio",
+ "tonic",
  "tracing",
 ]
 
@@ -14854,15 +14914,53 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "email_address",
+ "hex",
  "parking_lot",
  "rhai",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "url",
  "uuid",
  "wasmtime",
+]
+
+[[package]]
+name = "rustok-sandbox-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-sandbox",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-sandbox-worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-sandbox",
+ "rustok-sandbox-transport",
+ "rustok-worker-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "uuid",
 ]
 
 [[package]]
@@ -15141,6 +15239,7 @@ dependencies = [
  "rustok-region",
  "rustok-runtime",
  "rustok-sandbox",
+ "rustok-sandbox-transport",
  "rustok-search",
  "rustok-secrets",
  "rustok-seo",
@@ -15155,6 +15254,7 @@ dependencies = [
  "rustok-translation-admin",
  "rustok-translation-targets",
  "rustok-web",
+ "rustok-worker-transport",
  "rustok-workflow",
  "sea-orm",
  "sea-orm-migration",
@@ -15171,6 +15271,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml 1.1.2+spec-1.1.0",
+ "tonic",
  "tower",
  "tower-http 0.7.0",
  "tracing",
@@ -15538,6 +15639,7 @@ dependencies = [
  "prost",
  "protoc-bin-vendored",
  "rustok-modules",
+ "rustok-worker-transport",
  "serde_json",
  "tokio",
  "tonic",
@@ -15581,6 +15683,7 @@ version = "0.1.0"
 dependencies = [
  "tokio",
  "tonic",
+ "tracing",
 ]
 
 [[package]]
@@ -19300,6 +19403,16 @@ checksum = "c31d56021e873866c968588ed85ccdf56db5c426e44afdb4618c39895104b920"
 
 [[package]]
 name = "wasm-encoder"
+version = "0.247.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30b6733b8b91d010a6ac5b0fb237dc46a19650bc4c67db66857e2e787d437204"
+dependencies = [
+ "leb128fmt",
+ "wasmparser 0.247.0",
+]
+
+[[package]]
+name = "wasm-encoder"
 version = "0.251.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a879a421bd17c528b74721b2abf4c62e8f1d1889c2ba8c3c50d02deaf2ce395"
@@ -19316,6 +19429,18 @@ checksum = "59972d6cd272259de647b7c1f1912e45e289c75ffd4be04e10695507cd7e1b59"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.253.0",
+]
+
+[[package]]
+name = "wasm-metadata"
+version = "0.247.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "665fe59e56cc9b419ca6fcca56673e3421d1a5011e3b65caf6b726fd9e041d10"
+dependencies = [
+ "anyhow",
+ "indexmap 2.14.0",
+ "wasm-encoder 0.247.0",
+ "wasmparser 0.247.0",
 ]
 
 [[package]]
@@ -19415,6 +19540,18 @@ checksum = "8c9d90bb93e764f6beabf1d02028c70a2156a6583e63ac4218dd07ef733368b0"
 dependencies = [
  "bitflags 2.13.0",
  "indexmap 2.14.0",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.247.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e6fb4c2bee46c5ea4d40f8cdb5c131725cd976718ec56f1c8e82fbde5fa2a80"
+dependencies = [
+ "bitflags 2.13.0",
+ "hashbrown 0.17.1",
+ "indexmap 2.14.0",
+ "semver",
 ]
 
 [[package]]
@@ -19539,7 +19676,7 @@ dependencies = [
  "syn 2.0.118",
  "wasmtime-internal-component-util",
  "wasmtime-internal-wit-bindgen",
- "wit-parser",
+ "wit-parser 0.251.0",
 ]
 
 [[package]]
@@ -19657,7 +19794,7 @@ dependencies = [
  "bitflags 2.13.0",
  "heck 0.5.0",
  "indexmap 2.14.0",
- "wit-parser",
+ "wit-parser 0.251.0",
 ]
 
 [[package]]
@@ -20233,6 +20370,91 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+dependencies = [
+ "bitflags 2.13.0",
+ "wit-bindgen-rust-macro",
+]
+
+[[package]]
+name = "wit-bindgen-core"
+version = "0.57.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02dee27a2dc20d1008016c742ec9fc6ea498492994ba3750be7454cbc97ff04c"
+dependencies = [
+ "anyhow",
+ "heck 0.5.0",
+ "wit-parser 0.247.0",
+]
+
+[[package]]
+name = "wit-bindgen-rust"
+version = "0.57.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5007dae772945b7a5003d69d90a3a4a78929d41f19d004e980c4259a6af4484"
+dependencies = [
+ "anyhow",
+ "heck 0.5.0",
+ "indexmap 2.14.0",
+ "prettyplease",
+ "syn 2.0.118",
+ "wasm-metadata",
+ "wit-bindgen-core",
+ "wit-component",
+]
+
+[[package]]
+name = "wit-bindgen-rust-macro"
+version = "0.57.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af9237d678e3513ad24e96fe98beacdc0db6405284ba2a2400418cf0d42caa89"
+dependencies = [
+ "anyhow",
+ "macro-string",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+ "wit-bindgen-core",
+ "wit-bindgen-rust",
+]
+
+[[package]]
+name = "wit-component"
+version = "0.247.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d567162a6b9843080e5e0053f696623ff694bae8ae017c9ec536d1873bbe3d8"
+dependencies = [
+ "anyhow",
+ "bitflags 2.13.0",
+ "indexmap 2.14.0",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "wasm-encoder 0.247.0",
+ "wasm-metadata",
+ "wasmparser 0.247.0",
+ "wit-parser 0.247.0",
+]
+
+[[package]]
+name = "wit-parser"
+version = "0.247.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ffe4064318cdf3c08cb99343b44c039fcefe61ccdf58aa9975285f13d74d1fc"
+dependencies = [
+ "anyhow",
+ "hashbrown 0.17.1",
+ "id-arena",
+ "indexmap 2.14.0",
+ "log",
+ "semver",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "unicode-xid",
+ "wasmparser 0.247.0",
+]
 
 [[package]]
 name = "wit-parser"

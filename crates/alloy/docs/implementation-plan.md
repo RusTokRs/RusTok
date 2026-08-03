@@ -23,18 +23,19 @@ Implemented:
 - stable runtime hardening contract and static verifier;
 - generic Rhai kernel extraction into `rustok-sandbox`;
 - Alloy adapter over the neutral Rhai engine;
-- explicit `in_process` executor placement for the current adapter, with no
-  same-kind worker fallback; production isolation remains open until Alloy
-  composes the supervised `isolated_worker` adapter;
-- broker-backed HTTP capability bridge with no direct HTTP client;
+- production server composition through the readiness-checked mTLS
+  `isolated_worker` adapter shared with admitted artifacts, with no in-process
+  fallback;
+- neutral broker-backed HTTP capability helpers with no direct HTTP client;
 - versioned `AlloyDraftRequestBuilder` that pins draft ID, source revision,
   source digest, sandbox phase, tenant, actor, input, grants, and limits;
-- data-only `AlloyDraftInput`/`AlloyDraftOutput` payloads for parameters,
-  entity snapshots, returned values, and entity changes, carried inside the
-  strict shared `RhaiBindingInput`/`RhaiBindingOutput` v1 envelope;
-- request-scoped `AlloyDraftScopeExtension` that reconstructs `params`,
-  `entity`, and `entity_before` for the neutral Rhai executor and emits typed
-  entity changes;
+- data-only `AlloyDraftInput` mapped to neutral serialized
+  `RhaiScopeInput` constants and records; `RhaiScopeOutput` carries bounded
+  entity changes while return values remain in the strict shared
+  `RhaiBindingInput`/`RhaiBindingOutput` external envelope;
+- canonical `RhaiWorkspace`, in-memory import resolver, record proxy, standard
+  library, and brokered HTTP helpers owned by `rustok-sandbox`, so the isolated
+  worker remains independent from Alloy and product infrastructure;
 - immutable Rhai descriptor/source lineage staging, packaging, and forking
   helpers.
 
@@ -57,7 +58,6 @@ Remaining:
   mutation. A pre-ledger script receives a baseline snapshot before its first
   new revision commits. Owner storage exposes tenant-scoped lookup by
   `(script_id, revision)` and revision-ascending history without SQL bypass;
-- entity/parameter semantics must become request-scoped Alloy extensions;
 - REST and GraphQL update, lifecycle, and deletion commands now require the
   caller's expected revision; manual-run commands use the same requirement and
   execute the loaded snapshot without a second registry lookup. Idempotency,
@@ -74,8 +74,8 @@ Remaining:
 - persisted workspaces now use bounded canonical JSON with sources, tests,
   fixtures, schemas, policy, and generated-file kinds; their path, per-file,
   total-size, and file-count limits are enforced before storage and execution.
-  The sandbox receives canonical workspace bytes and Alloy resolves only its
-  entry source through a request extension, never a guest filesystem. Bounded
+  The sandbox receives canonical workspace bytes and resolves only the declared
+  entry source itself, never a guest filesystem. Bounded
   Rhai imports resolve only through a request-private static in-memory resolver
   assembled in dependency order: exact `src/*.rhai` paths, no host filesystem,
   bounded depth, and cycle rejection;

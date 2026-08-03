@@ -1,0 +1,18 @@
+# {{display_name}}
+
+This project is a standalone RusToK module component with slug `{{slug}}`.
+It uses the canonical generated guest SDK and receives platform access only
+through declared brokered capabilities.
+
+## Authoring
+
+1. Update `module-artifact.json` and its bundled JSON Schemas together.
+2. Keep `module-build-policy.toml` fail-closed.
+3. Generate `Cargo.lock` with the pinned toolchain before validation.
+4. Run `cargo test --locked` for host-side tests.
+5. Build the component with
+   `cargo build --locked --release --target {{component_target}}`.
+
+The build worker derives `module-artifact-descriptor.json` after it verifies
+the Component payload. Source code must never create that final descriptor or
+declare `artifact_digest`.

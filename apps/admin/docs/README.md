@@ -136,6 +136,11 @@ call a native adapter directly.
   governance snapshot. The admin host contains no direct registry SQL,
   workspace/Cargo scanner, catalog hashing, dependency solving, or build
   planning path.
+- The Marketplace tab renders owner-projected freshness for each configured
+  federated registry. Its native and GraphQL transports require
+  `modules.manage` and expose only logical registry ID, typed status, last
+  success, and consecutive failures; aggregate readiness and registry endpoint
+  topology are not used as the detail contract.
 
 ## Local debug launch
 

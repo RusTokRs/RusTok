@@ -52,12 +52,16 @@ Module local documentation lives inside the crates themselves at
 | `rustok-verification-worker` | [docs](../../crates/rustok-verification-worker/docs/README.md) | Worker rollout is recorded in the module control-plane plan. |
 | `rustok-module-build-transport` | [docs](../../crates/rustok-module-build-transport/docs/README.md) | Current-only mTLS module and static-distribution build-worker transport is recorded in the module control-plane plan. |
 | `rustok-module-build-worker` | [docs](../../crates/rustok-module-build-worker/docs/README.md) | Isolated build-worker rollout is recorded in the module control-plane plan. |
+| `rustok-module-sdk` | [docs](../../crates/rustok-module-sdk/docs/README.md) | [plan](../../crates/rustok-module-sdk/docs/implementation-plan.md) |
+| `rustok-module-template` | [docs](../../crates/rustok-module-template/docs/README.md) | [plan](../../crates/rustok-module-template/docs/implementation-plan.md) |
 | `rustok-build-publication` | [docs](../../crates/rustok-build-publication/docs/README.md) | Shared current-only registry credential and Cosign publication boundary for isolated build workers. |
-| `rustok-build-source` | [docs](../../crates/rustok-build-source/docs/README.md) | Shared strict immutable CAS source-archive materialization for build workers. |
+| `rustok-build-source` | [docs](../../crates/rustok-build-source/docs/README.md) | Shared deterministic source packaging, strict inspection, and immutable CAS materialization. |
 | `rustok-static-distribution-worker` | [docs](../../crates/rustok-static-distribution-worker/docs/README.md) | Trusted native-distribution CI worker rollout is recorded in the module control-plane plan. |
 | `rustok-module-build-dispatcher` | [docs](../../crates/rustok-module-build-dispatcher/docs/README.md) | Broker-neutral build-delivery contract is recorded in the module control-plane plan. |
 | `rustok-worker-transport` | [docs](../../crates/rustok-worker-transport/docs/README.md) | Shared mutually authenticated worker-listener foundation. |
 | `rustok-sandbox` | [docs](../../crates/rustok-sandbox/docs/README.md) | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) |
+| `rustok-sandbox-transport` | [docs](../../crates/rustok-sandbox-transport/docs/README.md) | [plan](../../crates/rustok-sandbox-transport/docs/implementation-plan.md) |
+| `rustok-sandbox-worker` | [docs](../../crates/rustok-sandbox-worker/docs/README.md) | [plan](../../crates/rustok-sandbox-worker/docs/implementation-plan.md) |
 | `rustok-web` | [docs](../../crates/rustok-web/docs/README.md) | [plan](../../crates/rustok-web/docs/implementation-plan.md) |
 | `rustok-fba` | [docs](../../crates/rustok-fba/docs/README.md) | [plan](../../crates/rustok-fba/docs/implementation-plan.md) |
 | `rustok-cli-core` | [docs](../../crates/rustok-cli-core/docs/README.md) | [plan](../../crates/rustok-cli-core/docs/implementation-plan.md) |

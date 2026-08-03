@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rustok_modules::{TrustVerificationRequest, TrustVerifier};
+use rustok_worker_transport::WorkerAdmission;
 use tonic::{Request, Response, Status};
 
 use crate::proto::verification_service_server::VerificationService;
@@ -11,11 +12,15 @@ use crate::proto::{ReadinessRequest, ReadinessResponse, VerifyRequest, VerifyRes
 /// typed owner port onto gRPC.
 pub struct VerificationGrpcService<V> {
     verifier: Arc<V>,
+    admission: WorkerAdmission,
 }
 
 impl<V> VerificationGrpcService<V> {
-    pub fn new(verifier: Arc<V>) -> Self {
-        Self { verifier }
+    pub fn new(verifier: Arc<V>, admission: WorkerAdmission) -> Self {
+        Self {
+            verifier,
+            admission,
+        }
     }
 }
 
@@ -38,6 +43,7 @@ where
         &self,
         request: Request<VerifyRequest>,
     ) -> Result<Response<VerifyResponse>, Status> {
+        let _permit = self.admission.acquire().await?;
         let request: TrustVerificationRequest =
             serde_json::from_slice(&request.into_inner().trust_verification_request_json)
                 .map_err(|error| Status::invalid_argument(error.to_string()))?;

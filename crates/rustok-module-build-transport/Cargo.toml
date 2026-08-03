@@ -9,6 +9,7 @@ description = "Typed mTLS gRPC transport for isolated RusToK module and static-d
 [dependencies]
 async-trait.workspace = true
 rustok-modules.workspace = true
+rustok-worker-transport.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }

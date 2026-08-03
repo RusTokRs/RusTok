@@ -150,6 +150,11 @@ base policy revision before the server accepts the final policy revision.
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
+- Per-registry marketplace freshness is projected through
+  `SharedModuleMarketplaceCatalog`, not directly from the server health
+  aggregate. The operator-only GraphQL/native contract exposes stable logical
+  registry identity, typed status, last success, and consecutive failures and
+  omits deployment endpoints and remote error content.
 - Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools
   and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on a
   framework-global context. Optional module HTTP composition recognizes manifest-declared Axum routers:
@@ -176,9 +181,14 @@ base policy revision before the server accepts the final policy revision.
   installation, audit, and sandbox-policy services, so the server does not
   create an independent artifact staging identity source. Executor registration
   records placement explicitly and rejects same-kind fallback registration.
-  The current Rhai and Wasmtime adapters are visibly `in_process`; untrusted
-  production Rhai still requires the planned supervised `isolated_worker`
-  adapter rather than treating this composition as isolation evidence.
+  Artifact and Alloy Rhai now share one mTLS-authenticated
+  `rustok-sandbox-worker` client after exact readiness and register only the
+  `isolated_worker` placement; connection, attestation/cgroup readiness,
+  protocol, cancellation, or worker failure has no in-process fallback.
+  Wasmtime remains explicitly `in_process` under its accepted component-runtime
+  threat model. The canonical Kubernetes renderer now supplies the
+  digest-pinned gVisor/Kata, mTLS-probed, restricted-network worker profile;
+  retained cluster enforcement and supervisor evidence remains open.
   The neutral Rhai bridge and WIT import both reach only `SandboxHost`;
   `platform.data`, `platform.data.objects`, `platform.secrets`, and
   `platform.mcp` are the composed sandbox capability routes. Object transfer is

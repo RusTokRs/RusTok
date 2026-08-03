@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeSet,
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
@@ -11,8 +12,10 @@ use std::{
 };
 
 use rustok_modules::{
-    ArtifactAdmissionLimits, ModuleArtifactDescriptor, ModuleBuildComponentInterface,
-    ModuleBuildRequest, ModuleBuildResult, OciArtifactEvidence, OciArtifactPublicationBundle,
+    ArtifactAdmissionLimits, MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES,
+    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, ModuleArtifactDescriptor, ModuleArtifactSourceManifest,
+    ModuleBuildComponentInterface, ModuleBuildRequest, ModuleBuildResult, OciArtifactEvidence,
+    OciArtifactPublicationBundle,
 };
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -32,6 +35,24 @@ const MAX_EVIDENCE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_INTERFACE_NAME_BYTES: usize = 256;
 const MAX_SBOM_COMPONENTS: usize = 4_096;
 const MAX_PROVENANCE_SUBJECTS: usize = 128;
+
+struct BuildEvidenceExpectation {
+    component_digest: String,
+    sbom_digest: String,
+    provenance_digest: String,
+    source_digest: String,
+    dependency_lock_digest: String,
+    toolchain_digest: String,
+    wit_digest: String,
+    sdk_version: String,
+    template_version: String,
+    expected_module_slug: String,
+    expected_version: String,
+    runtime_abi: String,
+    attempt: u32,
+    validation_profiles: serde_json::Value,
+    validation_results: serde_json::Value,
+}
 
 /// A terminal fact about the fixed runner's component output.
 #[derive(Debug)]
@@ -69,6 +90,15 @@ pub enum PublicationBundleError {
     Internal(String),
 }
 
+/// A terminal fact about the author source manifest or worker-owned descriptor
+/// finalization step.
+#[derive(Debug)]
+pub enum ArtifactDescriptorError {
+    Invalid,
+    ResourceLimit,
+    Internal(String),
+}
+
 /// Validates the one fixed component payload path produced by the image-owned
 /// runner. The runner cannot select another path through JSON or request data.
 pub struct ComponentArtifactInspector;
@@ -86,6 +116,51 @@ pub struct WitContractInspector {
 /// Collects the fixed descriptor, payload, SBOM, and provenance files only
 /// after their independent inspection stages have succeeded.
 pub struct PublicationBundleCollector;
+
+/// Holds a validated source declaration across the untrusted runner call and
+/// writes the final descriptor only after component inspection succeeds.
+pub struct ArtifactDescriptorFinalizer {
+    source: ModuleArtifactSourceManifest,
+}
+
+impl ArtifactDescriptorFinalizer {
+    pub async fn load(
+        source_dir: &Path,
+        request: &ModuleBuildRequest,
+    ) -> Result<Self, ArtifactDescriptorError> {
+        let source_dir = source_dir.to_path_buf();
+        let request = request.clone();
+        tokio::task::spawn_blocking(move || load_source_manifest(&source_dir, &request))
+            .await
+            .map_err(|error| {
+                ArtifactDescriptorError::Internal(format!(
+                    "artifact source manifest inspection failed: {error}"
+                ))
+            })?
+            .map(|source| Self { source })
+    }
+
+    pub async fn finalize(
+        self,
+        output_dir: &Path,
+        result: &ModuleBuildResult,
+    ) -> Result<(), ArtifactDescriptorError> {
+        let output_dir = output_dir.to_path_buf();
+        let component_digest = result
+            .component_digest
+            .clone()
+            .ok_or(ArtifactDescriptorError::Invalid)?;
+        tokio::task::spawn_blocking(move || {
+            finalize_descriptor(self.source, &output_dir, component_digest)
+        })
+        .await
+        .map_err(|error| {
+            ArtifactDescriptorError::Internal(format!(
+                "artifact descriptor finalization failed: {error}"
+            ))
+        })?
+    }
+}
 
 impl ComponentArtifactInspector {
     pub async fn inspect(
@@ -129,57 +204,41 @@ impl BuildEvidenceInspector {
         result: &ModuleBuildResult,
     ) -> Result<(), BuildEvidenceError> {
         let output_dir = output_dir.to_path_buf();
-        let component_digest = result
-            .component_digest
-            .clone()
-            .ok_or(BuildEvidenceError::ProvenanceInvalid)?;
-        let sbom_digest = result
-            .sbom_digest
-            .clone()
-            .ok_or(BuildEvidenceError::SbomInvalid)?;
-        let provenance_digest = result
-            .provenance_digest
-            .clone()
-            .ok_or(BuildEvidenceError::ProvenanceInvalid)?;
-        let source_digest = request.source.digest.clone();
-        let dependency_lock_digest = request.dependency_policy.lock_digest.clone();
-        let toolchain_digest = request.toolchain.protocol_digest();
-        let wit_digest = request.wit.protocol_digest();
-        let sdk_version = request.authoring.sdk_version.clone();
-        let template_version = request.authoring.template_version.clone();
-        let expected_module_slug = request.expected_module_slug.clone();
-        let expected_version = request.expected_version.clone();
-        let runtime_abi = request.runtime_abi.clone();
-        let attempt = request.attempt;
-        let validation_profiles = serde_json::to_value(&request.validation_profiles)
-            .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?;
-        let validation_results = serde_json::to_value(&result.evidence.validation_results)
-            .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?;
+        let expectation = BuildEvidenceExpectation {
+            component_digest: result
+                .component_digest
+                .clone()
+                .ok_or(BuildEvidenceError::ProvenanceInvalid)?,
+            sbom_digest: result
+                .sbom_digest
+                .clone()
+                .ok_or(BuildEvidenceError::SbomInvalid)?,
+            provenance_digest: result
+                .provenance_digest
+                .clone()
+                .ok_or(BuildEvidenceError::ProvenanceInvalid)?,
+            source_digest: request.source.digest.clone(),
+            dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
+            toolchain_digest: request.toolchain.protocol_digest(),
+            wit_digest: request.wit.protocol_digest(),
+            sdk_version: request.authoring.sdk_version.clone(),
+            template_version: request.authoring.template_version.clone(),
+            expected_module_slug: request.expected_module_slug.clone(),
+            expected_version: request.expected_version.clone(),
+            runtime_abi: request.runtime_abi.clone(),
+            attempt: request.attempt,
+            validation_profiles: serde_json::to_value(&request.validation_profiles)
+                .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?,
+            validation_results: serde_json::to_value(&result.evidence.validation_results)
+                .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?,
+        };
         let maximum_bytes = request
             .limits
             .disk_bytes
             .min(request.limits.memory_bytes / 4)
             .min(MAX_EVIDENCE_BYTES);
         tokio::task::spawn_blocking(move || {
-            inspect_build_evidence(
-                &output_dir,
-                &component_digest,
-                &sbom_digest,
-                &provenance_digest,
-                &source_digest,
-                &dependency_lock_digest,
-                &toolchain_digest,
-                &wit_digest,
-                &sdk_version,
-                &template_version,
-                &expected_module_slug,
-                &expected_version,
-                &runtime_abi,
-                attempt,
-                &validation_profiles,
-                &validation_results,
-                maximum_bytes,
-            )
+            inspect_build_evidence(&output_dir, &expectation, maximum_bytes)
         })
         .await
         .map_err(|error| {
@@ -267,6 +326,95 @@ impl PublicationBundleCollector {
             ))
         })?
     }
+}
+
+fn load_source_manifest(
+    source_dir: &Path,
+    request: &ModuleBuildRequest,
+) -> Result<ModuleArtifactSourceManifest, ArtifactDescriptorError> {
+    let path = source_dir.join(MODULE_ARTIFACT_SOURCE_MANIFEST_FILE);
+    let metadata = fs::symlink_metadata(&path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ArtifactDescriptorError::Invalid
+        } else {
+            ArtifactDescriptorError::Internal(format!(
+                "artifact source manifest {} cannot be inspected: {error}",
+                path.display()
+            ))
+        }
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() == 0 {
+        return Err(ArtifactDescriptorError::Invalid);
+    }
+    if metadata.len() > MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES as u64 {
+        return Err(ArtifactDescriptorError::ResourceLimit);
+    }
+    let bytes = fs::read(&path).map_err(|error| {
+        ArtifactDescriptorError::Internal(format!(
+            "artifact source manifest {} cannot be read: {error}",
+            path.display()
+        ))
+    })?;
+    let source = ModuleArtifactSourceManifest::parse(&bytes)
+        .map_err(|_| ArtifactDescriptorError::Invalid)?;
+    source
+        .validate_build_request(request)
+        .map_err(|_| ArtifactDescriptorError::Invalid)?;
+    Ok(source)
+}
+
+fn finalize_descriptor(
+    source: ModuleArtifactSourceManifest,
+    output_dir: &Path,
+    component_digest: String,
+) -> Result<(), ArtifactDescriptorError> {
+    let output_metadata = fs::symlink_metadata(output_dir).map_err(|error| {
+        ArtifactDescriptorError::Internal(format!(
+            "artifact output directory {} cannot be inspected: {error}",
+            output_dir.display()
+        ))
+    })?;
+    if output_metadata.file_type().is_symlink() || !output_metadata.is_dir() {
+        return Err(ArtifactDescriptorError::Invalid);
+    }
+    let descriptor = source
+        .finalize(component_digest)
+        .map_err(|_| ArtifactDescriptorError::Invalid)?;
+    let bytes = serde_json::to_vec(&descriptor).map_err(|error| {
+        ArtifactDescriptorError::Internal(format!(
+            "artifact descriptor cannot be serialized: {error}"
+        ))
+    })?;
+    if bytes.len() > ArtifactAdmissionLimits::default().max_descriptor_bytes as usize {
+        return Err(ArtifactDescriptorError::ResourceLimit);
+    }
+    let path = output_dir.join(DESCRIPTOR_OUTPUT_FILE);
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                ArtifactDescriptorError::Invalid
+            } else {
+                ArtifactDescriptorError::Internal(format!(
+                    "artifact descriptor {} cannot be created: {error}",
+                    path.display()
+                ))
+            }
+        })?;
+    file.write_all(&bytes).map_err(|error| {
+        ArtifactDescriptorError::Internal(format!(
+            "artifact descriptor {} cannot be written: {error}",
+            path.display()
+        ))
+    })?;
+    file.sync_all().map_err(|error| {
+        ArtifactDescriptorError::Internal(format!(
+            "artifact descriptor {} cannot be synchronized: {error}",
+            path.display()
+        ))
+    })
 }
 
 fn collect_publication_bundle(
@@ -600,30 +748,15 @@ fn world_surface_names<'a>(
     Ok(names.into_iter().collect())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn inspect_build_evidence(
     output_dir: &Path,
-    component_digest: &str,
-    sbom_digest: &str,
-    provenance_digest: &str,
-    source_digest: &str,
-    dependency_lock_digest: &str,
-    toolchain_digest: &str,
-    wit_digest: &str,
-    sdk_version: &str,
-    template_version: &str,
-    expected_module_slug: &str,
-    expected_version: &str,
-    runtime_abi: &str,
-    attempt: u32,
-    validation_profiles: &serde_json::Value,
-    validation_results: &serde_json::Value,
+    expectation: &BuildEvidenceExpectation,
     maximum_bytes: u64,
 ) -> Result<(), BuildEvidenceError> {
     let sbom = read_verified_json_output(
         output_dir,
         SBOM_OUTPUT_FILE,
-        sbom_digest,
+        &expectation.sbom_digest,
         maximum_bytes,
         BuildEvidenceError::SbomInvalid,
     )?;
@@ -631,26 +764,11 @@ fn inspect_build_evidence(
     let provenance = read_verified_json_output(
         output_dir,
         PROVENANCE_OUTPUT_FILE,
-        provenance_digest,
+        &expectation.provenance_digest,
         maximum_bytes,
         BuildEvidenceError::ProvenanceInvalid,
     )?;
-    inspect_slsa_provenance(
-        &provenance,
-        component_digest,
-        source_digest,
-        dependency_lock_digest,
-        toolchain_digest,
-        wit_digest,
-        sdk_version,
-        template_version,
-        expected_module_slug,
-        expected_version,
-        runtime_abi,
-        attempt,
-        validation_profiles,
-        validation_results,
-    )
+    inspect_slsa_provenance(&provenance, expectation)
 }
 
 fn read_verified_json_output(
@@ -717,19 +835,7 @@ fn inspect_cyclonedx_sbom(document: &serde_json::Value) -> Result<(), BuildEvide
 
 fn inspect_slsa_provenance(
     document: &serde_json::Value,
-    component_digest: &str,
-    source_digest: &str,
-    dependency_lock_digest: &str,
-    toolchain_digest: &str,
-    wit_digest: &str,
-    sdk_version: &str,
-    template_version: &str,
-    expected_module_slug: &str,
-    expected_version: &str,
-    runtime_abi: &str,
-    attempt: u32,
-    validation_profiles: &serde_json::Value,
-    validation_results: &serde_json::Value,
+    expectation: &BuildEvidenceExpectation,
 ) -> Result<(), BuildEvidenceError> {
     if !document
         .get("_type")
@@ -742,7 +848,8 @@ fn inspect_slsa_provenance(
     {
         return Err(BuildEvidenceError::ProvenanceInvalid);
     }
-    let expected_component_hash = component_digest
+    let expected_component_hash = expectation
+        .component_digest
         .strip_prefix("sha256:")
         .ok_or(BuildEvidenceError::ProvenanceInvalid)?;
     let subjects = document
@@ -763,23 +870,30 @@ fn inspect_slsa_provenance(
         .and_then(serde_json::Value::as_object)
         .ok_or(BuildEvidenceError::ProvenanceInvalid)?;
     for (key, expected) in [
-        ("sourceDigest", source_digest),
-        ("dependencyLockDigest", dependency_lock_digest),
-        ("toolchainDigest", toolchain_digest),
-        ("witDigest", wit_digest),
-        ("sdkVersion", sdk_version),
-        ("templateVersion", template_version),
-        ("expectedModuleSlug", expected_module_slug),
-        ("expectedVersion", expected_version),
-        ("runtimeAbi", runtime_abi),
+        ("sourceDigest", expectation.source_digest.as_str()),
+        (
+            "dependencyLockDigest",
+            expectation.dependency_lock_digest.as_str(),
+        ),
+        ("toolchainDigest", expectation.toolchain_digest.as_str()),
+        ("witDigest", expectation.wit_digest.as_str()),
+        ("sdkVersion", expectation.sdk_version.as_str()),
+        ("templateVersion", expectation.template_version.as_str()),
+        (
+            "expectedModuleSlug",
+            expectation.expected_module_slug.as_str(),
+        ),
+        ("expectedVersion", expectation.expected_version.as_str()),
+        ("runtimeAbi", expectation.runtime_abi.as_str()),
     ] {
         if rustok.get(key).and_then(serde_json::Value::as_str) != Some(expected) {
             return Err(BuildEvidenceError::ProvenanceInvalid);
         }
     }
-    if rustok.get("attempt").and_then(serde_json::Value::as_u64) != Some(u64::from(attempt))
-        || rustok.get("validationProfiles") != Some(validation_profiles)
-        || rustok.get("validationResults") != Some(validation_results)
+    if rustok.get("attempt").and_then(serde_json::Value::as_u64)
+        != Some(u64::from(expectation.attempt))
+        || rustok.get("validationProfiles") != Some(&expectation.validation_profiles)
+        || rustok.get("validationResults") != Some(&expectation.validation_results)
     {
         return Err(BuildEvidenceError::ProvenanceInvalid);
     }
@@ -841,7 +955,10 @@ fn inspect_component_interface(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use serde_json::json;
+    use uuid::Uuid;
 
     use super::*;
 
@@ -888,59 +1005,99 @@ mod tests {
         })
     }
 
+    fn evidence_expectation() -> BuildEvidenceExpectation {
+        BuildEvidenceExpectation {
+            component_digest: digest('c'),
+            sbom_digest: digest('f'),
+            provenance_digest: digest('9'),
+            source_digest: digest('a'),
+            dependency_lock_digest: digest('b'),
+            toolchain_digest: digest('d'),
+            wit_digest: digest('e'),
+            sdk_version: "1.2.3".to_string(),
+            template_version: "4.5.6".to_string(),
+            expected_module_slug: "example".to_string(),
+            expected_version: "1.0.0".to_string(),
+            runtime_abi: "wit-component-v1".to_string(),
+            attempt: 1,
+            validation_profiles: json!([
+                "format",
+                "check",
+                "lint",
+                "test",
+                "dependency_policy",
+                "vulnerability"
+            ]),
+            validation_results: json!([
+                { "profile": "check", "outcome": "passed" },
+                { "profile": "test", "outcome": "passed" }
+            ]),
+        }
+    }
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn create() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "rustok-module-build-artifact-test-{}",
+                Uuid::new_v4()
+            ));
+            fs::create_dir(&path).expect("create test directory");
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn provenance_rejects_a_substituted_immutable_request_fact() {
         let document = provenance();
-        let profiles = json!([
-            "format",
-            "check",
-            "lint",
-            "test",
-            "dependency_policy",
-            "vulnerability"
-        ]);
-        let results = json!([
-            { "profile": "check", "outcome": "passed" },
-            { "profile": "test", "outcome": "passed" }
-        ]);
-        assert!(
-            inspect_slsa_provenance(
-                &document,
-                &digest('c'),
-                &digest('a'),
-                &digest('b'),
-                &digest('d'),
-                &digest('e'),
-                "1.2.3",
-                "4.5.6",
-                "example",
-                "1.0.0",
-                "wit-component-v1",
-                1,
-                &profiles,
-                &results,
-            )
-            .is_ok()
-        );
+        let expectation = evidence_expectation();
+        assert!(inspect_slsa_provenance(&document, &expectation).is_ok());
 
+        let mut substituted = evidence_expectation();
+        substituted.sdk_version = "1.2.4".to_string();
         assert!(matches!(
-            inspect_slsa_provenance(
-                &document,
-                &digest('c'),
-                &digest('a'),
-                &digest('b'),
-                &digest('d'),
-                &digest('e'),
-                "1.2.4",
-                "4.5.6",
-                "example",
-                "1.0.0",
-                "wit-component-v1",
-                1,
-                &profiles,
-                &results,
-            ),
+            inspect_slsa_provenance(&document, &substituted),
             Err(BuildEvidenceError::ProvenanceInvalid)
+        ));
+    }
+
+    #[test]
+    fn worker_finalizes_the_descriptor_once_with_the_verified_component_digest() {
+        let source_bytes = serde_json::to_vec(&json!({
+            "schema_version": rustok_modules::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            "slug": "example",
+            "version": "1.0.0",
+            "payload_kind": "wasm_component",
+            "module_kind": "optional",
+            "runtime_abi": rustok_modules::MODULE_BUILD_RUNTIME_ABI,
+            "platform_compatibility": "^0.1",
+            "entrypoint": "run"
+        }))
+        .expect("serialize source manifest");
+        let source =
+            ModuleArtifactSourceManifest::parse(&source_bytes).expect("parse source manifest");
+        let output = TestDirectory::create();
+
+        finalize_descriptor(source, &output.0, digest('c')).expect("finalize descriptor");
+        let descriptor_bytes =
+            fs::read(output.0.join(DESCRIPTOR_OUTPUT_FILE)).expect("read descriptor");
+        let descriptor: ModuleArtifactDescriptor =
+            serde_json::from_slice(&descriptor_bytes).expect("parse finalized descriptor");
+        assert_eq!(descriptor.artifact_digest, digest('c'));
+        assert!(descriptor.validate().is_ok());
+
+        let duplicate = ModuleArtifactSourceManifest::parse(&source_bytes)
+            .expect("parse duplicate source manifest");
+        assert!(matches!(
+            finalize_descriptor(duplicate, &output.0, digest('d')),
+            Err(ArtifactDescriptorError::Invalid)
         ));
     }
 }

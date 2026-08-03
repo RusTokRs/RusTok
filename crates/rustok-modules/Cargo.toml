@@ -29,6 +29,7 @@ http = "1.1"
 tokio.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
+rustok-build-source.workspace = true
 rustok-runtime.workspace = true
 rustok-sandbox.workspace = true
 rustok-events.workspace = true

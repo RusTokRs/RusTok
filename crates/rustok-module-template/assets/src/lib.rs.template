@@ -1,0 +1,20 @@
+struct Module;
+
+impl rustok_module_sdk::Guest for Module {
+    fn run(input: String) -> Result<String, String> {
+        let event = [
+            "{\"topic\":\"module.{{slug}}.executed\",\"payload\":",
+            input.as_str(),
+            "}",
+        ]
+        .concat();
+        rustok_module_sdk::rustok::module::host::invoke(
+            "platform.events",
+            "publish",
+            &event,
+        )?;
+        Ok(input)
+    }
+}
+
+rustok_module_sdk::export!(Module);

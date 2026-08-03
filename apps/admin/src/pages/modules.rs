@@ -27,6 +27,7 @@ where
 struct ModulesPageData {
     modules: Vec<ModuleInfo>,
     marketplace_modules: Vec<MarketplaceModule>,
+    marketplace_registry_freshness: Vec<rustok_api::MarketplaceRegistryFreshness>,
     installed_modules: Vec<InstalledModule>,
     tenant_modules: Vec<TenantModule>,
     active_build: Option<BuildJob>,
@@ -61,6 +62,12 @@ pub fn Modules() -> impl IntoView {
             )
             .await
             .unwrap_or_default();
+            let marketplace_registry_freshness = transport::fetch_marketplace_registry_freshness(
+                token_value.clone(),
+                tenant_value.clone(),
+            )
+            .await
+            .unwrap_or_default();
             let installed_modules =
                 transport::fetch_installed_modules(token_value.clone(), tenant_value.clone())
                     .await
@@ -84,6 +91,7 @@ pub fn Modules() -> impl IntoView {
             Ok::<ModulesPageData, _>(ModulesPageData {
                 modules,
                 marketplace_modules,
+                marketplace_registry_freshness,
                 installed_modules,
                 tenant_modules,
                 active_build,
@@ -131,6 +139,7 @@ pub fn Modules() -> impl IntoView {
                                         admin_surface="leptos-admin".to_string()
                                         modules=data.modules
                                         marketplace_modules=data.marketplace_modules
+                                        marketplace_registry_freshness=data.marketplace_registry_freshness
                                         installed_modules=data.installed_modules
                                         tenant_modules=data.tenant_modules
                                         active_build=data.active_build

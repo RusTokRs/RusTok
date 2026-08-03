@@ -52,6 +52,7 @@ impl SandboxExecutor for RhaiFixtureExecutor {
         Ok(SandboxOutcome {
             execution_id: Uuid::nil(),
             output: response.output,
+            rhai_scope: None,
             metrics: Default::default(),
         })
     }
@@ -229,6 +230,7 @@ fn request(granted: bool) -> SandboxRequest {
             bytes: b"42".to_vec(),
         },
         input: json!({ "topic": "sandbox.fixture", "payload": { "value": 42 } }),
+        rhai_scope: None,
         policy: SandboxPolicy {
             grants: granted
                 .then_some(CapabilityGrant {
@@ -274,7 +276,9 @@ async fn runtime_rejects_a_capability_call_with_another_actor_before_the_broker(
 
     assert_eq!(
         error,
-        SandboxError::CapabilityContextMismatch { field: "context" }
+        SandboxError::CapabilityContextMismatch {
+            field: "context".to_string()
+        }
     );
     assert_eq!(error.code(), "CAPABILITY_CONTEXT_MISMATCH");
 }

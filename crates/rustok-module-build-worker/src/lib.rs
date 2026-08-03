@@ -7,7 +7,8 @@ pub mod runner;
 pub mod source;
 
 pub use artifact::{
-    BuildEvidenceError, BuildEvidenceInspector, ComponentArtifactError, ComponentArtifactInspector,
+    ArtifactDescriptorError, ArtifactDescriptorFinalizer, BuildEvidenceError,
+    BuildEvidenceInspector, ComponentArtifactError, ComponentArtifactInspector,
     PublicationBundleCollector, PublicationBundleError, WitContractError, WitContractInspector,
 };
 pub use materializer::{DependencyMaterializationError, OciScopedDependencyMaterializer};

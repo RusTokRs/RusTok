@@ -111,9 +111,7 @@ async fn create_topic(
                 category_id,
                 title: "Move owner topic".to_string(),
                 slug: Some("move-owner-topic".to_string()),
-                body: "Move owner topic body".to_string(),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph("Move owner topic body"),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -137,9 +135,9 @@ async fn create_approved_reply(
             topic_id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: "Approved reply moved with its topic".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(
+                    "Approved reply moved with its topic",
+                ),
                 parent_reply_id: None,
             },
         )

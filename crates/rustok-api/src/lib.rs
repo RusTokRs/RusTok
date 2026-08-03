@@ -16,6 +16,7 @@ pub mod event_delivery;
 pub mod graphql;
 pub mod locale;
 pub mod manifest_hash;
+pub mod module_marketplace;
 pub mod module_registry_contract;
 pub mod module_work;
 pub mod permissions;
@@ -59,6 +60,8 @@ pub use locale::{
     is_valid_locale_tag, locale_primary_language, locale_tags_match, normalize_locale_tag,
     push_locale_candidate,
 };
+pub use module_marketplace::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
+pub use module_registry_contract::is_valid_module_slug;
 pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };

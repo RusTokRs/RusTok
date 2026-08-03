@@ -60,8 +60,8 @@ pub enum ScriptError {
     Release(#[from] crate::model::AlloyReleaseError),
 }
 
-impl From<crate::model::WorkspaceError> for ScriptError {
-    fn from(error: crate::model::WorkspaceError) -> Self {
+impl From<crate::model::RhaiWorkspaceError> for ScriptError {
+    fn from(error: crate::model::RhaiWorkspaceError) -> Self {
         Self::InvalidWorkspace(error.to_string())
     }
 }

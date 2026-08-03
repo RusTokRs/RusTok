@@ -2,6 +2,18 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use thiserror::Error;
 
+/// Canonical module slug grammar shared by manifests, artifact declarations,
+/// build requests, and author tooling.
+pub fn is_valid_module_slug(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 48
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        })
+        && !value.starts_with('_')
+        && !value.ends_with('_')
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManifestModuleContract {
     pub slug: String,
@@ -197,5 +209,14 @@ mod tests {
             error,
             ModuleRegistryContractError::DependencyMismatch(_)
         ));
+    }
+
+    #[test]
+    fn module_slug_uses_the_shared_short_snake_case_contract() {
+        assert!(is_valid_module_slug("sample_module2"));
+        assert!(!is_valid_module_slug("SampleModule"));
+        assert!(!is_valid_module_slug("sample-module"));
+        assert!(!is_valid_module_slug("_sample"));
+        assert!(!is_valid_module_slug(&"a".repeat(49)));
     }
 }

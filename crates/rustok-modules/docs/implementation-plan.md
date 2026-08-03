@@ -509,7 +509,7 @@ definitions and effective policy are resolved through owner services; no
 request path rebuilds a registry from durable artifact state.
 
 Phase 4 begins with the transport-neutral `ModuleBuildRequest` /
-`ModuleBuildResult` v7 protocol in this owner crate. It carries immutable source,
+`ModuleBuildResult` protocol 8 in this owner crate. It carries immutable source,
 dependency, toolchain, independently versioned SDK/template, WIT, resource-limit,
 network-policy, validation, and
 evidence facts, while `ModuleBuildWorker` is a remote-worker port that cannot
@@ -538,7 +538,11 @@ the RPC and accept the terminal result only through immutable owner validation.
 `rustok-module-build-worker` is now a separately deployable mTLS process. It
 can invoke only a fixed image-owned non-symlink runner in a fixed workdir with
 a cleared environment, request-derived timeout, and aggregate streamed output
-cap. Its current source is a `cas://sha256:<hex>` archive from a
+cap. Production construction requires the bounded deployment-owned isolation
+attestation; its schema rejects unknown fields, there is no public
+attestation-free constructor, and execution reloads that file through the
+readiness gate before accepting each request. Its current source is a
+`cas://sha256:<hex>` archive from a
 deployment-mounted read-only root. The worker uses the shared
 `rustok-build-source` strict USTAR materializer; the former private parser was
 removed rather than retained as a second path. It materializes under a
@@ -554,8 +558,52 @@ and commits its offset only after owner-side result persistence. Broker topic
 provisioning and deployment configuration remain operational prerequisites. The
 separate dispatcher binary owns only the database owner adapter, Iggy client,
 and mTLS build-worker client; it has no Cargo or CAS access and no server-local
-polling or execution fallback. Evidence-generation tools, signing, and
-release-governance promotion remain unfinished.
+polling or execution fallback. Worker evidence generation, scoped OCI
+publication, and build-service signing are implemented; deployment supervisor
+evidence and the independently authorized final governance decision remain
+separate gates.
+`rustok-modules-cli` now supplies the owner-local authoring entrypoints for
+`module init`, `module validate`, `module test`, `module build`, `module
+package`, `module publish`, and `module inspect`. Init
+renders the independently versioned
+canonical template, writes only create-new paths, uses pinned Cargo to generate
+the lockfile under a bounded timeout, and removes only its newly created root
+when initialization fails. Validate checks the source declaration, recorded
+SDK/template/toolchain identities, native Component target, fail-closed policy,
+and checksummed lock graph without accessing the server, database, worker,
+sandbox, AI, Alloy, CAS, or publication credentials. Package uses the shared
+deterministic bounded USTAR writer and returns the immutable source digest/CAS
+identity; inspect uses the same project preflight or strict worker archive
+parser without materialization. Test uses sanitized, bounded, offline Cargo to
+produce the native WASI P2 Component, rehashes the regular output, then executes
+it through the real neutral Wasmtime executor with a bounded scenario that binds
+typed grants/limits, fixtures, input, and the expected output/error code. It is
+local author feedback, not trusted build evidence. Build requires explicit
+tenant, actor, project, trace, correlation, and idempotency identity and calls
+only the shared owner control. `SeaOrmModuleAuthoringBuildService` constructs
+the immutable request with owner-selected build policy, while
+`CasArchivePublisher` rehashes and strictly scans the private archive before an
+atomic no-replace source-CAS commit. Queue persistence and its outbox fact remain
+owned by `SeaOrmModuleBuildService`; remote dispatcher delivery remains outside
+the CLI process. Publish constructs the current source-manifest metadata bundle
+and calls only `ModuleAuthoringPublishControl`. The owner reloads the completed
+tenant build, content-addresses the bundle, creates the deterministic governance
+request, binds the build stage, and queues validation; approval, admission, and
+final release creation remain outside the author CLI.
+The shared source-archive crate passes its five focused deterministic
+writer/strict reader/publisher unit tests. A filtered provider test for the expanded CLI
+did not finish dependency compilation within either bounded 60-second attempt,
+so the package/inspect adapter does not yet have Rust compile evidence. Its
+static boundary guard, Rust 2024 formatting, metadata, and diff checks pass; no
+full compile or test suite was run. The neutral local-scenario harness now
+passes all three focused tests with the real `wasm-component` feature enabled.
+The focused template scenario test and earlier five-command CLI provider test
+did not finish compilation inside their bounded windows, so their direct Rust
+compile evidence remains open. The first focused owner authoring-request attempt
+also exceeded that window, but after the dependency cache completed both owner
+request/policy tests passed. The expanded seven-command CLI provider test again
+exceeded 60 seconds while compiling dependencies and was terminated without a
+result.
 The preflight now binds raw `Cargo.lock`
 bytes to the immutable lock digest and rejects source-local Cargo config,
 patch/replacement and path-dependency bypasses, non-allowlisted registries,
@@ -577,7 +625,10 @@ and endpoint list; the worker rejects cache symlinks and Cargo config before it
 runs metadata offline. Missing configuration, receipt mismatch, or endpoint
 denial remains fail-closed as `network_policy_denied`.
 
-The runner's successful result is now bound to the fixed
+The source archive must contain a strict `module-artifact.json` declaration.
+The worker validates it before any author code runs, rejects an author-supplied
+component digest, and binds its module identity and executable contract to the
+immutable request. The runner's successful result is now bound to the fixed
 `output/component.wasm` artifact. The worker rehashes a regular non-symlink
 file under a memory/disk-derived 64 MiB ceiling, validates that it is a
 WebAssembly Component with the maintained parser, and compares its root
@@ -595,7 +646,10 @@ publishes the descriptor-configured executable layer, and uploads OCI 1.1 SBOM
 and provenance referrers with an exact subject descriptor. It verifies every
 registry-returned manifest digest and returns only digest-pinned identities;
 its deterministic write tags are never installation identity. The worker now
-collects only fixed inspected output files (including the descriptor), uses its
+creates the final descriptor exactly once after Component/WIT inspection by
+inserting the independently verified component digest into that source
+declaration; runner-provided descriptor output is rejected. It collects only
+fixed inspected output files, uses its
 deployment-owned scoped registry destination, and attaches the receipt to the
 terminal result. Owner persistence rejects a successful result without that
 receipt. Signing and admission are enforced by the separate build-signature and
@@ -1258,11 +1312,20 @@ and installation lifecycle preconditions before that command may delete data.
   the distribution adapter uploads the descriptor-configured layer and OCI 1.1
   SBOM/provenance referrers, then fixed Cosign/KMS signing contributes a
   digest-pinned signature-manifest receipt.
-- Schedule an isolated worker that uses `cargo_metadata`, `cargo-component`,
-  `cargo-deny`, `cargo-vet`, `wasm-tools`, and `cargo-cyclonedx`.
+- Schedule an isolated worker that uses `cargo_metadata`, pinned native Cargo
+  targeting `wasm32-wasip2`, `cargo-deny`, `cargo-vet`, `wasm-tools`, and
+  `cargo-cyclonedx`. Do not retain the superseded `cargo-component` path.
 - Accept only verified build outputs and provenance.
 - Publish OCI artifacts and attestations by digest; sign through a
   Sigstore/cosign workflow rather than custom cryptography.
+- [x] Stage completed author builds through the owner-local publication
+  control. The current CLI builds a bounded metadata bundle from
+  `module-artifact.json` and `Cargo.toml`; the owner reloads the exact
+  tenant-scoped completed build, fixes platform-built/third-party/sandboxed
+  policy, stores the bundle by SHA-256, creates an immutable idempotent request,
+  binds the source/Component/OCI receipt stage, and queues registry validation.
+  Metadata-bundle, Component payload, and OCI manifest digests are separate;
+  the author path cannot approve, admit, sign, or finalize a release.
 - [x] Persist platform admission as a complete immutable publication contract:
   logical registry identity, OCI repository and manifest, payload and canonical
   descriptor digests, descriptor, runtime/media type, and one typed
@@ -1275,11 +1338,20 @@ and installation lifecycle preconditions before that command may delete data.
   shared marketplace DTO, and persists it create-once beside the immutable
   release. Active catalog releases are exposed only through this owner query;
   a missing or corrupt contract is not downgraded to metadata-only output.
-- [ ] Compose the production caller for the reserved build-service-attestation
-  and platform-admission owner operations. It must load the exact published OCI
-  descriptor, use the isolated mTLS verifier, and then record the complete
-  admission contract. The operations currently have focused owner coverage but
-  no production caller, so final publication remains deliberately fail-closed.
+- [x] Compose the production caller for the reserved build-service-attestation
+  and platform-admission owner operations. The independent registry-validation
+  worker reloads exact stage/build facts through the owner, obtains a short-lived
+  registry credential lease, fetches and revalidates the digest-pinned OCI
+  package, calls the isolated verifier through readiness-gated mTLS, and records
+  both immutable facts through owner operations. The server, Alloy, MCP, AI, and
+  module runtime receive neither registry credentials nor trust roots.
+- [x] Project configured-registry freshness through the owner catalog port.
+  The neutral `rustok-api::MarketplaceRegistryFreshness` contract carries only
+  logical registry identity, typed status, last-success Unix milliseconds, and
+  consecutive failures. It omits endpoint and remote error content. GraphQL
+  and native operator transports require `modules.manage`, and the Leptos and
+  Next module operator screens render and refresh the same projection. The
+  local manifest provider is not misreported as a federated registry.
 - The 2026-07-27 projection slice was checked only with touched-file
   `rustfmt --edition 2024`, `git diff --check`, and
   `cargo metadata --no-deps`; no compile or test suite was run in the shared
@@ -1367,6 +1439,55 @@ and installation lifecycle preconditions before that command may delete data.
   static-promotion rules.
 
 ## Verification
+
+### 2026-08-02 federated-registry freshness slice
+
+- Passed touched-file `rustfmt --edition 2024`, `git diff --check`, the module
+  control-plane owner guard, and
+  `verify-marketplace-registry-freshness.mjs`.
+- The focused Rust test and final metadata result are recorded after the
+  bounded verification step; no full compile or test suite was run.
+
+### 2026-08-02 module-build isolation bypass closure
+
+- Passed touched-file `rustfmt --edition 2024`, `git diff --check`,
+  `cargo metadata --no-deps`, and
+  `verify-module-build-worker-isolation.mjs`.
+- The runtime portion of `verify-worker-runtime-policy.mjs` now passes: shared
+  global admission, permit-free readiness, graceful shutdown, and
+  cancellation-safe worker subprocesses are composed. Default gate mode remains
+  red only because its CI workflow registration requires separate explicit
+  authorization. Two focused `rustok-worker-transport` admission tests pass.
+  The targeted `rustok-verification-transport` crate test exceeded its bounded
+  60-second dependency-compilation window and was terminated without a result;
+  no full compile or test suite was run.
+
+### 2026-08-02 production publication-evidence slice
+
+- Passed touched-file `rustfmt --edition 2024`, `git diff --check`,
+  `cargo metadata --no-deps`, and the module control-plane, authoring, and source
+  archive Node guardrails.
+- Three focused Rust test invocations exceeded their bounded 60-second
+  dependency-compilation windows and were terminated without a result. They do
+  not establish compile or runtime test evidence. No full compile or test suite
+  was run.
+
+### 2026-08-02 source-manifest and authoring slice
+
+- Passed touched-file `rustfmt --edition 2024` and `git diff --check`.
+- Passed `cargo metadata --no-deps` and generated CLI registry freshness.
+- Passed the module build-worker isolation, SDK WIT, canonical template, and
+  module authoring CLI Node guardrails.
+- Narrow Rust tests for source-manifest finalization and CLI provider/dry-run
+  behavior each exceeded the 60-second dependency-compilation limit and were
+  terminated without a result. They do not establish compile or runtime test
+  evidence. No full compile or test suite was run.
+- The owner-backed publish extension passed four focused authoring tests and
+  five focused current-bundle validation tests. The CLI provider test again
+  exceeded its bounded 60-second dependency-compilation window and was
+  terminated without a result. `rustfmt --edition 2024`,
+  `cargo metadata --no-deps`, and the authoring boundary guard passed; no full
+  compile or test suite was run.
 
 ### 2026-07-26 artifact-data quota closure
 

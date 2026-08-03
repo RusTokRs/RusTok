@@ -1,0 +1,14 @@
+package rustok:module@1.0.0;
+
+interface host {
+    invoke: func(
+        capability: string,
+        operation: string,
+        input: string,
+    ) -> result<string, string>;
+}
+
+world module-runtime {
+    import host;
+    export run: func(input: string) -> result<string, string>;
+}

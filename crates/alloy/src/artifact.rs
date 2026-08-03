@@ -122,7 +122,7 @@ pub async fn package_rhai_module_release(
     let package = ModuleArtifactPackage {
         reference,
         descriptor: draft.descriptor.clone(),
-        media_type: rustok_modules::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
+        media_type: rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
         payload: rustok_modules::ArtifactPayloadSource::Bytes(
             script
                 .workspace
@@ -144,12 +144,12 @@ mod tests {
     use rustok_sandbox::CapabilityName;
 
     use super::{fork_rhai_module_release, package_rhai_module_release, stage_rhai_module_release};
-    use crate::{AlloyWorkspace, Script, ScriptTrigger};
+    use crate::{RhaiWorkspace, Script, ScriptTrigger};
 
     fn script(code: &str) -> Script {
         Script::new(
             "tax_adjustment",
-            AlloyWorkspace::single_source(code),
+            RhaiWorkspace::single_source(code),
             ScriptTrigger::Manual,
         )
     }
@@ -224,7 +224,7 @@ mod tests {
         assert_ne!(package.reference.digest, draft.descriptor.artifact_digest);
         assert_eq!(
             package.media_type,
-            rustok_modules::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
         );
         assert!(matches!(
             package.payload,

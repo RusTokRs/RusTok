@@ -31,6 +31,12 @@ users, and service principals. Server-enabled builds expose the separate
 `AuthPrincipalContext` request carrier; module owners can consume the enum
 without taking an Axum or Async-GraphQL dependency.
 
+`MarketplaceRegistryFreshness` is the neutral cross-transport observation for
+one configured logical module registry. It carries typed status, last-success
+Unix milliseconds, and consecutive failures while deliberately excluding
+endpoint URLs and provider error text. `rustok-modules` owns the catalog port;
+`rustok-api` owns only the DTO reused by Rust and headless transports.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`

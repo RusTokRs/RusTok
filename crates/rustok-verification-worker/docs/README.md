@@ -21,6 +21,7 @@ listener variables; there is no plaintext fallback:
 - `RUSTOK_VERIFICATION_CLIENT_CA_PEM`.
 
 Optional bounded overrides are `RUSTOK_VERIFICATION_REQUEST_TIMEOUT_MS`,
+`RUSTOK_VERIFICATION_ADMISSION_TIMEOUT_MS`,
 `RUSTOK_VERIFICATION_CONCURRENCY_LIMIT`, and
 `RUSTOK_VERIFICATION_MAX_MESSAGE_SIZE` (at most 1 MiB). The owner transport
 must use `GrpcTrustVerifier::connect_with_tls` with its client identity, trust
@@ -32,6 +33,12 @@ typed verification policy; an invalid or incomplete startup configuration exits
 the process instead. Platform supervision must use this authenticated RPC (via
 `GrpcTrustVerifier::check_readiness`) and process liveness, never a plaintext
 health port.
+
+Admission is process-wide across all mTLS connections. Verification waits only
+for the bounded admission timeout before returning `RESOURCE_EXHAUSTED`, while
+readiness remains callable without a permit. SIGTERM or Ctrl+C starts tonic
+graceful shutdown, and cancellation drops a kill-on-drop Cosign child rather
+than leaving verification processes behind.
 
 ## Rollout
 

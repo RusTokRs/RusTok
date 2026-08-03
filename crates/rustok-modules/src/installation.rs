@@ -381,6 +381,7 @@ impl InstalledModuleArtifact {
                 bytes: payload,
             },
             input,
+            rhai_scope: None,
             policy,
         })
     }
@@ -3604,7 +3605,7 @@ fn valid_media_type_for(kind: ArtifactPayloadKind, media_type: &str) -> bool {
         ArtifactPayloadKind::Rhai => matches!(
             media_type,
             crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE
-                | crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE
+                | rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
         ),
         _ => media_type == expected_media_types_for(kind),
     }

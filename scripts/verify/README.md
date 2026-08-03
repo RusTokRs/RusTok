@@ -24,7 +24,14 @@ node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node scripts/verify/verify-module-control-plane-write-path.mjs
+node scripts/verify/verify-marketplace-registry-freshness.mjs
 node scripts/verify/verify-module-build-worker-isolation.mjs
+node scripts/verify/verify-worker-runtime-policy.mjs --runtime-only
+node scripts/verify/verify-module-sdk-wit.mjs
+node scripts/verify/verify-module-template.mjs
+node scripts/verify/verify-module-authoring-cli.mjs
+node scripts/verify/verify-module-source-archive.mjs
+node scripts/verify/verify-sandbox-worker-isolation.mjs
 node scripts/verify/verify-cache-clock-contract.mjs
 node scripts/verify/verify-api-surface-contract.mjs
 node scripts/verify/verify-axum-runtime.mjs
@@ -726,6 +733,22 @@ policy over `module_artifact_binding_operations`. The module-owned admin
 transport is checked separately for SQL, filesystem, hashing, dependency,
 build-planning, and direct `BuildService` use so it remains an owner-backed
 DTO/command adapter.
+The same guard requires the independent registry-validation worker to compose
+platform publication evidence through the owner, a short-lived credential
+broker lease, exact OCI fetch, and readiness-gated mTLS verification. It rejects
+server, AI, MCP, and Alloy dependencies in that worker so credentials and trust
+roots cannot drift into product infrastructure.
+
+---
+### `verify-marketplace-registry-freshness.mjs`
+Guardrail for per-registry operator freshness. It requires the minimized neutral
+DTO, modules-owner catalog projection, `modules.manage`-guarded GraphQL and
+native transports, and matching Leptos/Next presentation. It also rejects
+endpoint/error leakage, direct GraphQL access to server-local health atoms, and
+lint suppressions in the touched owner/transport path.
+
+This source guard supplements the focused DTO and server projection tests; it
+does not replace live registry or browser execution evidence.
 
 ---
 ### `verify-oci-registry-transport-policy.mjs`
@@ -748,7 +771,86 @@ readiness check. The worker must require and validate OCI job receipt evidence
 bound to the immutable build request and configured hardened runtime. It also
 requires a bounded deployment isolation attestation matching the pinned
 runtime/image and the required unprivileged, host-isolated, resource-limited,
-ephemeral-job controls.
+ephemeral-job controls. The worker has no attestation-free constructor, rejects
+unknown attestation fields, and reloads the mounted evidence through readiness
+before every build.
+
+---
+### `verify-worker-runtime-policy.mjs`
+Guardrail for the shared worker runtime. It requires one process-wide bounded
+admission semaphore across authenticated connections, permit-free readiness,
+graceful SIGTERM/Ctrl+C host shutdown, and cancellation-safe subprocesses.
+`--runtime-only` verifies source composition without requiring CI workflow
+registration; the default mode additionally fails until the hardening workflow
+invokes this gate.
+
+---
+### `verify-sandbox-worker-isolation.mjs`
+Supplemental dependency and composition guard for the isolated Rhai worker. It
+rejects AI, Alloy, module-control-plane, MCP, database, storage, secret, and
+network-client dependencies or imports from the worker and transport crates. It
+also requires mTLS-only public host construction, deployment-backed readiness,
+single-execution admission, cgroup-backed memory readiness and outcomes,
+capability callbacks, shared Alloy/artifact use of the remote ready executor,
+and absence of a server dependency on the worker binary.
+
+This static guard supplements executable transport and policy tests; it is not
+deployment containment evidence.
+
+---
+### `verify-sandbox-worker-deployment.mjs`
+Executable contract test for the canonical Kubernetes renderer. It requires an
+exact image digest, gVisor/Kata RuntimeClass mapping, multi-replica rolling
+supervision, non-root read-only execution, dropped capabilities, runtime
+seccomp, bounded portable resources, exact mTLS RPC probes, restricted ingress,
+and default-deny egress. It also rejects mutable image references and a
+single-replica production profile.
+
+The renderer and verifier cannot prove that a target cluster actually enforces
+its RuntimeClass, NetworkPolicy, PID/file limits, OOM behavior, or restart
+recovery. Those controls require retained deployment evidence.
+
+---
+### `verify-module-sdk-wit.mjs`
+Supplemental guard for the current module Component Model ABI. It requires the
+canonical SDK WIT package/world/import/export surface, Bytecode Alliance guest
+generation with a public export macro, and Wasmtime host generation from the
+same file. It rejects restoration of a duplicate inline host contract. Targeted
+SDK and sandbox compilation remain the executable proof that generated bindings
+are valid.
+
+---
+### `verify-module-template.mjs`
+Supplemental guard for the independently versioned canonical Rust component
+template. It requires Rust 2024, the pinned native `wasm32-wasip2` target,
+exact SDK identity, owner-validated digest-free source-manifest rendering,
+generated SDK bindings, and the brokered capability example with a matching
+typed local sandbox scenario. It rejects a
+duplicate guest WIT generator or a `cargo-component` build path. Isolated
+compilation of the exact rendered fixture remains separate executable evidence.
+
+---
+### `verify-module-authoring-cli.mjs`
+Guardrail for the owner-local `module init`, `module validate`, `module test`,
+`module build`, `module package`, `module publish`, and `module inspect`
+provider. It
+requires generated registry composition, create-new writes, bounded pinned
+Cargo lockfile generation, incomplete-root cleanup, owner source-manifest and
+lock validation, shared deterministic source packaging/inspection, and
+rejection of a source-owned final descriptor. It requires the neutral real
+Component harness, scenario/manifest capability binding, sanitized offline
+Cargo, bounded output, owner-only build/publication controls, the current
+source-manifest metadata bundle, completed-build staging, and no build-worker
+dependency. It also
+rejects server composition and database, storage, worker, sandbox, AI, or Alloy
+dependencies in the authoring adapter.
+
+---
+### `verify-module-source-archive.mjs`
+Supplemental guard for the single source-archive implementation. It requires
+deterministic create-new USTAR writing, fixed metadata, sorted paths, forbidden
+source-path rejection, digest receipts, read-only inspection through the worker
+parser, zero-padding validation, and CLI reuse without a second TAR parser.
 
 ---
 ### `verify-module-lifecycle-bypass-usage.mjs`

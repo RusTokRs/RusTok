@@ -11,6 +11,7 @@ rustok-cli-core.workspace = true
 rustok-cli-platform.workspace = true
 rustok-auth-cli.workspace = true
 rustok-media-cli.workspace = true
+rustok-modules-cli.workspace = true
 rustok-profiles-cli.workspace = true
 rustok-rbac-cli.workspace = true
 rustok-installer-cli.workspace = true

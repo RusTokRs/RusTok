@@ -5,9 +5,13 @@ use rustok_verification_worker::{
     CosignTrustVerifier, MutualTlsListenerConfig, VerificationGrpcService, VerificationPolicy,
     VerificationWorker,
 };
+use rustok_worker_transport::{WorkerAdmission, shutdown_signal};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = MutualTlsListenerConfig::from_env_prefix("RUSTOK_VERIFICATION")?;
+    let listener = MutualTlsListenerConfig::from_env_prefix(
+        "RUSTOK_VERIFICATION",
+        MutualTlsListenerConfig::STANDARD_MESSAGE_SIZE_CEILING,
+    )?;
     let policy: VerificationPolicy =
         serde_json::from_str(&std::env::var("RUSTOK_VERIFICATION_POLICY_JSON")?)?;
     policy.validate()?;
@@ -15,16 +19,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CosignTrustVerifier::new(policy.clone()),
         policy,
     ));
+    let admission = WorkerAdmission::from_listener(&listener)?;
     listener
         .server()?
         .concurrency_limit_per_connection(listener.concurrency_limit)
         .timeout(listener.request_timeout)
         .add_service(
-            VerificationServiceServer::new(VerificationGrpcService::new(worker))
+            VerificationServiceServer::new(VerificationGrpcService::new(worker, admission))
                 .max_decoding_message_size(listener.max_message_size)
                 .max_encoding_message_size(listener.max_message_size),
         )
-        .serve(listener.address)
+        .serve_with_shutdown(listener.address, shutdown_signal())
         .await?;
     Ok(())
 }

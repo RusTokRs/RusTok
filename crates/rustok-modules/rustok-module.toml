@@ -9,3 +9,7 @@ ui_classification = "no_ui"
 
 [crate]
 entry_type = "ModulesModule"
+
+[provides.cli]
+namespace = "module"
+factory = "rustok_modules_cli::command_provider"

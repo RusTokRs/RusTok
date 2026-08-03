@@ -8,8 +8,9 @@ arguments into `CommandRequest`, rejects duplicate namespace/name registrations,
 and dispatches commands asynchronously. `run_with_environment` already creates
 `RuntimeComposition` from settings and an optional database environment.
 
-The built-in `core version` command proves the typed path, but no real
-module-local maintenance provider is registered yet.
+The generated registry now contains real owner-local providers, including the
+complete standalone `rustok-modules-cli` authoring command set: `module init`,
+`validate`, `test`, `build`, `package`, `publish`, and `inspect`.
 
 ## FFA/FBA boundary
 
@@ -22,13 +23,12 @@ module-local maintenance provider is registered yet.
 
 ## Open results
 
-1. **Register the first real module-local CLI provider.** Done when generated
-   registry metadata wires an owning module `cli/` adapter through
-   `[provides.cli]` and the provider receives `RuntimeComposition` without a
-   server or domain dependency leak.
-   **Depends on:** an approved module command and its owner adapter.
+1. **Completed: register real module-local CLI providers.** Generated registry
+   metadata wires owner `cli/` adapters through `[provides.cli]`; the current
+   module authoring provider exposes the complete authoring command set without
+   a server, worker transport, OCI/signing client, AI, or Alloy dependency.
    **Verification:** `node scripts/generate/generate-cli-registry.mjs --check`
-   and targeted provider/runner tests.
+   and `node scripts/verify/verify-module-authoring-cli.mjs`.
 2. **Move the first server task, seed, or migration into that typed command.**
    Done when the former workflow is invoked through the provider contract with
    structured output and correct exit behavior rather than a server-local task
@@ -36,6 +36,10 @@ module-local maintenance provider is registered yet.
    **Depends on:** priority 1 and the selected workflow owner.
    **Verification:** `cargo test -p rustok-cli --quiet` and a focused command
    execution test.
+3. **Completed: module authoring flow parity.** Test, build, package, inspect,
+   and publish now use `rustok-modules-cli`. Build and publication policy remain
+   in owner controls rather than the terminal runner; author publish creates a
+   review request and cannot perform admission or final approval.
 
 ## Verification
 

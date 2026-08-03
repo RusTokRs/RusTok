@@ -9,8 +9,8 @@ use sea_orm::{
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    AlloyImportedDraftCommand, AlloyImportedDraftResult, AlloyWorkspace, EventType, HttpMethod,
-    ReviewCommand, ReviewDecision, ReviewStatus, Script, ScriptId, ScriptSourceRevision,
+    AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, HttpMethod, ReviewCommand,
+    ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptId, ScriptSourceRevision,
     ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
     TestRunLease, TestRunStatus, validate_transition,
 };
@@ -302,7 +302,7 @@ impl SeaOrmStorage {
             })
             .unwrap_or_default();
 
-        let workspace: AlloyWorkspace =
+        let workspace: RhaiWorkspace =
             serde_json::from_value(model.workspace).map_err(|error| {
                 ScriptError::InvalidWorkspace(format!("stored workspace is invalid: {error}"))
             })?;
@@ -341,7 +341,7 @@ impl SeaOrmStorage {
         )
     }
 
-    fn workspace_to_json(workspace: &AlloyWorkspace) -> ScriptResult<serde_json::Value> {
+    fn workspace_to_json(workspace: &RhaiWorkspace) -> ScriptResult<serde_json::Value> {
         workspace.validate().map_err(ScriptError::from)?;
         serde_json::to_value(workspace)
             .map_err(|error| ScriptError::InvalidWorkspace(error.to_string()))
@@ -387,7 +387,7 @@ impl SeaOrmStorage {
         })
     }
 
-    fn source_digest(workspace: &AlloyWorkspace) -> ScriptResult<String> {
+    fn source_digest(workspace: &RhaiWorkspace) -> ScriptResult<String> {
         workspace.digest().map_err(ScriptError::from)
     }
 
@@ -417,7 +417,7 @@ impl SeaOrmStorage {
             ));
         }
 
-        let workspace: AlloyWorkspace =
+        let workspace: RhaiWorkspace =
             serde_json::from_value(model.workspace).map_err(|error| {
                 ScriptError::InvalidWorkspace(format!(
                     "stored revision workspace is invalid: {error}"
@@ -1583,7 +1583,7 @@ mod tests {
         let storage = SeaOrmStorage::new(database);
         let mut script = Script::new(
             "tenant-only",
-            AlloyWorkspace::single_source("40 + 2"),
+            RhaiWorkspace::single_source("40 + 2"),
             ScriptTrigger::Manual,
         );
         script.tenant_id = owner_tenant;
@@ -1643,7 +1643,7 @@ mod tests {
             .get(script.id)
             .await
             .expect("current script should load");
-        current.workspace = AlloyWorkspace::single_source("41 + 2");
+        current.workspace = RhaiWorkspace::single_source("41 + 2");
 
         let updated = owner
             .save(current)
@@ -1675,7 +1675,7 @@ mod tests {
             .get(script.id)
             .await
             .expect("current script should load");
-        next.workspace = AlloyWorkspace::single_source("41 + 2");
+        next.workspace = RhaiWorkspace::single_source("41 + 2");
         next.author_id = Some("author:next".into());
         let saved = owner.save(next).await.expect("next revision should save");
 
@@ -1707,7 +1707,7 @@ mod tests {
         assert_eq!(revisions[1].author_id.as_deref(), Some("author:next"));
         assert_eq!(
             revisions[1].source_digest,
-            SeaOrmStorage::source_digest(&AlloyWorkspace::single_source("41 + 2"))
+            SeaOrmStorage::source_digest(&RhaiWorkspace::single_source("41 + 2"))
                 .expect("workspace digest")
         );
     }

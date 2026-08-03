@@ -7,6 +7,7 @@ import {
   getActiveBuild,
   getBuildHistory,
   listInstalledModules,
+  listMarketplaceRegistryFreshness,
   listMarketplaceModules,
   listModules
 } from '@/shared/api/modules';
@@ -43,6 +44,7 @@ async function ModulesContent() {
   const [
     modulesData,
     marketplaceModules,
+    marketplaceRegistryFreshness,
     installedModules,
     activeBuild,
     activeRelease,
@@ -63,6 +65,11 @@ async function ModulesContent() {
         ),
       []
     ),
+    safeLoad(
+      'marketplace registry freshness',
+      () => listMarketplaceRegistryFreshness(opts),
+      []
+    ),
     safeLoad('installed modules', () => listInstalledModules(opts), []),
     safeLoad('active build', () => getActiveBuild(opts), null),
     safeLoad('active release', () => getActiveRelease(opts), null),
@@ -74,6 +81,7 @@ async function ModulesContent() {
       adminSurface='next-admin'
       modules={modulesData.modules}
       marketplaceModules={marketplaceModules}
+      marketplaceRegistryFreshness={marketplaceRegistryFreshness}
       installedModules={installedModules}
       activeBuild={activeBuild}
       activeRelease={activeRelease}

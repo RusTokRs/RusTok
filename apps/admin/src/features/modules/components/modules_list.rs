@@ -17,6 +17,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_hook_form::FormState;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
+use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, closure::Closure};
@@ -68,6 +69,32 @@ fn humanize_label(value: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn registry_status_label(status: MarketplaceRegistryStatus) -> &'static str {
+    match status {
+        MarketplaceRegistryStatus::Unknown => "Unknown",
+        MarketplaceRegistryStatus::Ready => "Ready",
+        MarketplaceRegistryStatus::Degraded => "Degraded",
+    }
+}
+
+fn registry_status_class(status: MarketplaceRegistryStatus) -> &'static str {
+    match status {
+        MarketplaceRegistryStatus::Ready => {
+            "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+        }
+        MarketplaceRegistryStatus::Unknown => "bg-secondary text-secondary-foreground",
+        MarketplaceRegistryStatus::Degraded => "bg-destructive/10 text-destructive",
+    }
+}
+
+fn format_registry_last_success(unix_ms: Option<u64>) -> String {
+    unix_ms
+        .and_then(|value| i64::try_from(value).ok())
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|value| value.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+        .unwrap_or_else(|| "Never".to_string())
 }
 
 fn pretty_json(value: &str) -> String {
@@ -357,6 +384,7 @@ pub fn ModulesList(
     admin_surface: String,
     modules: Vec<ModuleInfo>,
     marketplace_modules: Vec<MarketplaceModule>,
+    marketplace_registry_freshness: Vec<MarketplaceRegistryFreshness>,
     installed_modules: Vec<InstalledModule>,
     tenant_modules: Vec<TenantModule>,
     active_build: Option<BuildJob>,
@@ -366,6 +394,7 @@ pub fn ModulesList(
     let i18n = use_i18n();
     let (module_list, set_module_list) = signal(modules);
     let (marketplace_catalog, set_marketplace_catalog) = signal(marketplace_modules);
+    let (registry_freshness, set_registry_freshness) = signal(marketplace_registry_freshness);
     let (installed_module_list, set_installed_module_list) = signal(installed_modules);
     let (tenant_module_list, set_tenant_module_list) = signal(tenant_modules);
     let (active_build_state, set_active_build_state) = signal(active_build);
@@ -451,8 +480,12 @@ pub fn ModulesList(
         }
         spawn_local(async move {
             let filters = normalize_catalog_filters(&filters);
-            let result =
-                transport::fetch_marketplace_modules(token_value, tenant_value, filters).await;
+            let result = transport::fetch_marketplace_modules(
+                token_value.clone(),
+                tenant_value.clone(),
+                filters,
+            )
+            .await;
             if let Ok(marketplace) = result {
                 set_known_categories.update(|categories| {
                     for category in marketplace
@@ -494,6 +527,11 @@ pub fn ModulesList(
                     sources.dedup();
                 });
                 set_marketplace_catalog.set(marketplace);
+            }
+            if let Ok(freshness) =
+                transport::fetch_marketplace_registry_freshness(token_value, tenant_value).await
+            {
+                set_registry_freshness.set(freshness);
             }
             if !silent {
                 set_catalog_refreshing.set(false);
@@ -1874,6 +1912,31 @@ pub fn ModulesList(
                 <Show when=move || selected_tab.get() == ModulesTab::Marketplace>
                     <div class="space-y-6">
                         <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><div class="space-y-2"><h3 class="text-base font-semibold text-card-foreground">"Catalog workspace"</h3><p class="text-sm text-muted-foreground">"Modules here are known to the platform registry but not yet present in modules.toml."</p></div></div>
+                        <Show when=move || !registry_freshness.get().is_empty()>
+                            <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
+                                <div class="space-y-2">
+                                    <h3 class="text-base font-semibold text-card-foreground">"Federated registry freshness"</h3>
+                                    <p class="text-sm text-muted-foreground">"Current status and last successful catalog access for every configured registry."</p>
+                                </div>
+                                <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                    {move || registry_freshness.get().into_iter().map(|registry| {
+                                        let status = registry.status;
+                                        view! {
+                                            <div class="rounded-lg border border-border p-4">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <p class="font-mono text-sm font-medium text-card-foreground">{registry.registry_id}</p>
+                                                    <span class=format!("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {}", registry_status_class(status))>{registry_status_label(status)}</span>
+                                                </div>
+                                                <dl class="mt-3 space-y-2 text-xs text-muted-foreground">
+                                                    <div class="flex items-center justify-between gap-3"><dt>"Last success"</dt><dd class="font-mono text-card-foreground">{format_registry_last_success(registry.last_success_unix_ms)}</dd></div>
+                                                    <div class="flex items-center justify-between gap-3"><dt>"Consecutive failures"</dt><dd class="font-mono text-card-foreground">{registry.consecutive_failures}</dd></div>
+                                                </dl>
+                                            </div>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                            </div>
+                        </Show>
                         <Show when=move || !marketplace_modules().is_empty() fallback=move || view! { <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><p class="text-sm text-muted-foreground">"All optional registry modules are already installed in the platform manifest."</p></div> }>
                             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 {move || marketplace_modules().into_iter().map(|module| {
@@ -1906,5 +1969,23 @@ pub fn ModulesList(
                 </Show>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_freshness_formatting_is_stable() {
+        assert_eq!(
+            registry_status_label(MarketplaceRegistryStatus::Ready),
+            "Ready"
+        );
+        assert_eq!(format_registry_last_success(None), "Never");
+        assert_eq!(
+            format_registry_last_success(Some(0)),
+            "1970-01-01T00:00:00Z"
+        );
     }
 }

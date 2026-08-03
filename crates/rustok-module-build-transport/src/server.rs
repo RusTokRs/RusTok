@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rustok_modules::{ModuleBuildRequest, ModuleBuildWorker, ModuleBuildWorkerReadiness};
+use rustok_worker_transport::WorkerAdmission;
 use tonic::{Request, Response, Status};
 
 use crate::module_build_proto::module_build_service_server::ModuleBuildService;
@@ -12,11 +13,12 @@ use crate::module_build_proto::{
 /// this transport maps only the Rust-owned request/result protocol to mTLS RPC.
 pub struct ModuleBuildGrpcService<W> {
     worker: Arc<W>,
+    admission: WorkerAdmission,
 }
 
 impl<W> ModuleBuildGrpcService<W> {
-    pub fn new(worker: Arc<W>) -> Self {
-        Self { worker }
+    pub fn new(worker: Arc<W>, admission: WorkerAdmission) -> Self {
+        Self { worker, admission }
     }
 }
 
@@ -38,6 +40,7 @@ where
         &self,
         request: Request<ExecuteBuildRequest>,
     ) -> Result<Response<ExecuteBuildResponse>, Status> {
+        let _permit = self.admission.acquire().await?;
         let request: ModuleBuildRequest =
             serde_json::from_slice(&request.into_inner().module_build_request_json)
                 .map_err(|error| Status::invalid_argument(error.to_string()))?;

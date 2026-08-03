@@ -5,7 +5,6 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::types::*;
-#[allow(unused_imports)]
 use crate::entities::module::model::{
     MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
     RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
@@ -836,6 +835,27 @@ pub async fn marketplace_module_native(
         let _ = slug;
         Err(ServerFnError::new(
             "admin/marketplace-module requires the ssr feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/marketplace-registry-freshness")]
+pub async fn marketplace_registry_freshness_native()
+-> Result<Vec<rustok_api::MarketplaceRegistryFreshness>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::{Permission, has_effective_permission};
+
+        let (_app_ctx, auth, _tenant) = modules_server_context().await?;
+        if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
+            return Err(server_error("modules:manage required"));
+        }
+        Ok(marketplace_catalog_handle()?.0.registry_freshness())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "admin/marketplace-registry-freshness requires the ssr feature",
         ))
     }
 }

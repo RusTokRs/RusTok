@@ -35,6 +35,9 @@ Server work for that plan is:
   registry explicitly and does not construct a second topology;
 - supply platform content-addressed artifact storage, transactional outbox, and
   multi-node reconciliation adapters;
+- compose artifact and Alloy Rhai through one shared mTLS-authenticated isolated
+  worker client, require exact readiness at startup, and never register an
+  in-process Rhai fallback; keep Wasmtime placement explicit;
 - preserve transactional and transport parity guarantees during cutover;
 - delete replaced service business logic, error taxonomies, direct writes, and
   runtime Cargo execution references; trusted static distribution builds remain

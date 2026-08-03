@@ -9,7 +9,10 @@ use rustok_worker_transport::MutualTlsListenerConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = MutualTlsListenerConfig::from_env_prefix("RUSTOK_STATIC_DISTRIBUTION")?;
+    let listener = MutualTlsListenerConfig::from_env_prefix(
+        "RUSTOK_STATIC_DISTRIBUTION",
+        MutualTlsListenerConfig::STANDARD_MESSAGE_SIZE_CEILING,
+    )?;
     let worker = Arc::new(StaticDistributionWorker::from_env(
         listener.request_timeout,
     )?);

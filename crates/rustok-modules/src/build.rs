@@ -5,6 +5,7 @@
 //! `apps/server` nor the runtime sandbox may implement this port in production.
 
 use async_trait::async_trait;
+use rustok_api::is_valid_module_slug;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -36,7 +37,14 @@ const MAX_BUILD_DIAGNOSTICS: usize = 32;
 const MAX_WALL_CLOCK_MS: u64 = 2 * 60 * 60 * 1_000;
 
 /// Current transport contract version for isolated module build workers.
-pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 7;
+pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 8;
+/// Exact independently deployed WIT world admitted by the current build path.
+pub const MODULE_BUILD_WIT_WORLD: &str = "rustok:module/module-runtime";
+pub const MODULE_BUILD_WIT_VERSION: &str = "1.0.0";
+/// Runtime ABI selected by the current Component Model host.
+pub const MODULE_BUILD_RUNTIME_ABI: &str = "rustok:module/runtime@1";
+/// Rust component target supported by the fixed worker toolchain.
+pub const MODULE_BUILD_COMPONENT_TARGET: &str = "wasm32-wasip2";
 
 /// Immutable request submitted by the control plane to an isolated worker.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,6 +216,7 @@ pub enum ModuleBuildOutcome {
 pub enum ModuleBuildFailureCode {
     SourceDigestMismatch,
     UnsafeArchive,
+    SourceManifestInvalid,
     DependencyPolicyDenied,
     BuildScriptDenied,
     NativeLinkDenied,
@@ -216,6 +225,7 @@ pub enum ModuleBuildFailureCode {
     ValidationFailed,
     WitContractMismatch,
     ComponentInspectionFailed,
+    ArtifactDescriptorInvalid,
     SbomGenerationFailed,
     ProvenanceGenerationFailed,
     PublicationFailed,
@@ -227,15 +237,17 @@ impl ModuleBuildFailureCode {
     /// Canonical lifecycle stage for a terminal worker failure.
     pub const fn diagnostic_stage(self) -> ModuleBuildDiagnosticStage {
         match self {
-            Self::SourceDigestMismatch | Self::UnsafeArchive => ModuleBuildDiagnosticStage::Source,
+            Self::SourceDigestMismatch | Self::UnsafeArchive | Self::SourceManifestInvalid => {
+                ModuleBuildDiagnosticStage::Source
+            }
             Self::DependencyPolicyDenied
             | Self::BuildScriptDenied
             | Self::NativeLinkDenied
             | Self::NetworkPolicyDenied => ModuleBuildDiagnosticStage::DependencyPolicy,
             Self::ValidationFailed => ModuleBuildDiagnosticStage::Validation,
-            Self::WitContractMismatch | Self::ComponentInspectionFailed => {
-                ModuleBuildDiagnosticStage::ComponentInspection
-            }
+            Self::WitContractMismatch
+            | Self::ComponentInspectionFailed
+            | Self::ArtifactDescriptorInvalid => ModuleBuildDiagnosticStage::ComponentInspection,
             Self::SbomGenerationFailed | Self::ProvenanceGenerationFailed => {
                 ModuleBuildDiagnosticStage::Evidence
             }
@@ -767,13 +779,24 @@ impl ModuleBuildRequest {
             validate_text(value)?;
         }
         validate_text(&self.project_id)?;
-        validate_module_slug(&self.expected_module_slug)?;
+        if !is_valid_module_slug(&self.expected_module_slug) {
+            return Err(ModuleBuildProtocolError::InvalidRequest);
+        }
         validate_text(&self.expected_version)?;
         validate_text(&self.runtime_abi)?;
         validate_text(&self.wit.world)?;
         validate_text(&self.wit.version)?;
         validate_text(&self.toolchain.rust_toolchain)?;
         validate_text(&self.toolchain.component_target)?;
+        if Version::parse(&self.expected_version).is_err()
+            || Version::parse(&self.toolchain.rust_toolchain).is_err()
+            || self.runtime_abi != MODULE_BUILD_RUNTIME_ABI
+            || self.wit.world != MODULE_BUILD_WIT_WORLD
+            || self.wit.version != MODULE_BUILD_WIT_VERSION
+            || self.toolchain.component_target != MODULE_BUILD_COMPONENT_TARGET
+        {
+            return Err(ModuleBuildProtocolError::InvalidRequest);
+        }
         self.authoring.validate()?;
         if !valid_digest(&self.source.digest) || !valid_digest(&self.dependency_policy.lock_digest)
         {
@@ -1064,20 +1087,6 @@ fn validate_text(value: &str) -> Result<(), ModuleBuildProtocolError> {
     Ok(())
 }
 
-fn validate_module_slug(value: &str) -> Result<(), ModuleBuildProtocolError> {
-    if value.is_empty()
-        || value.len() > 48
-        || value.starts_with('_')
-        || value.ends_with('_')
-        || value.chars().any(|character| {
-            !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '_'
-        })
-    {
-        return Err(ModuleBuildProtocolError::InvalidRequest);
-    }
-    Ok(())
-}
-
 fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
@@ -1238,14 +1247,14 @@ mod tests {
             },
             expected_module_slug: "sample_module".to_string(),
             expected_version: "1.0.0".to_string(),
-            runtime_abi: "rustok:module/runtime@1".to_string(),
+            runtime_abi: MODULE_BUILD_RUNTIME_ABI.to_string(),
             wit: ModuleBuildWitContract {
-                world: "rustok:module/module".to_string(),
-                version: "1.0.0".to_string(),
+                world: MODULE_BUILD_WIT_WORLD.to_string(),
+                version: MODULE_BUILD_WIT_VERSION.to_string(),
             },
             toolchain: ModuleBuildToolchain {
                 rust_toolchain: "1.85.0".to_string(),
-                component_target: "wasm32-wasip2".to_string(),
+                component_target: MODULE_BUILD_COMPONENT_TARGET.to_string(),
             },
             authoring: ModuleBuildAuthoring {
                 sdk_version: "1.0.0".to_string(),
@@ -1302,6 +1311,60 @@ mod tests {
             request.validate(),
             Err(ModuleBuildProtocolError::InvalidRequest)
         ));
+    }
+
+    #[test]
+    fn request_rejects_noncanonical_wit_world_and_component_target() {
+        let mut request = request();
+        request.wit.world = "rustok:module/another-world".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
+
+        request.wit.world = MODULE_BUILD_WIT_WORLD.to_string();
+        request.toolchain.component_target = "wasm32-unknown-unknown".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
+
+        request.toolchain.component_target = MODULE_BUILD_COMPONENT_TARGET.to_string();
+        request.runtime_abi = "rustok:module/runtime@2".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
+
+        request.runtime_abi = MODULE_BUILD_RUNTIME_ABI.to_string();
+        request.toolchain.rust_toolchain = "stable".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
+    }
+
+    #[test]
+    fn source_manifest_identity_is_bound_to_the_build_request() {
+        let request = request();
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema_version": crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            "slug": request.expected_module_slug.clone(),
+            "version": request.expected_version.clone(),
+            "payload_kind": "wasm_component",
+            "module_kind": "optional",
+            "runtime_abi": request.runtime_abi.clone(),
+            "platform_compatibility": "^0.1",
+            "entrypoint": "run"
+        }))
+        .expect("serialize source manifest");
+        let manifest =
+            crate::ModuleArtifactSourceManifest::parse(&bytes).expect("parse source manifest");
+        assert!(manifest.validate_build_request(&request).is_ok());
+
+        let mut mismatched = request;
+        mismatched.expected_version = "2.0.0".to_string();
+        assert!(manifest.validate_build_request(&mismatched).is_err());
     }
 
     #[test]

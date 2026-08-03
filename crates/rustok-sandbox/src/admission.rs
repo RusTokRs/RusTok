@@ -168,6 +168,7 @@ mod tests {
                 bytes: Vec::new(),
             },
             input: serde_json::Value::Null,
+            rhai_scope: None,
             policy: SandboxPolicy::default(),
         }
     }

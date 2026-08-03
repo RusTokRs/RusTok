@@ -8,19 +8,23 @@ pub use config::{RhaiConfig, RhaiLimits};
 pub use engine::{CompiledRhai, RhaiEngine, RhaiScopeProvider};
 pub use error::{RhaiError, RhaiResult};
 
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use ::rhai;
 use async_trait::async_trait;
-use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope};
-use serde_json::Value;
+use parking_lot::RwLock;
+use rhai::{CustomType, Dynamic, Engine, EvalAltResult, Map, Scope, TypeBuilder};
+use serde_json::{Value, json};
+use tracing::{error, info, warn};
 
 use crate::{
-    CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics, RhaiBindingInput,
-    RhaiBindingOutput, SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost,
-    SandboxOutcome, SandboxRequest, SandboxResult,
+    CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics,
+    RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput, RhaiBindingOutput, RhaiRecordInput,
+    RhaiScopeOutput, RhaiWorkspace, SandboxError, SandboxExecutor, SandboxExecutorKind,
+    SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
 };
 
 const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
@@ -33,6 +37,103 @@ const CANCELLATION_MARKER: &str = "__RUSTOK_SANDBOX_CANCELLED__";
 /// registering direct network, storage or secret access.
 pub struct RhaiExecutor {
     extensions: Vec<Arc<dyn RhaiHostExtension>>,
+}
+
+#[derive(Debug, Clone)]
+struct RhaiRecord {
+    id: String,
+    record_type: String,
+    state: Arc<RwLock<RhaiRecordState>>,
+}
+
+#[derive(Debug)]
+struct RhaiRecordState {
+    fields: HashMap<String, Dynamic>,
+    changes: HashMap<String, Dynamic>,
+}
+
+impl RhaiRecord {
+    fn from_input(input: &RhaiRecordInput) -> SandboxResult<Self> {
+        let fields = input
+            .fields
+            .as_object()
+            .ok_or_else(|| {
+                SandboxError::InvalidRequest(
+                    "Rhai scope record fields must be a JSON object".to_string(),
+                )
+            })?
+            .iter()
+            .map(|(key, value)| (key.clone(), json_to_dynamic(value)))
+            .collect();
+        Ok(Self {
+            id: input.id.clone(),
+            record_type: input.record_type.clone(),
+            state: Arc::new(RwLock::new(RhaiRecordState {
+                fields,
+                changes: HashMap::new(),
+            })),
+        })
+    }
+
+    fn get(&self, field: &str) -> Dynamic {
+        let state = self.state.read();
+        state
+            .changes
+            .get(field)
+            .or_else(|| state.fields.get(field))
+            .cloned()
+            .unwrap_or(Dynamic::UNIT)
+    }
+
+    fn set(&mut self, field: &str, value: Dynamic) {
+        self.state.write().changes.insert(field.to_string(), value);
+    }
+
+    fn is_changed(&self, field: &str) -> bool {
+        self.state.read().changes.contains_key(field)
+    }
+
+    fn has_changes(&self) -> bool {
+        !self.state.read().changes.is_empty()
+    }
+
+    fn snapshot(&self) -> HashMap<String, Dynamic> {
+        let state = self.state.read();
+        let mut snapshot = state.fields.clone();
+        snapshot.extend(state.changes.clone());
+        snapshot
+    }
+
+    fn changes_json(&self) -> Value {
+        Value::Object(
+            self.state
+                .read()
+                .changes
+                .iter()
+                .map(|(key, value)| (key.clone(), dynamic_to_json(value.clone())))
+                .collect(),
+        )
+    }
+}
+
+impl CustomType for RhaiRecord {
+    fn build(mut builder: TypeBuilder<Self>) {
+        builder
+            .with_name("Record")
+            .with_get("id", |record: &mut RhaiRecord| record.id.clone())
+            .with_get("type", |record: &mut RhaiRecord| record.record_type.clone())
+            .with_indexer_get(|record: &mut RhaiRecord, key: &str| record.get(key))
+            .with_indexer_set(|record: &mut RhaiRecord, key: &str, value: Dynamic| {
+                record.set(key, value);
+            })
+            .with_fn("is_changed", |record: &mut RhaiRecord, field: &str| {
+                record.is_changed(field)
+            })
+            .with_fn("has_changes", |record: &mut RhaiRecord| {
+                record.has_changes()
+            })
+            .with_fn("snapshot", |record: &mut RhaiRecord| record.snapshot());
+    }
 }
 
 /// Language-specific adapter boundary for broker-backed host capabilities.
@@ -48,37 +149,6 @@ pub trait RhaiHostExtension: Send + Sync {
         request: &SandboxRequest,
         host: SandboxHost,
     ) -> SandboxResult<()>;
-
-    /// Optionally resolves executable Rhai source from an owner-defined,
-    /// immutable payload representation. The sandbox never materializes this
-    /// representation on a guest filesystem. At most one extension may supply
-    /// replacement source for a request.
-    fn source_bytes(&self, _request: &SandboxRequest) -> SandboxResult<Option<Vec<u8>>> {
-        Ok(None)
-    }
-
-    /// Adds request-scoped data to the Rhai scope after the neutral baseline
-    /// context has been populated. Extensions must not keep data in a shared
-    /// engine because a sandbox request may execute concurrently with another.
-    fn populate_scope(
-        &self,
-        _scope: &mut Scope<'static>,
-        _request: &SandboxRequest,
-    ) -> SandboxResult<()> {
-        Ok(())
-    }
-
-    /// Converts a successful Rhai value into the extension's public output
-    /// binding. The scope is still available so adapters can extract bounded
-    /// request-scoped state such as brokered entity changes.
-    fn map_output(
-        &self,
-        _scope: &mut Scope<'static>,
-        _request: &SandboxRequest,
-        output: Value,
-    ) -> SandboxResult<Value> {
-        Ok(output)
-    }
 }
 
 /// Neutral Rhai bridge for every brokered host capability. It exposes only
@@ -96,13 +166,46 @@ impl RhaiHostExtension for RhaiCapabilityBridge {
         host: SandboxHost,
     ) -> SandboxResult<()> {
         let context = RhaiCapabilityContext::from_request(request);
+        let capability_host = host.clone();
+        let capability_context = context.clone();
         engine.register_fn(
             "capability_call",
             move |name: &str, operation: &str, input: Dynamic| {
-                invoke_capability(&host, &context, name, operation, dynamic_to_json(input))
+                invoke_capability(
+                    &capability_host,
+                    &capability_context,
+                    name,
+                    operation,
+                    dynamic_to_json(input),
+                )
             },
         );
+        register_http_functions(engine, host, context);
         Ok(())
+    }
+}
+
+/// Registers the deterministic, infrastructure-free Rhai standard library used
+/// by both draft and admitted artifact execution.
+#[derive(Debug, Default)]
+pub struct RhaiStandardLibrary;
+
+impl RhaiHostExtension for RhaiStandardLibrary {
+    fn register(
+        &self,
+        engine: &mut Engine,
+        request: &SandboxRequest,
+        _host: SandboxHost,
+    ) -> SandboxResult<()> {
+        register_standard_library(engine, request.context.phase);
+        Ok(())
+    }
+}
+
+pub fn register_standard_library(engine: &mut Engine, phase: crate::ExecutionPhase) {
+    register_standard_functions(engine);
+    if validation_helpers_enabled(phase) {
+        register_validation_functions(engine);
     }
 }
 
@@ -148,6 +251,201 @@ fn invoke_capability(
     }
 }
 
+fn register_http_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
+    let get_host = host.clone();
+    let get_context = context.clone();
+    engine.register_fn("http_get", move |url: &str| {
+        invoke_http(&get_host, &get_context, "GET", url, Value::Null, Map::new())
+    });
+
+    let get_headers_host = host.clone();
+    let get_headers_context = context.clone();
+    engine.register_fn("http_get", move |url: &str, headers: Map| {
+        invoke_http(
+            &get_headers_host,
+            &get_headers_context,
+            "GET",
+            url,
+            Value::Null,
+            headers,
+        )
+    });
+
+    let post_host = host.clone();
+    let post_context = context.clone();
+    engine.register_fn("http_post", move |url: &str, body: Dynamic| {
+        invoke_http(
+            &post_host,
+            &post_context,
+            "POST",
+            url,
+            dynamic_to_json(body),
+            Map::new(),
+        )
+    });
+
+    let post_headers_host = host.clone();
+    let post_headers_context = context.clone();
+    engine.register_fn(
+        "http_post",
+        move |url: &str, body: Dynamic, headers: Map| {
+            invoke_http(
+                &post_headers_host,
+                &post_headers_context,
+                "POST",
+                url,
+                dynamic_to_json(body),
+                headers,
+            )
+        },
+    );
+
+    engine.register_fn(
+        "http_request",
+        move |method: &str, url: &str, body: Dynamic, headers: Map| {
+            invoke_http(
+                &host,
+                &context,
+                &method.to_ascii_uppercase(),
+                url,
+                dynamic_to_json(body),
+                headers,
+            )
+        },
+    );
+}
+
+fn invoke_http(
+    host: &SandboxHost,
+    context: &RhaiCapabilityContext,
+    method: &str,
+    url: &str,
+    body: Value,
+    headers: Map,
+) -> Map {
+    let headers = headers
+        .into_iter()
+        .filter_map(|(key, value)| {
+            value
+                .try_cast::<String>()
+                .map(|value| (key.to_string(), value))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let response = invoke_capability(
+        host,
+        context,
+        "platform.http",
+        "request",
+        json!({
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "body": body,
+        }),
+    );
+    if response
+        .get("ok")
+        .and_then(|value| value.clone().try_cast::<bool>())
+        == Some(false)
+    {
+        return response;
+    }
+    let output = response.get("output").cloned().unwrap_or(Dynamic::UNIT);
+    if output.is_map() {
+        output.cast::<Map>()
+    } else {
+        let mut result = Map::new();
+        result.insert("ok".into(), Dynamic::from(true));
+        result.insert("body".into(), output);
+        result
+    }
+}
+
+fn register_standard_functions(engine: &mut Engine) {
+    engine.register_fn("log", |message: &str| {
+        info!(target: "rustok_sandbox::rhai", "{}", message);
+    });
+    engine.register_fn("log_warn", |message: &str| {
+        warn!(target: "rustok_sandbox::rhai", "{}", message);
+    });
+    engine.register_fn("log_error", |message: &str| {
+        error!(target: "rustok_sandbox::rhai", "{}", message);
+    });
+    engine.register_fn("log", |source: &str, message: &str| {
+        info!(target: "rustok_sandbox::rhai", source, "{}", message);
+    });
+    engine.register_fn("log_warn", |source: &str, message: &str| {
+        warn!(target: "rustok_sandbox::rhai", source, "{}", message);
+    });
+    engine.register_fn("log_error", |source: &str, message: &str| {
+        error!(target: "rustok_sandbox::rhai", source, "{}", message);
+    });
+    engine.register_fn("now", || chrono::Utc::now().to_rfc3339());
+    engine.register_fn("now_unix", || chrono::Utc::now().timestamp());
+    engine.register_fn(
+        "abort",
+        |message: &str| -> Result<Dynamic, Box<EvalAltResult>> {
+            Err(Box::new(EvalAltResult::ErrorRuntime(
+                format!("ABORT:{message}").into(),
+                rhai::Position::NONE,
+            )))
+        },
+    );
+    engine.register_fn("format_money", |amount: i64| {
+        let digits = amount.abs().to_string();
+        let mut formatted = String::new();
+        for (index, character) in digits.chars().rev().enumerate() {
+            if index > 0 && index % 3 == 0 {
+                formatted.push(' ');
+            }
+            formatted.push(character);
+        }
+        if amount < 0 {
+            formatted.push('-');
+        }
+        formatted.chars().rev().collect::<String>()
+    });
+    engine.register_fn("is_empty", |value: Dynamic| {
+        value.is_unit()
+            || value
+                .clone()
+                .try_cast::<String>()
+                .is_some_and(|value| value.is_empty())
+            || value
+                .try_cast::<rhai::Array>()
+                .is_some_and(|value| value.is_empty())
+    });
+    engine.register_fn(
+        "coalesce",
+        |value: Dynamic, default: Dynamic| {
+            if value.is_unit() { default } else { value }
+        },
+    );
+}
+
+fn validation_helpers_enabled(phase: crate::ExecutionPhase) -> bool {
+    !matches!(
+        phase,
+        crate::ExecutionPhase::AfterHook | crate::ExecutionPhase::Event
+    )
+}
+
+fn register_validation_functions(engine: &mut Engine) {
+    engine.register_fn("validate_email", |email: &str| {
+        email_address::EmailAddress::is_valid(email)
+    });
+    engine.register_fn("validate_required", |value: &str| !value.trim().is_empty());
+    engine.register_fn("validate_min_length", |value: &str, min: i64| {
+        value.len() as i64 >= min
+    });
+    engine.register_fn("validate_max_length", |value: &str, max: i64| {
+        value.len() as i64 <= max
+    });
+    engine.register_fn("validate_range", |value: i64, min: i64, max: i64| {
+        value >= min && value <= max
+    });
+}
+
 fn capability_response_map(output: Value) -> Map {
     let mut response = Map::new();
     response.insert("ok".into(), Dynamic::from(true));
@@ -158,6 +456,7 @@ fn capability_response_map(output: Value) -> Map {
 fn capability_error_map(error: SandboxError) -> Map {
     let mut response = Map::new();
     response.insert("ok".into(), Dynamic::from(false));
+    response.insert("status".into(), Dynamic::from(0_i64));
     response.insert("error_code".into(), Dynamic::from(error.code().to_string()));
     response
 }
@@ -191,6 +490,7 @@ impl RhaiExecutor {
         engine.set_max_string_size(limits.max_output_bytes.try_into().unwrap_or(usize::MAX));
         engine.set_max_array_size(10_000);
         engine.set_max_map_size(10_000);
+        engine.build_type::<RhaiRecord>();
         engine.on_progress(move |count| {
             operations.store(count, Ordering::Relaxed);
             if host.cancellation().is_cancelled() {
@@ -201,6 +501,32 @@ impl RhaiExecutor {
             }
         });
         engine
+    }
+
+    fn resolve_source(request: &SandboxRequest, engine: &mut Engine) -> SandboxResult<Vec<u8>> {
+        if request.payload.media_type != RHAI_WORKSPACE_MEDIA_TYPE {
+            return Ok(request.payload.bytes.clone());
+        }
+
+        let workspace: RhaiWorkspace =
+            serde_json::from_slice(&request.payload.bytes).map_err(|error| {
+                SandboxError::InvalidRequest(format!("invalid Rhai workspace: {error}"))
+            })?;
+        let digest = workspace
+            .digest()
+            .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+        if digest != request.payload.digest {
+            return Err(SandboxError::InvalidRequest(
+                "Rhai workspace digest does not match the request payload digest".to_string(),
+            ));
+        }
+        workspace
+            .configure_rhai_engine_for_entrypoint(engine, &request.payload.entrypoint)
+            .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+        workspace
+            .executable_source(&request.payload.entrypoint)
+            .map(|source| source.as_bytes().to_vec())
+            .map_err(|error| SandboxError::InvalidRequest(error.to_string()))
     }
 
     fn build_scope(request: &SandboxRequest, input: &Value) -> Scope<'static> {
@@ -216,6 +542,50 @@ impl RhaiExecutor {
         }
         scope.push_constant("input", json_to_dynamic(input));
         scope
+    }
+
+    fn populate_serialized_scope(
+        scope: &mut Scope<'static>,
+        request: &SandboxRequest,
+    ) -> SandboxResult<()> {
+        let Some(bindings) = &request.rhai_scope else {
+            return Ok(());
+        };
+        bindings
+            .validate()
+            .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+        for (name, value) in &bindings.constants {
+            scope.push_constant(name.clone(), json_to_dynamic(value));
+        }
+        for (name, input) in &bindings.records {
+            let record = RhaiRecord::from_input(input)?;
+            if input.mutable {
+                scope.push(name.clone(), record);
+            } else {
+                scope.push_constant(name.clone(), record);
+            }
+        }
+        Ok(())
+    }
+
+    fn collect_serialized_scope(
+        scope: &mut Scope<'static>,
+        request: &SandboxRequest,
+    ) -> SandboxResult<Option<RhaiScopeOutput>> {
+        let Some(bindings) = &request.rhai_scope else {
+            return Ok(None);
+        };
+        let mut record_changes = BTreeMap::new();
+        for (name, input) in &bindings.records {
+            if !input.mutable {
+                continue;
+            }
+            let record = scope.get_value::<RhaiRecord>(name).ok_or_else(|| {
+                SandboxError::Internal(format!("Rhai scope record `{name}` is unavailable"))
+            })?;
+            record_changes.insert(name.clone(), record.changes_json());
+        }
+        Ok(Some(RhaiScopeOutput { record_changes }))
     }
 
     fn map_error(error: EvalAltResult, request: &SandboxRequest) -> SandboxError {
@@ -279,23 +649,11 @@ impl SandboxExecutor for RhaiExecutor {
         for extension in &self.extensions {
             extension.register(&mut engine, request, host.clone())?;
         }
-        let mut resolved_source = None;
-        for extension in &self.extensions {
-            if let Some(source) = extension.source_bytes(request)?
-                && resolved_source.replace(source).is_some()
-            {
-                return Err(SandboxError::InvalidRequest(
-                    "multiple Rhai extensions supplied request source".to_string(),
-                ));
-            }
-        }
-        let source = resolved_source.unwrap_or_else(|| request.payload.bytes.clone());
+        let source = Self::resolve_source(request, &mut engine)?;
         let source = std::str::from_utf8(&source)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let mut scope = Self::build_scope(request, &binding.input);
-        for extension in &self.extensions {
-            extension.populate_scope(&mut scope, request)?;
-        }
+        Self::populate_serialized_scope(&mut scope, request)?;
         let mut ast = engine
             .compile_with_scope(&scope, source)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
@@ -303,13 +661,11 @@ impl SandboxExecutor for RhaiExecutor {
         let output = engine
             .eval_ast_with_scope::<Dynamic>(&mut scope, &ast)
             .map_err(|error| Self::map_error(*error, request))?;
-        let mut output = dynamic_to_json(output);
-        for extension in &self.extensions {
-            output = extension.map_output(&mut scope, request, output)?;
-        }
+        let output = dynamic_to_json(output);
+        let rhai_scope = Self::collect_serialized_scope(&mut scope, request)?;
         let output = serde_json::to_value(RhaiBindingOutput::new(output))
             .map_err(|error| SandboxError::Internal(error.to_string()))?;
-        let output_bytes = serde_json::to_vec(&output)
+        let output_bytes = serde_json::to_vec(&(&output, &rhai_scope))
             .map_err(|error| SandboxError::Internal(error.to_string()))?
             .len() as u64;
         if output_bytes > request.policy.limits.max_output_bytes {
@@ -322,6 +678,7 @@ impl SandboxExecutor for RhaiExecutor {
         Ok(SandboxOutcome {
             execution_id: request.context.execution_id,
             output,
+            rhai_scope,
             metrics: ExecutionMetrics {
                 instructions_consumed: Some(operations.load(Ordering::Relaxed)),
                 output_bytes: Some(output_bytes),

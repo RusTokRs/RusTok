@@ -3,28 +3,21 @@
 
 use std::collections::HashMap;
 
-use rhai::{Engine, Scope};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
-    ExecutionPhase as SandboxExecutionPhase, RhaiBindingInput, RhaiBindingOutput, SandboxContext,
-    SandboxError, SandboxExecutorKind, SandboxPayload, SandboxPolicy, SandboxRequest,
-    SandboxResult, SandboxSubject,
+    ExecutionPhase as SandboxExecutionPhase, RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput,
+    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, SandboxContext, SandboxExecutorKind,
+    SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
 
 use crate::{
-    AlloyWorkspace, Bridge, EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError,
-    ScriptResult, register_entity_proxy,
+    EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError, ScriptResult,
     utils::{dynamic_to_json, json_to_dynamic},
 };
-
-/// Stable media type for canonical Alloy workspace bytes before they become a
-/// module artifact. Published artifacts use their separately admitted descriptor.
-pub const ALLOY_DRAFT_RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.workspace.v1";
 
 /// Alloy-owned data carried inside the shared Rhai v1 input envelope. It keeps
 /// user-provided parameters and entity snapshots data-only; the later
@@ -81,24 +74,6 @@ impl AlloyDraftEntitySnapshot {
         }
         if !self.fields.is_object() {
             return Err(AlloyDraftBindingError::EntityFieldsMustBeObject);
-        }
-        Ok(())
-    }
-}
-
-/// Alloy-owned data carried inside the shared Rhai v1 output envelope.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AlloyDraftOutput {
-    #[serde(default)]
-    pub return_value: serde_json::Value,
-    #[serde(default = "empty_object")]
-    pub entity_changes: serde_json::Value,
-}
-
-impl AlloyDraftOutput {
-    pub fn validate(&self) -> Result<(), AlloyDraftBindingError> {
-        if !self.entity_changes.is_object() {
-            return Err(AlloyDraftBindingError::EntityChangesMustBeObject);
         }
         Ok(())
     }
@@ -243,118 +218,14 @@ impl AlloyDraftRuntime {
             .map_err(ScriptError::from)?;
         let binding = RhaiBindingOutput::decode(output.output)
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
-        let output: AlloyDraftOutput = serde_json::from_value(binding.output).map_err(|error| {
-            ScriptError::Runtime(format!("invalid Alloy sandbox output: {error}"))
-        })?;
-        output
-            .validate()
-            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
-        Ok((
-            json_to_dynamic(output.return_value),
-            changes_from_json(output.entity_changes)?,
-        ))
-    }
-}
-
-/// Reconstructs Alloy's request-scoped script values inside the neutral Rhai
-/// executor and wraps successful values in the v1 Alloy output binding.
-///
-/// No state is retained on this extension: `EntityProxy` lives in the supplied
-/// `Scope` for exactly one sandbox request.
-#[derive(Debug, Default)]
-pub struct AlloyDraftScopeExtension;
-
-impl RhaiHostExtension for AlloyDraftScopeExtension {
-    fn register(
-        &self,
-        engine: &mut Engine,
-        request: &SandboxRequest,
-        _host: rustok_sandbox::SandboxHost,
-    ) -> SandboxResult<()> {
-        if request.payload.media_type == ALLOY_DRAFT_RHAI_MEDIA_TYPE {
-            let workspace: AlloyWorkspace = serde_json::from_slice(&request.payload.bytes)
-                .map_err(|error| {
-                    SandboxError::InvalidRequest(format!(
-                        "invalid Alloy workspace payload: {error}"
-                    ))
-                })?;
-            if request.payload.entrypoint == rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH {
-                workspace.validate_rhai_workspace().map_err(|error| {
-                    SandboxError::InvalidRequest(format!(
-                        "invalid Alloy production entrypoint for publication: {error}"
-                    ))
-                })?;
-            }
-            workspace
-                .configure_rhai_engine_for_entrypoint(engine, &request.payload.entrypoint)
-                .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-        }
-        if matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
-            Bridge::register_for_phase(engine, alloy_phase(request.context.phase));
-            register_entity_proxy(engine);
-        }
-        Ok(())
-    }
-
-    fn source_bytes(&self, request: &SandboxRequest) -> SandboxResult<Option<Vec<u8>>> {
-        if request.payload.media_type != ALLOY_DRAFT_RHAI_MEDIA_TYPE {
-            return Ok(None);
-        }
-        let workspace: AlloyWorkspace =
-            serde_json::from_slice(&request.payload.bytes).map_err(|error| {
-                SandboxError::InvalidRequest(format!("invalid Alloy workspace payload: {error}"))
-            })?;
-        let source = workspace
-            .executable_source(&request.payload.entrypoint)
-            .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-        Ok(Some(source.as_bytes().to_vec()))
-    }
-
-    fn populate_scope(
-        &self,
-        scope: &mut Scope<'static>,
-        request: &SandboxRequest,
-    ) -> SandboxResult<()> {
-        if !matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
-            return Ok(());
-        }
-        let input = alloy_input(request)?;
-        scope.push_constant("params", json_to_dynamic(input.params.clone()));
-        if let Some(snapshot) = input.entity {
-            let entity = entity_proxy(snapshot)?;
-            if request.context.phase == SandboxExecutionPhase::BeforeHook {
-                scope.push("entity", entity);
-            } else {
-                scope.push_constant("entity", entity);
-            }
-        }
-        if let Some(snapshot) = input.entity_before {
-            scope.push_constant("entity_before", entity_proxy(snapshot)?);
-        }
-        Ok(())
-    }
-
-    fn map_output(
-        &self,
-        scope: &mut Scope<'static>,
-        request: &SandboxRequest,
-        output: serde_json::Value,
-    ) -> SandboxResult<serde_json::Value> {
-        if !matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
-            return Ok(output);
-        }
-        let entity_changes = scope
-            .get_value::<EntityProxy>("entity")
-            .map(entity_changes)
+        let entity_changes = output
+            .rhai_scope
+            .and_then(|scope| scope.record_changes.get("entity").cloned())
             .unwrap_or_else(empty_object);
-        let result = AlloyDraftOutput {
-            return_value: output,
-            entity_changes,
-        };
-        result
-            .validate()
-            .map_err(|error| SandboxError::Internal(error.to_string()))?;
-        serde_json::to_value(result).map_err(|error| SandboxError::Internal(error.to_string()))
+        Ok((
+            json_to_dynamic(binding.output),
+            changes_from_json(entity_changes)?,
+        ))
     }
 }
 
@@ -435,6 +306,7 @@ impl AlloyDraftRequestBuilder {
             .workspace
             .digest()
             .map_err(AlloyDraftRequestError::Workspace)?;
+        let rhai_scope = rhai_scope_from_input(&input, phase);
         Ok(SandboxRequest {
             subject: SandboxSubject::AlloyDraft {
                 draft_id: script.id,
@@ -450,7 +322,7 @@ impl AlloyDraftRequestBuilder {
             },
             payload: SandboxPayload {
                 executor: SandboxExecutorKind::Rhai,
-                media_type: ALLOY_DRAFT_RHAI_MEDIA_TYPE.to_string(),
+                media_type: RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
                 digest,
                 runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
                 entrypoint: entrypoint.to_string(),
@@ -461,6 +333,7 @@ impl AlloyDraftRequestBuilder {
                     .map_err(|error| AlloyDraftRequestError::Serialize(error.to_string()))?,
             ))
             .map_err(|error| AlloyDraftRequestError::Serialize(error.to_string()))?,
+            rhai_scope: Some(rhai_scope),
             policy,
         })
     }
@@ -482,20 +355,6 @@ fn sandbox_phase(phase: ExecutionPhase) -> SandboxExecutionPhase {
     }
 }
 
-fn alloy_phase(phase: SandboxExecutionPhase) -> ExecutionPhase {
-    match phase {
-        SandboxExecutionPhase::BeforeHook => ExecutionPhase::Before,
-        SandboxExecutionPhase::AfterHook => ExecutionPhase::After,
-        SandboxExecutionPhase::Event => ExecutionPhase::OnCommit,
-        SandboxExecutionPhase::Scheduled => ExecutionPhase::Scheduled,
-        SandboxExecutionPhase::Validate
-        | SandboxExecutionPhase::Test
-        | SandboxExecutionPhase::Manual
-        | SandboxExecutionPhase::Http
-        | SandboxExecutionPhase::Lifecycle => ExecutionPhase::Manual,
-    }
-}
-
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AlloyDraftRequestError {
     #[error(transparent)]
@@ -503,7 +362,7 @@ pub enum AlloyDraftRequestError {
     #[error("Alloy draft id must not be nil")]
     MissingDraftId,
     #[error("Alloy draft workspace is invalid: {0}")]
-    Workspace(#[from] crate::WorkspaceError),
+    Workspace(#[from] crate::RhaiWorkspaceError),
     #[error("Alloy execution context tenant id is not a UUID")]
     InvalidTenantId,
     #[error("Alloy draft binding serialization failed: {0}")]
@@ -520,48 +379,39 @@ pub enum AlloyDraftBindingError {
     EmptyEntityType,
     #[error("Alloy draft entity fields must be a JSON object")]
     EntityFieldsMustBeObject,
-    #[error("Alloy draft entity changes must be a JSON object")]
-    EntityChangesMustBeObject,
 }
 
 fn empty_object() -> serde_json::Value {
     serde_json::Value::Object(serde_json::Map::new())
 }
 
-fn alloy_input(request: &SandboxRequest) -> SandboxResult<AlloyDraftInput> {
-    let binding = RhaiBindingInput::decode(request.input.clone())
-        .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-    let input: AlloyDraftInput = serde_json::from_value(binding.input).map_err(|error| {
-        SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
-    })?;
-    input
-        .validate()
-        .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-    Ok(input)
-}
-
-fn entity_proxy(snapshot: AlloyDraftEntitySnapshot) -> SandboxResult<EntityProxy> {
-    snapshot
-        .validate()
-        .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-    let fields = snapshot
-        .fields
-        .as_object()
-        .expect("validated Alloy draft entity fields are an object")
-        .iter()
-        .map(|(key, value)| (key.clone(), json_to_dynamic(value.clone())))
-        .collect::<HashMap<_, _>>();
-    Ok(EntityProxy::new(snapshot.id, snapshot.entity_type, fields))
-}
-
-fn entity_changes(entity: EntityProxy) -> serde_json::Value {
-    serde_json::Value::Object(
-        entity
-            .changes()
-            .into_iter()
-            .map(|(key, value)| (key, dynamic_to_json(value)))
-            .collect(),
-    )
+fn rhai_scope_from_input(input: &AlloyDraftInput, phase: SandboxExecutionPhase) -> RhaiScopeInput {
+    let mut constants = std::collections::BTreeMap::new();
+    constants.insert("params".to_string(), input.params.clone());
+    let mut records = std::collections::BTreeMap::new();
+    if let Some(snapshot) = &input.entity {
+        records.insert(
+            "entity".to_string(),
+            RhaiRecordInput {
+                id: snapshot.id.clone(),
+                record_type: snapshot.entity_type.clone(),
+                fields: snapshot.fields.clone(),
+                mutable: phase == SandboxExecutionPhase::BeforeHook,
+            },
+        );
+    }
+    if let Some(snapshot) = &input.entity_before {
+        records.insert(
+            "entity_before".to_string(),
+            RhaiRecordInput {
+                id: snapshot.id.clone(),
+                record_type: snapshot.entity_type.clone(),
+                fields: snapshot.fields.clone(),
+                mutable: false,
+            },
+        );
+    }
+    RhaiScopeInput { constants, records }
 }
 
 fn input_from_context(context: &ExecutionContext) -> AlloyDraftInput {
@@ -630,7 +480,7 @@ mod tests {
     fn script() -> Script {
         let mut script = Script::new(
             "draft",
-            AlloyWorkspace::single_source("input.params.value + 1"),
+            RhaiWorkspace::single_source("input.params.value + 1"),
             ScriptTrigger::Manual,
         );
         script.id = Uuid::new_v4();
@@ -666,10 +516,17 @@ mod tests {
         assert_eq!(request.context.execution_id, context.execution_id);
         assert_eq!(request.context.phase, SandboxExecutionPhase::Manual);
         assert_eq!(request.payload.executor, SandboxExecutorKind::Rhai);
-        assert_eq!(request.payload.media_type, ALLOY_DRAFT_RHAI_MEDIA_TYPE);
+        assert_eq!(request.payload.media_type, RHAI_WORKSPACE_MEDIA_TYPE);
         assert_eq!(
             request.payload.digest,
             script.workspace.digest().expect("workspace digest")
+        );
+        assert_eq!(
+            request
+                .rhai_scope
+                .as_ref()
+                .and_then(|scope| scope.constants.get("params")),
+            Some(&serde_json::json!({ "value": 41 }))
         );
         assert_eq!(
             RhaiBindingInput::decode(request.input)
@@ -700,9 +557,9 @@ mod tests {
     #[test]
     fn test_builder_pins_a_declared_test_entrypoint_and_removes_capabilities() {
         let mut script = script();
-        script.workspace.files.push(crate::WorkspaceFile {
+        script.workspace.files.push(crate::RhaiWorkspaceFile {
             path: "tests/smoke.rhai".into(),
-            kind: crate::WorkspaceFileKind::Test,
+            kind: crate::RhaiWorkspaceFileKind::Test,
             contents: "true".into(),
         });
         let request = AlloyDraftRequestBuilder::new(SandboxPolicy {
@@ -733,9 +590,9 @@ mod tests {
     #[tokio::test]
     async fn publication_smoke_returns_redacted_exact_sandbox_evidence() {
         let mut script = script();
-        script.workspace.files.push(crate::WorkspaceFile {
+        script.workspace.files.push(crate::RhaiWorkspaceFile {
             path: rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH.into(),
-            kind: crate::WorkspaceFileKind::Test,
+            kind: crate::RhaiWorkspaceFileKind::Test,
             contents: "true".into(),
         });
         let execution_id = Uuid::new_v4();
@@ -744,7 +601,7 @@ mod tests {
             .with_user("release-operator");
         context.execution_id = execution_id;
 
-        let evidence = crate::create_default_alloy_draft_runtime()
+        let evidence = crate::create_test_alloy_draft_runtime()
             .execute_publication_smoke(&script, &context)
             .await
             .expect("publication smoke");
@@ -763,23 +620,11 @@ mod tests {
         assert_eq!(evidence.capability_grants, 0);
     }
 
-    #[test]
-    fn binding_rejects_non_object_entity_changes() {
-        assert_eq!(
-            AlloyDraftOutput {
-                return_value: serde_json::Value::Null,
-                entity_changes: serde_json::json!(["not", "an", "object"]),
-            }
-            .validate(),
-            Err(AlloyDraftBindingError::EntityChangesMustBeObject)
-        );
-    }
-
     #[tokio::test]
-    async fn scope_extension_returns_pre_hook_entity_changes() {
+    async fn neutral_scope_returns_pre_hook_entity_changes() {
         let mut script = script();
         script.workspace =
-            AlloyWorkspace::single_source("entity[\"status\"] = \"approved\"; params[\"amount\"]");
+            RhaiWorkspace::single_source("entity[\"status\"] = \"approved\"; params[\"amount\"]");
         let context =
             ExecutionContext::new(ExecutionPhase::Before).with_tenant(Uuid::new_v4().to_string());
         let request = AlloyDraftRequestBuilder::default()
@@ -799,25 +644,21 @@ mod tests {
             .expect("request");
         let mut executors = ExecutorRegistry::new();
         executors
-            .register_in_process(
-                rustok_sandbox::rhai::RhaiExecutor::new()
-                    .with_extension(Arc::new(AlloyDraftScopeExtension)),
-            )
+            .register_in_process(rustok_sandbox::rhai::RhaiExecutor::new())
             .expect("register executor");
         let output = SandboxRuntime::new(executors, Arc::new(NoCapabilities))
             .execute(request)
             .await
             .expect("execute draft");
-        let output: AlloyDraftOutput = serde_json::from_value(
-            RhaiBindingOutput::decode(output.output)
-                .expect("versioned Rhai output")
-                .output,
-        )
-        .expect("typed draft output");
-        assert_eq!(output.return_value, serde_json::json!(42));
+        let binding = RhaiBindingOutput::decode(output.output).expect("versioned Rhai output");
+        assert_eq!(binding.output, serde_json::json!(42));
         assert_eq!(
-            output.entity_changes,
-            serde_json::json!({ "status": "approved" })
+            output
+                .rhai_scope
+                .expect("scope output")
+                .record_changes
+                .get("entity"),
+            Some(&serde_json::json!({ "status": "approved" }))
         );
     }
 }

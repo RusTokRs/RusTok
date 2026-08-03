@@ -46,9 +46,11 @@ import {
   getMarketplaceModule,
   installModule,
   listMarketplaceModules,
+  listMarketplaceRegistryFreshness,
   type BuildJob,
   type InstalledModule,
   type MarketplaceModule,
+  type MarketplaceRegistryFreshness,
   type ModuleInfo,
   type ReleaseInfo,
   rollbackBuild,
@@ -64,6 +66,7 @@ interface ModulesListProps {
   adminSurface: 'leptos-admin' | 'next-admin';
   modules: ModuleInfo[];
   marketplaceModules: MarketplaceModule[];
+  marketplaceRegistryFreshness: MarketplaceRegistryFreshness[];
   installedModules: InstalledModule[];
   activeBuild: BuildJob | null;
   activeRelease: ReleaseInfo | null;
@@ -106,6 +109,22 @@ function humanizeLabel(value: string): string {
 
 function formatBuildSummary(build: BuildJob): string {
   return `${humanizeLabel(build.status)} / ${humanizeLabel(build.stage)} / ${build.progress}%`;
+}
+
+function formatRegistryLastSuccess(unixMs?: number | null): string {
+  if (unixMs === null || unixMs === undefined) {
+    return 'Never';
+  }
+  const value = new Date(unixMs);
+  return Number.isNaN(value.getTime()) ? 'Never' : value.toISOString();
+}
+
+function registryStatusVariant(
+  status: MarketplaceRegistryFreshness['status']
+): 'default' | 'secondary' | 'destructive' {
+  if (status === 'READY') return 'default';
+  if (status === 'DEGRADED') return 'destructive';
+  return 'secondary';
 }
 
 function formatTimestamp(value?: string | null): string {
@@ -170,6 +189,7 @@ export function ModulesList({
   adminSurface,
   modules: initialModules,
   marketplaceModules: initialMarketplaceModules,
+  marketplaceRegistryFreshness: initialMarketplaceRegistryFreshness,
   installedModules: initialInstalledModules,
   activeBuild: initialActiveBuild,
   activeRelease: initialActiveRelease,
@@ -179,6 +199,9 @@ export function ModulesList({
   const [modules, setModules] = useState(initialModules);
   const [marketplaceCatalog, setMarketplaceCatalog] = useState(
     initialMarketplaceModules
+  );
+  const [registryFreshness, setRegistryFreshness] = useState(
+    initialMarketplaceRegistryFreshness
   );
   const [installedModules, setInstalledModules] = useState(
     initialInstalledModules
@@ -346,6 +369,12 @@ export function ModulesList({
         apiOpts
       );
       setMarketplaceCatalog(modules);
+      try {
+        setRegistryFreshness(await listMarketplaceRegistryFreshness(apiOpts));
+      } catch {
+        // Read-only module users can refresh the public catalog without
+        // receiving operator-only registry observations.
+      }
       setKnownCategories((prev) =>
         Array.from(
           new Set([
@@ -378,7 +407,8 @@ export function ModulesList({
         nextActiveBuild,
         nextActiveRelease,
         nextBuildHistory,
-        nextMarketplaceCatalog
+        nextMarketplaceCatalog,
+        nextRegistryFreshness
       ] = await Promise.all([
         getActiveBuild(apiOpts),
         getActiveRelease(apiOpts),
@@ -391,12 +421,16 @@ export function ModulesList({
           normalized.onlyCompatible,
           normalized.installedOnly,
           apiOpts
-        )
+        ),
+        listMarketplaceRegistryFreshness(apiOpts).catch(() => null)
       ]);
       setActiveBuild(nextActiveBuild);
       setActiveRelease(nextActiveRelease);
       setBuildHistory(nextBuildHistory);
       setMarketplaceCatalog(nextMarketplaceCatalog);
+      if (nextRegistryFreshness) {
+        setRegistryFreshness(nextRegistryFreshness);
+      }
       setKnownCategories((prev) =>
         Array.from(
           new Set([
@@ -436,7 +470,8 @@ export function ModulesList({
           nextActiveBuild,
           nextActiveRelease,
           nextBuildHistory,
-          nextMarketplaceCatalog
+          nextMarketplaceCatalog,
+          nextRegistryFreshness
         ] = await Promise.all([
           getActiveBuild(apiOpts),
           getActiveRelease(apiOpts),
@@ -449,7 +484,8 @@ export function ModulesList({
             normalized.onlyCompatible,
             normalized.installedOnly,
             apiOpts
-          )
+          ),
+          listMarketplaceRegistryFreshness(apiOpts).catch(() => null)
         ]);
         if (cancelled) {
           return;
@@ -460,6 +496,9 @@ export function ModulesList({
           setActiveRelease(nextActiveRelease);
           setBuildHistory(nextBuildHistory);
           setMarketplaceCatalog(nextMarketplaceCatalog);
+          if (nextRegistryFreshness) {
+            setRegistryFreshness(nextRegistryFreshness);
+          }
         });
       } catch {
         // Keep the current snapshot until the next polling cycle succeeds.
@@ -1142,6 +1181,53 @@ export function ModulesList({
               </CardDescription>
             </CardHeader>
           </Card>
+
+          {registryFreshness.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className='text-base'>
+                  Federated registry freshness
+                </CardTitle>
+                <CardDescription>
+                  Current status and last successful catalog access for every
+                  configured registry.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+                {registryFreshness.map((registry) => (
+                  <div
+                    key={registry.registryId}
+                    className='rounded-lg border p-4'
+                  >
+                    <div className='flex items-center justify-between gap-3'>
+                      <span className='font-mono text-sm font-medium'>
+                        {registry.registryId}
+                      </span>
+                      <Badge variant={registryStatusVariant(registry.status)}>
+                        {humanizeLabel(registry.status)}
+                      </Badge>
+                    </div>
+                    <dl className='text-muted-foreground mt-3 space-y-2 text-xs'>
+                      <div className='flex items-center justify-between gap-3'>
+                        <dt>Last success</dt>
+                        <dd className='text-foreground font-mono'>
+                          {formatRegistryLastSuccess(
+                            registry.lastSuccessUnixMs
+                          )}
+                        </dd>
+                      </div>
+                      <div className='flex items-center justify-between gap-3'>
+                        <dt>Consecutive failures</dt>
+                        <dd className='text-foreground font-mono'>
+                          {registry.consecutiveFailures}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {marketplaceModules.length > 0 ? (
             <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>

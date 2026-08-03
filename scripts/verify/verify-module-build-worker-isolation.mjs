@@ -8,6 +8,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const workerRoot = path.join(root, 'crates/rustok-module-build-worker');
 const workerManifest = path.join(workerRoot, 'Cargo.toml');
 const jobLauncherPath = path.join(workerRoot, 'src/runner.rs');
+const artifactPath = path.join(workerRoot, 'src/artifact.rs');
+const artifactContractPath = path.join(root, 'crates/rustok-modules/src/artifact.rs');
+const buildContractPath = path.join(root, 'crates/rustok-modules/src/build.rs');
 const serverRoot = path.join(root, 'apps/server');
 const dispatcherRoot = path.join(root, 'crates/rustok-module-build-dispatcher');
 const transportServerPath = path.join(root, 'crates/rustok-module-build-transport/src/server.rs');
@@ -153,6 +156,9 @@ try {
   }
 
   const jobLauncher = fs.readFileSync(jobLauncherPath, 'utf8');
+  const artifact = fs.readFileSync(artifactPath, 'utf8');
+  const artifactContract = fs.readFileSync(artifactContractPath, 'utf8');
+  const buildContract = fs.readFileSync(buildContractPath, 'utf8');
   if (
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_LAUNCHER') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_RUNTIME') ||
@@ -160,6 +166,7 @@ try {
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION') ||
     !jobLauncher.includes('load_isolation_attestation') ||
     !jobLauncher.includes('MAX_ISOLATION_ATTESTATION_BYTES') ||
+    !jobLauncher.includes('#[serde(deny_unknown_fields)]') ||
     !jobLauncher.includes('isolation_attestation') ||
     !jobLauncher.includes('network_mode') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_REQUEST_DIGEST') ||
@@ -176,8 +183,54 @@ try {
   ) {
     fail('worker must require fixed hardened OCI job launcher, image, runtime, and immutable receipt evidence');
   }
+  if (
+    jobLauncher.includes('Option<OciJobIsolationAttestation>') ||
+    /pub\s+fn\s+new\s*\(/.test(jobLauncher) ||
+    !jobLauncher.includes('if !self.is_ready()') ||
+    !jobLauncher.includes('&self.isolation_attestation_path')
+  ) {
+    fail('worker execution must not expose an attestation-free constructor or bypass readiness revalidation');
+  }
   if (!jobLauncher.includes('.env_clear()') || !jobLauncher.includes('.kill_on_drop(true)')) {
     fail('untrusted OCI job launcher must clear its environment and be killed on drop');
+  }
+  if (
+    !artifactContract.includes('MODULE_ARTIFACT_SOURCE_MANIFEST_FILE: &str = "module-artifact.json"') ||
+    !artifactContract.includes('if !descriptor.artifact_digest.is_empty()') ||
+    !artifactContract.includes('ModuleArtifactSourceManifestError::BuildDerivedDigest') ||
+    !artifact.includes('ModuleArtifactSourceManifest::parse(&bytes)') ||
+    !artifact.includes('.validate_build_request(request)') ||
+    !artifact.includes('.create_new(true)') ||
+    !artifact.includes('.finalize(component_digest)') ||
+    !jobLauncher.includes('ArtifactDescriptorFinalizer::load(source.source_dir(), &request)') ||
+    !jobLauncher.includes('artifact_descriptor.finalize(&output_dir, &result)') ||
+    !jobLauncher.includes('ModuleBuildFailureCode::SourceManifestInvalid') ||
+    !jobLauncher.includes('ModuleBuildFailureCode::ArtifactDescriptorInvalid')
+  ) {
+    fail('worker must own source-manifest validation and one-time final descriptor creation');
+  }
+  const manifestLoad = jobLauncher.indexOf('ArtifactDescriptorFinalizer::load(');
+  const launcherExecution = jobLauncher.indexOf('let mut child = Command::new(&self.job_launcher_path)');
+  const witInspection = jobLauncher.indexOf('.wit_contract');
+  const descriptorFinalization = jobLauncher.indexOf('artifact_descriptor.finalize(');
+  const evidenceInspection = jobLauncher.indexOf('BuildEvidenceInspector::inspect(');
+  if (
+    manifestLoad < 0 ||
+    launcherExecution < 0 ||
+    manifestLoad > launcherExecution ||
+    witInspection < 0 ||
+    descriptorFinalization < witInspection ||
+    evidenceInspection < descriptorFinalization
+  ) {
+    fail('source manifest and worker-owned descriptor stages are ordered incorrectly');
+  }
+  if (
+    !buildContract.includes('pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 8;') ||
+    !buildContract.includes('pub const MODULE_BUILD_COMPONENT_TARGET: &str = "wasm32-wasip2";') ||
+    !buildContract.includes('pub const MODULE_BUILD_RUNTIME_ABI: &str = "rustok:module/runtime@1";') ||
+    !buildContract.includes('Version::parse(&self.toolchain.rust_toolchain).is_err()')
+  ) {
+    fail('current build request must pin protocol, runtime ABI, Rust toolchain, and WASI P2 target');
   }
   if (
     !jobLauncher.includes('publication_target\n            .validate()') ||

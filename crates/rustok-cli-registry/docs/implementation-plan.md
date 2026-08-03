@@ -3,10 +3,10 @@
 ## Current state
 
 `rustok-cli-registry` owns selected-distribution provider aggregation outside
-the runner and server. Generated source currently composes the platform
-provider and `rustok-media-cli`; the latter exposes the owner-local
-`media reconcile` workflow through `RuntimeComposition`. The generator checks
-manifest selection and required registry dependencies.
+the runner and server. Generated source composes the selected platform,
+installer, auth, Media, Profiles, RBAC, Social Graph, and module-authoring
+providers. The generator checks manifest selection and required registry
+dependencies.
 
 ## FFA/FBA boundary
 
@@ -18,12 +18,11 @@ manifest selection and required registry dependencies.
 
 ## Open results
 
-1. **Register the next approved module-local or platform operations provider.**
-   Done when `[provides.cli]`, generated source, and registry dependencies add
-   an owner adapter without introducing a runner/server/domain dependency leak.
-   **Depends on:** an approved workflow owner and adapter crate.
+1. **Complete the selected module authoring provider.** Keep init/validate
+   registered while test/build/package/inspect/publish are added through the
+   same owner adapter without introducing runner/server policy.
    **Verification:** `node scripts/generate/generate-cli-registry.mjs --check`
-   and `cargo test -p rustok-cli-registry --quiet`.
+   and `node scripts/verify/verify-module-authoring-cli.mjs`.
 2. **Collect runtime evidence for the selected media reconciliation command.** Done
    when a database-backed run proves settings parsing, bounded cleanup, typed
    failure output, and structured outcome data through the generated registry.

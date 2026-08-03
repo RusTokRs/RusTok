@@ -28,13 +28,16 @@ distribution and module command entrypoints.
 
 - Depends on `rustok-cli-core`.
 - Depends on `rustok-cli-registry` for selected distribution providers.
-- Future module-local `cli/` adapter crates can provide commands through generated registries.
+- Module-local `cli/` adapter crates provide commands through generated registries.
 - Exposes `rustok-cli list --json` as a stable machine-readable command inventory
   for future platform assembly tooling.
 - Supports `rustok-cli list --namespace <name>` so discovery can stay scoped as
   module command providers grow.
 - Supports namespace command execution through `CommandProvider::execute`.
 - Provides `rustok-cli core version` as the first built-in typed provider command.
+- Provides the owner-local `rustok-cli module init`, `validate`, `test`,
+  `build`, `package`, `publish`, and `inspect` authoring flows through
+  `rustok-modules-cli`.
 - Must not depend on `apps/server` or domain crates directly as a central command dump.
 
 See [docs](docs/README.md).

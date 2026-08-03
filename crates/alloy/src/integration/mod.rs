@@ -13,9 +13,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::EntityProxy;
-    use crate::create_default_alloy_draft_runtime;
+    use crate::create_test_alloy_draft_runtime;
     use crate::integration::ScriptableEntity;
-    use crate::model::{AlloyWorkspace, EventType, Script, ScriptTrigger};
+    use crate::model::{EventType, RhaiWorkspace, Script, ScriptTrigger};
     use crate::runner::{ExecutionOutcome, ScriptOrchestrator};
     use crate::storage::{InMemoryStorage, ScriptRegistry};
 
@@ -163,14 +163,14 @@ mod tests {
     async fn test_deal_creation_with_scripts() {
         let storage = Arc::new(InMemoryStorage::new());
         let orchestrator = Arc::new(ScriptOrchestrator::new(
-            create_default_alloy_draft_runtime(),
+            create_test_alloy_draft_runtime(),
             storage.clone(),
         ));
         let service = DealService::new(orchestrator);
 
         let mut validation_script = Script::new(
             "validate_deal",
-            AlloyWorkspace::single_source(
+            RhaiWorkspace::single_source(
                 r#"
                 if entity["amount"] < 100 {
                     abort("Minimum deal amount is 100");
@@ -191,7 +191,7 @@ mod tests {
 
         let mut commit_script = Script::new(
             "notify_commit",
-            AlloyWorkspace::single_source(
+            RhaiWorkspace::single_source(
                 r#"
                 log("commit hook ran");
             "#,

@@ -1376,14 +1376,18 @@ impl SandboxHost {
     fn validate_call_context(&self, call: &CapabilityCall) -> SandboxResult<()> {
         if call.execution_id != self.execution_id {
             return Err(SandboxError::CapabilityContextMismatch {
-                field: "execution_id",
+                field: "execution_id".to_string(),
             });
         }
         if call.subject != self.subject {
-            return Err(SandboxError::CapabilityContextMismatch { field: "subject" });
+            return Err(SandboxError::CapabilityContextMismatch {
+                field: "subject".to_string(),
+            });
         }
         if call.context != self.context {
-            return Err(SandboxError::CapabilityContextMismatch { field: "context" });
+            return Err(SandboxError::CapabilityContextMismatch {
+                field: "context".to_string(),
+            });
         }
         Ok(())
     }

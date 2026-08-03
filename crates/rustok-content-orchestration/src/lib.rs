@@ -2315,8 +2315,8 @@ mod tests {
             .expect("replies for demoted topic should list");
         assert_eq!(total, 2);
         assert_eq!(replies.len(), 2);
-        assert_eq!(replies[0].content, "First blog comment");
-        assert_eq!(replies[1].content, "Second blog comment");
+        assert_eq!(replies[0].content_plain_text, "First blog comment");
+        assert_eq!(replies[1].content_plain_text, "Second blog comment");
         assert!(
             replies
                 .iter()

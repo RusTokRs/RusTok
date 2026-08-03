@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const failures = [];
+const runtimeOnly = process.argv.slice(2).includes("--runtime-only");
+for (const argument of process.argv.slice(2)) {
+  if (argument !== "--runtime-only") failures.push(`unknown argument ${argument}`);
+}
 
 function read(relativePath) {
   const file = path.join(repoRoot, relativePath);
@@ -86,7 +90,7 @@ forbidMarkers("crates/rustok-worker-transport/src/lib.rs", [
 
 requireMarkers("crates/rustok-verification-transport/src/server.rs", [
   "admission: WorkerAdmission",
-  "pub fn new(verifier: Arc<dyn ArtifactVerifier>, admission: WorkerAdmission)",
+  "pub fn new(verifier: Arc<V>, admission: WorkerAdmission)",
   "let _permit = self.admission.acquire().await?;",
 ]);
 requireCount(
@@ -97,41 +101,39 @@ requireCount(
 requireMarkers("crates/rustok-verification-worker/src/main.rs", [
   "WorkerAdmission::from_listener(&listener)",
   "VerificationGrpcService::new(worker, admission)",
-  ".serve_with_shutdown(listener.bind_addr, shutdown_signal())",
+  ".serve_with_shutdown(listener.address, shutdown_signal())",
 ]);
 forbidMarkers("crates/rustok-verification-worker/src/main.rs", [
-  ".serve(listener.bind_addr)",
+  ".serve(listener.address)",
 ]);
 
-requireMarkers("crates/rustok-module-build-worker/src/admission.rs", [
-  "pub struct AdmissionRunnerGrpcService",
+requireMarkers("crates/rustok-module-build-transport/src/server.rs", [
+  "pub struct ModuleBuildGrpcService",
   "admission: WorkerAdmission",
+  "pub fn new(worker: Arc<W>, admission: WorkerAdmission)",
   "let _permit = self.admission.acquire().await?;",
-  "RunnerService::start_build",
-  "RunnerService::get_readiness",
+  "self.worker.is_ready()",
+  ".execute_build(request)",
 ]);
 requireCount(
-  "crates/rustok-module-build-worker/src/admission.rs",
+  "crates/rustok-module-build-transport/src/server.rs",
   "self.admission.acquire().await?",
   1,
 );
 requireMarkers("crates/rustok-module-build-worker/src/main.rs", [
   "WorkerAdmission::from_listener(&listener)",
-  "AdmissionRunnerGrpcService::new(",
-  ".serve_with_shutdown(listener.bind_addr, shutdown_signal())",
+  "ModuleBuildGrpcService::new(worker, admission)",
+  ".serve_with_shutdown(listener.address, shutdown_signal())",
 ]);
 forbidMarkers("crates/rustok-module-build-worker/src/main.rs", [
-  ".serve(listener.bind_addr)",
+  ".serve(listener.address)",
 ]);
-requireMarkers("crates/rustok-module-build-worker/src/lib.rs", [
-  "mod admission;",
-  "pub use admission::AdmissionRunnerGrpcService;",
-]);
+forbidMarkers("crates/rustok-module-build-worker/src/lib.rs", ["mod admission;"]);
 
-requireCount(
+requireMatchedCount(
   "crates/rustok-verification-worker/src/cosign.rs",
+  "Command::new(",
   "kill_on_drop(true)",
-  2,
 );
 requireMarkers("crates/rustok-module-build-worker/src/runner.rs", [
   "let mut child = Command::new(&self.job_launcher_path)",
@@ -150,10 +152,12 @@ for (const subprocessFile of [
   requireMatchedCount(subprocessFile, "Command::new(", "kill_on_drop(true)");
 }
 
-requireMarkers(".github/workflows/hardening-gates.yml", [
-  "Verify worker runtime backpressure policy",
-  "verify-worker-runtime-policy.mjs",
-]);
+if (!runtimeOnly) {
+  requireMarkers(".github/workflows/hardening-gates.yml", [
+    "Verify worker runtime backpressure policy",
+    "verify-worker-runtime-policy.mjs",
+  ]);
+}
 requireMarkers("scripts/verify/verify-all.sh", [
   "worker-runtime-policy  Verify bounded admission, graceful shutdown and subprocess cancellation",
   "verify-worker-runtime-policy.mjs:Worker Runtime Backpressure Policy",

@@ -20,14 +20,17 @@ registries, not through hardcoded server-owned task calls.
 - Normalizes provider input into `CommandRequest.args.options` and
   `CommandRequest.args.positionals`; option names use `snake_case`.
 - Provides `rustok-cli core version` as the first built-in typed execution command.
+- Dispatches the current `module init`, `validate`, `test`, `build`, `package`,
+  `publish`, and `inspect` commands to the owner-local module authoring provider
+  selected by the generated registry.
 - Owns an explicit `CommandRegistry` that aggregates providers and rejects duplicate
   `namespace/name` command registrations.
 - Does not depend on `apps/server` or a host framework.
 
 ## Target Direction
 
-- Populate the generated distribution registry with selected module-local
-  command providers.
+- Keep module authoring commands routed through the same owner-local provider
+  and owner controls as their contracts evolve.
 - Keep seed and migration flows in typed CLI commands.
 - Keep module command adapters next to the owning module, outside domain core.
 - Keep the production server binary focused on HTTP runtime startup.

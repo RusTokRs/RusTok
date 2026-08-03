@@ -163,7 +163,7 @@ pub async fn bootstrap_app_runtime(
             tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
         }
 
-        init_alloy_runtime(&runtime_ctx);
+        init_alloy_runtime(&runtime_ctx).await?;
     }
 
     if settings.runtime.is_registry_only() {
@@ -218,9 +218,13 @@ async fn initialize_module_work_runtime(
     );
     let host = host.with_shared_value(artifact_delivery_tenants);
     let host = if ctx.shared_get::<rustok_storage::StorageRuntime>().is_some() {
-        let executor = ctx
-            .shared_get::<rustok_modules::SharedArtifactBindingExecutor>()
-            .unwrap_or(crate::services::artifact_runtime::compose_artifact_binding_executor(ctx)?);
+        let executor = if let Some(executor) =
+            ctx.shared_get::<rustok_modules::SharedArtifactBindingExecutor>()
+        {
+            executor
+        } else {
+            crate::services::artifact_runtime::compose_artifact_binding_executor(ctx).await?
+        };
         ctx.shared_insert(executor.clone());
         host.with_shared_value(executor)
     } else {
@@ -298,17 +302,33 @@ fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
     ctx.shared_insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
 
-fn init_alloy_runtime(ctx: &ServerRuntimeContext) {
+async fn init_alloy_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     #[cfg(not(feature = "mod-alloy"))]
-    let _ = ctx;
+    {
+        let _ = ctx;
+        Ok(())
+    }
 
     #[cfg(feature = "mod-alloy")]
     {
         if ctx.shared_get::<alloy::SharedAlloyRuntime>().is_none() {
+            let rhai = crate::services::artifact_runtime::sandbox_rhai_executor(ctx).await?;
+            let mut executors = rustok_sandbox::ExecutorRegistry::new();
+            executors.register_isolated_worker(rhai).map_err(|error| {
+                Error::Message(format!("Alloy isolated Rhai executor failed: {error}"))
+            })?;
+            let sandbox = rustok_sandbox::SandboxRuntime::new(
+                executors,
+                Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
+            );
+            let draft_runtime =
+                alloy::AlloyDraftRuntime::new(sandbox, rustok_sandbox::SandboxPolicy::default());
             ctx.shared_insert(alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
                 ctx.db_clone(),
+                draft_runtime,
             )));
         }
+        Ok(())
     }
 }
 

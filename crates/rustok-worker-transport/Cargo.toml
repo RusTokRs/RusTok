@@ -9,3 +9,4 @@ description = "Shared mutually authenticated listener and runtime policy for Rus
 [dependencies]
 tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }
+tracing.workspace = true

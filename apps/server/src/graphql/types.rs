@@ -499,6 +499,41 @@ pub struct MarketplaceModule {
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
 #[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum MarketplaceRegistryStatus {
+    Unknown,
+    Ready,
+    Degraded,
+}
+
+#[derive(SimpleObject, Clone, Debug, Eq, PartialEq)]
+pub struct MarketplaceRegistryFreshness {
+    pub registry_id: String,
+    pub status: MarketplaceRegistryStatus,
+    pub last_success_unix_ms: Option<u64>,
+    pub consecutive_failures: u64,
+}
+
+impl From<rustok_api::MarketplaceRegistryFreshness> for MarketplaceRegistryFreshness {
+    fn from(value: rustok_api::MarketplaceRegistryFreshness) -> Self {
+        Self {
+            registry_id: value.registry_id,
+            status: match value.status {
+                rustok_api::MarketplaceRegistryStatus::Unknown => {
+                    MarketplaceRegistryStatus::Unknown
+                }
+                rustok_api::MarketplaceRegistryStatus::Ready => MarketplaceRegistryStatus::Ready,
+                rustok_api::MarketplaceRegistryStatus::Degraded => {
+                    MarketplaceRegistryStatus::Degraded
+                }
+            },
+            last_success_unix_ms: value.last_success_unix_ms,
+            consecutive_failures: value.consecutive_failures,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
 pub enum GqlBuildStatus {
     Queued,
     Running,

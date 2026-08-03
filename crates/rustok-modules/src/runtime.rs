@@ -491,6 +491,7 @@ mod tests {
             Ok(SandboxOutcome {
                 execution_id: request.context.execution_id,
                 output,
+                rhai_scope: None,
                 metrics: ExecutionMetrics::default(),
             })
         }

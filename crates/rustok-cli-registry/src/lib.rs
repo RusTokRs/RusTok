@@ -74,7 +74,7 @@ mod tests {
         let commands = registry.commands();
 
         assert!(!registry.is_empty());
-        assert_eq!(registry.providers().len(), 7);
+        assert_eq!(registry.providers().len(), 8);
         assert!(
             commands
                 .iter()
@@ -84,6 +84,11 @@ mod tests {
             commands
                 .iter()
                 .any(|command| command.namespace == "media" && command.name == "reconcile")
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|command| { command.namespace == "module" && command.name == "validate" })
         );
         assert!(commands.iter().any(|command| {
             command.namespace == "social_graph" && command.name == "receipt-cleanup"

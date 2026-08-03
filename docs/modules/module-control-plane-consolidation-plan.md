@@ -18,7 +18,7 @@ platform. It coordinates work owned locally by:
 - `crates/alloy`;
 - `apps/server`;
 - module management transports and admin hosts;
-- the future isolated module build worker.
+- the isolated module build worker.
 
 Local component plans describe their own implementation details. If a local
 plan conflicts with this document, update both documents in the same change and
@@ -30,7 +30,7 @@ The ownership decision is fixed by
 ## Execution Checkpoint
 
 - Current phase: `sandbox_worker_and_build_closure`.
-- Last updated: 2026-07-26.
+- Last updated: 2026-08-02.
 - Completed foundation:
   - neutral sandbox request, policy, broker, executor, outcome, error, and audit
     contracts;
@@ -47,7 +47,7 @@ The ownership decision is fixed by
 - Current critical path:
   1. complete isolated sandbox-worker profiles and deterministic resource
      metrics;
-  2. close isolated OCI build-job and author SDK/CLI gaps;
+  2. close retained isolated OCI build-job enforcement and supervisor evidence;
   3. close the remaining registry transport boundary evidence;
   4. implement Alloy authoring/release evolution on the admitted runtime;
   5. complete GraphQL/native/admin marketplace parity;
@@ -67,12 +67,34 @@ The ownership decision is fixed by
   logical handle is read. Its durable-state test covers allow, stale scope,
   foreign installation, deactivation, and grant removal. Phase 3 is complete;
   no workspace-wide compile or test claim is made.
-- Latest sandbox-placement evidence: the ambiguous executor registration API is
-  removed from all current callers. Thirteen neutral runtime-contract tests,
-  three Rhai executor tests, six artifact-runtime tests, and one focused Alloy
-  draft-extension test pass with explicit placement registration. The server
-  and Alloy still register Rhai in process, so this is readiness/fallback
-  evidence rather than a claim that the isolated worker exists.
+- Latest sandbox-placement evidence: `rustok-sandbox-transport` now supplies the
+  current-only bidirectional tonic adapter and `rustok-sandbox-worker` supplies
+  the separately deployable neutral Rhai process. Artifact server composition
+  requires an mTLS connection plus exact readiness and registers Rhai only as
+  `isolated_worker`; worker loss has no in-process fallback. Seven loopback
+  transport tests cover broker callback, serialized Rhai scope input/output,
+  cancellation, deadline/hang, typed error preservation, disconnect, readiness
+  loss, and protocol mismatch.
+  Six worker policy/observation tests cover exact revalidation, unbounded
+  attestation rejection, request limits above the attested envelope, observed
+  peak memory, execution failure without measurement, and readiness failure
+  without measurement. The sandbox-worker isolation guard also passes
+  and rejects product/infrastructure dependency drift or server embedding.
+  Thirteen neutral runtime-contract tests also pass. Alloy and artifact
+  production composition now share one readiness-checked mTLS Rhai worker
+  client with no production in-process constructor or fallback. Canonical
+  workspace/import resolution, standard functions, brokered HTTP helpers, and
+  serialized scope records live in the neutral sandbox, so the worker retains
+  no Alloy or product-infrastructure dependency. Seven focused Rhai executor
+  tests cover raw source, workspace imports, mutable record changes,
+  immutable-record denial, brokered HTTP allow/default-deny, instruction
+  pressure, and deadline mapping; three scope-contract tests cover bounded,
+  duplicate, and reserved bindings. The focused Alloy command did
+  not finish compiling inside its bounded 60-second window. A canonical
+  digest-pinned gVisor/Kata Kubernetes renderer and exact mTLS RPC probe now
+  define the production worker profile, but retained cluster enforcement and
+  supervisor evidence remain open, so Phase 1 is not complete. No
+  server, Alloy, or workspace-wide compile/test claim is made.
 
 ## Quality and Isolation Audit Checkpoint (2026-07-22)
 
@@ -240,7 +262,7 @@ keep custom code limited to RusToK domain contracts.
 |---|---|
 | Rhai language runtime | `rhai` through `rustok-sandbox` |
 | WebAssembly runtime | `wasmtime` Component Model, fuel, epochs, store limits |
-| Rust component build | `cargo-component`, `wit-bindgen`, `wit-component`, `wasm-tools` |
+| Rust component build | Native pinned Cargo targeting `wasm32-wasip2`, `wit-bindgen`, Rust's Component Model linker, `wasm-tools` |
 | Cargo graph inspection | `cargo metadata` / `cargo_metadata` |
 | OCI transport | Existing `oci-distribution` adapter |
 | Artifact bytes | OCI digest semantics plus an `ArtifactBlobStore` port backed by platform-controlled content-addressed object storage; reuse `rustok-storage` adapters where they satisfy CAS requirements |
@@ -441,8 +463,10 @@ and installed artifacts.
   `SandboxSubject::AlloyDraft` and a revision number.
 - [x] Replace Alloy's direct production execution path atomically with
   `SandboxRuntime`; do not retain a fallback executor.
-- [x] Preserve Alloy-specific entity, parameter, validation, and HTTP behavior
-  as request-scoped extensions backed by the capability broker.
+- [x] Preserve Alloy entity, parameter, validation, and HTTP behavior through
+  neutral serialized scope records, the shared standard library, and the
+  capability broker. The isolated worker does not import Alloy or product
+  infrastructure.
 - [x] Define a versioned Rhai input/output binding shared by draft and published
   Rhai artifacts. `RhaiBindingInput`/`RhaiBindingOutput` v1 are strict neutral
   envelopes with no raw-value fallback. Alloy keeps its data-only draft payload
@@ -474,15 +498,17 @@ and installed artifacts.
   cache retains only serialized Components and rehydrates them into a
   request-private engine/store; it has entry/byte LRU bounds, never retains
   tenant or host state, and evicts a corrupt value before recompiling.
-- [ ] Add deterministic metrics for fuel/instructions, memory, output size,
+- [x] Add deterministic metrics for fuel/instructions, memory, output size,
   capability calls, queue time, and execution time. The neutral runtime now
   records queue time, executor duration, output size, Rhai instructions or
   Wasmtime fuel consumption, and policy-admitted capability-call count for
   success and terminal failure evidence. Artifact audit persists queue time and
   capability calls alongside the existing metrics. Wasmtime now reports actual
   aggregate non-shared guest linear-memory peak through its resource limiter,
-  excluding failed growth rather than reporting a configured limit; Rhai peak
-  memory still requires isolated-worker observation, so this item remains open.
+  excluding failed growth rather than reporting a configured limit. Rhai runs
+  one request per isolated worker process; the worker samples its cgroup v2
+  memory and reports the observed cgroup peak, while missing measurement makes
+  startup, readiness, admission, and execution fail closed.
 - [x] Replace unbounded thread-per-host-call bridging with a strictly bounded
   one-thread-per-execution bridge. A synchronous guest ABI cannot permit thread
   exhaustion.
@@ -554,33 +580,49 @@ and installed artifacts.
 The crate is the contract owner; executor placement is a deployment decision.
 It does not create a second sandbox API.
 
-- [ ] Define `in_process` and `isolated_worker` executor adapters behind the same
+- [x] Define `in_process` and `isolated_worker` executor adapters behind the same
   `SandboxExecutor`/runtime contract. The registry contract is now explicit:
   callers must use `register_in_process` or `register_isolated_worker`, the
   former ambiguous registration API is removed, duplicate kinds are rejected
   across placements, and `SandboxRuntime::executor_placement` exposes the
-  selected adapter for readiness checks. The item remains open until the
-  generated worker transport supplies the real isolated adapter.
-- [ ] Permit in-process Wasmtime where its threat model and resource controls are
-  accepted.
-- [ ] Run AI-generated or otherwise untrusted Rhai in an isolated sandbox worker
+  selected adapter for readiness checks. `GrpcRhaiExecutor` now implements the
+  real generated streaming worker adapter and never falls back locally.
+- [x] Permit in-process Wasmtime where its threat model and resource controls are
+  accepted. Artifact server composition keeps only Wasmtime in-process and
+  names that placement explicitly.
+- [x] Run AI-generated or otherwise untrusted Rhai in an isolated sandbox worker
   in production so interpreter/runtime defects and hard memory/process limits do
-  not affect the server process.
-- [ ] Keep in-process Rhai only as an explicit local-development or reviewed
-  profile; it is not a silent production fallback. Current callers now name
-  their in-process placement explicitly and cannot install a same-kind worker
-  plus fallback. Server and Alloy production composition still require the
-  isolated-worker cutover before this item can close.
-- [ ] Use a versioned framed RPC over a local channel; reject raw stdin/stdout
+  not affect the server process. Alloy and admitted artifacts share one
+  readiness-checked mTLS client stored in server runtime composition.
+- [x] Keep in-process Rhai only in explicit test/local harnesses; it is not a
+  production fallback. Production Alloy constructors require an injected
+  `AlloyDraftRuntime`, and server composition registers only the isolated Rhai
+  worker. Artifact composition uses the same client; duplicate-kind placement
+  cannot create a fallback.
+- [x] Use a versioned framed RPC over a local channel; reject raw stdin/stdout
   ambiguity, oversized frames, unsolicited output, and protocol drift. Prefer
-  the workspace `tonic`/`prost` generated contract over a custom codec.
-- [ ] Route worker capability requests back through the same host broker without
-  giving the worker network, database, filesystem, secret, or MCP clients.
+  the workspace `tonic`/`prost` generated contract over a custom codec. The
+  exact revision and execution UUID are checked on every streaming protobuf
+  frame; metadata uses the current JSON model and artifact bytes stay native.
+- [x] Route worker capability requests back through the same host broker without
+  giving the worker network, database, filesystem, secret, or MCP clients. The
+  neutral worker depends on none of those clients and the host re-applies the
+  original `SandboxHost` identity, grant, constraint, budget, audit, and
+  cancellation checks.
 - [ ] Apply process/container CPU, memory, process-count, file, disk, and time
   limits through the deployment runtime rather than hand-writing a platform OS
-  sandbox in Rust.
+  sandbox in Rust. The worker now fails startup/readiness/execution without an
+  exact digest-pinned gVisor/Kata attestation and rejects request limits outside
+  its finite envelope. The canonical Kubernetes renderer pins the selected
+  RuntimeClass and image digest, applies portable pod limits and hardening,
+  restricts ingress, and denies egress. This item remains open until retained
+  cluster evidence also proves RuntimeClass-specific PID/file enforcement and
+  the other declared controls.
 - [ ] Supervise crash, cancellation, forced kill, restart/backoff, and complete
-  cleanup with execution audit evidence.
+  cleanup with execution audit evidence. The rendered Deployment has at least
+  two replicas, bounded rolling replacement, disruption protection, and exact
+  mTLS RPC startup/readiness/liveness probes; retained crash/OOM/kill and
+  capacity-recovery evidence is still required.
 
 ### Verification Gate
 
@@ -1285,7 +1327,11 @@ of an admitted blob.
   builder/build type/source/ref, and CycloneDX JSON version, component-license, and
   vulnerability evidence. The worker listener requires deployment-provided
   mTLS identity/client-CA material and bounds concurrency, duration, and
-  message size. Its same mTLS-protected listener exposes a readiness RPC only
+  message size. The shared process-wide admission semaphore bounds work across
+  all connections and sheds after a deployment-bounded wait, while readiness
+  remains available without a permit. SIGTERM/Ctrl+C performs tonic graceful
+  shutdown and cancelled Cosign futures kill their child process. Its same
+  mTLS-protected listener exposes a readiness RPC only
   after fail-closed startup validation, so deployment supervision uses the
   authenticated transport rather than a plaintext health port. The transport
   supports mTLS client configuration and readiness probing. The mounted typed
@@ -1644,7 +1690,11 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   it serializes only the owner-owned request/result protocol, requires mTLS in
   production, and exposes readiness on the same authenticated listener.
   `rustok-module-build-worker` now provides the separately deployable process:
-  it invokes only a fixed image-owned non-symlink OCI job launcher in a fixed
+  its process-wide admission bound applies across all authenticated connections,
+  readiness remains permit-free, and SIGTERM/Ctrl+C starts bounded tonic
+  graceful shutdown. Cancellation drops and kills every worker-owned child
+  process rather than leaving a build running after its RPC future ends. The
+  worker invokes only a fixed image-owned non-symlink OCI job launcher in a fixed
   workdir with a cleared environment, request-derived deadline, and aggregate
   streamed stdout/stderr output limit. Startup requires a gVisor or Kata job
   runtime plus a digest-pinned OCI job image; the launcher receives those fixed
@@ -1709,7 +1759,10 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` file: a bounded, regular JSON
   attestation must match the fixed runtime/image and prove unprivileged,
   host-mount-free, socket-free, host-network/PID-isolated, resource-limited,
-  ephemeral-job settings. This is configuration-review evidence and does not
+  ephemeral-job settings. The attestation schema rejects unknown fields, there
+  is no attestation-free constructor, and every build rechecks readiness and
+  reloads the deployment-owned file before accepting work. This is
+  configuration-review evidence and does not
   replace deployment evidence that the launcher enforces the corresponding
   controls.
   Deployment evidence that the launcher actually creates the hardened job
@@ -1745,6 +1798,10 @@ credentials.
 
 1. Materialize immutable source into an empty workspace.
 2. Verify source digest and safe archive paths.
+   Load the bounded regular `module-artifact.json` source declaration before
+   any author code runs. It must omit the build-derived component digest and
+   exactly match the immutable request's module slug, version, runtime ABI,
+   optional WASM kind, and `run` entrypoint.
 3. Bind the raw `Cargo.lock` bytes to the request lock digest and reject
    source-local or ancestor-workdir Cargo config, patches/replacements, path dependencies,
    unapproved registry sources, forbidden Git sources, build scripts, and
@@ -1767,7 +1824,11 @@ credentials.
    unsafe policy violations, or dependency limits according to policy.
 6. Run `cargo deny`, advisory checks, and `cargo vet` policy where configured.
 7. Format/check/lint/test using pinned commands and locked dependencies.
-8. Build the component with `cargo component build --locked`.
+8. Build the component with the pinned native Rust toolchain using
+   `cargo build --locked --target wasm32-wasip2`. The former
+   `cargo-component` path is not retained: current Rust emits WASI P2
+   components natively, while `rustok-module-sdk` owns generated guest
+   bindings from the single canonical WIT source.
 9. Validate and inspect exports/imports using `wasm-tools`. The worker now
    additionally binds a successful result to a fixed `output/component.wasm`,
    rehashes it, validates Component Model bytes, and compares the root
@@ -1777,6 +1838,10 @@ credentials.
    match exactly.
 10. Require the configured WIT world and reject undeclared imports. This is
     enforced from Component-derived WIT rather than runner-provided text.
+    After this inspection, the worker combines the validated source
+    declaration with the independently verified component digest and creates
+    `module-artifact-descriptor.json` exactly once. Runner-provided descriptor
+    output is rejected.
 11. Generate CycloneDX SBOM. The worker now requires and rehashes a fixed
     `output/sbom.cdx.json` file before it accepts success, and checks bounded
     CycloneDX JSON structure.
@@ -1817,22 +1882,72 @@ The terminal result contains:
 
 ### 4.6 Author SDK and CLI
 
-- [ ] Generate Rust guest bindings from the frozen WIT contract with maintained
+- [x] Generate Rust guest bindings from the frozen WIT contract with maintained
   Bytecode Alliance tooling; do not hand-maintain duplicate ABI structs.
-- [ ] Add `rustok module` CLI flows for init, validate, test, build, package,
+  `rustok-module-sdk` now packages the sole canonical
+  `rustok:module@1.0.0/module-runtime` WIT source and uses `wit-bindgen` to
+  generate the guest import, `Guest` trait, and public export macro. The
+  Wasmtime host binding consumes that exact file rather than retaining an
+  inline duplicate. The SDK is product-neutral and has no server, database,
+  marketplace, AI, Alloy, network-client, or platform-runtime dependency.
+- [x] Add `rustok module` CLI flows for init, validate, test, build, package,
   inspect, and publish through existing CLI provider contracts.
-- [ ] Provide module templates containing descriptor, WIT bindings, tests,
+  `rustok-modules-cli` now implements the canonical init/validate/test/build/
+  package/publish/inspect command set:
+  create-new project writes, pinned Cargo lock generation with bounded timeout,
+  rollback of only the newly created root on failure, and read-only validation
+  of source manifest, SDK/template/toolchain provenance, native target,
+  fail-closed dependency policy, and checksummed lock graph. Package creates a
+  deterministic file-only USTAR source archive outside the project through the
+  shared bounded writer and returns its SHA-256/CAS identity; inspect validates
+  either a source project or a standalone archive through the same owner/parser
+  contracts. Test runs sanitized bounded offline Cargo stages, rehashes the
+  native WASI P2 Component, and executes it through the real neutral Wasmtime
+  executor with a bounded `LocalSandboxScenario`: exact typed grants/limits,
+  capability/operation fixture responses, input, and success/error expectation.
+  Local results are never trusted build/admission evidence. `module build`
+  requires explicit tenant, actor, project, trace, correlation, and idempotency
+  identity, creates a private deterministic archive, and submits it only through
+  `ModuleAuthoringBuildControl`. The owner strictly scans and rehashes the
+  archive, atomically publishes `<sha256-hex>.tar` into the deployment source
+  CAS, selects the fixed limits, dependency egress, validation profiles, WIT,
+  ABI, and target, then commits the immutable request and outbox fact. The CLI
+  never invokes the worker, OCI registry, or signing service; the external
+  dispatcher retains remote delivery ownership. `module publish` accepts an
+  exact completed build ID and creates the current metadata bundle from
+  `module-artifact.json` plus `Cargo.toml`. The owner reloads the build
+  under tenant scope, fixes platform-built/third-party/sandboxed policy,
+  validates and content-addresses the bundle, creates the publish request under
+  a full-command deterministic identity, attaches the bundle, binds the exact
+  source/Component/OCI receipt stage, and queues registry validation. Bundle,
+  Component payload, and OCI manifest digests remain distinct identities. The
+  CLI cannot record build-service attestation, platform admission, marketplace
+  approval, or final publication. The owner manifest selects the provider
+  through the generated distribution registry.
+- [x] Provide module templates containing descriptor, WIT bindings, tests,
   locked toolchain, dependency policy, settings/action schemas, localization,
-  and example brokered capabilities.
+  and example brokered capabilities. The independently versioned
+  `rustok-module-template` pure renderer emits a standalone Rust 2024 `cdylib`
+  project for native `wasm32-wasip2`, pins the exact SDK and Rust toolchain,
+  validates its digest-free source manifest through the owner contract, and
+  includes a declared Events broker example plus a matching typed local sandbox
+  scenario. The guest publishes `{topic, payload}` under the exact scenario
+  topic/operation grant; the renderer validates the scenario before returning
+  files. The CLI owns create-new writes
+  and `Cargo.lock` generation; isolated component compilation remains a
+  verification-gate requirement rather than template-renderer behavior.
 - [x] Provide a local sandbox harness with the same request/policy/error contract
   and fixture capability broker as production, but no production credentials.
   `LocalSandboxHarness` delegates directly to `SandboxRuntime`; its
   `FixtureCapabilityBroker` resolves only exact caller-provided deterministic
   responses and default-denies every unregistered fixture. The harness has no
-  deployment configuration or infrastructure clients.
+  deployment configuration or infrastructure clients. Its bounded scenario
+  contract rejects unknown/oversized input, duplicate or ungranted fixtures,
+  invalid operations and authoring limits, and evaluates exact outputs or stable
+  expected error codes through the real Component executor for local tests.
 - [x] Emit machine-readable diagnostics and build evidence usable by Alloy,
   CLI, CI, and admin without parsing human logs. `ModuleBuildResult` protocol
-  v7 carries bounded typed diagnostic `(stage, code)` facts and ordered
+  v8 carries bounded typed diagnostic `(stage, code)` facts and ordered
   validation-profile outcomes in its evidence;
   every failed result must include its canonical code at its owner-canonical
   stage, while success
@@ -1843,7 +1958,7 @@ The terminal result contains:
   requested profile with a `failed` outcome. The verified SLSA provenance
   envelope carries the same requested-profile and outcome lists.
 - [x] Version SDK/templates independently and record their versions in build
-  provenance. `ModuleBuildRequest` v7 requires SemVer `sdk_version` and
+  provenance. `ModuleBuildRequest` v8 requires SemVer `sdk_version` and
   `template_version`; publication-side SLSA verification requires exact
   `sdkVersion` and `templateVersion` values in the request-bound RusToK
   external-parameters envelope.
@@ -1858,6 +1973,28 @@ The terminal result contains:
 - The server never invokes Cargo directly for runtime marketplace installation.
 - Generated guest bindings and local harness compatibility are tested against
   the exact host WIT/runtime ABI version.
+
+Lightweight verification for the 2026-08-02 source-manifest, native template,
+and module init/validate/package/inspect slice used touched-file
+`rustfmt --edition 2024`, `git diff --check`, `cargo metadata --no-deps`, the CLI
+registry freshness check, and the module build-worker, SDK WIT, template,
+authoring CLI, and source-archive Node guardrails. All of those checks passed.
+Three earlier narrow Rust test invocations for the new owner/worker boundaries
+exceeded the 60-second dependency-compilation limit and were terminated without
+a test result. The focused `rustok-build-source --lib` suite now passes all
+five deterministic writer/strict reader/publisher tests. A filtered
+`rustok-modules-cli` provider test still exceeded the 60-second limit on both
+attempts and was terminated, so package/inspect CLI compilation is not yet
+proved. The new bounded local-scenario harness tests pass three of three with
+the real `wasm-component` feature enabled. The focused template scenario test
+and the earlier five-command CLI provider test each exceeded their bounded
+compilation window and were terminated, so `module test` and template
+integration still lack direct crate compile evidence. The first focused owner
+authoring-request attempt also exceeded that window, but after the dependency
+cache completed both owner request/policy tests passed. The expanded
+six-command CLI provider test again exceeded 60 seconds while compiling
+dependencies and was terminated, so the new CLI command still lacks direct
+crate compile evidence. No full compile or test suite was run.
 
 ## Phase 5 - OCI Publication, Signatures, SBOM, and Provenance
 
@@ -1994,13 +2131,16 @@ trust policy before admission.
   identity plus builder, build-type, source, license, and vulnerability-policy
   facts. Missing license or vulnerability outcome fields fail decoding rather
   than receiving compatibility defaults.
-- [ ] Compose the production publication-evidence producer. The reserved owner
-  operations for build-service attestation and platform admission are strict
-  and covered by focused owner tests, but no production host/dispatcher
-  currently invokes them. The target path must load the exact OCI descriptor,
-  call the isolated verifier through mTLS, and record both owner facts without
-  exposing registry or trust credentials to the server, Alloy, MCP, or module
-  runtime. Final publication intentionally fails closed until this path exists.
+- [x] Compose the production publication-evidence producer. The independent
+  registry-validation worker reloads the immutable completed build and current
+  publication stage through the owner, acquires a short-lived registry lease
+  from its deployment-owned credential broker, fetches the exact digest-pinned
+  OCI artifact, and revalidates the package before calling the isolated verifier
+  through mTLS with a readiness gate. It then records the reserved build-service
+  attestation and complete platform-admission contract through owner operations.
+  Registry credentials and trust roots never enter the server, Alloy, MCP, or
+  module runtime. Partial persistence is retry-safe because both immutable
+  evidence records reject conflicting replay and accept exact replay.
 
 ### 5.3 Publication Governance
 
@@ -2008,9 +2148,10 @@ trust policy before admission.
   owner read is now `SeaOrmModuleBuildService::load_completed`: it returns only
   a tenant-RLS-scoped durable request/result pair after revalidating the result
   against its immutable stored request. `stage_platform_build` now consumes the
-  pair, validates the expected slug/version and component digest against the
-  submitted artifact, and appends the source, component, and OCI receipt
-  identities in `registry_publish_build_staging`. The exact immutable source
+  pair, validates the expected slug/version and successful Component/OCI
+  receipt identities independently from the submitted metadata-bundle
+  checksum, and appends the source, component, and OCI receipt identities in
+  `registry_publish_build_staging`. The exact immutable source
   reference is retained with its digest, so final publication does not
   reconstruct lineage from a tenant-scoped build request. The component/payload digest
   and registry-returned OCI manifest digest are separate immutable identities:
@@ -2034,8 +2175,9 @@ trust policy before admission.
 - [x] Run automated descriptor, compatibility, dependency, signature, SBOM,
   provenance, license, vulnerability, and sandbox smoke checks. The owner
   validates the claimed canonical bundle against the exact SHA-256, crate,
-  publish metadata, `rustok-module.toml`, and `Cargo.toml`; fixture substitutions
-  and undeclared UI manifests fail closed without echoing artifact content.
+  publish metadata, current `module-artifact.json`, and `Cargo.toml`;
+  fixture substitutions and undeclared UI manifests fail closed without
+  echoing artifact content.
   Build-worker lock fixtures cover checksummed allow-listed registries,
   credential rejection, exact git revisions, and dangling dependency denial.
   Platform-built gates consume only durable passed `check`, `test`, dependency
@@ -2142,9 +2284,9 @@ trust policy before admission.
   contract. Source-unavailable external prebuilts consequently cannot enter the
   public installable catalog. The remaining Alloy work is the digest-pinned
   CAS/OCI source materializer and authenticated import transports, not
-  publication-fact reconstruction. This projection becomes reachable in
-  production only after the open publication-evidence producer in Phase 5.2 is
-  composed.
+  publication-fact reconstruction. The production evidence producer now makes
+  this projection reachable once the independently required author signature
+  and final governance decision are present.
 - [x] Compose multiple explicitly configured registries. Registry identity is
   independent from endpoint URL, participates in cache and release identity,
   and has deterministic namespace/collision rules. An endpoint move must not
@@ -2159,8 +2301,18 @@ trust policy before admission.
   source reference plus canonical source digest. Source-unavailable external
   prebuilts remain private quarantine sideloads and cannot appear as normally
   installable public catalog releases.
-- [ ] Expose freshness and last-success evidence per configured registry to
+- [x] Expose freshness and last-success evidence per configured registry to
   operator transports and declarative admin UI, not only aggregate readiness.
+  `MarketplaceRegistryFreshness` is the framework-neutral API DTO and excludes
+  endpoint URLs and remote error content. The modules owner catalog port
+  projects one record per configured logical registry while excluding the local
+  manifest provider. GraphQL and native Leptos transports require
+  `modules.manage`; both Leptos and Next module operator surfaces show the same
+  status, last-success timestamp, and consecutive-failure count and refresh the
+  evidence after catalog access. The aggregate readiness check remains a
+  non-critical availability signal, not the operator detail contract.
+  `verify-marketplace-registry-freshness.mjs` locks owner-port use, permission
+  enforcement, content minimization, and cross-admin parity.
 
 ### Verification Gate
 

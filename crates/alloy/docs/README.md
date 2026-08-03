@@ -79,11 +79,17 @@ count; source, input, and output remain
 outside marketplace persistence. The release idempotency key is the stable
 logical sandbox execution identity for retry-safe staging.
 
-`HttpCapabilityBridge` is installed only on the request-scoped Rhai sandbox
-executor. It has no network client: its `http_*` helpers create
+`RhaiCapabilityBridge` is installed in the standalone neutral Rhai worker. It
+has no network client: its `http_*` helpers create
 `platform.http` calls for `SandboxHost`. The host validates admitted HTTP
 host/method/path-prefix constraints before the broker applies its credential and
 audit policy, so Alloy drafts and marketplace artifacts share the same boundary.
+
+Canonical `RhaiWorkspace`, in-memory imports, standard functions, and
+serializable `RhaiScopeInput`/`RhaiScopeOutput` records are owned by
+`rustok-sandbox`. Alloy maps its `params`, `entity`, and `entity_before` data to
+that neutral contract before the request crosses mTLS. The worker therefore has
+no Alloy, AI, database, storage, or product-infrastructure dependency.
 
 Published Rhai import is split at an explicit owner boundary.
 `AlloyReleaseImporter` accepts only an exact `ArtifactReleaseRef`; its source

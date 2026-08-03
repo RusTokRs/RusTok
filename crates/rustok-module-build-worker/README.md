@@ -9,6 +9,15 @@ image, while deployment evidence must still demonstrate that the launcher
 enforces the attested job controls. The server and module runtime never invoke
 Cargo through this package.
 
+Build RPCs use the shared process-wide bounded admission policy; readiness stays
+available while saturated. SIGTERM/Ctrl+C initiates tonic graceful shutdown,
+and cancellation kills worker-owned subprocesses instead of orphaning builds.
+
+The isolation attestation is a strict, unknown-field-rejecting contract. The
+worker has no attestation-free constructor and reloads the deployment-owned file
+through its readiness gate before every build, so a caller cannot bypass or
+outlive revoked configuration evidence.
+
 The worker has no database or CAS service client. It receives immutable request
 facts, materializes only the exact archive from a deployment-mounted read-only
 CAS root through shared `rustok-build-source`, and returns a typed terminal

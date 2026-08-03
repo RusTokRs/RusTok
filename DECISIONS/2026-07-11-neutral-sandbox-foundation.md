@@ -34,6 +34,31 @@ the module marketplace owns it. Both consume the same public execution contract.
 `rustok-sandbox` must not depend on `alloy`, `rustok-modules`, `apps/server` or a
 domain module. Host capabilities are supplied through narrow ports.
 
+Untrusted production Rhai crosses the separately deployed
+`rustok-sandbox-transport` bidirectional tonic boundary into
+`rustok-sandbox-worker`. Every external frame carries one exact protocol
+revision and execution identity. Artifact bytes remain a native protobuf field;
+the current Rust request metadata and capability values use JSON and map
+immediately to the single unversioned internal sandbox model. Worker capability
+requests return to the original scoped `SandboxHost`; the worker has no
+database, storage, secret, MCP, network-client, Alloy, AI, or module-control-plane
+dependency. Public host construction requires mTLS and has no in-process
+fallback.
+
+The worker admits one untrusted execution per process. Startup, readiness, and
+each execution require a matching digest-pinned gVisor/Kata isolation
+attestation with RPC-only mTLS ingress, denied egress and infrastructure access,
+a read-only root, and finite OS resource limits. The deployment runtime enforces
+those limits and the worker rejects a request whose sandbox limits exceed the
+attested envelope. One shared cgroup v2 observer participates in startup,
+readiness, request admission, and execution; it records the observed worker
+cgroup peak and fails closed when measurement is unavailable. The canonical
+Kubernetes renderer selects the digest-pinned gVisor/Kata RuntimeClass, exact
+mTLS RPC probes, restricted ingress, default-deny egress, portable pod
+hardening, and multi-replica rolling supervision. RuntimeClass-specific PID and
+file enforcement plus restart/backoff and containment evidence remain
+deployment responsibilities.
+
 `rustok-modules` owns module identity, immutable releases, dependency resolution,
 installation, activation, tenant enablement, capability grants, marketplace
 governance, rollback and the mapping from an installed artifact to a sandbox
@@ -60,10 +85,20 @@ runs native code in process.
 
 ## Consequences
 
-- The generic Rhai engine, limits and error mapping move from `alloy` into the
-  Rhai adapter of `rustok-sandbox`; Alloy-specific bridges remain in Alloy.
+- The generic Rhai engine, canonical workspace/import resolver, serialized
+  scope records, standard functions, brokered HTTP helpers, limits, and error
+  mapping live in `rustok-sandbox`. Alloy owns only domain-data adaptation before
+  and after the neutral request.
+- `rustok-module-sdk` owns the canonical external WIT file. Bytecode Alliance
+  tooling generates both the author-facing guest API and Wasmtime host binding
+  from that source; the host does not retain an inline ABI copy.
 - WebAssembly uses the same execution context, broker, audit and outcome contract
   rather than creating a marketplace-only runtime API.
+- Local module authoring uses a bounded `LocalSandboxScenario` over that same
+  request, policy, typed capability validation, fixture broker, outcome, and
+  error taxonomy. The local Component executor is an explicit authoring
+  placement only; it is not a production fallback and receives no deployment
+  credentials or infrastructure clients.
 - Capability grants are evaluated before executor invocation and cannot be
   expanded by Rhai helpers, WebAssembly imports or module UI.
 - Draft and installed executions are distinguishable by typed subject metadata
@@ -72,5 +107,9 @@ runs native code in process.
   `in_process` or `isolated_worker`; duplicate kinds are rejected across
   placements, placement is observable for readiness, and an unavailable worker
   never selects an in-process executor implicitly.
+- Worker loss, cancellation, deadline, readiness loss, protocol mismatch, or
+  malformed framing terminates the request without changing executor placement.
+- A deployment attestation is a fail-closed admission input, not a replacement
+  for retained gVisor/Kata kill, OOM, egress, filesystem, and restart evidence.
 - Existing native modules do not need immediate conversion; they remain trusted
   static promotions until deliberately ported to a sandboxed artifact.

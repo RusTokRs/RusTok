@@ -99,6 +99,8 @@ ai-translation = ["mod-ai", "mod-translation", "rustok-distribution/ai-translati
 rustok-core = { workspace = true, features = ["redis-cache", "server"] }
 rustok-modules.workspace = true
 rustok-sandbox = { workspace = true, features = ["rhai", "wasm-component"] }
+rustok-sandbox-transport.workspace = true
+rustok-worker-transport.workspace = true
 rustok-distribution = { workspace = true, default-features = false }
 rustok-api = { workspace = true, features = ["server"] }
 rustok-build.workspace = true
@@ -168,6 +170,7 @@ alloy            = { workspace = true, optional = true }
 rustok-workflow  = { workspace = true, optional = true }
 
 tokio.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 axum.workspace = true
 leptos.workspace = true

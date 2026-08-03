@@ -5,17 +5,191 @@
 //! same `SandboxRuntime` and replaces host capabilities only with explicit,
 //! deterministic fixtures.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityName, CapabilityResponse,
-    ExecutorRegistry, SandboxError, SandboxOutcome, SandboxRequest, SandboxResult, SandboxRuntime,
+    ExecutorRegistry, SandboxError, SandboxOutcome, SandboxPolicy, SandboxRequest, SandboxResult,
+    SandboxRuntime,
 };
 
 type FixtureKey = (CapabilityName, String);
+const LOCAL_SCENARIO_SCHEMA_VERSION: u32 = 1;
+const MAX_LOCAL_SCENARIO_BYTES: usize = 512 * 1024;
+const MAX_LOCAL_SCENARIO_GRANTS: usize = 64;
+const MAX_LOCAL_SCENARIO_FIXTURES: usize = 128;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalSandboxScenario {
+    pub schema_version: u32,
+    pub input: Value,
+    pub policy: SandboxPolicy,
+    pub fixtures: Vec<LocalCapabilityFixture>,
+    pub expectation: LocalSandboxExpectation,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalCapabilityFixture {
+    pub capability: CapabilityName,
+    pub operation: String,
+    pub output: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LocalSandboxExpectation {
+    Success { output: Value },
+    Error { code: String },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum LocalSandboxScenarioOutcome {
+    Success(SandboxOutcome),
+    ExpectedError { code: String },
+}
+
+impl LocalSandboxScenario {
+    pub fn parse(bytes: &[u8]) -> SandboxResult<Self> {
+        if bytes.is_empty() || bytes.len() > MAX_LOCAL_SCENARIO_BYTES {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox scenario must be bounded non-empty JSON".to_string(),
+            ));
+        }
+        let scenario: Self = serde_json::from_slice(bytes).map_err(|error| {
+            SandboxError::InvalidRequest(format!("local sandbox scenario is invalid: {error}"))
+        })?;
+        scenario.validate()?;
+        Ok(scenario)
+    }
+
+    pub fn validate(&self) -> SandboxResult<()> {
+        if self.schema_version != LOCAL_SCENARIO_SCHEMA_VERSION {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox scenario schema version is not current".to_string(),
+            ));
+        }
+        validate_local_limits(&self.policy)?;
+        if self.policy.grants.len() > MAX_LOCAL_SCENARIO_GRANTS
+            || self.fixtures.len() > MAX_LOCAL_SCENARIO_FIXTURES
+        {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox scenario grants or fixtures exceed their limits".to_string(),
+            ));
+        }
+        let mut grants = BTreeSet::new();
+        for grant in &self.policy.grants {
+            if !grants.insert(grant.name.as_str()) {
+                return Err(SandboxError::InvalidRequest(
+                    "local sandbox scenario grants contain a duplicate capability".to_string(),
+                ));
+            }
+        }
+        let mut fixtures = BTreeSet::new();
+        for fixture in &self.fixtures {
+            validate_operation(&fixture.operation)?;
+            if !grants.contains(fixture.capability.as_str()) {
+                return Err(SandboxError::InvalidRequest(
+                    "local sandbox fixture capability is not granted by the scenario".to_string(),
+                ));
+            }
+            if !fixtures.insert((fixture.capability.as_str(), fixture.operation.as_str())) {
+                return Err(SandboxError::InvalidRequest(
+                    "local sandbox scenario contains a duplicate fixture".to_string(),
+                ));
+            }
+        }
+        if let LocalSandboxExpectation::Error { code } = &self.expectation
+            && (code.is_empty()
+                || code.len() > 64
+                || !code
+                    .bytes()
+                    .all(|byte| byte.is_ascii_uppercase() || byte == b'_'))
+        {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox expected error code is invalid".to_string(),
+            ));
+        }
+        let encoded =
+            serde_json::to_vec(self).map_err(|error| SandboxError::Internal(error.to_string()))?;
+        if encoded.len() > MAX_LOCAL_SCENARIO_BYTES {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox scenario exceeds its encoded size limit".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn configure(&self, fixtures: &FixtureCapabilityBroker) -> SandboxResult<()> {
+        self.validate()?;
+        fixtures.clear()?;
+        for fixture in &self.fixtures {
+            fixtures.respond(
+                fixture.capability.clone(),
+                fixture.operation.clone(),
+                CapabilityResponse {
+                    output: fixture.output.clone(),
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn evaluate(
+        &self,
+        result: SandboxResult<SandboxOutcome>,
+    ) -> SandboxResult<LocalSandboxScenarioOutcome> {
+        match (&self.expectation, result) {
+            (LocalSandboxExpectation::Success { output }, Ok(outcome))
+                if &outcome.output == output =>
+            {
+                Ok(LocalSandboxScenarioOutcome::Success(outcome))
+            }
+            (LocalSandboxExpectation::Success { .. }, Ok(_)) => Err(SandboxError::InvalidRequest(
+                "local sandbox scenario output does not match its expectation".to_string(),
+            )),
+            (LocalSandboxExpectation::Success { .. }, Err(error)) => Err(error),
+            (LocalSandboxExpectation::Error { code }, Err(error)) if error.code() == code => {
+                Ok(LocalSandboxScenarioOutcome::ExpectedError { code: code.clone() })
+            }
+            (LocalSandboxExpectation::Error { .. }, Err(error)) => Err(error),
+            (LocalSandboxExpectation::Error { .. }, Ok(_)) => Err(SandboxError::InvalidRequest(
+                "local sandbox scenario expected an error but execution succeeded".to_string(),
+            )),
+        }
+    }
+}
+
+fn validate_local_limits(policy: &SandboxPolicy) -> SandboxResult<()> {
+    let limits = policy.limits;
+    if limits.wall_clock_ms == 0
+        || limits.wall_clock_ms > 10_000
+        || limits.instruction_budget == 0
+        || limits.instruction_budget > 10_000_000
+        || limits.max_memory_bytes == 0
+        || limits.max_memory_bytes > 256 * 1024 * 1024
+        || limits.max_output_bytes == 0
+        || limits.max_output_bytes > 4 * 1024 * 1024
+        || limits.max_concurrency != 1
+        || limits.max_capability_calls == 0
+        || limits.max_capability_calls > 256
+        || limits.max_capability_input_bytes == 0
+        || limits.max_capability_input_bytes > 1024 * 1024
+        || limits.max_capability_calls_per_second == 0
+        || limits.max_capability_calls_per_second > 256
+    {
+        return Err(SandboxError::InvalidRequest(
+            "local sandbox scenario limits are outside the authoring profile".to_string(),
+        ));
+    }
+    Ok(())
+}
 
 /// Deterministic capability responses for local authoring and test harnesses.
 ///
@@ -97,6 +271,16 @@ impl LocalSandboxHarness {
         Ok(Self::new(executors))
     }
 
+    #[cfg(feature = "wasm-component")]
+    pub fn wasm_component() -> SandboxResult<Self> {
+        let mut executors = ExecutorRegistry::new();
+        let executor = crate::wasm::WasmComponentExecutor::with_component_cache_policy(
+            crate::wasm::WasmComponentCachePolicy::default(),
+        )?;
+        executors.register_in_process(executor)?;
+        Ok(Self::new(executors))
+    }
+
     pub fn fixtures(&self) -> FixtureCapabilityBroker {
         self.fixtures.clone()
     }
@@ -154,6 +338,7 @@ mod tests {
             Ok(SandboxOutcome {
                 execution_id: request.context.execution_id,
                 output: response.output,
+                rhai_scope: None,
                 metrics: ExecutionMetrics::default(),
             })
         }
@@ -184,6 +369,7 @@ mod tests {
                 bytes: Vec::new(),
             },
             input: serde_json::Value::Null,
+            rhai_scope: None,
             policy: SandboxPolicy {
                 grants: vec![CapabilityGrant {
                     name: CapabilityName::new("fixture.echo").expect("fixture capability"),
@@ -219,5 +405,66 @@ mod tests {
             .expect("fixture response");
         let outcome = harness.execute(request()).await.expect("fixture execution");
         assert_eq!(outcome.output, json!({ "value": "fixture" }));
+    }
+
+    #[tokio::test]
+    async fn scenario_configures_policy_fixtures_and_expected_output() {
+        let scenario = LocalSandboxScenario::parse(
+            serde_json::to_vec(&json!({
+                "schema_version": 1,
+                "input": {"value": "input"},
+                "policy": {
+                    "grants": [{"name": "fixture.echo", "constraints": null}],
+                    "limits": SandboxPolicy::default().limits
+                },
+                "fixtures": [{
+                    "capability": "fixture.echo",
+                    "operation": "call",
+                    "output": {"value": "fixture"}
+                }],
+                "expectation": {
+                    "outcome": "success",
+                    "output": {"value": "fixture"}
+                }
+            }))
+            .expect("scenario JSON")
+            .as_slice(),
+        )
+        .expect("scenario");
+        let mut executors = ExecutorRegistry::new();
+        executors
+            .register_in_process(FixtureExecutor)
+            .expect("fixture executor");
+        let harness = LocalSandboxHarness::new(executors);
+        scenario
+            .configure(&harness.fixtures())
+            .expect("fixture configuration");
+        let mut request = request();
+        request.input = scenario.input.clone();
+        request.policy = scenario.policy.clone();
+        let result = scenario
+            .evaluate(harness.execute(request).await)
+            .expect("expected scenario outcome");
+        assert!(matches!(result, LocalSandboxScenarioOutcome::Success(_)));
+    }
+
+    #[test]
+    fn scenario_rejects_a_fixture_without_a_matching_grant() {
+        let bytes = serde_json::to_vec(&json!({
+            "schema_version": 1,
+            "input": null,
+            "policy": {"grants": [], "limits": SandboxPolicy::default().limits},
+            "fixtures": [{
+                "capability": "fixture.echo",
+                "operation": "call",
+                "output": null
+            }],
+            "expectation": {"outcome": "error", "code": "CAPABILITY_DENIED"}
+        }))
+        .expect("scenario JSON");
+        assert!(matches!(
+            LocalSandboxScenario::parse(&bytes),
+            Err(SandboxError::InvalidRequest(_))
+        ));
     }
 }

@@ -52,9 +52,11 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 - [`rustok-modules` Control-Plane Documentation](../crates/rustok-modules/docs/README.md)
 - [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
-- [`rustok-build-source` Immutable CAS Archive Materialization](../crates/rustok-build-source/docs/README.md)
+- [`rustok-build-source` Deterministic Source Archives](../crates/rustok-build-source/docs/README.md)
 - [`rustok-build-publication` Credential and Signing Foundation](../crates/rustok-build-publication/docs/README.md)
 - [`rustok-module-build-worker` Documentation](../crates/rustok-module-build-worker/docs/README.md)
+- [`rustok-module-sdk` Generated Guest Bindings](../crates/rustok-module-sdk/docs/README.md)
+- [`rustok-module-template` Canonical Rust Component Template](../crates/rustok-module-template/docs/README.md)
 - [`rustok-module-build-dispatcher` Documentation](../crates/rustok-module-build-dispatcher/docs/README.md)
 - [`rustok-module-build-transport` Build-Worker gRPC Documentation](../crates/rustok-module-build-transport/docs/README.md)
 - [`rustok-verification-worker` Documentation](../crates/rustok-verification-worker/docs/README.md)
@@ -62,7 +64,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [`rustok-static-distribution-worker` Documentation](../crates/rustok-static-distribution-worker/docs/README.md)
 - [`rustok-registry-validation-worker` Documentation](../crates/rustok-registry-validation-worker/README.md)
 - [`rustok-worker-transport` mTLS Foundation](../crates/rustok-worker-transport/docs/README.md)
+- [Federated Registry Freshness Verification](../scripts/verify/verify-marketplace-registry-freshness.mjs)
 - [`rustok-sandbox` Execution Foundation Documentation](../crates/rustok-sandbox/docs/README.md)
+- [`rustok-sandbox-transport` Streaming Worker Transport](../crates/rustok-sandbox-transport/docs/README.md)
+- [`rustok-sandbox-worker` Isolated Rhai Worker](../crates/rustok-sandbox-worker/docs/README.md)
 - [`rustok-events-module` Runtime Adapter Documentation](../crates/rustok-events-module/docs/README.md)
 
 ### Module Backend Guides

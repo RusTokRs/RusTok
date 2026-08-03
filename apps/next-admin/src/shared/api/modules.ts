@@ -58,6 +58,13 @@ export interface MarketplaceModuleVersion {
   signaturePresent: boolean;
 }
 
+export interface MarketplaceRegistryFreshness {
+  registryId: string;
+  status: 'UNKNOWN' | 'READY' | 'DEGRADED';
+  lastSuccessUnixMs?: number | null;
+  consecutiveFailures: number;
+}
+
 export interface BuildJob {
   id: string;
   status: string;
@@ -249,6 +256,17 @@ query MarketplaceModule($slug: String!) {
 }
 `;
 
+const MARKETPLACE_REGISTRY_FRESHNESS_QUERY = `
+query MarketplaceRegistryFreshness {
+  marketplaceRegistryFreshness {
+    registryId
+    status
+    lastSuccessUnixMs
+    consecutiveFailures
+  }
+}
+`;
+
 const ACTIVE_BUILD_QUERY = `
 query ActiveBuild {
   activeBuild {
@@ -343,6 +361,10 @@ interface MarketplaceResponse {
 
 interface MarketplaceModuleResponse {
   marketplaceModule: MarketplaceModule | null;
+}
+
+interface MarketplaceRegistryFreshnessResponse {
+  marketplaceRegistryFreshness: MarketplaceRegistryFreshness[];
 }
 
 interface ActiveBuildResponse {
@@ -455,6 +477,21 @@ export async function getMarketplaceModule(
     MarketplaceModuleResponse
   >(MARKETPLACE_MODULE_QUERY, { slug }, opts.token, opts.tenantSlug);
   return data.marketplaceModule;
+}
+
+export async function listMarketplaceRegistryFreshness(
+  opts: GqlOpts = {}
+): Promise<MarketplaceRegistryFreshness[]> {
+  const data = await graphqlRequest<
+    undefined,
+    MarketplaceRegistryFreshnessResponse
+  >(
+    MARKETPLACE_REGISTRY_FRESHNESS_QUERY,
+    undefined,
+    opts.token,
+    opts.tenantSlug
+  );
+  return data.marketplaceRegistryFreshness;
 }
 
 export async function getActiveBuild(

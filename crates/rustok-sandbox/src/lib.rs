@@ -11,6 +11,8 @@ mod executor;
 mod harness;
 mod policy;
 mod rhai_binding;
+mod rhai_scope;
+mod rhai_workspace;
 mod runtime;
 mod types;
 
@@ -29,12 +31,25 @@ pub use capability::{
 };
 pub use error::{SandboxError, SandboxResult};
 pub use executor::{ExecutorRegistry, SandboxExecutor};
-pub use harness::{FixtureCapabilityBroker, LocalSandboxHarness};
+pub use harness::{
+    FixtureCapabilityBroker, LocalCapabilityFixture, LocalSandboxExpectation, LocalSandboxHarness,
+    LocalSandboxScenario, LocalSandboxScenarioOutcome,
+};
 pub use policy::{SandboxLimits, SandboxPolicy};
 #[cfg(feature = "rhai")]
-pub use rhai::RhaiCapabilityBridge;
+pub use rhai::{RhaiCapabilityBridge, RhaiStandardLibrary};
 pub use rhai_binding::{
     RHAI_BINDING_VERSION, RhaiBindingError, RhaiBindingInput, RhaiBindingOutput,
+};
+pub use rhai_scope::{
+    MAX_RHAI_SCOPE_BYTES, MAX_RHAI_SCOPE_CONSTANTS, MAX_RHAI_SCOPE_NAME_BYTES,
+    MAX_RHAI_SCOPE_RECORDS, RhaiRecordInput, RhaiScopeError, RhaiScopeInput, RhaiScopeOutput,
+};
+pub use rhai_workspace::{
+    MAX_RHAI_WORKSPACE_BYTES, MAX_RHAI_WORKSPACE_FILE_BYTES, MAX_RHAI_WORKSPACE_FILES,
+    MAX_RHAI_WORKSPACE_IMPORT_DEPTH, MAX_RHAI_WORKSPACE_PATH_BYTES, RHAI_WORKSPACE_MEDIA_TYPE,
+    RHAI_WORKSPACE_SCHEMA_VERSION, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
+    RhaiWorkspaceFileKind,
 };
 pub use runtime::{ExecutionObserver, NoopExecutionObserver, SandboxRuntime};
 pub use types::{

@@ -9,7 +9,6 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QuerySelect,
 };
-use semver::{Version, VersionReq};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -17,8 +16,9 @@ use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::types::{
     ActivityItem, ActivityUser, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
-    MarketplaceModuleVersion, ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField,
-    ReleaseInfo, Tenant, TenantModule, User, UserConnection, UserEdge, UsersFilter,
+    MarketplaceModuleVersion, MarketplaceRegistryFreshness, ModuleOperationRecoveryPlan,
+    ModuleRegistryItem, ModuleSettingField, ReleaseInfo, Tenant, TenantModule, User,
+    UserConnection, UserEdge, UsersFilter,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -59,192 +59,6 @@ fn clamp_collection_limit(limit: Option<i32>) -> usize {
 
 fn requested_collection_limit(limit: Option<i32>) -> Option<u64> {
     limit.map(|value| value.max(0) as u64)
-}
-
-#[allow(dead_code)]
-fn humanize_slug(slug: &str) -> String {
-    slug.split('-')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-#[allow(dead_code)]
-fn fallback_module_category(slug: &str) -> &'static str {
-    match slug {
-        "content" | "blog" | "forum" | "pages" => "content",
-        "commerce" => "commerce",
-        "tenant" | "rbac" | "index" | "outbox" => "platform",
-        _ => "extensions",
-    }
-}
-
-#[allow(dead_code)]
-fn normalize_version_req(raw: &str, is_max: bool) -> String {
-    let trimmed = raw.trim();
-    let wildcard = trimmed.replace(".x", ".*").replace(".X", ".*");
-    let has_operator = wildcard.contains('<')
-        || wildcard.contains('>')
-        || wildcard.contains('=')
-        || wildcard.contains('~')
-        || wildcard.contains('^')
-        || wildcard.contains('*')
-        || wildcard.contains(',');
-
-    if has_operator {
-        return wildcard;
-    }
-
-    if is_max {
-        format!("<= {wildcard}")
-    } else {
-        format!(">= {wildcard}")
-    }
-}
-
-#[allow(dead_code)]
-fn current_platform_version() -> Option<Version> {
-    Version::parse(env!("CARGO_PKG_VERSION")).ok()
-}
-
-#[allow(dead_code)]
-fn is_catalog_module_compatible(entry: &crate::modules::CatalogManifestModule) -> bool {
-    let Some(platform_version) = current_platform_version() else {
-        return true;
-    };
-
-    let min_ok = entry
-        .rustok_min_version
-        .as_deref()
-        .and_then(|raw| VersionReq::parse(&normalize_version_req(raw, false)).ok())
-        .is_none_or(|req| req.matches(&platform_version));
-    let max_ok = entry
-        .rustok_max_version
-        .as_deref()
-        .and_then(|raw| VersionReq::parse(&normalize_version_req(raw, true)).ok())
-        .is_none_or(|req| req.matches(&platform_version));
-
-    min_ok && max_ok
-}
-
-#[allow(dead_code)]
-fn marketplace_module_from_catalog_entry(
-    entry: crate::modules::CatalogManifestModule,
-    registry: &ModuleRegistry,
-    installed_modules: &[crate::modules::InstalledManifestModule],
-) -> MarketplaceModule {
-    let catalog_version_fallback = entry
-        .versions
-        .first()
-        .map(|version| version.version.clone());
-    let compatible = is_catalog_module_compatible(&entry);
-    let signature_present = entry.signature.is_some();
-    let runtime_module = registry.get(&entry.slug);
-    let installed_module = installed_modules
-        .iter()
-        .find(|module| module.slug == entry.slug);
-    let latest_version = runtime_module
-        .map(|module| module.version().to_string())
-        .or_else(|| entry.version.clone())
-        .or(catalog_version_fallback)
-        .unwrap_or_else(|| "workspace".to_string());
-    let installed_version = installed_module.and_then(|module| module.version.clone());
-    let dependencies = runtime_module
-        .map(|module| {
-            module
-                .dependencies()
-                .iter()
-                .map(|dependency| dependency.to_string())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(|| entry.depends_on.clone());
-    let versions = if entry.versions.is_empty() {
-        vec![MarketplaceModuleVersion {
-            version: latest_version.clone(),
-            changelog: None,
-            yanked: false,
-            published_at: None,
-            checksum_sha256: entry.checksum_sha256.clone(),
-            signature_present,
-        }]
-    } else {
-        entry
-            .versions
-            .iter()
-            .map(|version| MarketplaceModuleVersion {
-                version: version.version.clone(),
-                changelog: version.changelog.clone(),
-                yanked: version.yanked,
-                published_at: version.published_at.clone(),
-                checksum_sha256: version.checksum_sha256.clone(),
-                signature_present: version.signature.is_some(),
-            })
-            .collect()
-    };
-
-    MarketplaceModule {
-        slug: entry.slug.clone(),
-        name: entry
-            .name
-            .clone()
-            .or_else(|| runtime_module.map(|module| module.name().to_string()))
-            .unwrap_or_else(|| humanize_slug(&entry.slug)),
-        latest_version: latest_version.clone(),
-        description: entry
-            .description
-            .clone()
-            .or_else(|| runtime_module.map(|module| module.description().to_string()))
-            .unwrap_or_else(|| {
-                format!(
-                    "{} module from {} source",
-                    humanize_slug(&entry.slug),
-                    entry.source
-                )
-            }),
-        source: entry.source.clone(),
-        kind: if entry.required || registry.is_core(&entry.slug) {
-            "core".to_string()
-        } else {
-            "optional".to_string()
-        },
-        category: entry
-            .category
-            .clone()
-            .unwrap_or_else(|| fallback_module_category(&entry.slug).to_string()),
-        tags: entry.tags.clone(),
-        icon_url: entry.icon_url.clone(),
-        banner_url: entry.banner_url.clone(),
-        screenshots: entry.screenshots.clone(),
-        crate_name: entry.crate_name,
-        dependencies,
-        ownership: entry.ownership,
-        trust_level: entry.trust_level,
-        rustok_min_version: entry.rustok_min_version,
-        rustok_max_version: entry.rustok_max_version,
-        publisher: entry.publisher,
-        checksum_sha256: entry.checksum_sha256,
-        signature_present,
-        versions,
-        has_admin_ui: entry.has_admin_ui,
-        has_storefront_ui: entry.has_storefront_ui,
-        ui_classification: entry.ui_classification,
-        registry_lifecycle: None,
-        compatible,
-        recommended_admin_surfaces: entry.recommended_admin_surfaces,
-        showcase_admin_surfaces: entry.showcase_admin_surfaces,
-        settings_schema: settings_schema_fields(&entry.settings_schema),
-        installed: installed_module.is_some(),
-        installed_version: installed_version.clone(),
-        update_available: installed_version
-            .as_ref()
-            .is_some_and(|version| version != &latest_version),
-    }
 }
 
 fn marketplace_module_from_owner_entry(
@@ -545,28 +359,6 @@ fn settings_schema_fields(
         .collect()
 }
 
-#[allow(dead_code)]
-fn marketplace_modules_from_catalog(
-    entries: Vec<crate::modules::CatalogManifestModule>,
-    registry: &ModuleRegistry,
-    installed_modules: &[crate::modules::InstalledManifestModule],
-) -> Vec<MarketplaceModule> {
-    entries
-        .into_iter()
-        .map(|entry| marketplace_module_from_catalog_entry(entry, registry, installed_modules))
-        .collect()
-}
-
-#[allow(dead_code)]
-fn trust_level_matches(module: &MarketplaceModule, trust_level: Option<&str>) -> bool {
-    trust_level.is_none_or(|trust_level| module.trust_level.eq_ignore_ascii_case(trust_level))
-}
-
-#[allow(dead_code)]
-fn source_matches(module: &MarketplaceModule, source: Option<&str>) -> bool {
-    source.is_none_or(|source| module.source.eq_ignore_ascii_case(source))
-}
-
 fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> FieldError {
     match error {
         ModuleOperationRecoveryError::OperationNotFound => {
@@ -650,6 +442,26 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     Ok(())
 }
 
+async fn ensure_modules_manage_permission(ctx: &Context<'_>) -> Result<()> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let db = ctx.data::<DatabaseConnection>()?;
+    let tenant = ctx.data::<TenantContext>()?;
+    let can_manage_modules =
+        RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+    if !can_manage_modules {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: modules:manage required",
+        ));
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 struct MarketplaceProjectionLocales<'a> {
     preferred: Option<&'a str>,
@@ -673,31 +485,6 @@ async fn load_marketplace_catalog(
         .apply_catalog_projection(modules, locales.preferred, locales.fallback)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
-}
-
-#[allow(dead_code)]
-async fn load_marketplace_module(
-    db: &DatabaseConnection,
-    runtime_ctx: &ServerRuntimeContext,
-    manifest: &crate::modules::ModulesManifest,
-    registry: &ModuleRegistry,
-    query: &MarketplaceCatalogQuery,
-    slug: &str,
-    locales: MarketplaceProjectionLocales<'_>,
-) -> Result<Option<crate::modules::CatalogManifestModule>> {
-    let module = marketplace_catalog_from_context(runtime_ctx)
-        .get_module(manifest, registry, query, slug)
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-    let Some(module) = module else {
-        return Ok(None);
-    };
-
-    let mut projected = RegistryGovernanceService::new(db.clone())
-        .apply_catalog_projection(vec![module], locales.preferred, locales.fallback)
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-    Ok(projected.pop())
 }
 
 #[derive(Default)]
@@ -987,6 +774,20 @@ impl RootQuery {
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
             .map(|entry| entry.map(marketplace_module_from_owner_entry))
+    }
+
+    async fn marketplace_registry_freshness(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<MarketplaceRegistryFreshness>> {
+        ensure_modules_manage_permission(ctx).await?;
+        Ok(ctx
+            .data::<rustok_modules::SharedModuleMarketplaceCatalog>()?
+            .0
+            .registry_freshness()
+            .into_iter()
+            .map(MarketplaceRegistryFreshness::from)
+            .collect())
     }
 
     async fn module_operation_recovery_plan(
@@ -1457,282 +1258,5 @@ impl RootQuery {
         );
 
         Ok(activities)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        is_catalog_module_compatible, marketplace_module_from_catalog_entry, normalize_version_req,
-        source_matches, trust_level_matches,
-    };
-    use crate::graphql::types::MarketplaceModule;
-    use crate::modules::{CatalogManifestModule, InstalledManifestModule};
-    use rustok_core::ModuleRegistry;
-    use std::collections::HashMap;
-
-    fn catalog_module(min: Option<&str>, max: Option<&str>) -> CatalogManifestModule {
-        CatalogManifestModule {
-            slug: "seo".to_string(),
-            source: "registry".to_string(),
-            crate_name: "rustok-seo".to_string(),
-            name: None,
-            category: None,
-            tags: Vec::new(),
-            icon_url: None,
-            banner_url: None,
-            screenshots: Vec::new(),
-            version: Some("1.2.0".to_string()),
-            description: None,
-            git: None,
-            rev: None,
-            path: None,
-            required: false,
-            depends_on: Vec::new(),
-            ownership: "third_party".to_string(),
-            trust_level: "unverified".to_string(),
-            rustok_min_version: min.map(str::to_string),
-            rustok_max_version: max.map(str::to_string),
-            publisher: None,
-            checksum_sha256: None,
-            signature: None,
-            versions: Vec::new(),
-            has_admin_ui: false,
-            has_storefront_ui: false,
-            ui_classification: "no_ui".to_string(),
-            recommended_admin_surfaces: Vec::new(),
-            showcase_admin_surfaces: Vec::new(),
-            settings_schema: HashMap::new(),
-        }
-    }
-
-    #[test]
-    fn normalize_version_req_adds_bounds_for_plain_versions() {
-        assert_eq!(normalize_version_req("0.5.0", false), ">= 0.5.0");
-        assert_eq!(normalize_version_req("1.0.0", true), "<= 1.0.0");
-        assert_eq!(normalize_version_req("1.x", true), "1.*");
-    }
-
-    #[test]
-    fn compatibility_accepts_unbounded_catalog_entry() {
-        assert!(is_catalog_module_compatible(&catalog_module(None, None)));
-    }
-
-    #[test]
-    fn compatibility_rejects_entry_above_current_platform_max() {
-        assert!(!is_catalog_module_compatible(&catalog_module(
-            None,
-            Some("0.0.1")
-        )));
-    }
-
-    #[test]
-    fn trust_level_filter_matches_case_insensitively() {
-        let module = MarketplaceModule {
-            slug: "seo".to_string(),
-            name: "SEO".to_string(),
-            latest_version: "1.2.0".to_string(),
-            description: "SEO tools".to_string(),
-            source: "registry".to_string(),
-            kind: "optional".to_string(),
-            category: "extensions".to_string(),
-            tags: Vec::new(),
-            icon_url: None,
-            banner_url: None,
-            screenshots: Vec::new(),
-            crate_name: "rustok-seo".to_string(),
-            dependencies: Vec::new(),
-            ownership: "third_party".to_string(),
-            trust_level: "verified".to_string(),
-            rustok_min_version: None,
-            rustok_max_version: None,
-            publisher: None,
-            checksum_sha256: None,
-            signature_present: false,
-            versions: Vec::new(),
-            has_admin_ui: false,
-            has_storefront_ui: false,
-            ui_classification: "no_ui".to_string(),
-            registry_lifecycle: None,
-            compatible: true,
-            recommended_admin_surfaces: Vec::new(),
-            showcase_admin_surfaces: Vec::new(),
-            settings_schema: Vec::new(),
-            installed: false,
-            installed_version: None,
-            update_available: false,
-        };
-
-        assert!(trust_level_matches(&module, Some("VERIFIED")));
-        assert!(!trust_level_matches(&module, Some("community")));
-    }
-
-    #[test]
-    fn source_filter_matches_case_insensitively() {
-        let module = MarketplaceModule {
-            slug: "seo".to_string(),
-            name: "SEO".to_string(),
-            latest_version: "1.2.0".to_string(),
-            description: "SEO tools".to_string(),
-            source: "registry".to_string(),
-            kind: "optional".to_string(),
-            category: "extensions".to_string(),
-            tags: Vec::new(),
-            icon_url: None,
-            banner_url: None,
-            screenshots: Vec::new(),
-            crate_name: "rustok-seo".to_string(),
-            dependencies: Vec::new(),
-            ownership: "third_party".to_string(),
-            trust_level: "verified".to_string(),
-            rustok_min_version: None,
-            rustok_max_version: None,
-            publisher: None,
-            checksum_sha256: None,
-            signature_present: false,
-            versions: Vec::new(),
-            has_admin_ui: false,
-            has_storefront_ui: false,
-            ui_classification: "no_ui".to_string(),
-            registry_lifecycle: None,
-            compatible: true,
-            recommended_admin_surfaces: Vec::new(),
-            showcase_admin_surfaces: Vec::new(),
-            settings_schema: Vec::new(),
-            installed: false,
-            installed_version: None,
-            update_available: false,
-        };
-
-        assert!(source_matches(&module, Some("REGISTRY")));
-        assert!(!source_matches(&module, Some("path")));
-    }
-
-    #[test]
-    fn marketplace_mapping_uses_catalog_name_and_description_without_runtime_module() {
-        let mut entry = catalog_module(None, None);
-        entry.name = Some("SEO Toolkit".to_string());
-        entry.description = Some("Search optimization bundle".to_string());
-
-        let module = marketplace_module_from_catalog_entry(
-            entry,
-            &ModuleRegistry::new(),
-            &Vec::<InstalledManifestModule>::new(),
-        );
-
-        assert_eq!(module.name, "SEO Toolkit");
-        assert_eq!(module.description, "Search optimization bundle");
-    }
-
-    #[test]
-    fn marketplace_mapping_prefers_manifest_category_when_present() {
-        let mut entry = catalog_module(None, None);
-        entry.slug = "search".to_string();
-        entry.category = Some("search".to_string());
-
-        let module = marketplace_module_from_catalog_entry(
-            entry,
-            &ModuleRegistry::new(),
-            &Vec::<InstalledManifestModule>::new(),
-        );
-
-        assert_eq!(module.category, "search");
-    }
-
-    #[test]
-    fn marketplace_mapping_preserves_manifest_tags() {
-        let mut entry = catalog_module(None, None);
-        entry.tags = vec!["discovery".to_string(), "search".to_string()];
-
-        let module = marketplace_module_from_catalog_entry(
-            entry,
-            &ModuleRegistry::new(),
-            &Vec::<InstalledManifestModule>::new(),
-        );
-
-        assert_eq!(module.tags, vec!["discovery", "search"]);
-    }
-
-    #[test]
-    fn marketplace_mapping_derives_latest_version_from_version_trail() {
-        let mut entry = catalog_module(None, None);
-        entry.version = None;
-        entry.versions = vec![
-            crate::modules::CatalogModuleVersion {
-                version: "2.1.0".to_string(),
-                changelog: None,
-                yanked: false,
-                published_at: Some("2026-03-10T00:00:00Z".to_string()),
-                checksum_sha256: None,
-                signature: None,
-                artifact: None,
-            },
-            crate::modules::CatalogModuleVersion {
-                version: "1.9.0".to_string(),
-                changelog: None,
-                yanked: false,
-                published_at: Some("2026-03-01T00:00:00Z".to_string()),
-                checksum_sha256: None,
-                signature: None,
-                artifact: None,
-            },
-        ];
-
-        let module = marketplace_module_from_catalog_entry(
-            entry,
-            &ModuleRegistry::new(),
-            &Vec::<InstalledManifestModule>::new(),
-        );
-
-        assert_eq!(module.latest_version, "2.1.0");
-        assert_eq!(module.versions.len(), 2);
-        assert_eq!(module.versions[0].version, "2.1.0");
-    }
-
-    #[test]
-    fn marketplace_mapping_preserves_visual_metadata() {
-        let mut entry = catalog_module(None, None);
-        entry.icon_url = Some("https://cdn.example.test/modules/seo/icon.svg".to_string());
-        entry.banner_url = Some("https://cdn.example.test/modules/seo/banner.png".to_string());
-        entry.screenshots = vec![
-            "https://cdn.example.test/modules/seo/screenshot-1.png".to_string(),
-            "https://cdn.example.test/modules/seo/screenshot-2.png".to_string(),
-        ];
-
-        let module = marketplace_module_from_catalog_entry(
-            entry,
-            &ModuleRegistry::new(),
-            &Vec::<InstalledManifestModule>::new(),
-        );
-
-        assert_eq!(
-            module.icon_url.as_deref(),
-            Some("https://cdn.example.test/modules/seo/icon.svg")
-        );
-        assert_eq!(
-            module.banner_url.as_deref(),
-            Some("https://cdn.example.test/modules/seo/banner.png")
-        );
-        assert_eq!(
-            module.screenshots,
-            vec![
-                "https://cdn.example.test/modules/seo/screenshot-1.png",
-                "https://cdn.example.test/modules/seo/screenshot-2.png",
-            ]
-        );
-    }
-
-    #[test]
-    fn marketplace_mapping_falls_back_to_legacy_slug_category_when_manifest_category_missing() {
-        let mut entry = catalog_module(None, None);
-        entry.slug = "search".to_string();
-
-        let module = marketplace_module_from_catalog_entry(
-            entry,
-            &ModuleRegistry::new(),
-            &Vec::<InstalledManifestModule>::new(),
-        );
-
-        assert_eq!(module.category, "extensions");
     }
 }

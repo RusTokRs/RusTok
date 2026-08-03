@@ -29,5 +29,6 @@ default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
 
 [dev-dependencies]
+rustok-sandbox = { workspace = true, features = ["rhai"] }
 sea-orm-migration.workspace = true
 tokio.workspace = true

@@ -804,6 +804,21 @@ pub struct ModulePublishPlatformBuildStageResult {
     pub created: bool,
 }
 
+/// Owner-reloaded immutable platform build selected for publication evidence.
+/// A producer receives this only after the current publish request, staging
+/// row, completed build result, and all digest-pinned receipt identities have
+/// been revalidated together.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePlatformPublicationSource {
+    pub request_id: String,
+    pub tenant_id: Uuid,
+    pub build_request_id: Uuid,
+    pub slug: String,
+    pub version: String,
+    pub component_digest: String,
+    pub receipt: ModuleBuildPublicationReceipt,
+}
+
 impl ModuleOwnerTransferCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.slug.trim().is_empty()
@@ -1083,9 +1098,7 @@ impl ModulePublishRequestCreateCommand {
             ModuleMarketplaceContentProjection::try_new(&self.name, &self.description)
                 .map_err(|_| ModuleGovernanceError::InvalidPublishRequestCreateCommand)?;
         if slug.is_empty()
-            || !slug.chars().all(|character| {
-                character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-            })
+            || !rustok_api::is_valid_module_slug(slug)
             || Version::parse(self.version.trim()).is_err()
             || self.crate_name.trim().is_empty()
             || rustok_api::normalize_locale_tag(&self.default_locale).is_none()
@@ -1587,6 +1600,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModulePublishRequestCreateCommand,
     ) -> Result<String, ModuleGovernanceError> {
         let warnings = command.validation_warnings()?;
+        let (request_id, command_digest) = publish_request_create_identity(&command)?;
         let marketplace_content =
             ModuleMarketplaceContentProjection::try_new(&command.name, &command.description)
                 .map_err(|_| ModuleGovernanceError::InvalidPublishRequestCreateCommand)?;
@@ -1596,6 +1610,35 @@ impl SeaOrmModuleGovernanceService {
         let backend = tx.get_database_backend();
         let mark = |n| placeholder(backend, n);
         let now = database_now(backend);
+        let existing = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(details AS TEXT) AS details FROM registry_governance_events \
+                     WHERE request_id = {} AND event_type = 'request_created' LIMIT 1",
+                    mark(1),
+                ),
+                vec![request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        if let Some(existing) = existing {
+            let details: serde_json::Value = serde_json::from_str(
+                &existing
+                    .try_get::<String>("", "details")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            if details
+                .get("command_digest")
+                .and_then(serde_json::Value::as_str)
+                != Some(command_digest.as_str())
+            {
+                return Err(ModuleGovernanceError::PublishRequestCreationConflict);
+            }
+            tx.commit().await.map_err(store_error)?;
+            return Ok(request_id);
+        }
         let active_release = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -1613,7 +1656,6 @@ impl SeaOrmModuleGovernanceService {
                 version: command.version,
             });
         }
-        let request_id = self.infrastructure.prefixed_id("rpr");
         let warnings = dedupe_validation_messages(warnings);
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -1629,6 +1671,7 @@ impl SeaOrmModuleGovernanceService {
             "version": command.version,
             "status": "draft",
             "artifact_origin": command.artifact_origin.as_str(),
+            "command_digest": command_digest,
             "warnings": warnings,
         });
         tx.execute(Statement::from_sql_and_values(
@@ -1653,11 +1696,40 @@ impl SeaOrmModuleGovernanceService {
         let now = database_now(backend);
         let request = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT slug, version, status, artifact_storage_key, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}", mark(1)),
+            format!("SELECT slug, version, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}", mark(1)),
             vec![command.request_id.clone().into()],
         )).await.map_err(store_error)?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
         let reuploaded = status == "changes_requested";
+        let existing_storage_key: Option<String> = request
+            .try_get("", "artifact_storage_key")
+            .map_err(store_error)?;
+        if matches!(
+            status.as_str(),
+            "submitted" | "validating" | "approved" | "published"
+        ) && existing_storage_key.as_deref() == Some(command.artifact_storage_key.as_str())
+            && request
+                .try_get::<Option<String>>("", "artifact_checksum_sha256")
+                .map_err(store_error)?
+                .as_deref()
+                == Some(command.checksum_sha256.as_str())
+            && request
+                .try_get::<Option<i64>>("", "artifact_size")
+                .map_err(store_error)?
+                == Some(command.artifact_size)
+            && request
+                .try_get::<Option<String>>("", "artifact_content_type")
+                .map_err(store_error)?
+                .as_deref()
+                == Some(command.content_type.as_str())
+        {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(ModulePublishArtifactAttachResult {
+                request_id: command.request_id,
+                previous_storage_key: existing_storage_key,
+                reuploaded_after_changes_requested: false,
+            });
+        }
         if status != "draft" && !reuploaded {
             return Err(ModuleGovernanceError::PublishRequestCannotAttachArtifact(
                 status,
@@ -1665,9 +1737,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
         let version: String = request.try_get("", "version").map_err(store_error)?;
-        let previous_storage_key: Option<String> = request
-            .try_get("", "artifact_storage_key")
-            .map_err(store_error)?;
+        let previous_storage_key = existing_storage_key;
         let existing_warnings: String = request
             .try_get("", "validation_warnings")
             .map_err(store_error)?;
@@ -1820,7 +1890,9 @@ impl SeaOrmModuleGovernanceService {
             || !matches!(status.as_str(), "submitted" | "validating" | "approved")
             || slug != completed.request.expected_module_slug
             || version != completed.request.expected_version
-            || checksum.as_deref() != receipt_digest_sha256(component_digest).ok()
+            || checksum
+                .as_deref()
+                .is_none_or(|value| !is_sha256_hex(value))
         {
             return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
         }
@@ -1989,6 +2061,117 @@ impl SeaOrmModuleGovernanceService {
         Ok(ModulePublishPlatformBuildStageResult {
             staging_id,
             created: true,
+        })
+    }
+
+    /// Reloads the current platform-build staging selection and proves it
+    /// still matches the immutable completed build owned by the same tenant.
+    /// Registry and verification workers use this read instead of accepting a
+    /// caller-supplied OCI receipt or descriptor.
+    pub async fn load_platform_publication_source(
+        &self,
+        request_id: &str,
+    ) -> Result<ModulePlatformPublicationSource, ModuleGovernanceError> {
+        if request_id.trim().is_empty() || request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES {
+            return Err(ModuleGovernanceError::InvalidPlatformPublicationEvidenceRequest);
+        }
+        let backend = self.db.get_database_backend();
+        let mark = |position| placeholder(backend, position);
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT request.slug, request.version, request.status, request.artifact_origin, \
+                     CAST(stage.tenant_id AS TEXT) AS tenant_id, \
+                     CAST(stage.build_request_id AS TEXT) AS build_request_id, \
+                     stage.source_reference, stage.source_digest, stage.component_digest, \
+                     stage.artifact_manifest_digest, stage.sbom_manifest_digest, \
+                     stage.provenance_manifest_digest, stage.signature_manifest_digest \
+                     FROM registry_publish_requests AS request \
+                     INNER JOIN registry_publish_build_staging AS stage \
+                       ON stage.request_id = request.id AND stage.staged_at >= request.submitted_at \
+                     WHERE request.id = {} \
+                     ORDER BY stage.staged_at DESC, stage.id DESC LIMIT 1",
+                    mark(1),
+                ),
+                vec![request_id.to_string().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
+        let status: String = row.try_get("", "status").map_err(store_error)?;
+        let artifact_origin: String = row.try_get("", "artifact_origin").map_err(store_error)?;
+        if artifact_origin != ModulePublicationArtifactOrigin::PlatformBuilt.as_str()
+            || !matches!(status.as_str(), "validating" | "approved" | "published")
+        {
+            return Err(ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable);
+        }
+        let tenant_id = Uuid::parse_str(
+            &row.try_get::<String>("", "tenant_id")
+                .map_err(store_error)?,
+        )
+        .map_err(|_| ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
+        let build_request_id = Uuid::parse_str(
+            &row.try_get::<String>("", "build_request_id")
+                .map_err(store_error)?,
+        )
+        .map_err(|_| ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
+        let completed = SeaOrmModuleBuildService::new(self.db.clone())
+            .load_completed(tenant_id, build_request_id)
+            .await
+            .map_err(|_| ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
+        let component_digest = completed
+            .result
+            .component_digest
+            .clone()
+            .ok_or(ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
+        let receipt = completed
+            .result
+            .publication
+            .clone()
+            .ok_or(ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
+        let slug: String = row.try_get("", "slug").map_err(store_error)?;
+        let version: String = row.try_get("", "version").map_err(store_error)?;
+        let staged_source_reference: String =
+            row.try_get("", "source_reference").map_err(store_error)?;
+        let staged_source_digest: String = row.try_get("", "source_digest").map_err(store_error)?;
+        let staged_component_digest: String =
+            row.try_get("", "component_digest").map_err(store_error)?;
+        let staged_artifact_manifest_digest: String = row
+            .try_get("", "artifact_manifest_digest")
+            .map_err(store_error)?;
+        let staged_sbom_manifest_digest: String = row
+            .try_get("", "sbom_manifest_digest")
+            .map_err(store_error)?;
+        let staged_provenance_manifest_digest: String = row
+            .try_get("", "provenance_manifest_digest")
+            .map_err(store_error)?;
+        let staged_signature_manifest_digest: String = row
+            .try_get("", "signature_manifest_digest")
+            .map_err(store_error)?;
+        if !matches!(completed.result.outcome, ModuleBuildOutcome::Succeeded)
+            || completed.request.expected_module_slug != slug
+            || completed.request.expected_version != version
+            || completed.request.source.reference != staged_source_reference
+            || completed.request.source.digest != staged_source_digest
+            || component_digest != staged_component_digest
+            || receipt.artifact.digest != staged_artifact_manifest_digest
+            || receipt.sbom_referrer.digest != staged_sbom_manifest_digest
+            || receipt.provenance_referrer.digest != staged_provenance_manifest_digest
+            || receipt.signature_manifest.digest != staged_signature_manifest_digest
+            || !platform_build_artifact_identities_valid(&component_digest, &receipt)
+        {
+            return Err(ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable);
+        }
+        Ok(ModulePlatformPublicationSource {
+            request_id: request_id.to_string(),
+            tenant_id,
+            build_request_id,
+            slug,
+            version,
+            component_digest,
+            receipt,
         })
     }
 
@@ -5532,19 +5715,14 @@ impl SeaOrmModuleGovernanceService {
                         format!(
                             "SELECT artifact_manifest_digest FROM registry_publish_build_staging AS stage \
                              WHERE stage.request_id = {} \
-                               AND stage.component_digest = {} \
                                AND stage.staged_at >= ( \
                                    SELECT request.submitted_at FROM registry_publish_requests AS request \
                                    WHERE request.id = stage.request_id \
                                ) \
-                             LIMIT 1",
+                             ORDER BY stage.staged_at DESC, stage.id DESC LIMIT 1",
                             mark(1),
-                            mark(2),
                         ),
-                        vec![
-                            command.request_id.clone().into(),
-                            format!("sha256:{checksum_sha256}").into(),
-                        ],
+                        vec![command.request_id.clone().into()],
                     ))
                     .await
                     .map_err(store_error)?
@@ -7581,6 +7759,14 @@ fn valid_marketplace_taxonomy(value: &serde_json::Value) -> bool {
     })
 }
 
+fn publish_request_create_identity(
+    command: &ModulePublishRequestCreateCommand,
+) -> Result<(String, String), ModuleGovernanceError> {
+    let command_digest = rustok_api::manifest_hash::hash_manifest(command)
+        .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    Ok((format!("rpr_{command_digest}"), command_digest))
+}
+
 fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64
         && value
@@ -7688,14 +7874,10 @@ async fn canonical_marketplace_artifact_contract(
                  signature_reference, signature_digest, provenance_reference, provenance_digest, \
                  sbom_reference, sbom_digest, admission_reference, admission_digest \
                  FROM registry_publish_platform_admissions \
-                 WHERE request_id = {} AND payload_digest = {} LIMIT 1",
+                 WHERE request_id = {} LIMIT 1",
                 mark(1),
-                mark(2),
             ),
-            vec![
-                request_id.to_string().into(),
-                format!("sha256:{checksum_sha256}").into(),
-            ],
+            vec![request_id.to_string().into()],
         ))
         .await
         .map_err(store_error)?
@@ -7709,9 +7891,18 @@ async fn canonical_marketplace_artifact_contract(
     let descriptor_digest = admitted
         .try_get::<String>("", "descriptor_digest")
         .map_err(store_error)?;
+    let payload_digest = admitted
+        .try_get::<String>("", "payload_digest")
+        .map_err(store_error)?;
+    let manifest_digest = admitted
+        .try_get::<String>("", "manifest_digest")
+        .map_err(store_error)?;
+    let expected_uploaded_payload_digest = format!("sha256:{checksum_sha256}");
     if descriptor.slug != slug
         || descriptor.version != version
-        || descriptor.artifact_digest != format!("sha256:{checksum_sha256}")
+        || descriptor.artifact_digest != payload_digest
+        || (artifact_origin != ModulePublicationArtifactOrigin::PlatformBuilt
+            && payload_digest != expected_uploaded_payload_digest)
         || crate::canonical_artifact_descriptor_digest(&descriptor) != descriptor_digest
     {
         return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
@@ -7729,12 +7920,6 @@ async fn canonical_marketplace_artifact_contract(
             return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
         }
     };
-    let payload_digest = admitted
-        .try_get::<String>("", "payload_digest")
-        .map_err(store_error)?;
-    let manifest_digest = admitted
-        .try_get::<String>("", "manifest_digest")
-        .map_err(store_error)?;
     let (source_reference, source_digest) = match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let source = transaction
@@ -7744,11 +7929,21 @@ async fn canonical_marketplace_artifact_contract(
                         "SELECT source_reference, source_digest \
                          FROM registry_publish_build_staging \
                          WHERE request_id = {} AND component_digest = {} \
-                         ORDER BY staged_at DESC LIMIT 1",
+                           AND artifact_manifest_digest = {} \
+                           AND staged_at >= ( \
+                               SELECT submitted_at FROM registry_publish_requests \
+                               WHERE id = registry_publish_build_staging.request_id \
+                           ) \
+                         ORDER BY staged_at DESC, id DESC LIMIT 1",
                         mark(1),
                         mark(2),
+                        mark(3),
                     ),
-                    vec![request_id.to_string().into(), payload_digest.clone().into()],
+                    vec![
+                        request_id.to_string().into(),
+                        payload_digest.clone().into(),
+                        manifest_digest.clone().into(),
+                    ],
                 ))
                 .await
                 .map_err(store_error)?
@@ -8348,6 +8543,8 @@ fn validation_stage_transition_allowed(
 pub enum ModuleGovernanceError {
     #[error("registry lifecycle query requires a module slug")]
     InvalidLifecycleQuery,
+    #[error("registry publish request identity conflicts with its immutable create command")]
+    PublishRequestCreationConflict,
     #[error("registry lifecycle contains unsupported artifact origin `{0}`")]
     InvalidLifecycleArtifactOrigin(String),
     #[error("release yank requires slug, version, reason, and actor principal")]
@@ -8421,6 +8618,12 @@ pub enum ModuleGovernanceError {
     InvalidPlatformBuildStageCommand,
     #[error("platform build stage idempotency key was reused for different immutable input")]
     PlatformBuildStageIdempotencyConflict,
+    #[error("platform publication-evidence request is invalid")]
+    InvalidPlatformPublicationEvidenceRequest,
+    #[error(
+        "current platform publication source is unavailable or no longer matches its completed build"
+    )]
+    PlatformPublicationEvidenceSourceUnavailable,
     #[error(
         "external prebuilt staging requires an approved provenance policy, quarantine review, and explicit source evidence"
     )]
@@ -8583,7 +8786,7 @@ mod tests {
 
     fn publish_request_create_command() -> ModulePublishRequestCreateCommand {
         ModulePublishRequestCreateCommand {
-            slug: "sample-module".to_string(),
+            slug: "sample_module".to_string(),
             version: "1.0.0".to_string(),
             crate_name: "sample-module".to_string(),
             default_locale: "en-US".to_string(),
@@ -8644,6 +8847,21 @@ mod tests {
                     .to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn publish_request_identity_is_deterministic_and_binds_the_full_command() {
+        let command = publish_request_create_command();
+        let first = publish_request_create_identity(&command).expect("request identity");
+        let repeated = publish_request_create_identity(&command).expect("repeated identity");
+        let mut changed = command.clone();
+        changed.description =
+            "A different publish request description long enough for policy.".to_string();
+        let changed = publish_request_create_identity(&changed).expect("changed identity");
+
+        assert_eq!(first, repeated);
+        assert_eq!(first.0, format!("rpr_{}", first.1));
+        assert_ne!(first, changed);
     }
 
     #[test]
@@ -9716,8 +9934,8 @@ mod tests {
                  'stage-1', 'request-1', \
                  'https://source.example/sample-module.tar.gz', \
                  'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', \
-                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
-                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+                 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', \
+                 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', \
                  datetime('now'))"
                     .to_string(),
             ))
@@ -9736,7 +9954,7 @@ mod tests {
         );
 
         let staged_subject = "a".repeat(64);
-        let oci_subject = staged_subject.clone();
+        let oci_subject = "b".repeat(64);
         let evidence_fixture = |id: &str, authority: &str, subject: &str, created_at: &str| {
             Statement::from_sql_and_values(
                 DbBackend::Sqlite,
@@ -9806,8 +10024,8 @@ mod tests {
                  'stage-2', 'request-1', \
                  'https://source.example/sample-module.tar.gz', \
                  'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', \
-                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
-                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+                 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', \
+                 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', \
                  datetime('now', '+2 seconds'))"
                     .to_string(),
             ))
@@ -9849,7 +10067,7 @@ mod tests {
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_build_staging \
                  SET artifact_manifest_digest = \
-                 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+                 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' \
                  WHERE id = 'stage-2'"
                     .to_string(),
             ))
@@ -9868,7 +10086,7 @@ mod tests {
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_build_staging \
                  SET artifact_manifest_digest = \
-                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+                 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
                  WHERE id = 'stage-2'"
                     .to_string(),
             ))
@@ -9884,7 +10102,7 @@ mod tests {
             runtime_abi: "rustok:module/runtime@1".to_string(),
             platform_compatibility: "^0.1".to_string(),
             required_features: Vec::new(),
-            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            artifact_digest: format!("sha256:{}", "e".repeat(64)),
             entrypoint: "main".to_string(),
             capabilities: Vec::new(),
             bindings: Vec::new(),
@@ -9910,8 +10128,8 @@ mod tests {
                          'evidence://platform-admission', ?, datetime('now'))"
                     .to_string(),
                 vec![
-                    format!("sha256:{}", "a".repeat(64)).into(),
-                    format!("sha256:{}", "a".repeat(64)).into(),
+                    format!("sha256:{}", "b".repeat(64)).into(),
+                    format!("sha256:{}", "e".repeat(64)).into(),
                     crate::canonical_artifact_descriptor_digest(&descriptor).into(),
                     Value::Json(Some(Box::new(
                         serde_json::to_value(&descriptor).expect("descriptor JSON"),

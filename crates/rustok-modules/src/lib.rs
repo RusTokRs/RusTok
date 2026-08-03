@@ -4,6 +4,7 @@ mod artifact;
 mod artifact_capability_router;
 mod artifact_cas;
 mod artifact_schema;
+mod authoring;
 mod binding_idempotency;
 mod build;
 mod build_surface;
@@ -37,6 +38,7 @@ mod policy;
 mod policy_revision_consumer;
 mod policy_transition_event;
 mod promotion;
+mod publication_evidence;
 mod publish_validation;
 mod recovery;
 mod resolution;
@@ -58,15 +60,16 @@ pub use artifact::{
     ArtifactDataIndexField, ArtifactDataIndexValueType, ArtifactModuleKind, ArtifactOrigin,
     ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactPersistenceContract,
     ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef, ArtifactSchemaDocument,
-    ArtifactSourceLineage, ArtifactUiContribution, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE, MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE,
-    MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE, MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE,
-    MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleBindingIdempotency, ModuleDependencyConstraint, ModuleHttpBinding, ModuleHttpMethod,
-    ModuleHttpStreamingPolicy, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
-    ModuleScheduleBinding, ModuleScheduleDeduplication, ModuleScheduleMisfirePolicy,
-    ModuleScheduleOverlapPolicy, canonical_artifact_descriptor_digest, canonical_schema_digest,
-    schedule_binding_digest,
+    ArtifactSourceLineage, ArtifactUiContribution, MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
+    MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
+    MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+    ModuleArtifactDescriptor, ModuleArtifactError, ModuleArtifactSourceManifest,
+    ModuleArtifactSourceManifestError, ModuleBindingIdempotency, ModuleDependencyConstraint,
+    ModuleHttpBinding, ModuleHttpMethod, ModuleHttpStreamingPolicy, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind, ModuleScheduleBinding, ModuleScheduleDeduplication,
+    ModuleScheduleMisfirePolicy, ModuleScheduleOverlapPolicy, canonical_artifact_descriptor_digest,
+    canonical_schema_digest, schedule_binding_digest,
 };
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
@@ -74,19 +77,29 @@ pub use artifact_capability_router::{
     resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
+pub use authoring::{
+    MODULE_AUTHORING_BUILD_MAX_ARCHIVE_BYTES, MODULE_AUTHORING_BUILD_MAX_SOURCE_BYTES,
+    MODULE_AUTHORING_BUILD_MAX_SOURCE_ENTRIES, ModuleAuthoringBuildCommand,
+    ModuleAuthoringBuildControl, ModuleAuthoringBuildError, ModuleAuthoringBuildSubmission,
+    ModuleAuthoringPublishCommand, ModuleAuthoringPublishControl, ModuleAuthoringPublishError,
+    ModuleAuthoringPublishSubmission, SeaOrmModuleAuthoringBuildService,
+    SeaOrmModuleAuthoringPublishService, SharedModuleAuthoringBuildControl,
+    SharedModuleAuthoringPublishControl,
+};
 pub use binding_idempotency::{
     ArtifactBindingIdempotencyClaim, ArtifactBindingIdempotencyError,
     ArtifactBindingIdempotencyRequest, SeaOrmArtifactBindingIdempotencyStore,
     artifact_binding_request_digest,
 };
 pub use build::{
-    MODULE_BUILD_PROTOCOL_VERSION, ModuleBuildAuthoring, ModuleBuildCompletedResult,
-    ModuleBuildComponentInterface, ModuleBuildDependencyPolicy, ModuleBuildDiagnostic,
-    ModuleBuildDiagnosticStage, ModuleBuildEvidence, ModuleBuildFailureCode, ModuleBuildLimits,
-    ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildOutcome,
-    ModuleBuildProtocolError, ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult,
-    ModuleBuildResultRecord, ModuleBuildSignatureAuthority, ModuleBuildSource,
-    ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationOutcome,
+    MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI,
+    MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD, ModuleBuildAuthoring,
+    ModuleBuildCompletedResult, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
+    ModuleBuildDiagnostic, ModuleBuildDiagnosticStage, ModuleBuildEvidence, ModuleBuildFailureCode,
+    ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction,
+    ModuleBuildOutcome, ModuleBuildProtocolError, ModuleBuildPublicationReceipt,
+    ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultRecord, ModuleBuildSignatureAuthority,
+    ModuleBuildSource, ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationOutcome,
     ModuleBuildValidationProfile, ModuleBuildValidationResult, ModuleBuildWitContract,
     ModuleBuildWorker, ModuleBuildWorkerReadiness, SeaOrmModuleBuildService,
 };
@@ -215,21 +228,22 @@ pub use governance::{
     ModuleGovernanceOwnerSnapshot, ModuleGovernanceOwnerTransition,
     ModuleGovernanceReleaseSnapshot, ModuleGovernanceRequestSnapshot,
     ModuleGovernanceValidationStageSnapshot, ModuleOwnerBindCommand, ModuleOwnerTransferCommand,
-    ModulePlatformAdmissionCommand, ModulePublicationArtifactOrigin,
-    ModulePublicationEvidenceAuthority, ModulePublicationEvidenceCommand,
-    ModulePublicationEvidenceResult, ModulePublishApprovalOverride,
-    ModulePublishArtifactAttachCommand, ModulePublishArtifactAttachResult,
-    ModulePublishPlatformBuildStageCommand, ModulePublishPlatformBuildStageResult,
-    ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
-    ModulePublishRequestHoldCommand, ModulePublishRequestPublicationCommand,
-    ModulePublishRequestRejectCommand, ModulePublishRequestResumeCommand,
-    ModulePublishValidationContract, ModulePublishedArtifactContract, ModuleReleaseYankCommand,
-    ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand,
-    ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationTerminalCommand,
-    ModuleRemoteValidationTerminalOutcome, ModuleValidationJobClaimCommand,
-    ModuleValidationJobClaimResult, ModuleValidationJobEnqueueCommand,
-    ModuleValidationJobEnqueueResult, ModuleValidationJobResultCommand,
-    ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand, ModuleValidationJobWorkItem,
+    ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
+    ModulePublicationArtifactOrigin, ModulePublicationEvidenceAuthority,
+    ModulePublicationEvidenceCommand, ModulePublicationEvidenceResult,
+    ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
+    ModulePublishArtifactAttachResult, ModulePublishPlatformBuildStageCommand,
+    ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
+    ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
+    ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
+    ModulePublishRequestResumeCommand, ModulePublishValidationContract,
+    ModulePublishedArtifactContract, ModuleReleaseYankCommand, ModuleRemoteValidationClaim,
+    ModuleRemoteValidationClaimCommand, ModuleRemoteValidationHeartbeatCommand,
+    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
+    ModuleValidationJobClaimCommand, ModuleValidationJobClaimResult,
+    ModuleValidationJobEnqueueCommand, ModuleValidationJobEnqueueResult,
+    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
+    ModuleValidationJobRetryCommand, ModuleValidationJobWorkItem,
     ModuleValidationStageReportCommand, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
     REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
@@ -317,10 +331,16 @@ pub use promotion::{
     ModuleStaticPromotionError, ModuleStaticPromotionEvidence, ModuleStaticPromotionReceipt,
     ModuleStaticPromotionRequestCommand, ModuleStaticPromotionStatus, SeaOrmModulePromotionService,
 };
+pub use publication_evidence::{
+    ModulePlatformPublicationEvidenceCommand, ModulePlatformPublicationEvidenceError,
+    ModulePlatformPublicationEvidenceOwner, ModulePlatformPublicationEvidenceProducer,
+    ModulePlatformPublicationEvidenceResult, ModulePublicationArtifactRegistryProvider,
+};
 pub use publish_validation::{
     MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES, MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES,
-    MODULE_PUBLISH_ARTIFACT_MAX_BYTES, MODULE_PUBLISH_BUNDLE_TYPE, ModulePublishBundleValidation,
-    validate_module_publish_artifact, validate_module_publish_bundle,
+    MODULE_PUBLISH_ARTIFACT_MAX_BYTES, MODULE_PUBLISH_BUNDLE_CONTENT_TYPE,
+    MODULE_PUBLISH_BUNDLE_TYPE, ModulePublishBundleFiles, ModulePublishBundleValidation,
+    build_module_publish_bundle, validate_module_publish_artifact, validate_module_publish_bundle,
 };
 pub use recovery::{
     ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,

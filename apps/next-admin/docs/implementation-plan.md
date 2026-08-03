@@ -26,6 +26,9 @@ entrypoints must not re-export `src/features/*` implementations.
   `next-intl`.
 - Keep GraphQL/REST access centralized in `src/shared/api` and package-owned API
   modules instead of page-local clients.
+- Keep the module operator page in parity with Leptos for owner-projected
+  federated-registry freshness. The shared GraphQL client exposes logical
+  registry ID, status, last success, and consecutive failures only.
 - Keep typed `snake_case` URL query keys aligned with the Leptos admin host.
 - Keep starter-only routes (`billing`, `exclusive`, `workspaces`,
   `workspaces/team`) returning `notFound()`.

@@ -6,8 +6,8 @@ use crate::{
     context::ExecutionPhase,
     execution_log::ExecutionLogEntry,
     model::{
-        AlloyWorkspace, ReviewDecision, ReviewStatus, Script, ScriptId, ScriptStatus,
-        ScriptTrigger, TestRun, TestRunStatus,
+        ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptId, ScriptStatus, ScriptTrigger,
+        TestRun, TestRunStatus,
     },
 };
 
@@ -17,7 +17,7 @@ use crate::{
 pub struct CreateScriptRequest {
     pub name: String,
     pub description: Option<String>,
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
     pub trigger: ScriptTrigger,
     #[serde(default)]
     pub permissions: Vec<String>,
@@ -31,7 +31,7 @@ pub struct UpdateScriptRequest {
     pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
-    pub workspace: Option<AlloyWorkspace>,
+    pub workspace: Option<RhaiWorkspace>,
     pub trigger: Option<ScriptTrigger>,
     pub status: Option<ScriptStatus>,
     pub permissions: Option<Vec<String>>,
@@ -164,7 +164,7 @@ pub struct ScriptResponse {
     pub id: ScriptId,
     pub name: String,
     pub description: Option<String>,
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
     pub trigger: ScriptTrigger,
     pub status: ScriptStatus,
     pub version: u32,

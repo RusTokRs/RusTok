@@ -7,7 +7,7 @@ use crate::{
     context::ExecutionPhase,
     execution_log::ExecutionLogEntry,
     model::{
-        AlloyWorkspace, EventType, HttpMethod, ReviewDecision, ReviewStatus, Script, ScriptStatus,
+        EventType, HttpMethod, ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptStatus,
         ScriptTrigger, TestRun, TestRunStatus,
     },
 };
@@ -236,7 +236,7 @@ pub struct GqlScript {
     pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub workspace: async_graphql::Json<AlloyWorkspace>,
+    pub workspace: async_graphql::Json<RhaiWorkspace>,
     pub trigger: GqlScriptTrigger,
     pub status: GqlScriptStatus,
     pub version: u32,
@@ -472,7 +472,7 @@ impl From<ScriptTriggerInput> for ScriptTrigger {
 pub struct CreateScriptInput {
     pub name: String,
     pub description: Option<String>,
-    pub workspace: async_graphql::Json<AlloyWorkspace>,
+    pub workspace: async_graphql::Json<RhaiWorkspace>,
     pub trigger: ScriptTriggerInput,
     pub status: Option<GqlScriptStatus>,
     #[graphql(default)]
@@ -487,7 +487,7 @@ pub struct UpdateScriptInput {
     pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
-    pub workspace: Option<async_graphql::Json<AlloyWorkspace>>,
+    pub workspace: Option<async_graphql::Json<RhaiWorkspace>>,
     pub trigger: Option<ScriptTriggerInput>,
     pub status: Option<GqlScriptStatus>,
     pub run_as_system: Option<bool>,

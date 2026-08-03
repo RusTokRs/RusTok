@@ -133,7 +133,7 @@ impl HardenedRegistryMarketplaceProvider {
             .collect()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn new(
         registry_url: Option<String>,
         client: Client,

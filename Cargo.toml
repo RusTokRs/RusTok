@@ -31,6 +31,7 @@ members = [
     "crates/rustok-index/admin",
     "crates/rustok-media/admin",
     "crates/rustok-media/cli",
+    "crates/rustok-modules/cli",
     "crates/rustok-profiles/cli",
     "crates/rustok-auth/cli",
     "crates/rustok-rbac/cli",
@@ -205,6 +206,7 @@ password-hash = "0.6"
 sha2 = "0.11"
 wasmparser = "0.253"
 wit-parser = "0.251"
+wit-bindgen = "0.57.1"
 oci-distribution = "0.11.0"
 once_cell = "1.21"
 hex = "0.4"
@@ -276,6 +278,8 @@ rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api", default-features = false }
 rustok-runtime = { path = "crates/rustok-runtime" }
 rustok-sandbox = { path = "crates/rustok-sandbox" }
+rustok-sandbox-transport = { path = "crates/rustok-sandbox-transport" }
+rustok-sandbox-worker = { path = "crates/rustok-sandbox-worker" }
 rustok-web = { path = "crates/rustok-web" }
 rustok-fba = { path = "crates/rustok-fba" }
 rustok-cli-core = { path = "crates/rustok-cli-core" }
@@ -291,6 +295,9 @@ rustok-build-publication = { path = "crates/rustok-build-publication" }
 rustok-build-source = { path = "crates/rustok-build-source" }
 rustok-module-build-transport = { path = "crates/rustok-module-build-transport" }
 rustok-module-build-worker = { path = "crates/rustok-module-build-worker" }
+rustok-module-sdk = { path = "crates/rustok-module-sdk" }
+rustok-module-template = { path = "crates/rustok-module-template" }
+rustok-modules-cli = { path = "crates/rustok-modules/cli" }
 rustok-static-distribution-worker = { path = "crates/rustok-static-distribution-worker" }
 rustok-worker-transport = { path = "crates/rustok-worker-transport" }
 rustok-graphql = { path = "crates/rustok-graphql" }

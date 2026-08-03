@@ -8,14 +8,21 @@ use std::{collections::HashSet, str::FromStr};
 use thiserror::Error;
 
 use rustok_api::{
-    ArtifactPermissionLocalization, is_valid_locale_tag, manifest_hash::hash_manifest_snapshot,
+    ArtifactPermissionLocalization, is_valid_locale_tag, is_valid_module_slug,
+    manifest_hash::hash_manifest_snapshot,
 };
 use rustok_sandbox::{CapabilityName, SandboxExecutorKind};
+
+use crate::build::ModuleBuildRequest;
 
 /// The current immutable descriptor contract. Schema documents are bundled in
 /// v4 so no admission or execution path needs to resolve schemas from a
 /// network, filesystem, registry tag, or mutable service.
 pub const MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION: u32 = 4;
+/// Canonical author-source manifest consumed by the isolated build worker.
+pub const MODULE_ARTIFACT_SOURCE_MANIFEST_FILE: &str = "module-artifact.json";
+/// Source manifests use the same bounded envelope as finalized descriptors.
+pub const MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES: usize = 256 * 1024;
 
 const MAX_SCHEMA_DOCUMENTS: usize = 32;
 const MAX_SCHEMA_DOCUMENT_BYTES: usize = 64 * 1024;
@@ -24,10 +31,6 @@ const ARTIFACT_UI_CONTRIBUTION_SURFACES: &[&str] = &["admin_settings", "admin_ac
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
 pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
-/// Stable OCI layer media type for immutable Rhai source workspaces. This
-/// retains the bounded import graph selected during admission.
-pub const MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE: &str =
-    "application/vnd.rustok.rhai.workspace.v1";
 /// Stable OCI layer media type for immutable WebAssembly Component artifacts.
 pub const MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE: &str =
     "application/vnd.rustok.wasm.component.v1+wasm";
@@ -102,7 +105,7 @@ pub struct ArtifactReleaseRef {
 
 impl ArtifactReleaseRef {
     pub fn validate(&self) -> Result<(), ModuleArtifactError> {
-        if !valid_slug(&self.slug) {
+        if !is_valid_module_slug(&self.slug) {
             return Err(ModuleArtifactError::InvalidSlug(self.slug.clone()));
         }
         Version::parse(&self.version)
@@ -133,6 +136,9 @@ pub struct ModuleArtifactDescriptor {
     pub platform_compatibility: String,
     #[serde(default)]
     pub required_features: Vec<String>,
+    /// Build-derived component digest. It is absent from an author-source
+    /// manifest and mandatory on every finalized descriptor.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub artifact_digest: String,
     pub entrypoint: String,
     #[serde(default)]
@@ -153,6 +159,26 @@ pub struct ModuleArtifactDescriptor {
     pub ui_contributions: Vec<ArtifactUiContribution>,
     #[serde(default)]
     pub persistence_contract: Option<ArtifactPersistenceContract>,
+}
+
+/// Validated type-state for the author-controlled descriptor declaration.
+/// It cannot carry the component digest that is known only after the worker
+/// has inspected the fixed build output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleArtifactSourceManifest {
+    descriptor: ModuleArtifactDescriptor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModuleArtifactSourceManifestError {
+    #[error("module artifact source manifest is invalid")]
+    Invalid,
+    #[error("module artifact source manifest must not declare build-derived artifact digest")]
+    BuildDerivedDigest,
+    #[error("module artifact source manifest descriptor is invalid")]
+    Descriptor(#[source] ModuleArtifactError),
+    #[error("module artifact source manifest does not match the immutable build request")]
+    BuildIdentityMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,7 +378,16 @@ pub enum ModuleBindingIdempotency {
 
 impl ModuleArtifactDescriptor {
     pub fn validate(&self) -> Result<(), ModuleArtifactError> {
-        if !valid_slug(&self.slug) {
+        if !valid_digest(&self.artifact_digest) {
+            return Err(ModuleArtifactError::InvalidDigest(
+                self.artifact_digest.clone(),
+            ));
+        }
+        self.validate_declaration()
+    }
+
+    fn validate_declaration(&self) -> Result<(), ModuleArtifactError> {
+        if !is_valid_module_slug(&self.slug) {
             return Err(ModuleArtifactError::InvalidSlug(self.slug.clone()));
         }
         Version::parse(&self.version)
@@ -372,11 +407,6 @@ impl ModuleArtifactDescriptor {
         }
         if self.runtime_abi.trim().is_empty() {
             return Err(ModuleArtifactError::MissingRuntimeAbi);
-        }
-        if !valid_digest(&self.artifact_digest) {
-            return Err(ModuleArtifactError::InvalidDigest(
-                self.artifact_digest.clone(),
-            ));
         }
         if self.entrypoint.trim().is_empty() {
             return Err(ModuleArtifactError::MissingEntrypoint);
@@ -480,7 +510,7 @@ impl ModuleArtifactDescriptor {
             }
         }
         for (index, dependency) in self.dependencies.iter().enumerate() {
-            if !valid_slug(&dependency.slug) || dependency.slug == self.slug {
+            if !is_valid_module_slug(&dependency.slug) || dependency.slug == self.slug {
                 return Err(ModuleArtifactError::InvalidDependency(
                     dependency.slug.clone(),
                 ));
@@ -659,6 +689,75 @@ impl ModuleArtifactDescriptor {
     }
 }
 
+impl ModuleArtifactSourceManifest {
+    pub fn parse(bytes: &[u8]) -> Result<Self, ModuleArtifactSourceManifestError> {
+        if bytes.is_empty() || bytes.len() > MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES {
+            return Err(ModuleArtifactSourceManifestError::Invalid);
+        }
+        let descriptor: ModuleArtifactDescriptor = serde_json::from_slice(bytes)
+            .map_err(|_| ModuleArtifactSourceManifestError::Invalid)?;
+        if !descriptor.artifact_digest.is_empty() {
+            return Err(ModuleArtifactSourceManifestError::BuildDerivedDigest);
+        }
+        descriptor
+            .validate_declaration()
+            .map_err(ModuleArtifactSourceManifestError::Descriptor)?;
+        Ok(Self { descriptor })
+    }
+
+    pub fn validate_build_request(
+        &self,
+        request: &ModuleBuildRequest,
+    ) -> Result<(), ModuleArtifactSourceManifestError> {
+        if self.descriptor.slug != request.expected_module_slug
+            || self.descriptor.version != request.expected_version
+            || self.descriptor.payload_kind != ArtifactPayloadKind::WasmComponent
+            || self.descriptor.module_kind != ArtifactModuleKind::Optional
+            || self.descriptor.runtime_abi != request.runtime_abi
+            || self.descriptor.entrypoint != "run"
+        {
+            return Err(ModuleArtifactSourceManifestError::BuildIdentityMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn slug(&self) -> &str {
+        &self.descriptor.slug
+    }
+
+    pub fn version(&self) -> &str {
+        &self.descriptor.version
+    }
+
+    pub fn runtime_abi(&self) -> &str {
+        &self.descriptor.runtime_abi
+    }
+
+    pub fn entrypoint(&self) -> &str {
+        &self.descriptor.entrypoint
+    }
+
+    pub fn capabilities(&self) -> &[CapabilityName] {
+        &self.descriptor.capabilities
+    }
+
+    pub fn finalize(
+        mut self,
+        artifact_digest: String,
+    ) -> Result<ModuleArtifactDescriptor, ModuleArtifactSourceManifestError> {
+        self.descriptor.artifact_digest = artifact_digest;
+        self.descriptor
+            .validate()
+            .map_err(ModuleArtifactSourceManifestError::Descriptor)?;
+        Ok(self.descriptor)
+    }
+
+    pub fn to_json_bytes(&self) -> Result<Vec<u8>, ModuleArtifactSourceManifestError> {
+        serde_json::to_vec_pretty(&self.descriptor)
+            .map_err(|_| ModuleArtifactSourceManifestError::Invalid)
+    }
+}
+
 /// Canonical digest of the complete immutable artifact descriptor.
 ///
 /// This identity is distinct from the executable payload digest stored inside
@@ -826,16 +925,6 @@ pub enum ModuleArtifactError {
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
     ForkVersionNotIncremented { parent: String, received: String },
-}
-
-fn valid_slug(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 48
-        && value.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
-        })
-        && !value.starts_with('_')
-        && !value.ends_with('_')
 }
 
 fn valid_digest(value: &str) -> bool {
@@ -1044,6 +1133,33 @@ mod tests {
             ui_contributions: Vec::new(),
             persistence_contract: None,
         }
+    }
+
+    #[test]
+    fn source_manifest_omits_and_worker_finalizes_the_component_digest() {
+        let mut declaration = descriptor(ArtifactPayloadKind::WasmComponent, "1.0.0", 'a');
+        declaration.artifact_digest.clear();
+        declaration.entrypoint = "run".to_string();
+        let bytes = serde_json::to_vec(&declaration).expect("serialize source manifest");
+        assert!(!String::from_utf8_lossy(&bytes).contains("artifact_digest"));
+
+        let source = ModuleArtifactSourceManifest::parse(&bytes).expect("valid source manifest");
+        let finalized = source.finalize(digest('b')).expect("finalized descriptor");
+
+        assert_eq!(finalized.artifact_digest, digest('b'));
+        assert!(finalized.validate().is_ok());
+    }
+
+    #[test]
+    fn source_manifest_rejects_an_author_supplied_component_digest() {
+        let mut declaration = descriptor(ArtifactPayloadKind::WasmComponent, "1.0.0", 'a');
+        declaration.entrypoint = "run".to_string();
+        let bytes = serde_json::to_vec(&declaration).expect("serialize descriptor");
+
+        assert!(matches!(
+            ModuleArtifactSourceManifest::parse(&bytes),
+            Err(ModuleArtifactSourceManifestError::BuildDerivedDigest)
+        ));
     }
 
     #[test]

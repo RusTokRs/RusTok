@@ -20,6 +20,11 @@ const ownerRoot = path.join(root, 'crates/rustok-modules/src');
 const adminModuleTransportRoot = path.join(root, 'apps/admin/src/features/modules/transport');
 const ownerManifestPath = path.join(root, 'crates/rustok-modules/Cargo.toml');
 const runtimeManifestPath = path.join(root, 'crates/rustok-runtime/Cargo.toml');
+const registryValidationWorkerRoot = path.join(root, 'crates/rustok-registry-validation-worker');
+const registryValidationWorkerManifestPath = path.join(registryValidationWorkerRoot, 'Cargo.toml');
+const registryValidationWorkerMainPath = path.join(registryValidationWorkerRoot, 'src/main.rs');
+const registryValidationWorkerLibraryPath = path.join(registryValidationWorkerRoot, 'src/lib.rs');
+const publicationEvidencePath = path.join(ownerRoot, 'publication_evidence.rs');
 const forbiddenOwnerDependencies = [
   'alloy',
   'async-graphql',
@@ -184,6 +189,49 @@ try {
     fail(
       `admin module transport must remain an owner-backed adapter without SQL, filesystem, hashing, dependency, or build logic; found: ${adminBackendLogicViolations.join(', ')}`,
     );
+  }
+
+  const registryValidationWorkerManifest = fs.readFileSync(
+    registryValidationWorkerManifestPath,
+    'utf8',
+  );
+  const registryValidationWorkerMain = fs.readFileSync(registryValidationWorkerMainPath, 'utf8');
+  const registryValidationWorkerLibrary = fs.readFileSync(
+    registryValidationWorkerLibraryPath,
+    'utf8',
+  );
+  const publicationEvidence = fs.readFileSync(publicationEvidencePath, 'utf8');
+  for (const dependency of [
+    'rustok-build-publication',
+    'rustok-verification-transport',
+    'rustok-worker-transport',
+  ]) {
+    if (!new RegExp(`^${dependency.replaceAll('-', '\\-')}(?:\\.workspace)?\\s*=`, 'm').test(registryValidationWorkerManifest)) {
+      fail(`registry validation worker is missing production evidence dependency ${dependency}`);
+    }
+  }
+  for (const dependency of ['rustok-server', 'rustok-ai', 'rustok-mcp', 'alloy']) {
+    if (new RegExp(`^${dependency.replaceAll('-', '\\-')}(?:\\.workspace)?\\s*=`, 'm').test(registryValidationWorkerManifest)) {
+      fail(`registry validation worker must remain independent from product infrastructure: ${dependency}`);
+    }
+  }
+  if (
+    !registryValidationWorkerMain.includes('GrpcTrustVerifier::connect_with_tls') ||
+    !registryValidationWorkerMain.includes('.check_readiness()') ||
+    !registryValidationWorkerMain.includes('CommandRegistryCredentialBroker::new') ||
+    !registryValidationWorkerMain.includes('ModulePlatformPublicationEvidenceProducer::new')
+  ) {
+    fail('registry validation worker must compose the credential-scoped OCI reader and readiness-checked mTLS verifier');
+  }
+  if (
+    !registryValidationWorkerLibrary.includes('CredentialedOciRegistryProvider') ||
+    !registryValidationWorkerLibrary.includes('.produce(command).await') ||
+    !publicationEvidence.includes('.load_source(&command.request_id)') ||
+    !publicationEvidence.includes('.fetch(&source.receipt.artifact, self.limits)') ||
+    !publicationEvidence.includes('.record_build_service_attestation(') ||
+    !publicationEvidence.includes('.record_platform_admission(')
+  ) {
+    fail('production publication evidence must bind owner staging, exact OCI bytes, isolated verification, and reserved owner records');
   }
 
   for (const owner of ownerBoundaries) {

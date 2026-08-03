@@ -35,6 +35,11 @@ Native marketplace and registry lifecycle reads consume host-provided owner
 ports. The former direct registry SQL, workspace/Cargo scanning, catalog
 synthesis, canonical hashing, dependency solving, and build planning have been
 deleted from the admin host.
+The module operator surface also consumes per-registry freshness through the
+same owner catalog facade. Both native and GraphQL paths require
+`modules.manage`; the UI renders logical registry identity, status, last
+success, and consecutive failures without learning endpoint or remote error
+details.
 
 ## Active Work
 

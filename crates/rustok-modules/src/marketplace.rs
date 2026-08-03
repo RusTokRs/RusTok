@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::MarketplaceRegistryFreshness;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -306,6 +307,11 @@ pub trait ModuleMarketplaceCatalog: Send + Sync {
         preferred_locale: Option<String>,
         fallback_locale: Option<String>,
     ) -> Result<Option<ModuleMarketplaceEntry>, ModuleMarketplaceError>;
+
+    /// Returns one snapshot per explicitly configured federated registry.
+    /// Local compiled-manifest composition is intentionally not represented as
+    /// a remote registry and an empty result means no registries are configured.
+    fn registry_freshness(&self) -> Vec<MarketplaceRegistryFreshness>;
 }
 
 /// Typed host-runtime handle for the selected local/remote marketplace

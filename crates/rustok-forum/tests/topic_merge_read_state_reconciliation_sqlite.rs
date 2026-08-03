@@ -103,9 +103,9 @@ async fn create_topic(
                 category_id,
                 title: format!("Merge read state {key}"),
                 slug: Some(format!("merge-read-state-{key}")),
-                body: format!("Merge read state {key} body"),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(format!(
+                    "Merge read state {key} body"
+                )),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -130,9 +130,7 @@ async fn create_reply(
             topic_id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: content.to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(content),
                 parent_reply_id: None,
             },
         )

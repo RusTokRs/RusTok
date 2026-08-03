@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use rustok_modules::ArtifactReleaseRef;
 
+use super::RhaiWorkspace;
 use super::trigger::ScriptTrigger;
-use super::workspace::AlloyWorkspace;
 
 pub type ScriptId = Uuid;
 
@@ -27,7 +27,7 @@ pub struct Script {
     pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
     pub trigger: ScriptTrigger,
     pub status: ScriptStatus,
     pub version: u32,
@@ -50,7 +50,7 @@ pub struct ScriptSourceRevision {
     pub revision: u32,
     pub parent_revision: Option<u32>,
     pub source_digest: String,
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
     pub author_id: Option<String>,
     #[serde(default)]
     pub parent_release: Option<ArtifactReleaseRef>,
@@ -58,7 +58,7 @@ pub struct ScriptSourceRevision {
 }
 
 impl Script {
-    pub fn new(name: impl Into<String>, workspace: AlloyWorkspace, trigger: ScriptTrigger) -> Self {
+    pub fn new(name: impl Into<String>, workspace: RhaiWorkspace, trigger: ScriptTrigger) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

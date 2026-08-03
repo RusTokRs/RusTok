@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use rustok_modules::{ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseRef};
 
-use super::{AlloyWorkspace, Script, ScriptTrigger};
+use super::{RhaiWorkspace, Script, ScriptTrigger};
 
 const MAX_IMPORT_NAME_BYTES: usize = 255;
 const MAX_IMPORT_ACTOR_BYTES: usize = 255;
@@ -38,7 +38,7 @@ impl AlloyPublishedReleaseImportCommand {
 #[derive(Clone, Debug)]
 pub struct AlloyPublishedRhaiSource {
     pub release: ArtifactRelease,
-    pub workspace: AlloyWorkspace,
+    pub workspace: RhaiWorkspace,
 }
 
 impl AlloyPublishedRhaiSource {

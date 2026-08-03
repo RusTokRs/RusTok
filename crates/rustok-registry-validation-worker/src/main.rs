@@ -1,9 +1,15 @@
-use std::{env, time::Duration};
+use std::{env, path::PathBuf, sync::Arc, time::Duration};
 
-use rustok_modules::ModuleControlPlane;
-use rustok_registry_validation_worker::RegistryValidationWorker;
+use rustok_build_publication::CommandRegistryCredentialBroker;
+use rustok_modules::{ModuleControlPlane, ModulePlatformPublicationEvidenceProducer};
+use rustok_registry_validation_worker::{
+    CredentialedOciRegistryProvider, RegistryValidationPublicationPolicy, RegistryValidationWorker,
+};
 use rustok_storage::{StorageConfig, StorageRuntime};
+use rustok_verification_transport::GrpcTrustVerifier;
+use rustok_worker_transport::MutualTlsClientConfig;
 use sea_orm::{ConnectOptions, Database};
+use tonic::transport::Endpoint;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,10 +29,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.sqlx_logging(false);
     let database = Database::connect(options).await?;
     let storage = StorageRuntime::from_config(&storage_config).await?;
+    let verification_endpoint = required_https_endpoint(
+        "RUSTOK_REGISTRY_VALIDATION_VERIFICATION_ENDPOINT",
+        required_env("RUSTOK_REGISTRY_VALIDATION_VERIFICATION_ENDPOINT")?,
+    )?;
+    let verification_tls =
+        MutualTlsClientConfig::from_env_prefix("RUSTOK_REGISTRY_VALIDATION_VERIFICATION")?;
+    let verifier = Arc::new(
+        GrpcTrustVerifier::connect_with_tls(
+            Endpoint::from_shared(verification_endpoint)?,
+            verification_tls.tls_config(),
+        )
+        .await?,
+    );
+    verifier.check_readiness().await?;
+    let credential_broker = Arc::new(CommandRegistryCredentialBroker::new(
+        PathBuf::from(required_env(
+            "RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER",
+        )?),
+        required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST")?,
+    )?);
+    let registry_provider = Arc::new(CredentialedOciRegistryProvider::new(credential_broker)?);
+    let owner = ModuleControlPlane::new(database).publication();
+    let publication_evidence = Arc::new(ModulePlatformPublicationEvidenceProducer::new(
+        Arc::new(owner.clone()),
+        registry_provider,
+        verifier,
+    ));
+    let publication_policy = RegistryValidationPublicationPolicy {
+        registry_id: required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_ID")?,
+        trust_policy_revision: required_u64("RUSTOK_REGISTRY_VALIDATION_TRUST_POLICY_REVISION")?,
+        capability_policy_revision: required_u64(
+            "RUSTOK_REGISTRY_VALIDATION_CAPABILITY_POLICY_REVISION",
+        )?,
+        build_service_issuer_identity: required_env(
+            "RUSTOK_REGISTRY_VALIDATION_BUILD_SERVICE_ISSUER_IDENTITY",
+        )?,
+        build_service_policy_revision: required_env(
+            "RUSTOK_REGISTRY_VALIDATION_BUILD_SERVICE_POLICY_REVISION",
+        )?,
+    };
     let worker = RegistryValidationWorker::new(
-        ModuleControlPlane::new(database).publication(),
+        owner,
         storage,
         actor_id,
+        publication_evidence,
+        publication_policy,
     )?;
     loop {
         tokio::select! {
@@ -56,4 +104,23 @@ fn optional_u64(name: &str, default: u64) -> Result<u64, String> {
             .parse()
             .map_err(|error| format!("{name} is invalid: {error}"))
     })
+}
+
+fn required_u64(name: &str) -> Result<u64, String> {
+    let value = required_env(name)?;
+    let value = value
+        .parse::<u64>()
+        .map_err(|error| format!("{name} is invalid: {error}"))?;
+    if value == 0 {
+        return Err(format!("{name} must be positive"));
+    }
+    Ok(value)
+}
+
+fn required_https_endpoint(name: &str, endpoint: String) -> Result<String, String> {
+    if endpoint.starts_with("https://") {
+        Ok(endpoint)
+    } else {
+        Err(format!("{name} must use an https:// endpoint for mTLS"))
+    }
 }

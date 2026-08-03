@@ -49,6 +49,9 @@ Local documentation for `apps/next-admin`.
 - global admin search uses `rustok-search` as a host-level capability;
 - shared SEO operator/headless contract must also go through the backend surface:
   registry-backed target descriptors are read from GraphQL `seoTargets`, not from host-local slug mapping;
+- the host module operator page reads `marketplaceRegistryFreshness` through
+  `src/shared/api/modules.ts` and renders the same minimized operator evidence
+  as Leptos; it does not read aggregate readiness or registry endpoints;
 - code must go through canonical FSD paths and shared package boundaries.
 
 ## Ownership contract for module UI

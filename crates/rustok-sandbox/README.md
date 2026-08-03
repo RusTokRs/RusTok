@@ -27,6 +27,9 @@ Alloy drafts and installed module artifacts.
 - Expose registry-backed executor readiness so owner policy can distinguish an
   execution port from a registered payload executor and inspect its placement.
 - Publish comparable audit evidence for draft and installed executions.
+- Provide a bounded local scenario contract with explicit policy grants,
+  deterministic capability fixtures, and success/error expectations for
+  authoring against the same runtime and broker validation.
 
 ## Entry points
 
@@ -36,17 +39,25 @@ Alloy drafts and installed module artifacts.
 - `SandboxPolicy`
 - `CapabilityBroker`
 - `ExecutionObserver`
-- `rhai::RhaiHostExtension` (request-scoped scope/output adaptation)
+- `RhaiWorkspace` and `RhaiScopeInput`/`RhaiScopeOutput`
+- `rhai::RhaiHostExtension` (broker-backed function registration)
 - `wasm::WasmComponentExecutor` (feature `wasm-component`)
+- `LocalSandboxHarness` and `LocalSandboxScenario`
 
 ## Interactions
 
-- Alloy uses the sandbox for draft, test, hook and manual execution.
+- Alloy uses the isolated sandbox worker for production draft, test, hook,
+  scheduled, and manual execution.
 - `rustok-modules` uses it for installed Rhai and WebAssembly artifacts.
+- `rustok-module-sdk` owns the canonical WIT file used to generate both guest
+  bindings and this crate's Wasmtime host bindings.
 - The server supplies host capability implementations through narrow ports.
+- Untrusted artifact and Alloy Rhai use `rustok-sandbox-transport` and the
+  standalone `rustok-sandbox-worker`; worker failure never selects an
+  in-process executor.
 
-Rhai consumer extensions may register broker-backed functions and adapt only a
-single request's scope and successful output binding. They must not retain
-mutable request state or create a second execution API.
+Rhai consumer extensions may register broker-backed functions for one request.
+They must not retain mutable request state or create a second execution API;
+workspace and scope adaptation belong to the neutral executor contract.
 
 See the [local documentation](./docs/README.md).

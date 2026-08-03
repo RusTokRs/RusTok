@@ -24,9 +24,7 @@ pub use channel::{
 #[cfg(feature = "server")]
 pub use channel::{ChannelContextExt, ChannelContextExtension, OptionalChannel};
 #[cfg(feature = "server")]
-pub use host_authority::{
-    HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
-};
+pub use host_authority::{HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext};
 #[cfg(feature = "server")]
 pub use oauth_scope::scope_matches;
 pub use principal_kind::AuthPrincipalKind;

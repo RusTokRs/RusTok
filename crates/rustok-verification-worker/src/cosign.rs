@@ -31,13 +31,12 @@ impl CosignTrustVerifier {
     }
 
     async fn run(&self, arguments: Vec<String>) -> Result<Vec<u8>, String> {
-        let output = tokio::time::timeout(
-            self.timeout,
-            Command::new(&self.program).args(arguments).output(),
-        )
-        .await
-        .map_err(|_| "cosign verification timed out".to_string())?
-        .map_err(|error| format!("could not start cosign: {error}"))?;
+        let mut command = Command::new(&self.program);
+        command.args(arguments).kill_on_drop(true);
+        let output = tokio::time::timeout(self.timeout, command.output())
+            .await
+            .map_err(|_| "cosign verification timed out".to_string())?
+            .map_err(|error| format!("could not start cosign: {error}"))?;
         if !output.status.success() {
             return Err("cosign verification rejected the artifact".to_string());
         }

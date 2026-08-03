@@ -101,6 +101,7 @@ tree, or files above the build disk limit. Its OCI sandbox and allowlist proxy
 are deployment-owned enforcement points, not source-controlled configuration.
 
 Optional listener limits are `RUSTOK_MODULE_BUILD_REQUEST_TIMEOUT_MS`,
+`RUSTOK_MODULE_BUILD_ADMISSION_TIMEOUT_MS`,
 `RUSTOK_MODULE_BUILD_CONCURRENCY_LIMIT`, and
 `RUSTOK_MODULE_BUILD_MAX_MESSAGE_SIZE` (at most 1 MiB). Startup fails if the
 mounted OCI job launcher, Cargo executable/cache, or `wasm-tools` executable is
@@ -108,8 +109,18 @@ absent or invalid, if the hardened OCI runtime is not explicitly selected, or
 if the isolation attestation is missing, malformed, or does not match the
 configured runtime and image, or if the mTLS configuration is incomplete. The
 worker remains not ready until deployment-owned isolation evidence is loaded
-and still matches the fixed hardened-job contract. There is no plaintext,
+and still matches the fixed hardened-job contract. The bounded attestation
+rejects unknown fields, the worker exposes no attestation-free constructor, and
+the readiness gate reloads the deployment-owned file before every execution.
+There is no plaintext,
 permissive-runtime, or server-local fallback.
+
+Build admission is process-wide across all authenticated connections and waits
+only for the bounded admission timeout; saturation returns
+`RESOURCE_EXHAUSTED` without consuming a build slot. Readiness does not require
+a permit. SIGTERM or Ctrl+C starts tonic graceful shutdown, while every Cargo,
+materializer, launcher, registry-broker, signer, and inspection subprocess is
+configured to be killed when its owning future is cancelled.
 
 The fixed OCI job launcher receives canonical request JSON on standard input
 and must launch one job with the supplied `RUSTOK_MODULE_BUILD_OCI_RUNTIME` and
@@ -140,8 +151,16 @@ gVisor/Kata and image-digest configuration; a missing, oversized, symlinked,
 malformed, or mismatched receipt is a transport failure and is never accepted
 as build evidence.
 
-For a successful result, the runner must also write its only executable payload
-to `RUSTOK_MODULE_BUILD_OUTPUT_DIR/component.wasm`. The worker rejects a
+Every source archive must contain one bounded regular non-symlink
+`module-artifact.json` source manifest. It declares the optional WASM module,
+runtime ABI, entrypoint, schemas, capabilities, bindings, permissions, and
+other author-owned descriptor fields, but it must not contain
+`artifact_digest`. The worker parses and validates this manifest before the
+runner starts and binds its slug, version, runtime ABI, payload kind, module
+kind, and `run` entrypoint to the immutable build request.
+
+For a successful result, the runner must write its only executable payload to
+`RUSTOK_MODULE_BUILD_OUTPUT_DIR/component.wasm`. The worker rejects a
 symlink, empty, oversized, non-component, invalid, or digest-mismatched file.
 It validates the Component Model bytes with `wasmparser` and requires the
 reported imports/exports to equal the root component's inspected interface.
@@ -154,13 +173,14 @@ about a fixed output, not an unverified substitute for the payload. Publication
 and Cosign signing use only that verified output; admission remains a later
 stage.
 
-The runner must additionally write
-`RUSTOK_MODULE_BUILD_OUTPUT_DIR/module-artifact-descriptor.json`. The worker
-parses this regular non-symlink file under the descriptor limit and binds its
-slug, version, runtime ABI, WASM payload kind, and payload digest to the
-immutable successful build result. It publishes the fixed component, SBOM, and
-provenance through the configured scoped OCI destination, then uses fixed
-Cosign with the configured KMS reference to sign the digest-pinned artifact.
+After component and WIT inspection, the worker inserts the independently
+rehash-verified component digest into the validated source declaration and
+creates `RUSTOK_MODULE_BUILD_OUTPUT_DIR/module-artifact-descriptor.json`
+exactly once. The runner cannot provide or replace that final descriptor: an
+existing output path is a terminal `artifact_descriptor_invalid` result. The
+worker then publishes the fixed descriptor, component, SBOM, and provenance
+through the configured scoped OCI destination and uses fixed Cosign with the
+configured KMS reference to sign the digest-pinned artifact.
 The returned result then carries only digest-pinned artifact/SBOM/provenance/
 signature-manifest references and marks that signature as `build_service`; the
 owner rejects any successful result that lacks those publication facts. An

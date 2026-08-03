@@ -106,9 +106,9 @@ async fn create_topic(
                 category_id,
                 title: format!("Merge subscriptions {key}"),
                 slug: Some(format!("merge-subscriptions-{key}")),
-                body: format!("Merge subscriptions {key} body"),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(format!(
+                    "Merge subscriptions {key} body"
+                )),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,

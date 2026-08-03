@@ -1,14 +1,6 @@
 use leptos::prelude::*;
 use rustok_ui_transport::UiTransportPath;
 
-#[allow(unused_imports)]
-use crate::entities::module::model::{
-    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
-    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
-    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
-    registry_principal_label_from_value,
-};
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
     ReleaseInfo, TenantModule, ToggleModuleResult,
@@ -179,6 +171,38 @@ pub async fn fetch_marketplace_module(
             )
             .await?;
             Ok(response.marketplace_module)
+        }
+    }
+}
+
+pub async fn fetch_marketplace_registry_freshness(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<Vec<rustok_api::MarketplaceRegistryFreshness>, ApiError> {
+    if token.is_some() {
+        let response: MarketplaceRegistryFreshnessResponse = request(
+            MARKETPLACE_REGISTRY_FRESHNESS_QUERY,
+            serde_json::json!({}),
+            token,
+            tenant_slug,
+        )
+        .await?;
+        return Ok(response.marketplace_registry_freshness);
+    }
+
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => marketplace_registry_freshness_native()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
+            let response: MarketplaceRegistryFreshnessResponse = request(
+                MARKETPLACE_REGISTRY_FRESHNESS_QUERY,
+                serde_json::json!({}),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.marketplace_registry_freshness)
         }
     }
 }

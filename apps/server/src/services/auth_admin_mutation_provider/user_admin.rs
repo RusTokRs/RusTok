@@ -14,8 +14,8 @@ use rustok_rbac::{
     RbacRoleMutationPolicyError, plan_user_role_mutation,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
+    QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;

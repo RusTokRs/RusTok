@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{SandboxError, SandboxPolicy};
+use crate::{RhaiScopeInput, RhaiScopeOutput, SandboxError, SandboxPolicy};
 
 /// Cooperative, request-scoped cancellation handle for one sandbox execution.
 #[derive(Clone, Debug, Default)]
@@ -137,6 +137,8 @@ pub struct SandboxRequest {
     #[serde(default)]
     pub input: Value,
     #[serde(default)]
+    pub rhai_scope: Option<RhaiScopeInput>,
+    #[serde(default)]
     pub policy: SandboxPolicy,
 }
 
@@ -173,6 +175,11 @@ impl SandboxRequest {
                 "payload entrypoint must not be empty".to_string(),
             ));
         }
+        if let Some(scope) = &self.rhai_scope {
+            scope
+                .validate()
+                .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+        }
         Ok(())
     }
 }
@@ -198,6 +205,8 @@ pub struct SandboxOutcome {
     pub execution_id: Uuid,
     #[serde(default)]
     pub output: Value,
+    #[serde(default)]
+    pub rhai_scope: Option<RhaiScopeOutput>,
     #[serde(default)]
     pub metrics: ExecutionMetrics,
 }

@@ -14,7 +14,28 @@ contract. Alloy-authored artifacts use the bounded canonical Rhai workspace
 contract; their exact checksum is later required to match the reviewed source
 revision before owner staging and final promotion.
 
+For platform-built publication, the worker also owns production evidence
+composition. It reloads the exact completed build and current publication stage
+through `rustok-modules`, obtains a short-lived registry credential lease from a
+deployment-owned broker, fetches and revalidates the digest-pinned OCI package,
+and calls the isolated trust verifier through readiness-gated mTLS. Only then
+does it record the immutable build-service attestation and platform-admission
+contract through owner operations. Registry credentials and trust roots are not
+exposed to the server, Alloy, MCP, AI, or module runtime.
+
 It has no HTTP server dependency and does not use a server-local background
 task. Configure its database connection, storage configuration JSON, worker ID,
 and polling delay through the `RUSTOK_REGISTRY_VALIDATION_*` environment
 variables.
+
+Production platform-build evidence additionally requires:
+
+- `RUSTOK_REGISTRY_VALIDATION_VERIFICATION_ENDPOINT`;
+- the `RUSTOK_REGISTRY_VALIDATION_VERIFICATION_*` mTLS identity and trust files;
+- `RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER` and its pinned
+  `RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST`;
+- `RUSTOK_REGISTRY_VALIDATION_REGISTRY_ID`;
+- `RUSTOK_REGISTRY_VALIDATION_TRUST_POLICY_REVISION` and
+  `RUSTOK_REGISTRY_VALIDATION_CAPABILITY_POLICY_REVISION`;
+- `RUSTOK_REGISTRY_VALIDATION_BUILD_SERVICE_ISSUER_IDENTITY` and
+  `RUSTOK_REGISTRY_VALIDATION_BUILD_SERVICE_POLICY_REVISION`.

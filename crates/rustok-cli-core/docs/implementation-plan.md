@@ -20,12 +20,11 @@ the production server do not depend on CLI contracts.
 
 ## Open results
 
-1. **Connect the first runtime-aware module-local CLI provider.** Implement a
-   provider adapter that needs database, storage, or a remote port through the
-   generated factory contract, without adding command bodies to domain crates.
-   **Depends on:** a module-local `cli/` adapter and runtime composition.
-   **Done when:** the provider exposes discovery and typed async execution from
-   `CommandRequest.args` without importing the server runtime.
+1. **Completed: connect runtime-aware module-local CLI providers.** The selected
+   registry constructs owner adapters from `RuntimeComposition`; Media owns a
+   database/storage reconciliation command, while module authoring owns
+   standalone init/validate, all through normalized `CommandRequest.args`
+   without importing the server runtime.
 
 2. **Harden generated registry and distribution coverage.** Add contract tests
    for provider discovery, duplicate rejection, selected distribution output,
@@ -44,6 +43,7 @@ the production server do not depend on CLI contracts.
 ## Verification
 
 - `npm run verify:cli-registry`
+- `npm run verify:module-authoring-cli`
 - `npm run verify:api:surface-contract`
 - Targeted typed provider, argument-decoding, registry, and inventory-output
   tests.

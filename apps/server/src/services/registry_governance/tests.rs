@@ -126,7 +126,7 @@ mod tests {
         )
         .await;
         let artifact = RegistryArtifactUpload {
-            content_type: rustok_modules::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
+            content_type: rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
             bytes: bytes::Bytes::from_static(
                 br#"{"schema_version":1,"entrypoint":"src/main.rhai","files":[{"path":"src/main.rhai","kind":"source","contents":"40 + 2"}]}"#,
             ),
@@ -1148,28 +1148,27 @@ mod tests {
     }
 
     fn sample_publish_artifact_json(slug: &str, include_admin_manifest: bool) -> String {
-        let package_manifest = r#"
-[module]
-slug = "blog"
-name = "Blog"
-version = "0.1.0"
-description = "Blog module description long enough for validation."
-ownership = "first_party"
-trust_level = "core"
-
-[marketplace]
-category = "content"
-tags = ["blog", "content"]
-
-[crate]
-entry_type = "backend"
-
-[provides.admin_ui]
-leptos_crate = "rustok-blog-admin"
-
-[provides.storefront_ui]
-leptos_crate = "rustok-blog-storefront"
-"#;
+        let source_manifest = serde_json::json!({
+            "schema_version": rustok_modules::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            "slug": slug,
+            "version": "0.1.0",
+            "payload_kind": "wasm_component",
+            "module_kind": "optional",
+            "runtime_abi": rustok_modules::MODULE_BUILD_RUNTIME_ABI,
+            "platform_compatibility": "^0.1",
+            "required_features": [],
+            "entrypoint": "run",
+            "capabilities": [],
+            "bindings": [],
+            "dependencies": [],
+            "permissions": [],
+            "schema_documents": [],
+            "settings_schema_digest": null,
+            "data_schema_digest": null,
+            "ui_contributions": [],
+            "persistence_contract": null
+        })
+        .to_string();
         let crate_manifest = r#"
 [package]
 name = "rustok-blog"
@@ -1220,7 +1219,7 @@ version = "0.1.0"
                 }
             },
             "files": {
-                "rustok-module.toml": package_manifest,
+                "module-artifact.json": source_manifest,
                 "Cargo.toml": crate_manifest,
                 "admin/Cargo.toml": admin_manifest,
                 "storefront/Cargo.toml": storefront_manifest

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     MODULE_MARKETPLACE_MAX_LIMIT, ModuleMarketplaceCatalog, ModuleMarketplaceEntry,
@@ -9,7 +10,7 @@ use semver::{Version, VersionReq};
 
 use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
-    MarketplaceCatalogQuery, marketplace_catalog_from_context,
+    MarketplaceCatalogQuery, MarketplaceProviderHealthStatus, marketplace_catalog_from_context,
 };
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::RegistryGovernanceService;
@@ -136,6 +137,34 @@ impl ModuleMarketplaceCatalog for ServerMarketplaceCatalog {
             .map_err(|_| ModuleMarketplaceError::Unavailable)?;
         Ok(Some(entry))
     }
+
+    fn registry_freshness(&self) -> Vec<MarketplaceRegistryFreshness> {
+        marketplace_catalog_from_context(&self.runtime)
+            .provider_health()
+            .into_iter()
+            .filter_map(map_registry_freshness)
+            .collect()
+    }
+}
+
+fn map_registry_freshness(
+    snapshot: crate::services::marketplace_catalog::MarketplaceProviderHealthSnapshot,
+) -> Option<MarketplaceRegistryFreshness> {
+    if snapshot.provider == "local-manifest" {
+        return None;
+    }
+    let status = match snapshot.status {
+        MarketplaceProviderHealthStatus::Ready => MarketplaceRegistryStatus::Ready,
+        MarketplaceProviderHealthStatus::Degraded => MarketplaceRegistryStatus::Degraded,
+        MarketplaceProviderHealthStatus::Unknown => MarketplaceRegistryStatus::Unknown,
+        MarketplaceProviderHealthStatus::Disabled => return None,
+    };
+    Some(MarketplaceRegistryFreshness {
+        registry_id: snapshot.provider,
+        status,
+        last_success_unix_ms: snapshot.last_success_unix_ms,
+        consecutive_failures: snapshot.consecutive_failures,
+    })
 }
 
 fn map_catalog_entry(
@@ -316,5 +345,55 @@ fn fallback_category(slug: &str) -> &'static str {
         "commerce" | "pricing" | "product" | "inventory" => "commerce",
         "tenant" | "rbac" | "index" | "outbox" => "platform",
         _ => "extensions",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::marketplace_catalog::MarketplaceProviderHealthSnapshot;
+
+    fn snapshot(
+        provider: &str,
+        status: MarketplaceProviderHealthStatus,
+    ) -> MarketplaceProviderHealthSnapshot {
+        MarketplaceProviderHealthSnapshot {
+            provider: provider.to_string(),
+            status,
+            last_success_unix_ms: Some(1_725_000_000_000),
+            consecutive_failures: 3,
+        }
+    }
+
+    #[test]
+    fn registry_projection_excludes_non_remote_sources() {
+        assert!(
+            map_registry_freshness(snapshot(
+                "local-manifest",
+                MarketplaceProviderHealthStatus::Ready
+            ))
+            .is_none()
+        );
+        assert!(
+            map_registry_freshness(snapshot(
+                "disabled",
+                MarketplaceProviderHealthStatus::Disabled
+            ))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn registry_projection_preserves_bounded_operator_evidence() {
+        let projected = map_registry_freshness(snapshot(
+            "community.eu",
+            MarketplaceProviderHealthStatus::Degraded,
+        ))
+        .expect("configured registry");
+
+        assert_eq!(projected.registry_id, "community.eu");
+        assert_eq!(projected.status, MarketplaceRegistryStatus::Degraded);
+        assert_eq!(projected.last_success_unix_ms, Some(1_725_000_000_000));
+        assert_eq!(projected.consecutive_failures, 3);
     }
 }

@@ -102,9 +102,9 @@ async fn create_topic(
                 category_id,
                 title: format!("Merge owner {key}"),
                 slug: Some(format!("merge-owner-{key}")),
-                body: format!("Merge owner {key} body"),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: rustok_api::RichTextDocument::single_paragraph(format!(
+                    "Merge owner {key} body"
+                )),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -130,9 +130,7 @@ async fn create_reply(
             topic_id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: text.to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: rustok_api::RichTextDocument::single_paragraph(text),
                 parent_reply_id,
             },
         )

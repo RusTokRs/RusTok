@@ -15,13 +15,41 @@ use rustok_modules::{
     ModuleControlPlane, ModuleEffectivePolicy, ResolvingArtifactCapabilityBroker,
     SeaOrmArtifactSecretHandlePolicy, SharedArtifactBindingExecutor,
 };
-use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
+use rustok_sandbox::{CapabilityName, ExecutorRegistry, SandboxRuntime};
+use rustok_sandbox_transport::GrpcRhaiExecutor;
 use rustok_storage::StorageRuntime;
+use rustok_worker_transport::MutualTlsClientConfig;
 use sea_orm::DatabaseConnection;
 
 use crate::error::{Error, Result};
 
 use super::server_runtime_context::ServerRuntimeContext;
+
+#[derive(Clone)]
+pub struct SharedSandboxRhaiExecutor(pub GrpcRhaiExecutor);
+
+pub async fn sandbox_rhai_executor(ctx: &ServerRuntimeContext) -> Result<GrpcRhaiExecutor> {
+    if let Some(executor) = ctx.shared_get::<SharedSandboxRhaiExecutor>() {
+        return Ok(executor.0.clone());
+    }
+
+    let endpoint = std::env::var("RUSTOK_SANDBOX_WORKER_ENDPOINT").map_err(|_| {
+        Error::Message("RUSTOK_SANDBOX_WORKER_ENDPOINT must be configured".to_string())
+    })?;
+    let endpoint = tonic::transport::Endpoint::from_shared(endpoint)
+        .map_err(|error| Error::Message(format!("sandbox worker endpoint is invalid: {error}")))?;
+    let tls = MutualTlsClientConfig::from_env_prefix("RUSTOK_SANDBOX")
+        .map_err(|error| Error::Message(format!("sandbox worker TLS is invalid: {error}")))?;
+    let executor = GrpcRhaiExecutor::connect_with_tls(endpoint, tls.tls_config())
+        .await
+        .map_err(|error| Error::Message(format!("sandbox worker connection failed: {error}")))?;
+    executor
+        .check_readiness()
+        .await
+        .map_err(|error| Error::Message(format!("sandbox worker readiness failed: {error}")))?;
+    ctx.shared_insert(SharedSandboxRhaiExecutor(executor.clone()));
+    Ok(executor)
+}
 
 #[derive(Clone)]
 struct ServerArtifactEffectivePolicyResolver {
@@ -49,7 +77,7 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
 /// Builds the one server-owned executor used for all admitted artifact
 /// bindings. Rhai calls reach host capabilities only through the neutral
 /// `capability_call` bridge; WASM calls use the equivalent WIT import.
-pub fn compose_artifact_binding_executor(
+pub async fn compose_artifact_binding_executor(
     ctx: &ServerRuntimeContext,
 ) -> Result<SharedArtifactBindingExecutor> {
     let storage = ctx.shared_get::<StorageRuntime>().ok_or_else(|| {
@@ -106,11 +134,9 @@ pub fn compose_artifact_binding_executor(
         })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;
     let mut executors = ExecutorRegistry::new();
+    let rhai = sandbox_rhai_executor(ctx).await?;
     executors
-        .register_in_process(
-            rustok_sandbox::rhai::RhaiExecutor::new()
-                .with_extension(Arc::new(RhaiCapabilityBridge)),
-        )
+        .register_isolated_worker(rhai)
         .map_err(|error| Error::Message(format!("artifact Rhai executor failed: {error}")))?;
     executors
         .register_in_process(rustok_sandbox::wasm::WasmComponentExecutor::new())

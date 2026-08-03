@@ -536,15 +536,15 @@ impl ScriptRegistry for InMemoryStorage {
 mod tests {
     use super::*;
     use crate::model::{
-        AlloyWorkspace, TestCommand, TestRunClaim, TestRunCompletion, WorkspaceFile,
-        WorkspaceFileKind,
+        RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind, TestCommand, TestRunClaim,
+        TestRunCompletion,
     };
     use uuid::Uuid;
 
     fn named_script(name: &str, status: ScriptStatus) -> Script {
         let mut script = Script::new(
             name,
-            AlloyWorkspace::single_source("40 + 2"),
+            RhaiWorkspace::single_source("40 + 2"),
             ScriptTrigger::Manual,
         );
         script.status = status;
@@ -614,7 +614,7 @@ mod tests {
         let stale = saved.clone();
 
         let mut current = saved;
-        current.workspace = AlloyWorkspace::single_source("43");
+        current.workspace = RhaiWorkspace::single_source("43");
         let updated = storage
             .save(current)
             .await
@@ -645,7 +645,7 @@ mod tests {
             .await
             .expect("initial script should save");
         let mut current = saved.clone();
-        current.workspace = AlloyWorkspace::single_source("43");
+        current.workspace = RhaiWorkspace::single_source("43");
         let updated = storage
             .save(current)
             .await
@@ -673,7 +673,7 @@ mod tests {
             .await
             .expect("initial script should save");
         let mut updated = saved.clone();
-        updated.workspace = AlloyWorkspace::single_source("41 + 2");
+        updated.workspace = RhaiWorkspace::single_source("41 + 2");
         updated.author_id = Some("author:next".into());
         storage
             .save(updated)
@@ -711,9 +711,9 @@ mod tests {
     async fn test_run_claim_replays_only_the_same_revision_pinned_command() {
         let storage = InMemoryStorage::new();
         let mut script = named_script("tested", ScriptStatus::Draft);
-        script.workspace.files.push(WorkspaceFile {
+        script.workspace.files.push(RhaiWorkspaceFile {
             path: "tests/smoke.rhai".into(),
-            kind: WorkspaceFileKind::Test,
+            kind: RhaiWorkspaceFileKind::Test,
             contents: "true".into(),
         });
         let saved = storage.save(script).await.expect("script should save");
@@ -756,7 +756,7 @@ mod tests {
         ));
 
         let mut next = saved;
-        next.workspace = AlloyWorkspace::single_source("43");
+        next.workspace = RhaiWorkspace::single_source("43");
         storage.save(next).await.expect("next revision should save");
         assert!(matches!(
             storage

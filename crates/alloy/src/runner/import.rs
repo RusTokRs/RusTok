@@ -68,7 +68,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        AlloyWorkspace, InMemoryStorage, Script, ScriptRegistry, ScriptTrigger,
+        InMemoryStorage, RhaiWorkspace, Script, ScriptRegistry, ScriptTrigger,
         stage_rhai_module_release,
     };
 
@@ -95,7 +95,7 @@ mod tests {
     fn published_source() -> AlloyPublishedRhaiSource {
         let script = Script::new(
             "published_tax_rule",
-            AlloyWorkspace::single_source("40 + 2"),
+            RhaiWorkspace::single_source("40 + 2"),
             ScriptTrigger::Manual,
         );
         let release = stage_rhai_module_release("tax_rule", "1.0.0", &script, Vec::new())

@@ -20,8 +20,8 @@ for the RusToK platform CLI.
 
 ## Interactions
 
-- Depends on `rustok-cli-core` only.
-- Depends on selected provider crates such as `rustok-cli-platform`.
+- Depends on `rustok-cli-core`, `rustok-runtime`, and the explicitly selected
+  provider adapter crates.
 - Consumed by `rustok-cli`.
 - Generated distribution code updates `src/generated.rs` from `[provides.cli]`
   metadata and root `cli-registry.toml` when command providers are selected.

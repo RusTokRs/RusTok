@@ -197,10 +197,10 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
 
-    use crate::create_default_alloy_draft_runtime;
+    use crate::create_test_alloy_draft_runtime;
     use crate::error::ScriptResult;
     use crate::execution_log::ExecutionLogSink;
-    use crate::model::{AlloyWorkspace, ScriptStatus};
+    use crate::model::{RhaiWorkspace, ScriptStatus};
     use crate::runner::ExecutionResult;
     use crate::storage::InMemoryStorage;
 
@@ -228,14 +228,13 @@ mod tests {
     async fn scheduler_tick_persists_execution_log_with_script_tenant() {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
-        let executor =
-            ScriptExecutor::new(create_default_alloy_draft_runtime(), Arc::clone(&storage))
-                .with_execution_log(execution_log.clone());
+        let executor = ScriptExecutor::new(create_test_alloy_draft_runtime(), Arc::clone(&storage))
+            .with_execution_log(execution_log.clone());
         let scheduler = Scheduler::new(executor, Arc::clone(&storage));
 
         let mut script = Script::new(
             "scheduled_audit_smoke",
-            AlloyWorkspace::single_source("40 + 2"),
+            RhaiWorkspace::single_source("40 + 2"),
             ScriptTrigger::Cron {
                 expression: "0 0 0 1 1 * 2099".to_string(),
             },

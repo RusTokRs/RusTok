@@ -35,6 +35,72 @@ launcher enforces the corresponding OCI controls. `rustok-modules` validates
 and persists that result against the queued request. Transport or worker
 failure has no server-local fallback.
 
+The shared worker transport owns one process-wide bounded admission semaphore,
+not merely tonic's per-connection limit. Expensive verification and build RPCs
+must acquire it with a bounded wait; readiness remains permit-free so saturation
+is observable. Worker hosts use the shared SIGTERM/Ctrl+C future with tonic
+graceful shutdown, and every external subprocess uses kill-on-drop semantics so
+cancellation cannot orphan tool execution.
+
+The build worker has no attestation-free construction path. Its bounded
+isolation-attestation schema rejects unknown fields, and the worker reloads the
+deployment-owned file through the readiness gate before each execution. This
+prevents a transport caller from bypassing startup evidence or continuing after
+the mounted evidence is revoked; it still does not replace runtime deployment
+proof from the gVisor/Kata job supervisor.
+
+The source archive carries `module-artifact.json`, an author-owned descriptor
+declaration without the build-derived component digest. The worker validates
+and binds this declaration to the immutable request before launching author
+code. After independently inspecting the fixed Component and its extracted WIT
+surface, the worker inserts the verified component digest and creates the final
+`module-artifact-descriptor.json` exactly once. Runner-provided final
+descriptors are rejected, so untrusted build output cannot select the payload
+identity that publication admits.
+
+The control plane is the sole writer of the current deployment-mounted source
+CAS. `CasArchivePublisher` strictly scans a deterministic archive, copies and
+rehashes it privately, and uses an atomic no-replace commit before the
+digest-addressed object becomes visible. Existing objects are rehashed and
+rescanned. The authoring owner then constructs the complete immutable build
+request with owner-selected limits, dependency egress, validation profiles,
+WIT, ABI, and target policy and commits it through the durable queue. The
+worker receives the same CAS root as a read-only deployment mount and remains
+unable to publish or mutate source objects.
+
+`rustok-cli module build` is an owner client for this path. It requires explicit
+tenant, actor, project, trace, correlation, and idempotency identity, but it
+cannot select worker policy or invoke the worker, registry, or signing service.
+Its local source path is packaged into a private deterministic archive and
+deleted after the owner accepts or rejects the submission.
+
+`rustok-cli module publish` is the matching owner client for release staging,
+not a final publication authority. It constructs a bounded metadata bundle from
+the current source descriptor plus `Cargo.toml`. The owner reloads the exact
+tenant-scoped completed build, validates and stores that bundle by its own
+SHA-256, creates an immutable deterministic publish request, binds the build's
+source, Component, and OCI receipt identities, and queues registry validation.
+The metadata-bundle digest is never compared with or substituted for the
+Component payload digest or OCI manifest digest. Build-service attestation,
+platform admission, marketplace approval, and final release creation remain
+reserved owner operations outside the author CLI.
+
+Production publication evidence is composed by the independent
+`rustok-registry-validation-worker`, not by `apps/server`. The worker reloads the
+exact completed build and current publication stage through the owner, obtains a
+short-lived registry credential lease from a deployment-owned broker, fetches
+and revalidates the digest-pinned OCI package, and calls the isolated trust
+verifier through readiness-gated mTLS. It records the build-service attestation
+and platform-admission facts only through owner operations. This keeps registry
+credentials and trust roots outside the server, Alloy, MCP, AI, and module
+runtime while preserving one canonical publication authority.
+
+Rust components use the current native Rust Component Model path: pinned Cargo
+builds the SDK-generated guest against `wasm32-wasip2`, and `wasm-tools`
+performs post-build inspection. `cargo-component` is not a parallel or fallback
+build path. This follows the current Bytecode Alliance guidance that native
+Rust tooling emits WASI P2 components directly.
+
 The delivery host is a separate broker consumer. It owns broker
 acknowledgement and the database connection required to call the owner delivery
 service; it does not execute Cargo or join the worker process. It invokes the
@@ -52,6 +118,10 @@ operational requirements.
   contract change replaces callers and workers atomically in this initial
   implementation.
 - A worker binary can be deployed and supervised independently of the server.
+- Author source declares policy and bindings, while only the worker can bind
+  the final descriptor to the verified executable digest.
+- SDK and template releases remain independently versioned provenance inputs;
+  neither duplicates the canonical WIT source.
 - Verification and build workers share one mTLS listener implementation rather
   than drifting into separate TLS/limit defaults.
 - The delivery host must not compete with the global outbox relay or

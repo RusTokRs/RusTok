@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     AlloyDraftRuntime, Scheduler, ScriptEngine, ScriptExecutor, ScriptOrchestrator,
-    SeaOrmExecutionLog, SeaOrmStorage, create_default_alloy_draft_runtime, create_default_engine,
+    SeaOrmExecutionLog, SeaOrmStorage, create_default_engine,
 };
 
 #[derive(Clone)]
@@ -49,9 +49,11 @@ impl AlloyRuntime {
     }
 }
 
-pub fn build_alloy_runtime(db: DatabaseConnection) -> Arc<AlloyRuntime> {
+pub fn build_alloy_runtime(
+    db: DatabaseConnection,
+    sandbox: AlloyDraftRuntime,
+) -> Arc<AlloyRuntime> {
     let engine = Arc::new(create_default_engine());
-    let sandbox = create_default_alloy_draft_runtime();
     let storage = Arc::new(SeaOrmStorage::new(db.clone()));
     let execution_log = Arc::new(SeaOrmExecutionLog::new(db));
 

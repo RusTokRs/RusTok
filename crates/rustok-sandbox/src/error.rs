@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{CapabilityName, SandboxExecutorKind};
 
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "details", rename_all = "snake_case")]
 pub enum SandboxError {
     #[error("sandbox request is invalid: {0}")]
     InvalidRequest(String),
@@ -18,7 +20,7 @@ pub enum SandboxError {
         reason: String,
     },
     #[error("sandbox capability call {field} does not match the active execution")]
-    CapabilityContextMismatch { field: &'static str },
+    CapabilityContextMismatch { field: String },
     #[error("sandbox compilation failed: {0}")]
     Compilation(String),
     #[error("sandbox execution trapped: {0}")]
