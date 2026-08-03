@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, Statement,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use rustok_api::{Action, Resource};
 
 use crate::dto::ForumUserStatsResponse;
 use crate::entities::forum_user_stat;
-use crate::error::ForumResult;
+use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 
 pub struct UserStatsService {
@@ -79,6 +79,39 @@ impl UserStatsService {
         delta: i32,
     ) -> ForumResult<()> {
         Self::adjust_counts_in_tx(txn, tenant_id, user_id, 0, 0, delta).await
+    }
+
+    pub(crate) async fn decrement_solution_count_exact_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> ForumResult<()> {
+        let Some(user_id) = user_id else {
+            return Ok(());
+        };
+        let statement = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE forum_user_stats SET solution_count = solution_count - 1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND user_id = $2 AND solution_count > 0",
+                vec![tenant_id.into(), user_id.into()],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE forum_user_stats SET solution_count = solution_count - 1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND user_id = ? AND solution_count > 0",
+                vec![tenant_id.into(), user_id.into()],
+            ),
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum exact solution statistic decrement does not support database backend {backend:?}"
+                )));
+            }
+        };
+        if txn.execute(statement).await?.rows_affected() != 1 {
+            return Err(ForumError::Validation(
+                "Forum solution author statistic is inconsistent".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     async fn adjust_counts_in_tx(
