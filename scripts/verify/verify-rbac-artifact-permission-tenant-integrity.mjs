@@ -1,91 +1,102 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import process from "node:process";
 
 const root = process.cwd();
-const read = (relative) => readFileSync(path.join(root, relative), "utf8");
-const requireText = (source, text, label) => {
-  if (!source.includes(text)) {
-    throw new Error(`${label}: missing ${JSON.stringify(text)}`);
+const load = (file) => readFileSync(path.join(root, file), "utf8");
+const failures = [];
+const requireAll = (file, markers) => {
+  const source = load(file);
+  for (const marker of markers) {
+    if (!source.includes(marker)) failures.push(`${file}: missing ${marker}`);
+  }
+  return source;
+};
+const forbidAll = (file, markers) => {
+  const source = load(file);
+  for (const marker of markers) {
+    if (source.includes(marker)) failures.push(`${file}: forbidden ${marker}`);
   }
 };
 
-const migration = read(
-  "crates/rustok-rbac/src/m20260801_000001_enforce_artifact_permission_tenant_integrity.rs",
-);
-const exports = read("crates/rustok-rbac/src/lib.rs");
-const owner = read("crates/rustok-rbac/src/artifact_permission_assignment.rs");
-const sqliteProof = read(
-  "crates/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs",
-);
+const catalogMigration =
+  "crates/rustok-rbac/src/m20260716_000001_artifact_permission_catalog.rs";
+const grantMigration =
+  "crates/rustok-rbac/src/m20260717_000001_artifact_role_permissions.rs";
+const correctiveMigration =
+  "crates/rustok-rbac/src/m20260801_000001_enforce_artifact_permission_tenant_integrity.rs";
+const owner = "crates/rustok-rbac/src/artifact_permission_assignment.rs";
+const catalog = "crates/rustok-rbac/src/artifact_permission_catalog.rs";
+const exports = "crates/rustok-rbac/src/lib.rs";
+const sqliteProof =
+  "crates/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs";
 
-for (const text of [
-  "m20260801_000001_enforce_artifact_permission_tenant_integrity",
-  "m20260717_000001_artifact_role_permissions::Migration",
-  "m20260801_000001_enforce_artifact_permission_tenant_integrity::Migration",
-]) {
-  requireText(exports, text, "migration registration");
+if (existsSync(path.join(root, correctiveMigration))) {
+  failures.push(`${correctiveMigration}: superseded corrective migration must be deleted`);
 }
-const tableMigration = exports.indexOf(
+requireAll(exports, [
+  "m20260716_000001_artifact_permission_catalog::Migration",
   "m20260717_000001_artifact_role_permissions::Migration",
-);
-const integrityMigration = exports.indexOf(
-  "m20260801_000001_enforce_artifact_permission_tenant_integrity::Migration",
-);
-if (!(tableMigration < integrityMigration)) {
-  throw new Error("artifact integrity migration must run after artifact tables exist");
-}
+]);
+forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integrity"]);
 
-for (const text of [
-  "DELETE FROM rbac_artifact_role_permissions",
-  "DELETE FROM rbac_artifact_role_permission_operations",
+requireAll(catalogMigration, [
+  "CREATE TABLE rbac_artifact_permission_definitions",
+  "UNIQUE (scope_key, installation_id, permission_key)",
+  "CREATE TABLE rbac_artifact_permission_translations",
+  "locale VARCHAR(32) NOT NULL",
+  "REFERENCES rbac_artifact_permission_definitions (id)",
+]);
+forbidAll(catalogMigration, ["CREATE TABLE rbac_artifact_permission_catalog"]);
+
+requireAll(grantMigration, [
+  "uq_rbac_roles_tenant_id_id",
+  "uq_rbac_users_tenant_id_id",
+  "FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id)",
+  "FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id)",
+  "FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id)",
+  "FOREIGN KEY (artifact_permission_id) REFERENCES rbac_artifact_permission_definitions (id)",
+  "UNIQUE (tenant_id, role_id, artifact_permission_id)",
+]);
+forbidAll(grantMigration, [
   "rustok_enforce_artifact_role_permission_integrity",
-  "rustok_enforce_artifact_role_permission_operation_integrity",
-  "trg_rbac_users_tenant_update",
-  "trg_rbac_roles_tenant_update",
-  "trg_rbac_artifact_role_delete",
-  "trg_rbac_artifact_actor_delete",
-  "trg_rbac_artifact_permission_catalog_identity_update",
-  "trg_rbac_artifact_permission_catalog_delete",
-  "RBAC referenced artifact permission identity is immutable",
-  "sqlite_trigger_names() -> [&'static str; 10]",
-  "sqlite_triggers() -> [&'static str; 10]",
-]) {
-  requireText(migration, text, "artifact tenant integrity migration");
-}
+  "trg_rbac_artifact_role_permissions_integrity",
+]);
 
-const existing = owner.indexOf("find_operation(&transaction, &command)");
-const role = owner.indexOf("if !role_exists(&transaction, &command).await?");
-const permission = owner.indexOf(
-  "if !permission_is_registered(&transaction, &command).await?",
-);
-const insert = owner.indexOf("insert_operation(&transaction, &command)");
-if (!(existing < role && role < permission && permission < insert)) {
-  throw new Error(
-    "owner ordering must be existing receipt -> typed role/catalog validation -> receipt insert",
-  );
-}
-requireText(
-  owner,
-  "database-integrity\n        // triggers preserve the stable RoleNotFound/PermissionNotRegistered contract",
-  "stable typed error contract",
-);
+requireAll(catalog, [
+  "definition_insert_sql",
+  "definition_select_sql",
+  "translation_upsert_sql",
+  "rbac.artifact_permission_identity_conflict",
+  "localization.locale.len() > 32",
+]);
+requireAll(owner, [
+  "resolve_artifact_permission_id(&transaction, &command).await?",
+  "artifact_permission_id: Uuid",
+  "INNER JOIN rbac_artifact_permission_definitions apd",
+  "ORDER BY CASE WHEN scope_key = {tenant_scope} THEN 0 ELSE 1 END",
+  "ON CONFLICT (tenant_id, role_id, artifact_permission_id) DO NOTHING",
+]);
+forbidAll(owner, ["permission_is_registered", "rbac_artifact_permission_catalog"]);
 
-for (const text of [
-  "migration_cleans_legacy_malformed_artifact_rows",
+requireAll(sqliteProof, [
+  "artifact integrity must remain consolidated in canonical migrations",
   "database_rejects_cross_tenant_and_orphan_artifact_state",
-  "module_slug, release_digest, permission_key, locale, label, description, registered_at",
-  "UPDATE rbac_artifact_permission_catalog SET label = 'Updated label'",
+  "PRAGMA foreign_keys = ON",
+  "rbac_artifact_permission_definitions",
+  "rbac_artifact_permission_translations",
   "UPDATE roles SET tenant_id",
   "UPDATE users SET tenant_id",
   "DELETE FROM roles WHERE id",
   "DELETE FROM users WHERE id",
-  "UPDATE rbac_artifact_permission_catalog SET permission_key",
-  "DELETE FROM rbac_artifact_permission_catalog",
-]) {
-  requireText(sqliteProof, text, "SQLite artifact integrity proof");
-}
+  "UPDATE rbac_artifact_permission_definitions SET permission_key",
+  "DELETE FROM rbac_artifact_permission_definitions",
+]);
 
+if (failures.length > 0) {
+  console.error("RBAC artifact permission tenant-integrity verification failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 console.log("RBAC artifact permission tenant-integrity source contract verified");
