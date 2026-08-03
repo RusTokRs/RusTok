@@ -45,6 +45,7 @@ pub mod forum_topic_channel_access;
 pub mod forum_topic_merge_audience_reconciliation;
 pub mod forum_topic_merge_operation;
 pub mod forum_topic_merge_read_state_reconciliation;
+pub mod forum_topic_merge_solution_resolution;
 pub mod forum_topic_merge_subscription_reconciliation;
 pub mod forum_topic_merge_tag_reconciliation;
 pub mod forum_topic_merge_vote_reconciliation;
@@ -83,6 +84,7 @@ pub use forum_topic_merge_audience_reconciliation::{
 };
 pub use forum_topic_merge_operation::Entity as ForumTopicMergeOperationEntity;
 pub use forum_topic_merge_read_state_reconciliation::Entity as ForumTopicMergeReadStateReconciliationEntity;
+pub use forum_topic_merge_solution_resolution::Entity as ForumTopicMergeSolutionResolutionEntity;
 pub use forum_topic_merge_subscription_reconciliation::Entity as ForumTopicMergeSubscriptionReconciliationEntity;
 pub use forum_topic_merge_tag_reconciliation::Entity as ForumTopicMergeTagReconciliationEntity;
 pub use forum_topic_merge_vote_reconciliation::Entity as ForumTopicMergeVoteReconciliationEntity;

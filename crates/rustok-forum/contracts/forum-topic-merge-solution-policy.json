@@ -1,43 +1,64 @@
 {
   "contract": "forum_topic_merge_solution_policy_v1",
   "task": "FORUM-21H",
+  "latest_resolution_slice": "FORUM-21L",
   "parent_task": "FORUM-21",
   "extends": "FORUM-21B",
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
   "owner_service": "ForumTopicMergeService",
-  "operation": "merge_topic",
-  "migration": "m20260803_000016_add_forum_topic_merge_solution_policy",
+  "ordinary_operation": "merge_topic",
+  "explicit_resolution_operation": "merge_topic_resolving_solution",
+  "solution_policy_migration": "m20260803_000016_add_forum_topic_merge_solution_policy",
+  "resolution_audit_migration": "m20260803_000018_add_forum_topic_merge_solution_resolution",
   "solution_table": "forum_solutions",
   "lock_table": "forum_topic_solution_locks",
+  "resolution_audit_table": "forum_topic_merge_solution_resolutions",
   "shared_lock_helper": "topic_solution_lock::lock_topic_solution_scopes_in_tx",
   "postgres_advisory_seed": 31,
   "conflict": {
     "error": "TopicMergeSolutionConflict",
     "stable_code": "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
     "operation_id_is_reported": true,
-    "retryable": false
+    "retryable": false,
+    "ordinary_merge_remains_fail_closed": true
   },
   "policy_matrix": [
     {
       "source": "none",
       "target": "none",
+      "selection": "none",
       "outcome": "merge_without_solution_mutation"
     },
     {
       "source": "none",
       "target": "accepted_solution",
+      "selection": "none",
       "outcome": "preserve_target_solution"
     },
     {
       "source": "accepted_solution",
       "target": "none",
+      "selection": "none",
       "outcome": "transfer_source_solution_to_target"
     },
     {
       "source": "accepted_solution",
       "target": "accepted_solution",
+      "selection": "none",
       "outcome": "fail_before_mutation"
+    },
+    {
+      "source": "accepted_solution",
+      "target": "accepted_solution",
+      "selection": "source_solution_reply_id",
+      "outcome": "transfer_source_winner_and_reject_target"
+    },
+    {
+      "source": "accepted_solution",
+      "target": "accepted_solution",
+      "selection": "target_solution_reply_id",
+      "outcome": "preserve_target_winner_and_reject_source"
     }
   ],
   "transfer_invariants": [
@@ -49,23 +70,36 @@
     "marked_by_user_id is preserved exactly including null",
     "marked_at is preserved exactly",
     "the transferred target relation is revalidated before topic lifecycle event receipt and invalidation writes",
-    "forum_user_stats.solution_count is not adjusted because accepted reply identity and author do not change"
+    "ordinary source-only transfer does not adjust solution_count because accepted reply identity and author do not change"
+  ],
+  "resolution_invariants": [
+    "the explicit selection is accepted only when both valid competing solutions exist",
+    "the selected reply must equal the exact source or target solution reply identity",
+    "source selection deletes both markers and reinserts the source marker on the target unchanged",
+    "target selection deletes the source marker and preserves the target marker unchanged",
+    "the rejected reply author receives one exact solution_count decrement when non-anonymous",
+    "the selected reply author receives no solution_count delta",
+    "the immutable decision is stored in an append-only audit row linked to the merge receipt",
+    "the forum.topic.merged event remains exact schema version 1 with unchanged payload",
+    "selection drift and ordinary-versus-resolved replay drift fail with FORUM_TOPIC_MERGE_OPERATION_CONFLICT"
   ],
   "atomicity": {
-    "competing_solution_conflict_precedes_solution_delete": true,
-    "competing_solution_conflict_precedes_reply_move": true,
-    "competing_solution_conflict_precedes_topic_archive": true,
-    "competing_solution_conflict_precedes_semantic_event": true,
-    "competing_solution_conflict_precedes_receipt": true,
-    "competing_solution_conflict_precedes_projection_invalidation": true,
-    "transfer_commits_with_existing_merge_transaction": true,
-    "exact_merge_replay_adds_no_solution_mutation": true
+    "ordinary_competing_solution_conflict_precedes_solution_delete": true,
+    "ordinary_competing_solution_conflict_precedes_reply_move": true,
+    "ordinary_competing_solution_conflict_precedes_topic_archive": true,
+    "ordinary_competing_solution_conflict_precedes_semantic_event": true,
+    "ordinary_competing_solution_conflict_precedes_receipt": true,
+    "ordinary_competing_solution_conflict_precedes_projection_invalidation": true,
+    "invalid_explicit_selection_precedes_all_mutation": true,
+    "winner_selection_marker_changes_loser_statistic_receipt_and_audit_commit_with_existing_merge_transaction": true,
+    "exact_merge_replay_adds_no_solution_statistic_or_audit_mutation": true
   },
   "serialization": {
     "merge_locks_sorted_topic_rows_before_sorted_solution_scopes": true,
     "mark_solution_locks_scope_before_reply_and_current_marker_reads": true,
     "clear_solution_locks_scope_before_current_marker_and_author_reads": true,
     "stats_delta_is_computed_under_the_same_solution_scope": true,
+    "negative_solution_statistic_transition_is_atomic_and_exact": true,
     "direct_writers_are_guarded_by_database_triggers": true,
     "sqlite_serializes_all_solution_updates_including_marker_only_updates": true
   },
@@ -75,33 +109,50 @@
     "insert_or_owner_key_update_requires_approved_non_deleted_reply": true,
     "reply_must_belong_to_exact_tenant_and_topic": true,
     "ordinary_solution_mutations_share_merge_solution_scope": true,
-    "solution_delete_remains_allowed": true
+    "solution_delete_remains_allowed": true,
+    "negative_solution_statistic_requires_existing_positive_count": true,
+    "resolution_audit_is_tenant_operation_unique": true,
+    "resolution_audit_references_immutable_receipt": true,
+    "resolution_audit_reply_and_author_identities_are_tenant_composite_foreign_keys": true,
+    "resolution_audit_selection_pair_is_checked": true,
+    "resolution_audit_is_append_only": true
   },
   "compatibility": {
-    "merge_input_changed": false,
+    "ordinary_merge_input_changed": false,
     "merge_result_changed": false,
     "merge_receipt_changed": false,
     "forum_topic_merged_event_changed": false,
+    "forum_topic_merged_schema_version": 1,
     "shared_rustok_events_contract_changed": false,
+    "existing_post_merge_reconciliation_owners_changed": false,
     "existing_projection_invalidation_targets_changed": false,
-    "public_transport_added": false
+    "graphql_resolution_transport_added": true,
+    "rest_transport_added": false,
+    "resolution_audit_migration_added": true
   },
   "test": "crates/rustok-forum/tests/topic_merge_sqlite.rs",
+  "resolution_test": "crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
+  "resolution_graphql_test": "crates/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
   "cumulative_contract": "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
+  "resolution_contract": "crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
   "documentation": "crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
+  "resolution_documentation": "crates/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
   "cumulative_documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   "verifier": "scripts/verify/verify-forum-topic-merge-solution-policy.mjs",
+  "resolution_verifier": "scripts/verify/verify-forum-topic-merge-solution-resolution.mjs",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-owner.mjs",
     "node scripts/verify/verify-forum-topic-merge-solution-policy.mjs",
-    "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture"
+    "node scripts/verify/verify-forum-topic-merge-solution-resolution.mjs",
+    "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture",
+    "cargo test -p rustok-forum --test topic_merge_solution_resolution_sqlite -- --nocapture",
+    "cargo test -p rustok-forum --test topic_merge_solution_resolution_graphql_contract -- --nocapture"
   ],
   "non_claims": [
     "no verifier test formatter Cargo command workflow or CI run is claimed",
     "no PostgreSQL concurrency execution is claimed",
-    "no explicit winner selection for two accepted solutions is added",
-    "no public transport is added",
-    "no canonical alias redirect cross-category split fork or reply-range workflow is added",
+    "no REST native admin storefront CLI or UI resolution command is added",
+    "no canonical alias cross-category split fork or reply-range workflow is added",
     "FORUM-21 is not promoted from planned"
   ]
 }

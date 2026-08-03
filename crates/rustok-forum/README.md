@@ -42,10 +42,22 @@
   authorization-safe `308 Permanent Redirect` for a merged source and keeps the
   existing `200 TopicResponse` for a direct target. Slug aliases and localized
   public routes are not part of the current contract.
-- The manager-only GraphQL mutation `mergeForumTopic` composes the same
-  idempotent `ForumTopicMergeService` owner, derives tenant authority from the
-  routed request, requires `forum_topics:manage`, and returns the immutable merge
-  receipt instead of duplicating merge logic or hydrating a topic response.
+- The manager-only GraphQL mutation `mergeForumTopic` composes the idempotent
+  `ForumTopicMergeService` owner, derives tenant authority from the routed
+  request, requires `forum_topics:manage`, and returns the immutable merge
+  receipt instead of hydrating a topic response.
+- `mergeForumTopicResolvingSolution` composes the same owner transaction for two
+  valid competing accepted solutions. The manager selects one exact accepted
+  reply ID; the winning marker metadata is preserved, the losing author receives
+  one exact solution-count decrement, and an append-only
+  `forum_topic_merge_solution_resolutions` row records the decision through the
+  immutable merge receipt.
+- Resolved and ordinary merges retain the exact `forum.topic.merged` schema-1
+  event contract so subscription, read-state, tag, vote and audience
+  reconciliation owners remain unchanged.
+- Negative solution-count transitions fail closed unless one existing positive
+  contribution can be decremented atomically; they no longer silently saturate
+  inconsistent state at zero.
 - Shares SEO target ownership with `rustok-seo`: the shared SEO runtime now resolves
   `forum_category` and `forum_topic`, while owner-side SEO authoring stays embedded
   in `rustok-forum-admin`; public SEO for channel-restricted topics is resolved only
@@ -59,25 +71,25 @@
 - Declares permissions via `rustok-core::Permission`.
 - Transport adapters validate forum permissions against `AuthContext.permissions`, then pass
   a permission-aware `SecurityContext` into forum services.
-- Forum services now re-validate category/topic/reply/moderation permissions locally, so
-  transport bugs can no longer bypass forum mutation or moderation policy.
-- Topic solution marking now lives in forum-owned services and transport adapters; only
+- Forum services re-validate category/topic/reply/moderation permissions locally, so
+  transport bugs cannot bypass forum mutation or moderation policy.
+- Topic solution marking lives in forum-owned services and transport adapters; only
   approved replies can become solutions, and the read-path exposes `solution_reply_id`
   on topics plus `is_solution` on replies.
-- Topic and reply voting now lives in forum-owned services and transport adapters; the
+- Topic and reply voting lives in forum-owned services and transport adapters; the
   read-path exposes `vote_score` plus viewer-specific `current_user_vote`, while
   GraphQL/REST can set or clear votes without expanding the module permission surface.
-- Category and topic subscriptions now live in forum-owned services and transport
+- Category and topic subscriptions live in forum-owned services and transport
   adapters; the read-path exposes viewer-specific `is_subscribed`, and GraphQL/REST
   can subscribe or unsubscribe without introducing a new permission family.
-- Per-user forum stats now live in forum-owned services and transport adapters; the
+- Per-user forum stats live in forum-owned services and transport adapters; the
   module tracks `topic_count`, `reply_count`, and `solution_count` through topic/reply
   lifecycle and accepted-solution transitions, and exposes a dedicated read-path for
   user-level stats.
-- Topic tag write-paths now resolve existing global taxonomy tags before creating
+- Topic tag write-paths resolve existing global taxonomy tags before creating
   new forum-local terms, while forum responses still expose the same `Vec<String>`
   tag contract.
-- Topic metadata now participates in the same multilingual attached-value contract as
+- Topic metadata participates in the same multilingual attached-value contract as
   other live Flex donors: shared keys stay in `forum_topics.metadata`, locale-aware
   keys persist in `flex_attached_localized_values`, and read surfaces resolve them
   against the effective locale/fallback chain instead of treating topic custom fields
@@ -93,10 +105,14 @@
 - `SubscriptionService`
 - `UserStatsService`
 - `VoteService`
+- `ForumTopicMergeService::merge_topic`
+- `ForumTopicMergeService::merge_topic_resolving_solution`
 - `graphql::ForumQuery`
 - `graphql::ForumMutation`
 - `graphql::MergeForumTopicGraphqlInput`
+- `graphql::ResolveForumTopicMergeSolutionGraphqlInput`
 - `graphql::GqlForumTopicMerge`
+- `graphql::GqlForumTopicMergeSolutionResolution`
 - `controllers::axum_router`
 - `admin::ForumAdmin` (publishable Leptos package)
 - `storefront::ForumView` (publishable Leptos package)
@@ -111,6 +127,9 @@ into README files, issues, or additional planning documents.
 
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
+- [Merge owner](./docs/forum-21b-topic-merge-owner.md)
+- [Accepted-solution policy](./docs/forum-21h-topic-merge-solution-policy.md)
+- [Competing solution resolution](./docs/forum-21l-topic-merge-solution-resolution.md)
 - [Canonical merged-topic resolution and HTTP redirect](./docs/forum-21i-topic-canonical-resolution.md)
 - [Topic merge GraphQL transport](./docs/forum-21k-topic-merge-graphql-transport.md)
 - [Platform docs index](../../docs/index.md)
