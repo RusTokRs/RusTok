@@ -1,13 +1,9 @@
 use std::collections::HashSet;
 
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::forum_topic_merge_operation;
 use crate::error::{ForumError, ForumResult};
 
 pub const MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS: usize = 32;
@@ -19,6 +15,17 @@ pub struct ForumTopicCanonicalResolution {
     pub redirected: bool,
     pub hop_count: u32,
     pub merge_operation_ids: Vec<Uuid>,
+}
+
+#[derive(Clone, Copy)]
+struct ForumTopicCanonicalEdge {
+    operation_id: Uuid,
+    target_topic_id: Uuid,
+}
+
+struct ForumTopicCanonicalStep {
+    topic_exists: bool,
+    edges: Vec<ForumTopicCanonicalEdge>,
 }
 
 pub(crate) struct ForumTopicCanonicalResolutionService {
@@ -40,18 +47,21 @@ impl ForumTopicCanonicalResolutionService {
         let mut visited = HashSet::from([requested_topic_id]);
 
         loop {
-            let edges = forum_topic_merge_operation::Entity::find()
-                .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
-                .filter(
-                    forum_topic_merge_operation::Column::SourceTopicId.eq(canonical_topic_id),
-                )
-                .order_by_asc(forum_topic_merge_operation::Column::OperationId)
-                .limit(2)
-                .all(&self.db)
-                .await?;
+            let step = load_resolution_step(
+                &self.db,
+                tenant_id,
+                canonical_topic_id,
+                requested_topic_id,
+            )
+            .await?;
 
-            match edges.as_slice() {
-                [] => break,
+            match step.edges.as_slice() {
+                [] => {
+                    if !step.topic_exists {
+                        return Err(ForumError::TopicNotFound(requested_topic_id));
+                    }
+                    break;
+                }
                 [edge] => {
                     if merge_operation_ids.len() >= MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS
                         || !visited.insert(edge.target_topic_id)
@@ -71,10 +81,6 @@ impl ForumTopicCanonicalResolutionService {
             }
         }
 
-        if !topic_exists(&self.db, tenant_id, canonical_topic_id).await? {
-            return Err(ForumError::TopicNotFound(requested_topic_id));
-        }
-
         Ok(ForumTopicCanonicalResolution {
             requested_topic_id,
             canonical_topic_id,
@@ -87,21 +93,67 @@ impl ForumTopicCanonicalResolutionService {
     }
 }
 
-async fn topic_exists(
+async fn load_resolution_step(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     topic_id: Uuid,
-) -> ForumResult<bool> {
+    requested_topic_id: Uuid,
+) -> ForumResult<ForumTopicCanonicalStep> {
     let statement = match db.get_database_backend() {
         DatabaseBackend::Postgres => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT 1 FROM forum_topics WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+            r#"
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM forum_topics topic
+                    WHERE topic.tenant_id = $1
+                      AND topic.id = $2
+                      AND topic.deleted_at IS NULL
+                ) AS topic_exists,
+                edge.operation_id,
+                edge.target_topic_id
+            FROM (SELECT 1) AS seed
+            LEFT JOIN (
+                SELECT operation_id, target_topic_id
+                FROM forum_topic_merge_operations
+                WHERE tenant_id = $1
+                  AND source_topic_id = $2
+                ORDER BY operation_id
+                LIMIT 2
+            ) AS edge ON TRUE
+            "#,
             vec![tenant_id.into(), topic_id.into()],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "SELECT 1 FROM forum_topics WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL",
-            vec![tenant_id.into(), topic_id.into()],
+            r#"
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM forum_topics topic
+                    WHERE topic.tenant_id = ?
+                      AND topic.id = ?
+                      AND topic.deleted_at IS NULL
+                ) AS topic_exists,
+                edge.operation_id,
+                edge.target_topic_id
+            FROM (SELECT 1) AS seed
+            LEFT JOIN (
+                SELECT operation_id, target_topic_id
+                FROM forum_topic_merge_operations
+                WHERE tenant_id = ?
+                  AND source_topic_id = ?
+                ORDER BY operation_id
+                LIMIT 2
+            ) AS edge ON 1 = 1
+            "#,
+            vec![
+                tenant_id.into(),
+                topic_id.into(),
+                tenant_id.into(),
+                topic_id.into(),
+            ],
         ),
         backend => {
             return Err(ForumError::Validation(format!(
@@ -109,5 +161,34 @@ async fn topic_exists(
             )));
         }
     };
-    Ok(db.query_one(statement).await?.is_some())
+
+    let rows = db.query_all(statement).await?;
+    let Some(first) = rows.first() else {
+        return Err(ForumError::TopicCanonicalResolutionConflict(
+            requested_topic_id,
+        ));
+    };
+    let topic_exists = first.try_get("", "topic_exists")?;
+    let mut edges = Vec::new();
+    for row in rows {
+        let operation_id: Option<Uuid> = row.try_get("", "operation_id")?;
+        let target_topic_id: Option<Uuid> = row.try_get("", "target_topic_id")?;
+        match (operation_id, target_topic_id) {
+            (Some(operation_id), Some(target_topic_id)) => edges.push(ForumTopicCanonicalEdge {
+                operation_id,
+                target_topic_id,
+            }),
+            (None, None) => {}
+            _ => {
+                return Err(ForumError::TopicCanonicalResolutionConflict(
+                    requested_topic_id,
+                ));
+            }
+        }
+    }
+
+    Ok(ForumTopicCanonicalStep {
+        topic_exists,
+        edges,
+    })
 }
