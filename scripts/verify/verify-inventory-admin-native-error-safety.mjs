@@ -125,7 +125,7 @@ for (const endpoint of [
 
 requireCount(adapter, ".map_err(|error| auth_context_error", 8, "auth extraction mapping");
 requireCount(adapter, ".map_err(|error| tenant_context_error", 8, "tenant extraction mapping");
-requireCount(adapter, "inventory_owner_error(", 7, "owner operation mapping");
+requireCount(adapter, "inventory_owner_error(", 8, "owner mapper definition and calls");
 requireCount(
   adapter,
   "inventory_admin_correlation_id(owner_operation)",
@@ -156,7 +156,7 @@ for (const preserved of [
 
 requireText(
   clientGuard,
-  "inventory admin client transport",
+  "Inventory Admin client transport error-safety verification failed",
   `${paths.clientGuard}: prior client guard remains present`,
 );
 
@@ -253,5 +253,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Inventory admin native endpoints retain static public envelopes and bounded type-only diagnostics; execution evidence remains open",
+  "Inventory admin native endpoints use static public envelopes with bounded type-only diagnostics; execution evidence remains open",
 );
