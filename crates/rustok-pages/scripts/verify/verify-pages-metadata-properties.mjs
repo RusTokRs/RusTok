@@ -16,13 +16,12 @@ const providerContract = read(contract.provider.contract_source);
 const providerPanel = read(contract.provider.panel_source);
 const providerModuleExport = read(contract.provider.module_export_source);
 const providerPanelExport = read(contract.provider.panel_export_source);
-const providerFacade = read(contract.provider.facade_source);
 const providerCanvas = read(contract.provider.composition_source);
 const pagesContributions = read(contract.pages_consumer.contribution_source);
 const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
 const pagesBoundary = read(contract.pages_consumer.composition_source);
+const pagesWorkspace = read(contract.pages_consumer.workspace_source);
 const pagesPublishedSurface = read(contract.pages_consumer.published_surface_source);
-const pagesComposition = read(contract.pages_consumer.legacy_form.source);
 const parityPlan = read(contract.parity_plan);
 
 function fail(message) {
@@ -48,7 +47,7 @@ function requireOrderedMarkers(source, markers, label) {
 }
 
 if (
-  contract.status !== "published_surface_connected_legacy_form_pending" ||
+  contract.status !== "metadata_surface_cutover_complete" ||
   contract.format !== "page_builder_consumer_properties_v1" ||
   contract.pages_consumer.owner_persistence !== "pages" ||
   contract.pages_consumer.document_revision_independent !== true ||
@@ -57,6 +56,7 @@ if (
 ) {
   fail("consumer metadata property contract status or ownership is invalid");
 }
+
 if (
   JSON.stringify(contract.provider.identity_binding) !==
     JSON.stringify([
@@ -69,6 +69,7 @@ if (
 ) {
   fail("consumer property provider identity binding is invalid");
 }
+
 if (
   contract.provider.standalone_host_surface.component !== "ConsumerPropertiesPanel" ||
   contract.provider.standalone_host_surface.state !== "source_ready" ||
@@ -81,6 +82,7 @@ if (
 ) {
   fail("standalone consumer property host surface contract is invalid");
 }
+
 if (
   contract.pages_consumer.draft_surface.state !== "source_connected" ||
   contract.pages_consumer.draft_surface.host !== "fly_properties_column" ||
@@ -98,13 +100,15 @@ if (
 ) {
   fail("Pages draft or published metadata surface contract is invalid");
 }
+
 if (
-  contract.pages_consumer.legacy_form.state !== "pending_duplicate_removal" ||
+  contract.pages_consumer.legacy_form.state !== "removed" ||
   contract.pages_consumer.legacy_form.component !== "PageMetadataEditor" ||
-  contract.pages_consumer.legacy_form.unblocked_by !==
-    "published_registered_surface_connected"
+  contract.pages_consumer.legacy_form.direct_persistence_path_removed !== true ||
+  contract.pages_consumer.legacy_form.replacement !==
+    "registered_consumer_property_surfaces"
 ) {
-  fail("legacy metadata duplicate removal must remain explicit until the form is absent");
+  fail("legacy metadata cutover contract is invalid");
 }
 
 for (const marker of [
@@ -115,11 +119,6 @@ for (const marker of [
   "pub struct ConsumerPropertySaveReceipt",
   "pub trait ConsumerPropertyEditorPort: Send + Sync",
   "pub struct ConsumerPropertyEditorRuntime",
-  "pub provider: String",
-  "pub component_type: String",
-  "contribution.provider != self.provider",
-  "property_editor.provider != self.provider",
-  "property_editor.component_type != self.component_type",
   "verify_contribution(",
   "registered_schema != self.schema",
   "validate_values(&snapshot.values)",
@@ -164,18 +163,12 @@ requireMarker(
 );
 
 for (const marker of [
-  "fn consumer_properties(&self) -> Option<Arc<ConsumerPropertyEditorRuntime>>",
-  "None",
-]) {
-  requireMarker(providerFacade, marker, "optional Page Builder consumer property facade");
-}
-for (const marker of [
   "facade.consumer_properties()",
   "use_context::<Arc<ConsumerPropertyEditorRuntime>>()",
   "<ConsumerPropertiesPanel",
   "contribution_assembly=consumer_property_assembly",
 ]) {
-  requireMarker(providerCanvas, marker, "Page Builder consumer property composition");
+  requireMarker(providerCanvas, marker, "draft consumer property composition");
 }
 
 for (const marker of [
@@ -203,8 +196,6 @@ for (const field of contract.pages_consumer.fields) {
 
 for (const marker of [
   "pub fn pages_metadata_property_runtime(",
-  "PAGES_OWNER_PROVIDER",
-  "PAGES_METADATA_COMPONENT_TYPE",
   "impl ConsumerPropertyEditorPort for PagesMetadataPropertyPort",
   "fn load(&self) -> ConsumerPropertyLoadFuture",
   "fn save(&self, input: SaveConsumerPropertiesInput)",
@@ -277,20 +268,30 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "<PagesFlyBuilder",
+  "<PublishedDocumentLocked",
+]) {
+  requireMarker(pagesWorkspace, marker, "Pages workspace lifecycle composition");
+}
+for (const forbidden of [
+  "fn PageMetadataEditor(",
+  "<PageMetadataEditor",
+  "let page_for_metadata",
+  "transport::patch_page_metadata(",
+]) {
+  forbidMarker(pagesWorkspace, forbidden, "Pages legacy metadata workspace");
+}
+
+for (const marker of [
+  "Metadata UI cutover: source-complete",
   "Draft registered metadata surface: source-connected",
   "Published registered metadata surface: source-connected",
-  "Legacy PageMetadataEditor: pending duplicate removal",
-  "Remove the now-duplicated bespoke `PageMetadataEditor`",
+  "Legacy PageMetadataEditor: removed",
+  "Execution evidence remains pending",
 ]) {
   requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
 }
 
-const legacyFormPresent =
-  pagesComposition.includes("fn PageMetadataEditor(") ||
-  pagesComposition.includes("<PageMetadataEditor");
-if (!legacyFormPresent) {
-  fail("machine contract still says duplicate removal is pending, but the legacy form is absent");
-}
 console.log(
-  "[verify-pages-metadata-properties] PASS draft_surface_connected=true published_surface_connected=true legacy_duplicate_pending=true",
+  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true execution_evidence=pending",
 );
