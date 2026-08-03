@@ -74,6 +74,7 @@ assert.equal(contract.selected_read_cutover.list_reads_changed, false);
 assert.equal(contract.selected_read_cutover.mutation_target_resolution_changed, false);
 assert.equal(contract.error.stable_code, "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT");
 assert.equal(contract.error.http_status, 500);
+assert.equal(contract.error.retryable, false);
 assert.equal(contract.compatibility.topic_response_shape_changed, false);
 assert.equal(cumulativeContract.latest_policy_slice, "FORUM-21I");
 assert.equal(cumulativeContract.canonical_resolution.parallel_alias_store, false);
@@ -110,10 +111,10 @@ includesAll(
   [
     "TopicCanonicalResolutionConflict(Uuid)",
     '"FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT"',
-    "Self::TopicCanonicalResolutionConflict(_) => true",
   ],
   "ForumError",
 );
+assert.ok(!error.includes("Self::TopicCanonicalResolutionConflict(_) => true"));
 includesAll(
   service,
   [
@@ -239,6 +240,7 @@ includesAll(
     "at most 32 edges",
     "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
     "does not emit an HTTP 3xx status",
+    "non-retryable",
     "No command above was run by the implementation agent",
   ],
   "FORUM-21I handoff",
