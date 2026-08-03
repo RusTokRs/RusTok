@@ -63,8 +63,8 @@ and the same immutable `GqlForumTopicMerge` receipt projection.
 The resolver calls
 `ForumTopicMergeService::merge_topic_resolving_solution`. Selection validation,
 solution locking, marker mutation, exact losing-author statistic decrement,
-audit and replay remain inside the owner transaction. The GraphQL adapter does
-not inspect solution storage.
+append-only receipt-linked audit and replay remain inside the owner transaction.
+The GraphQL adapter does not inspect solution or audit storage.
 
 ## Authorization and tenant scope
 
@@ -79,16 +79,22 @@ Each resolver converts the authenticated permission snapshot into
 `SecurityContext`. The owner independently rechecks manage authority and the
 human actor requirement.
 
-## Idempotency and errors
+## Idempotency and compatibility
 
 The first accepted command stores one immutable receipt and one matching
-Forum-local semantic event. Ordinary merge uses event schema version 1.
-Competing-solution resolution uses schema version 2 with the immutable selected
-and rejected solution audit.
+Forum-local `forum.topic.merged` event. Both ordinary merge and explicit
+solution resolution preserve exact schema version 1 and its original payload.
+The selected/rejected decision is stored separately in
+`forum_topic_merge_solution_resolutions`, keyed by the receipt operation.
 
-Exact replay returns the same receipt. Source, target, actor, normalized reason,
-selected reply or ordinary-versus-resolved command-shape drift under the same
-operation ID fails with `FORUM_TOPIC_MERGE_OPERATION_CONFLICT`.
+This separation preserves the exact event contract expected by subscription,
+read-state, tag, vote and audience reconciliation owners. No compatibility
+branch is added to those owners.
+
+Exact replay validates the receipt, its schema-version-1 event and the optional
+append-only resolution audit. Source, target, actor, normalized reason, selected
+reply or ordinary-versus-resolved command-shape drift under the same operation
+ID fails with `FORUM_TOPIC_MERGE_OPERATION_CONFLICT`.
 
 Forum domain errors flow through `ForumGraphqlErrorExtension`. Mutations do not
 follow merged source identities: a stale source remains an exact owner
@@ -116,9 +122,11 @@ schema.
 - `selectedSolutionReplyId` exposure;
 - routed module/tenant/manage composition;
 - the exact owner method call;
-- absence of raw solution, receipt, canonical-resolution and topic-hydration
-  logic in the adapter;
-- one shared private transaction owner.
+- absence of raw solution, audit, receipt, canonical-resolution and
+  topic-hydration logic in the adapter;
+- one shared private transaction owner;
+- append-only audit entity/migration markers;
+- unchanged schema-version-1 merge event.
 
 The owner behavior is covered by
 `topic_merge_solution_resolution_sqlite`.
@@ -126,9 +134,9 @@ The owner behavior is covered by
 ## Compatibility and remaining work
 
 The ordinary field, input and result are unchanged. FORUM-21L is additive and
-adds no REST, native Leptos, CLI or UI transport. It does not change the merge
-receipt schema, ordinary event schema version 1, reads, redirects or projection
-targets.
+adds no REST, native Leptos, CLI or UI transport. It adds one owner-internal
+audit migration but does not change the merge receipt schema, merge event
+contract, reads, redirects, reconciliation owners or projection targets.
 
 The canonical `FORUM-21` entry remains `planned`. Remaining work includes
 maintainer execution and PostgreSQL evidence, native/admin merge composition and
