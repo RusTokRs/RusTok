@@ -27,11 +27,14 @@ use super::projection_invalidation::{
 };
 use super::rbac::enforce_scope;
 use super::topic_audience::load_policy_for_topic;
+use super::user_stats::UserStatsService;
 
 pub const MAX_FORUM_TOPIC_MERGE_REASON_LEN: usize = 500;
 pub const MAX_FORUM_TOPIC_MERGE_REPLIES: u64 = 500;
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 const FORUM_TOPIC_MERGED_AGGREGATE_TYPE: &str = "forum_topic";
+const FORUM_TOPIC_MERGED_SCHEMA_VERSION: i16 = 1;
+const FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION: i16 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MergeForumTopicInput {
@@ -57,10 +60,28 @@ pub struct ForumTopicMergeResult {
 }
 
 #[derive(Clone)]
-struct ForumTopicMergeSolutionTransfer {
+struct ForumTopicMergeSolutionCandidate {
     reply_id: Uuid,
+    reply_author_id: Option<Uuid>,
     marked_by_user_id: Option<Uuid>,
     marked_at: DateTimeWithTimeZone,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct ForumTopicMergeSolutionResolutionAudit {
+    source_solution_reply_id: Uuid,
+    target_solution_reply_id: Uuid,
+    selected_solution_reply_id: Uuid,
+    rejected_solution_reply_id: Uuid,
+    rejected_solution_author_id: Option<Uuid>,
+}
+
+struct ForumTopicMergeSolutionPlan {
+    source_solution_transfer: Option<ForumTopicMergeSolutionCandidate>,
+    delete_source_solution: bool,
+    delete_target_solution: bool,
+    losing_solution_author_id: Option<Uuid>,
+    audit: Option<ForumTopicMergeSolutionResolutionAudit>,
 }
 
 /// Idempotent same-category merge of one active source topic into one retained target topic.
@@ -68,9 +89,11 @@ struct ForumTopicMergeSolutionTransfer {
 /// The target identity and topic-owned policy remain authoritative. Reply identities and all
 /// reply-owned relations are retained while reply positions are shifted after the target's
 /// current maximum. A source-only accepted solution follows its unchanged reply identity and
-/// preserves its marker metadata; two accepted solutions require explicit resolution. The source
-/// topic becomes an archived, locked redirect-ready identity. Topic subscriptions, tags and
-/// topic-level audience relations are reconciled by their dedicated bounded policies.
+/// preserves its marker metadata. Competing accepted solutions require the explicit manager
+/// command, which selects one reply, audits both candidates in the immutable semantic event and
+/// decrements the losing reply author's solution statistic exactly once. The source topic becomes
+/// an archived, locked redirect-ready identity. Topic subscriptions, tags and topic-level audience
+/// relations are reconciled by their dedicated bounded policies.
 pub struct ForumTopicMergeService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -87,6 +110,42 @@ impl ForumTopicMergeService {
         tenant_id: Uuid,
         target_topic_id: Uuid,
         security: SecurityContext,
+        input: MergeForumTopicInput,
+    ) -> ForumResult<ForumTopicMergeResult> {
+        self.merge_topic_internal(tenant_id, target_topic_id, security, None, input)
+            .await
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn merge_topic_resolving_solution(
+        &self,
+        tenant_id: Uuid,
+        target_topic_id: Uuid,
+        security: SecurityContext,
+        selected_solution_reply_id: Uuid,
+        input: MergeForumTopicInput,
+    ) -> ForumResult<ForumTopicMergeResult> {
+        if selected_solution_reply_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Forum topic merge selected solution reply must not be nil".to_string(),
+            ));
+        }
+        self.merge_topic_internal(
+            tenant_id,
+            target_topic_id,
+            security,
+            Some(selected_solution_reply_id),
+            input,
+        )
+        .await
+    }
+
+    async fn merge_topic_internal(
+        &self,
+        tenant_id: Uuid,
+        target_topic_id: Uuid,
+        security: SecurityContext,
+        selected_solution_reply_id: Option<Uuid>,
         input: MergeForumTopicInput,
     ) -> ForumResult<ForumTopicMergeResult> {
         enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;
@@ -112,7 +171,15 @@ impl ForumTopicMergeService {
             {
                 return Err(ForumError::TopicMergeOperationConflict(input.operation_id));
             }
-            validate_existing_semantic_event_in_tx(&txn, &existing).await?;
+            let stored_resolution =
+                validate_existing_semantic_event_in_tx(&txn, &existing).await?;
+            if stored_resolution
+                .as_ref()
+                .map(|audit| audit.selected_solution_reply_id)
+                != selected_solution_reply_id
+            {
+                return Err(ForumError::TopicMergeOperationConflict(input.operation_id));
+            }
             txn.commit().await?;
             return Ok(operation_to_result(existing));
         }
@@ -164,16 +231,12 @@ impl ForumTopicMergeService {
             load_valid_solution_in_tx(&txn, tenant_id, source.id, "source").await?;
         let target_solution =
             load_valid_solution_in_tx(&txn, tenant_id, target.id, "target").await?;
-        if source_solution.is_some() && target_solution.is_some() {
-            return Err(ForumError::TopicMergeSolutionConflict(input.operation_id));
-        }
-        let source_solution_transfer = source_solution.map(|solution| {
-            ForumTopicMergeSolutionTransfer {
-                reply_id: solution.reply_id,
-                marked_by_user_id: solution.marked_by_user_id,
-                marked_at: solution.marked_at,
-            }
-        });
+        let solution_plan = plan_solution_merge(
+            input.operation_id,
+            selected_solution_reply_id,
+            source_solution.as_ref(),
+            target_solution.as_ref(),
+        )?;
 
         let source_reply_count = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -218,9 +281,22 @@ impl ForumTopicMergeService {
                 ForumError::Validation("Forum merged reply position overflow".to_string())
             })?;
 
-        if source_solution_transfer.is_some() {
-            delete_source_solution_in_tx(&txn, tenant_id, source.id).await?;
+        if solution_plan.delete_source_solution {
+            delete_solution_in_tx(&txn, tenant_id, source.id, "source").await?;
         }
+        if solution_plan.delete_target_solution {
+            delete_solution_in_tx(&txn, tenant_id, target.id, "target").await?;
+        }
+        if solution_plan.audit.is_some() {
+            UserStatsService::adjust_solution_count_in_tx(
+                &txn,
+                tenant_id,
+                solution_plan.losing_solution_author_id,
+                -1,
+            )
+            .await?;
+        }
+
         move_replies_in_tx(
             &txn,
             tenant_id,
@@ -230,8 +306,8 @@ impl ForumTopicMergeService {
             source_reply_count,
         )
         .await?;
-        if let Some(solution) = source_solution_transfer {
-            insert_transferred_solution_in_tx(&txn, tenant_id, target.id, &solution).await?;
+        if let Some(solution) = solution_plan.source_solution_transfer.as_ref() {
+            insert_transferred_solution_in_tx(&txn, tenant_id, target.id, solution).await?;
             let transferred =
                 load_valid_solution_in_tx(&txn, tenant_id, target.id, "transferred target")
                     .await?
@@ -275,7 +351,13 @@ impl ForumTopicMergeService {
             resulting_published_reply_count,
             position_offset,
             &reason,
+            solution_plan.audit.as_ref(),
         );
+        let schema_version = if solution_plan.audit.is_some() {
+            FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION
+        } else {
+            FORUM_TOPIC_MERGED_SCHEMA_VERSION
+        };
         forum_domain_event::ActiveModel {
             sequence_no: NotSet,
             event_id: Set(input.operation_id),
@@ -283,7 +365,7 @@ impl ForumTopicMergeService {
             aggregate_type: Set(FORUM_TOPIC_MERGED_AGGREGATE_TYPE.to_string()),
             aggregate_id: Set(target_topic_id),
             event_type: Set(FORUM_TOPIC_MERGED_EVENT_TYPE.to_string()),
-            schema_version: Set(1),
+            schema_version: Set(schema_version),
             actor_id: Set(Some(actor_id)),
             payload: Set(payload),
             created_at: Set(now.into()),
@@ -380,6 +462,80 @@ fn validate_merge_input(
         ));
     }
     Ok(reason.to_string())
+}
+
+fn plan_solution_merge(
+    operation_id: Uuid,
+    selected_solution_reply_id: Option<Uuid>,
+    source_solution: Option<&ForumTopicMergeSolutionCandidate>,
+    target_solution: Option<&ForumTopicMergeSolutionCandidate>,
+) -> ForumResult<ForumTopicMergeSolutionPlan> {
+    match (source_solution, target_solution, selected_solution_reply_id) {
+        (None, None, None) | (None, Some(_), None) => Ok(ForumTopicMergeSolutionPlan {
+            source_solution_transfer: None,
+            delete_source_solution: false,
+            delete_target_solution: false,
+            losing_solution_author_id: None,
+            audit: None,
+        }),
+        (Some(source), None, None) => Ok(ForumTopicMergeSolutionPlan {
+            source_solution_transfer: Some(source.clone()),
+            delete_source_solution: true,
+            delete_target_solution: false,
+            losing_solution_author_id: None,
+            audit: None,
+        }),
+        (Some(_), Some(_), None) => {
+            Err(ForumError::TopicMergeSolutionConflict(operation_id))
+        }
+        (Some(source), Some(target), Some(selected)) => {
+            let (
+                source_solution_transfer,
+                delete_target_solution,
+                losing_solution_author_id,
+                rejected_solution_reply_id,
+                rejected_solution_author_id,
+            ) = if selected == source.reply_id {
+                (
+                    Some(source.clone()),
+                    true,
+                    target.reply_author_id,
+                    target.reply_id,
+                    target.reply_author_id,
+                )
+            } else if selected == target.reply_id {
+                (
+                    None,
+                    false,
+                    source.reply_author_id,
+                    source.reply_id,
+                    source.reply_author_id,
+                )
+            } else {
+                return Err(ForumError::Validation(
+                    "Forum topic merge selected solution must identify one competing accepted reply"
+                        .to_string(),
+                ));
+            };
+            Ok(ForumTopicMergeSolutionPlan {
+                source_solution_transfer,
+                delete_source_solution: true,
+                delete_target_solution,
+                losing_solution_author_id,
+                audit: Some(ForumTopicMergeSolutionResolutionAudit {
+                    source_solution_reply_id: source.reply_id,
+                    target_solution_reply_id: target.reply_id,
+                    selected_solution_reply_id: selected,
+                    rejected_solution_reply_id,
+                    rejected_solution_author_id,
+                }),
+            })
+        }
+        (_, _, Some(_)) => Err(ForumError::Validation(
+            "Forum topic merge solution selection requires competing accepted solutions"
+                .to_string(),
+        )),
+    }
 }
 
 async fn lock_topic_merge_tenant_in_tx(
@@ -569,7 +725,7 @@ async fn load_valid_solution_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
     label: &str,
-) -> ForumResult<Option<forum_solution::Model>> {
+) -> ForumResult<Option<ForumTopicMergeSolutionCandidate>> {
     let solution = forum_solution::Entity::find()
         .filter(forum_solution::Column::TenantId.eq(tenant_id))
         .filter(forum_solution::Column::TopicId.eq(topic_id))
@@ -578,45 +734,41 @@ async fn load_valid_solution_in_tx(
     let Some(solution) = solution else {
         return Ok(None);
     };
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT 1 FROM forum_replies WHERE tenant_id = $1 AND topic_id = $2 AND id = $3 AND deleted_at IS NULL AND status = 'approved'",
-            vec![tenant_id.into(), topic_id.into(), solution.reply_id.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            "SELECT 1 FROM forum_replies WHERE tenant_id = ? AND topic_id = ? AND id = ? AND deleted_at IS NULL AND status = 'approved'",
-            vec![tenant_id.into(), topic_id.into(), solution.reply_id.into()],
-        ),
-        backend => {
-            return Err(ForumError::Validation(format!(
-                "Forum topic merge solution validation does not support database backend {backend:?}"
-            )));
-        }
-    };
-    if txn.query_one(statement).await?.is_none() {
+    let reply = forum_reply::Entity::find_by_id(solution.reply_id)
+        .filter(forum_reply::Column::TenantId.eq(tenant_id))
+        .filter(forum_reply::Column::TopicId.eq(topic_id))
+        .filter(forum_reply::Column::DeletedAt.is_null())
+        .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+        .one(txn)
+        .await?;
+    let Some(reply) = reply else {
         return Err(ForumError::Validation(format!(
             "Forum topic merge requires a valid approved non-deleted {label} solution"
         )));
-    }
-    Ok(Some(solution))
+    };
+    Ok(Some(ForumTopicMergeSolutionCandidate {
+        reply_id: solution.reply_id,
+        reply_author_id: reply.author_id,
+        marked_by_user_id: solution.marked_by_user_id,
+        marked_at: solution.marked_at,
+    }))
 }
 
-async fn delete_source_solution_in_tx(
+async fn delete_solution_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    source_topic_id: Uuid,
+    topic_id: Uuid,
+    label: &str,
 ) -> ForumResult<()> {
     let result = forum_solution::Entity::delete_many()
         .filter(forum_solution::Column::TenantId.eq(tenant_id))
-        .filter(forum_solution::Column::TopicId.eq(source_topic_id))
+        .filter(forum_solution::Column::TopicId.eq(topic_id))
         .exec(txn)
         .await?;
     if result.rows_affected != 1 {
-        return Err(ForumError::Validation(
-            "Forum source accepted solution changed concurrently".to_string(),
-        ));
+        return Err(ForumError::Validation(format!(
+            "Forum {label} accepted solution changed concurrently"
+        )));
     }
     Ok(())
 }
@@ -625,7 +777,7 @@ async fn insert_transferred_solution_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     target_topic_id: Uuid,
-    solution: &ForumTopicMergeSolutionTransfer,
+    solution: &ForumTopicMergeSolutionCandidate,
 ) -> ForumResult<()> {
     forum_solution::ActiveModel {
         topic_id: Set(target_topic_id),
@@ -737,24 +889,45 @@ fn topic_merged_payload(
     resulting_published_reply_count: i32,
     position_offset: i64,
     reason: &str,
+    resolution: Option<&ForumTopicMergeSolutionResolutionAudit>,
 ) -> JsonValue {
-    json!({
-        "operation_id": operation_id,
-        "source_topic_id": source_topic_id,
-        "target_topic_id": target_topic_id,
-        "category_id": category_id,
-        "moved_reply_count": moved_reply_count,
-        "moved_published_reply_count": moved_published_reply_count,
-        "resulting_published_reply_count": resulting_published_reply_count,
-        "position_offset": position_offset,
-        "reason": reason,
-    })
+    match resolution {
+        Some(resolution) => json!({
+            "operation_id": operation_id,
+            "source_topic_id": source_topic_id,
+            "target_topic_id": target_topic_id,
+            "category_id": category_id,
+            "moved_reply_count": moved_reply_count,
+            "moved_published_reply_count": moved_published_reply_count,
+            "resulting_published_reply_count": resulting_published_reply_count,
+            "position_offset": position_offset,
+            "reason": reason,
+            "solution_resolution": {
+                "source_solution_reply_id": resolution.source_solution_reply_id,
+                "target_solution_reply_id": resolution.target_solution_reply_id,
+                "selected_solution_reply_id": resolution.selected_solution_reply_id,
+                "rejected_solution_reply_id": resolution.rejected_solution_reply_id,
+                "rejected_solution_author_id": resolution.rejected_solution_author_id,
+            },
+        }),
+        None => json!({
+            "operation_id": operation_id,
+            "source_topic_id": source_topic_id,
+            "target_topic_id": target_topic_id,
+            "category_id": category_id,
+            "moved_reply_count": moved_reply_count,
+            "moved_published_reply_count": moved_published_reply_count,
+            "resulting_published_reply_count": resulting_published_reply_count,
+            "position_offset": position_offset,
+            "reason": reason,
+        }),
+    }
 }
 
 async fn validate_existing_semantic_event_in_tx(
     txn: &DatabaseTransaction,
     operation: &forum_topic_merge_operation::Model,
-) -> ForumResult<()> {
+) -> ForumResult<Option<ForumTopicMergeSolutionResolutionAudit>> {
     let event = forum_domain_event::Entity::find()
         .filter(forum_domain_event::Column::TenantId.eq(operation.tenant_id))
         .filter(forum_domain_event::Column::EventId.eq(operation.event_id))
@@ -765,6 +938,33 @@ async fn validate_existing_semantic_event_in_tx(
                 "Forum topic merge operation is missing its semantic event".to_string(),
             )
         })?;
+    let resolution = match event.schema_version {
+        FORUM_TOPIC_MERGED_SCHEMA_VERSION => None,
+        FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION => {
+            let value = event
+                .payload
+                .get("solution_resolution")
+                .cloned()
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum topic merge solution-resolution audit is missing".to_string(),
+                    )
+                })?;
+            let audit: ForumTopicMergeSolutionResolutionAudit =
+                serde_json::from_value(value).map_err(|_| {
+                    ForumError::Validation(
+                        "Forum topic merge solution-resolution audit is invalid".to_string(),
+                    )
+                })?;
+            validate_solution_resolution_audit(&audit)?;
+            Some(audit)
+        }
+        _ => {
+            return Err(ForumError::Validation(
+                "Forum topic merge operation semantic event schema is unsupported".to_string(),
+            ));
+        }
+    };
     let expected_payload = topic_merged_payload(
         operation.operation_id,
         operation.source_topic_id,
@@ -775,16 +975,40 @@ async fn validate_existing_semantic_event_in_tx(
         operation.resulting_published_reply_count,
         operation.position_offset,
         &operation.reason,
+        resolution.as_ref(),
     );
     if event.aggregate_type != FORUM_TOPIC_MERGED_AGGREGATE_TYPE
         || event.aggregate_id != operation.target_topic_id
         || event.event_type != FORUM_TOPIC_MERGED_EVENT_TYPE
-        || event.schema_version != 1
         || event.actor_id != Some(operation.actor_id)
         || event.payload != expected_payload
     {
         return Err(ForumError::Validation(
             "Forum topic merge operation semantic event does not match its receipt".to_string(),
+        ));
+    }
+    Ok(resolution)
+}
+
+fn validate_solution_resolution_audit(
+    audit: &ForumTopicMergeSolutionResolutionAudit,
+) -> ForumResult<()> {
+    let ids = [
+        audit.source_solution_reply_id,
+        audit.target_solution_reply_id,
+        audit.selected_solution_reply_id,
+        audit.rejected_solution_reply_id,
+    ];
+    if ids.iter().any(Uuid::is_nil)
+        || audit.source_solution_reply_id == audit.target_solution_reply_id
+        || audit.selected_solution_reply_id == audit.rejected_solution_reply_id
+        || !((audit.selected_solution_reply_id == audit.source_solution_reply_id
+            && audit.rejected_solution_reply_id == audit.target_solution_reply_id)
+            || (audit.selected_solution_reply_id == audit.target_solution_reply_id
+                && audit.rejected_solution_reply_id == audit.source_solution_reply_id))
+    {
+        return Err(ForumError::Validation(
+            "Forum topic merge solution-resolution audit is inconsistent".to_string(),
         ));
     }
     Ok(())
