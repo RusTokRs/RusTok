@@ -131,6 +131,9 @@ requireAll(cutoverMigration, [
   "cannot roll back distinct scoped grants that collapse to one legacy key",
   "validate_rollback_legacy_selectors",
   "cannot roll back artifact permission {label} with ambiguous legacy selector",
+  "BEGIN IMMEDIATE",
+  "finish_sqlite_transaction",
+  "SQLite rollback failed",
 ]);
 
 requireAll(catalog, [
@@ -199,12 +202,16 @@ requireAll(upgradeProof, [
   "upgrade legacy artifact authorization state",
   "assert_eq!(locale, \"en-US\")",
   "roll back append-only cutover",
-  "legacy_grant_with_platform_and_tenant_candidates_fails_closed",
+  "legacy_grant_with_platform_and_tenant_candidates_fails_closed_atomically",
   "ambiguous legacy selector must fail closed",
+  "rbac_artifact_permission_definitions_new",
   "canonical_grant_with_later_scope_collision_fails_rollback",
   "canonical_receipt_with_later_scope_collision_fails_rollback",
   "grant with ambiguous legacy selector",
   "operation receipt with ambiguous legacy selector",
+  "late_sqlite_down_failure_restores_canonical_schema",
+  "reserve legacy index name to force a late rollback failure",
+  "rbac_artifact_permission_catalog_restore",
 ]);
 requireAll(outboxProof, [
   "explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition",
