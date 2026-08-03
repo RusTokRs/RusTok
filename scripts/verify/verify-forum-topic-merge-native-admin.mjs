@@ -45,6 +45,12 @@ assert.equal(contract.transport_selection.hydrate, "native_server");
 assert.equal(contract.transport_selection.csr, "graphql");
 assert.equal(contract.transport_selection.headless_default, "graphql");
 assert.equal(contract.transport_selection.fallback, false);
+assert.equal(contract.native_server.module_slug, "forum");
+assert.equal(
+  contract.native_server.module_lifecycle_check,
+  "rustok_api::is_tenant_module_enabled",
+);
+assert.equal(contract.native_server.module_must_be_enabled, true);
 assert.equal(contract.native_server.candidate_limit, 100);
 assert.equal(contract.native_server.candidate_permission, "forum_topics:list");
 assert.equal(contract.native_server.merge_permission, "forum_topics:manage");
@@ -115,6 +121,8 @@ includesAll(
     "leptos_axum::extract::<rustok_api::AuthContext>()",
     "leptos_axum::extract::<rustok_api::TenantContext>()",
     "auth.tenant_id == tenant.id",
+    "require_forum_module_enabled",
+    "rustok_api::is_tenant_module_enabled(host.db(), tenant_id, \"forum\")",
     "Permission::FORUM_TOPICS_LIST",
     "Permission::FORUM_TOPICS_MANAGE",
     "shared_get::<rustok_outbox::TransactionalEventBus>()",
@@ -181,6 +189,8 @@ includesAll(
     paths.contract,
     "direct authenticated native server-function path",
     "never causes an implicit retry through the other transport",
+    "rustok_api::is_tenant_module_enabled(..., \"forum\")",
+    "A disabled module therefore fails closed",
     "No native DTO accepts an access token",
     "No command above was run by the implementation agent",
   ],
