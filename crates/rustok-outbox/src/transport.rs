@@ -5,6 +5,7 @@ use sea_orm::{
     sea_query::OnConflict,
 };
 use std::any::Any;
+use uuid::Uuid;
 
 use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
@@ -106,7 +107,7 @@ impl OutboxTransport {
                 )
             })?;
 
-        if stored.event_type != envelope.event_type()
+        if stored.event_type.as_str() != envelope.event_type()
             || stored.schema_version != i16::try_from(envelope.schema_version()).map_err(|error| {
                 write_once_unavailable(envelope_id, event_type.as_str(), error)
             })?
@@ -121,7 +122,7 @@ impl OutboxTransport {
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
         if stored_envelope.id() != stored.id
-            || stored_envelope.event_type() != stored.event_type
+            || stored_envelope.event_type() != stored.event_type.as_str()
             || i16::try_from(stored_envelope.schema_version()).ok() != Some(stored.schema_version)
         {
             return Err(write_once_unavailable(
@@ -310,7 +311,7 @@ mod tests {
         )
     }
 
-    fn contract_event(terms_version: i64) -> MarketplaceListingEvent {
+    fn contract_event(terms_version: i32) -> MarketplaceListingEvent {
         MarketplaceListingEvent::MarketplaceListingCreated {
             listing_id: Uuid::new_v4(),
             seller_id: Uuid::new_v4(),
