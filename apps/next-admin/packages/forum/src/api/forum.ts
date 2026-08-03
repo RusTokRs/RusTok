@@ -1,5 +1,10 @@
 import { graphqlRequest } from '@/lib/graphql';
 import type { RichTextDocument } from '@rustok/richtext';
+import type {
+  ForumTopicMergeCandidate,
+  ForumTopicMergeCommand,
+  ForumTopicMergeReceipt
+} from '../core/topic-merge';
 
 export interface GqlOpts {
   token?: string | null;
@@ -7,12 +12,8 @@ export interface GqlOpts {
   tenantId?: string | null;
 }
 
-export interface ForumTopicSummary {
-  id: string;
-  title: string;
+export interface ForumTopicSummary extends ForumTopicMergeCandidate {
   slug: string;
-  categoryId: string;
-  replyCount: number;
 }
 
 interface CreateForumReplyInput {
@@ -34,6 +35,7 @@ export async function listForumTopics(
           slug
           categoryId
           replyCount
+          solutionReplyId
         }
       }
     }
@@ -53,7 +55,7 @@ export async function listForumTopics(
     {
       tenantId: opts.tenantId!,
       locale: input.locale,
-      pagination: { first: input.first ?? 50 }
+      pagination: { first: input.first ?? 100 }
     },
     opts.token,
     opts.tenantSlug
@@ -86,4 +88,123 @@ export async function createForumReply(
   );
 
   return data.createForumReply.id;
+}
+
+export async function mergeForumTopics(
+  command: ForumTopicMergeCommand,
+  opts: GqlOpts = {}
+): Promise<ForumTopicMergeReceipt> {
+  if (command.selectedSolutionReplyId) {
+    const mutation = `
+      mutation MergeForumTopicResolvingSolution(
+        $tenantId: UUID
+        $targetTopicId: UUID!
+        $input: ResolveForumTopicMergeSolutionGraphqlInput!
+      ) {
+        mergeForumTopicResolvingSolution(
+          tenantId: $tenantId
+          targetTopicId: $targetTopicId
+          input: $input
+        ) {
+          merge {
+            operationId
+            eventId
+            sourceTopicId
+            targetTopicId
+            categoryId
+            actorId
+            reason
+            movedReplyCount
+            movedPublishedReplyCount
+            resultingPublishedReplyCount
+            positionOffset
+            mergedAt
+          }
+        }
+      }
+    `;
+    const data = await graphqlRequest<
+      {
+        tenantId?: string | null;
+        targetTopicId: string;
+        input: {
+          operationId: string;
+          sourceTopicId: string;
+          selectedSolutionReplyId: string;
+          reason: string;
+        };
+      },
+      {
+        mergeForumTopicResolvingSolution: { merge: ForumTopicMergeReceipt };
+      }
+    >(
+      mutation,
+      {
+        tenantId: opts.tenantId,
+        targetTopicId: command.targetTopicId,
+        input: {
+          operationId: command.operationId,
+          sourceTopicId: command.sourceTopicId,
+          selectedSolutionReplyId: command.selectedSolutionReplyId,
+          reason: command.reason
+        }
+      },
+      opts.token,
+      opts.tenantSlug
+    );
+    return data.mergeForumTopicResolvingSolution.merge;
+  }
+
+  const mutation = `
+    mutation MergeForumTopic(
+      $tenantId: UUID
+      $targetTopicId: UUID!
+      $input: MergeForumTopicGraphqlInput!
+    ) {
+      mergeForumTopic(
+        tenantId: $tenantId
+        targetTopicId: $targetTopicId
+        input: $input
+      ) {
+        operationId
+        eventId
+        sourceTopicId
+        targetTopicId
+        categoryId
+        actorId
+        reason
+        movedReplyCount
+        movedPublishedReplyCount
+        resultingPublishedReplyCount
+        positionOffset
+        mergedAt
+      }
+    }
+  `;
+  const data = await graphqlRequest<
+    {
+      tenantId?: string | null;
+      targetTopicId: string;
+      input: {
+        operationId: string;
+        sourceTopicId: string;
+        reason: string;
+      };
+    },
+    { mergeForumTopic: ForumTopicMergeReceipt }
+  >(
+    mutation,
+    {
+      tenantId: opts.tenantId,
+      targetTopicId: command.targetTopicId,
+      input: {
+        operationId: command.operationId,
+        sourceTopicId: command.sourceTopicId,
+        reason: command.reason
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+  return data.mergeForumTopic;
 }

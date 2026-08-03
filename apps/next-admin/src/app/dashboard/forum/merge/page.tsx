@@ -1,0 +1,33 @@
+import { ForumTopicMerge, listForumTopics } from '@/packages/forum';
+import { getSession } from '@/shared/lib/auth/server';
+
+export const metadata = {
+  title: 'Merge Forum Topics | RusToK Admin'
+};
+
+export default async function ForumTopicMergePage() {
+  const session = await getSession();
+  const tenantId = session?.user?.tenantId ?? null;
+  const tenantSlug = session?.user?.tenantSlug ?? null;
+  const token = session?.accessToken ?? null;
+
+  if (!tenantId) {
+    return (
+      <div className='rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive'>
+        Tenant context is required.
+      </div>
+    );
+  }
+
+  const topics = await listForumTopics(
+    { token, tenantId, tenantSlug },
+    { first: 100 }
+  );
+
+  return (
+    <ForumTopicMerge
+      topics={topics}
+      gqlOpts={{ token, tenantId, tenantSlug }}
+    />
+  );
+}
