@@ -74,9 +74,9 @@ async fn setup_database() -> DatabaseConnection {
     for statement in [
         "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
         "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
-        "CREATE TABLE rbac_artifact_permission_definitions (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (scope_key, installation_id, permission_key))",
-        "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id) REFERENCES rbac_artifact_permission_definitions (id) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, role_id, artifact_permission_id))",
-        "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id) REFERENCES rbac_artifact_permission_definitions (id) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, idempotency_key))",
+        "CREATE TABLE rbac_artifact_permission_definitions (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
+        "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, permission_scope_key TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK (permission_scope_key = 'platform' OR permission_scope_key = 'tenant:' || tenant_id), FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, role_id, artifact_permission_id))",
+        "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, permission_scope_key TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK (permission_scope_key = 'platform' OR permission_scope_key = 'tenant:' || tenant_id), FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, idempotency_key))",
         "CREATE TABLE rbac_artifact_permission_events (operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted BOOLEAN NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL)",
     ] {
         db.execute_unprepared(statement)
@@ -220,6 +220,19 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .applied
     );
     assert_eq!(event_grants(&db).await, vec![true]);
+    let persisted_scope: String = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT permission_scope_key FROM rbac_artifact_role_permissions LIMIT 1"
+                .to_string(),
+        ))
+        .await
+        .expect("query grant")
+        .expect("grant row")
+        .try_get("", "permission_scope_key")
+        .expect("decode permission scope");
+    assert_eq!(persisted_scope, format!("tenant:{tenant_id}"));
+
     let event_permission_id: Uuid = db
         .query_one(Statement::from_string(
             db.get_database_backend(),
