@@ -93,11 +93,19 @@ if (
   contract.pages_consumer.published_surface.state !== "source_connected" ||
   contract.pages_consumer.published_surface.selection !==
     "selected_published_page_only" ||
+  contract.pages_consumer.published_surface.admission !==
+    "exact_status_published_case_insensitive" ||
+  contract.pages_consumer.published_surface.draft_hidden !== true ||
+  contract.pages_consumer.published_surface.archived_hidden !== true ||
+  contract.pages_consumer.published_surface.missing_selection_hidden !== true ||
   contract.pages_consumer.published_surface.fly_canvas_mounted !== false ||
+  contract.pages_consumer.published_surface.document_authoring_mounted !== false ||
   contract.pages_consumer.published_surface.runtime !==
     "existing_pages_metadata_property_runtime" ||
   contract.pages_consumer.published_surface.contribution_assembly !==
-    "pages_admin_contribution_policy"
+    "pages_admin_contribution_policy" ||
+  contract.pages_consumer.published_surface.persistence !==
+    "delegated_to_pages_metadata_owner_port"
 ) {
   fail("Pages draft or published metadata surface contract is invalid");
 }
@@ -122,6 +130,18 @@ if (
     "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
 ) {
   fail("metadata revision/isolation source evidence registration is invalid");
+}
+
+const publishedSurfaceEvidence =
+  contract.pages_consumer.source_evidence?.published_metadata_surface;
+if (
+  publishedSurfaceEvidence?.state !== "source_ready_execution_pending" ||
+  publishedSurfaceEvidence?.contract !==
+    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json" ||
+  publishedSurfaceEvidence?.verifier !==
+    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+) {
+  fail("published metadata surface source evidence registration is invalid");
 }
 
 for (const marker of [
@@ -265,13 +285,21 @@ for (const marker of [
 }
 
 for (const marker of [
+  "enum PublishedMetadataSurfaceAdmission",
+  "fn published_metadata_surface_admission(",
+  'page.status.eq_ignore_ascii_case("published")',
   "pub(crate) fn PagesPublishedMetadataSurface(",
   "use_context::<Arc<ConsumerPropertyEditorRuntime>>()",
   "build_pages_admin_contribution_registry(",
   "&pages_admin_contribution_policy()",
   "transport::fetch_page(token, tenant, page_id).await",
-  'page.status.eq_ignore_ascii_case("published")',
+  "Ok(page) => match published_metadata_surface_admission(page.as_ref())",
   'data-pages-published-metadata-surface="registered"',
+  'data-pages-published-metadata-admission="published-only"',
+  'data-pages-fly-canvas-mounted="false"',
+  'data-pages-document-authoring="false"',
+  'data-pages-metadata-runtime="registered"',
+  'data-pages-metadata-persistence="owner-port"',
   "<ConsumerPropertiesPanel",
   "runtime=runtime.clone()",
   "contribution_assembly=contribution_assembly.clone()",
@@ -315,6 +343,7 @@ for (const forbidden of [
 for (const marker of [
   "Metadata UI cutover: source-complete",
   "Metadata revision/isolation source packet: ready, unvalidated",
+  "Published metadata source packet: ready, unvalidated",
   "Draft registered metadata surface: source-connected",
   "Published registered metadata surface: source-connected",
   "Legacy PageMetadataEditor: removed",
@@ -324,5 +353,5 @@ for (const marker of [
 }
 
 console.log(
-  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true execution_evidence=pending",
+  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true published_metadata_surface_source_ready=true execution_evidence=pending",
 );
