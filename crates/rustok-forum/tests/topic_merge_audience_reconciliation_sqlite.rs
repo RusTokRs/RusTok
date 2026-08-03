@@ -15,13 +15,18 @@ use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, QueryResult,
     Statement,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
+async fn setup_before_forum_21g(
+) -> TestResult<(
+    DatabaseConnection,
+    TransactionalEventBus,
+    Box<dyn MigrationTrait>,
+)> {
     let db_url = format!(
         "sqlite:file:forum_topic_merge_audience_reconciliation_{}?mode=memory&cache=shared",
         Uuid::new_v4()
@@ -44,10 +49,28 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&schema).await?;
     }
-    for migration in ForumModule.migrations() {
+    let mut forum_migrations = ForumModule.migrations();
+    let forum_21g_migration = forum_migrations
+        .pop()
+        .ok_or("FORUM-21G migration missing from Forum registry")?;
+    for migration in forum_migrations {
         migration.up(&schema).await?;
     }
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    Ok((db, event_bus, forum_21g_migration))
+}
+
+async fn apply_forum_21g(
+    db: &DatabaseConnection,
+    migration: Box<dyn MigrationTrait>,
+) -> TestResult<()> {
+    migration.up(&SchemaManager::new(db)).await?;
+    Ok(())
+}
+
+async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
+    let (db, event_bus, migration) = setup_before_forum_21g().await?;
+    apply_forum_21g(&db, migration).await?;
     Ok((db, event_bus))
 }
 
@@ -136,9 +159,9 @@ fn source_constraints(
 }
 
 #[tokio::test]
-async fn merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent(
+async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent(
 ) -> TestResult<()> {
-    let (db, event_bus) = setup().await?;
+    let (db, event_bus, forum_21g_migration) = setup_before_forum_21g().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let allow_user_id = Uuid::new_v4();
@@ -147,14 +170,14 @@ async fn merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent
         insert_user(&db, tenant_id, user_id).await?;
     }
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
-    let category_id = create_category(&db, tenant_id, admin.clone(), "move").await?;
+    let category_id = create_category(&db, tenant_id, admin.clone(), "history-move").await?;
     let target_topic_id = create_topic(
         &db,
         &event_bus,
         tenant_id,
         category_id,
         admin.clone(),
-        "move-target",
+        "history-move-target",
     )
     .await?;
     let source_topic_id = create_topic(
@@ -163,7 +186,7 @@ async fn merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent
         tenant_id,
         category_id,
         admin.clone(),
-        "move-source",
+        "history-move-source",
     )
     .await?;
 
@@ -192,10 +215,11 @@ async fn merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent
             MergeForumTopicInput {
                 operation_id: merge_operation_id,
                 source_topic_id,
-                reason: "Merge duplicate topic before audience reconciliation".to_string(),
+                reason: "Create a pre-FORUM-21G historical merge receipt".to_string(),
             },
         )
         .await?;
+    apply_forum_21g(&db, forum_21g_migration).await?;
 
     let stale_owner_write = ForumTopicAudiencePolicyService::new(db.clone())
         .set(
@@ -214,7 +238,7 @@ async fn merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent
     let operation_id = Uuid::new_v4();
     let input = ReconcileForumTopicMergeAudienceInput {
         operation_id,
-        reason: "Preserve the source topic narrowing on the retained discussion".to_string(),
+        reason: "Repair the historical source-only audience layer".to_string(),
     };
     let service = ForumTopicMergeAudienceReconciliationService::new(
         db.clone(),
@@ -329,9 +353,9 @@ async fn merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent
 }
 
 #[tokio::test]
-async fn merge_audience_reconciliation_rejects_different_dual_layers_atomically(
+async fn historical_merge_audience_reconciliation_rejects_different_dual_layers_atomically(
 ) -> TestResult<()> {
-    let (db, event_bus) = setup().await?;
+    let (db, event_bus, forum_21g_migration) = setup_before_forum_21g().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let source_user_id = Uuid::new_v4();
@@ -340,14 +364,14 @@ async fn merge_audience_reconciliation_rejects_different_dual_layers_atomically(
         insert_user(&db, tenant_id, user_id).await?;
     }
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
-    let category_id = create_category(&db, tenant_id, admin.clone(), "conflict").await?;
+    let category_id = create_category(&db, tenant_id, admin.clone(), "history-conflict").await?;
     let target_topic_id = create_topic(
         &db,
         &event_bus,
         tenant_id,
         category_id,
         admin.clone(),
-        "conflict-target",
+        "history-conflict-target",
     )
     .await?;
     let source_topic_id = create_topic(
@@ -356,7 +380,7 @@ async fn merge_audience_reconciliation_rejects_different_dual_layers_atomically(
         tenant_id,
         category_id,
         admin.clone(),
-        "conflict-source",
+        "history-conflict-source",
     )
     .await?;
 
@@ -401,22 +425,22 @@ async fn merge_audience_reconciliation_rejects_different_dual_layers_atomically(
             MergeForumTopicInput {
                 operation_id: merge_operation_id,
                 source_topic_id,
-                reason: "Merge before proving audience policy conflict".to_string(),
+                reason: "Create a conflicting pre-FORUM-21G historical merge".to_string(),
             },
         )
         .await?;
+    apply_forum_21g(&db, forum_21g_migration).await?;
 
     let baseline_projection_ids = projection_root_ids(&db, tenant_id).await?;
     let event_count_before = reconciliation_event_count(&db, tenant_id).await?;
-    let operation_id = Uuid::new_v4();
     let result = ForumTopicMergeAudienceReconciliationService::new(db.clone(), event_bus)
         .reconcile_merge_audience(
             tenant_id,
             merge_operation_id,
             admin.clone(),
             ReconcileForumTopicMergeAudienceInput {
-                operation_id,
-                reason: "Do not broaden two different local audience layers".to_string(),
+                operation_id: Uuid::new_v4(),
+                reason: "Do not broaden two different historical local layers".to_string(),
             },
         )
         .await;
@@ -437,14 +461,90 @@ async fn merge_audience_reconciliation_rejects_different_dual_layers_atomically(
     let target_after = ForumTopicAudiencePolicyService::new(db.clone())
         .get(tenant_id, target_topic_id, admin)
         .await?;
-    assert_eq!(
-        source_after.configured_constraints,
-        Some(source_constraints)
-    );
-    assert_eq!(
-        target_after.configured_constraints,
-        Some(target_constraints)
-    );
+    assert_eq!(source_after.configured_constraints, Some(source_constraints));
+    assert_eq!(target_after.configured_constraints, Some(target_constraints));
+    Ok(())
+}
+
+#[tokio::test]
+async fn topic_merge_rejects_incompatible_source_audience_before_commit() -> TestResult<()> {
+    let (db, event_bus) = setup().await?;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let source_user_id = Uuid::new_v4();
+    for user_id in [actor_id, source_user_id] {
+        insert_user(&db, tenant_id, user_id).await?;
+    }
+    let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
+    let category_id = create_category(&db, tenant_id, admin.clone(), "guard").await?;
+    let target_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        category_id,
+        admin.clone(),
+        "guard-target",
+    )
+    .await?;
+    let source_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        category_id,
+        admin.clone(),
+        "guard-source",
+    )
+    .await?;
+    let source_constraints = ForumAudienceConstraints {
+        allow_user_ids: vec![source_user_id],
+        ..ForumAudienceConstraints::default()
+    }
+    .normalize()?;
+    ForumTopicAudiencePolicyService::new(db.clone())
+        .set(
+            tenant_id,
+            source_topic_id,
+            admin.clone(),
+            SetForumTopicAudiencePolicyInput {
+                constraints: source_constraints.clone(),
+            },
+        )
+        .await?;
+
+    let baseline_projection_ids = projection_root_ids(&db, tenant_id).await?;
+    let merge_event_count_before = merge_event_count(&db, tenant_id).await?;
+    let merge_operation_id = Uuid::new_v4();
+    let result = ForumTopicMergeService::new(db.clone(), event_bus)
+        .merge_topic(
+            tenant_id,
+            target_topic_id,
+            admin.clone(),
+            MergeForumTopicInput {
+                operation_id: merge_operation_id,
+                source_topic_id,
+                reason: "This merge must roll back before commit".to_string(),
+            },
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(ForumError::TopicMergeAudiencePolicyConflict(_))
+    ));
+
+    assert_eq!(merge_receipt_count(&db, tenant_id, merge_operation_id).await?, 0);
+    assert_eq!(merge_event_count(&db, tenant_id).await?, merge_event_count_before);
+    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
+    assert_eq!(topic_status(&db, tenant_id, source_topic_id).await?, "open");
+    assert_eq!(topic_status(&db, tenant_id, target_topic_id).await?, "open");
+
+    let source_after = ForumTopicAudiencePolicyService::new(db.clone())
+        .get(tenant_id, source_topic_id, admin.clone())
+        .await?;
+    let target_after = ForumTopicAudiencePolicyService::new(db)
+        .get(tenant_id, target_topic_id, admin)
+        .await?;
+    assert_eq!(source_after.configured_constraints, Some(source_constraints));
+    assert_eq!(target_after.configured_constraints, None);
     Ok(())
 }
 
@@ -527,6 +627,53 @@ async fn policy_updated_at(
         .await?
         .map(|row| row.try_get("", "updated_at"))
         .transpose()?)
+}
+
+async fn topic_status(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> TestResult<String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT status FROM forum_topics WHERE tenant_id = ? AND id = ?",
+            vec![tenant_id.into(), topic_id.into()],
+        ))
+        .await?
+        .ok_or("topic row missing")?;
+    Ok(row.try_get("", "status")?)
+}
+
+async fn merge_receipt_count(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+) -> TestResult<i64> {
+    scalar_i64(
+        db,
+        Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS value FROM forum_topic_merge_operations WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
+        ),
+    )
+    .await
+}
+
+async fn merge_event_count(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> TestResult<i64> {
+    scalar_i64(
+        db,
+        Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS value FROM forum_domain_events WHERE tenant_id = ? AND event_type = 'forum.topic.merged'",
+            vec![tenant_id.into()],
+        ),
+    )
+    .await
 }
 
 async fn reconciliation_count(
