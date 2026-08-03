@@ -28,7 +28,7 @@ jobs:
 
       - name: Install pinned Rust toolchain
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --no-self-update
           rustup default 1.96.0
 
       - name: Apply exact installation identity patch
