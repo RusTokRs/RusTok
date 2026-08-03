@@ -32,6 +32,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Bounded Replay Dry-run](./m6-bounded-replay-dry-run.md)
 - [M6 Cooperative Replay-page Interruption](./m6-cooperative-page-interruption.md)
 - [M6 Replay Retry Transition Store](./m6-replay-retry-transition-store.md)
+- [M6 Replay Dead-letter Admission](./m6-replay-dead-letter-admission.md)
 - [M6 Replay Job Leases](./m6-replay-job-leases.md)
 - [M6 Bounded Multi-page Replay Runner](./m6-bounded-multipage-runner.md)
 - [M6 Replay Runtime Host Composition](./m6-replay-runtime-composition.md)

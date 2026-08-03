@@ -25,6 +25,7 @@ const scripts = [
   'verify-index-replay-dry-run.mjs',
   'verify-index-replay-page-interruption.mjs',
   'verify-index-replay-retry-store.mjs',
+  'verify-index-replay-dead-letter-admission.mjs',
   'verify-index-product-source.mjs',
   'verify-index-product-variant-source.mjs',
   'verify-index-product-graph-source.mjs',
