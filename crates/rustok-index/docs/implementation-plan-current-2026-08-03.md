@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay for `implementation-plan.md` audited at
-`main@e66540bceffe0ae23ee2d04e0f39a1a6ab08aaeb`.
+Status overlay for `implementation-plan.md` audited through
+`main@2c24dbf93cfa1ecb436755c7986232f05e4ddab5`.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
 overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
@@ -9,11 +9,12 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - bounded drift diagnosis and repair admission`
+`M6 - locale-complete persisted findings and authoritative snapshot capture`
 
-Bounded finding inspection and persistence for already-computed digest mismatches are source
-complete. Authoritative digest production, lifecycle commands, targeted repair, transports, and
-retained evidence remain open.
+The database-neutral snapshot-pair digest producer is source complete and delegates unequal
+locale-bearing entity digests to the existing finding writer. A production snapshot reader,
+locale-free persisted entity scope, lifecycle commands, targeted repair, transports, and retained
+evidence remain open.
 
 ## Rechecked status
 
@@ -35,6 +36,8 @@ retained evidence remain open.
   `source_complete_owner_execution_pending`
 - M6 bounded drift-finding inspection and persistence:
   `source_complete_owner_execution_pending`
+- M6 snapshot-pair digest producer and mismatch-only recorder delegation:
+  `source_complete_snapshot_reader_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -66,7 +69,14 @@ retained evidence remain open.
 - [x] Add a real-migration PostgreSQL harness for deterministic finding-key serialization and
       create/refresh/reopen/suppression lifecycle preservation.
 - [ ] Run and admit `drift_finding_writer_postgres_test` evidence.
-- [ ] Add authoritative digest production under a defined owner snapshot or watermark.
+- [x] Add a database-neutral producer for one exact source/materialized snapshot pair with one
+      bounded consistency token, exact scope revalidation, typed-state validation, deterministic
+      SHA-256 production, and mismatch-only recorder delegation.
+- [x] Adapt locale-bearing producer mismatches to `PostgresIndexDriftFindingWriter` with bounded
+      retryable/permanent failure classification.
+- [ ] Extend persisted entity finding scope to locale-free `EntityKey` values without changing
+      existing locale-bearing finding identities.
+- [ ] Add one production snapshot reader under a defined PostgreSQL snapshot or owner watermark.
 - [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
@@ -85,21 +95,24 @@ retained evidence remain open.
 
 ## Next implementation step
 
-Define a bounded producer contract that computes exactly one authoritative source/index digest
-pair for an exact tenant/schema/entity scope under one admitted consistency boundary. Delegate
-only unequal SHA-256 digests to the existing writer. Keep diagnosis separate from lifecycle
-commands and repair execution.
+Make persisted entity finding scope locale-optional while preserving the existing finding-key bytes
+for every locale-bearing scope. Add a distinct deterministic no-locale key component, update writer
+and inspector validation, and retain SQLite/static coverage. Only then compose the first production
+snapshot reader so generic no-locale schemas cannot fail after an otherwise valid comparison.
 
 ## Owner verification for this slice
 
 ```bash
+cargo test -p rustok-index drift_digest -- --nocapture
+cargo check -p rustok-index --all-targets
+node scripts/verify/verify-index-drift-digest-producer.mjs
+
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-index \
   --test drift_finding_writer_postgres_test \
   -- --nocapture --test-threads=1
 
 node scripts/verify/verify-index-drift-finding-postgres-harness.mjs
-cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
