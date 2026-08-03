@@ -1,73 +1,75 @@
-# Fulfillment checkout tenant and causation context
+# Fulfillment checkout causation diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the delegated-context diagnostic gap for the two context validations
-performed by `CheckoutFulfillmentExecutionPort` in
-`crates/rustok-fulfillment/src/checkout_execution.rs`:
+This bounded source slice hardens only `require_operation_context` in
+`crates/rustok-fulfillment/src/checkout_execution.rs`.
 
-- tenant UUID parsing from `PortContext.tenant_id`;
-- checkout operation identity matching against `PortContext.causation_id`.
+The validator continues to require `PortContext.causation_id` to contain a parseable UUID equal
+to the checkout operation id supplied by the ensure or read request. Missing, malformed, and
+mismatched causation identities remain rejected with the existing typed validation envelope.
 
-Both validations already returned stable typed `PortError` values and emitted partial warnings.
-The previous diagnostics retained correlation, tenant, channel, and operation, but omitted the
-rest of the delegated context, the explicit validation phase, truthful owner and boundary, and
-the mapped public error evidence.
+Tenant UUID parsing in `parse_tenant_id` remains a separate open diagnostic cleanup slice.
 
-This slice changes only those two context-validation paths.
+## Preserved causation acceptance rules
 
-## Delivered source contract
+The validator still:
 
-### Tenant UUID validation
+- rejects a missing causation id;
+- rejects a malformed causation id;
+- rejects a parseable UUID that does not match the checkout operation id;
+- accepts only the matching checkout operation UUID.
 
-`parse_tenant_id` still parses the same `PortContext.tenant_id` value and returns the same
-validation envelope:
+The mismatch expression is represented by `causation_id_matches_expected`, but the acceptance
+semantics and public operation ordering do not change.
 
-- code `fulfillment.tenant_id_invalid`;
-- message `PortContext.tenant_id must be a UUID for fulfillment ports`;
-- validation kind;
-- non-retryable outcome.
+## Stable public error
 
-On parse failure, the function now constructs that error before diagnostics, records the
-original UUID parse cause, and returns the same constructed error unchanged.
-
-### Checkout causation validation
-
-`require_operation_context` still accepts only a parseable causation UUID equal to the request
-checkout operation id. A missing, malformed, or mismatched causation value returns the same
-validation envelope:
+A rejected causation identity keeps the existing non-retryable validation envelope:
 
 - code `fulfillment.checkout_operation_id_invalid`;
 - message `checkout fulfillment causation_id must match the checkout operation`;
 - validation kind;
-- non-retryable outcome.
+- retryability `false`.
 
-The function now constructs that error before diagnostics and returns the same error unchanged.
+The exact constructed causation `PortError` is returned unchanged after diagnostics. No new
+public code, message, kind, or retryability value is selected.
 
-## Diagnostic context
+## Bounded diagnostic policy
 
-Both rejection paths use warning severity because they represent invalid caller or delegated
-context rather than an owner infrastructure failure.
+Causation diagnostics retain only bounded context and identity-shape facts.
 
-Each event records:
+The warning records:
 
 - truthful owner `rustok_fulfillment`;
 - exact owner operation `ensure_checkout_fulfillments` or `read_checkout_fulfillments`;
-- validation phase `tenant_id` or `causation_id`;
+- validation phase `causation_id`;
 - boundary `checkout_fulfillment_execution_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- stable mapped code and message;
-- typed error kind and retryability;
-- the mapped `PortError`.
+- correlation id;
+- stable code, closed `validation` kind label, and retryability;
+- message presence and character length;
+- tenant-id and actor-id character lengths;
+- closed actor-kind label;
+- claim and role counts;
+- channel presence and optional character length;
+- locale character length;
+- causation-id presence and optional character length;
+- causation UUID parse-success and expected-match facts;
+- traceparent and idempotency-key presence plus optional character lengths;
+- optional deadline milliseconds;
+- whether the expected checkout operation UUID is non-nil.
 
-Tenant rejection also records the original UUID parse cause. Causation rejection records the
-expected checkout operation id while the raw delegated causation value remains available only
-inside structured diagnostics.
+The covered warning does not record:
+
+- the complete `PortError`;
+- human-readable internal message text;
+- raw tenant, actor, channel, locale, causation, traceparent, or idempotency values;
+- the expected checkout operation UUID;
+- Debug output for `PortErrorKind`.
+
+The path remains an ordinary `tracing::warn!` validation rejection.
 
 ## Preserved behavior
 
@@ -76,49 +78,42 @@ This slice does not change:
 - port method signatures or request/response DTOs;
 - read/write admission policy or write-semantics requirements;
 - admission-before-tenant-before-causation ordering;
-- tenant or causation acceptance rules;
-- public validation codes, messages, kinds, or retryability;
+- tenant UUID parsing;
+- causation parsing or matching semantics;
 - request and immutable fulfillment-plan validation;
-- fulfillment create, adoption, lookup, or read behavior;
+- fulfillment create, post-error adoption, lookup, read, or sorting behavior;
 - metadata construction;
-- `FulfillmentError` mappings;
+- canonical `FulfillmentError` mappings;
+- Commerce orchestration;
 - FBA, FFA, or ecommerce audit status.
-
-No parse cause, raw causation value, expected operation identity, or delegated context field is
-copied into a new public envelope.
 
 ## Static evidence
 
-`scripts/verify/verify-fulfillment-checkout-context-validation.mjs` guards:
+The focused guard remains:
 
-- unchanged tenant and causation acceptance rules;
-- stable error construction before diagnostics;
-- original UUID parse-cause retention;
-- exact owner operation and validation phase;
-- complete available delegated context;
-- truthful owner and fulfillment execution boundary;
-- diagnostics before returning the same mapped error;
-- absence of the superseded partial validation shapes;
-- unchanged public operation routing, admission, request validation, fulfillment validation,
-  service operations, and stable owner mappings.
+- `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`.
 
-The preceding admission verifier is synchronized only for the two additional owner/boundary
-diagnostic branches. Its admission assertions are unchanged. The existing fulfillment
-execution error-safety verifier remains compatible with the stable codes and operation fields.
+It now requires the bounded causation diagnostic policy, the exact parsing and matching rules,
+the stable error construction and return, both public call sites, and unchanged operation
+ordering. It forbids complete causation errors, raw context values, raw expected identity,
+message text, and Debug kind output inside the covered validator.
 
-## Remaining gaps
+The same verifier intentionally requires `parse_tenant_id` to remain an explicit open residual
+with its current complete error, parse cause, raw delegated context, internal message, and Debug
+kind diagnostics.
 
-The master ecommerce correlation-safe mapper task remains open for:
+Source evidence is recorded in:
 
-- fulfillment request, set, identity, and immutable-plan validation diagnostics;
-- order settlement and compensation owner admission and validation;
-- inventory reservation owner admission and validation;
-- remaining payment execution and compensation consumers;
-- GraphQL query customer reads and the shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
+- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`.
 
-No architecture status is promoted from source inspection alone.
+## Remaining diagnostic boundaries
+
+Tenant parsing remains the next separate diagnostic cleanup slice. The canonical
+`FulfillmentError` mapper remains a later bounded slice.
+
+Compile, runtime, replay, restart, contention, mounted Commerce behavior, remote-port parity,
+workflows, CI, and production evidence remain open. The broad ecommerce correlation-safe
+mapper cleanup and FFA/FBA status are not promoted.
 
 ## Suggested maintainer checks
 
@@ -127,8 +122,7 @@ These commands were intentionally not run by the implementation agent:
 ```bash
 node scripts/verify/verify-fulfillment-checkout-context-validation.mjs
 node scripts/verify/verify-fulfillment-checkout-admission-context.mjs
+node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs
 node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs
-node scripts/verify/verify-fulfillment-checkout-lifecycle-error-safety.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-fulfillment --lib
 ```

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "fulfillment_checkout_causation_diagnostic_safety_source_unvalidated",
+  "scope": "Fulfillment checkout execution causation validation diagnostics only",
+  "source_contract": {
+    "causation_validation_bounded": true,
+    "complete_causation_port_error_logged": false,
+    "causation_internal_message_text_logged": false,
+    "causation_context_shape_only": true,
+    "causation_correlation_preserved": true,
+    "causation_owner_operations_preserved": true,
+    "causation_validation_phase_preserved": true,
+    "causation_error_kind_closed": true,
+    "causation_warning_severity_preserved": true,
+    "causation_parse_and_match_facts_preserved": true,
+    "expected_operation_identity_shape_only": true,
+    "original_causation_port_error_returned": true,
+    "tenant_parser_cleanup_out_of_scope": true,
+    "admission_mapper_unchanged": true,
+    "local_porterror_mapper_unchanged": true,
+    "canonical_fulfillment_error_mapper_cleanup_out_of_scope": true,
+    "execution_behavior_changed": false,
+    "public_port_error_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "preserved_acceptance_rules": [
+    "missing causation id is rejected",
+    "malformed causation id is rejected",
+    "mismatched causation id is rejected",
+    "matching checkout operation UUID is accepted"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-fulfillment-checkout-context-validation.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-admission-context.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs",
+    "cargo check -p rustok-fulfillment --lib"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

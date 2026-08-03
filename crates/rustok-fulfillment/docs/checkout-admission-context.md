@@ -118,11 +118,23 @@ Source evidence is recorded in:
 The previously closed local-`PortError` contract is synchronized to treat admission cleanup as
 a separate source-ready/unvalidated contract rather than an open unsafe payload site.
 
+## Related causation contract
+
+Causation validation is now source-ready / unvalidated under its own bounded contract:
+
+- `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+
+That contract preserves admission-before-tenant-before-causation ordering and does not change
+the admission mapper covered here.
+
 ## Remaining diagnostic boundaries
 
 Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain separate
-bounded slices. This change does not claim that the complete `checkout_execution.rs` diagnostic
-surface is source-closed.
+bounded slices in the admission contract's original scope. Causation is now source-ready under
+the related contract above; tenant parsing and canonical `FulfillmentError` diagnostics remain
+open.
 
 Compile, runtime, replay, restart, contention, mounted Commerce behavior, remote-port parity,
 workflows, CI, and production evidence remain open. The broad ecommerce correlation-safe
@@ -134,6 +146,7 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-fulfillment-checkout-admission-context.mjs
+node scripts/verify/verify-fulfillment-checkout-context-validation.mjs
 node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs
 node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs
 node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs

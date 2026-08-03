@@ -142,16 +142,21 @@ Its source evidence and detailed policy are recorded in:
 - `crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md`.
 
-Admission diagnostics are now source-ready / unvalidated under their separate bounded contract:
+Admission diagnostics are source-ready / unvalidated under their separate bounded contract:
 
 - `scripts/verify/verify-fulfillment-checkout-admission-context.mjs`;
 - `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
 
+Causation validation is source-ready / unvalidated under its separate bounded contract:
+
+- `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+
 ## Remaining gaps
 
-Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain
-separate bounded slices.
+Tenant parsing and canonical `FulfillmentError` diagnostics remain separate bounded slices.
 
 Compile, runtime, replay, restart, remote-port, workflow, and CI evidence remain open. The
 broad ecommerce correlation-safe mapper cleanup and FFA/FBA status are not promoted.

@@ -107,13 +107,35 @@ for (const [content, value, label] of [
   [portImpl, 'self.read(&context, tenant_id, request).await', 'read context propagation'],
 ]) requireText(content, value, label);
 
+for (const [value, label] of [
+  ['correlation_id = %context.correlation_id', 'causation correlation log'],
+  ['tenant_id_length', 'causation tenant shape'],
+  ['actor_kind', 'causation actor shape'],
+  ['channel_present', 'causation channel shape'],
+  ['causation_id_parse_succeeded', 'causation parse fact'],
+  ['causation_id_matches_expected', 'causation match fact'],
+  ['expected_checkout_operation_id_non_nil', 'expected operation shape'],
+  ['operation = owner_operation', 'causation operation log'],
+  ['code = "fulfillment.checkout_operation_id_invalid"', 'causation code log'],
+  ['internal_message_present', 'causation message shape'],
+  ['error_kind', 'causation closed kind'],
+]) requireText(operationContext, value, label);
+for (const value of [
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'expected_checkout_operation_id = %checkout_operation_id',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+]) forbidText(operationContext, value, 'unsafe causation diagnostic payload');
+
 for (const [content, value, label] of [
-  [operationContext, 'correlation_id = %context.correlation_id', 'causation correlation log'],
-  [operationContext, 'tenant_id = %context.tenant_id', 'causation tenant log'],
-  [operationContext, 'channel = ?context.channel', 'causation channel log'],
-  [operationContext, 'operation = owner_operation', 'causation operation log'],
-  [operationContext, 'code = "fulfillment.checkout_operation_id_invalid"', 'causation code log'],
-  [tenantParser, 'error = ?error', 'tenant parse cause log'],
+  [tenantParser, 'error = ?error', 'tenant parse complete error log'],
   [tenantParser, 'correlation_id = %context.correlation_id', 'tenant parse correlation log'],
   [tenantParser, 'tenant_id = %context.tenant_id', 'tenant parse tenant log'],
   [tenantParser, 'channel = ?context.channel', 'tenant parse channel log'],
@@ -171,4 +193,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ Fulfillment checkout execution owner errors retain context and stable public envelopes');
+console.log('✔ Fulfillment checkout execution owner errors retain bounded causation context and stable public envelopes');
