@@ -38,11 +38,16 @@ functions:
 /api/fn/forum/topic-merge
 ```
 
-The candidate endpoint accepts only locale. It extracts `AuthContext` and
-`TenantContext`, requires exact auth/routed tenant agreement plus
+Both endpoints extract `AuthContext` and `TenantContext`, require exact
+auth/routed tenant agreement, load `HostRuntimeContext`, and call
+`rustok_api::is_tenant_module_enabled(..., "forum")` before entering the Forum
+owner. A disabled module therefore fails closed on the native path just as it
+does through GraphQL.
+
+The candidate endpoint accepts only locale. After module admission it requires
 `forum_topics:list`, obtains the database and `TransactionalEventBus` from the
-server-only `HostRuntimeContext`, and calls
-`TopicService::list_with_locale_fallback` with the existing 100-topic bound.
+server-only host context, and calls `TopicService::list_with_locale_fallback`
+with the existing 100-topic bound.
 
 The merge endpoint accepts only the framework-neutral
 `ForumTopicMergeCommand`. It derives tenant and actor from server context,
