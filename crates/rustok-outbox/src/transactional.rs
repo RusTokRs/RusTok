@@ -1,4 +1,4 @@
-use crate::transport::OutboxTransport;
+use crate::transport::{ContractEventWriteOnceError, OutboxTransport};
 use rustok_core::Result;
 use rustok_core::events::EventTransport;
 use rustok_events::{
@@ -56,7 +56,7 @@ impl TransactionalEventBus {
         Ok(envelope_id)
     }
 
-    /// Publishes one sealed typed contract through an owner transaction that
+    /// Publishes a sealed typed contract through an owner transaction that
     /// does not carry a separately composed transport handle.
     ///
     /// The typed envelope retains the exact predecessor envelope identity in
@@ -82,6 +82,44 @@ impl TransactionalEventBus {
         let envelope_id = envelope.id();
         OutboxTransport::write_contract_envelope_in_tx(txn, envelope).await?;
         Ok(envelope_id)
+    }
+
+    /// Writes one sealed typed contract exactly once using an existing owner
+    /// identity as the canonical envelope UUID.
+    ///
+    /// The caller owns the transaction. Concurrent exact replays return the
+    /// same envelope UUID; reuse of that UUID for different envelope scope or
+    /// typed payload returns `Conflict`. Delivery remains owned by
+    /// `OutboxRelay` after commit.
+    pub async fn publish_contract_once_direct_in_tx_with_envelope_id<C, E>(
+        txn: &C,
+        envelope_id: Uuid,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: E,
+    ) -> std::result::Result<Uuid, ContractEventWriteOnceError>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        let event_type = event.event_type();
+        let envelope = ContractEventEnvelope::new_with_envelope_id(
+            envelope_id,
+            tenant_id,
+            actor_id,
+            event,
+        )
+        .map_err(|error| {
+            tracing::error!(
+                envelope_id = %envelope_id,
+                event_type,
+                error = %error,
+                "Canonical contract write-once envelope construction failed"
+            );
+            ContractEventWriteOnceError::Unavailable
+        })?;
+
+        OutboxTransport::write_contract_envelope_once_in_tx(txn, envelope).await
     }
 
     pub async fn publish_in_tx<C>(
