@@ -5,7 +5,8 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
-    ForumModule, ForumTopicMergeService, MergeForumTopicInput, ReplyService, TopicService,
+    ForumModule, ForumTopicMergeService, MergeForumTopicInput, ModerationService, ReplyService,
+    TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -19,6 +20,13 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SolutionSnapshot {
+    reply_id: Uuid,
+    marked_by_user_id: Option<Uuid>,
+    marked_at: String,
+}
+
 async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     let db_url = format!(
         "sqlite:file:forum_topic_merge_{}?mode=memory&cache=shared",
@@ -28,7 +36,11 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     options.max_connections(5).min_connections(1).sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
-        "CREATE TABLE users (id TEXT NOT NULL PRIMARY KEY, tenant_id TEXT NOT NULL)",
+        "CREATE TABLE users (\
+            id TEXT NOT NULL PRIMARY KEY, \
+            tenant_id TEXT NOT NULL, \
+            UNIQUE (tenant_id, id)\
+        )",
     )
     .await?;
     let schema = SchemaManager::new(&db);
@@ -64,6 +76,7 @@ async fn create_category(
     tenant_id: Uuid,
     security: SecurityContext,
     slug: &str,
+    moderated: bool,
 ) -> TestResult<Uuid> {
     Ok(CategoryService::new(db.clone())
         .create(
@@ -78,7 +91,7 @@ async fn create_category(
                 color: None,
                 parent_id: None,
                 position: Some(0),
-                moderated: false,
+                moderated,
             },
         )
         .await?
@@ -123,7 +136,7 @@ async fn create_reply(
     text: &str,
     parent_reply_id: Option<Uuid>,
 ) -> TestResult<Uuid> {
-    let reply = ReplyService::new(db.clone(), event_bus.clone())
+    Ok(ReplyService::new(db.clone(), event_bus.clone())
         .create(
             tenant_id,
             security,
@@ -134,9 +147,8 @@ async fn create_reply(
                 parent_reply_id,
             },
         )
-        .await?;
-    assert_eq!(reply.status, "approved");
-    Ok(reply.id)
+        .await?
+        .id)
 }
 
 #[tokio::test]
@@ -146,7 +158,8 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
     let actor_id = Uuid::new_v4();
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
-    let category_id = create_category(&db, tenant_id, admin.clone(), "merge-category").await?;
+    let category_id =
+        create_category(&db, tenant_id, admin.clone(), "merge-category", false).await?;
     let target_topic_id = create_topic(
         &db,
         &event_bus,
@@ -303,14 +316,184 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
 }
 
 #[tokio::test]
-async fn topic_merge_rejects_cross_category_and_source_solution_without_partial_state() -> TestResult<()> {
+async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_solution() -> TestResult<()> {
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    insert_user(&db, tenant_id, actor_id).await?;
+    let source_author_id = Uuid::new_v4();
+    let target_author_id = Uuid::new_v4();
+    for user_id in [actor_id, source_author_id, target_author_id] {
+        insert_user(&db, tenant_id, user_id).await?;
+    }
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
-    let category_id = create_category(&db, tenant_id, admin.clone(), "merge-guard").await?;
-    let other_category_id = create_category(&db, tenant_id, admin.clone(), "merge-other").await?;
+    let source_author = SecurityContext::new(UserRole::Customer, Some(source_author_id));
+    let target_author = SecurityContext::new(UserRole::Customer, Some(target_author_id));
+    let category_id =
+        create_category(&db, tenant_id, admin.clone(), "merge-solution", false).await?;
+
+    let target_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        category_id,
+        admin.clone(),
+        "solution-target",
+    )
+    .await?;
+    let source_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        category_id,
+        admin.clone(),
+        "solution-source",
+    )
+    .await?;
+    let source_reply_id = create_reply(
+        &db,
+        &event_bus,
+        tenant_id,
+        source_topic_id,
+        source_author.clone(),
+        "Source accepted answer",
+        None,
+    )
+    .await?;
+    ModerationService::new(db.clone(), event_bus.clone())
+        .mark_solution(tenant_id, source_topic_id, source_reply_id, admin.clone())
+        .await?;
+    let source_solution_before = solution_snapshot(&db, tenant_id, source_topic_id)
+        .await?
+        .ok_or("source solution missing")?;
+    let source_solution_count_before =
+        user_solution_count(&db, tenant_id, source_author_id).await?;
+    assert_eq!(source_solution_count_before, 1);
+
+    let operation_id = Uuid::new_v4();
+    let input = MergeForumTopicInput {
+        operation_id,
+        source_topic_id,
+        reason: "Retain the source accepted answer".to_string(),
+    };
+    let service = ForumTopicMergeService::new(db.clone(), event_bus.clone());
+    let merged = service
+        .merge_topic(tenant_id, target_topic_id, admin.clone(), input.clone())
+        .await?;
+    assert_eq!(merged.operation_id, operation_id);
+    assert_eq!(solution_snapshot(&db, tenant_id, source_topic_id).await?, None);
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, target_topic_id).await?,
+        Some(source_solution_before.clone())
+    );
+    assert_eq!(
+        user_solution_count(&db, tenant_id, source_author_id).await?,
+        source_solution_count_before
+    );
+    assert_reply_location(
+        &db,
+        tenant_id,
+        source_reply_id,
+        target_topic_id,
+        1,
+        None,
+    )
+    .await?;
+    let target_read = TopicService::new(db.clone(), event_bus.clone())
+        .get(tenant_id, admin.clone(), target_topic_id, "en")
+        .await?;
+    assert_eq!(target_read.solution_reply_id, Some(source_reply_id));
+    let moved_reply_read = ReplyService::new(db.clone(), event_bus.clone())
+        .get(tenant_id, admin.clone(), source_reply_id, "en")
+        .await?;
+    assert!(moved_reply_read.is_solution);
+
+    let replay = service
+        .merge_topic(tenant_id, target_topic_id, admin.clone(), input)
+        .await?;
+    assert_eq!(replay, merged);
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, target_topic_id).await?,
+        Some(source_solution_before)
+    );
+
+    let retained_target_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        category_id,
+        admin.clone(),
+        "retained-solution-target",
+    )
+    .await?;
+    let empty_source_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        category_id,
+        admin.clone(),
+        "retained-solution-source",
+    )
+    .await?;
+    let target_reply_id = create_reply(
+        &db,
+        &event_bus,
+        tenant_id,
+        retained_target_topic_id,
+        target_author,
+        "Target accepted answer",
+        None,
+    )
+    .await?;
+    ModerationService::new(db.clone(), event_bus.clone())
+        .mark_solution(
+            tenant_id,
+            retained_target_topic_id,
+            target_reply_id,
+            admin.clone(),
+        )
+        .await?;
+    let target_solution_before = solution_snapshot(&db, tenant_id, retained_target_topic_id)
+        .await?
+        .ok_or("target solution missing")?;
+
+    service
+        .merge_topic(
+            tenant_id,
+            retained_target_topic_id,
+            admin,
+            MergeForumTopicInput {
+                operation_id: Uuid::new_v4(),
+                source_topic_id: empty_source_topic_id,
+                reason: "Preserve the retained target solution".to_string(),
+            },
+        )
+        .await?;
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, retained_target_topic_id).await?,
+        Some(target_solution_before)
+    );
+    assert_eq!(solution_snapshot(&db, tenant_id, empty_source_topic_id).await?, None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn topic_merge_rejects_cross_category_and_competing_solutions_without_partial_state(
+) -> TestResult<()> {
+    let (db, event_bus) = setup().await?;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let source_author_id = Uuid::new_v4();
+    let target_author_id = Uuid::new_v4();
+    for user_id in [actor_id, source_author_id, target_author_id] {
+        insert_user(&db, tenant_id, user_id).await?;
+    }
+    let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
+    let source_author = SecurityContext::new(UserRole::Customer, Some(source_author_id));
+    let target_author = SecurityContext::new(UserRole::Customer, Some(target_author_id));
+    let category_id =
+        create_category(&db, tenant_id, admin.clone(), "merge-guard", false).await?;
+    let other_category_id =
+        create_category(&db, tenant_id, admin.clone(), "merge-other", false).await?;
     let target_topic_id = create_topic(
         &db,
         &event_bus,
@@ -343,11 +526,36 @@ async fn topic_merge_rejects_cross_category_and_source_solution_without_partial_
         &event_bus,
         tenant_id,
         source_topic_id,
-        admin.clone(),
+        source_author,
         "Source accepted solution",
         None,
     )
     .await?;
+    let target_reply_id = create_reply(
+        &db,
+        &event_bus,
+        tenant_id,
+        target_topic_id,
+        target_author,
+        "Target accepted solution",
+        None,
+    )
+    .await?;
+    let moderation = ModerationService::new(db.clone(), event_bus.clone());
+    moderation
+        .mark_solution(tenant_id, source_topic_id, source_reply_id, admin.clone())
+        .await?;
+    moderation
+        .mark_solution(tenant_id, target_topic_id, target_reply_id, admin.clone())
+        .await?;
+    let source_solution_before = solution_snapshot(&db, tenant_id, source_topic_id).await?;
+    let target_solution_before = solution_snapshot(&db, tenant_id, target_topic_id).await?;
+    let source_solution_count_before =
+        user_solution_count(&db, tenant_id, source_author_id).await?;
+    let target_solution_count_before =
+        user_solution_count(&db, tenant_id, target_author_id).await?;
+    let baseline_projection_ids = projection_root_ids(&db, tenant_id).await?;
+    let baseline_merge_events = merge_event_count(&db, tenant_id).await?;
     let service = ForumTopicMergeService::new(db.clone(), event_bus);
 
     let cross = service
@@ -364,38 +572,171 @@ async fn topic_merge_rejects_cross_category_and_source_solution_without_partial_
         .await;
     assert!(matches!(cross, Err(ForumError::Validation(_))));
 
-    db.execute(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id, marked_by_user_id, marked_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-        vec![
-            source_topic_id.into(),
-            tenant_id.into(),
-            source_reply_id.into(),
-            actor_id.into(),
-        ],
-    ))
-    .await?;
-    let source_solution = service
+    let operation_id = Uuid::new_v4();
+    let competing = service
         .merge_topic(
             tenant_id,
             target_topic_id,
             admin,
             MergeForumTopicInput {
-                operation_id: Uuid::new_v4(),
+                operation_id,
                 source_topic_id,
-                reason: "Source solutions require an explicit conflict policy".to_string(),
+                reason: "Competing solutions require an explicit winner".to_string(),
             },
         )
         .await;
-    assert!(matches!(source_solution, Err(ForumError::Validation(_))));
+    let error = competing.expect_err("competing solutions must block merge");
+    assert!(matches!(
+        error,
+        ForumError::TopicMergeSolutionConflict(id) if id == operation_id
+    ));
+    assert_eq!(error.stable_code(), "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT");
 
-    assert_topic_state(&db, tenant_id, target_topic_id, "open", false, 0).await?;
+    assert_topic_state(&db, tenant_id, target_topic_id, "open", false, 1).await?;
     assert_topic_state(&db, tenant_id, source_topic_id, "open", false, 1).await?;
     assert_topic_state(&db, tenant_id, cross_topic_id, "open", false, 0).await?;
-    assert_category_counters(&db, tenant_id, category_id, 2, 1).await?;
+    assert_reply_location(&db, tenant_id, source_reply_id, source_topic_id, 1, None).await?;
+    assert_reply_location(&db, tenant_id, target_reply_id, target_topic_id, 1, None).await?;
+    assert_eq!(solution_snapshot(&db, tenant_id, source_topic_id).await?, source_solution_before);
+    assert_eq!(solution_snapshot(&db, tenant_id, target_topic_id).await?, target_solution_before);
+    assert_eq!(
+        user_solution_count(&db, tenant_id, source_author_id).await?,
+        source_solution_count_before
+    );
+    assert_eq!(
+        user_solution_count(&db, tenant_id, target_author_id).await?,
+        target_solution_count_before
+    );
+    assert_category_counters(&db, tenant_id, category_id, 2, 2).await?;
     assert_category_counters(&db, tenant_id, other_category_id, 1, 0).await?;
     assert_eq!(merge_operation_count(&db, tenant_id).await?, 0);
+    assert_eq!(merge_event_count(&db, tenant_id).await?, baseline_merge_events);
+    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
     Ok(())
+}
+
+#[tokio::test]
+async fn topic_solution_database_guard_requires_active_topic_and_approved_reply() -> TestResult<()> {
+    let (db, event_bus) = setup().await?;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    insert_user(&db, tenant_id, actor_id).await?;
+    let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
+
+    let moderated_category_id =
+        create_category(&db, tenant_id, admin.clone(), "solution-pending", true).await?;
+    let pending_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        moderated_category_id,
+        admin.clone(),
+        "pending-topic",
+    )
+    .await?;
+    let pending_reply_id = create_reply(
+        &db,
+        &event_bus,
+        tenant_id,
+        pending_topic_id,
+        admin.clone(),
+        "Pending answer",
+        None,
+    )
+    .await?;
+    assert!(db
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id, marked_by_user_id, marked_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            vec![
+                pending_topic_id.into(),
+                tenant_id.into(),
+                pending_reply_id.into(),
+                actor_id.into(),
+            ],
+        ))
+        .await
+        .is_err());
+
+    let active_category_id =
+        create_category(&db, tenant_id, admin.clone(), "solution-archived", false).await?;
+    let archived_topic_id = create_topic(
+        &db,
+        &event_bus,
+        tenant_id,
+        active_category_id,
+        admin.clone(),
+        "archived-topic",
+    )
+    .await?;
+    let approved_reply_id = create_reply(
+        &db,
+        &event_bus,
+        tenant_id,
+        archived_topic_id,
+        admin,
+        "Approved answer",
+        None,
+    )
+    .await?;
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE forum_topics SET status = 'archived', is_locked = TRUE WHERE tenant_id = ? AND id = ?",
+        vec![tenant_id.into(), archived_topic_id.into()],
+    ))
+    .await?;
+    assert!(db
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id, marked_by_user_id, marked_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            vec![
+                archived_topic_id.into(),
+                tenant_id.into(),
+                approved_reply_id.into(),
+                actor_id.into(),
+            ],
+        ))
+        .await
+        .is_err());
+    Ok(())
+}
+
+async fn solution_snapshot(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> TestResult<Option<SolutionSnapshot>> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT reply_id, marked_by_user_id, marked_at FROM forum_solutions WHERE tenant_id = ? AND topic_id = ?",
+            vec![tenant_id.into(), topic_id.into()],
+        ))
+        .await?;
+    row.map(|row| {
+        Ok(SolutionSnapshot {
+            reply_id: row.try_get("", "reply_id")?,
+            marked_by_user_id: row.try_get("", "marked_by_user_id")?,
+            marked_at: row.try_get("", "marked_at")?,
+        })
+    })
+    .transpose()
+}
+
+async fn user_solution_count(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> TestResult<i32> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT solution_count FROM forum_user_stats WHERE tenant_id = ? AND user_id = ?",
+            vec![tenant_id.into(), user_id.into()],
+        ))
+        .await?
+        .ok_or("forum user stat row missing")?;
+    Ok(row.try_get("", "solution_count")?)
 }
 
 async fn assert_topic_state(
@@ -458,7 +799,10 @@ async fn assert_reply_location(
         .ok_or("reply row missing")?;
     assert_eq!(row.try_get::<Uuid>("", "topic_id")?, expected_topic_id);
     assert_eq!(row.try_get::<i64>("", "position")?, expected_position);
-    assert_eq!(row.try_get::<Option<Uuid>>("", "parent_reply_id")?, expected_parent_reply_id);
+    assert_eq!(
+        row.try_get::<Option<Uuid>>("", "parent_reply_id")?,
+        expected_parent_reply_id
+    );
     Ok(())
 }
 
@@ -471,6 +815,18 @@ async fn merge_operation_count(
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS value FROM forum_topic_merge_operations WHERE tenant_id = ?",
+            vec![tenant_id.into()],
+        ),
+    )
+    .await
+}
+
+async fn merge_event_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
+    scalar_i64(
+        db,
+        Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS value FROM forum_domain_events WHERE tenant_id = ? AND event_type = 'forum.topic.merged'",
             vec![tenant_id.into()],
         ),
     )
@@ -502,8 +858,14 @@ async fn assert_semantic_event(
     assert_eq!(payload["target_topic_id"], merged.target_topic_id.to_string());
     assert_eq!(payload["category_id"], merged.category_id.to_string());
     assert_eq!(payload["moved_reply_count"], merged.moved_reply_count);
-    assert_eq!(payload["moved_published_reply_count"], merged.moved_published_reply_count);
-    assert_eq!(payload["resulting_published_reply_count"], merged.resulting_published_reply_count);
+    assert_eq!(
+        payload["moved_published_reply_count"],
+        merged.moved_published_reply_count
+    );
+    assert_eq!(
+        payload["resulting_published_reply_count"],
+        merged.resulting_published_reply_count
+    );
     assert_eq!(payload["position_offset"], merged.position_offset);
     assert_eq!(payload["reason"], merged.reason);
     Ok(())
