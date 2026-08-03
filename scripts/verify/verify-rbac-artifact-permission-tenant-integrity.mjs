@@ -131,10 +131,15 @@ requireAll(cutoverMigration, [
   "cannot roll back distinct scoped grants that collapse to one legacy key",
   "validate_rollback_legacy_selectors",
   "cannot roll back artifact permission {label} with ambiguous legacy selector",
-  "BEGIN IMMEDIATE",
-  "finish_sqlite_transaction",
+  "TransactionTrait",
+  "let transaction = connection.begin().await?",
+  "apply_up(&transaction, backend)",
+  "apply_down(&transaction, backend)",
+  "transaction.commit().await",
+  "transaction.rollback().await",
   "SQLite rollback failed",
 ]);
+forbidAll(cutoverMigration, ["BEGIN IMMEDIATE", "finish_sqlite_transaction"]);
 
 requireAll(catalog, [
   "const MAX_PERMISSION_KEY_LENGTH: usize = 256;",
