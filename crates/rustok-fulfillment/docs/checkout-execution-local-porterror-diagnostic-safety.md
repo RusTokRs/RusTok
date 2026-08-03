@@ -87,9 +87,22 @@ The admission guard and evidence are:
 - `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
 
-Checkout causation validation, tenant parsing, and the canonical `FulfillmentError` mapper
-remain separate bounded slices. The local and admission contracts together do not claim that
-the complete `checkout_execution.rs` diagnostic surface is source-closed.
+## Related causation contract
+
+Checkout causation validation is source-ready / unvalidated under another bounded contract.
+It records causation presence/length, parse-success, match state, expected-identity shape, and
+bounded delegated context while preserving the exact validation envelope and both public call
+sites.
+
+The causation guard and evidence are:
+
+- `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+
+Tenant parsing and the canonical `FulfillmentError` mapper remain separate bounded slices. The
+local, admission, and causation contracts together do not claim that the complete
+`checkout_execution.rs` diagnostic surface is source-closed.
 
 ## Static evidence
 
@@ -118,6 +131,7 @@ Suggested maintainer checks:
 ```bash
 node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs
 node scripts/verify/verify-fulfillment-checkout-admission-context.mjs
+node scripts/verify/verify-fulfillment-checkout-context-validation.mjs
 node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs
 node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs
 cargo check -p rustok-fulfillment --lib
