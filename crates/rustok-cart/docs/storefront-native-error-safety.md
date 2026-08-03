@@ -53,6 +53,23 @@ unchanged:
 - all existing public message, public code, and retryability mappings are preserved;
 - `ServerFnError::new(public_message)` remains the final public envelope.
 
+## Pricing diagnostic boundary
+
+Pricing failures are recorded by concrete error type together with the Pricing owner
+operation, Cart storefront consumer, optional correlation id, bounded request and identity
+facts, owner code, owner kind, owner retryability, and native boundary. Request tenant,
+resolved tenant, cart, and line-item UUIDs are represented only by non-nil facts. Channel id,
+channel slug, and locale are represented only by presence, non-nil, and length facts; their
+complete values are not logged.
+
+The complete `PortError` payload is not recorded. Existing pricing behavior remains
+unchanged:
+
+- unavailable, timeout, and invariant-violation kinds use `tracing::error!`;
+- all other owner kinds use `tracing::warn!`;
+- `owner_code`, `owner_kind`, and `owner_retryable` remain in both diagnostic paths;
+- the domain-sanitized owner message continues through `ServerFnError::new(error.message)`.
+
 ## Existing mounted safety contract
 
 The mounted adapter continues to provide static public envelopes for:
@@ -62,9 +79,9 @@ The mounted adapter continues to provide static public envelopes for:
 - Cart owner storage, validation, transition, tax-boundary, repricing, decrement, and
   removal failures.
 
-Pricing remains behind `PortError`; its already-sanitized owner message is preserved.
-This bounded slice does not claim that the remaining pricing or identifier diagnostics are
-correlation-safe. Pricing and identifier diagnostics remain separate open cleanup slices.
+This bounded slice does not claim that Cart input or missing-variant diagnostics are
+correlation-safe. Cart input and missing-variant diagnostics remain separate open cleanup
+slices.
 
 ## Preserved behavior
 
@@ -74,20 +91,21 @@ correlation-safe. Pricing and identifier diagnostics remain separate open cleanu
 - Customer lookup, ownership, authentication checks, and not-found handling are unchanged.
 - Cart owner variant classification, public messages, public codes, retryability, and
   technical/rejection severity split are unchanged.
+- Pricing owner classification, owner metadata, sanitized public message forwarding, and
+  technical/rejection severity split are unchanged.
 - Repricing still occurs before the cart DTO is returned.
 - Decrement still removes a line item at quantity one and otherwise reprices the next
   quantity.
 - Explicit native/GraphQL transport selection is unchanged.
-- Cart input, pricing, and missing-variant mapper behavior is unchanged in this Cart-owner-only
-  slice.
+- Cart input and missing-variant mapper behavior is unchanged in this pricing-only slice.
 
 ## Static evidence
 
 `scripts/verify/verify-cart-storefront-native-error-safety.mjs` requires the type-only
-framework-context, customer, and Cart owner diagnostics; rejects complete Cart causes and raw
-Cart identity/context fields; preserves customer not-found handling, every Cart owner public
-mapping, both severity paths, all three endpoints, and shared DTO mapping; and leaves execution
-claims open.
+framework-context, customer, Cart owner, and pricing diagnostics; rejects complete pricing
+causes and raw pricing identity/context fields; preserves customer not-found handling, every
+Cart owner public mapping, Pricing owner metadata, both severity paths, all three endpoints,
+and shared DTO mapping; and leaves execution claims open.
 
 The source evidence remains in
 `crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json`.
