@@ -37,6 +37,10 @@ const paths = {
   ui: "crates/rustok-product/admin/src/ui/leptos.rs",
   primaryReadGuard: "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
   categoryReadGuard: "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
+  readDiagnosticGuard:
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
+  fallbackMutationGuard:
+    "scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
   evidence:
     "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json",
   review:
@@ -53,6 +57,8 @@ const graphqlHttp = read(paths.graphqlHttp);
 const ui = read(paths.ui);
 const primaryReadGuard = read(paths.primaryReadGuard);
 const categoryReadGuard = read(paths.categoryReadGuard);
+const readDiagnosticGuard = read(paths.readDiagnosticGuard);
+const fallbackMutationGuard = read(paths.fallbackMutationGuard);
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
 const doc = read(paths.doc);
@@ -98,7 +104,9 @@ for (const operation of operations) {
   ]) {
     requireText(block, marker, `${paths.facade}: ${operation.name} final boundary`);
   }
-  if (block.indexOf(operation.context) > block.indexOf(operation.call)) {
+  const contextIndex = block.indexOf(operation.context);
+  const callIndex = block.indexOf(operation.call);
+  if (!(contextIndex >= 0 && callIndex >= 0 && contextIndex < callIndex)) {
     failures.push(`${paths.facade}: ${operation.name} context must precede the GraphQL call`);
   }
 }
@@ -122,6 +130,12 @@ if (countText(facade, ".map_err(|mutation_error| context.map_error(mutation_erro
   failures.push(`${paths.facade}: expected exactly four primary mutation mappers`);
 }
 
+const mutationBlock = between(
+  safety,
+  "pub(super) struct GraphqlMutationContext",
+  "fn text_length",
+  paths.safety,
+);
 for (const [marker, label] of [
   ["const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY", "mutation boundary"],
   ['"product_admin_primary_graphql_mutations"', "mutation boundary identity"],
@@ -142,7 +156,13 @@ for (const [marker, label] of [
   ['"product.admin_graphql_http_unavailable"', "HTTP code"],
   ['"product.admin_graphql_authentication_required"', "auth code"],
   ['"product.admin_graphql_request_rejected"', "GraphQL code"],
-  ["raw_error = ?error", "private typed diagnostics"],
+  ["let error_payload_length = match &error", "bounded payload derivation"],
+  ["GraphqlHttpError::Http(value) | GraphqlHttpError::Graphql(value)", "payload variants"],
+  ["Some(value.chars().count())", "payload character length"],
+  ["GraphqlHttpError::Network | GraphqlHttpError::Unauthorized => None", "payload-free variants"],
+  ["let error_payload_present = error_payload_length.is_some_and(|length| length > 0);", "payload presence"],
+  ["error_payload_present,", "payload presence diagnostic"],
+  ["error_payload_length = ?error_payload_length", "payload length diagnostic"],
   ["correlation_id = %self.correlation_id", "correlation diagnostics"],
   ["token_present = self.token_present", "token presence"],
   ["tenant_slug_length = ?self.tenant_slug_length", "tenant slug shape"],
@@ -153,9 +173,24 @@ for (const [marker, label] of [
   ["draft_present = self.draft_present", "draft presence"],
   ["boundary = PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY", "mutation boundary log"],
 ]) {
-  requireText(safety, marker, `${paths.safety}: ${label}`);
+  requireText(mutationBlock, marker, `${paths.safety}: ${label}`);
 }
-
+if (countText(mutationBlock, "error_payload_present,") !== 2) {
+  failures.push(`${paths.safety}: both mutation severity branches must record payload presence`);
+}
+if (countText(mutationBlock, "error_payload_length = ?error_payload_length") !== 2) {
+  failures.push(`${paths.safety}: both mutation severity branches must record payload length`);
+}
+for (const marker of [
+  "raw_error = ?error",
+  "raw_error = %error",
+  "error = ?error",
+  "error = %error",
+  "internal_message = %",
+  "parsed_error = ?",
+]) {
+  forbidText(mutationBlock, marker, `${paths.safety}: complete mutation error payload`);
+}
 for (const marker of [
   "token = %",
   "token = ?",
@@ -172,7 +207,7 @@ for (const marker of [
   "draft = %",
   "draft = ?",
 ]) {
-  forbidText(safety, marker, `${paths.safety}: raw mutation values must not be logged`);
+  forbidText(mutationBlock, marker, `${paths.safety}: raw mutation value`);
 }
 
 for (const marker of [
@@ -183,7 +218,6 @@ for (const marker of [
 ]) {
   requireText(legacy, marker, `${paths.legacy}: preserved private mutation delegation`);
 }
-
 for (const marker of [
   "const CREATE_PRODUCT_MUTATION",
   "const UPDATE_PRODUCT_MUTATION",
@@ -214,16 +248,14 @@ for (const marker of [
 ]) {
   requireText(ui, marker, `${paths.ui}: preserved UI mutation composition`);
 }
-requireText(
-  primaryReadGuard,
-  "Product Admin primary GraphQL read error-safety verification failed:",
-  `${paths.primaryReadGuard}: prior primary-read guard remains present`,
-);
-requireText(
-  categoryReadGuard,
-  "Product Admin category GraphQL read error-safety verification failed:",
-  `${paths.categoryReadGuard}: prior category-read guard remains present`,
-);
+for (const [source, marker, label] of [
+  [primaryReadGuard, "verify-product-admin-graphql-read-diagnostic-safety.mjs", "primary read compatibility guard"],
+  [categoryReadGuard, "verify-product-admin-graphql-read-diagnostic-safety.mjs", "category read compatibility guard"],
+  [readDiagnosticGuard, "Product Admin GraphQL read diagnostic-safety verification failed:", "shared read diagnostic guard"],
+  [fallbackMutationGuard, "GraphqlFallbackMutationContext", "fallback mutation guard"],
+]) {
+  requireText(source, marker, `${label}: prior focused guard remains present`);
+}
 
 if (evidence.schema_version !== 1) failures.push(`${paths.evidence}: schema_version must be 1`);
 if (
@@ -253,7 +285,9 @@ for (const [key, expected] of Object.entries({
   graphql_static_public_envelope: true,
   raw_http_status_public: false,
   raw_graphql_message_public: false,
-  private_typed_error_diagnostics: true,
+  complete_typed_error_logged: false,
+  error_payload_shape_only: true,
+  private_typed_error_classification: true,
   safe_request_shape_only: true,
   result_types_changed: false,
   graphql_documents_changed: false,
@@ -265,6 +299,20 @@ for (const [key, expected] of Object.entries({
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+  }
+}
+if (evidence.safe_diagnostics?.includes("private_typed_graphql_error")) {
+  failures.push(`${paths.evidence}: safe_diagnostics must not retain private_typed_graphql_error`);
+}
+for (const marker of [
+  "error_payload_present",
+  "error_payload_length",
+  "error_kind",
+  "code",
+  "boundary",
+]) {
+  if (!evidence.safe_diagnostics?.includes(marker)) {
+    failures.push(`${paths.evidence}: safe_diagnostics must include ${marker}`);
   }
 }
 for (const key of [
@@ -297,6 +345,8 @@ requireText(doc, "Status: **source-ready / unvalidated**", `${paths.doc}: source
 requireText(doc, "Product admin service is temporarily unavailable", `${paths.doc}: HTTP policy`);
 requireText(doc, "Product admin request could not be completed", `${paths.doc}: GraphQL policy`);
 requireText(doc, "status-only update behavior", `${paths.doc}: preserved status behavior`);
+requireText(doc, "payload presence and character length", `${paths.doc}: bounded payload policy`);
+requireText(doc, "complete typed error is not logged", `${paths.doc}: no complete payload claim`);
 requireText(
   masterPlan,
   "Finish correlation-safe mapper cleanup",
@@ -310,5 +360,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Product Admin primary GraphQL mutations retain typed errors with correlation-safe static public payloads; execution evidence remains open",
+  "Product Admin primary GraphQL mutations retain typed classification and static public errors with bounded payload-shape diagnostics; execution evidence remains open",
 );
