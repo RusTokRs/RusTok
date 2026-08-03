@@ -5,6 +5,7 @@
   "provider": {
     "contract_source": "crates/rustok-page-builder/admin/src/consumer_properties.rs",
     "panel_source": "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "module_export_source": "crates/rustok-page-builder/admin/src/editor/mod.rs",
     "panel_export_source": "crates/rustok-page-builder/admin/src/lib.rs",
     "facade_source": "crates/rustok-page-builder/admin/src/transport/mod.rs",
     "composition_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
