@@ -49,6 +49,30 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in lines
           ) + '\n'
+
+          old = """upgrade = replace_once(
+    upgrade,
+    '    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);',
+    '    assert_eq!(count(&db, \"rbac_artifact_permission_installations\").await, 1);\\n    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);',
+    \"upgrade binding count assertion\",
+)
+"""
+          new = """binding_definition_count = '    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);'
+binding_definition_count_with_installation = '    assert_eq!(count(&db, \"rbac_artifact_permission_installations\").await, 1);\\n    assert_eq!(count(&db, \"rbac_artifact_permission_definitions\").await, 1);'
+if upgrade.count(binding_definition_count) != 2:
+    raise SystemExit(
+        f\"upgrade binding count assertion: expected two matches, found {upgrade.count(binding_definition_count)}\"
+    )
+upgrade = upgrade.replace(
+    binding_definition_count,
+    binding_definition_count_with_installation,
+)
+"""
+          if script.count(old) != 1:
+              raise SystemExit(
+                  f'exact binding count harness block: expected one match, found {script.count(old)}'
+              )
+          script = script.replace(old, new, 1)
           Path('/tmp/apply-rbac-installation-binding.sh').write_text(script)
           PY
           bash /tmp/apply-rbac-installation-binding.sh
