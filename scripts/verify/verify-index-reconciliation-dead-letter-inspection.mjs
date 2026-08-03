@@ -25,6 +25,7 @@ const admissionPath =
   'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
 const serverPath = 'apps/server/src/services/index_reconciliation_operator.rs';
 const docsPath = 'crates/rustok-index/docs/m6-reconciliation-dead-letter-inspection.md';
+const serverDocsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
 const docsIndexPath = 'crates/rustok-index/docs/README.md';
 const planPath = 'crates/rustok-index/docs/implementation-plan.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
@@ -173,29 +174,66 @@ const server = requireMarkers(serverPath, [
   'Permission::MODULES_MANAGE',
   'pub async fn run(',
   'pub async fn request_cancel(',
+  'pub async fn inspect_dead_letter(',
   'PostgresIndexReconciliationRunner::new',
+  'PostgresIndexReconciliationDeadLetterInspector::new(db.clone())',
+  'dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,',
+  'Option<rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspection>',
+  '.inspect(context.tenant_id(), job_id)',
+  'dead_letter_inspection_authorizes_before_adapter_validation',
 ]);
 const serverProduction = server.split('\n#[cfg(test)]')[0];
+const inspectStart = serverProduction.indexOf('    pub async fn inspect_dead_letter(');
+const inspectEnd = serverProduction.indexOf('\n    }\n}', inspectStart);
+if (inspectStart < 0 || inspectEnd <= inspectStart) {
+  fail(`${serverPath} guarded dead-letter inspection method is malformed`);
+}
+const serverInspect = serverProduction.slice(inspectStart, inspectEnd);
+if (serverInspect.includes('tenant_id: Uuid')) {
+  fail(`${serverPath} inspection must not accept a caller-supplied tenant`);
+}
+const serverAuthorize = serverInspect.indexOf(
+  'context.authorize_for(context.tenant_id())?;',
+);
+const serverDelegate = serverInspect.indexOf(
+  '.inspect(context.tenant_id(), job_id)',
+);
+if (serverAuthorize < 0 || serverDelegate <= serverAuthorize) {
+  fail(`${serverPath} inspection must authorize before tenant-derived adapter delegation`);
+}
 for (const forbidden of [
-  'PostgresIndexReconciliationDeadLetterInspector',
-  'IndexReconciliationDeadLetterInspection',
-  'inspect_dead_letter',
-  'pub async fn inspect(',
+  'last_error_details',
+  'SELECT ',
+  'INSERT ',
+  'UPDATE ',
+  'DELETE ',
+  'Router::new',
+  'async_graphql',
+  'requeue',
+  'retry_epoch',
+  "state = 'pending'",
 ]) {
   if (serverProduction.includes(forbidden)) {
-    fail(`${serverPath} prematurely exposes reconciliation inspection via ${forbidden}`);
+    fail(`${serverPath} guarded composition contains forbidden marker ${forbidden}`);
   }
 }
 
 requireMarkers(docsPath, [
-  'Status: `source_complete_authorized_composition_pending`.',
+  'Status: `source_complete_transport_and_recovery_pending`.',
   'Unlike ordinary dead-letter admission, inspection deliberately reads `last_error_details`',
   'The raw JSON object is never returned.',
-  'requires the request-scoped effective `modules:manage` permission',
-  'currently exposes only guarded `run` and `request_cancel` operations',
+  '## Authorized server composition',
+  'requires effective `modules:manage`',
+  'There is no caller-supplied tenant parameter.',
   'manual requeue or retry-epoch reset',
   'canonical M6 drift-diagnosis and targeted-repair roadmap item remains open',
   'maintainer-run',
+]);
+requireMarkers(serverDocsPath, [
+  'tenant-scoped read-only `inspect_dead_letter(context, job_id)`',
+  'Inspection authorization runs before adapter validation or database access',
+  'Raw `last_error_details`',
+  'GraphQL, HTTP, CLI, MCP, or admin transport',
 ]);
 requireMarkers(docsIndexPath, [
   '[M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)',
