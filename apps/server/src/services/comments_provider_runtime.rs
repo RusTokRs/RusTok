@@ -50,6 +50,10 @@ mod keyring_schedule_audit_handoff_postgres {
     include!("comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs");
 }
 
+mod keyring_schedule_audit_handoff_worker {
+    include!("comments_provider_runtime_keyring_schedule_audit_handoff_worker.rs");
+}
+
 mod keyring_schedule_persisted_trigger {
     include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
 }
@@ -99,6 +103,17 @@ pub use keyring_schedule_audit_handoff_postgres::{
     CommentsTcpDelegationScheduleAuditHandoffClaim,
     CommentsTcpDelegationScheduleAuditHandoffError,
     PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff,
+};
+pub use keyring_schedule_audit_handoff_worker::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_CLAIM_TTL_SECONDS_ENV,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_CONTROL_PLANE_TENANT_ID_ENV,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_ENABLED_ENV,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_IDLE_POLL_MS_ENV,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_MAX_CLAIMS_PER_CYCLE_ENV,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_RETRY_DELAY_MS_ENV,
+    CommentsTcpDelegationScheduleAuditHandoffWorkerConfig,
+    CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
+    start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled,
 };
 pub use keyring_schedule_audit_publication::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_EVENT_TYPE,
