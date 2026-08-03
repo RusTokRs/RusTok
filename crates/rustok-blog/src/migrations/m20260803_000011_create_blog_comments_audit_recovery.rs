@@ -36,6 +36,7 @@ ALTER TABLE blog_comments_tcp_delegation_schedule_audit_outbox
 
 CREATE TABLE blog_comments_tcp_delegation_schedule_audit_recovery_audits (
     audit_id UUID NOT NULL,
+    control_plane_tenant_id UUID NOT NULL,
     request_id UUID NOT NULL,
     actor_id UUID NOT NULL,
     action VARCHAR(32) NOT NULL,
@@ -49,6 +50,8 @@ CREATE TABLE blog_comments_tcp_delegation_schedule_audit_recovery_audits (
         UNIQUE (request_id, recovery_epoch),
     CONSTRAINT ck_blog_comments_delegation_audit_recovery_audit_id
         CHECK (audit_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT ck_blog_comments_delegation_audit_recovery_tenant_id
+        CHECK (control_plane_tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     CONSTRAINT ck_blog_comments_delegation_audit_recovery_request_id
         CHECK (request_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     CONSTRAINT ck_blog_comments_delegation_audit_recovery_actor_id
@@ -69,7 +72,7 @@ CREATE TABLE blog_comments_tcp_delegation_schedule_audit_recovery_audits (
 
 CREATE INDEX idx_blog_comments_delegation_audit_recovery_request
     ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
-        (request_id, created_at);
+        (control_plane_tenant_id, request_id, created_at);
 
 CREATE OR REPLACE FUNCTION blog_comments_delegation_audit_recovery_reject_mutation()
 RETURNS trigger AS $$
@@ -99,6 +102,7 @@ ADD COLUMN handoff_recovery_epoch INTEGER NOT NULL DEFAULT 0
 CHECK (handoff_recovery_epoch >= 0)"#,
         r#"CREATE TABLE blog_comments_tcp_delegation_schedule_audit_recovery_audits (
     audit_id TEXT NOT NULL PRIMARY KEY,
+    control_plane_tenant_id TEXT NOT NULL,
     request_id TEXT NOT NULL,
     actor_id TEXT NOT NULL,
     action TEXT NOT NULL CHECK (action = 'requeue'),
@@ -113,7 +117,7 @@ CHECK (handoff_recovery_epoch >= 0)"#,
 )"#,
         r#"CREATE INDEX idx_blog_comments_delegation_audit_recovery_request
 ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
-    (request_id, created_at)"#,
+    (control_plane_tenant_id, request_id, created_at)"#,
         r#"CREATE TRIGGER blog_comments_delegation_audit_recovery_immutable_update
 BEFORE UPDATE ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
 FOR EACH ROW
