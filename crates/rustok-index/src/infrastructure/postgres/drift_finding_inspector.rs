@@ -25,6 +25,10 @@ pub enum IndexDriftFindingScope {
         entity_id: Uuid,
         locale: LocaleKey,
     },
+    EntityWithoutLocale {
+        schema: SchemaRef,
+        entity_id: Uuid,
+    },
 }
 
 /// Bounded read-only diagnosis of one open consistency finding.
@@ -228,16 +232,20 @@ fn decode_scope(
         "entity" => {
             let schema = decode_schema(module_name, entity_name, schema_version)?;
             let entity_id = entity_id.filter(|value| !value.is_nil()).ok_or_else(invalid_scope)?;
-            let stored_locale = locale_key.ok_or_else(invalid_scope)?;
-            let locale = LocaleKey::new(&stored_locale).map_err(|_| invalid_scope())?;
-            if locale.as_str() != stored_locale {
-                return Err(invalid_scope());
+            match locale_key {
+                Some(stored_locale) => {
+                    let locale = LocaleKey::new(&stored_locale).map_err(|_| invalid_scope())?;
+                    if locale.as_str() != stored_locale {
+                        return Err(invalid_scope());
+                    }
+                    Ok(IndexDriftFindingScope::Entity {
+                        schema,
+                        entity_id,
+                        locale,
+                    })
+                }
+                None => Ok(IndexDriftFindingScope::EntityWithoutLocale { schema, entity_id }),
             }
-            Ok(IndexDriftFindingScope::Entity {
-                schema,
-                entity_id,
-                locale,
-            })
         }
         _ => Err(invalid_scope()),
     }
