@@ -586,11 +586,11 @@ async fn topic_merge_rejects_cross_category_and_competing_solutions_without_part
         )
         .await;
     let error = competing.expect_err("competing solutions must block merge");
-    assert!(matches!(
-        error,
-        ForumError::TopicMergeSolutionConflict(id) if id == operation_id
-    ));
     assert_eq!(error.stable_code(), "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT");
+    assert!(matches!(
+        &error,
+        ForumError::TopicMergeSolutionConflict(id) if *id == operation_id
+    ));
 
     assert_topic_state(&db, tenant_id, target_topic_id, "open", false, 1).await?;
     assert_topic_state(&db, tenant_id, source_topic_id, "open", false, 1).await?;
@@ -620,8 +620,12 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    insert_user(&db, tenant_id, actor_id).await?;
+    let reply_author_id = Uuid::new_v4();
+    for user_id in [actor_id, reply_author_id] {
+        insert_user(&db, tenant_id, user_id).await?;
+    }
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
+    let reply_author = SecurityContext::new(UserRole::Customer, Some(reply_author_id));
 
     let moderated_category_id =
         create_category(&db, tenant_id, admin.clone(), "solution-pending", true).await?;
@@ -639,11 +643,12 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
         &event_bus,
         tenant_id,
         pending_topic_id,
-        admin.clone(),
+        reply_author,
         "Pending answer",
         None,
     )
     .await?;
+    assert_eq!(reply_status(&db, tenant_id, pending_reply_id).await?, "pending");
     assert!(db
         .execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
@@ -679,6 +684,7 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
         None,
     )
     .await?;
+    assert_eq!(reply_status(&db, tenant_id, approved_reply_id).await?, "approved");
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE forum_topics SET status = 'archived', is_locked = TRUE WHERE tenant_id = ? AND id = ?",
@@ -737,6 +743,22 @@ async fn user_solution_count(
         .await?
         .ok_or("forum user stat row missing")?;
     Ok(row.try_get("", "solution_count")?)
+}
+
+async fn reply_status(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> TestResult<String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT status FROM forum_replies WHERE tenant_id = ? AND id = ?",
+            vec![tenant_id.into(), reply_id.into()],
+        ))
+        .await?
+        .ok_or("reply row missing")?;
+    Ok(row.try_get("", "status")?)
 }
 
 async fn assert_topic_state(
