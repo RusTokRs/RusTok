@@ -42,6 +42,7 @@ pub mod forum_topic_audience_policy;
 pub mod forum_topic_audience_role;
 pub mod forum_topic_audience_user;
 pub mod forum_topic_channel_access;
+pub mod forum_topic_merge_audience_reconciliation;
 pub mod forum_topic_merge_operation;
 pub mod forum_topic_merge_read_state_reconciliation;
 pub mod forum_topic_merge_subscription_reconciliation;
@@ -77,6 +78,9 @@ pub use forum_reply::Entity as ForumReply;
 pub use forum_reply_revision::Entity as ForumReplyRevision;
 pub use forum_topic::Entity as ForumTopic;
 pub use forum_topic_audience_policy::Entity as ForumTopicAudiencePolicyEntity;
+pub use forum_topic_merge_audience_reconciliation::{
+    Entity as ForumTopicMergeAudienceReconciliationEntity, ForumTopicMergeAudienceOutcome,
+};
 pub use forum_topic_merge_operation::Entity as ForumTopicMergeOperationEntity;
 pub use forum_topic_merge_read_state_reconciliation::Entity as ForumTopicMergeReadStateReconciliationEntity;
 pub use forum_topic_merge_subscription_reconciliation::Entity as ForumTopicMergeSubscriptionReconciliationEntity;
