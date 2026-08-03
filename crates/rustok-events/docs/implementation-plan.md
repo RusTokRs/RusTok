@@ -6,7 +6,7 @@ This file owns shared typed event payloads, envelope validation, schema registry
 deterministic contract digest generation. Domain transactions and transport execution
 remain in producer owners, Outbox, broker runtimes, and consumers.
 
-Last reconciled with `main`: 2026-08-01.
+Last reconciled with `main`: 2026-08-03.
 
 ## Current state
 
@@ -18,18 +18,19 @@ Last reconciled with `main`: 2026-08-01.
   envelope metadata.
 - `contracts/event-contract-digests.json` is generated only by the repository-owned
   command after intentional schema review.
+- The sealed-contract boundary uses one narrow documented `#[expect(private_bounds)]`;
+  the touched file contains no broad lint allowance.
 
 Merged PR #2867 registers canonical built-in role mutation contracts:
 
 - `rbac.user_role_replaced`;
 - `rbac.user_role_assignment_repaired`.
 
-Their owner policy and same-transaction publication live in `rustok-rbac` and the Auth
-admin adapter. Exact canonical role replay emits neither event.
-
-Draft PR #2866 adds the remaining artifact permission family:
+Draft PR #2870, which supersedes closed #2866, adds the artifact permission family:
 
 - `rbac.artifact_role_permission.assignment_changed` v1;
+- the payload carries both the immutable `artifact_permission_id` and the admitted
+  installation/key evidence;
 - mutation, idempotency receipt, relation state, and event share one owner transaction;
 - exact retry and state no-op emit no event;
 - tenant and actor remain envelope metadata;
@@ -42,25 +43,27 @@ Draft PR #2866 adds the remaining artifact permission family:
 - [x] Keep explicit event type and schema version registry entries.
 - [x] Generate deterministic JSON schemas and contract digests.
 - [x] Register merged RBAC role replacement/repair contracts from #2867.
-- [x] Register artifact role-permission assignment contract in draft #2866.
-- [x] Add artifact contract validation and envelope round-trip tests.
-- [x] Add source guards for owner transaction and rollback ordering.
-- [ ] Generate and review the exact-head digest for #2866.
+- [x] Register artifact role-permission assignment contract in draft #2870.
+- [x] Bind the event to exact immutable artifact permission identity.
+- [x] Add artifact contract validation, nil-identity, and envelope round-trip tests.
+- [x] Add source guards for owner transaction, rollback ordering, and exact identity.
+- [x] Replace the broad sealed-contract lint allowance with a narrow reasoned expectation.
+- [ ] Generate and review the exact-head digest for #2870.
 - [ ] Execute Events/RBAC/server contract, transaction, verifier, and module gates.
 
 ## Open work
 
 ### P0. Digest and exact-head verification
 
-- [x] Reconstruct #2866 as one commit on the latest `main`.
-- [ ] Run `event_contract_digests -- --write` on that exact head.
+- [ ] Run `event_contract_digests -- --write` on the final #2870 head.
 - [ ] Review and commit generator output only; never guess or hand-edit hashes.
 - [ ] Run all-target Events compilation and focused RBAC event tests.
+- [ ] Re-run after the final merge-base reconciliation if `main` advances.
 
 ### P1. Producer and consumer evidence
 
 - [ ] Execute artifact mutation success, exact retry, state no-op, publication failure,
-  and rollback cases.
+  exact permission identity, and rollback cases.
 - [ ] Identify approved artifact permission event consumers.
 - [ ] Require consumers to be tenant-bound, idempotent, replay-safe, and
   non-authoritative for access decisions.
@@ -76,6 +79,7 @@ Draft PR #2866 adds the remaining artifact permission family:
 ## Verification commands
 
 ```bash
+cargo fmt --all -- --check
 cargo run -p rustok-events --example event_contract_digests -- --write
 cargo check -p rustok-events --all-targets
 cargo test -p rustok-events rbac_role_mutation
@@ -90,7 +94,8 @@ cargo xtask module validate rbac
 cargo xtask module test rbac
 ```
 
-No command above was executed in this connector-only source slice.
+No command above was executed in this connector-only source slice. GitHub workflow
+results are recorded only after the corresponding exact-head jobs finish.
 
 ## Completion gates
 
@@ -103,11 +108,11 @@ No command above was executed in this connector-only source slice.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-08-01`
-- Scope inspected: `merged owner role mutation contracts; artifact permission sealed family; envelope registry; owner transaction ordering; digest synchronization`
-- Findings: `P0=1, P1=1, P2=0, P3=0`
-- Fixed in this pass: `draft PR #2866 adds sealed artifact role-permission assignment events through the canonical Outbox in the same RBAC owner transaction. Exact retry and state no-op publish nothing, while required publication failure rolls back mutation and idempotency receipt. The branch is reconstructed as one commit on the latest main.`
-- Remaining risks or blockers: `The #2866 generated contract digest is absent. Events/RBAC/server compilation, focused tests, Node/module gates, approved consumers, replay guidance, and runtime transport evidence remain absent.`
-- Evidence: `source review confirms the artifact family composes additively with merged #2867 role mutation contracts, retains typed validation and transaction-bound publication, and is one commit zero behind current main. No generator or runtime execution is claimed.`
-- Next action: `generate and review the #2866 digest, then execute exact-head Events/RBAC/server contract and transaction gates`
-- Resume command: `cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs`
+- Last verified at (UTC): `2026-08-03`
+- Scope inspected: `RBAC artifact permission sealed family; immutable permission identity; envelope registry and validation; owner transaction ordering; digest synchronization; touched-file lint policy`
+- Findings: `P0=0, P1=1, P2=0, P3=1`
+- Fixed in this pass: `draft PR #2870 supersedes closed #2866, propagates exact artifact_permission_id through the sealed assignment event and all contract tests, preserves transaction-bound Outbox publication and rollback semantics, and replaces the broad private_bounds allowance with one narrow documented expectation.`
+- Remaining risks or blockers: `The #2870 generated contract digest is absent. Events/RBAC/server compilation, focused tests, Node/module gates, approved consumers, replay guidance, and runtime transport evidence remain absent.`
+- Evidence: `static source review confirms a registered v1 payload with six fields, non-nil operation/artifact-permission/role/installation validation, exact identity propagation from the RBAC owner, tenant/actor envelope metadata, and no event for retry or state no-op. No generator or runtime execution is claimed.`
+- Next action: `generate and review the #2870 digest, then execute exact-head Events/RBAC/server contract and transaction gates`
+- Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs`
