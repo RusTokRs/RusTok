@@ -11,6 +11,8 @@ same transaction with the accepted-solution policy. FORUM-21I uses the
 immutable receipt as the canonical selected-read edge from an archived source
 tombstone to the retained target. FORUM-21J composes that edge into an
 authorization-safe permanent redirect for the existing REST topic GET route.
+FORUM-21K publishes the same idempotent owner as one manager-only GraphQL
+command returning the immutable merge receipt.
 
 The cumulative machine contract is:
 
@@ -25,6 +27,8 @@ crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json
 crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md
 crates/rustok-forum/contracts/forum-topic-canonical-resolution.json
 crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md
+crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json
+crates/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md
 ```
 
 The merge owner API remains:
@@ -67,8 +71,9 @@ target must differ.
 
 Cross-category merge, slug aliases, localized public routes, split, fork and
 reply-range workflows remain separate policies. Subscription, read-state, tag,
-vote, topic-local audience, canonical selected-read resolution and REST source
-redirects are delivered by their dedicated FORUM-21 slices.
+vote, topic-local audience, canonical selected-read resolution, REST source
+redirects and the GraphQL merge command are delivered by dedicated FORUM-21
+slices.
 
 ## Idempotency
 
@@ -161,7 +166,7 @@ parallel redirect registry is introduced.
 - `TopicService`, GraphQL selected-topic lookup, storefront selected-topic
   lookup and Forum SEO target loading all use the terminal target identity.
 
-The existing ID-based REST route now distinguishes direct and merged IDs:
+The existing ID-based REST route distinguishes direct and merged IDs:
 
 - `GET /api/forum/topics/{target}` returns the existing `200 TopicResponse`;
 - `GET /api/forum/topics/{source}` returns `308 Permanent Redirect` with a
@@ -178,6 +183,35 @@ The generated OpenAPI path records the existing `200` response and the new
 `308` response headers without adding a second route or response DTO. Slug
 aliases, localized storefront URLs and slug tombstones remain FORUM-24 work.
 
+## GraphQL merge command
+
+FORUM-21K adds one additive field to the module-owned merged mutation root:
+
+```graphql
+mergeForumTopic(
+  tenantId: UUID
+  targetTopicId: UUID!
+  input: MergeForumTopicGraphqlInput!
+): GqlForumTopicMerge!
+```
+
+The adapter requires the `forum` module to be enabled, an authenticated
+`AuthContext` and `forum_topics:manage`. Tenant authority comes from the routed
+`TenantContext`; optional `tenantId` is assertion-only and a mismatch fails
+before owner execution.
+
+The resolver passes the authenticated permission snapshot to
+`ForumTopicMergeService::merge_topic` and returns the immutable owner receipt,
+including operation/event identities, source and retained target IDs, category,
+actor, reason, moved counts, position offset and merge timestamp. It contains no
+merge business logic, does not hydrate a localized topic response and does not
+follow merged source aliases for a mutation.
+
+An exact GraphQL replay therefore returns the same owner receipt. Existing
+`ForumGraphqlErrorExtension` mapping preserves stable Forum conflict codes and
+retryability for operation drift, solution conflict and owner validation
+failures.
+
 ## Persistence and events
 
 `forum_topic_merge_operations` remains append-only on PostgreSQL and SQLite.
@@ -188,7 +222,7 @@ target topic, category and human actor. The semantic event remains:
 forum.topic.merged / schema version 1
 ```
 
-FORUM-21H through FORUM-21J do not change the shared event payload or receipt
+FORUM-21H through FORUM-21K do not change the shared event payload or receipt
 row shape. The existing source-topic, target-topic and category projection
 invalidations remain the durable cross-consumer repair signal.
 
@@ -230,14 +264,22 @@ SQLite merge through a real Axum route:
 - missing and forbidden reads have no `Location`;
 - PUT bypasses the GET-only redirect middleware.
 
+The FORUM-21K transport coverage is source-ready to verify:
+
+- the merged GraphQL schema exposes `mergeForumTopic`, its typed input and full
+  immutable receipt result;
+- a read-only permission snapshot is denied before owner execution;
+- a cross-tenant assertion is rejected;
+- the real SQLite owner performs one merge;
+- exact replay through the adapter returns the same receipt and event identity.
+
 ## Remaining FORUM-21 work
 
-The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21J
+The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21K
 are bounded partial slices; remaining work includes:
 
 - maintainer execution and retained SQLite/PostgreSQL evidence;
-- public/admin merge command transport composition and exact authorization
-  context;
+- native/admin merge command composition and merge UI;
 - an explicit manager-selected resolution command for competing solutions;
 - cross-category merge and checked category ownership policy;
 - split, fork and reply-range workflows.
@@ -252,9 +294,12 @@ node scripts/verify/verify-forum-topic-merge-owner.mjs
 node scripts/verify/verify-forum-topic-merge-solution-policy.mjs
 node scripts/verify/verify-forum-topic-canonical-resolution.mjs
 node scripts/verify/verify-forum-topic-http-redirect.mjs
+node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs
 cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture
 cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture
+cargo test -p rustok-forum graphql::topic_merge_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
 ```
 
 No command above was run by the implementation agent, per maintainer request.
