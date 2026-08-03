@@ -12,7 +12,8 @@ Leptos admin UI package for the `rustok-forum` module.
 - Exposes the forum admin root view used by `apps/admin`.
 - Keeps forum-specific admin UX inside the module package.
 - Participates in manifest-driven UI composition through `rustok-module.toml`.
-- Owns one explicit GraphQL transport for category/topic CRUD, reply previews, and the FORUM-21N topic-merge workflow; no REST fallback is retained.
+- Keeps category/topic CRUD and reply previews on their existing explicit GraphQL transport.
+- Selects direct authenticated native server functions for the FORUM-21 topic-merge workflow in SSR/hydrate builds and retains GraphQL for CSR/headless builds, without fallback.
 - Presents category, topic, reply-preview, and merge workflows as module-owned Forum pages.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles.
 - Embeds owner-side SEO panels through `rustok-seo-admin-support`.
@@ -26,20 +27,28 @@ Leptos admin UI package for the `rustok-forum` module.
 
 - `admin/src/core.rs` owns the existing framework-agnostic category/topic view policy.
 - `admin/src/topic_merge_model.rs` owns merge candidate, command, receipt, validation, accepted-solution selection, and retry-identity policy without Leptos imports.
-- `admin/src/transport.rs` is the only UI-facing transport facade.
-- `admin/src/transport/topic_merge_graphql_adapter.rs` composes `mergeForumTopic` and `mergeForumTopicResolvingSolution` through `rustok-graphql`.
+- `admin/src/transport.rs` is the only UI-facing transport facade and selects exactly one merge transport per compile profile.
+- `admin/src/transport/topic_merge_native_server_adapter.rs` extracts server-side auth/tenant/runtime context and calls `TopicService` plus `ForumTopicMergeService` directly.
+- `admin/src/transport/topic_merge_graphql_adapter.rs` preserves CSR/headless parity through `mergeForumTopic` and `mergeForumTopicResolvingSolution`.
 - `admin/src/ui/root.rs` performs route-only composition.
 - `admin/src/ui/topic_merge.rs` is the thin Leptos render/effect adapter.
 
 ## Transport state
 
-The package remains a documented single-adapter GraphQL state. FORUM-21N does not pretend that a GraphQL call wrapped by a server function is a native owner path and never sends an access token inside a server-function DTO. A future native parity slice must add direct authenticated owner composition and preserve GraphQL for CSR/headless use.
+FORUM-21O replaces the historical FORUM-21N GraphQL-only Leptos state with compile-profile selection:
+
+- `ssr` and `hydrate` use native server functions;
+- `csr` and headless/default builds use GraphQL;
+- a failed selected path is returned as an error and never triggers cross-path fallback;
+- native request DTOs contain locale or the framework-neutral merge command only, never access tokens, tenant IDs, actor IDs, permission snapshots, database handles, or event-bus handles.
+
+The native adapter derives tenant and actor authority from `TenantContext` and `AuthContext`, obtains the database and `TransactionalEventBus` from `HostRuntimeContext`, rechecks `forum_topics:list` or `forum_topics:manage`, and delegates to the existing Forum owners.
 
 ## Interactions
 
 - Consumed by `apps/admin` through manifest-driven code generation.
 - Mounted under `/modules/forum` with child pages for topics, categories, and merge.
-- Requires the routed tenant and `forum_topics:manage`; the backend owner revalidates both.
+- Requires the routed tenant and `forum_topics:manage`; both transport adapters and the backend owner revalidate authority.
 - Keeps one operation ID stable across an exact retry and rotates it whenever source, target, reason, or accepted-solution selection changes.
 - Uses explicit source/target accepted-solution choice only when both topics are solved.
 
@@ -47,3 +56,4 @@ The package remains a documented single-adapter GraphQL state. FORUM-21N does no
 
 - See [platform docs](../../../docs/index.md).
 - See [FORUM-21N admin merge UI](../docs/forum-21n-topic-merge-admin-ui.md).
+- See [FORUM-21O native admin merge transport](../docs/forum-21o-topic-merge-native-admin.md).
