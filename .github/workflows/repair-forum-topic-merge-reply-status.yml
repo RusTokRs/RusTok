@@ -84,10 +84,10 @@ jobs:
           path.write_text(text.replace(old, new, 1))
           PY
 
-      - name: Verify formatting
+      - name: Format Forum repair
         env:
           RUSTUP_TOOLCHAIN: 1.96.0
-        run: cargo fmt --all -- --check
+        run: cargo fmt --all
 
       - name: Verify Forum owner source contract
         run: node scripts/verify/verify-forum-topic-merge-owner.mjs
