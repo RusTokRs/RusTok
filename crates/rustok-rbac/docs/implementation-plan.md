@@ -57,12 +57,15 @@ Draft #2870 currently provides:
    event publication;
 9. an append-only fifth RBAC migration that upgrades legacy catalog/grant/receipt state
    and fails closed on ambiguous or orphan authority;
-10. SQLite upgrade, rollback, scope-shadowing, cross-tenant, parent-integrity,
+10. downgrade validation that refuses to erase exact scope identity when a canonical
+    grant or operation receipt would become an ambiguous legacy selector;
+11. SQLite upgrade, rollback, scope-shadowing, cross-tenant, parent-integrity,
     localization, immutability, and transactional event regressions;
-11. a global migration release-order tail that preserves current `main` Forum and Blog
+12. a global migration release-order tail that preserves current `main` Forum and Blog
     cutovers before the RBAC cutover;
-12. fail-closed source guards for owner boundaries, exact scope, migration history,
-    release order, event identity, locale normalization, and removed execution paths.
+13. fail-closed source guards for owner boundaries, exact scope, migration history,
+    release order, event identity, locale normalization, rollback identity, and removed
+    execution paths.
 
 Historical drafts #2843, #2847, #2863, and #2866 are superseded and must not be reopened
 or merged in parallel with #2870.
@@ -70,7 +73,7 @@ or merged in parallel with #2870.
 ## Findings
 
 - `P0=0`
-- `P1=9`
+- `P1=10`
   1. localized copy was mixed into authorization identity;
   2. locale keys were not canonical and semantic duplicates were possible;
   3. trigger-only parent checks admitted a concurrent parent update/delete race;
@@ -82,7 +85,10 @@ or merged in parallel with #2870.
      exposed that generated identity;
   8. registration admitted permission keys that assignment/event contracts rejected;
   9. rewriting already registered migration IDs would leave an upgraded database on the
-     legacy schema and violate the immutable migration prefix.
+     legacy schema and violate the immutable migration prefix;
+  10. downgrade could erase a canonical grant or receipt's scope identity after a later
+      sibling platform/tenant definition made the legacy `(tenant, installation, key)`
+      selector ambiguous.
 - `P2=1`: nil tenant registration scope.
 - `P3=2`: compatibility wording and obsolete broad lint handling.
 
@@ -158,11 +164,15 @@ or merged in parallel with #2870.
 - [x] Fail closed when legacy grants/receipts are orphaned or have both platform and
   tenant candidates.
 - [x] Prevent lossy rollback when distinct scoped grants collapse to one legacy key.
+- [x] Before downgrade, require every grant and operation receipt to retain exactly one
+  representable legacy platform-or-tenant selector.
+- [x] Add SQLite regressions for late sibling-scope definitions that would make one
+  canonical grant or receipt ambiguous after downgrade.
 - [x] Register a PostgreSQL backfill fixture in
   `docs/migrations/backfill-contracts.json`.
 - [x] Append current-main Forum and Blog migrations, then the RBAC cutover, to the global
   release-order migration tail.
-- [x] Guard exact tail order in the RBAC source verifier.
+- [x] Guard exact tail and rollback identity rules in the RBAC source verifier.
 - [ ] Execute Migration Compatibility preflight, clean PostgreSQL apply, N-1 upgrade,
   fixture assertion, rollback, and schema-contract checks on one exact head.
 
@@ -183,6 +193,7 @@ or merged in parallel with #2870.
 
 - [x] Reconcile #2870 with current `main` without dropping either side.
 - [x] Preserve migration history and append the canonical cutover in release order.
+- [x] Preserve exact scope identity or fail closed on downgrade.
 - [ ] Generate and review the artifact event contract digest.
 - [ ] Run formatting, Events/RBAC/Admin/server compilation, Clippy, focused Rust/Node
   tests, and module validate/test on the final exact head.
@@ -253,8 +264,8 @@ packet completes successfully.
 - Source-ready becomes verified only after exact-head commands pass.
 - Artifact event review requires generator-produced digest output.
 - Artifact relation integrity requires retained SQLite and PostgreSQL execution.
-- Migration integrity requires immutable-prefix, clean-apply, N-1 upgrade, fixture, and
-  rollback evidence.
+- Migration integrity requires immutable-prefix, clean-apply, N-1 upgrade, fixture,
+  downgrade selector identity, and rollback evidence.
 - Durable invalidation requires retained PostgreSQL/watchdog/Redis/CLI evidence.
 - FBA remains `boundary_ready`; FFA and `core/rbac` remain `in_progress`.
 
@@ -263,10 +274,10 @@ packet completes successfully.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-08-03`
-- Scope inspected: `resolver ownership; canonical user-role mutation; effective status replay; artifact permission identity, locale normalization, explicit scope, database integrity, transactional event publication, append-only schema upgrade, and global migration release order`
-- Findings: `P0=0, P1=9, P2=1, P3=2`
-- Fixed in this pass: `draft #2870 removes server-owned role mutation paths; preserves exact role/status no-op behavior; introduces canonical immutable artifact permission definitions and owner translations; binds grants, receipts, authorization reads, and events to exact definition identity and admitted scope; removes platform/tenant preferred lookup; exposes usable explicit scope selection; aligns permission-key contracts; adds transactional Outbox publication; restores historical migration bodies; adds a fail-closed append-only cutover migration with SQLite upgrade/rollback and PostgreSQL fixture coverage; and extends the current global migration tail in release order through Forum, Blog, and RBAC. Technical PR #2909 reconciled current main into the verification branch without changing main or force-pushing.`
+- Scope inspected: `resolver ownership; canonical user-role mutation; effective status replay; artifact permission identity, locale normalization, explicit scope, database integrity, transactional event publication, append-only schema upgrade, downgrade scope preservation, and global migration release order`
+- Findings: `P0=0, P1=10, P2=1, P3=2`
+- Fixed in this pass: `draft #2870 removes server-owned role mutation paths; preserves exact role/status no-op behavior; introduces canonical immutable artifact permission definitions and owner translations; binds grants, receipts, authorization reads, and events to exact definition identity and admitted scope; removes platform/tenant preferred lookup; exposes usable explicit scope selection; aligns permission-key contracts; adds transactional Outbox publication; restores historical migration bodies; adds a fail-closed append-only cutover migration with SQLite upgrade/rollback and PostgreSQL fixture coverage; rejects downgrade when a late sibling-scope definition would erase the exact scope identity of a grant or operation receipt; and extends the current global migration tail in release order through Forum, Blog, and RBAC. Technical PR #2909 reconciled current main into the verification branch without changing main or force-pushing.`
 - Remaining risks or blockers: `#2870 remains draft. Generator-produced event digest, exact-head formatting, compilation, focused tests, source/module gates, Migration Compatibility, PostgreSQL clean apply and N-1 upgrade, concurrency/rollback evidence, live negative transports, retained #2849/#2853/#2856/#2862 execution, incident evidence, native operator parity, and FFA/FBA evidence remain absent. Rust-host issue #2740 remains an infrastructure blocker unless a current exact-head run proves otherwise.`
-- Evidence: `source inspection and committed regressions only. The branch contains main through merge commit 39ab7c4d9bae2953781511dc0eeec4dfb546ffb7. The global tail change is isolated to three added migration names. No exact-head command, database, runtime, or production pass is claimed.`
+- Evidence: `source inspection and committed regressions only. The branch contains main through merge commit 39ab7c4d9bae2953781511dc0eeec4dfb546ffb7. The global tail change is isolated to three added migration names. The rollback verifier and SQLite tests cover both grants and operation receipts. No exact-head command, database, runtime, or production pass is claimed.`
 - Next action: `review exact-head Migration Compatibility and compiler failures, generate the event digest through the repository generator, then execute PostgreSQL integrity and runtime packets before considering merge`
 - Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite && cargo test -p rustok-rbac --test artifact_permission_upgrade_sqlite && cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail && cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard && cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard && cargo test -p rustok-server --test rbac_mutation_api_architecture_guard && node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
