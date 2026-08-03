@@ -28,22 +28,51 @@ documentation for this module must live inside the crate, not spread across
   authoritative `PermissionResolver`; request claims are not used as an
   independent permission source;
 - `RbacArtifactPermissionCatalog` is the durable owner adapter for immutable
-  artifact permission vocabulary. It stores localized labels/descriptions by
-  scope and admitted installation identity, is idempotent for retries, and
-  never writes `roles` or `role_permissions` during registration. Its owner
-  migration is aggregated by `rustok-migrations::Migrator`, the installer and
-  CLI schema path used by production hosts;
+  artifact permission vocabulary. One language-neutral definition owns scope,
+  installation, module, release and permission identity; localized labels and
+  descriptions live in the owner translation table with `VARCHAR(32)` locale
+  storage. Registration is idempotent and never writes `roles` or
+  `role_permissions`. Its owner migrations are aggregated by
+  `rustok-migrations::Migrator`, the installer and the CLI schema path used by
+  production hosts;
 - `RbacArtifactPermissionAssignmentService` owns explicit, idempotent
   tenant-role grants and revocations for that vocabulary in
-  `rbac_artifact_role_permissions`; it validates the exact installation and
-  platform-or-tenant catalog scope before writing, records the acting operator
-  in its durable operation ledger, and never mutates static `role_permissions`.
-  `SeaOrmArtifactPermissionAuthorizer` resolves the matching role-derived grant
-  for an exact tenant, user, installation, and permission key. The platform
-  artifact HTTP and command routes are runtime consumers; they never interpret
-  a module-defined permission as a static `Permission` enum value;
+  `rbac_artifact_role_permissions`. Grants and operation receipts reference the
+  exact immutable permission definition and admitted scope, validate the exact
+  installation and platform-or-tenant scope before writing, record the acting
+  operator, and never mutate static `role_permissions`;
+- `SeaOrmArtifactPermissionAuthorizer` resolves a role-derived grant only when
+  tenant, user, role, exact permission definition, admitted scope, installation
+  and permission key all match. The platform artifact HTTP and command routes
+  are runtime consumers; they never interpret a module-defined permission as a
+  static `Permission` enum value;
 - the operator-facing admin overview lives in `rustok-rbac-admin` and is structured as FFA `core` + native-only `transport` + `ui/leptos` adapter;
 - new public RBAC surfaces and event contracts require synchronization of module docs, server docs and verification plan.
+
+## Artifact authorization lifecycle and teardown
+
+Artifact authorization rows fail closed under parent lifecycle changes:
+
+- role, actor and permission-definition foreign keys use `ON UPDATE RESTRICT`
+  and `ON DELETE RESTRICT`; a direct parent update or hard delete cannot leave a
+  grant or idempotency receipt orphaned;
+- tenant-scoped definitions may be referenced only with
+  `permission_scope_key = tenant:<tenant_id>`; platform definitions use the
+  explicit `platform` scope. A grant cannot bind one tenant to another tenant's
+  definition even through a direct database write;
+- language-neutral permission definitions are immutable after admission.
+  Localized translations remain updateable and are removed with their owning
+  definition only after authorization references have been removed;
+- the current Auth Admin `delete_user` operation is account deactivation and
+  redaction, not a hard user-row delete. Existing artifact grants and operation
+  receipts therefore retain their actor identity;
+- no public role or tenant hard-delete path may bypass RBAC. A future hard-delete
+  workflow must run in one owner-coordinated transaction and remove dependent
+  artifact operation receipts, then grants, then admitted definitions and
+  translations when their installation is removed, before deleting role, user
+  or tenant parents. Until that workflow exists, `RESTRICT` is the canonical
+  behavior and a blocked delete is an integrity result, not a condition for a
+  compatibility fallback or cascade.
 
 ## Observability and release gates
 
@@ -157,6 +186,7 @@ durable generation and recovery action is still an open P1 in the implementation
 - `cargo test -p rustok-telemetry rbac_invalidation_metrics`
 - `cargo test -p rustok-server --lib rbac_invalidation_generation`
 - `node scripts/verify/verify-rbac-invalidation-observability.mjs`
+- `node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs`
 - targeted tests for permission resolution, tenant policy decisions and integration events
 
 ## Related documents
