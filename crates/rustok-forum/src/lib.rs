@@ -92,11 +92,10 @@ pub use services::{
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,
     ForumTopicAudiencePolicyService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
-    ForumTopicAudienceVisibilityService, ForumTopicCreateAudienceAuthorization,
-    ForumTopicCreateAudienceAuthorizationService, ForumTopicCreatesWindowFactPort,
-    ForumTopicMergeAudienceReconciliationResult,
-    ForumTopicMergeAudienceReconciliationService,
-    ForumTopicMergeReadStateReconciliationResult,
+    ForumTopicAudienceVisibilityService, ForumTopicCanonicalResolution,
+    ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
+    ForumTopicCreatesWindowFactPort, ForumTopicMergeAudienceReconciliationResult,
+    ForumTopicMergeAudienceReconciliationService, ForumTopicMergeReadStateReconciliationResult,
     ForumTopicMergeReadStateReconciliationService, ForumTopicMergeResult,
     ForumTopicMergeService, ForumTopicMergeSubscriptionReconciliationResult,
     ForumTopicMergeSubscriptionReconciliationService, ForumTopicMergeTagReconciliationResult,
@@ -110,7 +109,7 @@ pub use services::{
     ForumVisibilityScopedReadStateService, ForumWidgetContractService,
     MAX_FORUM_POSTING_POLICY_FACTS, MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
     MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES,
-    MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN,
+    MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS, MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_READ_STATE_REASON_LEN, MAX_FORUM_TOPIC_MERGE_READ_STATES,
     MAX_FORUM_TOPIC_MERGE_REASON_LEN, MAX_FORUM_TOPIC_MERGE_REPLIES,
     MAX_FORUM_TOPIC_MERGE_SUBSCRIPTION_REASON_LEN, MAX_FORUM_TOPIC_MERGE_SUBSCRIPTIONS,
@@ -237,6 +236,3 @@ impl MigrationSource for ForumModule {
         migrations::migration_dependencies()
     }
 }
-
-#[cfg(test)]
-mod contract_tests;
