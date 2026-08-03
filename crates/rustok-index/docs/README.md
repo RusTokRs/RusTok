@@ -39,6 +39,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Reconciliation Retry Transition Store](./m6-reconciliation-retry-transition-store.md)
 - [M6 Reconciliation Runner Retry Wiring](./m6-reconciliation-runner-retry-wiring.md)
 - [M6 Reconciliation Host Scheduler](./m6-reconciliation-host-scheduler.md)
+- [M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
 - [M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)
 - [M6 Reconciliation Dead-letter Requeue](./m6-reconciliation-dead-letter-requeue.md)
