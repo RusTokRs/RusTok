@@ -84,17 +84,37 @@ jobs:
           path.write_text(text.replace(old, new, 1))
           PY
 
-      - name: Verify Forum owner and regressions
+      - name: Verify formatting
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+        run: cargo fmt --all -- --check
+
+      - name: Verify Forum owner source contract
+        run: node scripts/verify/verify-forum-topic-merge-owner.mjs
+
+      - name: Check Forum library
         env:
           RUSTUP_TOOLCHAIN: 1.96.0
           CARGO_INCREMENTAL: 0
-        run: |
-          cargo fmt --all -- --check
-          node scripts/verify/verify-forum-topic-merge-owner.mjs
-          cargo check --locked -p rustok-forum --lib
-          cargo test --locked -p rustok-forum --test topic_merge_sqlite
-          cargo test --locked -p rustok-forum --test topic_merge_solution_resolution_sqlite
-          cargo test --locked -p rustok-forum --test topic_merge_cross_category_sqlite
+        run: cargo check --locked -p rustok-forum --lib
+
+      - name: Run ordinary topic merge regressions
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo test --locked -p rustok-forum --test topic_merge_sqlite
+
+      - name: Run solution resolution regressions
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo test --locked -p rustok-forum --test topic_merge_solution_resolution_sqlite
+
+      - name: Run cross-category merge regressions
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo test --locked -p rustok-forum --test topic_merge_cross_category_sqlite
 
       - name: Commit verified Forum repair
         run: |
