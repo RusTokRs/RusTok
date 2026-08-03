@@ -304,24 +304,64 @@ fn parse_port_tenant_id(
             "payment.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for payment ports",
         );
+        let parse_error_type = std::any::type_name_of_val(&parse_error);
+        let actor_kind = match &context.actor.kind {
+            rustok_api::PortActorKind::User => "user",
+            rustok_api::PortActorKind::Service => "service",
+            rustok_api::PortActorKind::System => "system",
+        };
+        let tenant_id_length = context.tenant_id.chars().count();
+        let actor_id_length = context.actor.id.chars().count();
+        let claim_count = context.claims.len();
+        let role_count = context.roles.len();
+        let channel_present = context.channel.is_some();
+        let channel_length = context.channel.as_ref().map(|value| value.chars().count());
+        let locale_length = context.locale.chars().count();
+        let causation_id_present = context.causation_id.is_some();
+        let causation_id_length = context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count());
+        let traceparent_present = context.traceparent.is_some();
+        let traceparent_length = context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count());
+        let idempotency_key_present = context.idempotency_key.is_some();
+        let idempotency_key_length = context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count());
+        let internal_message_present = !error.message.trim().is_empty();
+        let internal_message_length = error.message.chars().count();
+        let error_kind = "validation";
+
         tracing::warn!(
-            parse_error = ?parse_error,
-            error = ?error,
+            parse_error_type,
+            tenant_id_parse_failed = true,
             owner = PAYMENT_COLLECTION_OWNER,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
+            tenant_id_length,
+            actor_kind,
+            actor_id_length,
+            claim_count,
+            role_count,
+            channel_present,
+            channel_length = ?channel_length,
+            locale_length,
+            causation_id_present,
+            causation_id_length = ?causation_id_length,
+            traceparent_present,
+            traceparent_length = ?traceparent_length,
+            idempotency_key_present,
+            idempotency_key_length = ?idempotency_key_length,
             deadline_ms = ?context.deadline_ms,
             operation = owner_operation,
             validation = "tenant_id",
             code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            internal_message_present,
+            internal_message_length,
+            error_kind,
             retryable = error.retryable,
             boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
             "payment collection tenant context was rejected"

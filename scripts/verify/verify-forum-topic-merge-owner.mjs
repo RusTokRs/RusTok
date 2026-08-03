@@ -10,8 +10,10 @@ const paths = {
   resolutionContract: "crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
   canonicalContract: "crates/rustok-forum/contracts/forum-topic-canonical-resolution.json",
   graphqlContract: "crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json",
+  adminContract: "crates/rustok-forum/contracts/forum-topic-merge-admin-ui.json",
   docs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   crossDocs: "crates/rustok-forum/docs/forum-21m-topic-merge-cross-category.md",
+  adminDocs: "crates/rustok-forum/docs/forum-21n-topic-merge-admin-ui.md",
   receiptEntity: "crates/rustok-forum/src/entities/forum_topic_merge_operation.rs",
   resolutionEntity:
     "crates/rustok-forum/src/entities/forum_topic_merge_solution_resolution.rs",
@@ -40,6 +42,10 @@ const paths = {
   graphqlTest: "crates/rustok-forum/tests/topic_merge_graphql_contract.rs",
   resolutionGraphqlTest:
     "crates/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
+  leptosModel: "crates/rustok-forum/admin/src/topic_merge_model.rs",
+  leptosUi: "crates/rustok-forum/admin/src/ui/topic_merge.rs",
+  nextCore: "apps/next-admin/packages/forum/src/core/topic-merge.ts",
+  nextUi: "apps/next-admin/packages/forum/src/components/forum-topic-merge.tsx",
   plan: "crates/rustok-forum/docs/implementation-plan.md",
 };
 
@@ -56,8 +62,10 @@ const solutionContract = JSON.parse(read(paths.solutionContract));
 const resolutionContract = JSON.parse(read(paths.resolutionContract));
 const canonicalContract = JSON.parse(read(paths.canonicalContract));
 const graphqlContract = JSON.parse(read(paths.graphqlContract));
+const adminContract = JSON.parse(read(paths.adminContract));
 const docs = read(paths.docs);
 const crossDocs = read(paths.crossDocs);
+const adminDocs = read(paths.adminDocs);
 const receiptEntity = read(paths.receiptEntity);
 const resolutionEntity = read(paths.resolutionEntity);
 const error = read(paths.error);
@@ -79,12 +87,17 @@ const resolutionTest = read(paths.resolutionTest);
 const canonicalTest = read(paths.canonicalTest);
 const graphqlTest = read(paths.graphqlTest);
 const resolutionGraphqlTest = read(paths.resolutionGraphqlTest);
+const leptosModel = read(paths.leptosModel);
+const leptosUi = read(paths.leptosUi);
+const nextCore = read(paths.nextCore);
+const nextUi = read(paths.nextUi);
 const plan = read(paths.plan);
 
 assert.equal(contract.contract, "forum_topic_merge_owner_v1");
 assert.equal(contract.task, "FORUM-21B");
 assert.equal(contract.latest_policy_slice, "FORUM-21L");
 assert.equal(contract.latest_category_slice, "FORUM-21M");
+assert.equal(contract.latest_admin_ui_slice, "FORUM-21N");
 assert.equal(contract.parent_task, "FORUM-21");
 assert.equal(contract.status, "source_ready_maintainer_execution_pending");
 assert.equal(contract.canonical_plan_status, "planned");
@@ -140,6 +153,15 @@ assert.equal(
   contract.graphql_transport.commands_inherit_cross_category_owner_policy_without_schema_change,
   true,
 );
+assert.equal(contract.admin_ui.task, "FORUM-21N");
+assert.equal(contract.admin_ui.leptos_route, "/modules/forum/merge");
+assert.equal(contract.admin_ui.next_admin_route, "/dashboard/forum/merge");
+assert.equal(contract.admin_ui.required_permission, "forum_topics:manage");
+assert.equal(contract.admin_ui.candidate_limit, 100);
+assert.equal(contract.admin_ui.exact_retry_reuses_operation_id, true);
+assert.equal(contract.admin_ui.both_solved_require_explicit_winner, true);
+assert.equal(contract.admin_ui.native_leptos_owner_path_claimed, false);
+assert.equal(contract.admin_ui.backend_owner_or_schema_changed, false);
 
 assert.equal(crossContract.contract, "forum_topic_merge_cross_category_v1");
 assert.equal(crossContract.task, "FORUM-21M");
@@ -159,6 +181,10 @@ assert.equal(resolutionContract.semantic_event_compatibility.payload_changed, fa
 assert.equal(canonicalContract.task, "FORUM-21I");
 assert.equal(canonicalContract.latest_transport_slice, "FORUM-21J");
 assert.equal(graphqlContract.latest_resolution_slice, "FORUM-21L");
+assert.equal(adminContract.task, "FORUM-21N");
+assert.equal(adminContract.compatibility.backend_owner_changed, false);
+assert.equal(adminContract.compatibility.graphql_schema_changed, false);
+assert.equal(adminContract.compatibility.migration_added, false);
 
 includesAll(
   receiptEntity,
@@ -431,6 +457,34 @@ includesAll(
   ],
   "resolution GraphQL contract",
 );
+includesAll(
+  leptosModel,
+  [
+    "build_forum_topic_merge_command",
+    "new_forum_topic_merge_operation_id",
+    "Choose which accepted solution must remain",
+  ],
+  "Leptos admin merge policy",
+);
+includesAll(
+  leptosUi,
+  ["transport::merge_topic", "solution_choice_required", "set_refresh_nonce.update"],
+  "Leptos admin merge UI",
+);
+includesAll(
+  nextCore,
+  [
+    "buildForumTopicMergeCommand",
+    "newForumTopicMergeOperationId",
+    "Choose which accepted solution must remain",
+  ],
+  "Next admin merge policy",
+);
+includesAll(
+  nextUi,
+  ["mergeForumTopics", "commandShapeChanged", "router.refresh()"],
+  "Next admin merge UI",
+);
 
 includesAll(
   docs,
@@ -439,8 +493,10 @@ includesAll(
     "`source_ready_maintainer_execution_pending`",
     paths.contract,
     paths.crossContract,
-    "FORUM-21A through FORUM-21M",
+    paths.adminContract,
+    "FORUM-21A through FORUM-21N",
     "Cross-category category counters",
+    "Admin composition",
     "mergeForumTopicResolvingSolution",
     "forum.topic.merged / schema version 1",
     "No command above was run by the implementation agent",
@@ -456,13 +512,24 @@ includesAll(
   ],
   "cross-category handoff",
 );
+includesAll(
+  adminDocs,
+  [
+    "# FORUM-21N admin topic merge workflow",
+    "single-adapter GraphQL state",
+    "/modules/forum/merge",
+    "/dashboard/forum/merge",
+  ],
+  "admin merge handoff",
+);
 assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(plan.includes("### Delivered through `FORUM-21M`"));
+assert.ok(plan.includes("### Delivered through `FORUM-21N`"));
 assert.ok(plan.includes("checked cross-category merge"));
+assert.ok(plan.includes("admin topic merge workflow"));
 assert.ok(plan.includes("m20260803_000019_allow_cross_category_topic_merge_redirect_edges"));
 assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
 assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
 
 console.log(
-  "FORUM-21B/H/I/J/K/L/M topic merge owner source is ready; FORUM-21 and FORUM-24 remain planned.",
+  "FORUM-21B/H/I/J/K/L/M/N topic merge owner and admin composition source are ready; FORUM-21 and FORUM-24 remain planned.",
 );

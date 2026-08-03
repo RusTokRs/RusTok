@@ -1,3 +1,5 @@
+import { auth } from '@/auth';
+
 const API_BASE_URL = process.env.RUSTOK_API_URL ?? 'http://127.0.0.1:5150';
 const GRAPHQL_URL = `${API_BASE_URL}/api/graphql`;
 
@@ -15,6 +17,14 @@ export async function POST(request: Request) {
   for (const name of FORWARDED_HEADERS) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+
+  if (!headers.has('authorization')) {
+    const session = await auth();
+    const token = session?.user?.rustokToken;
+    if (token) {
+      headers.set('authorization', `Bearer ${token}`);
+    }
   }
 
   if (!headers.has('content-type')) {

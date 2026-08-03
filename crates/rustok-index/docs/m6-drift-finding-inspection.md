@@ -8,7 +8,7 @@ Status: `source_complete_server_authorized_repair_pending`.
 
 The adapter accepts one non-nil tenant UUID and one non-nil finding UUID. Its query is restricted to that exact pair and `state = 'open'`. Resolved, ignored, cross-tenant, and unknown findings return no inspection.
 
-This slice consumes the existing canonical findings table. It does not create a finding writer, compare source and Index state, infer drift, or mutate repair state.
+This slice consumes the existing canonical findings table. The separate `PostgresIndexDriftFindingWriter` can now persist an already-computed bounded digest mismatch, but neither boundary compares source and Index state, infers drift, or mutates repair state.
 
 ## Returned contract
 
@@ -45,7 +45,7 @@ The adapter performs no insert, update, delete, state transition, finding acknow
 
 ## Authorized server boundary
 
-The guarded server `IndexReconciliationOperatorRuntime` now composes one private `PostgresIndexDriftFindingInspector` beside the canonical runner, dead-letter inspector, and recovery store.
+The guarded server `IndexReconciliationOperatorRuntime` composes one private `PostgresIndexDriftFindingInspector` beside the canonical runner, dead-letter inspector, and recovery store.
 
 `inspect_drift_finding(context, finding_id)` accepts no tenant or actor parameter. It:
 
@@ -58,9 +58,11 @@ Missing request authority and `modules:read` fail before nil-finding validation 
 
 The server returns only `Option<IndexDriftFindingInspection>`. It contains no direct SQL, does not decode or copy raw `details`, and exposes neither the adapter nor the database connection. GraphQL, HTTP, CLI, MCP, native admin, and other transports remain open.
 
+The writer is not composed into this server runtime.
+
 ## Repair boundary
 
-This inspection does not claim that an open finding is correct, current, repairable, or admitted for production mutation.
+Inspection and finding persistence do not claim that an open finding is correct, current, repairable, or admitted for production mutation.
 
 Targeted repair requires separate contracts for:
 
@@ -72,20 +74,20 @@ Targeted repair requires separate contracts for:
 - dry-run, targeted, full, and shadow modes;
 - post-repair digest verification and retained PostgreSQL evidence.
 
-No automatic finding closure or mutation is allowed from inspection alone.
+No automatic finding closure or mutation is allowed from inspection alone. Writer persistence also cannot close a finding or mutate indexed data.
 
 ## Explicitly open
 
-- source/index digest comparison and finding persistence;
+- authoritative source/index digest computation and producer composition;
 - orphan diagnosis;
 - targeted repair request/admission and immutable repair audit;
 - full and shadow repair modes;
 - automatic finding resolution after admitted repair;
 - locale or partition checkpoint dimensions;
-- retained PostgreSQL authorization, inspection, diagnosis, repair, and concurrency evidence;
+- retained PostgreSQL authorization, inspection, diagnosis, writer, repair, and concurrency evidence;
 - public/admin command transport.
 
-The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open. This slice establishes bounded read-only inspection plus internal request-bound authorization only.
+The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open. Current source establishes bounded persistence and read-only inspection plus internal request-bound inspection authorization only.
 
 ## Validation ownership
 

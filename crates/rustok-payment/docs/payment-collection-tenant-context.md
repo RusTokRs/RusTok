@@ -1,114 +1,124 @@
-# Payment collection tenant validation owner context
+# Payment collection tenant diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the owner-side structured-context gap for invalid tenant
-identity in `PaymentCollectionPort`:
+This bounded source slice hardens only invalid tenant UUID diagnostics in
+`PaymentCollectionPort`:
 
-- `create_or_reuse_collection` tenant UUID validation;
-- `read_collection_status` tenant UUID validation.
+- `create_or_reuse_collection` tenant parsing;
+- `read_collection_status` tenant parsing.
 
-Both public operations already selected a canonical owner operation and completed
-policy admission before parsing `PortContext.tenant_id`. Before this slice, tenant
-parsing returned `payment.tenant_id_invalid` directly from a context-free closure.
-The original validation envelope was stable, but the payment owner did not record
-the available correlation, actor, channel, locale, deadline, exact owner operation,
-or the UUID parse cause.
+Both public operations continue to select their canonical owner operation and complete admission
+before invoking `parse_port_tenant_id`.
 
-This slice is deliberately limited to tenant UUID validation. Payment collection
-admission diagnostics were closed by the preceding slice. Request validation,
-provider execution, collection lifecycle mapping, checkout consumers,
-compensation consumers, and transport adapters remain separate concerns.
+## Preserved parser flow
 
-## Delivered source contract
+The payment-owned parser still:
 
-Both public owner operations now pass their already-selected canonical operation
-to the tenant parser:
+1. calls `Uuid::parse_str(&context.tenant_id)`;
+2. enters the same `map_err` path on parse failure;
+3. constructs the exact same validation `PortError`;
+4. emits one warning diagnostic;
+5. returns that same constructed validation `PortError`.
 
-- `create_or_reuse_collection` passes `create_or_reuse_collection`;
-- `read_collection_status` passes `read_collection_status`.
+The validation envelope remains:
 
-The payment-owned tenant parser now:
+- kind: validation;
+- code: `payment.tenant_id_invalid`;
+- message: `PortContext.tenant_id must be a UUID for payment ports`;
+- retryability: unchanged.
 
-1. parses the existing `PortContext.tenant_id` as a UUID;
-2. constructs the same validation `PortError` on failure;
-3. records the UUID parse cause and complete available owner context;
-4. returns that same validation error after diagnostics.
+The same constructed validation `PortError` is returned after diagnostics. No replacement error is
+constructed after the warning event.
 
-Tenant validation diagnostics record:
+## Bounded diagnostic policy
 
+Tenant diagnostics retain only the parse-error type and bounded context/message-shape facts.
+
+The parser records:
+
+- concrete parse-error type through `type_name_of_val`;
+- explicit `tenant_id_parse_failed = true`;
 - truthful owner `rustok_payment`;
 - exact owner operation;
 - validation phase `tenant_id`;
-- correlation id and tenant id;
-- actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- original validation code, message, typed kind, and retryability;
-- internal UUID parse cause;
-- boundary `payment_collection_port`.
+- boundary `payment_collection_port`;
+- correlation id;
+- tenant-id and actor-id character lengths;
+- closed actor-kind label;
+- claim and role counts;
+- channel presence and optional character length;
+- locale character length;
+- causation-id, traceparent, and idempotency-key presence plus optional character lengths;
+- optional deadline milliseconds;
+- stable validation code and retryability;
+- internal-message presence and character length;
+- closed error-kind label `validation`.
 
-Invalid tenant identity is a caller/context validation rejection and therefore uses
-warning severity.
+The parser does not record:
+
+- the complete UUID parse error;
+- the complete constructed `PortError`;
+- raw tenant, actor, channel, locale, causation, traceparent, or idempotency values;
+- human-readable internal message text;
+- Debug `PortErrorKind` output.
 
 ## Preserved behavior
 
 This slice does not change:
 
 - public `PaymentCollectionPort` trait signatures;
-- write-policy or write-semantics admission;
-- read-policy admission;
-- admission ordering before tenant parsing;
-- tenant validation code `payment.tenant_id_invalid`;
-- tenant validation message
-  `PortContext.tenant_id must be a UUID for payment ports`;
-- validation kind or retryability;
-- reusable collection lookup by cart;
-- create-after-read behavior;
-- race adoption after a create error;
-- granular owner operation labels for existing lookup, race adoption, and
-  collection creation errors;
-- status collection identity or status snapshot mapping;
-- payment validation, not-found, lifecycle, provider, reconciliation,
-  configuration, or database `PortError` codes and public messages;
-- provider ids or provider operation diagnostics;
-- checkout payment execution or compensation consumer behavior;
-- FBA, FFA, or ecommerce audit status.
+- create/reuse or status DTOs;
+- canonical owner-operation selection;
+- read/write admission or write-semantics behavior;
+- admission-before-tenant ordering;
+- the two operation-aware parser call sites;
+- reusable collection lookup, create, or race-adoption behavior;
+- collection status reads or snapshot conversion;
+- the admission diagnostic mapper closed by the preceding source slice;
+- canonical `PaymentError` variant mapping;
+- provider, lifecycle, reconciliation, configuration, or database public envelopes;
+- checkout execution or compensation consumers;
+- Commerce orchestration;
+- ecommerce audit, Payment FFA, or Payment FBA status.
 
 ## Static evidence
 
-`scripts/verify/verify-payment-collection-tenant-context.mjs` guards:
+The focused guard is:
 
-- two operation-aware tenant parser callsites;
+- `scripts/verify/verify-payment-collection-tenant-context.mjs`.
+
+It requires:
+
+- exactly two operation-aware parser call sites;
 - operation selection and admission before tenant parsing;
-- tenant parsing before owner storage/service work;
-- stable tenant validation code, message, kind, and retryability;
-- UUID parse cause plus complete available `PortContext` fields;
-- truthful payment owner, exact operation, validation phase, and boundary;
-- diagnostics before returning the validation error;
-- unchanged admission helpers;
-- unchanged reusable lookup, race adoption, status projection, provider,
-  reconciliation, and storage envelopes;
-- absence of the old operation-free and silent parser paths.
+- tenant parsing before owner storage or service work;
+- exact validation code, message, kind, and retryability;
+- type-only parse cause and explicit parse-failure fact;
+- bounded context and message-shape facts;
+- one warning path followed by return of the same constructed error;
+- unchanged admission helpers and collection flow;
+- explicit preservation of the canonical Payment mapper as a separate open boundary;
+- absence of complete parse errors, complete `PortError`, raw context, message text, and Debug kind
+  output inside the covered parser.
 
-The preceding
-`scripts/verify/verify-payment-collection-admission-context.mjs` is synchronized
-to the operation-aware parser signature while preserving all admission assertions.
+Source evidence is recorded in:
 
-## Remaining gaps
+- `crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`.
 
-The master ecommerce correlation-safe mapper task remains open for:
+The evidence remains source-only: `execution` is empty and every validation flag is false.
 
-- remaining payment execution and compensation consumers;
-- storefront customer read consumers;
-- remaining order, fulfillment, inventory, customer, tax, and promotion
-  adapters;
-- non-`PortError` public envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
+## Remaining diagnostic boundary
 
-No architecture status is promoted from source-only evidence.
+Canonical `payment_error_to_port_error` remains the next separate cleanup slice. It still contains
+raw validation and transition text, provider identifiers and operations, database errors, raw
+tenant values, and public not-found messages that interpolate owner UUIDs.
+
+Compile, runtime, replay, restart, remote-port parity, workflows, CI, and production evidence
+remain open. The broad ecommerce correlation-safe mapper cleanup remains open, and no FFA/FBA
+status is promoted.
 
 ## Suggested maintainer checks
 

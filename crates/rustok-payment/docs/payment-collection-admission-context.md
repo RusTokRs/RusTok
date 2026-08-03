@@ -83,7 +83,7 @@ This slice does not change:
 - read/write policy selection;
 - write-semantics requirements;
 - admission-before-tenant-parsing ordering;
-- tenant UUID parsing or its validation envelope;
+- tenant UUID validation envelope;
 - reusable collection lookup, create, or race-adoption behavior;
 - collection status reads or snapshot conversion;
 - `PaymentError` variant mapping;
@@ -117,13 +117,25 @@ Source evidence is recorded in:
 
 The evidence remains source-only: `execution` is empty and every validation flag is false.
 
-## Remaining diagnostic boundaries
+## Related tenant contract
 
-Tenant UUID parsing and canonical `PaymentError` mapping remain separate cleanup slices. The
-current tenant parser still records its complete parse cause, constructed `PortError`, raw
-context, message text, and Debug kind. The canonical mapper still contains raw validation,
-lifecycle, provider, identifier, database, and tenant diagnostics; some not-found public
-envelopes also still interpolate internal UUIDs.
+Tenant UUID parsing is now closed by a separate source-only contract:
+
+- verifier: `scripts/verify/verify-payment-collection-tenant-context.mjs`;
+- evidence:
+  `crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`;
+- documentation: `crates/rustok-payment/docs/payment-collection-tenant-context.md`.
+
+That contract replaces the complete parse error, complete constructed `PortError`, raw delegated
+context, internal message text, and Debug kind output with type/shape-only facts while preserving
+the same parser call sites and validation envelope. It does not change the admission mapper
+covered here.
+
+## Remaining diagnostic boundary
+
+Canonical `payment_error_to_port_error` remains the next open collection boundary. It still
+contains raw validation and transition text, provider identifiers and operations, database errors,
+raw tenant values, and public not-found messages that interpolate owner UUIDs.
 
 Compile, runtime, replay, restart, remote-port parity, workflows, CI, and production evidence
 remain open. The broad ecommerce correlation-safe mapper cleanup remains open, and no FFA/FBA
