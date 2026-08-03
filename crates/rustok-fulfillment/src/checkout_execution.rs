@@ -835,34 +835,76 @@ fn require_operation_context(
     owner_operation: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
+    let causation_id_present = context.causation_id.is_some();
+    let causation_id_length = context
+        .causation_id
+        .as_ref()
+        .map(|value| value.chars().count());
     let context_operation = context
         .causation_id
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
-    if context_operation != Some(checkout_operation_id) {
+    let causation_id_parse_succeeded = context_operation.is_some();
+    let causation_id_matches_expected = context_operation == Some(checkout_operation_id);
+    if !causation_id_matches_expected {
         let error = PortError::validation(
             "fulfillment.checkout_operation_id_invalid",
             "checkout fulfillment causation_id must match the checkout operation",
         );
+        let actor_kind = match &context.actor.kind {
+            rustok_api::PortActorKind::User => "user",
+            rustok_api::PortActorKind::Service => "service",
+            rustok_api::PortActorKind::System => "system",
+        };
+        let tenant_id_length = context.tenant_id.chars().count();
+        let actor_id_length = context.actor.id.chars().count();
+        let claim_count = context.claims.len();
+        let role_count = context.roles.len();
+        let channel_present = context.channel.is_some();
+        let channel_length = context.channel.as_ref().map(|value| value.chars().count());
+        let locale_length = context.locale.chars().count();
+        let traceparent_present = context.traceparent.is_some();
+        let traceparent_length = context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count());
+        let idempotency_key_present = context.idempotency_key.is_some();
+        let idempotency_key_length = context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count());
+        let expected_checkout_operation_id_non_nil = !checkout_operation_id.is_nil();
+        let internal_message_present = !error.message.trim().is_empty();
+        let internal_message_length = error.message.chars().count();
+        let error_kind = "validation";
         tracing::warn!(
-            error = ?error,
             owner = CHECKOUT_FULFILLMENT_OWNER,
             operation = owner_operation,
             validation_phase = "causation_id",
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
+            tenant_id_length,
+            actor_kind,
+            actor_id_length,
+            claim_count,
+            role_count,
+            channel_present,
+            channel_length = ?channel_length,
+            locale_length,
+            causation_id_present,
+            causation_id_length = ?causation_id_length,
+            causation_id_parse_succeeded,
+            causation_id_matches_expected,
+            traceparent_present,
+            traceparent_length = ?traceparent_length,
+            idempotency_key_present,
+            idempotency_key_length = ?idempotency_key_length,
             deadline_ms = ?context.deadline_ms,
-            expected_checkout_operation_id = %checkout_operation_id,
+            expected_checkout_operation_id_non_nil,
             code = "fulfillment.checkout_operation_id_invalid",
             internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            internal_message_present,
+            internal_message_length,
+            error_kind,
             retryable = error.retryable,
             boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
             "checkout fulfillment execution received invalid causation identity"
