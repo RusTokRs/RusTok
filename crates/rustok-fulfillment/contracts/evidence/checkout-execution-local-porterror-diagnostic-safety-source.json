@@ -14,7 +14,7 @@
     "local_severity_split_preserved": true,
     "original_port_error_returned": true,
     "local_mapper_call_sites_preserved": true,
-    "admission_diagnostic_cleanup_out_of_scope": true,
+    "admission_diagnostic_cleanup_source_closed_separately": true,
     "causation_tenant_parser_cleanup_out_of_scope": true,
     "canonical_fulfillment_error_mapper_cleanup_out_of_scope": true,
     "execution_behavior_changed": false,
@@ -31,6 +31,7 @@
   ],
   "suggested_execution": [
     "node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-admission-context.mjs",
     "node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs",
     "node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs",
     "cargo check -p rustok-fulfillment --lib"
