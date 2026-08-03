@@ -11,6 +11,8 @@ const paths = {
   crateApi: "crates/rustok-forum/src/lib.rs",
   migration:
     "crates/rustok-forum/src/migrations/m20260803_000020_add_forum_topic_split_operations.rs",
+  relationIntegrity:
+    "crates/rustok-forum/src/migrations/m20260712_000003_enforce_forum_relation_tenant_integrity.rs",
   migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
   sqlite: "crates/rustok-forum/tests/topic_split_sqlite.rs",
 };
@@ -28,6 +30,7 @@ const service = read(paths.service);
 const serviceRegistry = read(paths.serviceRegistry);
 const crateApi = read(paths.crateApi);
 const migration = read(paths.migration);
+const relationIntegrity = read(paths.relationIntegrity);
 const migrationRegistry = read(paths.migrationRegistry);
 const sqlite = read(paths.sqlite);
 
@@ -87,7 +90,8 @@ includesAll(
     "forum_topic_audience_policies",
     "forum_topic_reply_create_audience_policies",
     "validate_cloned_access_in_tx",
-    "transfer_solution_in_tx",
+    "validate_cascaded_solution_transfer_in_tx",
+    "solution foreign-key cascade is inconsistent",
     "validate_solution_after_split_in_tx",
     "increment_category_topic_count_in_tx",
     "UserStatsService::adjust_topic_count_in_tx",
@@ -104,6 +108,17 @@ assert.ok(!service.includes("axum"));
 assert.ok(!service.includes("GraphqlRequest"));
 assert.ok(!service.includes("reqwest"));
 assert.ok(!service.includes("rest_adapter"));
+
+includesAll(
+  relationIntegrity,
+  [
+    "fk_forum_solutions_reply_topic_tenant",
+    "FOREIGN KEY (tenant_id, topic_id, reply_id)",
+    "REFERENCES forum_replies (tenant_id, topic_id, id)",
+    "ON UPDATE CASCADE ON DELETE CASCADE",
+  ],
+  "solution relation cascade",
+);
 
 includesAll(
   migration,
