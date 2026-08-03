@@ -49,6 +49,7 @@
     "source_of_truth": "forum_topic_merge_operations",
     "one_edge_per_source_topic": true,
     "parallel_alias_store": false,
+    "each_hop_topic_and_edges_share_one_statement_snapshot": true,
     "terminal_target_must_be_non_deleted": true,
     "duplicate_edge_or_cycle": "fail_with_FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
     "selected_topic_reads_return_terminal_target": true,
@@ -76,6 +77,7 @@
     "category retained topic_count and published reply_count remain unchanged because the archived source tombstone is not soft-deleted",
     "the immutable receipt is also the only canonical source-to-target resolution edge",
     "one tenant source topic can own only one immutable canonical edge while a retained target may later become the source of the next edge",
+    "each canonical hop reads topic existence and up to two outgoing edges under one statement snapshot",
     "source target and category projection invalidations are published in that order",
     "semantic event receipt owner state reply remap solution policy counters and invalidations commit in one transaction",
     "exact replay creates no additional event receipt invalidation reply movement solution mutation counter change or canonical edge"
