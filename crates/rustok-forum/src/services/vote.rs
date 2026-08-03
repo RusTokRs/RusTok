@@ -12,10 +12,13 @@ use rustok_core::SecurityContext;
 
 use rustok_api::{Action, Resource};
 
-use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};
+use crate::entities::{forum_reply, forum_reply_vote, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
-use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::services::topic_vote_lock::{
+    lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
+};
+use crate::state_machine::ReplyStatus;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VoteSummary {
@@ -44,14 +47,9 @@ impl VoteService {
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
 
-        let topic = self.find_topic(tenant_id, topic_id).await?;
-        if topic.status == TopicStatus::Archived {
-            return Err(ForumError::Validation(
-                "Archived topics cannot receive votes".to_string(),
-            ));
-        }
-
         let txn = self.db.begin().await?;
+        lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
+        lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         self.upsert_topic_vote_in_tx(&txn, tenant_id, topic_id, user_id, value)
             .await?;
         txn.commit().await?;
@@ -67,9 +65,10 @@ impl VoteService {
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_topic(tenant_id, topic_id).await?;
 
         let txn = self.db.begin().await?;
+        lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
+        lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         forum_topic_vote::Entity::delete_many()
             .filter(forum_topic_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_vote::Column::TopicId.eq(topic_id))
@@ -212,14 +211,6 @@ impl VoteService {
         }
 
         Ok(summaries)
-    }
-
-    async fn find_topic(&self, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<forum_topic::Model> {
-        forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))
     }
 
     async fn find_reply(&self, tenant_id: Uuid, reply_id: Uuid) -> ForumResult<forum_reply::Model> {
