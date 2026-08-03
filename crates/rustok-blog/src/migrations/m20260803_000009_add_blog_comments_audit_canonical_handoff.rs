@@ -51,6 +51,17 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .name("uq_blog_comments_delegation_audit_handoff_claim_token")
+                    .table(BlogCommentsDelegationScheduleAuditOutbox::Table)
+                    .col(BlogCommentsDelegationScheduleAuditOutbox::HandoffClaimToken)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
                     .name("idx_blog_comments_delegation_audit_handoff_pending")
                     .table(BlogCommentsDelegationScheduleAuditOutbox::Table)
                     .col(BlogCommentsDelegationScheduleAuditOutbox::PublishedAt)
