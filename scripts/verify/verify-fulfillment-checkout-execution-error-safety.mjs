@@ -134,14 +134,48 @@ for (const value of [
   'error_kind = ?error.kind',
 ]) forbidText(operationContext, value, 'unsafe causation diagnostic payload');
 
-for (const [content, value, label] of [
-  [tenantParser, 'error = ?error', 'tenant parse complete error log'],
-  [tenantParser, 'correlation_id = %context.correlation_id', 'tenant parse correlation log'],
-  [tenantParser, 'tenant_id = %context.tenant_id', 'tenant parse tenant log'],
-  [tenantParser, 'channel = ?context.channel', 'tenant parse channel log'],
-  [tenantParser, 'operation = owner_operation', 'tenant parse operation log'],
-  [tenantParser, 'code = "fulfillment.tenant_id_invalid"', 'tenant parse code log'],
-]) requireText(content, value, label);
+for (const [value, label] of [
+  ['Uuid::parse_str(&context.tenant_id).map_err(|cause| {', 'tenant parsing'],
+  ['let parse_cause_type = std::any::type_name_of_val(&cause);', 'tenant parse-cause type'],
+  ['let tenant_id_length = context.tenant_id.chars().count();', 'tenant identity shape'],
+  ['let tenant_id_parse_failed = true;', 'tenant parse-failure fact'],
+  ['let actor_kind = match &context.actor.kind', 'tenant actor shape'],
+  ['let actor_id_length = context.actor.id.chars().count();', 'tenant actor identity shape'],
+  ['let claim_count = context.claims.len();', 'tenant claim count'],
+  ['let role_count = context.roles.len();', 'tenant role count'],
+  ['let channel_present = context.channel.is_some();', 'tenant channel shape'],
+  ['let locale_length = context.locale.chars().count();', 'tenant locale shape'],
+  ['let causation_id_present = context.causation_id.is_some();', 'tenant causation shape'],
+  ['let traceparent_present = context.traceparent.is_some();', 'tenant trace shape'],
+  ['let idempotency_key_present = context.idempotency_key.is_some();', 'tenant idempotency shape'],
+  ['let internal_message_present = !error.message.trim().is_empty();', 'tenant message presence'],
+  ['let internal_message_length = error.message.chars().count();', 'tenant message length'],
+  ['let error_kind = "validation";', 'tenant closed kind'],
+  ['parse_cause_type,', 'tenant type-only cause diagnostic'],
+  ['correlation_id = %context.correlation_id', 'tenant correlation log'],
+  ['operation = owner_operation', 'tenant operation log'],
+  ['validation_phase = "tenant_id"', 'tenant validation phase'],
+  ['code = "fulfillment.tenant_id_invalid"', 'tenant code log'],
+  ['internal_code = %error.code', 'tenant internal code'],
+  ['retryable = error.retryable', 'tenant retryability'],
+  ['boundary = CHECKOUT_FULFILLMENT_BOUNDARY', 'tenant boundary'],
+  ['error\n    })', 'same tenant error returned'],
+]) requireText(tenantParser, value, label);
+for (const value of [
+  'cause = ?cause',
+  'cause = %cause',
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+]) forbidText(tenantParser, value, 'unsafe tenant diagnostic payload');
 
 for (const [value, label] of [
   ['context: &PortContext', 'mapper context input'],
@@ -193,4 +227,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ Fulfillment checkout execution owner errors retain bounded causation context and stable public envelopes');
+console.log('✔ Fulfillment checkout execution owner errors retain bounded causation and tenant context with stable public envelopes');

@@ -87,22 +87,26 @@ The admission guard and evidence are:
 - `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
 
-## Related causation contract
+## Related context-validation contracts
 
-Checkout causation validation is source-ready / unvalidated under another bounded contract.
-It records causation presence/length, parse-success, match state, expected-identity shape, and
-bounded delegated context while preserving the exact validation envelope and both public call
-sites.
+Checkout causation validation and tenant UUID parse-failure diagnostics are source-ready /
+unvalidated under separate bounded contracts. They preserve admission-before-tenant-before-
+causation ordering, exact public call sites, stable typed errors, and original-error return.
 
-The causation guard and evidence are:
+The context guard and evidence are:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
 - `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
 
-Tenant parsing and the canonical `FulfillmentError` mapper remain separate bounded slices. The
-local, admission, and causation contracts together do not claim that the complete
-`checkout_execution.rs` diagnostic surface is source-closed.
+Causation records only bounded context and identity-shape facts. Tenant parsing records only
+parse-cause type and bounded context/message facts. Neither related contract changes the local
+mapper covered here.
+
+The canonical `FulfillmentError` mapper remains a separate bounded slice. The local, admission,
+causation, and tenant contracts together do not claim that the complete `checkout_execution.rs`
+diagnostic surface is source-closed.
 
 ## Static evidence
 

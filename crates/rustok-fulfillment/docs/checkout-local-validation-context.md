@@ -148,15 +148,22 @@ Admission diagnostics are source-ready / unvalidated under their separate bounde
 - `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
 
-Causation validation is source-ready / unvalidated under its separate bounded contract:
+Causation validation and tenant UUID parse-failure diagnostics are source-ready / unvalidated
+under their context-validation contracts:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
 - `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
 
-## Remaining gaps
+The context guard preserves exact parsing and matching behavior while forbidding complete errors,
+complete parse causes, raw delegated values, message text, and Debug kind output inside both
+covered validators.
 
-Tenant parsing and canonical `FulfillmentError` diagnostics remain separate bounded slices.
+## Remaining gap
+
+Canonical `FulfillmentError` diagnostics in `fulfillment_error_to_port_error` remain the next
+separate bounded slice.
 
 Compile, runtime, replay, restart, remote-port, workflow, and CI evidence remain open. The
 broad ecommerce correlation-safe mapper cleanup and FFA/FBA status are not promoted.
