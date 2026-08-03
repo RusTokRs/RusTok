@@ -4,6 +4,7 @@ use sea_orm::{
     ActiveValue::{NotSet, Set},
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
+    prelude::DateTimeWithTimeZone,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
@@ -55,13 +56,20 @@ pub struct ForumTopicMergeResult {
     pub merged_at: DateTime<Utc>,
 }
 
+struct ForumTopicMergeSolutionTransfer {
+    reply_id: Uuid,
+    marked_by_user_id: Option<Uuid>,
+    marked_at: DateTimeWithTimeZone,
+}
+
 /// Idempotent same-category merge of one active source topic into one retained target topic.
 ///
 /// The target identity and topic-owned policy remain authoritative. Reply identities and all
 /// reply-owned relations are retained while reply positions are shifted after the target's
-/// current maximum. The source topic becomes an archived, locked redirect-ready identity.
-/// Topic subscriptions, tags and topic-level audience relations are intentionally not remapped
-/// by this bounded slice.
+/// current maximum. A source-only accepted solution follows its unchanged reply identity and
+/// preserves its marker metadata; two accepted solutions require explicit resolution. The source
+/// topic becomes an archived, locked redirect-ready identity. Topic subscriptions, tags and
+/// topic-level audience relations are reconciled by their dedicated bounded policies.
 pub struct ForumTopicMergeService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -149,18 +157,27 @@ impl ForumTopicMergeService {
             ));
         }
         ensure_category_active_in_tx(&txn, tenant_id, target.category_id).await?;
-        if forum_solution::Entity::find()
-            .filter(forum_solution::Column::TenantId.eq(tenant_id))
-            .filter(forum_solution::Column::TopicId.eq(source.id))
-            .one(&txn)
-            .await?
-            .is_some()
-        {
-            return Err(ForumError::Validation(
-                "Forum topic merge does not yet support a source accepted solution".to_string(),
-            ));
+
+        lock_topic_solution_scopes_in_tx(
+            &txn,
+            tenant_id,
+            &[source.id, target.id],
+        )
+        .await?;
+        let source_solution =
+            load_valid_solution_in_tx(&txn, tenant_id, source.id, "source").await?;
+        let target_solution =
+            load_valid_solution_in_tx(&txn, tenant_id, target.id, "target").await?;
+        if source_solution.is_some() && target_solution.is_some() {
+            return Err(ForumError::TopicMergeSolutionConflict(input.operation_id));
         }
-        validate_target_solution_in_tx(&txn, tenant_id, target.id).await?;
+        let source_solution_transfer = source_solution.map(|solution| {
+            ForumTopicMergeSolutionTransfer {
+                reply_id: solution.reply_id,
+                marked_by_user_id: solution.marked_by_user_id,
+                marked_at: solution.marked_at,
+            }
+        });
 
         let source_reply_count = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -205,6 +222,9 @@ impl ForumTopicMergeService {
                 ForumError::Validation("Forum merged reply position overflow".to_string())
             })?;
 
+        if source_solution_transfer.is_some() {
+            delete_source_solution_in_tx(&txn, tenant_id, source.id).await?;
+        }
         move_replies_in_tx(
             &txn,
             tenant_id,
@@ -214,6 +234,10 @@ impl ForumTopicMergeService {
             source_reply_count,
         )
         .await?;
+        if let Some(solution) = source_solution_transfer {
+            insert_transferred_solution_in_tx(&txn, tenant_id, target.id, solution).await?;
+            load_valid_solution_in_tx(&txn, tenant_id, target.id, "transferred target").await?;
+        }
 
         let now = Utc::now();
         let mut target_active: forum_topic::ActiveModel = target.into();
@@ -455,6 +479,49 @@ async fn lock_topics_in_tx(
     Ok(())
 }
 
+async fn lock_topic_solution_scopes_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_ids: &[Uuid],
+) -> ForumResult<()> {
+    let mut ids = topic_ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            for topic_id in ids {
+                txn.execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 31))",
+                    vec![format!("{tenant_id}:{topic_id}").into()],
+                ))
+                .await?;
+            }
+        }
+        DatabaseBackend::Sqlite => {
+            for topic_id in ids {
+                txn.execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    r#"
+                    INSERT INTO forum_topic_solution_locks (tenant_id, topic_id, touched_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(tenant_id, topic_id)
+                    DO UPDATE SET touched_at = CURRENT_TIMESTAMP
+                    "#,
+                    vec![tenant_id.into(), topic_id.into()],
+                ))
+                .await?;
+            }
+        }
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum topic merge solution policy does not support database backend {backend:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 async fn find_topic_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -486,29 +553,66 @@ async fn ensure_category_active_in_tx(
     Ok(())
 }
 
-async fn validate_target_solution_in_tx(
+async fn load_valid_solution_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    target_topic_id: Uuid,
-) -> ForumResult<()> {
-    let Some(solution) = forum_solution::Entity::find()
+    topic_id: Uuid,
+    label: &str,
+) -> ForumResult<Option<forum_solution::Model>> {
+    let solution = forum_solution::Entity::find()
         .filter(forum_solution::Column::TenantId.eq(tenant_id))
-        .filter(forum_solution::Column::TopicId.eq(target_topic_id))
+        .filter(forum_solution::Column::TopicId.eq(topic_id))
         .one(txn)
-        .await?
-    else {
-        return Ok(());
+        .await?;
+    let Some(solution) = solution else {
+        return Ok(None);
     };
     let reply = forum_reply::Entity::find_by_id(solution.reply_id)
         .filter(forum_reply::Column::TenantId.eq(tenant_id))
-        .filter(forum_reply::Column::TopicId.eq(target_topic_id))
+        .filter(forum_reply::Column::TopicId.eq(topic_id))
         .one(txn)
         .await?;
     if !reply.is_some_and(|reply| reply.status == ReplyStatus::Approved) {
+        return Err(ForumError::Validation(format!(
+            "Forum topic merge requires a valid approved {label} solution"
+        )));
+    }
+    Ok(Some(solution))
+}
+
+async fn delete_source_solution_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    source_topic_id: Uuid,
+) -> ForumResult<()> {
+    let result = forum_solution::Entity::delete_many()
+        .filter(forum_solution::Column::TenantId.eq(tenant_id))
+        .filter(forum_solution::Column::TopicId.eq(source_topic_id))
+        .exec(txn)
+        .await?;
+    if result.rows_affected != 1 {
         return Err(ForumError::Validation(
-            "Forum topic merge requires a valid approved target solution".to_string(),
+            "Forum source accepted solution changed concurrently".to_string(),
         ));
     }
+    Ok(())
+}
+
+async fn insert_transferred_solution_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    target_topic_id: Uuid,
+    solution: ForumTopicMergeSolutionTransfer,
+) -> ForumResult<()> {
+    forum_solution::ActiveModel {
+        topic_id: Set(target_topic_id),
+        tenant_id: Set(tenant_id),
+        reply_id: Set(solution.reply_id),
+        marked_by_user_id: Set(solution.marked_by_user_id),
+        marked_at: Set(solution.marked_at),
+    }
+    .insert(txn)
+    .await?;
     Ok(())
 }
 
