@@ -1,0 +1,108 @@
+name: Repair Forum topic merge reply status
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/repair-forum-topic-merge-reply-status.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-forum-topic-merge-reply-status
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.ref == 'fix/forum-topic-merge-reply-status-20260803'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/forum-topic-merge-reply-status-20260803
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --no-self-update
+          rustup default 1.96.0
+
+      - name: Restore status-owned solution validation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('crates/rustok-forum/src/services/topic_merge.rs')
+          service = service_path.read_text()
+          old = '''        .filter(forum_reply::Column::TopicId.eq(topic_id))
+                  .filter(forum_reply::Column::DeletedAt.is_null())
+                  .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))'''
+          new = '''        .filter(forum_reply::Column::TopicId.eq(topic_id))
+                  .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))'''
+          count = service.count(old)
+          if count != 1:
+              raise SystemExit(f'Forum solution predicate: expected one match, found {count}')
+          service_path.write_text(service.replace(old, new, 1))
+
+          verifier_path = Path('scripts/verify/verify-forum-topic-merge-owner.mjs')
+          verifier = verifier_path.read_text()
+          anchor = '''assert.ok(!service.includes("Forum topic merge requires source and target topics in the same category"));
+          assert.ok(!service.includes("FORUM_TOPIC_MERGED_CROSS_CATEGORY_SCHEMA_VERSION"));'''
+          replacement = '''assert.ok(!service.includes("Forum topic merge requires source and target topics in the same category"));
+          assert.ok(service.includes("forum_reply::Column::Status.eq(ReplyStatus::Approved)"));
+          assert.ok(!service.includes("forum_reply::Column::DeletedAt"));
+          assert.ok(!service.includes("FORUM_TOPIC_MERGED_CROSS_CATEGORY_SCHEMA_VERSION"));'''
+          count = verifier.count(anchor)
+          if count != 1:
+              raise SystemExit(f'Forum verifier predicate guard: expected one match, found {count}')
+          verifier_path.write_text(verifier.replace(anchor, replacement, 1))
+          PY
+
+      - name: Add transient Index lock edges
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('Cargo.lock')
+          text = path.read_text()
+          old = ''' "rust_decimal",
+           "rustok-core",
+           "rustok-events",
+           "sea-orm",'''
+          new = ''' "rust_decimal",
+           "rustok-api",
+           "rustok-core",
+           "rustok-events",
+           "rustok-runtime",
+           "sea-orm",'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Index lock dependency block: expected one match, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Verify Forum owner and regressions
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: |
+          cargo fmt --all -- --check
+          node scripts/verify/verify-forum-topic-merge-owner.mjs
+          cargo check --locked -p rustok-forum --lib
+          cargo test --locked -p rustok-forum --test topic_merge_sqlite
+          cargo test --locked -p rustok-forum --test topic_merge_solution_resolution_sqlite
+          cargo test --locked -p rustok-forum --test topic_merge_cross_category_sqlite
+
+      - name: Commit verified Forum repair
+        run: |
+          git checkout -- Cargo.lock
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-forum/src/services/topic_merge.rs scripts/verify/verify-forum-topic-merge-owner.mjs
+          git diff --cached --quiet && { echo "expected Forum repair is missing" >&2; exit 1; }
+          test -z "$(git status --short --untracked-files=no | grep -vE '^(M | M)(crates/rustok-forum/src/services/topic_merge.rs|scripts/verify/verify-forum-topic-merge-owner.mjs)$')"
+          git commit -m "fix(forum): validate merge solutions by reply status"
+          git push origin HEAD:fix/forum-topic-merge-reply-status-20260803
