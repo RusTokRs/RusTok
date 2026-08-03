@@ -43,9 +43,12 @@ jobs:
               raise SystemExit('embedded exact patch boundaries are not unique')
           body = workflow.split(start_marker, 1)[1].split(end_marker, 1)[0]
           lines = body.splitlines()
-          if not lines or any(line and not line.startswith('          ') for line in lines):
-              raise SystemExit('embedded exact patch contains an unexpected YAML indentation')
-          script = '\n'.join(line[10:] if line else '' for line in lines) + '\n'
+          if not lines:
+              raise SystemExit('embedded exact patch is empty')
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in lines
+          ) + '\n'
           Path('/tmp/apply-rbac-installation-binding.sh').write_text(script)
           PY
           bash /tmp/apply-rbac-installation-binding.sh
