@@ -13,6 +13,7 @@ const MAX_PERMISSION_KEY_LENGTH: usize = 256;
 pub enum RbacArtifactPermissionEvent {
     AssignmentChanged {
         operation_id: Uuid,
+        artifact_permission_id: Uuid,
         role_id: Uuid,
         installation_id: Uuid,
         permission_key: String,
@@ -37,6 +38,11 @@ impl RbacArtifactPermissionEvent {
 const ASSIGNMENT_CHANGED_FIELDS: &[FieldSchema] = &[
     FieldSchema {
         name: "operation_id",
+        data_type: "uuid",
+        optional: false,
+    },
+    FieldSchema {
+        name: "artifact_permission_id",
         data_type: "uuid",
         optional: false,
     },
@@ -89,6 +95,7 @@ impl ValidateEvent for RbacArtifactPermissionEvent {
     fn validate(&self) -> Result<(), EventValidationError> {
         let Self::AssignmentChanged {
             operation_id,
+            artifact_permission_id,
             role_id,
             installation_id,
             permission_key,
@@ -96,6 +103,7 @@ impl ValidateEvent for RbacArtifactPermissionEvent {
         } = self;
 
         validators::validate_not_nil_uuid("operation_id", operation_id)?;
+        validators::validate_not_nil_uuid("artifact_permission_id", artifact_permission_id)?;
         validators::validate_not_nil_uuid("role_id", role_id)?;
         validators::validate_not_nil_uuid("installation_id", installation_id)?;
         validators::validate_not_empty("permission_key", permission_key)?;
@@ -128,6 +136,7 @@ mod tests {
     fn event() -> RbacArtifactPermissionEvent {
         RbacArtifactPermissionEvent::AssignmentChanged {
             operation_id: Uuid::new_v4(),
+            artifact_permission_id: Uuid::new_v4(),
             role_id: Uuid::new_v4(),
             installation_id: Uuid::new_v4(),
             permission_key: "sample.events.handle".to_string(),
@@ -149,6 +158,7 @@ mod tests {
     #[test]
     fn rejects_nil_identity_and_unbounded_permission_key() {
         let RbacArtifactPermissionEvent::AssignmentChanged {
+            artifact_permission_id,
             role_id,
             installation_id,
             permission_key,
@@ -158,6 +168,7 @@ mod tests {
         assert!(
             RbacArtifactPermissionEvent::AssignmentChanged {
                 operation_id: Uuid::nil(),
+                artifact_permission_id,
                 role_id,
                 installation_id,
                 permission_key,
@@ -171,12 +182,35 @@ mod tests {
             operation_id,
             role_id,
             installation_id,
+            permission_key,
             granted,
             ..
         } = event();
         assert!(
             RbacArtifactPermissionEvent::AssignmentChanged {
                 operation_id,
+                artifact_permission_id: Uuid::nil(),
+                role_id,
+                installation_id,
+                permission_key,
+                granted,
+            }
+            .validate()
+            .is_err()
+        );
+
+        let RbacArtifactPermissionEvent::AssignmentChanged {
+            operation_id,
+            artifact_permission_id,
+            role_id,
+            installation_id,
+            granted,
+            ..
+        } = event();
+        assert!(
+            RbacArtifactPermissionEvent::AssignmentChanged {
+                operation_id,
+                artifact_permission_id,
                 role_id,
                 installation_id,
                 permission_key: "x".repeat(MAX_PERMISSION_KEY_LENGTH + 1),
