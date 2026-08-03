@@ -13,7 +13,12 @@ const migrationModule = read('crates/rustok-index/src/migrations/mod.rs');
 const records = read('crates/rustok-index/src/migrations/m20260727_000001_create_index_records.rs');
 const delivery = read('crates/rustok-index/src/migrations/m20260727_000002_create_index_delivery_state.rs');
 const operations = read('crates/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs');
-const migrations = normalize([migrationModule, records, delivery, operations].join('\n'));
+const recovery = read(
+  'crates/rustok-index/src/migrations/m20260803_000004_create_index_reconciliation_recovery.rs',
+);
+const migrations = normalize(
+  [migrationModule, records, delivery, operations, recovery].join('\n'),
+);
 const tests = read('crates/rustok-index/src/contract_tests.rs');
 const plan = read('crates/rustok-index/docs/implementation-plan.md');
 const crateReadme = read('crates/rustok-index/README.md');
@@ -32,10 +37,13 @@ for (const marker of [
   'mod m20260727_000001_create_index_records;',
   'mod m20260727_000002_create_index_delivery_state;',
   'mod m20260727_000003_create_index_operations;',
+  'mod m20260803_000004_create_index_reconciliation_recovery;',
   'm20260727_000001_create_index_records::Migration',
   'm20260727_000002_create_index_delivery_state::Migration',
   'm20260727_000003_create_index_operations::Migration',
+  'm20260803_000004_create_index_reconciliation_recovery::Migration',
   'm20250101_000001_create_tenants',
+  'vec!["m20260727_000003_create_index_operations"]',
 ]) {
   if (!migrationModule.includes(marker)) fail(`migration registry missing ${marker}`);
 }
@@ -48,6 +56,7 @@ for (const marker of [
   'IndexCheckpoints::Table',
   'IndexJobs::Table',
   'IndexConsistencyFindings::Table',
+  'CREATE TABLE index_reconciliation_recovery_audits',
 ]) {
   if (!migrations.includes(marker)) fail(`canonical storage table missing ${marker}`);
 }
@@ -131,8 +140,35 @@ for (const marker of [
 }
 
 for (const marker of [
+  'ADD COLUMN retry_epoch INTEGER NOT NULL DEFAULT 0',
+  'CHECK (retry_epoch >= 0)',
+  'tenant_id UUID NOT NULL',
+  'audit_id UUID NOT NULL',
+  'job_id UUID NOT NULL',
+  'actor_id UUID NOT NULL',
+  "CHECK (action = 'requeue')",
+  'reason VARCHAR(512) NOT NULL',
+  'prior_attempt_count INTEGER NOT NULL',
+  'UNIQUE (tenant_id, job_id, retry_epoch)',
+  'index_reconciliation_recovery_audits_immutable_update',
+  'index_reconciliation_recovery_audits_immutable_delete',
+  'Index reconciliation recovery audits are append-only',
+]) {
+  if (!recovery.includes(marker)) fail(`reconciliation recovery migration missing ${marker}`);
+}
+for (const forbidden of ['ON DELETE CASCADE', 'ON UPDATE CASCADE']) {
+  if (recovery.includes(forbidden)) {
+    fail(`append-only reconciliation recovery audit must not contain ${forbidden}`);
+  }
+}
+
+for (const marker of [
   'index_module_registers_canonical_storage_migrations',
   'canonical_storage_migrations_round_trip_on_sqlite',
+  'm20260803_000004_create_index_reconciliation_recovery',
+  'index_reconciliation_recovery_audits',
+  'recovery audit rows must reject updates',
+  'recovery audit rows must reject deletes',
   'source-version changes must not strand links on an older entity version',
   'processing deliveries require a complete lease',
   'down migrations must remove all Index tables',
@@ -159,6 +195,9 @@ for (const document of [crateReadme, moduleDocs, databaseDocs]) {
   ]) {
     if (!document.includes(table)) fail(`storage documentation missing ${table}`);
   }
+}
+if (!moduleDocs.includes('[M6 Reconciliation Dead-letter Requeue]')) {
+  fail('Index architecture docs must link the reconciliation recovery contract');
 }
 
 console.log('[verify-index-storage-migrations] ok');

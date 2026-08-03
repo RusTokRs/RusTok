@@ -55,20 +55,19 @@ GraphQL, HTTP, CLI, MCP, and admin transports remain open. This slice publishes 
 
 ## Compatibility
 
-This slice adds no migration and changes no reconciliation state transition, failed-scope admission, retry policy, lease fence, cursor, source, mutation, schema, cancellation, or success behavior.
+This inspection slice adds no migration and changes no reconciliation state transition, failed-scope admission, retry policy, lease fence, cursor, source, mutation, schema, cancellation, or success behavior.
 
-It composes additively with the replay retry store, replay dead-letter admission, reconciliation dead-letter admission, and guarded reconciliation runtime already present on `main`.
+It composes additively with the replay retry store, replay dead-letter admission, reconciliation dead-letter admission, guarded reconciliation runtime, and engine-level reconciliation recovery store already present on `main`.
 
 ## Explicitly open
 
 - inspection transport mapping;
-- actor/reason audit records;
-- manual requeue or retry-epoch reset under the reconciliation scope lock;
+- server-owned authorization and transport for manual requeue or retry-epoch reset;
 - automatic retry, backoff, exhaustion, scheduling, and graceful shutdown;
 - source/index digest comparison and orphan diagnosis;
 - targeted, full, or shadow repair admission;
 - locale or partition checkpoint dimensions;
-- retained PostgreSQL inspection and authorization evidence;
+- retained PostgreSQL inspection, authorization, and recovery evidence;
 - complete drift repair.
 
 The canonical M6 drift-diagnosis and targeted-repair roadmap item remains open.
