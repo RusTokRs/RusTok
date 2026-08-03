@@ -90,37 +90,43 @@ for (const marker of [
 ]) requireMarker(content.contract, marker, `${paths.contract}: sealed payload missing ${marker}`);
 
 for (const marker of [
+  "ArtifactPermissionAssignmentScope",
   "ArtifactPermissionEventPublisher",
   "fn dependencies(&self) -> &[&'static str]",
   '&["outbox"]',
 ]) requireMarker(content.rbacLib, marker, `${paths.rbacLib}: runtime contract missing ${marker}`);
 
 for (const marker of [
+  "pub enum ArtifactPermissionAssignmentScope",
+  "Platform",
+  "Tenant",
+  "pub scope: ArtifactPermissionAssignmentScope",
+  "pub installation_id: Uuid",
+  "pub permission_key: String",
   "pub trait ArtifactPermissionEventPublisher",
   "transaction: &DatabaseTransaction",
   "event_publisher: Arc<dyn ArtifactPermissionEventPublisher>",
-  "pub artifact_permission_id: Uuid",
-  "command.artifact_permission_id.is_nil()",
+  "validate_permission_key(&command.permission_key)?",
+  "scope_key(command.scope, command.tenant_id)",
+  "WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key}",
   "resolve_artifact_permission_identity(&transaction, &command).await?",
-  "WHERE id = {artifact_permission_id}",
-  "command.artifact_permission_id.into()",
   "insert_operation(&transaction, &artifact_permission, &command)",
   "grant_permission(&transaction, &artifact_permission, &command)",
-  "assignment_event(operation_id, artifact_permission.id, &command)",
+  "assignment_event(operation_id, &artifact_permission, &command)",
+  "artifact_permission_id: artifact_permission.id",
   "permission_scope_key",
   "let changed = if command.granted",
   "if changed",
   ".publish_assignment_changed(",
   "transaction.rollback().await.map_err(database_error)?",
   "transaction.commit().await.map_err(database_error)?",
-  "then_some(operation_id)",
-  "Ok(result.rows_affected() == 1)",
-]) requireMarker(content.owner, marker, `${paths.owner}: transactional exact-identity owner path missing ${marker}`);
+]) requireMarker(content.owner, marker, `${paths.owner}: transactional explicit-scope owner path missing ${marker}`);
 for (const forbidden of [
   "rustok_outbox",
   "ORDER BY CASE WHEN scope_key",
-  "WHERE installation_id = {installation_id} AND permission_key = {permission_key}",
-]) forbidMarker(content.owner, forbidden, `${paths.owner}: obsolete or concrete path returned: ${forbidden}`);
+  "WHERE id = {artifact_permission_id}",
+  "pub artifact_permission_id: Uuid",
+]) forbidMarker(content.owner, forbidden, `${paths.owner}: obsolete or hidden-identity path returned: ${forbidden}`);
 
 const changedIndex = content.owner.indexOf("if changed");
 const publishIndex = content.owner.indexOf(".publish_assignment_changed(", changedIndex);
@@ -139,39 +145,41 @@ const requestBlock = between(
   "pub(crate) struct ArtifactRolePermissionAssignmentRequest {",
   "pub(crate) struct ArtifactRolePermissionAssignmentResponse",
 );
-for (const marker of ["pub artifact_permission_id: Uuid", "pub idempotency_key: String"]) {
-  requireMarker(requestBlock, marker, `${paths.host}: request must carry ${marker}`);
-}
-for (const forbidden of ["pub installation_id:", "pub permission_key:"]) {
-  forbidMarker(requestBlock, forbidden, `${paths.host}: mutation request must not use ambiguous selector ${forbidden}`);
-}
 for (const marker of [
+  "pub scope: ArtifactPermissionAssignmentScopeRequest",
+  "pub installation_id: Uuid",
+  "pub permission_key: String",
+  "pub idempotency_key: String",
+]) requireMarker(requestBlock, marker, `${paths.host}: request must carry ${marker}`);
+forbidMarker(requestBlock, "artifact_permission_id", `${paths.host}: transport must not require an internal definition UUID`);
+for (const marker of [
+  "pub(crate) enum ArtifactPermissionAssignmentScopeRequest",
+  "ArtifactPermissionAssignmentScopeRequest::Platform => Self::Platform",
+  "ArtifactPermissionAssignmentScopeRequest::Tenant => Self::Tenant",
+  "scope: input.scope.into()",
+  "installation_id: input.installation_id",
+  "permission_key: input.permission_key",
   "TransactionalOutboxArtifactPermissionEventPublisher",
-  "impl ArtifactPermissionEventPublisher",
   ".publish_contract_in_tx(",
   "transactional_event_bus_from_context",
-  "RbacArtifactPermissionAssignmentService::new(ctx.db_clone(), event_publisher)",
-  "artifact_permission_id: input.artifact_permission_id",
-  "transactional_outbox_adapter_writes_typed_event",
-  '"rbac.artifact_role_permission.assignment_changed"',
-]) requireMarker(content.host, marker, `${paths.host}: host exact-identity Outbox adapter missing ${marker}`);
+  "request_scope_maps_without_accepting_a_tenant_identifier",
+]) requireMarker(content.host, marker, `${paths.host}: host explicit-scope adapter missing ${marker}`);
 
 for (const marker of [
-  "artifact_permission_id: Uuid",
-  "ArtifactRolePermissionAssignmentCommand {",
-  "only_state_changes_publish_artifact_permission_events",
-  "exact_identity_mutation_does_not_shadow_platform_or_tenant_definition",
-  "grant exact permission identity",
-  "revoke exact platform identity",
-  "revoke exact tenant identity",
+  "ArtifactPermissionAssignmentScope",
+  "explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition",
+  "grant explicit permission scope",
+  "revoke explicit platform scope",
+  "revoke explicit tenant scope",
   "assert_eq!(remaining_id, tenant_permission_id)",
-  "assert_eq!(event_permission_id, artifact_permission_id)",
+  "assert_ne!(remaining_id, platform_permission_id)",
   "assert_eq!(event_grants(&db).await, vec![true, true, false, false])",
+  "assert_eq!(event_permission_id, artifact_permission_id)",
   "publication_failure_rolls_back_grant_and_idempotency_receipt",
   'table_count(&db, "rbac_artifact_role_permissions")',
   'table_count(&db, "rbac_artifact_role_permission_operations")',
   'table_count(&db, "rbac_artifact_permission_events")',
-]) requireMarker(content.integrationTest, marker, `${paths.integrationTest}: executable exact-identity owner regression missing ${marker}`);
+]) requireMarker(content.integrationTest, marker, `${paths.integrationTest}: executable explicit-scope owner regression missing ${marker}`);
 forbidMarker(content.integrationTest, "rustok_outbox", `${paths.integrationTest}: owner regression must remain transport-neutral`);
 
 if (failures.length > 0) {
