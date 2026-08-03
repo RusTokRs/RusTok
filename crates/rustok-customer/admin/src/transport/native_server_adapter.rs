@@ -74,8 +74,8 @@ fn customer_admin_correlation_id(owner_operation: &'static str) -> String {
 }
 
 #[cfg(feature = "ssr")]
-fn customer_context_error<E: std::fmt::Debug>(
-    error: E,
+fn customer_context_error<E>(
+    _error: E,
     owner_operation: &'static str,
     context_kind: &'static str,
     correlation_id: &str,
@@ -83,7 +83,7 @@ fn customer_context_error<E: std::fmt::Debug>(
     public_message: &'static str,
 ) -> ServerFnError {
     tracing::error!(
-        error = ?error,
+        error_type = std::any::type_name::<E>(),
         owner = CUSTOMER_ADMIN_OWNER,
         owner_operation,
         context_kind,
@@ -96,7 +96,7 @@ fn customer_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn auth_context_error<E: std::fmt::Debug>(
+fn auth_context_error<E>(
     error: E,
     owner_operation: &'static str,
     correlation_id: &str,
@@ -112,7 +112,7 @@ fn auth_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn tenant_context_error<E: std::fmt::Debug>(
+fn tenant_context_error<E>(
     error: E,
     owner_operation: &'static str,
     correlation_id: &str,
@@ -136,7 +136,7 @@ async fn optional_request_context(
         Ok(context) => Some(context),
         Err(error) => {
             tracing::warn!(
-                error = ?error,
+                error_type = std::any::type_name_of_val(&error),
                 owner = CUSTOMER_ADMIN_OWNER,
                 owner_operation,
                 context_kind = "request",
@@ -162,42 +162,54 @@ fn customer_owner_error(
 ) -> ServerFnError {
     use rustok_customer::CustomerError;
 
-    let (public_message, public_code, technical) = match &error {
+    let (public_message, public_code, technical, error_kind) = match &error {
         CustomerError::Validation(_) => (
             "Customer request is invalid",
             "customer.admin_request_invalid",
             false,
+            "validation",
         ),
-        CustomerError::CustomerNotFound(_) | CustomerError::CustomerByUserNotFound(_) => (
+        CustomerError::CustomerNotFound(_) => (
             "Customer was not found",
             "customer.admin_not_found",
             false,
+            "customer_not_found",
+        ),
+        CustomerError::CustomerByUserNotFound(_) => (
+            "Customer was not found",
+            "customer.admin_not_found",
+            false,
+            "customer_by_user_not_found",
         ),
         CustomerError::DuplicateEmail(_) => (
             "Customer email already exists",
             "customer.admin_duplicate_email",
             false,
+            "duplicate_email",
         ),
         CustomerError::DuplicateUserLink(_) => (
             "Customer is already linked to a user",
             "customer.admin_duplicate_user_link",
             false,
+            "duplicate_user_link",
         ),
         CustomerError::Profile(_) => (
             "Customer profile is temporarily unavailable",
             "customer.admin_profile_unavailable",
             true,
+            "profile",
         ),
         CustomerError::Database(_) => (
             "Customer data is temporarily unavailable",
             "customer.admin_storage_unavailable",
             true,
+            "database",
         ),
     };
 
     if technical {
         tracing::error!(
-            error = ?error,
+            error_kind,
             owner = "rustok_customer",
             consumer = CUSTOMER_ADMIN_OWNER,
             owner_operation,
@@ -216,7 +228,7 @@ fn customer_owner_error(
         );
     } else {
         tracing::warn!(
-            error = ?error,
+            error_kind,
             owner = "rustok_customer",
             consumer = CUSTOMER_ADMIN_OWNER,
             owner_operation,
