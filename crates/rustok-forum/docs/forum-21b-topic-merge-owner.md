@@ -7,7 +7,9 @@
 FORUM-21B adds one bounded owner workflow under the planned `FORUM-21`
 umbrella: merge one active source topic into one retained active target topic
 when both topics belong to the same active category. FORUM-21H extends that
-same transaction with the accepted-solution policy described below.
+same transaction with the accepted-solution policy. FORUM-21I uses the
+immutable receipt as the canonical selected-read edge from an archived source
+tombstone to the retained target.
 
 The cumulative machine contract is:
 
@@ -15,14 +17,16 @@ The cumulative machine contract is:
 crates/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
-The FORUM-21H policy handoff is:
+Focused policy handoffs are:
 
 ```text
 crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json
 crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md
+crates/rustok-forum/contracts/forum-topic-canonical-resolution.json
+crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md
 ```
 
-The owner API remains:
+The merge owner API remains:
 
 ```rust
 ForumTopicMergeService::merge_topic(
@@ -60,9 +64,10 @@ target must differ.
 - the category retains both topic rows and therefore keeps its retained
   `topic_count`; its published `reply_count` also remains unchanged.
 
-Cross-category merge, canonical redirects, split, fork and reply-range workflows
-remain separate policies. Subscription, read-state, tag, vote and topic-local
-audience reconciliation are delivered by their dedicated FORUM-21 slices.
+Cross-category merge, HTTP redirects, slug aliases, split, fork and reply-range
+workflows remain separate policies. Subscription, read-state, tag, vote,
+topic-local audience and canonical selected-read resolution are delivered by
+their dedicated FORUM-21 slices.
 
 ## Idempotency
 
@@ -124,11 +129,11 @@ and invalidations.
 `m20260803_000016_add_forum_topic_merge_solution_policy` adds the shared
 per-topic solution scope. PostgreSQL locks the affected topic rows before
 advisory scope seed `31`; SQLite uses a durable topic-solution lock row under its
-write transaction. Ordinary mark, replace and clear writes pass through the same
-database trigger boundary, so they cannot race the merge between solution
-inspection and reply movement.
+write transaction. Ordinary mark, replace and clear writes take the same owner
+scope before current-marker reads and statistics deltas, while database triggers
+cover direct writers.
 
-PostgreSQL and SQLite also reject solution inserts or owner-key updates unless:
+PostgreSQL and SQLite reject solution inserts or owner-key updates unless:
 
 - the topic exists, is not deleted and is not archived;
 - the reply exists in that exact tenant and topic;
@@ -136,6 +141,28 @@ PostgreSQL and SQLite also reject solution inserts or owner-key updates unless:
 
 Delete remains available to clear a solution and to perform the source-only
 transfer sequence inside the merge transaction.
+
+## Canonical selected reads
+
+`m20260803_000017_add_forum_topic_canonical_resolution` makes the append-only
+merge receipt the only source-to-target canonical edge. No alias table or
+parallel redirect registry is introduced.
+
+- `(tenant_id, source_topic_id)` is unique;
+- a new edge requires an archived, locked, non-deleted, zero-reply source
+  tombstone and a non-deleted, non-archived target in the receipt category;
+- a retained target may later become another merge source, forming a forward
+  chain;
+- selected reads follow at most 32 edges and reject duplicate, cyclic or
+  otherwise ambiguous history with
+  `FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT`;
+- the terminal target must remain non-deleted;
+- `TopicService`, GraphQL selected-topic lookup, storefront selected-topic
+  lookup and Forum SEO target loading all use the terminal target identity.
+
+REST remains ID-based and returns the canonical target representation with the
+target ID. HTTP 3xx responses, `Location` headers, slug aliases and route
+tombstones remain a later route-contract slice.
 
 ## Persistence and events
 
@@ -147,10 +174,9 @@ target topic, category and human actor. The semantic event remains:
 forum.topic.merged / schema version 1
 ```
 
-FORUM-21H does not change the shared event payload or receipt shape. The
-existing source-topic, target-topic and category projection invalidations already
-cover the solved-state change and remain the durable cross-consumer repair
-signal.
+FORUM-21H and FORUM-21I do not change the shared event payload or receipt row
+shape. The existing source-topic, target-topic and category projection
+invalidations remain the durable cross-consumer repair signal.
 
 ## Regression coverage
 
@@ -173,14 +199,23 @@ signal.
 - command drift and cross-category merge fail closed;
 - direct receipt update and deletion are rejected.
 
+`topic_canonical_resolution_sqlite` is source-ready to verify:
+
+- an `A -> B -> C` receipt chain resolves both archived source IDs to `C`;
+- traversal operation IDs remain ordered and direct target resolution has zero
+  hops;
+- selected and storefront reads hydrate `C`, not either source tombstone;
+- unknown IDs remain not found;
+- duplicate source edges and active-source receipt inserts are rejected.
+
 ## Remaining FORUM-21 work
 
-The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21H
+The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21I
 are bounded partial slices; remaining work includes:
 
 - maintainer execution and retained SQLite/PostgreSQL evidence;
-- public/admin transport composition and exact authorization context;
-- canonical aliases, redirects and route tombstones;
+- public/admin merge transport composition and exact authorization context;
+- HTTP redirects, slug aliases and route tombstones;
 - an explicit manager-selected resolution command for competing solutions;
 - cross-category merge and checked category ownership policy;
 - split, fork and reply-range workflows.
@@ -190,7 +225,9 @@ are bounded partial slices; remaining work includes:
 ```bash
 node scripts/verify/verify-forum-topic-merge-owner.mjs
 node scripts/verify/verify-forum-topic-merge-solution-policy.mjs
+node scripts/verify/verify-forum-topic-canonical-resolution.mjs
 cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture
 ```
 
 No command above was run by the implementation agent, per maintainer request.
