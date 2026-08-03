@@ -236,3 +236,6 @@ impl MigrationSource for ForumModule {
         migrations::migration_dependencies()
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
