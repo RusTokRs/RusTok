@@ -57,7 +57,7 @@
     "actor_identity_logged": false,
     "tenant_identity_logged": false,
     "claim_token_logged": false,
-    "database_error_detail_logged": false
+    "worker_layer_database_error_detail_logged": false
   },
   "closed_errors": {
     "conflict_counted": true,
