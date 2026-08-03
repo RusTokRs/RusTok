@@ -44,6 +44,7 @@ mod m20260801_000011_add_forum_topic_merge_subscription_reconciliations;
 mod m20260801_000012_add_forum_topic_merge_read_state_reconciliations;
 mod m20260803_000013_add_forum_topic_merge_tag_reconciliations;
 mod m20260803_000014_add_forum_topic_merge_vote_reconciliations;
+mod m20260803_000015_add_forum_topic_merge_audience_reconciliations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -100,6 +101,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         ),
         Box::new(m20260803_000013_add_forum_topic_merge_tag_reconciliations::Migration),
         Box::new(m20260803_000014_add_forum_topic_merge_vote_reconciliations::Migration),
+        Box::new(m20260803_000015_add_forum_topic_merge_audience_reconciliations::Migration),
     ]
 }
 
