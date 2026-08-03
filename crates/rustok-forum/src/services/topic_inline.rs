@@ -1,5 +1,5 @@
-use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
 use super::topic_tag_lock::{lock_active_topic_tag_write_in_tx, lock_topic_tag_scopes_in_tx};
+use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
 
 pub const MAX_FORUM_TOPIC_TAGS: usize = 100;
 
