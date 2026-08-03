@@ -1,0 +1,113 @@
+{
+  "contract": "forum_topic_merge_audience_reconciliation_v1",
+  "task": "FORUM-21G",
+  "parent_task": "FORUM-21",
+  "depends_on": [
+    "FORUM-20",
+    "FORUM-21B"
+  ],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution_plus_remaining_workflows",
+  "scope": "fail_closed_post_merge_topic_local_audience_reconciliation",
+  "owner_service": "ForumTopicMergeAudienceReconciliationService",
+  "input": "ReconcileForumTopicMergeAudienceInput",
+  "result": "ForumTopicMergeAudienceReconciliationResult",
+  "outcome_type": "ForumTopicMergeAudienceOutcome",
+  "migration": "m20260803_000015_add_forum_topic_merge_audience_reconciliations",
+  "receipt_table": "forum_topic_merge_audience_reconciliations",
+  "source_merge_receipt_table": "forum_topic_merge_operations",
+  "semantic_event": {
+    "journal": "forum_domain_events",
+    "event_type": "forum.topic.merge_audience_reconciled",
+    "schema_version": 1,
+    "aggregate_is_retained_target": true,
+    "event_id_equals_operation_id": true,
+    "shared_rustok_events_contract_changed": false
+  },
+  "required_permissions": [
+    "forum_topics:manage"
+  ],
+  "bounds": {
+    "reason_max_characters": 500,
+    "roles_max": 4,
+    "channels_max": 32,
+    "groups_max": 32,
+    "allow_users_max": 100,
+    "deny_users_max": 100,
+    "trust_level_max": 100,
+    "one_reconciliation_per_merge_receipt": true
+  },
+  "safe_outcomes": {
+    "both_unrestricted": "source_and_target_have_no_topic_local_layer",
+    "target_only_preserved": "source_has_no_local_layer_and_target_is_unchanged",
+    "source_only_moved": "source_layer_is_recreated_on_target_with_the_same_normalized_constraints_and_updated_at_then_removed_from_source",
+    "equal_layers_deduplicated": "equal_normalized_layers_keep_the_target_row_and_remove_the_source_layer"
+  },
+  "policy_conflict": {
+    "condition": "source_and_target_both_have_different_normalized_topic_local_layers",
+    "stable_code": "FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT",
+    "behavior": "rollback_without_audience_mutation_event_receipt_or_projection_invalidation",
+    "reason": "positive selectors inside one layer are a union so flattening two different conjunctive topic layers can broaden visibility"
+  },
+  "ordinary_write_hardening": [
+    "the public topic audience owner locks an active non-deleted topic row before the shared topic audience scope",
+    "ordinary set and merge reconciliation share PostgreSQL advisory seed 5 and the same tenant-topic key",
+    "ordinary set rejects archived and deleted topics before replacing policy rows",
+    "database inserts into any topic audience policy or child table reject archived or deleted topics"
+  ],
+  "transactional_invariants": [
+    "the command requires non-nil tenant operation merge operation and human actor identities",
+    "the normalized reason is non-empty bounded to 500 characters and contains no control characters",
+    "reconciliations are serialized per tenant before immutable reconciliation receipt lookup",
+    "an exact existing reconciliation receipt is resolved before current merge or audience state",
+    "reusing an operation identifier with a different merge actor or reason fails with FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT",
+    "one merge receipt may have at most one audience reconciliation receipt",
+    "the referenced immutable FORUM-21B merge receipt and its forum.topic.merged semantic event must match exactly",
+    "source and target topic rows are locked in deterministic UUID order before sorted audience scopes",
+    "the source must be the archived locked merge tombstone and the retained target must remain active in the recorded category",
+    "all persisted policy role channel group and user relations are loaded under their existing bounded Forum audience limits",
+    "the source has zero topic audience rows before semantic event receipt and projection invalidations",
+    "the successful target layer exactly matches the selected safe outcome",
+    "a differing dual-layer conflict occurs before any audience mutation event receipt or invalidation",
+    "semantic event receipt audience changes and two topic projection invalidations commit in one transaction",
+    "exact replay validates the stored event locks both scopes proves source emptiness and creates no additional side effects"
+  ],
+  "search_projection": {
+    "successful_first_execution_invalidations": [
+      "source_topic",
+      "target_topic"
+    ],
+    "conflict_invalidations": 0,
+    "exact_replay_invalidations": 0,
+    "reason": "topic audience controls eligibility and public projection state"
+  },
+  "database_guards": [
+    "tenant-composite foreign keys bind the receipt to merge receipt source target and actor",
+    "operation event merge source target and actor identities are non-nil",
+    "source and target differ and event_id equals operation_id",
+    "one receipt exists per merge operation",
+    "reason and outcome values are bounded",
+    "receipt updates and deletes are rejected on PostgreSQL and SQLite",
+    "PostgreSQL raw audience mutations acquire deterministic old and new topic scopes",
+    "all topic audience inserts reject archived or deleted topics on PostgreSQL and SQLite"
+  ],
+  "test": "crates/rustok-forum/tests/topic_merge_audience_reconciliation_sqlite.rs",
+  "verifier": "scripts/verify/verify-forum-topic-merge-audience-reconciliation.mjs",
+  "documentation": "crates/rustok-forum/docs/forum-21g-topic-merge-audience-reconciliation.md",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-merge-audience-reconciliation.mjs",
+    "cargo test -p rustok-forum --test topic_merge_audience_reconciliation_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
+    "this slice does not automatically resolve two different topic-local audience layers",
+    "this slice does not add public REST GraphQL native admin or storefront reconciliation transport",
+    "this slice does not change inherited category audience policy or the canonical ForumAudienceConstraints model",
+    "this slice does not add canonical aliases redirects or route tombstones",
+    "this slice does not reconcile accepted solutions notification delivery state or taxonomy terms",
+    "this slice does not support cross-category merge split fork or reply-range operations",
+    "this slice does not provide PostgreSQL concurrency runtime evidence",
+    "this slice does not promote canonical FORUM-21 from planned"
+  ]
+}
