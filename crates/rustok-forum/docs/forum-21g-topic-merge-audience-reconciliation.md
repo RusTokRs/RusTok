@@ -4,10 +4,13 @@
 
 `source_ready_maintainer_execution_pending`
 
-FORUM-21G adds one fail-closed follow-up owner command for the source-ready
-FORUM-21B same-category topic merge. It reconciles the optional Forum-owned
-topic-local audience layer after the source topic becomes the archived, locked
-merge tombstone.
+FORUM-21G closes the topic-local audience privacy boundary around the
+source-ready FORUM-21B same-category topic merge. It has two responsibilities:
+
+1. new merge transactions cannot commit when source topic-local audience state
+   would be lost or broadened on the retained target;
+2. immutable merge receipts created before this guard can be repaired through a
+   bounded, fail-closed reconciliation owner.
 
 The machine contract is:
 
@@ -15,7 +18,7 @@ The machine contract is:
 crates/rustok-forum/contracts/forum-topic-merge-audience-reconciliation.json
 ```
 
-The owner API is:
+The historical repair API is:
 
 ```rust
 ForumTopicMergeAudienceReconciliationService::reconcile_merge_audience(
@@ -46,9 +49,48 @@ broaden visibility, while intersecting selector identifiers can incorrectly
 remove viewers that satisfied different selector kinds. FORUM-21G never guesses
 at this policy transformation.
 
-## Safe outcome matrix
+## New merge commit guard
 
-| Source local layer | Target local layer | Outcome |
+Migration `m20260803_000015` installs a `BEFORE INSERT` guard on
+`forum_topic_merge_operations`, the immutable FORUM-21B receipt table.
+
+The receipt is inserted inside the same database transaction that moves replies,
+updates counters, archives the source, appends `forum.topic.merged` and publishes
+projection invalidations. The guard therefore runs before that transaction can
+commit.
+
+A new merge is allowed when:
+
+- the source has no topic-local audience layer; or
+- source and target have exactly equal local storage state: minimum trust level,
+  role set, Channel set, Groups set and explicit `(user_id, effect)` set.
+
+When the source has a local layer and the target is absent or different, the
+guard raises `forum topic merge audience policy conflict`. `ForumError` maps this
+to `FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT`.
+
+The complete FORUM-21B transaction rolls back, including:
+
+- reply topic and position changes;
+- source archival and target counter changes;
+- the `forum.topic.merged` journal row;
+- the merge receipt;
+- source, target and category Search invalidations.
+
+No committed interval exists in which moved source content is visible under a
+broader target audience.
+
+PostgreSQL acquires both source and target audience scopes in deterministic UUID
+order with advisory seed 5 before comparing the sets. SQLite performs the same
+exact set comparison under its writer serialization.
+
+## Historical safe outcome matrix
+
+Receipts committed before `m20260803_000015` can contain audience combinations
+that modern merge now rejects. The repair owner handles only representable safe
+outcomes:
+
+| Historical source local layer | Historical target local layer | Outcome |
 | --- | --- | --- |
 | absent | absent | `both_unrestricted` |
 | absent | present | `target_only_preserved` |
@@ -64,9 +106,9 @@ The source policy and all cascading child rows are then absent.
 `equal_layers_deduplicated` preserves the target row and its timestamps and
 removes only the equal source layer.
 
-A differing dual-layer conflict creates no audience mutation, semantic event,
-receipt or Search invalidation. Both persisted layers remain available for an
-explicit future resolution command.
+A differing historical dual-layer conflict creates no audience mutation,
+semantic event, receipt or Search invalidation. Both persisted layers remain
+available for an explicit future resolution command.
 
 ## Bounds
 
@@ -81,12 +123,12 @@ second ACL model:
 - trust level from 0 through 100;
 - reconciliation reason at most 500 characters.
 
-Storage that exceeds these limits fails closed before reconciliation.
+Historical storage that exceeds these limits fails closed before repair.
 
 ## Idempotency
 
-`operation_id` is both the command identity and the Forum-local semantic event
-identity.
+`operation_id` is both the repair command identity and the Forum-local semantic
+event identity.
 
 - exact replay resolves the immutable reconciliation receipt before current
   merge or audience state;
@@ -96,13 +138,15 @@ identity.
 - exact replay validates its semantic event, locks both audience scopes, proves
   source emptiness and returns the stored result without new invalidations.
 
-A dual-layer policy conflict is not recorded as successful reconciliation and
-can be retried after an explicit manager resolves the two local policies.
+A historical dual-layer policy conflict is not recorded as successful
+reconciliation and can be retried after an explicit manager resolves the two
+local policies.
 
 ## Lock order and ordinary writes
 
-Ordinary topic audience replacement and reconciliation share the existing
-PostgreSQL audience scope identified by tenant and topic with advisory seed 5.
+Ordinary topic audience replacement, the merge receipt guard and historical
+reconciliation share the existing PostgreSQL audience scope identified by tenant
+and topic with advisory seed 5.
 
 Ordinary set:
 
@@ -114,7 +158,15 @@ category tree lock
 → topic Search projection invalidation
 ```
 
-Reconciliation:
+New merge receipt guard:
+
+```text
+source and target audience scopes in sorted UUID order
+→ exact policy and relation-set comparison
+→ receipt insert or transaction abort
+```
+
+Historical reconciliation:
 
 ```text
 tenant reconciliation lock
@@ -131,13 +183,13 @@ audience table reject archived or soft-deleted topics. SQLite relies on its
 writer serialization and applies the same archived/deleted insert guards.
 
 The public `ForumTopicAudiencePolicyService` name points to the transactional
-owner facade. Its `set` command now rejects a stale write racing with merge
-after the source is archived.
+owner facade. Its `set` command now rejects a stale write racing with merge after
+the source is archived.
 
-## Merge validation
+## Historical merge validation
 
-First execution requires the exact FORUM-21B receipt and independently validates
-its `forum.topic.merged` journal record. It then requires:
+Repair requires the exact FORUM-21B receipt and independently validates its
+`forum.topic.merged` journal record. It then requires:
 
 - the source topic to be the archived and locked merge tombstone;
 - the retained target to remain non-archived;
@@ -146,9 +198,9 @@ its `forum.topic.merged` journal record. It then requires:
 
 Current topic state alone is never accepted as proof that a merge occurred.
 
-## Atomic state
+## Atomic repair state
 
-One successful first-execution transaction performs:
+One successful historical repair transaction performs:
 
 1. tenant-scoped reconciliation serialization;
 2. exact replay lookup;
@@ -156,7 +208,7 @@ One successful first-execution transaction performs:
 4. immutable merge receipt and merge-event validation;
 5. deterministic topic-row and audience-scope locking;
 6. bounded normalized local-layer loading;
-7. one safe outcome transformation;
+7. one safe historical outcome transformation;
 8. source-emptiness and retained-target state proof;
 9. one `forum.topic.merge_audience_reconciled` semantic event;
 10. one immutable reconciliation receipt;
@@ -169,9 +221,11 @@ invalidations.
 ## Search projection boundary
 
 Topic-local audience affects storefront eligibility, Search result eligibility,
-SEO and notification authorization. A successful first execution therefore
+SEO and notification authorization. A successful historical repair therefore
 publishes source and retained-target topic invalidations in the same transaction.
-Exact replay and policy conflict publish none.
+Exact replay and historical policy conflict publish none. A modern merge guard
+conflict rolls back the original merge invalidations with the rest of the merge
+transaction.
 
 ## Persistence guards
 
@@ -184,27 +238,35 @@ SQLite. Tenant-composite foreign keys bind each receipt to:
 - the human actor.
 
 The database requires non-nil identities, different source and target topics,
-`event_id = operation_id`, one receipt per merge, a bounded reason and one of the
-four safe outcomes. Direct receipt update and deletion fail closed.
+`event_id = operation_id`, one reconciliation receipt per merge, a bounded reason
+and one of the four safe historical outcomes. Direct receipt update and deletion
+fail closed.
 
 ## Regression coverage
 
-The source-ready SQLite regression creates real Forum state and covers:
+The source-ready SQLite handoff uses two schema epochs:
 
-- a complete source-only local layer using role, trust, Channel, Groups, allow
-  and deny selectors;
-- execution of the real FORUM-21B merge;
-- rejection of stale public owner writes and direct archived-topic inserts;
+- historical scenarios apply all Forum migrations except `000015`, create real
+  FORUM-21B receipts, then apply `000015` and exercise repair;
+- modern scenarios apply `000015` before merge and exercise the receipt guard.
+
+The source-ready cases cover:
+
+- a complete historical source-only layer using role, trust, Channel, Groups,
+  allow and deny selectors;
 - `source_only_moved` with exact normalized constraints and preserved
   `updated_at`;
 - source policy and all child relations becoming empty;
-- one semantic event, one immutable receipt and exactly two projection
-  invalidations;
+- one semantic event, one immutable receipt and exactly two repair invalidations;
 - exact replay without new side effects;
 - command drift, second reconciliation and receipt mutation failure;
-- different dual layers returning
+- different historical dual layers returning
   `FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT` while preserving both policies
-  and producing no event, receipt or invalidation;
+  and producing no repair event, receipt or invalidation;
+- a modern source-only merge failing at the receipt guard;
+- full rollback of source status, target state, merge event, merge receipt and
+  projection invalidations after that conflict;
+- stale public owner writes and direct archived-topic inserts failing closed;
 - missing merge receipt failure.
 
 Maintainer execution remains required.
@@ -212,13 +274,13 @@ Maintainer execution remains required.
 ## Deliberate boundary
 
 This slice does not deliver an explicit manager-selected resolution for two
-different local layers. It also does not reconcile accepted-solution policy,
-canonical aliases or redirects, notification delivery state, cross-category
-merge, split, fork or reply-range workflows.
+different historical local layers. It also does not reconcile accepted-solution
+policy, canonical aliases or redirects, notification delivery state,
+cross-category merge, split, fork or reply-range workflows.
 
-No REST, GraphQL, native, admin or storefront reconciliation transport is added.
-The canonical `FORUM-21` ledger entry remains `planned` until maintainer
-execution and the remaining workflow families are delivered.
+No REST, GraphQL, native, admin or storefront repair transport is added. The
+canonical `FORUM-21` ledger entry remains `planned` until maintainer execution
+and the remaining workflow families are delivered.
 
 ## Maintainer verification
 
