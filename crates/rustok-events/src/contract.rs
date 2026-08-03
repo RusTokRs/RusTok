@@ -145,7 +145,27 @@ impl ContractEventEnvelope {
     where
         E: EventContract,
     {
-        Self::new_with_causation(tenant_id, actor_id, None, event)
+        let id = Uuid::from_bytes(Ulid::r#gen().to_bytes());
+        Self::new_with_identity(id, tenant_id, actor_id, None, event)
+    }
+
+    /// Creates a typed envelope with one exact caller-owned durable identity.
+    ///
+    /// This constructor is reserved for transactional write-once boundaries
+    /// whose existing owner idempotency identity must also be the canonical
+    /// envelope UUID. The identity must be non-nil; correlation identity is set
+    /// to the same UUID and the ordinary registered-envelope validation remains
+    /// authoritative.
+    pub fn new_with_envelope_id<E>(
+        envelope_id: Uuid,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: E,
+    ) -> Result<Self, EventContractEnvelopeError>
+    where
+        E: EventContract,
+    {
+        Self::new_with_identity(envelope_id, tenant_id, actor_id, None, event)
     }
 
     /// Creates a typed envelope that is causally linked to one exact durable
@@ -163,10 +183,12 @@ impl ContractEventEnvelope {
     where
         E: EventContract,
     {
-        Self::new_with_causation(tenant_id, actor_id, Some(causation_id), event)
+        let id = Uuid::from_bytes(Ulid::r#gen().to_bytes());
+        Self::new_with_identity(id, tenant_id, actor_id, Some(causation_id), event)
     }
 
-    fn new_with_causation<E>(
+    fn new_with_identity<E>(
+        id: Uuid,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         causation_id: Option<Uuid>,
@@ -178,7 +200,6 @@ impl ContractEventEnvelope {
         event.validate()?;
         let event_type = event.event_type().to_string();
         let schema_version = event.schema_version();
-        let id = Uuid::from_bytes(Ulid::r#gen().to_bytes());
         let envelope = Self {
             id,
             event_type,
@@ -208,12 +229,20 @@ impl ContractEventEnvelope {
         self.schema_version
     }
 
+    pub fn correlation_id(&self) -> Uuid {
+        self.correlation_id
+    }
+
     pub fn causation_id(&self) -> Option<Uuid> {
         self.causation_id
     }
 
     pub fn tenant_id(&self) -> Uuid {
         self.tenant_id
+    }
+
+    pub fn actor_id(&self) -> Option<Uuid> {
+        self.actor_id
     }
 
     pub fn payload(&self) -> Result<&ContractEventPayload, EventContractEnvelopeError> {
@@ -384,6 +413,40 @@ mod tests {
             EventContractEnvelopeError::Validation(EventValidationError::NilUuid(
                 "causation_id"
             ))
+        ));
+    }
+
+    #[test]
+    fn explicit_contract_envelope_identity_is_exact_and_correlated() {
+        let envelope_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let envelope = ContractEventEnvelope::new_with_envelope_id(
+            envelope_id,
+            Uuid::new_v4(),
+            Some(actor_id),
+            mention_event(),
+        )
+        .expect("explicit envelope identity should validate");
+
+        assert_eq!(envelope.id(), envelope_id);
+        assert_eq!(envelope.correlation_id(), envelope_id);
+        assert_eq!(envelope.actor_id(), Some(actor_id));
+        assert_eq!(envelope.causation_id(), None);
+    }
+
+    #[test]
+    fn explicit_contract_envelope_identity_rejects_nil_uuid() {
+        let error = ContractEventEnvelope::new_with_envelope_id(
+            Uuid::nil(),
+            Uuid::new_v4(),
+            None,
+            mention_event(),
+        )
+        .expect_err("nil explicit envelope identity must fail closed");
+
+        assert!(matches!(
+            error,
+            EventContractEnvelopeError::Validation(EventValidationError::NilUuid("id"))
         ));
     }
 }
