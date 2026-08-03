@@ -1,5 +1,5 @@
 {
-  "status": "published_surface_connected_legacy_form_pending",
+  "status": "metadata_surface_cutover_complete",
   "format": "page_builder_consumer_properties_v1",
   "parity_plan": "docs/modules/pages-page-builder-parity-continuation-plan.md",
   "provider": {
@@ -49,6 +49,7 @@
     "contribution_source": "crates/rustok-pages/admin/src/contributions.rs",
     "owner_port_source": "crates/rustok-pages/admin/src/metadata_properties.rs",
     "composition_source": "crates/rustok-pages/admin/src/lib.rs",
+    "workspace_source": "crates/rustok-pages/admin/src/composition.rs",
     "published_surface_source": "crates/rustok-pages/admin/src/standalone_metadata.rs",
     "contribution_id": "rustok.pages.metadata",
     "property_editor_id": "rustok.pages.metadata.editor",
@@ -88,9 +89,9 @@
     "legacy_form": {
       "source": "crates/rustok-pages/admin/src/composition.rs",
       "component": "PageMetadataEditor",
-      "state": "pending_duplicate_removal",
-      "unblocked_by": "published_registered_surface_connected",
-      "required_cutover": "remove_bespoke_form_after_registered_draft_and_published_surfaces_are_source_connected"
+      "state": "removed",
+      "direct_persistence_path_removed": true,
+      "replacement": "registered_consumer_property_surfaces"
     }
   },
   "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
