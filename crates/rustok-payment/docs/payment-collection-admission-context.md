@@ -1,153 +1,54 @@
-# Payment collection owner admission diagnostic safety
+# Payment collection admission diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This bounded source slice hardens only admission diagnostics in
-`PaymentCollectionPort`:
+This source-only contract covers read-policy admission for payment collection status and write
+policy plus write-semantics admission for collection create/reuse.
 
-- `create_or_reuse_collection` write-policy admission;
-- `create_or_reuse_collection` write-semantics admission;
-- `read_collection_status` read-policy admission.
-
-The public operations, policy selection, write-semantics requirement, tenant parsing, owner
-service calls, and public `PortError` behavior remain unchanged.
-
-## Preserved admission flow
-
-`create_or_reuse_collection` still evaluates:
-
-1. write policy;
-2. write semantics;
-3. tenant parsing;
-4. reusable collection lookup and owner execution.
-
-`read_collection_status` still evaluates:
-
-1. read policy;
-2. tenant parsing;
-3. owner status read.
-
-The exact original admission `PortError` continues through `inspect_err` unchanged. The
-diagnostic helper does not construct a replacement code, message, kind, or retryability value.
+Admission remains before tenant parsing and owner work. Read operations do not require write
+semantics; create/reuse retains policy-before-write-semantics ordering.
 
 ## Bounded diagnostic policy
 
-Admission diagnostics retain only bounded context and message-shape facts.
+Admission diagnostics retain only bounded context and message-shape facts: truthful owner, exact
+operation and admission phase, correlation, actor kind, identity/text lengths, optional-field
+presence, claim/role counts, deadline, stable code, message presence/length, closed error kind,
+retryability, and boundary.
 
-The helper records one closed error-kind label:
+They do not record complete `PortError` payloads, raw context values, internal message text, or Debug
+kind output. Technical admission failures remain error severity; ordinary rejections remain warning
+severity.
 
-- `validation`;
-- `not_found`;
-- `conflict`;
-- `forbidden`;
-- `unavailable`;
-- `timeout`;
-- `invariant_violation`.
+The exact original admission `PortError` continues through `inspect_err` unchanged.
 
-Both severity paths retain:
+## Related source-only contracts
 
-- truthful owner `rustok_payment`;
-- exact owner operation;
-- exact admission phase `policy` or `write_semantics`;
-- boundary `payment_collection_port`;
-- correlation id;
-- stable original error code and retryability;
-- internal-message presence and character length;
-- tenant-id and actor-id character lengths;
-- closed actor-kind label;
-- claim and role counts;
-- channel presence and optional character length;
-- locale character length;
-- causation-id, traceparent, and idempotency-key presence plus optional character lengths;
-- optional deadline milliseconds.
+Tenant UUID parsing and canonical `payment_error_to_port_error` are now closed by separate
+source-only contracts:
 
-The helper does not record the complete admission `PortError`, human-readable internal message,
-raw tenant, actor, channel, locale, causation, traceparent, or idempotency values, or Debug
-`PortErrorKind` output.
+- tenant verifier: `scripts/verify/verify-payment-collection-tenant-context.mjs`;
+- owner mapper verifier: `scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs`.
 
-## Preserved severity
-
-Unavailable, timeout, and invariant-violation failures continue through `tracing::error!`.
-Validation, not-found, conflict, forbidden, and other ordinary admission rejections continue
-through `tracing::warn!`.
+The owner mapper contract also replaces identifier-bearing collection/payment/refund not-found
+messages with static public envelopes while preserving codes, kinds, and retryability.
 
 ## Preserved behavior
 
-This slice does not change:
+No trait, DTO, collection lookup/create/race adoption/status flow, owner service call, tenant
+validation envelope, provider execution, persistence, checkout/compensation consumer, Commerce
+orchestration, or FFA/FBA status is changed by this admission contract.
 
-- public `PaymentCollectionPort` trait signatures;
-- create/reuse or status request and response DTOs;
-- canonical owner operation selection;
-- read/write policy selection;
-- write-semantics requirements;
-- admission-before-tenant-parsing ordering;
-- tenant UUID validation envelope;
-- reusable collection lookup, create, or race-adoption behavior;
-- collection status reads or snapshot conversion;
-- `PaymentError` variant mapping;
-- provider, lifecycle, reconciliation, configuration, or database public envelopes;
-- checkout execution or compensation consumers;
-- Commerce orchestration;
-- ecommerce audit, Payment FFA, or Payment FBA status.
-
-## Static evidence
-
-The focused guard is:
-
-- `scripts/verify/verify-payment-collection-admission-context.mjs`.
-
-It requires:
-
-- one read and one write admission helper;
-- three preserved diagnostic call sites through `inspect_err`;
-- exact owner-operation and admission-phase attribution;
-- the closed error-kind classification;
-- bounded message and delegated-context facts;
-- technical-versus-ordinary severity;
-- original-error pass-through and admission-before-tenant ordering;
-- unchanged collection lookup, create, adoption, status-read, and snapshot behavior;
-- absence of complete errors, raw context values, raw message text, and Debug kind output inside
-  the covered helper.
-
-Source evidence is recorded in:
-
-- `crates/rustok-payment/contracts/evidence/payment-collection-admission-diagnostic-safety-source.json`.
-
-The evidence remains source-only: `execution` is empty and every validation flag is false.
-
-## Related tenant contract
-
-Tenant UUID parsing is now closed by a separate source-only contract:
-
-- verifier: `scripts/verify/verify-payment-collection-tenant-context.mjs`;
-- evidence:
-  `crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`;
-- documentation: `crates/rustok-payment/docs/payment-collection-tenant-context.md`.
-
-That contract replaces the complete parse error, complete constructed `PortError`, raw delegated
-context, internal message text, and Debug kind output with type/shape-only facts while preserving
-the same parser call sites and validation envelope. It does not change the admission mapper
-covered here.
-
-## Remaining diagnostic boundary
-
-Canonical `payment_error_to_port_error` remains the next open collection boundary. It still
-contains raw validation and transition text, provider identifiers and operations, database errors,
-raw tenant values, and public not-found messages that interpolate owner UUIDs.
-
-Compile, runtime, replay, restart, remote-port parity, workflows, CI, and production evidence
-remain open. The broad ecommerce correlation-safe mapper cleanup remains open, and no FFA/FBA
-status is promoted.
+Execution evidence remains empty; compile, verifier, runtime, replay, restart, remote-port,
+workflow, CI, and production evidence remain open.
 
 ## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-payment-collection-admission-context.mjs
 node scripts/verify/verify-payment-collection-tenant-context.mjs
+node scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-payment --lib
 ```
