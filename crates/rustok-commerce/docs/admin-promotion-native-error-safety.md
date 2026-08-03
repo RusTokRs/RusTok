@@ -35,6 +35,11 @@ correlation id, stable code, boundary, and the Rust error type. The complete
 framework extraction errors are not logged, including their debug or display
 text.
 
+The type-only `promotion_context_error`, `promotion_auth_context_error`, and
+`promotion_tenant_context_error` helpers no longer require a `Debug` bound. The
+error value remains unformatted and the diagnostic contract now reflects the
+actual type-only implementation.
+
 Optional `RequestContext` extraction remains attribution-only. Failure still
 falls back without changing permission or operation admission, but only the error
 type is retained in diagnostics.
@@ -68,6 +73,9 @@ When `RequestContext` is available, its effective locale and resolved channel
 continue to cross the owner `PortContext`; tenant default locale remains the
 fallback.
 
+The independently guarded order-change boundary in the same SSR adapter retains
+its bound-free type-only context helpers and typed owner-error shape contract.
+
 ## Source guard and evidence
 
 Focused guard:
@@ -88,7 +96,6 @@ trace was executed for this source slice.
 
 ## Remaining work
 
-Commerce admin order-change diagnostics in the same SSR adapter remain explicitly
-outside this slice. The broad ecommerce mapper-cleanup item stays open for that
-boundary and the remaining order, payment, fulfillment, inventory, customer, tax,
-promotion, adapter, and non-`PortError` envelopes.
+The broad ecommerce mapper-cleanup item stays open for remaining order, payment,
+fulfillment, inventory, customer, tax, promotion, adapter, and non-`PortError`
+envelopes. This source slice does not promote ecommerce FFA or FBA status.
