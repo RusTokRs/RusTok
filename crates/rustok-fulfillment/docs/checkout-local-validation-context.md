@@ -109,7 +109,7 @@ This slice does not change:
 - duplicate or missing identity detection;
 - immutable plan comparison rules;
 - create, adoption, lookup, or read service ordering;
-- stable `FulfillmentError` mapping;
+- stable `FulfillmentError` public mapping;
 - fulfillment or item metadata construction;
 - fulfillment sorting;
 - FBA, FFA, or ecommerce audit status.
@@ -160,10 +160,20 @@ The context guard preserves exact parsing and matching behavior while forbidding
 complete parse causes, raw delegated values, message text, and Debug kind output inside both
 covered validators.
 
-## Remaining gap
+Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under their own bounded
+contract:
 
-Canonical `FulfillmentError` diagnostics in `fulfillment_error_to_port_error` remain the next
-separate bounded slice.
+- `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+
+The canonical mapper preserves all five static public envelopes and the existing warning/error
+severity while recording only bounded variant and context facts.
+
+## Checkout execution source boundary
+
+The local, admission, causation, tenant, and canonical owner contracts now make the mounted
+Fulfillment checkout execution diagnostic mapper surface source-complete.
 
 Compile, runtime, replay, restart, remote-port, workflow, and CI evidence remain open. The
 broad ecommerce correlation-safe mapper cleanup and FFA/FBA status are not promoted.

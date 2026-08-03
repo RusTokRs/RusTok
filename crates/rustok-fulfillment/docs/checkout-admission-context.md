@@ -143,12 +143,27 @@ The tenant guard and evidence are:
 
 That contract does not change admission selection or ordering.
 
-## Remaining diagnostic boundaries
+## Related canonical owner contract
+
+Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under their own bounded
+contract. Validation text, owner UUIDs, lifecycle transition strings, database errors, and raw
+delegated context are replaced with type/shape/closed-kind facts while every public envelope and
+service operation remains unchanged.
+
+The owner guard and evidence are:
+
+- `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+
+That contract does not change admission selection, phases, pass-through, or ordering.
+
+## Checkout execution source boundary
 
 Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain separate
-bounded slices in the admission contract's original scope. Causation and tenant parsing are now
-source-ready under the related contracts above; canonical `FulfillmentError` diagnostics remain
-open.
+bounded slices in the admission contract's original scope. All three are now source-ready under
+the related contracts above. Together with the admission and local-`PortError` contracts, the
+mounted Fulfillment checkout execution diagnostic mapper surface is source-complete.
 
 Compile, runtime, replay, restart, contention, mounted Commerce behavior, remote-port parity,
 workflows, CI, and production evidence remain open. The broad ecommerce correlation-safe

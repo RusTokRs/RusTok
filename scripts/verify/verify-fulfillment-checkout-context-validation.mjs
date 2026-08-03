@@ -251,8 +251,8 @@ for (const [block, values, label] of [
 for (const [pattern, expected, label] of [
   [/validation_phase = "causation_id"/g, 1, 'causation phase count'],
   [/validation_phase = "tenant_id"/g, 1, 'tenant phase count'],
-  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 6, 'owner diagnostic count'],
-  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 6, 'boundary diagnostic count'],
+  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 11, 'owner diagnostic count'],
+  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 11, 'boundary diagnostic count'],
 ]) {
   const count = source.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
@@ -342,7 +342,7 @@ for (const [value, label] of [
   ['Causation diagnostics retain only bounded context and identity-shape facts', 'documentation causation policy'],
   ['Tenant parse-failure diagnostics retain only type and bounded context-shape facts', 'documentation tenant policy'],
   ['The exact constructed tenant `PortError` is returned unchanged', 'documentation tenant pass-through policy'],
-  ['Canonical `FulfillmentError` diagnostics remain the next separate cleanup slice', 'documentation remaining boundary'],
+  ['Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under their own bounded contract', 'documentation related owner contract'],
 ]) requireText(doc, value, label);
 
 if (failures.length > 0) {

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "fulfillment_checkout_owner_mapper_diagnostic_safety_source_unvalidated",
+  "scope": "Fulfillment checkout canonical FulfillmentError to PortError diagnostics only",
+  "source_contract": {
+    "canonical_owner_mapper_bounded": true,
+    "validation_cause_shape_only": true,
+    "shipping_option_identity_shape_only": true,
+    "fulfillment_identity_shape_only": true,
+    "transition_shape_only": true,
+    "database_cause_type_only": true,
+    "owner_context_shape_only": true,
+    "raw_owner_causes_logged": false,
+    "raw_owner_identifiers_logged": false,
+    "raw_owner_transition_values_logged": false,
+    "raw_owner_context_logged": false,
+    "owner_correlation_preserved": true,
+    "owner_operations_preserved": true,
+    "owner_error_kind_closed": true,
+    "owner_severity_preserved": true,
+    "stable_public_envelopes_preserved": true,
+    "service_mapper_call_sites_preserved": true,
+    "checkout_execution_mapper_cleanup_source_complete": true,
+    "execution_behavior_changed": false,
+    "public_port_error_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "preserved_public_envelopes": [
+    "fulfillment.checkout_execution_validation",
+    "fulfillment.shipping_option_not_found",
+    "fulfillment.fulfillment_not_found",
+    "fulfillment.checkout_execution_state_conflict",
+    "fulfillment.database_unavailable"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-context-validation.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-admission-context.mjs",
+    "node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs",
+    "cargo check -p rustok-fulfillment --lib"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

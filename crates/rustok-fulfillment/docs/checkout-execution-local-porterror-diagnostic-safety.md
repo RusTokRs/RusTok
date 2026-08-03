@@ -70,7 +70,7 @@ This slice does not change:
 - request and immutable-plan validation rules;
 - duplicate and incomplete-set behavior;
 - fulfillment sorting, metadata, or identity construction;
-- canonical `FulfillmentError` to `PortError` mapping;
+- canonical `FulfillmentError` to `PortError` public mapping behavior;
 - Commerce orchestration;
 - FFA or FBA status.
 
@@ -104,9 +104,20 @@ Causation records only bounded context and identity-shape facts. Tenant parsing 
 parse-cause type and bounded context/message facts. Neither related contract changes the local
 mapper covered here.
 
-The canonical `FulfillmentError` mapper remains a separate bounded slice. The local, admission,
-causation, and tenant contracts together do not claim that the complete `checkout_execution.rs`
-diagnostic surface is source-closed.
+## Related canonical owner contract
+
+Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under a separate bounded
+contract. The owner mapper preserves all five static `PortError` envelopes and the existing
+warning/error severity while replacing raw causes, UUIDs, transition strings, database errors,
+and delegated context with bounded facts.
+
+The owner guard and evidence are:
+
+- `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+
+That contract does not change the local mapper or its eight call sites.
 
 ## Static evidence
 
@@ -124,11 +135,15 @@ Local source evidence is recorded in:
 
 - `crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`.
 
-## Evidence boundary
+## Checkout execution source boundary
+
+The local, admission, causation, tenant, and canonical owner contracts now make the mounted
+Fulfillment checkout execution diagnostic mapper surface source-complete.
 
 These slices are source-only. They do not claim compilation, execution, replay, restart,
 contention, mounted Commerce behavior, remote-port parity, workflows, CI, or production
-readiness. The broad ecommerce correlation-safe mapper cleanup remains open.
+readiness. The broad ecommerce correlation-safe mapper cleanup remains open, and FFA/FBA status
+is not promoted.
 
 Suggested maintainer checks:
 
