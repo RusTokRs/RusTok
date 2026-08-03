@@ -10,14 +10,15 @@ const rootPath = configuredRoot
   : fileURLToPath(new URL("../../", import.meta.url));
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), "utf8");
 
-const source = read(
-  "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
-);
+const sourcePath =
+  "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
+const source = read(sourcePath);
 const evidence = JSON.parse(
   read(
     "crates/rustok-order/contracts/evidence/storefront-runtime-error-diagnostics-source.json",
   ),
 );
+const doc = read("crates/rustok-order/docs/storefront-runtime-error-diagnostics.md");
 
 const failures = [];
 const requireText = (content, value, label) => {
@@ -28,27 +29,114 @@ const forbidText = (content, value, label) => {
 };
 const countText = (content, value) => content.split(value).length - 1;
 
+function functionBody(text, functionName) {
+  const match = new RegExp(`fn\\s+${functionName}(?:<[^>]*>)?\\s*\\(`).exec(text);
+  if (!match) {
+    failures.push(`${sourcePath}: missing function ${functionName}`);
+    return "";
+  }
+  const openBrace = text.indexOf("{", match.index);
+  if (openBrace === -1) {
+    failures.push(`${sourcePath}: missing body for ${functionName}`);
+    return "";
+  }
+  let depth = 0;
+  for (let index = openBrace; index < text.length; index += 1) {
+    if (text[index] === "{") depth += 1;
+    if (text[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(openBrace, index + 1);
+    }
+  }
+  failures.push(`${sourcePath}: unterminated body for ${functionName}`);
+  return "";
+}
+
 for (const [value, label] of [
   ["const ORDER_STOREFRONT_NATIVE_OWNER", "native owner constant"],
   ["const ORDER_STOREFRONT_NATIVE_BOUNDARY", "native boundary constant"],
+  ["fn native_context_error<E>(", "context error mapper"],
   ["fn native_checkout_runtime_error(", "runtime error mapper"],
   ["request_context: &rustok_api::RequestContext", "request context mapper input"],
   ["tenant_id: Uuid", "tenant mapper input"],
   ["correlation_id: Uuid", "correlation mapper input"],
   ["let correlation_id = Uuid::new_v4();", "server-generated correlation id"],
   ["owner = ORDER_STOREFRONT_NATIVE_OWNER", "owner diagnostics"],
-  ['owner_operation = "complete_storefront_checkout"', "operation diagnostics"],
+  ['owner_operation = "complete_storefront_checkout"', "runtime operation diagnostics"],
+  ["owner_operation = operation", "context operation diagnostics"],
   ["correlation_id = %correlation_id", "correlation diagnostics"],
-  ["tenant_id = %tenant_id", "tenant diagnostics"],
-  ["channel_id = ?request_context.channel_id", "channel id diagnostics"],
-  ["channel_slug = ?request_context.channel_slug", "channel slug diagnostics"],
-  ["locale = %request_context.locale", "locale diagnostics"],
+  ["tenant_id_non_nil = !tenant_id.is_nil()", "tenant shape diagnostics"],
+  ["channel_id_present = request_context.channel_id.is_some()", "channel presence diagnostics"],
+  [
+    "channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil())",
+    "channel non-nil diagnostics",
+  ],
+  ["channel_slug_present = request_context.channel_slug.is_some()", "channel slug presence"],
+  [
+    "channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count())",
+    "channel slug length",
+  ],
+  ["locale_present = !request_context.locale.trim().is_empty()", "locale presence"],
+  ["locale_length = request_context.locale.chars().count()", "locale length"],
   ["public_code = %public_code", "public code diagnostics"],
-  ["public_retryable = error.retryable()", "retryability diagnostics"],
-  ['code = "order.storefront_checkout_runtime_failed"', "stable internal code"],
+  ["let public_retryable = error.retryable();", "retryability source"],
+  ["public_retryable,", "retryability diagnostics"],
+  ['code = "order.storefront_context_unavailable"', "context stable internal code"],
+  ['code = "order.storefront_checkout_runtime_failed"', "runtime stable internal code"],
   ["boundary = ORDER_STOREFRONT_NATIVE_BOUNDARY", "boundary diagnostics"],
-  ["error = ?error", "server-side runtime cause"],
 ]) requireText(source, value, label);
+
+for (const obsolete of [
+  "fn native_context_error(operation: &'static str, error: impl std::fmt::Display)",
+  "error = %error",
+  "error = ?error",
+  "tenant_id = %tenant_id",
+  "channel_id = ?request_context.channel_id",
+  "channel_slug = ?request_context.channel_slug",
+  "locale = %request_context.locale",
+]) forbidText(source, obsolete, "obsolete or unsafe Order storefront diagnostic contract");
+
+const contextBody = functionBody(source, "native_context_error");
+requireText(
+  contextBody,
+  "let error_type = std::any::type_name::<E>();",
+  "context mapper bounded error type",
+);
+requireText(contextBody, "error_type", "context mapper error type diagnostic");
+for (const forbidden of ["error = ?", "error = %", "_error = ?", "_error = %"]) {
+  forbidText(contextBody, forbidden, "context mapper complete error payload");
+}
+
+const runtimeBody = functionBody(source, "native_checkout_runtime_error");
+requireText(
+  runtimeBody,
+  "let error_type = std::any::type_name_of_val(&error);",
+  "runtime mapper bounded error type",
+);
+requireText(runtimeBody, "error_type", "runtime mapper error type diagnostic");
+for (const forbidden of ["error = ?error", "error = %error"]) {
+  forbidText(runtimeBody, forbidden, "runtime mapper complete error payload");
+}
+
+if (countText(source, "let error_type = std::any::type_name::<E>();") !== 1) {
+  failures.push("expected exactly one type-only context extraction diagnostic site");
+}
+if (countText(source, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
+  failures.push("expected exactly one type-only checkout runtime diagnostic site");
+}
+for (const marker of [
+  "tenant_id_non_nil = !tenant_id.is_nil()",
+  "channel_id_present = request_context.channel_id.is_some()",
+  "channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil())",
+  "channel_slug_present = request_context.channel_slug.is_some()",
+  "channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count())",
+  "locale_present = !request_context.locale.trim().is_empty()",
+  "locale_length = request_context.locale.chars().count()",
+]) {
+  if (countText(source, marker) !== 1) {
+    failures.push(`expected exactly one bounded runtime identity site for ${marker}`);
+  }
+}
 
 for (const [value, label] of [
   ['endpoint = "order/complete-checkout"', "endpoint"],
@@ -89,6 +177,9 @@ if (countText(source, 'ServerFnError::new("Checkout request is invalid")') !== 2
 if (countText(source, 'ServerFnError::new("Checkout service is temporarily unavailable")') !== 2) {
   failures.push("two required runtime dependencies must preserve their static unavailable envelopes");
 }
+if (countText(source, 'ServerFnError::new("Checkout request context is unavailable")') !== 1) {
+  failures.push("context extraction failures must preserve one static unavailable envelope");
+}
 forbidText(
   source,
   "request_context.correlation_id",
@@ -109,17 +200,21 @@ if (evidence.status !== "order_storefront_runtime_error_diagnostics_source_unval
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 for (const [key, expected] of Object.entries({
-  runtime_cause_logged_server_side: true,
+  context_error_type_only: true,
+  runtime_error_type_only: true,
+  complete_internal_error_logged: false,
   owner_operation_logged: true,
   correlation_logged: true,
   correlation_generated_server_side: true,
   request_context_correlation_required: false,
   idempotency_key_logged: false,
-  tenant_logged: true,
-  channel_logged: true,
-  locale_logged: true,
+  tenant_identity_shape_only: true,
+  channel_context_shape_only: true,
+  locale_shape_only: true,
+  raw_tenant_channel_locale_logged: false,
   stable_code_logged: true,
   boundary_logged: true,
+  public_code_retryability_logged: true,
   public_code_message_envelope_preserved: true,
   endpoint_changed: false,
   command_payload_changed: false,
@@ -131,6 +226,9 @@ for (const [key, expected] of Object.entries({
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`evidence source_contract.${key} must be ${expected}`);
   }
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push("evidence execution must remain empty");
 }
 for (const key of [
   "tests_run",
@@ -147,6 +245,10 @@ for (const key of [
   }
 }
 
+requireText(doc, "Status: **source-ready / unvalidated**", "documentation status");
+requireText(doc, "complete context and runtime errors are not logged", "documentation error policy");
+requireText(doc, "tenant and request-context identity values are not logged", "documentation identity policy");
+
 if (failures.length > 0) {
   console.error("Order storefront runtime-error diagnostics verification failed:");
   for (const failure of failures) console.error(`✗ ${failure}`);
@@ -154,5 +256,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ Order storefront checkout runtime failures retain the public envelope and use a server-generated correlation id; runtime evidence remains open",
+  "✔ Order storefront checkout diagnostics use bounded type and request-shape facts while preserving the public envelope; runtime evidence remains open",
 );

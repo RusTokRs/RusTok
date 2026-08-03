@@ -123,10 +123,14 @@ async fn storefront_order_complete_checkout_native(
 }
 
 #[cfg(feature = "ssr")]
-fn native_context_error(operation: &'static str, error: impl std::fmt::Display) -> ServerFnError {
+fn native_context_error<E>(operation: &'static str, _error: E) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = %error,
-        operation,
+        error_type,
+        owner = ORDER_STOREFRONT_NATIVE_OWNER,
+        owner_operation = operation,
+        code = "order.storefront_context_unavailable",
+        boundary = ORDER_STOREFRONT_NATIVE_BOUNDARY,
         "native checkout request context extraction failed"
     );
     ServerFnError::new("Checkout request context is unavailable")
@@ -139,19 +143,24 @@ fn native_checkout_runtime_error(
     correlation_id: Uuid,
     error: rustok_commerce::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
 ) -> ServerFnError {
+    let error_type = std::any::type_name_of_val(&error);
     let public_code = error.public_code();
     let public_message = error.public_message();
+    let public_retryable = error.retryable();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = ORDER_STOREFRONT_NATIVE_OWNER,
         owner_operation = "complete_storefront_checkout",
         correlation_id = %correlation_id,
-        tenant_id = %tenant_id,
-        channel_id = ?request_context.channel_id,
-        channel_slug = ?request_context.channel_slug,
-        locale = %request_context.locale,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        channel_id_present = request_context.channel_id.is_some(),
+        channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
+        channel_slug_present = request_context.channel_slug.is_some(),
+        channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count()),
+        locale_present = !request_context.locale.trim().is_empty(),
+        locale_length = request_context.locale.chars().count(),
         public_code = %public_code,
-        public_retryable = error.retryable(),
+        public_retryable,
         code = "order.storefront_checkout_runtime_failed",
         boundary = ORDER_STOREFRONT_NATIVE_BOUNDARY,
         "order storefront checkout runtime failed"
