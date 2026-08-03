@@ -17,10 +17,6 @@ pub(crate) mod sealed {
 }
 
 /// Closed platform contract for typed events accepted by durable transports.
-#[expect(
-    private_bounds,
-    reason = "EventContract is intentionally sealed to repository-owned event families"
-)]
 pub trait EventContract:
     sealed::Sealed + Clone + Serialize + DeserializeOwned + ValidateEvent + Send + Sync + 'static
 {
