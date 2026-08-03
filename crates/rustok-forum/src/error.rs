@@ -204,10 +204,7 @@ impl ForumError {
     pub const fn is_retryable(&self) -> bool {
         match self {
             Self::CapabilityFailure { retryable, .. } => *retryable,
-            Self::Database(_)
-            | Self::Internal(_)
-            | Self::RelationRevisionConflict
-            | Self::TopicCanonicalResolutionConflict(_) => true,
+            Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
             _ => false,
         }
     }
