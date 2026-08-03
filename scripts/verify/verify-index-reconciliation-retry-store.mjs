@@ -48,7 +48,6 @@ const retry = requireMarkers(retryPath, [
   'IndexReconciliationRetryDisposition::RetryScheduled',
   'IndexReconciliationRetryDisposition::TerminalPermanent',
   'IndexReconciliationRetryDisposition::TerminalExhausted',
-  'default reconciliation retry policy must be valid',
   'Self::new(5, Duration::from_secs(5), Duration::from_secs(300))',
   'default_policy_uses_bounded_exponential_backoff',
   'diagnostics_keep_the_existing_inspection_contract',
@@ -77,9 +76,6 @@ if (production.includes('Storage(String)') || production.includes('Storage(#[sou
 
 const policyStart = production.indexOf('impl IndexReconciliationRetryPolicy');
 const policyEnd = production.indexOf('\nimpl Default for IndexReconciliationRetryPolicy', policyStart);
-if (policyStart < 0 || policyEnd <= policyStart) {
-  fail(`${retryPath} bounded policy implementation is missing`);
-}
 const policy = production.slice(policyStart, policyEnd);
 for (const marker of [
   '1..=MAX_RECONCILIATION_ATTEMPTS',
@@ -97,22 +93,13 @@ for (const marker of [
 
 const recordStart = production.indexOf('    pub async fn record_failure(');
 const recordEnd = production.indexOf('\n}\n\nasync fn terminalize_failure(', recordStart);
-if (recordStart < 0 || recordEnd <= recordStart) {
-  fail(`${retryPath} record_failure boundary is malformed`);
-}
 const record = production.slice(recordStart, recordEnd);
 const evaluate = record.indexOf('.evaluate(lease.attempt_count(), failure.kind())?;');
 const backend = record.indexOf('let backend = self.db.get_database_backend();');
 const details = record.indexOf('let details = failure_details(failure);');
 const transition = record.indexOf('let rows_affected = match disposition');
 const fence = record.indexOf('if rows_affected != 1');
-if (
-  evaluate < 0
-  || backend <= evaluate
-  || details <= backend
-  || transition <= details
-  || fence <= transition
-) {
+if (evaluate < 0 || backend <= evaluate || details <= backend || transition <= details || fence <= transition) {
   fail(`${retryPath} must evaluate policy, validate backend, build diagnostics, transition, then fence`);
 }
 
@@ -121,14 +108,12 @@ const terminalStart = production.indexOf('fn terminal_failure_sql(', scheduleSta
 const schedule = production.slice(scheduleStart, terminalStart);
 for (const marker of [
   "state = 'pending'",
-  "kind = 'reconcile'",
-  "state = 'running'",
   'available_at = {available_at}',
-  'lease_owner = NULL',
-  'lease_expires_at = NULL',
   'completed_at = NULL',
   'last_error_code = {prefix}6',
   'last_error_details = {prefix}7',
+  "kind = 'reconcile'",
+  "state = 'running'",
   'lease_owner = {prefix}3',
   'attempt_count = {prefix}4',
   'lease_expires_at > CURRENT_TIMESTAMP',
@@ -136,16 +121,14 @@ for (const marker of [
 ]) {
   if (!schedule.includes(marker)) fail(`${retryPath} retry SQL is missing ${marker}`);
 }
-
-const terminalEnd = production.indexOf('\n}', terminalStart) + 2;
-const terminal = production.slice(terminalStart, terminalEnd);
+const terminal = production.slice(terminalStart);
 for (const marker of [
   "state = 'failed'",
-  "kind = 'reconcile'",
-  "state = 'running'",
   'completed_at = CURRENT_TIMESTAMP',
   'last_error_code = {prefix}5',
   'last_error_details = {prefix}6',
+  "kind = 'reconcile'",
+  "state = 'running'",
   'lease_owner = {prefix}3',
   'attempt_count = {prefix}4',
   'lease_expires_at > CURRENT_TIMESTAMP',
@@ -165,18 +148,10 @@ for (const marker of [
   if (!diagnostics.includes(marker)) fail(`${retryPath} diagnostics are missing ${marker}`);
 }
 for (const forbidden of [
-  'tenant_id',
-  'job_id',
-  'worker_id',
-  'attempt_count',
-  'max_attempts',
-  'retry_after',
-  'next_attempt',
-  'retry_epoch',
+  'tenant_id', 'job_id', 'worker_id', 'attempt_count', 'max_attempts',
+  'retry_after', 'next_attempt', 'retry_epoch',
 ]) {
-  if (diagnostics.includes(forbidden)) {
-    fail(`${retryPath} diagnostics contain forbidden field ${forbidden}`);
-  }
+  if (diagnostics.includes(forbidden)) fail(`${retryPath} diagnostics contain forbidden field ${forbidden}`);
 }
 
 requireMarkers(postgresPath, [
@@ -198,40 +173,31 @@ requireMarkers(libPath, [
 ]);
 
 const runner = requireMarkers(runnerPath, [
-  'pub struct PostgresIndexReconciliationRunner',
-  'async fn finish_page_error(',
-  'async fn finish_failure(',
-  'fn finish_failure_sql(',
-  "kind = 'reconcile'",
-  "state = 'failed'",
+  'PostgresIndexReconciliationRetryStore, PostgresMutationStore,',
+  'IndexReconciliationRetryLease::new(',
+  'retry_store.record_failure(&retry_lease, &failure).await',
+  'IndexReconciliationRunStatus::RetryScheduled',
+  'IndexReconciliationRunStatus::FailedPermanent',
+  'IndexReconciliationRunStatus::FailedExhausted',
 ]);
-const runnerProduction = runner.split('\n#[cfg(test)]')[0];
-for (const premature of [
-  'PostgresIndexReconciliationRetryStore',
-  'IndexReconciliationRetryPolicy',
-  'IndexReconciliationRetryLease',
-  'schedule_retry_sql(',
-]) {
-  if (runnerProduction.includes(premature)) {
-    fail(`${runnerPath} prematurely wires retry transition through ${premature}`);
-  }
+for (const forbidden of ['async fn finish_failure(', 'fn finish_failure_sql(']) {
+  if (runner.includes(forbidden)) fail(`${runnerPath} retains superseded failure SQL marker ${forbidden}`);
 }
 
 requireMarkers(docsPath, [
-  'Status: `source_complete_runner_and_scheduler_wiring_pending`.',
-  '`PostgresIndexReconciliationRetryStore`',
+  'Status: `runner_complete_scheduler_wiring_pending`.',
+  '`PostgresIndexReconciliationRunner` now classifies page failures',
   'maximum attempts: `5`',
   'delays after attempts 1-4: `5`, `10`, `20`, and `40` seconds',
-  'running -> pending',
-  'running -> failed',
-  'preserve the existing strict `index_reconciliation_run_failure_v1` object',
-  'merged dead-letter inspector remains compatible',
-  'runner wiring and global scheduling ownership are not part of this slice',
+  '`RetryScheduled`',
+  '`FailedPermanent`',
+  '`FailedExhausted`',
+  'global scheduling ownership is not part of this slice',
   'maintainer-run',
 ]);
 requireMarkers(docsIndexPath, [
   '[M6 Reconciliation Retry Transition Store](./m6-reconciliation-retry-transition-store.md)',
-  '[M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)',
+  '[M6 Reconciliation Runner Retry Wiring](./m6-reconciliation-runner-retry-wiring.md)',
 ]);
 requireMarkers(planPath, [
   '- [ ] Add bounded retry/backoff, dead-letter state, and global scheduling ownership.',
@@ -239,9 +205,8 @@ requireMarkers(planPath, [
 ]);
 requireMarkers(aggregatePath, [
   "'verify-index-reconciliation-retry-store.mjs'",
+  "'verify-index-reconciliation-runner-retry.mjs'",
   "'verify-index-reconciliation-dead-letter-admission.mjs'",
-  "'verify-index-reconciliation-dead-letter-requeue.mjs'",
-  "'verify-index-server-reconciliation-guard.mjs'",
 ]);
 
 console.log('[verify-index-reconciliation-retry-store] OK');

@@ -4,7 +4,7 @@ Status: `source_complete_operator_recovery_pending`.
 
 ## Purpose
 
-A terminal failed reconciliation job now blocks later ordinary runs for the same exact tenant and schema scope. The runner no longer treats terminal failure as permission to silently insert a fresh reconciliation job identity.
+A terminal failed reconciliation job blocks later ordinary runs for the same exact tenant and schema scope. The runner never treats terminal failure as permission to silently insert a fresh reconciliation job identity.
 
 The acquisition transaction keeps its existing boundaries:
 
@@ -22,7 +22,7 @@ Scope selection includes `pending`, `running`, `succeeded`, and `failed` rows an
 3. existing `pending` work remains authoritative delayed or claimable work;
 4. only when no successful or active row exists does the newest `failed` row block admission.
 
-Expired running work and eligible pending work keep their existing reclaim path. A failed row cannot bypass a newer or otherwise authoritative active job.
+Expired running work and due pending retry work keep their existing reclaim path. A future `available_at` pending retry returns `Busy`; it does not become a failed-row admission case.
 
 When failure is authoritative, acquisition returns `IndexReconciliationRunError::DeadLettered` with only:
 
@@ -40,13 +40,13 @@ Stored error codes must be non-empty, trimmed, free of control characters, and a
 
 Database causes, source or mutation dependency details, arbitrary diagnostic JSON, tenant/request values, worker and lease values, SQL, transport context, and stack text are not available through the dead-letter admission error.
 
-The current page-failure transition stores `index.reconciliation_page_failed` as the public machine code. The bounded source or mutation dependency code remains inside the separately persisted reconciliation failure diagnostic and is not returned by ordinary admission.
+The retry transition stores `index.reconciliation_page_failed` as the public machine code. The bounded source or mutation dependency code remains inside the separately persisted reconciliation failure diagnostic and is not returned by ordinary admission.
 
 ## Retained PostgreSQL target
 
 The environment-gated target creates a unique PostgreSQL schema, creates one tenant, applies the real `IndexModule` migrations, persists an active schema, and composes the canonical source and schema registries.
 
-A counted source fails its first scan permanently. The target retains evidence that the runner creates exactly one attempt-1 reconciliation job and terminalizes it with released lease ownership, a completion timestamp, zero processed pages, no entity/inbox writes, the generic page-failure code, and the bounded reconciliation diagnostic.
+A counted source fails its first scan permanently. The target retains evidence that the runner returns `IndexReconciliationRunStatus::FailedPermanent`, creates exactly one attempt-1 reconciliation job, and terminalizes it with released lease ownership, a completion timestamp, zero processed pages, no entity/inbox writes, the generic page-failure code, and the bounded reconciliation diagnostic.
 
 The target then replaces only `last_error_details` with a private marker and invokes the same scope through a newly constructed runner. Admission must return the same failed job UUID and attempt count without calling the source again, creating another job, mutating the failed row, or exposing the private marker or dependency code through Debug or Display output.
 
@@ -54,24 +54,21 @@ This target is retained source evidence only; it was not executed by the impleme
 
 ## Compatibility and ownership
 
-This slice changes no migration, table shape, request or cursor wire contract, source ownership, mutation identity, schema fingerprint, failure transition, cancellation transition, lease fence, success behavior, or server authorization surface.
+Automatic retry wiring changes only the first invocation's typed failure outcome and retryable state transition. Dead-letter selection, privacy, permanent/exhausted terminal rows, cancellation, lease fencing, success behavior, schema/source ownership, mutation identity, migrations, and server authorization remain compatible.
 
-The guarded server reconciliation runtime merged separately and can surface this typed runner error only after its existing request-bound tenant/actor and `modules:manage` authorization. This slice does not add a transport or operator recovery command.
+The guarded server reconciliation runtime can surface typed runner outcomes only after its existing request-bound tenant/actor and `modules:manage` authorization. This slice does not add a transport or operator recovery command.
 
 ## Explicitly open
 
-- bounded authorized dead-letter inspection;
-- actor/reason audit records;
-- manual requeue or retry-epoch reset;
-- automatic retry, backoff, exhaustion, or scheduling;
-- host polling, takeover discovery, or graceful shutdown;
+- host scheduling of due pending retries;
+- fleet-wide polling, takeover discovery, and graceful shutdown;
+- retained multi-attempt and multi-instance PostgreSQL evidence;
 - source/index digest comparison and orphan diagnosis;
 - targeted, full, or shadow repair admission;
 - locale or partition checkpoint dimensions;
-- retained multi-instance PostgreSQL recovery evidence;
 - complete drift repair.
 
-The canonical M6 drift-diagnosis and targeted-repair roadmap item remains open.
+The canonical M6 retry/global-scheduling and drift-diagnosis/targeted-repair roadmap items remain open.
 
 ## Validation ownership
 

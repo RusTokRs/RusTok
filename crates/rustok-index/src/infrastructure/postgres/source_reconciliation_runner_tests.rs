@@ -17,7 +17,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    IndexReconciliationRunRequest, IndexReconciliationRunStatus,
+    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
     PostgresIndexReconciliationRunner,
 };
 use crate::{
@@ -30,11 +30,18 @@ use crate::{
 
 const TENANT: &str = "11111111-1111-1111-1111-111111111111";
 
+#[derive(Clone, Copy)]
+enum FailureMode {
+    Retryable,
+    Permanent,
+}
+
 struct ReconciliationSource {
     ids: Arc<Mutex<Vec<u128>>>,
     calls: Arc<AtomicUsize>,
     injected: Arc<AtomicBool>,
     inject_on_call: Option<usize>,
+    failure: Option<FailureMode>,
 }
 
 #[async_trait]
@@ -44,6 +51,16 @@ impl IndexSource for ReconciliationSource {
         request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceFailure> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(failure) = self.failure {
+            return Err(match failure {
+                FailureMode::Retryable => {
+                    IndexSourceFailure::retryable("fixture_source_retryable").unwrap()
+                }
+                FailureMode::Permanent => {
+                    IndexSourceFailure::permanent("fixture_source_permanent").unwrap()
+                }
+            });
+        }
         if self.inject_on_call == Some(call) && !self.injected.swap(true, Ordering::SeqCst) {
             self.ids
                 .lock()
@@ -103,6 +120,14 @@ struct Fixture {
 
 impl Fixture {
     async fn new(inject_on_call: Option<usize>) -> Self {
+        Self::build(inject_on_call, None).await
+    }
+
+    async fn failing(failure: FailureMode) -> Self {
+        Self::build(None, Some(failure)).await
+    }
+
+    async fn build(inject_on_call: Option<usize>, failure: Option<FailureMode>) -> Self {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite should connect");
@@ -155,6 +180,7 @@ impl Fixture {
                     calls: calls.clone(),
                     injected: Arc::new(AtomicBool::new(false)),
                     inject_on_call,
+                    failure,
                 },
             )
             .unwrap();
@@ -166,7 +192,12 @@ impl Fixture {
         Self { db, runner, calls }
     }
 
-    fn request(&self, worker: &str, max_pages: usize, pass_count: u32) -> IndexReconciliationRunRequest {
+    fn request(
+        &self,
+        worker: &str,
+        max_pages: usize,
+        pass_count: u32,
+    ) -> IndexReconciliationRunRequest {
         IndexReconciliationRunRequest::new(
             Uuid::parse_str(TENANT).unwrap(),
             schema_ref(),
@@ -178,6 +209,19 @@ impl Fixture {
             Duration::from_secs(60),
         )
         .unwrap()
+    }
+
+    async fn make_retry_due(&self) {
+        let updated = self
+            .db
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE index_jobs SET available_at = CURRENT_TIMESTAMP WHERE kind = 'reconcile' AND state = 'pending'"
+                    .to_owned(),
+            ))
+            .await
+            .expect("retry fixture should become due");
+        assert_eq!(updated.rows_affected(), 1);
     }
 }
 
@@ -236,6 +280,15 @@ async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
         .expect("scalar value should be integer")
 }
 
+async fn scalar_string(db: &DatabaseConnection, sql: &str) -> String {
+    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+        .await
+        .expect("scalar query should execute")
+        .expect("scalar query should return one row")
+        .try_get("", "value")
+        .expect("scalar value should be text")
+}
+
 #[tokio::test]
 async fn two_pass_reconciliation_catches_insert_behind_first_cursor() {
     let fixture = Fixture::new(Some(1)).await;
@@ -246,6 +299,8 @@ async fn two_pass_reconciliation_catches_insert_behind_first_cursor() {
         .unwrap();
 
     assert_eq!(outcome.status(), IndexReconciliationRunStatus::Complete);
+    assert_eq!(outcome.retry_after(), None);
+    assert_eq!(outcome.next_attempt(), None);
     assert_eq!(outcome.passes_completed(), 2);
     assert_eq!(outcome.pages_processed(), 5);
     assert_eq!(outcome.mutation_count(), 5);
@@ -318,6 +373,142 @@ async fn bounded_reconciliation_yields_and_resumes_durable_pass_state() {
         .await,
         5,
     );
+}
+
+#[tokio::test]
+async fn retryable_failure_schedules_due_attempts_and_terminally_exhausts() {
+    let fixture = Fixture::failing(FailureMode::Retryable).await;
+    let mut job_id = None;
+
+    for (index, (attempt, seconds, next_attempt)) in
+        [(1_u32, 5_u64, 2_u32), (2, 10, 3), (3, 20, 4), (4, 40, 5)]
+            .into_iter()
+            .enumerate()
+    {
+        let worker = format!("retry-worker-{index}");
+        let outcome = fixture
+            .runner
+            .run(fixture.request(&worker, 1, 1))
+            .await
+            .unwrap();
+        assert_eq!(outcome.status(), IndexReconciliationRunStatus::RetryScheduled);
+        assert_eq!(outcome.attempt_count(), Some(attempt));
+        assert_eq!(outcome.retry_after(), Some(Duration::from_secs(seconds)));
+        assert_eq!(outcome.next_attempt(), Some(next_attempt));
+        assert_eq!(outcome.pages_processed(), 0);
+        if let Some(expected) = job_id {
+            assert_eq!(outcome.job_id(), Some(expected));
+        } else {
+            job_id = outcome.job_id();
+        }
+        assert_eq!(
+            scalar_string(
+                &fixture.db,
+                "SELECT state AS value FROM index_jobs WHERE kind = 'reconcile'",
+            )
+            .await,
+            "pending",
+        );
+        assert_eq!(
+            scalar_i64(
+                &fixture.db,
+                "SELECT CAST(attempt_count AS INTEGER) AS value FROM index_jobs WHERE kind = 'reconcile'",
+            )
+            .await,
+            i64::from(attempt),
+        );
+        assert_eq!(
+            scalar_i64(
+                &fixture.db,
+                "SELECT CAST(json_extract(last_error_details, '$.retryable') AS INTEGER) AS value FROM index_jobs WHERE kind = 'reconcile'",
+            )
+            .await,
+            1,
+        );
+
+        let busy_worker = format!("retry-busy-{index}");
+        let busy = fixture
+            .runner
+            .run(fixture.request(&busy_worker, 1, 1))
+            .await
+            .unwrap();
+        assert_eq!(busy.status(), IndexReconciliationRunStatus::Busy);
+        assert_eq!(fixture.calls.load(Ordering::SeqCst), attempt as usize);
+        fixture.make_retry_due().await;
+    }
+
+    let exhausted = fixture
+        .runner
+        .run(fixture.request("retry-worker-final", 1, 1))
+        .await
+        .unwrap();
+    assert_eq!(exhausted.status(), IndexReconciliationRunStatus::FailedExhausted);
+    assert_eq!(exhausted.job_id(), job_id);
+    assert_eq!(exhausted.attempt_count(), Some(5));
+    assert_eq!(exhausted.retry_after(), None);
+    assert_eq!(exhausted.next_attempt(), None);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 5);
+    assert_eq!(
+        scalar_string(
+            &fixture.db,
+            "SELECT state AS value FROM index_jobs WHERE kind = 'reconcile'",
+        )
+        .await,
+        "failed",
+    );
+
+    let blocked = fixture
+        .runner
+        .run(fixture.request("retry-worker-blocked", 1, 1))
+        .await
+        .expect_err("exhausted reconciliation must remain dead-lettered");
+    assert!(matches!(
+        blocked,
+        IndexReconciliationRunError::DeadLettered {
+            attempt_count: 5,
+            ..
+        }
+    ));
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 5);
+}
+
+#[tokio::test]
+async fn permanent_failure_terminalizes_without_retry_metadata() {
+    let fixture = Fixture::failing(FailureMode::Permanent).await;
+    let outcome = fixture
+        .runner
+        .run(fixture.request("permanent-worker", 1, 1))
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.status(), IndexReconciliationRunStatus::FailedPermanent);
+    assert_eq!(outcome.attempt_count(), Some(1));
+    assert_eq!(outcome.retry_after(), None);
+    assert_eq!(outcome.next_attempt(), None);
+    assert_eq!(outcome.pages_processed(), 0);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        scalar_string(
+            &fixture.db,
+            "SELECT state AS value FROM index_jobs WHERE kind = 'reconcile'",
+        )
+        .await,
+        "failed",
+    );
+
+    let blocked = fixture
+        .runner
+        .run(fixture.request("permanent-worker-blocked", 1, 1))
+        .await
+        .expect_err("permanent reconciliation failure must remain dead-lettered");
+    assert!(matches!(
+        blocked,
+        IndexReconciliationRunError::DeadLettered {
+            attempt_count: 1,
+            ..
+        }
+    ));
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]
