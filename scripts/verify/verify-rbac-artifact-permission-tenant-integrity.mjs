@@ -44,6 +44,7 @@ if (existsSync(path.join(root, correctiveMigration))) {
 requireAll(exports, [
   "m20260716_000001_artifact_permission_catalog::Migration",
   "m20260717_000001_artifact_role_permissions::Migration",
+  "ArtifactPermissionAssignmentScope",
 ]);
 forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integrity"]);
 
@@ -91,12 +92,16 @@ requireAll(catalog, [
   "assert_eq!(locale, \"en-US\")",
 ]);
 requireAll(owner, [
-  "pub artifact_permission_id: Uuid",
-  "command.artifact_permission_id.is_nil()",
+  "pub enum ArtifactPermissionAssignmentScope",
+  "pub scope: ArtifactPermissionAssignmentScope",
+  "pub installation_id: Uuid",
+  "pub permission_key: String",
+  "scope_key(command.scope, command.tenant_id)",
+  "ArtifactPermissionAssignmentScope::Platform => \"platform\".to_string()",
+  "ArtifactPermissionAssignmentScope::Tenant => format!(\"tenant:{tenant_id}\")",
   "struct ArtifactPermissionIdentity",
   "resolve_artifact_permission_identity(&transaction, &command).await?",
-  "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE id = {artifact_permission_id}",
-  "command.artifact_permission_id.into()",
+  "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key}",
   "permission_scope_key: String",
   "permission_scope_key != artifact_permission.scope_key",
   "INNER JOIN rbac_artifact_permission_definitions apd ON apd.id = arp.artifact_permission_id AND apd.scope_key = arp.permission_scope_key",
@@ -106,13 +111,18 @@ forbidAll(owner, [
   "permission_is_registered",
   "rbac_artifact_permission_catalog",
   "ORDER BY CASE WHEN scope_key",
-  "WHERE installation_id = {installation_id} AND permission_key = {permission_key}",
+  "WHERE id = {artifact_permission_id}",
+  "pub artifact_permission_id: Uuid",
 ]);
 
 requireAll(host, [
-  "pub artifact_permission_id: Uuid",
-  "artifact_permission_id: input.artifact_permission_id",
-  "Role or exact artifact permission identity not found",
+  "pub(crate) enum ArtifactPermissionAssignmentScopeRequest",
+  "pub scope: ArtifactPermissionAssignmentScopeRequest",
+  "pub installation_id: Uuid",
+  "pub permission_key: String",
+  "scope: input.scope.into()",
+  "request_scope_maps_without_accepting_a_tenant_identifier",
+  "Role or permission in the requested explicit scope not found",
 ]);
 
 requireAll(sqliteProof, [
@@ -131,11 +141,12 @@ requireAll(sqliteProof, [
   "DELETE FROM rbac_artifact_permission_definitions",
 ]);
 requireAll(outboxProof, [
-  "exact_identity_mutation_does_not_shadow_platform_or_tenant_definition",
-  "grant exact permission identity",
-  "revoke exact platform identity",
-  "revoke exact tenant identity",
+  "explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition",
+  "grant explicit permission scope",
+  "revoke explicit platform scope",
+  "revoke explicit tenant scope",
   "assert_eq!(remaining_id, tenant_permission_id)",
+  "assert_ne!(remaining_id, platform_permission_id)",
   "assert_eq!(event_grants(&db).await, vec![true, true, false, false])",
 ]);
 
