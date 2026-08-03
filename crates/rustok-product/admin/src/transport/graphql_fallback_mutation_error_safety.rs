@@ -289,10 +289,18 @@ impl GraphqlFallbackMutationContext {
                 false,
             ),
         };
+        let error_payload_length = match &error {
+            GraphqlHttpError::Http(value) | GraphqlHttpError::Graphql(value) => {
+                Some(value.chars().count())
+            }
+            GraphqlHttpError::Network | GraphqlHttpError::Unauthorized => None,
+        };
+        let error_payload_present = error_payload_length.is_some_and(|length| length > 0);
 
         if technical_failure {
             tracing::error!(
-                raw_error = ?error,
+                error_payload_present,
+                error_payload_length = ?error_payload_length,
                 owner = PRODUCT_ADMIN_GRAPHQL_OWNER,
                 owner_operation = self.operation,
                 correlation_id = %self.correlation_id,
@@ -316,7 +324,8 @@ impl GraphqlFallbackMutationContext {
             );
         } else {
             tracing::warn!(
-                raw_error = ?error,
+                error_payload_present,
+                error_payload_length = ?error_payload_length,
                 owner = PRODUCT_ADMIN_GRAPHQL_OWNER,
                 owner_operation = self.operation,
                 correlation_id = %self.correlation_id,

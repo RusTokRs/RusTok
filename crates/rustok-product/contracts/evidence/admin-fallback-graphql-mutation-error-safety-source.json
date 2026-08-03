@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-30T20:05:00Z",
+  "generated_at_utc": "2026-08-03T10:03:00Z",
   "status": "product_admin_fallback_graphql_mutation_error_safety_source_unvalidated",
-  "scope": "Product Admin native-first GraphQL fallback mutation public envelopes",
+  "scope": "Product Admin native-first GraphQL fallback mutation public and private diagnostic envelopes",
   "operations": [
     "create_product_attribute",
     "create_product_attribute_option",
@@ -34,7 +34,9 @@
     "graphql_static_public_envelope": true,
     "raw_http_status_public": false,
     "raw_graphql_message_public": false,
-    "private_typed_error_diagnostics": true,
+    "complete_typed_error_logged": false,
+    "error_payload_shape_only": true,
+    "private_typed_error_classification": true,
     "safe_request_shape_only": true,
     "native_first_preserved": true,
     "single_graphql_fallback_preserved": true,
@@ -63,10 +65,11 @@
     "item_count",
     "input_present",
     "native_fallback_attempted",
+    "error_payload_present",
+    "error_payload_length",
     "error_kind",
     "code",
-    "boundary",
-    "private_typed_graphql_error"
+    "boundary"
   ],
   "forbidden_public_or_structured_values": [
     "token",
@@ -78,28 +81,29 @@
     "draft or input contents",
     "patch contents",
     "attribute identifiers",
+    "complete typed GraphqlHttpError",
     "HTTP status text",
     "GraphQL server message"
   ],
   "preserved": [
     "native server adapter first execution",
     "one existing GraphQL fallback after native failure",
+    "typed GraphqlHttpError classification and static public envelopes",
     "mutation DTOs and result types",
     "GraphQL mutation documents and variables",
     "owner input normalization and response mapping",
     "Product Admin UI action composition",
-    "previous catalog-options, read, and primary-mutation policies"
+    "previous catalog-options, read, and primary-mutation diagnostic policies"
   ],
   "remaining_scope": [
     "Product Admin browser and mounted transport evidence",
-    "remaining ecommerce non-PortError public envelopes",
+    "remaining ecommerce non-PortError public and diagnostic envelopes",
     "runtime execution of Product Admin focused guards and Cargo checks"
   ],
   "suggested_execution": [
     "node scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
     "node scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
-    "node scripts/verify/verify-product-admin-category-read-error-safety.mjs",
-    "node scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
     "node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
     "node scripts/verify/verify-product-admin-boundary.mjs",
     "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
