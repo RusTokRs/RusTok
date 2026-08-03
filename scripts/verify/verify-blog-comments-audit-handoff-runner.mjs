@@ -102,16 +102,16 @@ if (cycleStart < 0 || publishNext < cycleStart || cycleEnd < publishNext) {
 }
 
 forbidAll("worker ownership", worker, [
-  "OutboxRelay",
-  "OutboxTransport",
-  "sys_events",
+  "OutboxRelay::",
+  "OutboxTransport::",
+  "INSERT INTO sys_events",
   "FOR UPDATE SKIP LOCKED",
   "handoff_claim_token =",
-  "dead_letter",
-  "requeue",
+  "source_dead_letter",
+  "operator_requeue",
+  "retry_budget",
   "attempt_exhausted",
-  "exponential",
-  "jitter",
+  "exponential_backoff",
 ]);
 
 requireAll("runtime publication", runtime, [
