@@ -995,15 +995,62 @@ fn fulfillment_error_to_port_error(
     owner_operation: &'static str,
     error: FulfillmentError,
 ) -> PortError {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    let tenant_id_length = context.tenant_id.chars().count();
+    let actor_id_length = context.actor.id.chars().count();
+    let claim_count = context.claims.len();
+    let role_count = context.roles.len();
+    let channel_present = context.channel.is_some();
+    let channel_length = context.channel.as_ref().map(|value| value.chars().count());
+    let locale_length = context.locale.chars().count();
+    let causation_id_present = context.causation_id.is_some();
+    let causation_id_length = context
+        .causation_id
+        .as_ref()
+        .map(|value| value.chars().count());
+    let traceparent_present = context.traceparent.is_some();
+    let traceparent_length = context
+        .traceparent
+        .as_ref()
+        .map(|value| value.chars().count());
+    let idempotency_key_present = context.idempotency_key.is_some();
+    let idempotency_key_length = context
+        .idempotency_key
+        .as_ref()
+        .map(|value| value.chars().count());
+
     match error {
         FulfillmentError::Validation(cause) => {
+            let validation_cause_present = !cause.trim().is_empty();
+            let validation_cause_length = cause.chars().count();
             tracing::warn!(
-                cause = %cause,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
                 operation = owner_operation,
+                owner_error_kind = "validation",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                validation_cause_present,
+                validation_cause_length,
                 code = "fulfillment.checkout_execution_validation",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                 "fulfillment owner rejected checkout execution request"
             );
             PortError::validation(
@@ -1012,13 +1059,30 @@ fn fulfillment_error_to_port_error(
             )
         }
         FulfillmentError::ShippingOptionNotFound(id) => {
+            let shipping_option_id_non_nil = !id.is_nil();
             tracing::warn!(
-                shipping_option_id = %id,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
                 operation = owner_operation,
+                owner_error_kind = "shipping_option_not_found",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                shipping_option_id_non_nil,
                 code = "fulfillment.shipping_option_not_found",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                 "checkout fulfillment shipping option was not found"
             );
             PortError::new(
@@ -1029,13 +1093,30 @@ fn fulfillment_error_to_port_error(
             )
         }
         FulfillmentError::FulfillmentNotFound(id) => {
+            let fulfillment_id_non_nil = !id.is_nil();
             tracing::warn!(
-                fulfillment_id = %id,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
                 operation = owner_operation,
+                owner_error_kind = "fulfillment_not_found",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                fulfillment_id_non_nil,
                 code = "fulfillment.fulfillment_not_found",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                 "checkout fulfillment resource was not found"
             );
             PortError::new(
@@ -1046,14 +1127,38 @@ fn fulfillment_error_to_port_error(
             )
         }
         FulfillmentError::InvalidTransition { from, to } => {
+            let transition_from_present = !from.trim().is_empty();
+            let transition_from_length = from.chars().count();
+            let transition_to_present = !to.trim().is_empty();
+            let transition_to_length = to.chars().count();
+            let transition_changes_state = from != to;
             tracing::warn!(
-                from = %from,
-                to = %to,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
                 operation = owner_operation,
+                owner_error_kind = "invalid_transition",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                transition_from_present,
+                transition_from_length,
+                transition_to_present,
+                transition_to_length,
+                transition_changes_state,
                 code = "fulfillment.checkout_execution_state_conflict",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                 "fulfillment lifecycle conflicts with checkout execution"
             );
             PortError::conflict(
@@ -1062,13 +1167,30 @@ fn fulfillment_error_to_port_error(
             )
         }
         FulfillmentError::Database(error) => {
+            let database_error_type = std::any::type_name_of_val(&error);
             tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
                 operation = owner_operation,
+                owner_error_kind = "database",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                database_error_type,
                 code = "fulfillment.database_unavailable",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                 "checkout fulfillment storage operation failed"
             );
             PortError::unavailable(
