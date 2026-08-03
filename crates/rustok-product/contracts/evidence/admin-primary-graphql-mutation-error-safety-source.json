@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-30T19:52:00Z",
+  "generated_at_utc": "2026-08-03T09:27:00Z",
   "status": "product_admin_primary_graphql_mutation_error_safety_source_unvalidated",
-  "scope": "Product Admin primary GraphQL mutation public envelopes",
+  "scope": "Product Admin primary GraphQL mutation public and private diagnostic envelopes",
   "operations": [
     "create_product",
     "update_product",
@@ -26,7 +26,9 @@
     "graphql_static_public_envelope": true,
     "raw_http_status_public": false,
     "raw_graphql_message_public": false,
-    "private_typed_error_diagnostics": true,
+    "complete_typed_error_logged": false,
+    "error_payload_shape_only": true,
+    "private_typed_error_classification": true,
     "safe_request_shape_only": true,
     "result_types_changed": false,
     "graphql_documents_changed": false,
@@ -50,10 +52,11 @@
     "status_present",
     "status_length",
     "draft_present",
+    "error_payload_present",
+    "error_payload_length",
     "error_kind",
     "code",
-    "boundary",
-    "private_typed_graphql_error"
+    "boundary"
   ],
   "forbidden_public_or_structured_values": [
     "token",
@@ -63,6 +66,7 @@
     "product_id",
     "status",
     "product draft fields",
+    "complete typed GraphqlHttpError",
     "HTTP status text",
     "GraphQL server message"
   ],
@@ -71,18 +75,21 @@
     "CreateProductInput and UpdateProductInput construction",
     "tenant and actor GraphQL variables",
     "create, update, status and delete mutation documents",
+    "public static error envelopes",
+    "typed variant classification and severity",
     "UI command composition",
     "absence of retry or fallback behavior"
   ],
   "remaining_scope": [
-    "Product Admin category, schema and attribute-value GraphQL mutations",
+    "Product Admin native-first GraphQL fallback mutation diagnostic envelopes",
     "Product Admin browser and mounted transport evidence",
     "remaining ecommerce non-PortError public envelopes"
   ],
   "suggested_execution": [
     "node scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
-    "node scripts/verify/verify-product-admin-category-read-error-safety.mjs",
-    "node scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
+    "node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
     "node scripts/verify/verify-product-admin-boundary.mjs",
     "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
     "cargo check -p rustok-product-admin",
