@@ -80,8 +80,7 @@ The mounted adapter continues to provide static public envelopes for:
   removal failures.
 
 This bounded slice does not claim that Cart input or missing-variant diagnostics are
-correlation-safe. Cart input and missing-variant diagnostics remain separate open cleanup
-slices.
+correlation-safe. Cart input and missing-variant diagnostics remain separate open cleanup slices.
 
 ## Preserved behavior
 
