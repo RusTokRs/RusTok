@@ -28,7 +28,7 @@ Leptos admin UI package for the `rustok-forum` module.
 - `admin/src/core.rs` owns the existing framework-agnostic category/topic view policy.
 - `admin/src/topic_merge_model.rs` owns merge candidate, command, receipt, validation, accepted-solution selection, and retry-identity policy without Leptos imports.
 - `admin/src/transport.rs` is the only UI-facing transport facade and selects exactly one merge transport per compile profile.
-- `admin/src/transport/topic_merge_native_server_adapter.rs` extracts server-side auth/tenant/runtime context and calls `TopicService` plus `ForumTopicMergeService` directly.
+- `crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs` extracts server-side auth/tenant/runtime context and calls `TopicService` plus `ForumTopicMergeService` directly.
 - `admin/src/transport/topic_merge_graphql_adapter.rs` preserves CSR/headless parity through `mergeForumTopic` and `mergeForumTopicResolvingSolution`.
 - `admin/src/ui/root.rs` performs route-only composition.
 - `admin/src/ui/topic_merge.rs` is the thin Leptos render/effect adapter.
