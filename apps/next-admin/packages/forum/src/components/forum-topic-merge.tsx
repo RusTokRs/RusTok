@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { mergeForumTopics, type GqlOpts, type ForumTopicSummary } from '../api/forum';
 import {
@@ -53,7 +53,7 @@ export function ForumTopicMerge({
     setReceipt(null);
   }
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!source || !target) {
       toast.error(!source ? copy.source : copy.target);
