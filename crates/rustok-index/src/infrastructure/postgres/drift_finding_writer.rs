@@ -13,6 +13,7 @@ const DIGEST_BYTES: usize = 64;
 const MAX_CHECK_NAME_BYTES: usize = 128;
 const MAX_LOCALE_BYTES: usize = 32;
 const FINDING_KEY_CONTRACT: &[u8] = b"index_drift_finding_key_v1";
+const NO_LOCALE_KEY_COMPONENT: &[u8] = b"\0";
 const FINDING_DETAILS_CONTRACT: &str = "index_drift_digest_finding_v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -293,6 +294,22 @@ impl PersistedFindingScope {
                     locale_key: Some(locale.as_str().to_owned()),
                 })
             }
+            IndexDriftFindingScope::EntityWithoutLocale { schema, entity_id } => {
+                if entity_id.is_nil() {
+                    return Err(IndexDriftFindingWriteError::InvalidScope(
+                        "entity id must not be nil",
+                    ));
+                }
+                let version = validate_schema_version(schema.version.get())?;
+                Ok(Self {
+                    scope_kind: "entity".to_owned(),
+                    module_name: Some(schema.module.as_str().to_owned()),
+                    entity_name: Some(schema.entity.as_str().to_owned()),
+                    schema_version: Some(version),
+                    entity_id: Some(*entity_id),
+                    locale_key: None,
+                })
+            }
         }
     }
 }
@@ -488,6 +505,12 @@ fn derive_finding_key(
             hash_schema(&mut hasher, schema);
             hash_component(&mut hasher, entity_id.as_bytes());
             hash_component(&mut hasher, locale.as_str().as_bytes());
+        }
+        IndexDriftFindingScope::EntityWithoutLocale { schema, entity_id } => {
+            hash_component(&mut hasher, b"entity");
+            hash_schema(&mut hasher, schema);
+            hash_component(&mut hasher, entity_id.as_bytes());
+            hash_component(&mut hasher, NO_LOCALE_KEY_COMPONENT);
         }
     }
     hex::encode(hasher.finalize())

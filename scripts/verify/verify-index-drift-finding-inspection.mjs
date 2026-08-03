@@ -23,6 +23,7 @@ const inspectorPath =
 const inspector = requireMarkers(inspectorPath, [
   'pub enum IndexDriftFindingSeverity',
   'pub enum IndexDriftFindingScope',
+  'EntityWithoutLocale',
   'pub struct IndexDriftFindingInspection',
   'pub struct PostgresIndexDriftFindingInspector',
   'pub async fn inspect(',
@@ -103,8 +104,10 @@ for (const marker of [
   '"schema" =>',
   '"entity" =>',
   'entity_id.filter(|value| !value.is_nil())',
+  'match locale_key',
   'LocaleKey::new(&stored_locale)',
   'locale.as_str() != stored_locale',
+  'None => Ok(IndexDriftFindingScope::EntityWithoutLocale',
   'version == 0',
 ]) {
   if (!production.includes(marker)) {
@@ -162,14 +165,16 @@ for (const forbidden of [
 }
 
 requireMarkers('crates/rustok-index/docs/m6-drift-finding-inspection.md', [
-  'Status: `source_complete_server_authorized_repair_pending`.',
+  'Status: `source_complete_server_authorized_snapshot_reader_and_repair_pending`.',
   '`PostgresIndexDriftFindingInspector`',
   "`state = 'open'`",
   'raw `details` JSON',
+  '`EntityWithoutLocale`',
   '`inspect_drift_finding(context, finding_id)`',
   'requires effective `modules:manage`',
   'Missing request authority and `modules:read` fail before nil-finding validation or database access.',
   'No automatic finding closure or mutation is allowed from inspection alone.',
+  'authoritative production source/index snapshot reader composition',
   'The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open.',
   'maintainer-run',
 ]);
@@ -181,6 +186,7 @@ requireMarkers('apps/server/docs/index-reconciliation-operator-runtime.md', [
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
   '[M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)',
+  '[M6 Locale-Optional Drift-Finding Scope](./m6-drift-finding-locale-scope.md)',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',

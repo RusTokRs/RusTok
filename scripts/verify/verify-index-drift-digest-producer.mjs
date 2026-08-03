@@ -42,9 +42,9 @@ requireMarkers(files.producer, producer, [
 requireMarkers(files.recorder, recorder, [
   "impl IndexDriftMismatchRecorder for PostgresIndexDriftFindingWriter",
   'const CHECK_NAME: &str = "source_index_digest_mismatch";',
-  'const LOCALE_SCOPE_UNSUPPORTED: &str = "index_drift_locale_free_scope_unsupported";',
-  "let Some(locale) = key.locale.clone() else",
-  "IndexDriftFindingScope::Entity",
+  "match key.locale.clone()",
+  "Some(locale) => IndexDriftFindingScope::Entity",
+  "None => IndexDriftFindingScope::EntityWithoutLocale",
   "PostgresIndexDriftFindingWriter::record_digest_mismatch",
   "IndexDriftMismatchRecordStatus::Suppressed",
 ]);
@@ -56,16 +56,16 @@ requireMarkers(files.applicationMod, applicationMod, [
 ]);
 requireMarkers(files.postgresMod, postgresMod, ["mod drift_digest_recorder;"]);
 requireMarkers(files.doc, doc, [
-  "producer_contract_source_complete_snapshot_reader_and_scope_completion_pending",
+  "producer_contract_and_locale_scope_source_complete_snapshot_reader_pending",
   "same bounded opaque `IndexDriftSnapshotBoundary`",
   "Equal digests return `Consistent` and never call the recorder.",
-  "index_drift_locale_free_scope_unsupported",
+  "`locale: None` maps to `IndexDriftFindingScope::EntityWithoutLocale`",
   "does not define PostgreSQL snapshot export",
 ]);
 requireMarkers(files.plan, plan, [
   "M6 snapshot-pair digest producer and mismatch-only recorder delegation",
   "source_complete_snapshot_reader_pending",
-  "Extend persisted entity finding scope to locale-free",
+  "M6 locale-optional persisted entity finding scope",
   "Add one production snapshot reader",
 ]);
 
@@ -83,6 +83,15 @@ const forbiddenProducerMarkers = [
 for (const marker of forbiddenProducerMarkers) {
   if (producer.includes(marker)) {
     throw new Error(`database-neutral producer contains forbidden dependency marker: ${marker}`);
+  }
+}
+
+for (const obsolete of [
+  "index_drift_locale_free_scope_unsupported",
+  "let Some(locale) = key.locale.clone() else",
+]) {
+  if (recorder.includes(obsolete) || doc.includes(obsolete)) {
+    throw new Error(`producer adapter retains obsolete locale limitation: ${obsolete}`);
   }
 }
 
