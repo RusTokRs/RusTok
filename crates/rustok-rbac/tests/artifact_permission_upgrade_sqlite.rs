@@ -1,10 +1,10 @@
 use rustok_core::module::MigrationSource;
 use rustok_rbac::RbacModule;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
-async fn legacy_database() -> (DatabaseConnection, Vec<Box<dyn sea_orm_migration::MigrationTrait>>) {
+async fn legacy_database() -> (DatabaseConnection, Box<dyn MigrationTrait>) {
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("connect SQLite");
@@ -30,7 +30,7 @@ async fn legacy_database() -> (DatabaseConnection, Vec<Box<dyn sea_orm_migration
             .await
             .expect("apply historical RBAC migration");
     }
-    (db, vec![cutover])
+    (db, cutover)
 }
 
 async fn query_string(db: &DatabaseConnection, sql: &str, column: &str) -> String {
@@ -54,9 +54,32 @@ async fn count(db: &DatabaseConnection, table: &str) -> i64 {
     .expect("decode count")
 }
 
+async fn add_tenant_scope_collision(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+) {
+    let definition_id = Uuid::new_v4();
+    let translation_id = Uuid::new_v4();
+    db.execute_unprepared(&format!(
+        r#"
+        INSERT INTO rbac_artifact_permission_definitions
+            (id, scope_key, installation_id, module_slug, release_digest, permission_key)
+        VALUES
+            ('{definition_id}', 'tenant:{tenant_id}', '{installation_id}', 'sample', 'sha256:tenant', 'sample.events.handle');
+        INSERT INTO rbac_artifact_permission_translations
+            (id, artifact_permission_id, locale, label, description)
+        VALUES
+            ('{translation_id}', '{definition_id}', 'en', 'Tenant handle', 'Tenant permission');
+        "#
+    ))
+    .await
+    .expect("add colliding tenant definition");
+}
+
 #[tokio::test]
 async fn legacy_catalog_grant_and_receipt_upgrade_and_rollback_truthfully() {
-    let (db, mut cutover) = legacy_database().await;
+    let (db, migration) = legacy_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -87,7 +110,6 @@ async fn legacy_catalog_grant_and_receipt_upgrade_and_rollback_truthfully() {
     .await
     .expect("seed legacy artifact authorization state");
 
-    let migration = cutover.pop().expect("cutover migration");
     migration
         .up(&SchemaManager::new(&db))
         .await
@@ -150,7 +172,7 @@ async fn legacy_catalog_grant_and_receipt_upgrade_and_rollback_truthfully() {
 
 #[tokio::test]
 async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed() {
-    let (db, mut cutover) = legacy_database().await;
+    let (db, migration) = legacy_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -178,11 +200,95 @@ async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed() {
     .await
     .expect("seed ambiguous legacy selector");
 
-    let error = cutover
-        .pop()
-        .expect("cutover migration")
+    let error = migration
         .up(&SchemaManager::new(&db))
         .await
         .expect_err("ambiguous legacy selector must fail closed");
     assert!(error.to_string().contains("ambiguous or orphan identity"));
+}
+
+#[tokio::test]
+async fn canonical_grant_with_later_scope_collision_fails_rollback() {
+    let (db, migration) = legacy_database().await;
+    let tenant_id = Uuid::new_v4();
+    let role_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let installation_id = Uuid::new_v4();
+    let definition_id = Uuid::new_v4();
+
+    db.execute_unprepared(&format!(
+        r#"
+        INSERT INTO roles (id, tenant_id) VALUES ('{role_id}', '{tenant_id}');
+        INSERT INTO users (id, tenant_id) VALUES ('{actor_id}', '{tenant_id}');
+        INSERT INTO rbac_artifact_permission_catalog
+            (id, scope_key, installation_id, module_slug, release_digest, permission_key, locale, label, description)
+        VALUES
+            ('{definition_id}', 'platform', '{installation_id}', 'sample', 'sha256:platform', 'sample.events.handle', 'en', 'Platform handle', 'Platform permission');
+        INSERT INTO rbac_artifact_role_permissions
+            (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id)
+        VALUES
+            ('{}', '{tenant_id}', '{role_id}', '{installation_id}', 'sample.events.handle', '{actor_id}');
+        "#,
+        Uuid::new_v4(),
+    ))
+    .await
+    .expect("seed legacy platform grant");
+    migration
+        .up(&SchemaManager::new(&db))
+        .await
+        .expect("upgrade platform grant");
+    add_tenant_scope_collision(&db, tenant_id, installation_id).await;
+
+    let error = migration
+        .down(&SchemaManager::new(&db))
+        .await
+        .expect_err("ambiguous canonical grant must block rollback");
+    assert!(
+        error
+            .to_string()
+            .contains("grant with ambiguous legacy selector")
+    );
+}
+
+#[tokio::test]
+async fn canonical_receipt_with_later_scope_collision_fails_rollback() {
+    let (db, migration) = legacy_database().await;
+    let tenant_id = Uuid::new_v4();
+    let role_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let installation_id = Uuid::new_v4();
+    let definition_id = Uuid::new_v4();
+
+    db.execute_unprepared(&format!(
+        r#"
+        INSERT INTO roles (id, tenant_id) VALUES ('{role_id}', '{tenant_id}');
+        INSERT INTO users (id, tenant_id) VALUES ('{actor_id}', '{tenant_id}');
+        INSERT INTO rbac_artifact_permission_catalog
+            (id, scope_key, installation_id, module_slug, release_digest, permission_key, locale, label, description)
+        VALUES
+            ('{definition_id}', 'platform', '{installation_id}', 'sample', 'sha256:platform', 'sample.events.handle', 'en', 'Platform handle', 'Platform permission');
+        INSERT INTO rbac_artifact_role_permission_operations
+            (id, tenant_id, idempotency_key, role_id, installation_id, permission_key, actor_id, granted)
+        VALUES
+            ('{}', '{tenant_id}', 'platform-receipt', '{role_id}', '{installation_id}', 'sample.events.handle', '{actor_id}', 1);
+        "#,
+        Uuid::new_v4(),
+    ))
+    .await
+    .expect("seed legacy platform receipt");
+    migration
+        .up(&SchemaManager::new(&db))
+        .await
+        .expect("upgrade platform receipt");
+    add_tenant_scope_collision(&db, tenant_id, installation_id).await;
+
+    let error = migration
+        .down(&SchemaManager::new(&db))
+        .await
+        .expect_err("ambiguous canonical receipt must block rollback");
+    assert!(
+        error
+            .to_string()
+            .contains("operation receipt with ambiguous legacy selector")
+    );
 }
