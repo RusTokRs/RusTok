@@ -46,14 +46,15 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-fn context_extraction_error<E: std::fmt::Debug>(
+fn context_extraction_error<E>(
     owner_operation: &'static str,
     code: &'static str,
     public_message: &'static str,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = CART_STOREFRONT_NATIVE_OWNER,
         owner_operation,
         code,
@@ -63,7 +64,7 @@ fn context_extraction_error<E: std::fmt::Debug>(
     ServerFnError::new(public_message)
 }
 
-fn tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+fn tenant_context_error<E>(error: E) -> ServerFnError {
     context_extraction_error(
         "extract_tenant_context",
         "cart.storefront_tenant_context_unavailable",
@@ -72,7 +73,7 @@ fn tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
     )
 }
 
-fn auth_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+fn auth_context_error<E>(error: E) -> ServerFnError {
     context_extraction_error(
         "extract_optional_auth_context",
         "cart.storefront_auth_context_unavailable",
