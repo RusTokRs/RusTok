@@ -35,6 +35,7 @@ impl ArtifactPermissionEventPublisher for SqliteArtifactPermissionEventPublisher
         let schema_version = event.schema_version();
         let RbacArtifactPermissionEvent::AssignmentChanged {
             operation_id,
+            artifact_permission_id,
             role_id,
             installation_id,
             permission_key,
@@ -43,11 +44,12 @@ impl ArtifactPermissionEventPublisher for SqliteArtifactPermissionEventPublisher
         transaction
             .execute(Statement::from_sql_and_values(
                 transaction.get_database_backend(),
-                "INSERT INTO rbac_artifact_permission_events (operation_id, tenant_id, actor_id, role_id, installation_id, permission_key, granted, event_type, schema_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO rbac_artifact_permission_events (operation_id, tenant_id, actor_id, artifact_permission_id, role_id, installation_id, permission_key, granted, event_type, schema_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 vec![
                     operation_id.into(),
                     tenant_id.into(),
                     actor_id.into(),
+                    artifact_permission_id.into(),
                     role_id.into(),
                     installation_id.into(),
                     permission_key.into(),
@@ -66,12 +68,16 @@ async fn setup_database() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("connect sqlite");
+    db.execute_unprepared("PRAGMA foreign_keys = ON")
+        .await
+        .expect("enable SQLite foreign keys");
     for statement in [
-        "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)",
-        "CREATE TABLE rbac_artifact_permission_catalog (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, locale TEXT NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (scope_key, installation_id, permission_key, locale))",
-        "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, role_id, installation_id, permission_key))",
-        "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, idempotency_key))",
-        "CREATE TABLE rbac_artifact_permission_events (operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted BOOLEAN NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL)",
+        "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
+        "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
+        "CREATE TABLE rbac_artifact_permission_definitions (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (scope_key, installation_id, permission_key))",
+        "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id) REFERENCES rbac_artifact_permission_definitions (id) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, role_id, artifact_permission_id))",
+        "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id) REFERENCES rbac_artifact_permission_definitions (id) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, idempotency_key))",
+        "CREATE TABLE rbac_artifact_permission_events (operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted BOOLEAN NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL)",
     ] {
         db.execute_unprepared(statement)
             .await
@@ -84,9 +90,10 @@ async fn insert_scope(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     role_id: Uuid,
+    actor_id: Uuid,
     installation_id: Uuid,
     permission_key: &str,
-) {
+) -> Uuid {
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO roles (id, tenant_id) VALUES (?1, ?2)",
@@ -96,21 +103,27 @@ async fn insert_scope(
     .expect("insert role");
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
-        "INSERT INTO rbac_artifact_permission_catalog (id, scope_key, installation_id, module_slug, release_digest, permission_key, locale, label, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO users (id, tenant_id) VALUES (?1, ?2)",
+        vec![actor_id.into(), tenant_id.into()],
+    ))
+    .await
+    .expect("insert actor");
+    let artifact_permission_id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         vec![
-            Uuid::new_v4().into(),
+            artifact_permission_id.into(),
             format!("tenant:{tenant_id}").into(),
             installation_id.into(),
             "sample".into(),
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
             permission_key.into(),
-            "en".into(),
-            "Handle events".into(),
-            "Allows the role to handle sample events".into(),
         ],
     ))
     .await
-    .expect("insert artifact permission catalog row");
+    .expect("insert artifact permission definition");
+    artifact_permission_id
 }
 
 fn command(
@@ -165,7 +178,15 @@ async fn only_state_changes_publish_artifact_permission_events() {
     let installation_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let permission_key = "sample.events.handle";
-    insert_scope(&db, tenant_id, role_id, installation_id, permission_key).await;
+    let artifact_permission_id = insert_scope(
+        &db,
+        tenant_id,
+        role_id,
+        actor_id,
+        installation_id,
+        permission_key,
+    )
+    .await;
 
     let service = RbacArtifactPermissionAssignmentService::new(
         db.clone(),
@@ -199,6 +220,18 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .applied
     );
     assert_eq!(event_grants(&db).await, vec![true]);
+    let event_permission_id: Uuid = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT artifact_permission_id FROM rbac_artifact_permission_events LIMIT 1"
+                .to_string(),
+        ))
+        .await
+        .expect("query event")
+        .expect("event row")
+        .try_get("", "artifact_permission_id")
+        .expect("decode artifact permission identity");
+    assert_eq!(event_permission_id, artifact_permission_id);
 
     assert!(
         service
@@ -241,7 +274,15 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
     let installation_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let permission_key = "sample.events.handle";
-    insert_scope(&db, tenant_id, role_id, installation_id, permission_key).await;
+    insert_scope(
+        &db,
+        tenant_id,
+        role_id,
+        actor_id,
+        installation_id,
+        permission_key,
+    )
+    .await;
 
     let service = RbacArtifactPermissionAssignmentService::new(
         db.clone(),
