@@ -14,6 +14,7 @@ mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
 mod m20260714_900002_create_rbac_invalidation_state;
 mod m20260716_000001_artifact_permission_catalog;
 mod m20260717_000001_artifact_role_permissions;
+mod m20260803_000001_canonicalize_artifact_permissions;
 pub mod ports;
 mod repair;
 mod role_mutation;
@@ -123,6 +124,7 @@ impl MigrationSource for RbacModule {
             Box::new(m20260714_900002_create_rbac_invalidation_state::Migration),
             Box::new(m20260716_000001_artifact_permission_catalog::Migration),
             Box::new(m20260717_000001_artifact_role_permissions::Migration),
+            Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
         ]
     }
 }
