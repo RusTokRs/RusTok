@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens five category-bound Product Admin reads:
+This contract covers five category-bound Product Admin reads:
 
 - `fetch_product_attributes`;
 - `fetch_catalog_categories`;
@@ -12,26 +12,7 @@ This slice hardens five category-bound Product Admin reads:
 - `fetch_effective_product_form`;
 - `fetch_product_attribute_values`.
 
-These operations keep the existing native server function as their first path and use GraphQL only as the public/headless fallback.
-
-## Confirmed gap
-
-The native-first executor already swallowed a native transport failure and then returned the result of the existing GraphQL fallback. Before this slice, a final fallback failure crossed the Product Admin facade as `GraphqlHttpError` without the Product-owned public mapper introduced for the primary reads.
-
-Two variants carry backend-controlled detail:
-
-- `GraphqlHttpError::Http(String)` can contain HTTP status text;
-- `GraphqlHttpError::Graphql(String)` can contain the first GraphQL server message.
-
-That detail could reach Leptos resource error handling.
-
-## Boundary placement
-
-The final wrappers live in `crates/rustok-product/admin/src/catalog_transport.rs`.
-
-Each wrapper creates one `GraphqlReadContext` before invoking the unchanged native-first executor in `transport.rs`. The mapper is called only when the executor returns an error, which means the native path failed and the GraphQL fallback also failed.
-
-This placement preserves the existing executor without duplicating its owner call or fallback selection.
+These operations retain their native-first executor and use GraphQL only as the existing public/headless fallback.
 
 ## Public policy
 
@@ -44,56 +25,55 @@ The result type remains `GraphqlHttpError`.
 | Unauthorized | `Unauthorized` |
 | GraphQL rejection | `GraphQL error: Product admin request could not be completed` |
 
-`Network` and `Unauthorized` were already static variants. HTTP status text and GraphQL server messages are replaced with fixed Product Admin messages.
+HTTP status text and GraphQL server messages do not cross the Product Admin public boundary.
 
-## Internal diagnostics
+## Diagnostic recheck
 
-The private tracing event retains the original typed error and records:
+The category wrappers already called the shared static public mapper after the native-first executor returned a final GraphQL failure. The shared read mapper nevertheless logged `raw_error = ?error`, retaining the complete backend-controlled payload in structured tracing.
 
-- owner, operation, stable code, boundary, and correlation ID;
-- token presence, never the token value;
-- tenant-slug, tenant-ID, resource-ID, category-ID, and locale presence/length;
-- whether the native fallback was attempted;
-- classified error kind.
+The mapper now records only payload presence and character length for `Http` and `Graphql`. `Network` and `Unauthorized` retain no invented payload. The complete typed error is not logged.
 
-For effective-form reads, product and category identifiers use separate shape fields. No token, tenant slug, tenant ID, product ID, category ID, or locale value is emitted as a structured field.
+The event still retains:
+
+- owner, operation, stable code, boundary, and closed error kind;
+- a unique correlation ID;
+- token presence and bounded tenant, product, category, and locale shape;
+- whether native fallback was attempted;
+- technical-error versus ordinary-rejection severity.
+
+For effective-form reads, product and category identifiers remain separate shape fields. Raw request values, HTTP text, GraphQL messages, and complete Debug error payloads are not structured fields.
 
 ## Preserved behavior
 
-This slice does not change:
+This change does not alter:
 
-- the native-first executor;
-- the GraphQL fallback order;
-- query documents or variables;
-- response DTO mapping;
-- result types;
+- native server-function-first execution;
+- GraphQL fallback order or count;
+- query documents, variables, or response mapping;
+- category-bound result types;
 - effective-form product/category selection;
 - attribute-value request semantics;
-- retries or fallback count;
-- primary-read and catalog search-options policies;
-- FFA, FBA, browser, mounted-runtime, workflow, CI, or production status.
+- primary-read and catalog search-options public policies;
+- retries or owner calls;
+- Product FFA/FBA, browser, mounted-runtime, workflow, CI, or production status.
 
 ## Static evidence
 
 - `crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json`;
 - `crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json`;
-- `scripts/verify/verify-product-admin-category-read-error-safety.mjs`.
+- `scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs`;
+- compatibility command `scripts/verify/verify-product-admin-category-read-error-safety.mjs`.
 
-All execution flags remain `false`. Source review does not prove compilation, mounted transport behavior, browser behavior, workflow execution, CI, or production behavior.
+All execution flags remain `false`. Source review does not prove compilation, verifier execution, mounted transport behavior, browser behavior, workflow execution, CI, or production behavior.
 
 ## Remaining work
 
-The broad ecommerce mapper cleanup remains open for:
-
-- Product Admin GraphQL writes and status mutations;
-- other ecommerce adapters and non-`PortError` public envelopes;
-- runtime and mounted transport evidence.
+The broad ecommerce mapper cleanup remains open for Product Admin GraphQL writes and status mutations, other ecommerce adapters and non-`PortError` public envelopes, and runtime or mounted transport evidence.
 
 ## Suggested maintainer checks
 
-These commands were intentionally not run by the implementation agent:
-
 ```bash
+node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs
 node scripts/verify/verify-product-admin-category-read-error-safety.mjs
 node scripts/verify/verify-product-admin-primary-read-error-safety.mjs
 node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs

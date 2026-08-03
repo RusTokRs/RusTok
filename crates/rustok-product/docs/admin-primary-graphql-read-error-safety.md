@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens the final public error envelope for five Product Admin reads:
+This contract covers five Product Admin primary reads:
 
 - `fetch_bootstrap`;
 - `fetch_products`;
@@ -12,39 +12,11 @@ This slice hardens the final public error envelope for five Product Admin reads:
 - `fetch_product_pricing`;
 - `fetch_shipping_profiles`.
 
-The boundary lives in:
-
-- `crates/rustok-product/admin/src/catalog_transport.rs`;
-- `crates/rustok-product/admin/src/transport/graphql_error_safety.rs`.
-
-The GraphQL adapter, query documents, variables, response DTOs, and Product owner services are unchanged.
-
-## Confirmed gap
-
-The Product Admin GraphQL adapter uses `rustok_graphql::GraphqlHttpError` directly.
-Before this slice, the five primary read operations returned that error without a Product-owned
-public policy.
-
-Two variants carry backend-controlled detail:
-
-- `GraphqlHttpError::Http(String)` contains HTTP status text;
-- `GraphqlHttpError::Graphql(String)` contains the first GraphQL server message.
-
-Leptos resources and UI error normalization could therefore receive those raw payloads.
-
-## Boundary placement
-
-A `GraphqlReadContext` is created before each selected GraphQL call.
-
-For `fetch_products`, Product Admin keeps its existing product-list native-first policy. The
-context is created only after the native list call fails and immediately before the existing
-`admin_catalog_graphql` fallback.
-
-No new retry, fallback, transport selection, or owner call is introduced.
+The public boundary remains in `catalog_transport.rs`; typed classification and private diagnostics remain in `transport/graphql_error_safety.rs`.
 
 ## Public policy
 
-The result error type remains `GraphqlHttpError`.
+The result type remains `GraphqlHttpError`.
 
 | Captured condition | Public error |
 | --- | --- |
@@ -53,69 +25,57 @@ The result error type remains `GraphqlHttpError`.
 | Unauthorized | `Unauthorized` |
 | GraphQL rejection | `GraphQL error: Product admin request could not be completed` |
 
-`Network` and `Unauthorized` were already fixed, non-identifying variants. HTTP status text
-and GraphQL server messages are replaced with static Product Admin messages.
+HTTP status text and GraphQL server messages do not cross the Product Admin public boundary.
 
-## Internal diagnostics
+## Diagnostic recheck
 
-The original typed `GraphqlHttpError` remains available only to the private tracing event.
-Every event also records:
+The public mapper was already static and correlation-aware, but both tracing severity branches still recorded `raw_error = ?error`. Because `Http(String)` and `Graphql(String)` carry backend-controlled text, the complete typed error remained a structured diagnostic payload.
 
-- owner and operation;
+The read mapper now records only payload presence and character length for `Http` and `Graphql`. `Network` and `Unauthorized` retain no invented payload. The complete typed error is not logged.
+
+The event still retains:
+
+- owner, operation, boundary, stable code, and closed error kind;
 - a unique correlation ID;
-- token presence, never the token value;
-- tenant-slug presence and character length;
-- tenant-ID presence and character length;
-- product/resource-ID presence and character length;
-- locale presence and character length;
-- search and status presence and character lengths;
-- currency-code presence and character length;
-- whether the product-list native fallback was attempted;
-- error kind, stable code, and boundary.
+- token presence and bounded tenant/resource/locale/search/status/currency shape;
+- whether product-list native fallback was attempted;
+- technical-error versus ordinary-rejection severity.
 
-Raw token, tenant slug, tenant ID, product ID, locale, search, status, and currency values are
-not structured fields.
+Raw request values, HTTP text, GraphQL server messages, and Debug representations of the complete `GraphqlHttpError` are not emitted by the read boundary.
 
 ## Preserved behavior
 
-This slice does not change:
+This change does not alter:
 
-- `ProductAdminBootstrap`, `ProductList`, `ProductDetail`, `ProductPricingDetail`, or
-  `ShippingProfileList`;
+- public messages, codes, retry classification, or result types;
 - GraphQL documents, variables, tenant headers, or response deserialization;
 - bootstrap composition;
-- list controls, category filters, sorting, or pagination;
-- selected-product and pricing-preview request construction;
-- shipping-profile reads;
-- the product-list native-first path;
-- the product-list GraphQL fallback;
-- the separately merged catalog search-options String wrapper;
-- FFA, FBA, browser, mounted-runtime, workflow, CI, or production status.
+- product list controls, category filters, sorting, or pagination;
+- product-list native-first execution or GraphQL fallback;
+- selected-product, pricing-preview, or shipping-profile request construction;
+- UI resource composition;
+- retry or fallback count;
+- Product FFA/FBA, browser, mounted-runtime, workflow, CI, or production status.
 
 ## Static evidence
 
 - `crates/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json`;
 - `crates/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json`;
-- `scripts/verify/verify-product-admin-primary-read-error-safety.mjs`.
+- `scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs`;
+- compatibility command `scripts/verify/verify-product-admin-primary-read-error-safety.mjs`.
 
-All execution flags remain `false`. Source review does not prove compilation, browser
-behavior, mounted transport behavior, workflow execution, CI, or production behavior.
+All execution flags remain `false`. Source review does not prove compilation, verifier execution, browser behavior, mounted transport behavior, workflow execution, CI, or production behavior.
 
 ## Remaining work
 
-The ecommerce correlation-safe mapper cleanup remains open for:
-
-- Product Admin category-bound GraphQL fallback reads;
-- Product Admin GraphQL writes and status mutations;
-- other ecommerce adapters and non-`PortError` public envelopes;
-- runtime and mounted transport evidence.
+The ecommerce correlation-safe mapper cleanup remains open for Product Admin GraphQL writes and status mutations, other ecommerce adapters and non-`PortError` envelopes, and runtime or mounted transport evidence.
 
 ## Suggested maintainer checks
 
-These commands were intentionally not run by the implementation agent:
-
 ```bash
+node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs
 node scripts/verify/verify-product-admin-primary-read-error-safety.mjs
+node scripts/verify/verify-product-admin-category-read-error-safety.mjs
 node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs
 node scripts/verify/verify-product-admin-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs

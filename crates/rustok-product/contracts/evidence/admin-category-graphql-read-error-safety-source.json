@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-30T19:40:00Z",
+  "generated_at_utc": "2026-08-03T08:53:00Z",
   "status": "product_admin_category_graphql_read_error_safety_source_unvalidated",
-  "scope": "Product Admin category-bound GraphQL fallback read public envelopes",
+  "scope": "Product Admin category-bound GraphQL fallback read public and private diagnostic envelopes",
   "operations": [
     "fetch_product_attributes",
     "fetch_catalog_categories",
@@ -30,7 +30,9 @@
     "graphql_static_public_envelope": true,
     "raw_http_status_public": false,
     "raw_graphql_message_public": false,
-    "private_typed_error_diagnostics": true,
+    "complete_typed_error_logged": false,
+    "error_payload_shape_only": true,
+    "private_typed_error_classification": true,
     "safe_request_shape_only": true,
     "result_types_changed": false,
     "graphql_documents_changed": false,
@@ -55,18 +57,20 @@
     "locale_present",
     "locale_length",
     "native_fallback_attempted",
+    "error_payload_present",
+    "error_payload_length",
     "error_kind",
     "code",
-    "boundary",
-    "private_typed_graphql_error"
+    "boundary"
   ],
   "forbidden_public_or_structured_values": [
-    "token",
-    "tenant_slug",
-    "tenant_id",
-    "product_id",
-    "category_id",
-    "locale",
+    "token value",
+    "tenant slug value",
+    "tenant id value",
+    "product id value",
+    "category id value",
+    "locale value",
+    "complete GraphqlHttpError Debug payload",
     "HTTP status text",
     "GraphQL server message"
   ],
@@ -79,7 +83,8 @@
     "effective-form product/category selection",
     "attribute-value request shape",
     "UI resource composition",
-    "primary-read and catalog-options error policies"
+    "primary-read and catalog-options public policies",
+    "technical versus ordinary severity"
   ],
   "remaining_scope": [
     "Product Admin GraphQL writes and status mutations",
@@ -87,6 +92,7 @@
     "remaining ecommerce non-PortError public envelopes"
   ],
   "suggested_execution": [
+    "node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
     "node scripts/verify/verify-product-admin-category-read-error-safety.mjs",
     "node scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
     "node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
