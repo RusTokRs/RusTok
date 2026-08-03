@@ -86,14 +86,12 @@ async fn setup_database() -> DatabaseConnection {
     db
 }
 
-async fn insert_scope(
+async fn insert_role_and_actor(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     role_id: Uuid,
     actor_id: Uuid,
-    installation_id: Uuid,
-    permission_key: &str,
-) -> Uuid {
+) {
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO roles (id, tenant_id) VALUES (?1, ?2)",
@@ -108,13 +106,21 @@ async fn insert_scope(
     ))
     .await
     .expect("insert actor");
+}
+
+async fn insert_definition(
+    db: &DatabaseConnection,
+    scope_key: &str,
+    installation_id: Uuid,
+    permission_key: &str,
+) -> Uuid {
     let artifact_permission_id = Uuid::new_v4();
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         vec![
             artifact_permission_id.into(),
-            format!("tenant:{tenant_id}").into(),
+            scope_key.into(),
             installation_id.into(),
             "sample".into(),
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
@@ -129,17 +135,15 @@ async fn insert_scope(
 fn command(
     tenant_id: Uuid,
     role_id: Uuid,
-    installation_id: Uuid,
+    artifact_permission_id: Uuid,
     actor_id: Uuid,
-    permission_key: &str,
     granted: bool,
     idempotency_key: &str,
 ) -> ArtifactRolePermissionAssignmentCommand {
     ArtifactRolePermissionAssignmentCommand {
         tenant_id,
         role_id,
-        installation_id,
-        permission_key: permission_key.to_string(),
+        artifact_permission_id,
         actor_id,
         granted,
         idempotency_key: idempotency_key.to_string(),
@@ -178,11 +182,10 @@ async fn only_state_changes_publish_artifact_permission_events() {
     let installation_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let permission_key = "sample.events.handle";
-    let artifact_permission_id = insert_scope(
+    insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
+    let artifact_permission_id = insert_definition(
         &db,
-        tenant_id,
-        role_id,
-        actor_id,
+        &format!("tenant:{tenant_id}"),
         installation_id,
         permission_key,
     )
@@ -195,9 +198,8 @@ async fn only_state_changes_publish_artifact_permission_events() {
     let grant = command(
         tenant_id,
         role_id,
-        installation_id,
+        artifact_permission_id,
         actor_id,
-        permission_key,
         true,
         "grant-1",
     );
@@ -209,9 +211,8 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .assign(command(
                 tenant_id,
                 role_id,
-                installation_id,
+                artifact_permission_id,
                 actor_id,
-                permission_key,
                 true,
                 "grant-confirmation",
             ))
@@ -251,9 +252,8 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .assign(command(
                 tenant_id,
                 role_id,
-                installation_id,
+                artifact_permission_id,
                 actor_id,
-                permission_key,
                 false,
                 "revoke-1",
             ))
@@ -266,9 +266,8 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .assign(command(
                 tenant_id,
                 role_id,
-                installation_id,
+                artifact_permission_id,
                 actor_id,
-                permission_key,
                 false,
                 "revoke-confirmation",
             ))
@@ -280,6 +279,86 @@ async fn only_state_changes_publish_artifact_permission_events() {
 }
 
 #[tokio::test]
+async fn exact_identity_mutation_does_not_shadow_platform_or_tenant_definition() {
+    let db = setup_database().await;
+    let tenant_id = Uuid::new_v4();
+    let role_id = Uuid::new_v4();
+    let installation_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let permission_key = "sample.events.handle";
+    insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
+    let platform_permission_id =
+        insert_definition(&db, "platform", installation_id, permission_key).await;
+    let tenant_permission_id = insert_definition(
+        &db,
+        &format!("tenant:{tenant_id}"),
+        installation_id,
+        permission_key,
+    )
+    .await;
+    let service = RbacArtifactPermissionAssignmentService::new(
+        db.clone(),
+        Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
+    );
+
+    for (artifact_permission_id, idempotency_key) in [
+        (platform_permission_id, "grant-platform"),
+        (tenant_permission_id, "grant-tenant"),
+    ] {
+        service
+            .assign(command(
+                tenant_id,
+                role_id,
+                artifact_permission_id,
+                actor_id,
+                true,
+                idempotency_key,
+            ))
+            .await
+            .expect("grant exact permission identity");
+    }
+    assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 2);
+
+    service
+        .assign(command(
+            tenant_id,
+            role_id,
+            platform_permission_id,
+            actor_id,
+            false,
+            "revoke-platform",
+        ))
+        .await
+        .expect("revoke exact platform identity");
+    let remaining_id: Uuid = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT artifact_permission_id FROM rbac_artifact_role_permissions LIMIT 1"
+                .to_string(),
+        ))
+        .await
+        .expect("query remaining grant")
+        .expect("remaining grant")
+        .try_get("", "artifact_permission_id")
+        .expect("decode remaining identity");
+    assert_eq!(remaining_id, tenant_permission_id);
+
+    service
+        .assign(command(
+            tenant_id,
+            role_id,
+            tenant_permission_id,
+            actor_id,
+            false,
+            "revoke-tenant",
+        ))
+        .await
+        .expect("revoke exact tenant identity");
+    assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 0);
+    assert_eq!(event_grants(&db).await, vec![true, true, false, false]);
+}
+
+#[tokio::test]
 async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
     let db = setup_database().await;
     let tenant_id = Uuid::new_v4();
@@ -287,11 +366,10 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
     let installation_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let permission_key = "sample.events.handle";
-    insert_scope(
+    insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
+    let artifact_permission_id = insert_definition(
         &db,
-        tenant_id,
-        role_id,
-        actor_id,
+        &format!("tenant:{tenant_id}"),
         installation_id,
         permission_key,
     )
@@ -305,9 +383,8 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
         .assign(command(
             tenant_id,
             role_id,
-            installation_id,
+            artifact_permission_id,
             actor_id,
-            permission_key,
             true,
             "grant-without-publication",
         ))
