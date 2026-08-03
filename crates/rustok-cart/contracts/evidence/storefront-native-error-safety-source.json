@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-03",
   "status": "storefront_native_error_safety_source_unvalidated",
   "scope": "mounted cart storefront native read, decrement, remove, customer lookup, repricing, and context extraction",
   "source_contract": {
@@ -10,10 +10,14 @@
     "auth_context_static_public_envelope": true,
     "runtime_dependency_static_public_envelope": true,
     "cart_input_static_public_envelopes": true,
+    "framework_context_debug_bounds_removed": true,
+    "framework_context_error_type_only": true,
+    "complete_framework_context_error_logged": false,
     "customer_raw_error_public": false,
     "cart_raw_error_public": false,
     "pricing_port_message_remains_domain_sanitized": true,
     "owner_context_logging": true,
+    "owner_mapper_cleanup_out_of_scope": true,
     "cart_dto_changed": false,
     "transport_selection_changed": false,
     "graphql_transport_changed": false
@@ -34,6 +38,7 @@
     "node scripts/verify/verify-cart-storefront-boundary.mjs",
     "cargo check -p rustok-cart-storefront --all-features"
   ],
+  "execution": [],
   "validation": {
     "tests_run": false,
     "cargo_run": false,
