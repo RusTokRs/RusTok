@@ -19,6 +19,7 @@ pub mod quote_commands;
 pub mod read_state;
 pub mod replies;
 pub mod subscriptions;
+mod topic_redirect;
 pub mod topics;
 pub mod users;
 pub mod widgets;
@@ -197,6 +198,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route(
             "/api/forum/topics/{id}",
             get(topics::get_topic)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    topic_redirect::redirect_merged_topic,
+                ))
                 .put(content_commands::update_topic)
                 .delete(topics::delete_topic),
         )
