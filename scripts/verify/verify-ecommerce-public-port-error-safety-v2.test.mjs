@@ -7,9 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const scriptPath = path.resolve(
-  'scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs',
-);
+const scriptPath = path.resolve('scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs');
 
 function put(root, relativePath, content) {
   const filePath = path.join(root, relativePath);
@@ -68,25 +66,46 @@ let owner_operation = "upsert_variant_price";
 
 function canonicalPayment() {
   return `
+struct PaymentCollectionOwnerErrorFacts {}
+fn payment_collection_owner_error_facts() {}
+fn payment_collection_owner_error_code() {}
+fn payment_collection_owner_error_is_technical() {}
 tracing::error!(
+  owner_error_variant = error_facts.error_variant,
+  owner_error_text_field_count = error_facts.text_field_count,
+  owner_error_text_total_length = error_facts.text_total_length,
+  owner_error_uuid_field_count = error_facts.uuid_field_count,
+  owner_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+  owner_error_opaque_payload_present = error_facts.opaque_payload_present,
   correlation_id = %context.correlation_id,
-  tenant_id = %context.tenant_id,
+  tenant_id_length,
+  actor_kind,
+  claim_count,
+  role_count,
   operation = owner_operation,
-  code = "payment.database_unavailable",
+  boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
 );
-tracing::warn!(code = "payment.validation");
-tracing::warn!(code = "payment.invalid_transition");
-tracing::error!(code = "payment.provider_unavailable");
-tracing::warn!(code = "payment.provider_rejected");
-tracing::error!(code = "payment.provider_invalid_response");
-tracing::error!(code = "payment.provider_outcome_unknown");
-tracing::error!(code = "payment.provider_not_configured");
-PortError::unavailable("payment.database_unavailable", "payment storage is temporarily unavailable");
-PortError::conflict("payment.provider_outcome_unknown", "payment provider outcome requires reconciliation");
-PortError::invariant_violation("payment.provider_invalid_response", "payment provider response could not be applied safely");
-PortError::conflict("payment.provider_rejected", "payment provider rejected the requested operation");
-PortError::validation("payment.validation", "payment request is invalid");
-.map_err(|error| payment_error_to_port_error(&context, "read_collection_status", error));
+tracing::warn!(operation = owner_operation);
+"payment.validation";
+"payment.collection_not_found";
+"payment.payment_not_found";
+"payment.refund_not_found";
+"payment.invalid_transition";
+"payment.provider_unavailable";
+"payment.provider_rejected";
+"payment.provider_invalid_response";
+"payment.provider_outcome_unknown";
+"payment.provider_not_configured";
+"payment.database_unavailable";
+"payment collection was not found";
+"payment was not found";
+"refund was not found";
+"payment storage is temporarily unavailable";
+"payment provider outcome requires reconciliation";
+"payment provider response could not be applied safely";
+"payment provider rejected the requested operation";
+"payment request is invalid";
+payment_error_to_port_error(&context, owner_operation, error);
 `;
 }
 
@@ -325,119 +344,46 @@ hash_json(context, "encode_checkout_snapshot_hash", snapshot);
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-public-port-errors-'));
-  put(
-    root,
-    'crates/rustok-channel/src/ports.rs',
-    `tracing::error!();\n"channel storage is temporarily unavailable";\n${options.channelAppend ?? ''}`,
-  );
-  put(
-    root,
-    'crates/rustok-region/src/ports.rs',
-    `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`,
-  );
-  put(
-    root,
-    'crates/rustok-cart/src/checkout_snapshot.rs',
-    `tracing::error!();\n"cart checkout request or projection is invalid";\n"cart checkout snapshot could not be encoded";\n${options.cartAppend ?? ''}`,
-  );
+  put(root, 'crates/rustok-channel/src/ports.rs', `tracing::error!();\n"channel storage is temporarily unavailable";\n${options.channelAppend ?? ''}`);
+  put(root, 'crates/rustok-region/src/ports.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
+  put(root, 'crates/rustok-cart/src/checkout_snapshot.rs', `tracing::error!();\n"cart checkout request or projection is invalid";\n"cart checkout snapshot could not be encoded";\n${options.cartAppend ?? ''}`);
 
   let pricing = `${canonicalPricing()}${options.pricingAppend ?? ''}`;
-  if (options.removePricingCorrelation) {
-    pricing = pricing.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
+  if (options.removePricingCorrelation) pricing = pricing.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/rustok-pricing/src/ports.rs', pricing);
 
   let payment = `${canonicalPayment()}${options.paymentAppend ?? ''}`;
-  if (options.removePaymentOperation) {
-    payment = payment.replace('operation = owner_operation', 'operation = omitted');
-  }
+  if (options.removePaymentOperation) payment = payment.replaceAll('operation = owner_operation', 'operation = omitted');
   put(root, 'crates/rustok-payment/src/ports.rs', payment);
 
-  const paymentCompensation = `${canonicalPaymentCompensation()}${options.paymentCompensationAppend ?? ''}`;
-  put(
-    root,
-    'crates/rustok-payment/src/checkout_compensation.rs',
-    paymentCompensation,
-  );
+  put(root, 'crates/rustok-payment/src/checkout_compensation.rs', `${canonicalPaymentCompensation()}${options.paymentCompensationAppend ?? ''}`);
 
   let fulfillment = `${canonicalFulfillment()}${options.fulfillmentAppend ?? ''}`;
-  if (options.removeFulfillmentCorrelation) {
-    fulfillment = fulfillment.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
+  if (options.removeFulfillmentCorrelation) fulfillment = fulfillment.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/rustok-fulfillment/src/ports.rs', fulfillment);
 
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
-  if (options.removeCustomerCorrelation) {
-    customer = customer.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
+  if (options.removeCustomerCorrelation) customer = customer.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/rustok-customer/src/ports.rs', customer);
 
   let inventory = `${canonicalInventory()}${options.inventoryAppend ?? ''}`;
-  if (options.removeInventoryCorrelation) {
-    inventory = inventory.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
-  if (options.removeInventoryIdentityStorageContext) {
-    inventory = inventory.replace(
-      'storage_unavailable_with_context(&context, owner_operation, error)',
-      'storage_context_omitted(error)',
-    );
-  }
-  if (options.removeInventoryHelperStorageContext) {
-    inventory = inventory.replace(
-      'storage_unavailable_with_context(context, owner_operation, error)',
-      'storage_context_omitted(error)',
-    );
-  }
+  if (options.removeInventoryCorrelation) inventory = inventory.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
+  if (options.removeInventoryIdentityStorageContext) inventory = inventory.replace('storage_unavailable_with_context(&context, owner_operation, error)', 'storage_context_omitted(error)');
+  if (options.removeInventoryHelperStorageContext) inventory = inventory.replace('storage_unavailable_with_context(context, owner_operation, error)', 'storage_context_omitted(error)');
   put(root, 'crates/rustok-inventory/src/ports.rs', inventory);
 
   let order = `${canonicalOrder()}${options.orderAppend ?? ''}`;
-  if (options.removeOrderCorrelation) {
-    order = order.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
+  if (options.removeOrderCorrelation) order = order.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/rustok-order/src/ports.rs', order);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
-  if (options.removeOrderCompensationCorrelation) {
-    orderCompensation = orderCompensation.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
-  put(
-    root,
-    'crates/rustok-order/src/checkout_compensation.rs',
-    orderCompensation,
-  );
+  if (options.removeOrderCompensationCorrelation) orderCompensation = orderCompensation.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
+  put(root, 'crates/rustok-order/src/checkout_compensation.rs', orderCompensation);
 
-  const orderPaymentSettlement = `${canonicalOrderPaymentSettlement()}${options.orderPaymentSettlementAppend ?? ''}`;
-  put(
-    root,
-    'crates/rustok-order/src/checkout_payment_settlement.rs',
-    orderPaymentSettlement,
-  );
+  put(root, 'crates/rustok-order/src/checkout_payment_settlement.rs', `${canonicalOrderPaymentSettlement()}${options.orderPaymentSettlementAppend ?? ''}`);
 
   let orderRecovery = `${canonicalOrderRecovery()}${options.orderRecoveryAppend ?? ''}`;
-  if (options.removeOrderRecoveryCorrelation) {
-    orderRecovery = orderRecovery.replace(
-      'correlation_id = %context.correlation_id',
-      'correlation_id = omitted',
-    );
-  }
+  if (options.removeOrderRecoveryCorrelation) orderRecovery = orderRecovery.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/rustok-order/src/checkout_order_recovery.rs', orderRecovery);
   return root;
 }
@@ -476,7 +422,16 @@ const failureCases = [
   ["provider id in unavailable message", { paymentAppend: 'format!("payment provider `{provider_id}` is unavailable for `{operation}`");' }, /payment collection public error mapping: forbidden/],
   ["provider id in rejection message", { paymentAppend: 'format!("payment provider `{provider_id}` rejected `{operation}`");' }, /payment collection public error mapping: forbidden/],
   ["provider id in unknown-outcome message", { paymentAppend: 'format!("payment provider `{provider_id}` outcome is unknown for `{operation}`");' }, /payment collection public error mapping: forbidden/],
+  ["collection id in not-found message", { paymentAppend: 'format!("payment collection {id} not found");' }, /payment collection public error mapping: forbidden/],
+  ["payment id in not-found message", { paymentAppend: 'format!("payment for collection {id} not found");' }, /payment collection public error mapping: forbidden/],
+  ["refund id in not-found message", { paymentAppend: 'format!("refund {id} not found");' }, /payment collection public error mapping: forbidden/],
   ["raw payment validation cause", { paymentAppend: 'PortError::validation("payment.validation", message);' }, /payment collection public error mapping: forbidden/],
+  ["raw payment validation diagnostics", { paymentAppend: 'cause = %message;' }, /payment collection payload diagnostics: forbidden/],
+  ["complete payment database diagnostics", { paymentAppend: 'tracing::error!(error = ?error);' }, /payment collection payload diagnostics: forbidden/],
+  ["raw payment tenant diagnostics", { paymentAppend: 'tenant_id = %context.tenant_id;' }, /payment collection payload diagnostics: forbidden/],
+  ["payment provider identity diagnostics", { paymentAppend: 'provider_id = %provider_id;' }, /payment collection payload diagnostics: forbidden/],
+  ["payment provider operation diagnostics", { paymentAppend: 'provider_operation = %operation;' }, /payment collection payload diagnostics: forbidden/],
+  ["payment transition diagnostics", { paymentAppend: 'from = %from;' }, /payment collection payload diagnostics: forbidden/],
   ["raw pricing validation cause", { pricingAppend: 'PortError::validation("pricing.validation", message);' }, /pricing public error mapping: forbidden/],
   ["dynamic pricing product message", { pricingAppend: 'format!("product {id} not found");' }, /pricing public error mapping: forbidden/],
   ["dynamic pricing mismatch message", { pricingAppend: 'format!("variant {variant_id} does not belong to product {product_id}");' }, /pricing public error mapping: forbidden/],
@@ -527,7 +482,5 @@ const failureCases = [
 ];
 
 for (const [name, options, pattern] of failureCases) {
-  test(`public port error verifier rejects ${name}`, () => {
-    expectFailure(options, pattern);
-  });
+  test(`public port error verifier rejects ${name}`, () => expectFailure(options, pattern));
 }
