@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -1584,11 +1584,93 @@ Preserve revisions, attachments, mentions and audit. Remap reply positions
 safely, deduplicate subscriptions, revalidate solutions and ACL, update
 category counters and create canonical URL aliases.
 
+### Delivered through `FORUM-21M`
+
+- FORUM-21A adds the bounded idempotent topic-move owner with checked category
+  counters, immutable operation receipt and unchanged topic identity;
+- FORUM-21B through FORUM-21G add the bounded merge owner plus independent
+  subscription, read-state, tag, topic-vote and topic-local audience
+  reconciliation owners;
+- FORUM-21H through FORUM-21L add accepted-solution serialization, exact
+  solution-statistics transitions, canonical merged-topic identity, the
+  authorization-safe permanent GET redirect, manager-only GraphQL composition
+  and explicit manager-selected competing-solution resolution with an
+  append-only audit ledger;
+- FORUM-21M adds checked cross-category merge ownership: source and target keep
+  their original category identities, category topic counts remain unchanged,
+  and only the exact moved published-reply contribution transfers between
+  category aggregates inside the owner transaction;
+- `m20260803_000019_allow_cross_category_topic_merge_redirect_edges` replaces
+  the historical same-category receipt trigger predicate while preserving the
+  archived/locked/zero-reply source tombstone, active target category, unique
+  source edge and unchanged receipt schema;
+- every ordinary, resolved, same-category and cross-category merge retains the
+  exact `forum.topic.merged` schema-version-1 payload so existing post-merge
+  reconciliation owners remain compatible.
+
+### Compatibility and degraded mode
+
+FORUM-21M adds one append-only PostgreSQL/SQLite migration that changes only the
+canonical receipt trigger predicate. It adds no receipt column, event version,
+GraphQL field, REST route, alternate alias store or public result field.
+Existing same-category receipts and merges keep their previous behavior. The
+source category remains discoverable from the archived source topic and is not
+copied into the semantic event or receipt.
+
+Forum move and merge commands remain independent from Notifications, Search,
+Page Builder and other optional integrations. Owner state, the Forum semantic
+event, receipt, optional solution-resolution audit and projection invalidations
+commit atomically; optional consumers reconcile after commit. A disabled
+optional capability cannot turn a valid Forum owner command into a synchronous
+outage.
+
+### Remaining scope
+
+`FORUM-21` remains `planned` until all of the following are delivered and
+maintainer-executed:
+
+- retained SQLite and PostgreSQL execution evidence for the complete move/merge
+  owner and migration chain, including cross-category concurrency and rollback;
+- native/Leptos and Next-admin merge command composition with one bounded
+  merge/resolution UI over the existing owner contracts;
+- idempotent split-selected-replies workflow with immutable receipt, event,
+  relation preservation and counter reconciliation;
+- idempotent reply-branch fork workflow with explicit copy/identity policy;
+- bounded reply-range movement with deterministic positions, parent/reference
+  policy and partial-move prevention;
+- final canonical localized URL aliases and route tombstones under FORUM-24,
+  rather than a parallel FORUM-21 slug authority.
+
 ### Definition of done
 
 Each operation has an operation ID, reason, transactional state change and
 semantic event; retry produces the same result; partial moves are impossible;
 source tombstones/redirects are safe.
+
+### Verification
+
+```bash
+node scripts/verify/verify-forum-topic-move-owner.mjs
+node scripts/verify/verify-forum-topic-merge-owner.mjs
+node scripts/verify/verify-forum-topic-merge-cross-category.mjs
+node scripts/verify/verify-forum-topic-merge-solution-policy.mjs
+node scripts/verify/verify-forum-topic-merge-solution-resolution.mjs
+node scripts/verify/verify-forum-topic-canonical-resolution.mjs
+node scripts/verify/verify-forum-topic-http-redirect.mjs
+node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs
+cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_merge_cross_category_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_merge_solution_resolution_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture
+cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture
+cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
+```
+
+The FORUM-21A through FORUM-21M source and contract records do not claim
+successful verifier, SQLite, PostgreSQL, Cargo, formatting, workflow or CI
+execution. The canonical task remains `planned` until the remaining workflows
+and maintainer evidence are complete.
 
 ## `FORUM-22` — topic kinds and scheduled policies
 
