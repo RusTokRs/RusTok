@@ -183,6 +183,23 @@ write transaction. Same-category behavior uses one category scope and emits one
 category invalidation; cross-category behavior uses two distinct category scopes
 and emits both category invalidations.
 
+## Cross-category redirect-edge guard
+
+The historical canonical-resolution trigger required the source tombstone and
+retained target to share the receipt category. FORUM-21M adds:
+
+```text
+m20260803_000019_allow_cross_category_topic_merge_redirect_edges
+```
+
+The migration replaces only that trigger predicate for PostgreSQL and SQLite.
+The source must still be a tenant-owned, non-deleted, archived, locked,
+zero-reply tombstone, but its original category may differ from the receipt
+category. The retained target must still be non-deleted, non-archived and belong
+to the receipt category. The unique source edge, append-only receipt, receipt
+schema and bounded canonical traversal remain unchanged. Rollback restores the
+same-category source predicate.
+
 ## Accepted-solution policy
 
 The ordinary outcome matrix is unchanged across category boundaries:
@@ -264,8 +281,10 @@ category-counter transfer, solution/statistic/event/receipt/audit/invalidation.
 ## Canonical reads and REST redirect
 
 `m20260803_000017_add_forum_topic_canonical_resolution` keeps the immutable
-receipt as the only canonical edge. Traversal is bounded to 32 hops and rejects
-duplicate/cyclic/ambiguous history with
+receipt as the only canonical edge. Migration 19 only allows that existing edge
+to originate from an archived source in another category; it does not add a
+parallel alias store or another read lane. Traversal remains bounded to 32 hops
+and rejects duplicate/cyclic/ambiguous history with
 `FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT`.
 
 The existing ID route behaves as follows:
@@ -317,11 +336,12 @@ a GraphQL schema change.
 target-only preservation, strict competing conflict, replay, append-only receipt
 and database solution guards.
 
-`topic_merge_cross_category_sqlite` covers checked source/target category
-ownership, unchanged category topic counts, exact published-reply aggregate
-transfer, retained source and target category IDs, four projection invalidation
-targets, exact schema-version-1 payload, exact replay and full rollback on source
-category aggregate drift.
+`topic_merge_cross_category_sqlite` applies the real migration chain through
+migration 19 and covers checked source/target category ownership, unchanged
+category topic counts, exact published-reply aggregate transfer, retained source
+and target category IDs, four projection invalidation targets, exact
+schema-version-1 payload, exact replay and full rollback on source category
+aggregate drift.
 
 `topic_merge_solution_resolution_sqlite` covers source and target winners,
 marker metadata, exact losing-author statistics, exact schema-version-1 merge
