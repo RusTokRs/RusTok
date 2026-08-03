@@ -31,10 +31,12 @@ documentation for this module must live inside the crate, not spread across
   artifact permission vocabulary. One language-neutral definition owns scope,
   installation, module, release and permission identity; localized labels and
   descriptions live in the owner translation table with `VARCHAR(32)` locale
-  storage. Registration is idempotent and never writes `roles` or
-  `role_permissions`. Its owner migrations are aggregated by
-  `rustok-migrations::Migrator`, the installer and the CLI schema path used by
-  production hosts;
+  storage. Registration normalizes every locale through
+  `rustok_api::normalize_locale_tag`, rejects semantic duplicates after
+  normalization, and stores only the canonical tag. Registration is idempotent
+  and never writes `roles` or `role_permissions`. Its owner migrations are
+  aggregated by `rustok-migrations::Migrator`, the installer and the CLI schema
+  path used by production hosts;
 - `RbacArtifactPermissionAssignmentService` owns explicit, idempotent
   tenant-role grants and revocations for that vocabulary in
   `rbac_artifact_role_permissions`. Grants and operation receipts reference the
