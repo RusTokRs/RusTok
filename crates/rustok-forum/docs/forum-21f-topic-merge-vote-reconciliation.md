@@ -40,8 +40,8 @@ Reconciliation uses voter identity rather than score arithmetic:
 
 - a source-only vote moves to the retained target with the same `user_id`,
   `value`, `created_at` and `updated_at`;
-- when source and target votes have the same value, the target row remains
-  authoritative and the source duplicate is deleted;
+- when both topics contain the same `user_id` and vote value, the target row
+  remains authoritative and the source duplicate is deleted;
 - when source and target values differ, the target row and value remain
   authoritative and the source conflict is deleted;
 - target-only rows are unchanged;
