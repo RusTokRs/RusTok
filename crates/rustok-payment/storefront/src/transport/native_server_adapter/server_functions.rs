@@ -15,12 +15,13 @@ const PAYMENT_STOREFRONT_NATIVE_OWNER: &str = "rustok_payment.storefront";
 const PAYMENT_STOREFRONT_NATIVE_BOUNDARY: &str = "payment_storefront_native_transport";
 
 #[cfg(feature = "ssr")]
-fn map_request_context_error<E: std::fmt::Debug>(
+fn map_request_context_error<E>(
     owner_operation: &'static str,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation,
         code = "payment.storefront_request_context_unavailable",
@@ -31,18 +32,23 @@ fn map_request_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn map_tenant_context_error<E: std::fmt::Debug>(
+fn map_tenant_context_error<E>(
     request_context: &rustok_api::RequestContext,
     owner_operation: &'static str,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation,
-        channel_id = ?request_context.channel_id,
-        channel_slug = ?request_context.channel_slug,
-        locale = %request_context.locale,
+        correlation_id = %request_context.correlation_id,
+        channel_id_present = request_context.channel_id.is_some(),
+        channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
+        channel_slug_present = request_context.channel_slug.is_some(),
+        channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count()),
+        locale_present = !request_context.locale.trim().is_empty(),
+        locale_length = request_context.locale.chars().count(),
         code = "payment.storefront_tenant_context_unavailable",
         boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
         "payment storefront tenant context extraction failed"
@@ -51,20 +57,25 @@ fn map_tenant_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn map_auth_context_error<E: std::fmt::Debug>(
+fn map_auth_context_error<E>(
     request_context: &rustok_api::RequestContext,
     tenant_id: Uuid,
     owner_operation: &'static str,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation,
-        tenant_id = %tenant_id,
-        channel_id = ?request_context.channel_id,
-        channel_slug = ?request_context.channel_slug,
-        locale = %request_context.locale,
+        correlation_id = %request_context.correlation_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        channel_id_present = request_context.channel_id.is_some(),
+        channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
+        channel_slug_present = request_context.channel_slug.is_some(),
+        channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count()),
+        locale_present = !request_context.locale.trim().is_empty(),
+        locale_length = request_context.locale.chars().count(),
         code = "payment.storefront_auth_context_unavailable",
         boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
         "payment storefront authentication context extraction failed"
@@ -73,22 +84,27 @@ fn map_auth_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn map_owner_runtime_error<E: std::fmt::Debug>(
+fn map_owner_runtime_error<E>(
     request_context: &rustok_api::RequestContext,
     tenant_id: Uuid,
     owner_operation: &'static str,
     code: &'static str,
     public_message: &'static str,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation,
-        tenant_id = %tenant_id,
-        channel_id = ?request_context.channel_id,
-        channel_slug = ?request_context.channel_slug,
-        locale = %request_context.locale,
+        correlation_id = %request_context.correlation_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        channel_id_present = request_context.channel_id.is_some(),
+        channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
+        channel_slug_present = request_context.channel_slug.is_some(),
+        channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count()),
+        locale_present = !request_context.locale.trim().is_empty(),
+        locale_length = request_context.locale.chars().count(),
         code,
         boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
         "payment storefront owner runtime call failed"
@@ -308,10 +324,14 @@ fn checkout_runtime(
             tracing::error!(
                 owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
                 owner_operation,
-                tenant_id = %tenant_id,
-                channel_id = ?request_context.channel_id,
-                channel_slug = ?request_context.channel_slug,
-                locale = %request_context.locale,
+                correlation_id = %request_context.correlation_id,
+                tenant_id_non_nil = !tenant_id.is_nil(),
+                channel_id_present = request_context.channel_id.is_some(),
+                channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
+                channel_slug_present = request_context.channel_slug.is_some(),
+                channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count()),
+                locale_present = !request_context.locale.trim().is_empty(),
+                locale_length = request_context.locale.chars().count(),
                 code = "payment.storefront_runtime_unavailable",
                 boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
                 "payment storefront TransactionalEventBus is unavailable"
