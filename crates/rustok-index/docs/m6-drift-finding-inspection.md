@@ -8,7 +8,7 @@ Status: `source_complete_server_authorized_snapshot_reader_and_repair_pending`.
 
 The adapter accepts one non-nil tenant UUID and one non-nil finding UUID. Its query is restricted to that exact pair and `state = 'open'`. Resolved, ignored, cross-tenant, and unknown findings return no inspection.
 
-This slice consumes the canonical findings table. The separate `PostgresIndexDriftFindingWriter` persists already-computed bounded digest mismatches for both locale-bearing and locale-free entity keys. The database-neutral producer compares typed snapshot views and delegates unequal digests, while authoritative production snapshot capture and repair remain separate boundaries.
+This slice consumes the canonical findings table. The separate `PostgresIndexDriftFindingWriter` can now persist already-computed bounded digest mismatches for both locale-bearing and locale-free entity keys. The database-neutral producer compares typed snapshot views and delegates unequal digests, while authoritative production snapshot capture and repair remain separate boundaries.
 
 ## Returned contract
 
@@ -58,7 +58,7 @@ Missing request authority and `modules:read` fail before nil-finding validation 
 
 The server returns only `Option<IndexDriftFindingInspection>`. It contains no direct SQL, does not decode or copy raw `details`, and exposes neither the adapter nor the database connection. GraphQL, HTTP, CLI, MCP, native admin, and other transports remain open.
 
-The writer and digest producer are not composed into this server runtime.
+The writer is not composed into this server runtime. The digest producer is also not composed into this server runtime.
 
 ## Repair boundary
 
@@ -87,7 +87,7 @@ No automatic finding closure or mutation is allowed from inspection alone. Write
 - retained PostgreSQL authorization, inspection, diagnosis, writer, migration, repair, and concurrency evidence;
 - public/admin command transport.
 
-The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open. Current source establishes bounded digest production, persistence, read-only inspection, locale-complete entity scope, and internal request-bound inspection authorization only.
+The former open item `authoritative source/index digest computation and producer composition` has narrowed to production snapshot-reader composition. The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open. Current source establishes bounded digest production, persistence, read-only inspection, locale-complete entity scope, and internal request-bound inspection authorization only.
 
 ## Validation ownership
 
