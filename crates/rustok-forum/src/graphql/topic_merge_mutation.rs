@@ -144,7 +144,6 @@ impl From<ForumTopicMergeResult> for GqlForumTopicMerge {
 mod tests {
     use std::sync::Arc;
 
-    use async_graphql::Value;
     use rustok_api::{AuthContext, Permission, TenantContext};
     use rustok_core::{MigrationSource, SecurityContext, UserRole};
     use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
@@ -389,7 +388,6 @@ mod tests {
         assert_eq!(first.position_offset, 0);
         assert!(!first.merged_at.is_empty());
 
-        let _ = Value::Null;
         Ok(())
     }
 }
