@@ -43,7 +43,10 @@ forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integri
 
 requireAll(catalogMigration, [
   "CREATE TABLE rbac_artifact_permission_definitions",
+  "UNIQUE (id, scope_key)",
   "UNIQUE (scope_key, installation_id, permission_key)",
+  "CREATE TRIGGER rbac_artifact_permission_definitions_immutable",
+  "rustok_reject_artifact_permission_definition_update",
   "CREATE TABLE rbac_artifact_permission_translations",
   "locale VARCHAR(32) NOT NULL",
   "REFERENCES rbac_artifact_permission_definitions (id)",
@@ -53,10 +56,12 @@ forbidAll(catalogMigration, ["CREATE TABLE rbac_artifact_permission_catalog"]);
 requireAll(grantMigration, [
   "uq_rbac_roles_tenant_id_id",
   "uq_rbac_users_tenant_id_id",
+  "permission_scope_key TEXT NOT NULL",
+  "permission_scope_key = 'platform' OR permission_scope_key = 'tenant:'",
   "FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id)",
   "FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id)",
   "FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id)",
-  "FOREIGN KEY (artifact_permission_id) REFERENCES rbac_artifact_permission_definitions (id)",
+  "FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key)",
   "UNIQUE (tenant_id, role_id, artifact_permission_id)",
 ]);
 forbidAll(grantMigration, [
@@ -72,9 +77,12 @@ requireAll(catalog, [
   "localization.locale.len() > 32",
 ]);
 requireAll(owner, [
-  "resolve_artifact_permission_id(&transaction, &command).await?",
-  "artifact_permission_id: Uuid",
-  "INNER JOIN rbac_artifact_permission_definitions apd",
+  "struct ArtifactPermissionIdentity",
+  "resolve_artifact_permission_identity(&transaction, &command).await?",
+  "SELECT id, scope_key FROM rbac_artifact_permission_definitions",
+  "permission_scope_key: String",
+  "permission_scope_key != artifact_permission.scope_key",
+  "INNER JOIN rbac_artifact_permission_definitions apd ON apd.id = arp.artifact_permission_id AND apd.scope_key = arp.permission_scope_key",
   "ORDER BY CASE WHEN scope_key = {tenant_scope} THEN 0 ELSE 1 END",
   "ON CONFLICT (tenant_id, role_id, artifact_permission_id) DO NOTHING",
 ]);
@@ -82,15 +90,17 @@ forbidAll(owner, ["permission_is_registered", "rbac_artifact_permission_catalog"
 
 requireAll(sqliteProof, [
   "artifact integrity must remain consolidated in canonical migrations",
-  "database_rejects_cross_tenant_and_orphan_artifact_state",
+  "database_rejects_cross_tenant_scope_and_orphan_artifact_state",
   "PRAGMA foreign_keys = ON",
-  "rbac_artifact_permission_definitions",
-  "rbac_artifact_permission_translations",
+  "permission_scope_key",
+  "platform permission may be granted in any tenant",
+  "foreign-scope-op",
   "UPDATE roles SET tenant_id",
   "UPDATE users SET tenant_id",
   "DELETE FROM roles WHERE id",
   "DELETE FROM users WHERE id",
   "UPDATE rbac_artifact_permission_definitions SET permission_key",
+  "UPDATE rbac_artifact_permission_definitions SET scope_key",
   "DELETE FROM rbac_artifact_permission_definitions",
 ]);
 
