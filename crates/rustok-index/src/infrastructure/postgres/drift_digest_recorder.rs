@@ -12,7 +12,6 @@ use super::drift_finding_writer::{
 };
 
 const CHECK_NAME: &str = "source_index_digest_mismatch";
-const LOCALE_SCOPE_UNSUPPORTED: &str = "index_drift_locale_free_scope_unsupported";
 const REQUEST_REJECTED: &str = "index_drift_finding_request_rejected";
 const STORAGE_FAILED: &str = "index_drift_finding_storage_failed";
 const BACKEND_UNSUPPORTED: &str = "index_drift_finding_backend_unsupported";
@@ -25,18 +24,22 @@ impl IndexDriftMismatchRecorder for PostgresIndexDriftFindingWriter {
         mismatch: &IndexDriftDigestMismatch,
     ) -> Result<IndexDriftMismatchReceipt, IndexDriftDependencyFailure> {
         let key = mismatch.key();
-        let Some(locale) = key.locale.clone() else {
-            return Err(permanent_failure(LOCALE_SCOPE_UNSUPPORTED));
+        let scope = match key.locale.clone() {
+            Some(locale) => IndexDriftFindingScope::Entity {
+                schema: key.schema.clone(),
+                entity_id: key.entity_id,
+                locale,
+            },
+            None => IndexDriftFindingScope::EntityWithoutLocale {
+                schema: key.schema.clone(),
+                entity_id: key.entity_id,
+            },
         };
         let request = IndexDriftDigestFindingRequest::new(
             key.tenant_id,
             CHECK_NAME,
             IndexDriftFindingSeverity::Error,
-            IndexDriftFindingScope::Entity {
-                schema: key.schema.clone(),
-                entity_id: key.entity_id,
-                locale,
-            },
+            scope,
             mismatch.source_digest(),
             mismatch.materialized_digest(),
         )
