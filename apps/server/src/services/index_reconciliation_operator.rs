@@ -68,21 +68,24 @@ pub enum IndexReconciliationOperatorError {
     #[error(transparent)]
     Inspection(#[from] rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError),
     #[error(transparent)]
+    DriftInspection(#[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError),
+    #[error(transparent)]
     Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),
 }
 
 /// Server-owned guarded operator boundary over the canonical PostgreSQL Index reconciliation
-/// runner, bounded dead-letter inspector, and audited recovery store.
+/// runner, bounded dead-letter and drift-finding inspectors, and audited recovery store.
 ///
 /// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
 /// accepts only `modules:manage`, rejects cross-tenant run requests before database access, derives
-/// cancellation, inspection, and recovery tenant scope from the authorized context, binds recovery
-/// actor identity to that same context, and exposes no connection, source registry, scheduler, task
-/// handle, or worker-spawn capability.
+/// cancellation, inspection, drift-diagnosis, and recovery tenant scope from the authorized
+/// context, binds recovery actor identity to that same context, and exposes no connection, source
+/// registry, scheduler, task handle, or worker-spawn capability.
 #[derive(Clone)]
 pub struct IndexReconciliationOperatorRuntime {
     inner: rustok_index::PostgresIndexReconciliationRunner,
     dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
+    drift_findings: rustok_index::infrastructure::postgres::PostgresIndexDriftFindingInspector,
     recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
 }
 
@@ -90,11 +93,13 @@ impl IndexReconciliationOperatorRuntime {
     fn new(
         inner: rustok_index::PostgresIndexReconciliationRunner,
         dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
+        drift_findings: rustok_index::infrastructure::postgres::PostgresIndexDriftFindingInspector,
         recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
     ) -> Self {
         Self {
             inner,
             dead_letters,
+            drift_findings,
             recovery,
         }
     }
@@ -137,6 +142,21 @@ impl IndexReconciliationOperatorRuntime {
         context.authorize_for(context.tenant_id())?;
         self.dead_letters
             .inspect(context.tenant_id(), job_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn inspect_drift_finding(
+        &self,
+        context: IndexReconciliationOperatorContext,
+        finding_id: Uuid,
+    ) -> std::result::Result<
+        Option<rustok_index::infrastructure::postgres::IndexDriftFindingInspection>,
+        IndexReconciliationOperatorError,
+    > {
+        context.authorize_for(context.tenant_id())?;
+        self.drift_findings
+            .inspect(context.tenant_id(), finding_id)
             .await
             .map_err(Into::into)
     }
@@ -212,11 +232,14 @@ pub(super) fn materialize_index_reconciliation_operator(
         rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector::new(
             db.clone(),
         );
+    let drift_findings =
+        rustok_index::infrastructure::postgres::PostgresIndexDriftFindingInspector::new(db.clone());
     let runner =
         rustok_index::PostgresIndexReconciliationRunner::new(db, sources, schemas.shared());
     extensions.insert(IndexReconciliationOperatorRuntime::new(
         runner,
         dead_letters,
+        drift_findings,
         recovery,
     ));
     Ok(())
@@ -526,6 +549,66 @@ mod tests {
             delegated,
             IndexReconciliationOperatorError::Inspection(
                 rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError::NilJobId
+            )
+        ));
+    }
+
+    #[tokio::test]
+    async fn drift_finding_inspection_authorizes_before_adapter_validation() {
+        let mut extensions = complete_registries();
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database without Index migrations");
+        materialize_index_reconciliation_operator(&mut extensions, db)
+            .expect("runtime materialization");
+        let runtime = extensions
+            .get::<IndexReconciliationOperatorRuntime>()
+            .cloned()
+            .expect("guarded runtime");
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+
+        let missing = runtime
+            .inspect_drift_finding(context, Uuid::nil())
+            .await
+            .expect_err("missing request authority must fail before adapter validation");
+        assert!(matches!(
+            missing,
+            IndexReconciliationOperatorError::MissingRequestAuthority
+        ));
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            runtime.inspect_drift_finding(context, Uuid::nil()),
+        )
+        .await
+        .expect_err("modules:read must not inspect drift findings");
+        assert!(matches!(
+            forbidden,
+            IndexReconciliationOperatorError::Forbidden
+        ));
+
+        let delegated = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.inspect_drift_finding(context, Uuid::nil()),
+        )
+        .await
+        .expect_err("authorized nil finding must reach bounded adapter validation");
+        assert!(matches!(
+            delegated,
+            IndexReconciliationOperatorError::DriftInspection(
+                rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError::NilFindingId
             )
         ));
     }

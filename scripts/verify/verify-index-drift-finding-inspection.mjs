@@ -119,27 +119,65 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'IndexDriftFindingSeverity, PostgresIndexDriftFindingInspector,',
 ]);
 
-const serverPath = 'apps/server/src/services/index_reconciliation_operator.rs';
-const server = read(serverPath);
-for (const premature of [
-  'PostgresIndexDriftFindingInspector',
-  'inspect_drift_finding(',
-  'IndexDriftFindingInspectionError',
+const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs';
+const operator = requireMarkers(operatorPath, [
+  'PostgresIndexDriftFindingInspector,',
+  'DriftInspection(#[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError)',
+  'pub async fn inspect_drift_finding(',
+  'Option<rustok_index::infrastructure::postgres::IndexDriftFindingInspection>',
+  'self.drift_findings',
+  '.inspect(context.tenant_id(), finding_id)',
+  'PostgresIndexDriftFindingInspector::new(db.clone())',
+  'drift_finding_inspection_authorizes_before_adapter_validation',
+  'IndexDriftFindingInspectionError::NilFindingId',
+]);
+const operatorProduction = operator.split('\n#[cfg(test)]')[0];
+const driftStart = operatorProduction.indexOf('    pub async fn inspect_drift_finding(');
+const requeueStart = operatorProduction.indexOf('    pub async fn requeue_dead_letter(', driftStart);
+if (driftStart < 0 || requeueStart <= driftStart) {
+  fail(`${operatorPath} drift inspection method segment is missing`);
+}
+const drift = operatorProduction.slice(driftStart, requeueStart);
+const authorization = drift.indexOf('context.authorize_for(context.tenant_id())?;');
+const delegation = drift.indexOf('.inspect(context.tenant_id(), finding_id)');
+if (drift.includes('tenant_id: Uuid') || authorization < 0 || delegation <= authorization) {
+  fail(`${operatorPath} drift inspection must authorize before tenant-bound delegation`);
+}
+for (const forbidden of [
+  'SELECT ',
+  'INSERT ',
+  'UPDATE ',
+  'DELETE ',
+  'details',
+  'first_detected_at',
+  'last_detected_at',
+  'closed_at',
+  'PostgresMutationStore',
+  'repair_finding',
+  'resolve_finding',
 ]) {
-  if (server.includes(premature)) {
-    fail(`${serverPath} prematurely publishes drift inspection marker ${premature}`);
+  if (drift.includes(forbidden)) {
+    fail(`${operatorPath} drift inspection contains forbidden marker ${forbidden}`);
   }
 }
 
 requireMarkers('crates/rustok-index/docs/m6-drift-finding-inspection.md', [
-  'Status: `source_complete_server_authorization_and_repair_pending`.',
+  'Status: `source_complete_server_authorized_repair_pending`.',
   '`PostgresIndexDriftFindingInspector`',
   "`state = 'open'`",
   'raw `details` JSON',
+  '`inspect_drift_finding(context, finding_id)`',
+  'requires effective `modules:manage`',
+  'Missing request authority and `modules:read` fail before nil-finding validation or database access.',
   'No automatic finding closure or mutation is allowed from inspection alone.',
-  'request-bound server authorization and internal operator composition',
   'The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open.',
   'maintainer-run',
+]);
+requireMarkers('apps/server/docs/index-reconciliation-operator-runtime.md', [
+  '`PostgresIndexDriftFindingInspector` for bounded read-only open-finding diagnosis',
+  '`inspect_drift_finding(context, finding_id)`',
+  'Both inspection methods and requeue authorize before adapter or recovery-request validation',
+  'Drift inspection is read-only and is not scheduled.',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
   '[M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)',
@@ -150,6 +188,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-drift-finding-inspection.mjs'",
+  "'verify-index-server-reconciliation-guard.mjs'",
 ]);
 
 console.log('[verify-index-drift-finding-inspection] OK');
