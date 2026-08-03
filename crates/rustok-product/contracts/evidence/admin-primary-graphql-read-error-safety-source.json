@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-30T19:26:00Z",
+  "generated_at_utc": "2026-08-03T08:53:00Z",
   "status": "product_admin_primary_graphql_read_error_safety_source_unvalidated",
-  "scope": "Product Admin primary GraphQL read public envelopes",
+  "scope": "Product Admin primary GraphQL read public and private diagnostic envelopes",
   "operations": [
     "fetch_bootstrap",
     "fetch_products",
@@ -27,7 +27,9 @@
     "graphql_static_public_envelope": true,
     "raw_http_status_public": false,
     "raw_graphql_message_public": false,
-    "private_typed_error_diagnostics": true,
+    "complete_typed_error_logged": false,
+    "error_payload_shape_only": true,
+    "private_typed_error_classification": true,
     "safe_request_shape_only": true,
     "product_list_native_first_preserved": true,
     "product_list_graphql_fallback_preserved": true,
@@ -57,20 +59,22 @@
     "currency_code_present",
     "currency_code_length",
     "native_fallback_attempted",
+    "error_payload_present",
+    "error_payload_length",
     "error_kind",
     "code",
-    "boundary",
-    "private_typed_graphql_error"
+    "boundary"
   ],
   "forbidden_public_or_structured_values": [
-    "token",
-    "tenant_slug",
-    "tenant_id",
-    "product_id",
-    "locale",
-    "search",
-    "status",
-    "currency_code",
+    "token value",
+    "tenant slug value",
+    "tenant id value",
+    "product id value",
+    "locale value",
+    "search value",
+    "status value",
+    "currency code value",
+    "complete GraphqlHttpError Debug payload",
     "HTTP status text",
     "GraphQL server message"
   ],
@@ -82,16 +86,18 @@
     "product-list GraphQL fallback",
     "selected-product and pricing request shapes",
     "shipping-profile request shape",
-    "UI resource composition"
+    "UI resource composition",
+    "technical versus ordinary severity"
   ],
   "remaining_scope": [
-    "Product Admin category-bound GraphQL fallback reads",
     "Product Admin GraphQL writes and status mutations",
     "Product Admin browser and mounted transport evidence",
     "remaining ecommerce non-PortError public envelopes"
   ],
   "suggested_execution": [
+    "node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
     "node scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-category-read-error-safety.mjs",
     "node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
     "node scripts/verify/verify-product-admin-boundary.mjs",
     "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
@@ -104,6 +110,7 @@
     "cargo_run": false,
     "format_run": false,
     "focused_verifier_run": false,
+    "category_read_verifier_run": false,
     "catalog_options_verifier_run": false,
     "aggregate_verifier_run": false,
     "broad_ecommerce_verifier_run": false,

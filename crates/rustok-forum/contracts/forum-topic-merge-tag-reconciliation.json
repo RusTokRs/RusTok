@@ -1,0 +1,98 @@
+{
+  "contract": "forum_topic_merge_tag_reconciliation_v1",
+  "task": "FORUM-21E",
+  "parent_task": "FORUM-21",
+  "depends_on": "FORUM-21B",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution",
+  "scope": "bounded_post_merge_topic_tag_union",
+  "owner_service": "ForumTopicMergeTagReconciliationService",
+  "input": "ReconcileForumTopicMergeTagsInput",
+  "result": "ForumTopicMergeTagReconciliationResult",
+  "migration": "m20260803_000013_add_forum_topic_merge_tag_reconciliations",
+  "receipt_table": "forum_topic_merge_tag_reconciliations",
+  "source_merge_receipt_table": "forum_topic_merge_operations",
+  "semantic_event": {
+    "journal": "forum_domain_events",
+    "event_type": "forum.topic.merge_tags_reconciled",
+    "schema_version": 1,
+    "aggregate_is_retained_target": true,
+    "event_id_equals_operation_id": true,
+    "shared_rustok_events_contract_changed": false
+  },
+  "projection_repair": {
+    "source_topic_invalidation": true,
+    "target_topic_invalidation": true,
+    "same_owner_transaction": true,
+    "reason": "forum tags are search projection facets"
+  },
+  "required_permissions": [
+    "forum_topics:manage"
+  ],
+  "bounds": {
+    "reason_max_characters": 500,
+    "ordinary_topic_tags_max": 100,
+    "source_tag_rows_max": 500,
+    "one_merge_receipt_per_reconciliation": true,
+    "one_reconciliation_per_merge_receipt": true
+  },
+  "set_union_policy": {
+    "source_only": "move_row_to_target_preserving_row_id_term_id_and_created_at",
+    "source_and_target_same_term": "delete_source_and_preserve_target_row",
+    "target_only": "unchanged",
+    "source_after_reconciliation": "zero_rows"
+  },
+  "transactional_invariants": [
+    "the command requires non-nil tenant reconciliation operation merge operation and human actor identities",
+    "the normalized reason is non-empty bounded to 500 characters and contains no control characters",
+    "reconciliations are serialized per tenant before immutable reconciliation receipt lookup",
+    "an exact existing reconciliation receipt is resolved before current merge or tag state",
+    "reusing a reconciliation operation identifier with a different merge actor or reason fails with FORUM_TOPIC_MERGE_TAG_RECONCILIATION_CONFLICT",
+    "one merge receipt may have at most one tag reconciliation receipt",
+    "the referenced immutable FORUM-21B merge receipt and its forum.topic.merged semantic event must match exactly",
+    "source and target topic rows are locked in deterministic UUID order before sorted per-topic tag scopes",
+    "the source must be the archived locked merge tombstone and the retained target must remain non-archived in the recorded category",
+    "the source tag set is bounded to at most 500 rows and ordered by term identity then row identity",
+    "source-only rows move by topic identity replacement while preserving row id term id tenant and creation time",
+    "when both topics contain the same term the target row remains authoritative and only the source duplicate is deleted",
+    "the source has zero topic tag rows before semantic event receipt and projection invalidation insertion",
+    "source count equals moved source-only plus deduplicated existing counts",
+    "semantic event receipt row moves deletions and source and target projection invalidations commit in one transaction",
+    "exact replay locks source and target tag scopes proves source emptiness and creates no additional event receipt mutation or projection invalidation"
+  ],
+  "ordinary_write_hardening": [
+    "topic tag replacement is bounded to 100 normalized tags",
+    "topic tag replacement locks the non-deleted topic row before the per-topic tag scope",
+    "topic tag replacement and direct insert or update reject archived topics",
+    "PostgreSQL service and database tag mutations share deterministic advisory tag scopes while SQLite uses durable lock rows plus writer serialization"
+  ],
+  "database_guards": [
+    "tenant-composite foreign keys bind reconciliation to merge receipt source target and actor",
+    "one tenant merge operation has at most one tag reconciliation receipt",
+    "operation event merge source target and actor identities are non-nil",
+    "source and target topics differ and event_id equals operation_id",
+    "reason and all classified counts are bounded",
+    "source count equals moved plus deduplicated counts",
+    "topic tag inserts and updates targeting archived topics are rejected for PostgreSQL and SQLite",
+    "reconciliation receipt updates and deletes are rejected for PostgreSQL and SQLite"
+  ],
+  "test": "crates/rustok-forum/tests/topic_merge_tag_reconciliation_sqlite.rs",
+  "verifier": "scripts/verify/verify-forum-topic-merge-tag-reconciliation.mjs",
+  "documentation": "crates/rustok-forum/docs/forum-21e-topic-merge-tag-reconciliation.md",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-merge-tag-reconciliation.mjs",
+    "cargo test -p rustok-forum --test topic_merge_tag_reconciliation_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
+    "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution",
+    "this slice does not add public REST GraphQL native admin or storefront reconciliation transport",
+    "this slice does not add canonical aliases redirects or route tombstones",
+    "this slice does not reconcile topic votes topic-level audience relations notification state or accepted solutions",
+    "this slice does not delete or merge taxonomy terms and changes only forum-owned topic-term relations",
+    "this slice does not support cross-category merge split fork or reply-range operations",
+    "this slice does not provide PostgreSQL concurrency runtime evidence",
+    "this slice is not sufficient to mark FORUM-21 done"
+  ]
+}

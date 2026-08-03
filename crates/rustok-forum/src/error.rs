@@ -76,6 +76,9 @@ pub enum ForumError {
     #[error("Forum topic merge subscription reconciliation conflicts with an existing command: {0}")]
     TopicMergeSubscriptionReconciliationConflict(Uuid),
 
+    #[error("Forum topic merge tag reconciliation conflicts with an existing command: {0}")]
+    TopicMergeTagReconciliationConflict(Uuid),
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -149,6 +152,9 @@ impl ForumError {
             }
             Self::TopicMergeSubscriptionReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_SUBSCRIPTION_RECONCILIATION_CONFLICT"
+            }
+            Self::TopicMergeTagReconciliationConflict(_) => {
+                "FORUM_TOPIC_MERGE_TAG_RECONCILIATION_CONFLICT"
             }
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",

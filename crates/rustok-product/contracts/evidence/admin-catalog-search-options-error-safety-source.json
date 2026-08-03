@@ -1,15 +1,17 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-30T19:18:00Z",
+  "generated_at_utc": "2026-08-03T08:35:00Z",
   "status": "product_admin_catalog_search_options_error_safety_source_unvalidated",
-  "scope": "Product Admin catalog search-options GraphQL fallback public String envelope",
+  "scope": "Product Admin catalog search-options GraphQL fallback public String and private diagnostic envelope",
   "operation": "fetch_catalog_search_options",
   "boundary": "product_admin_catalog_search_options_graphql_fallback",
   "public_message": "Product catalog search options are temporarily unavailable",
   "source_contract": {
     "native_first_preserved": true,
     "graphql_bootstrap_categories_attributes_order_preserved": true,
-    "legacy_raw_error_capture_private": true,
+    "legacy_raw_error_capture_private": false,
+    "raw_error_shape_only": true,
+    "raw_graphql_error_logged": false,
     "raw_graphql_error_public": false,
     "unique_correlation_id": true,
     "safe_request_shape_only": true,
@@ -28,9 +30,10 @@
     "tenant_slug_present",
     "tenant_slug_length",
     "locale_length",
+    "raw_error_present",
+    "raw_error_length",
     "stable_code",
-    "boundary",
-    "private_raw_graphql_error"
+    "boundary"
   ],
   "forbidden_public_or_structured_values": [
     "authentication token",
@@ -40,7 +43,8 @@
     "category ids",
     "attribute codes",
     "GraphQL server error message",
-    "HTTP status text"
+    "HTTP status text",
+    "complete GraphQL or transport error payload"
   ],
   "preserved": [
     "native catalog search-options attempt remains first",

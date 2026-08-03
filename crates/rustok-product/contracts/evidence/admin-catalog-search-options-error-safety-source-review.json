@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-07-30T19:18:00Z",
-  "review_base": "1c27a58320db2d91179beabfda064f22bcf82619",
+  "reviewed_at_utc": "2026-08-03T08:35:00Z",
+  "review_base": "725700addfab58b7ad32b00ae166a2f86482fbe0",
   "status": "product_admin_catalog_search_options_error_safety_source_reviewed_unvalidated",
-  "scope": "Product Admin catalog search-options public error boundary",
+  "scope": "Product Admin catalog search-options public error and private diagnostic boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-product/docs/implementation-plan.md",
@@ -14,28 +14,29 @@
     "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
     "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
     "crates/rustok-product/admin/src/ui/catalog_admin.rs",
-    "scripts/verify/verify-product-admin-boundary.mjs"
+    "scripts/verify/verify-product-admin-boundary.mjs",
+    "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs"
   ],
   "findings": [
     {
       "id": "catalog-options-public-string-cause",
+      "severity": "preserved_closed",
+      "finding": "The Product Admin catalog search-options wrapper already replaces three GraphQL String handoffs with one static public message, so GraphQL server messages, HTTP status text, and transport classification do not cross the public UI resource boundary."
+    },
+    {
+      "id": "catalog-options-private-raw-error",
       "severity": "confirmed",
-      "finding": "The Product Admin catalog search-options fallback converted three GraphQL failures with err.to_string() and returned the resulting String to the UI resource boundary. GraphQL server messages, HTTP status text, or transport classification could therefore become the public error value."
+      "finding": "Current main still writes the complete captured GraphQL String through raw_error = %raw_error in structured tracing. The focused verifier and retained evidence explicitly required that payload even though correlation, stable classification, and error shape are sufficient."
+    },
+    {
+      "id": "bounded-private-diagnostics",
+      "severity": "selected",
+      "finding": "The smallest compatible correction keeps the existing String handoff and public result type but records only raw-error presence and character length with the existing correlation and bounded request shape."
     },
     {
       "id": "native-first-sequence",
       "severity": "preserved",
       "finding": "The native search-options endpoint remains the first attempt. Only after native failure does the legacy fallback load bootstrap, categories, and attributes in that order."
-    },
-    {
-      "id": "smallest-compatible-boundary",
-      "severity": "selected",
-      "finding": "The crate-root catalog transport wrapper is the smallest compatible public boundary because it receives the final String after the existing fallback sequence without changing owner calls, projections, or the UI result type."
-    },
-    {
-      "id": "private-cause-safe-shape",
-      "severity": "confirmed",
-      "finding": "The wrapper retains the captured String only in private tracing with a unique correlation id and token/tenant/locale shape facts. It exposes one static public message and does not log request values."
     },
     {
       "id": "remaining-product-admin-scope",
@@ -44,7 +45,6 @@
     }
   ],
   "changed_files_expected": [
-    "crates/rustok-product/admin/Cargo.toml",
     "crates/rustok-product/admin/src/catalog_transport.rs",
     "crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json",
     "crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json",
@@ -57,6 +57,7 @@
     "search-option projection and labels",
     "UI resource call shape",
     "ProductCatalogSearchOptions DTO",
+    "static public error message",
     "no fallback or retry expansion"
   ],
   "remaining_scope": [

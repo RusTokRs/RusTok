@@ -1,5 +1,6 @@
 mod aggregate_ordering;
 mod cursor;
+mod mutation_event;
 mod planner;
 mod postgres_compiler;
 mod postgres_query_result;
@@ -11,6 +12,7 @@ mod source_event_id;
 mod source_registry;
 mod source_replay;
 mod source_schema_registry;
+mod source_timeout;
 mod validation;
 
 #[cfg(test)]
@@ -32,6 +34,13 @@ mod source_replay_tests;
 
 pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
+pub use mutation_event::{
+    IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
+    IndexMutationEventCatalog, IndexMutationEventDelivery, IndexMutationEventDescriptor,
+    IndexMutationEventError, IndexMutationEventProcessError, IndexMutationEventProcessOutcome,
+    IndexMutationEventWorker, IndexMutationEventAcknowledger, SharedIndexMutationEventRegistry,
+    materialize_index_mutation_event_registry, register_index_mutation_event,
+};
 pub use planner::{
     ExecutableQueryPlan, PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder,
     QueryPlanError, QueryPlanFingerprint,
@@ -61,7 +70,7 @@ pub use source_registry::{
     IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
     IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
     IndexSourcePage, IndexSourceScanRequest, SharedIndexSourceRegistry,
-    materialize_index_source_registry, register_index_source,
+    materialize_index_source_registry,
 };
 pub use source_replay::{
     IndexReplayCheckpoint, IndexReplayCheckpointKey, IndexReplayCheckpointStore, IndexReplayError,
@@ -73,4 +82,5 @@ pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,
     SharedIndexSchemaRegistry, materialize_index_schema_registry, register_index_schema_source,
 };
+pub use source_timeout::register_index_source;
 pub use validation::{QueryValidationError, RecordValidationError};

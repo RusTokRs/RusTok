@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens the final public error envelope for four Product Admin mutations:
+This slice covers the public and private diagnostic envelopes for four Product Admin mutations:
 
 - `create_product`;
 - `update_product`;
@@ -18,22 +18,26 @@ The boundary lives in:
 
 The GraphQL mutation documents, variables, input builders, response DTOs and Product owner policy are unchanged.
 
-## Confirmed gap
+## Confirmed diagnostic gap
 
-The four primary product commands delegated directly through the compatibility transport to the GraphQL adapter.
+The four operations already used a Product-owned public mapper. `Http(String)` and
+`Graphql(String)` were replaced with static Product Admin messages before crossing the facade.
 
-`GraphqlHttpError::Http(String)` can contain HTTP status text and
-`GraphqlHttpError::Graphql(String)` can contain the first GraphQL server message. Those payloads could therefore reach Product Admin UI command errors.
+The same mapper still emitted `raw_error = ?error` in private structured tracing. A backend-controlled
+HTTP status or GraphQL server message could therefore be copied in full into the diagnostic event even
+though the public envelope was safe.
 
 ## Boundary placement
 
-A `GraphqlMutationContext` is created before each selected compatibility transport call. The wrapper maps only a final returned `GraphqlHttpError`.
+A `GraphqlMutationContext` remains created before each selected compatibility transport call. The
+wrapper still maps only a final returned `GraphqlHttpError`.
 
-No retry, fallback, extra owner call, mutation document, variable or response mapping is introduced.
+No retry, fallback, extra owner call, mutation document, variable, response mapping or public type is
+introduced.
 
 ## Public policy
 
-The result error type remains `GraphqlHttpError`.
+The result error type and messages remain unchanged.
 
 | Captured condition | Public error |
 | --- | --- |
@@ -42,11 +46,16 @@ The result error type remains `GraphqlHttpError`.
 | Unauthorized | `Unauthorized` |
 | GraphQL rejection | `GraphQL error: Product admin request could not be completed` |
 
-`Network` and `Unauthorized` remain fixed non-identifying variants. HTTP status text and GraphQL server messages are replaced with static Product Admin messages.
+`Network` and `Unauthorized` remain fixed non-identifying variants. HTTP status text and GraphQL server
+messages remain absent from the public result.
 
 ## Internal diagnostics
 
-The original typed error remains available only to private tracing. Each event records:
+The mapper preserves typed variant classification, stable code, technical-versus-ordinary severity and
+correlation. It no longer writes the complete `GraphqlHttpError` Debug representation.
+
+For `Http` and `Graphql`, tracing retains only payload presence and character length. `Network` and
+`Unauthorized` retain no invented payload. Each event also records:
 
 - owner, operation and boundary;
 - a unique correlation ID;
@@ -58,7 +67,8 @@ The original typed error remains available only to private tracing. Each event r
 - whether a product draft was supplied;
 - error kind and stable code.
 
-Raw token, tenant slug, tenant ID, actor ID, product ID, status and draft content are not structured fields.
+Raw token, tenant slug, tenant ID, actor ID, product ID, status, draft content and complete backend error
+text are not structured fields. The complete typed error is not logged.
 
 ## Preserved behavior
 
@@ -70,8 +80,10 @@ This slice does not change:
 - status-only update behavior;
 - delete-product variables;
 - UI save, status and delete command composition;
+- public error messages;
+- typed error classification or log severity;
 - retries or fallback behavior;
-- previously merged Product Admin read error policies;
+- previously merged Product Admin read diagnostic policies;
 - Product FFA/FBA, browser, mounted-runtime, workflow, CI or production status.
 
 ## Static evidence
@@ -80,13 +92,14 @@ This slice does not change:
 - `crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json`;
 - `scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs`.
 
-All execution flags remain `false`. Source review does not prove compilation, browser behavior, mounted transport behavior, workflow execution, CI or production behavior.
+All execution flags remain `false`. Source review does not prove compilation, browser behavior, mounted
+transport behavior, workflow execution, CI or production behavior.
 
 ## Remaining work
 
 The ecommerce mapper cleanup remains open for:
 
-- Product Admin category, schema and attribute-value GraphQL mutations;
+- Product Admin native-first GraphQL fallback mutation diagnostics;
 - Product Admin browser and mounted transport evidence;
 - other ecommerce adapters and non-`PortError` public envelopes.
 
@@ -96,8 +109,9 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs
-node scripts/verify/verify-product-admin-category-read-error-safety.mjs
-node scripts/verify/verify-product-admin-primary-read-error-safety.mjs
+node scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs
+node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs
+node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs
 node scripts/verify/verify-product-admin-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-product-admin

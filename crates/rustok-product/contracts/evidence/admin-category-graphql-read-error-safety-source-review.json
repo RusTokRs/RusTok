@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-07-30T19:40:00Z",
-  "review_base": "d0e2a1cea5f0cba6102ca857a881f357c1cbd40e",
+  "reviewed_at_utc": "2026-08-03T08:53:00Z",
+  "review_base": "659576d3af1f541924b9bcb3b78ee042fc566609",
   "status": "product_admin_category_graphql_read_error_safety_source_reviewed_unvalidated",
-  "scope": "Product Admin category-bound GraphQL fallback read public error boundary",
+  "scope": "Product Admin category-bound GraphQL fallback read public and private diagnostic boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-product/docs/implementation-plan.md",
@@ -14,41 +14,46 @@
     "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
     "crates/rustok-product/admin/src/ui/leptos.rs",
     "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
     "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs"
   ],
   "findings": [
     {
-      "id": "product-admin-category-raw-graphql-errors",
-      "severity": "confirmed",
-      "finding": "Five category-bound Product Admin reads preserve native server functions as the first path but returned the final GraphqlHttpError from their GraphQL fallback without a Product-owned public mapper. Http and Graphql variants could therefore carry status text or server messages into UI resources."
+      "id": "category-public-envelope-already-static",
+      "severity": "preserved",
+      "finding": "Five category-bound Product Admin reads already kept native server functions first and mapped a final GraphQL fallback failure to the shared static Product Admin public policy."
     },
     {
-      "id": "final-wrapper-compatible-fix",
+      "id": "category-private-debug-payload",
+      "severity": "confirmed",
+      "finding": "The shared GraphqlReadContext still emitted the complete GraphqlHttpError through Debug formatting. Http and Graphql variants could therefore place status or server-message payloads in structured tracing after the public envelope had been sanitized."
+    },
+    {
+      "id": "shared-bounded-read-fix",
       "severity": "selected",
-      "finding": "The smallest compatible fix adds explicit final wrappers in catalog_transport. Each wrapper creates one correlation context before invoking the unchanged native-first compatibility executor and maps only a final returned error."
+      "finding": "The shared read mapper now retains only payload presence and character length together with closed error kind, stable code, correlation, boundary, severity, and bounded request shape."
     },
     {
       "id": "native-first-semantics",
       "severity": "preserved",
-      "finding": "The compatibility executor still calls native_server_adapter first and calls graphql_adapter only after native failure. The new wrapper adds no retry, second fallback, duplicate owner call, or transport-selection change."
+      "finding": "The compatibility executor still calls native_server_adapter first and graphql_adapter only after native failure. No retry, fallback, owner call, query, variable, or response-mapping behavior changed."
     },
     {
-      "id": "safe-category-shape",
-      "severity": "confirmed",
-      "finding": "Private diagnostics retain the typed GraphqlHttpError and record only token presence plus tenant, product, category, and locale character lengths. Effective-form product and category identifiers remain separate shape fields; raw values are not structured fields."
-    },
-    {
-      "id": "prior-guards-preserved",
-      "severity": "confirmed",
-      "finding": "The existing primary-read guard counts its original five primary mappers plus the catalog-options mapper. New category wrappers intentionally use a distinct source marker so the prior source contract remains valid while the focused category guard locks the five new mappings."
+      "id": "mutation-boundary-separate",
+      "severity": "open",
+      "finding": "Product Admin GraphQL writes and status mutations still use GraphqlMutationContext and remain an explicit separate cleanup slice."
     }
   ],
   "changed_files_expected": [
-    "crates/rustok-product/admin/src/catalog_transport.rs",
     "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json",
+    "crates/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json",
+    "crates/rustok-product/docs/admin-primary-graphql-read-error-safety.md",
     "crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json",
     "crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json",
     "crates/rustok-product/docs/admin-category-graphql-read-error-safety.md",
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
+    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
     "scripts/verify/verify-product-admin-category-read-error-safety.mjs"
   ],
   "preserved": [
@@ -60,6 +65,7 @@
     "effective-form request semantics",
     "attribute-value request semantics",
     "primary-read and catalog-options public policies",
+    "technical versus ordinary severity",
     "absence of new retry or fallback paths"
   ],
   "remaining_scope": [

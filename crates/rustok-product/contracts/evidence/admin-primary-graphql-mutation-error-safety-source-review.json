@@ -1,31 +1,38 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-07-30T19:52:00Z",
-  "review_base": "06c1aa0fa694cdaf5f8e88d3422777fd052ffd61",
+  "reviewed_at_utc": "2026-08-03T09:27:00Z",
+  "review_base": "14e268b8c71d8e88390cee0b8f5eafd037a54dca",
   "status": "product_admin_primary_graphql_mutation_error_safety_source_reviewed_unvalidated",
-  "scope": "Product Admin primary GraphQL mutation public error boundary",
+  "scope": "Product Admin primary GraphQL mutation public and private diagnostic boundary",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-product/docs/implementation-plan.md",
     "crates/rustok-product/admin/src/catalog_transport.rs",
     "crates/rustok-product/admin/src/transport.rs",
     "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
     "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
     "crates/rustok-product/admin/src/ui/leptos.rs",
     "crates/rustok-graphql/src/lib.rs",
-    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
-    "scripts/verify/verify-product-admin-category-read-error-safety.mjs"
+    "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
+    "scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs"
   ],
   "findings": [
     {
-      "id": "product-admin-primary-mutation-raw-graphql-errors",
-      "severity": "confirmed",
-      "finding": "create_product, update_product, change_product_status and delete_product delegated directly to the GraphQL adapter. Http carried response status text and Graphql carried the first server error message into UI command errors."
+      "id": "primary-mutation-public-envelope-already-safe",
+      "severity": "preserved",
+      "finding": "create_product, update_product, change_product_status and delete_product already map Http and Graphql variants to fixed Product Admin public messages while preserving typed Network and Unauthorized variants."
     },
     {
-      "id": "typed-envelope-compatible-fix",
+      "id": "primary-mutation-private-debug-payload",
+      "severity": "confirmed",
+      "finding": "GraphqlMutationContext::map_error still emitted raw_error = ?error in both severity branches. Http(String) and Graphql(String) could therefore copy complete backend-controlled status or server-message text into structured tracing."
+    },
+    {
+      "id": "bounded-payload-shape-fix",
       "severity": "selected",
-      "finding": "The bounded fix keeps GraphqlHttpError as the result type, preserves Network and Unauthorized, and replaces only Http and Graphql payloads with the existing Product Admin static messages."
+      "finding": "The compatible fix preserves typed variant classification, stable codes, severity and public errors but retains only payload presence and character length for Http and Graphql. Network and Unauthorized retain no invented payload."
     },
     {
       "id": "mutation-command-shapes-preserved",
@@ -33,18 +40,17 @@
       "finding": "CreateProductInput, UpdateProductInput, status-only update construction, delete variables, tenant/user variables and response DTO mapping remain in the unchanged private GraphQL adapter."
     },
     {
-      "id": "safe-mutation-diagnostics",
+      "id": "request-shape-diagnostics-preserved",
       "severity": "confirmed",
-      "finding": "The owner policy records token presence and character lengths for tenant, actor, resource and status fields plus draft presence. It does not structure raw request values or draft content."
+      "finding": "The owner policy continues to record token presence and bounded tenant, actor, resource and status shape plus draft presence. Raw request values, draft content and the complete typed error are not structured fields."
     },
     {
-      "id": "prior-read-slices-preserved",
-      "severity": "preserved",
-      "finding": "Catalog-options, primary-read and category-read wrappers remain unchanged. Mutation wrappers use a distinct mapper variable so prior exact-count guards retain their original scopes."
+      "id": "remaining-fallback-mutation-diagnostic-gap",
+      "severity": "open",
+      "finding": "The separate GraphqlFallbackMutationContext still emits the complete typed error and remains the next Product Admin diagnostic cleanup slice."
     }
   ],
   "changed_files_expected": [
-    "crates/rustok-product/admin/src/catalog_transport.rs",
     "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
     "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json",
     "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json",
@@ -56,11 +62,13 @@
     "mutation input and response mapping",
     "primary mutation function result types",
     "Product Admin UI command composition",
+    "static public error messages",
+    "typed error classification and severity",
     "absence of new retry or fallback paths",
-    "all previously merged read error-safety policies"
+    "all previously merged read diagnostic policies"
   ],
   "remaining_scope": [
-    "Product Admin category, schema and attribute-value GraphQL mutations",
+    "Product Admin native-first GraphQL fallback mutation diagnostic envelope",
     "Product Admin focused verifier execution and Cargo compilation",
     "browser and mounted transport evidence",
     "remaining ecommerce non-PortError public envelopes"
