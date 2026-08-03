@@ -110,6 +110,7 @@ mod topic_facade;
 mod topic_merge;
 mod topic_merge_read_state_reconciliation;
 mod topic_merge_subscription_reconciliation;
+mod topic_merge_tag_reconciliation;
 mod topic_move;
 mod topic_owner {
     include!("topic_owner.rs");
@@ -118,6 +119,7 @@ mod topic_owner {
 mod topic_read_state_lock;
 mod topic_reply_create_audience;
 mod topic_subscription_lock;
+mod topic_tag_lock;
 pub mod topic_visibility;
 pub mod user_stats;
 mod user_trust;
@@ -209,6 +211,7 @@ pub use storefront_read_state::{
     ForumTopicUnreadSummary,
 };
 pub use subscription::SubscriptionService;
+pub use topic::MAX_FORUM_TOPIC_TAGS;
 pub use topic_audience::{
     ForumTopicAudiencePolicy,
     ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
@@ -237,6 +240,11 @@ pub use topic_merge_subscription_reconciliation::{
     ForumTopicMergeSubscriptionReconciliationService,
     MAX_FORUM_TOPIC_MERGE_SUBSCRIPTION_REASON_LEN, MAX_FORUM_TOPIC_MERGE_SUBSCRIPTIONS,
     ReconcileForumTopicMergeSubscriptionsInput,
+};
+pub use topic_merge_tag_reconciliation::{
+    ForumTopicMergeTagReconciliationResult, ForumTopicMergeTagReconciliationService,
+    MAX_FORUM_TOPIC_MERGE_TAG_REASON_LEN, MAX_FORUM_TOPIC_MERGE_TAGS,
+    ReconcileForumTopicMergeTagsInput,
 };
 pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
