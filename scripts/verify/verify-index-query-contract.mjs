@@ -23,6 +23,7 @@ const scripts = [
   'verify-index-source-reconciliation.mjs',
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-replay-dry-run.mjs',
+  'verify-index-replay-page-interruption.mjs',
   'verify-index-product-source.mjs',
   'verify-index-product-variant-source.mjs',
   'verify-index-product-graph-source.mjs',

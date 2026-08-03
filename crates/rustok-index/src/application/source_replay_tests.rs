@@ -344,3 +344,116 @@ async fn nil_replay_event_is_rejected_before_persistence() {
     assert_eq!(mutation_calls.load(Ordering::SeqCst), 0);
     assert!(checkpoint.lock().unwrap().is_none());
 }
+
+#[tokio::test]
+async fn interruption_before_source_scan_skips_source_and_checkpoint() {
+    let tenant_id = Uuid::from_u128(6);
+    let source_calls = Arc::new(AtomicUsize::new(0));
+    let mutation_calls = Arc::new(AtomicUsize::new(0));
+    let checkpoint = Arc::new(Mutex::new(None));
+    let worker = worker(
+        tenant_id,
+        Uuid::from_u128(10),
+        source_calls.clone(),
+        mutation_calls.clone(),
+        Arc::new(Mutex::new(Vec::new())),
+        checkpoint.clone(),
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Mutex::new(Vec::new())),
+    );
+
+    assert!(matches!(
+        worker
+            .run_next_page_interruptible(
+                IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap(),
+                || async { Ok::<bool, IndexReplayFailure>(true) },
+            )
+            .await,
+        Err(IndexReplayError::Interrupted)
+    ));
+    assert_eq!(source_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(mutation_calls.load(Ordering::SeqCst), 0);
+    assert!(checkpoint.lock().unwrap().is_none());
+}
+
+#[tokio::test]
+async fn interruption_before_checkpoint_replays_applied_mutation_without_advancing_cursor() {
+    let tenant_id = Uuid::from_u128(7);
+    let event_id = Uuid::from_u128(10);
+    let source_calls = Arc::new(AtomicUsize::new(0));
+    let mutation_calls = Arc::new(AtomicUsize::new(0));
+    let event_ids = Arc::new(Mutex::new(Vec::new()));
+    let checkpoint = Arc::new(Mutex::new(None));
+    let interruption_checks = Arc::new(AtomicUsize::new(0));
+    let worker = worker(
+        tenant_id,
+        event_id,
+        source_calls.clone(),
+        mutation_calls.clone(),
+        event_ids.clone(),
+        checkpoint.clone(),
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Mutex::new(Vec::new())),
+    );
+    let checks = interruption_checks.clone();
+    let request = IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap();
+
+    assert!(matches!(
+        worker
+            .run_next_page_interruptible(request.clone(), move || {
+                let check = checks.fetch_add(1, Ordering::SeqCst);
+                async move { Ok::<bool, IndexReplayFailure>(check == 2) }
+            })
+            .await,
+        Err(IndexReplayError::Interrupted)
+    ));
+    assert_eq!(interruption_checks.load(Ordering::SeqCst), 3);
+    assert_eq!(source_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(mutation_calls.load(Ordering::SeqCst), 1);
+    assert!(checkpoint.lock().unwrap().is_none());
+
+    let outcome = worker.run_next_page(request).await.unwrap();
+    assert_eq!(outcome.duplicate_count(), 1);
+    assert_eq!(source_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(mutation_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(*event_ids.lock().unwrap(), vec![event_id, event_id]);
+    assert!(checkpoint.lock().unwrap().as_ref().unwrap().is_complete());
+}
+
+#[tokio::test]
+async fn interruption_probe_failure_stays_bounded_and_skips_source() {
+    let tenant_id = Uuid::from_u128(8);
+    let source_calls = Arc::new(AtomicUsize::new(0));
+    let mutation_calls = Arc::new(AtomicUsize::new(0));
+    let checkpoint = Arc::new(Mutex::new(None));
+    let worker = worker(
+        tenant_id,
+        Uuid::from_u128(10),
+        source_calls.clone(),
+        mutation_calls.clone(),
+        Arc::new(Mutex::new(Vec::new())),
+        checkpoint.clone(),
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Mutex::new(Vec::new())),
+    );
+
+    let error = worker
+        .run_next_page_interruptible(
+            IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap(),
+            || async {
+                Err::<bool, IndexReplayFailure>(
+                    IndexReplayFailure::retryable("interruption_probe_unavailable").unwrap(),
+                )
+            },
+        )
+        .await
+        .unwrap_err();
+    let IndexReplayError::InterruptionCheckFailed(failure) = error else {
+        panic!("unexpected replay interruption failure: {error:?}");
+    };
+    assert_eq!(failure.kind(), IndexReplayFailureKind::Retryable);
+    assert_eq!(failure.code(), "interruption_probe_unavailable");
+    assert_eq!(source_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(mutation_calls.load(Ordering::SeqCst), 0);
+    assert!(checkpoint.lock().unwrap().is_none());
+}
