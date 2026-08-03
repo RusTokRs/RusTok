@@ -71,6 +71,7 @@ for (const [value, label] of [
   ["fn customer_error", "customer mapper"],
   ["fn cart_error", "cart owner mapper"],
   ["fn pricing_error", "pricing port mapper"],
+  ["fn missing_variant_error", "missing variant mapper"],
   ['"extract_tenant_context"', "tenant extraction operation"],
   ['"extract_optional_auth_context"', "auth extraction operation"],
   ['"Storefront tenant context is temporarily unavailable"', "tenant public envelope"],
@@ -80,7 +81,6 @@ for (const [value, label] of [
   ['"Invalid cart line item selection"', "line-item input public envelope"],
   ['"Customer information is temporarily unavailable"', "customer public envelope"],
   ['"Cart is temporarily unavailable"', "cart storage public envelope"],
-  ["owner_code = %error.code", "pricing owner code diagnostics"],
   ["ServerFnError::new(error.message)", "sanitized pricing message forwarding"],
   [
     "Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None)",
@@ -100,7 +100,6 @@ requireText(
   "let error_type = std::any::type_name::<E>();",
   "context extraction error type",
 );
-requireText(contextBody, "error_type", "context extraction type diagnostic");
 for (const payload of [
   "error = ?error",
   "error = %error",
@@ -114,24 +113,20 @@ if (countText(safe, "let error_type = std::any::type_name::<E>();") !== 1) {
 const customerBody = functionBody(safe, "customer_error");
 for (const [value, label] of [
   ["let error_type = std::any::type_name_of_val(&error);", "customer error type"],
-  ["error_type", "customer type-only diagnostic"],
   [
     "correlation_id = ?request_context.map(|context| context.correlation_id)",
     "customer correlation diagnostic",
   ],
-  ["request_context_present = request_context.is_some()", "request context presence"],
-  [
-    "request_tenant_id_non_nil = ?request_context.map(|context| !context.tenant_id.is_nil())",
-    "request tenant shape",
-  ],
-  ["tenant_id_non_nil = !tenant_id.is_nil()", "tenant shape"],
-  ["user_id_non_nil = !user_id.is_nil()", "user shape"],
-  ["channel_id_present", "channel id presence"],
-  ["channel_id_non_nil", "channel id shape"],
-  ["channel_slug_present", "channel slug presence"],
-  ["channel_slug_length", "channel slug length"],
-  ["locale_present", "locale presence"],
-  ["locale_length", "locale length"],
+  ["request_context_present = request_context.is_some()", "customer request context presence"],
+  ["request_tenant_id_non_nil", "customer request tenant shape"],
+  ["tenant_id_non_nil = !tenant_id.is_nil()", "customer tenant shape"],
+  ["user_id_non_nil = !user_id.is_nil()", "customer user shape"],
+  ["channel_id_present", "customer channel presence"],
+  ["channel_id_non_nil", "customer channel shape"],
+  ["channel_slug_present", "customer slug presence"],
+  ["channel_slug_length", "customer slug length"],
+  ["locale_present", "customer locale presence"],
+  ["locale_length", "customer locale length"],
   ['code = "cart.storefront_customer_unavailable"', "customer diagnostic code"],
   [
     'ServerFnError::new("Customer information is temporarily unavailable")',
@@ -148,27 +143,14 @@ for (const payload of [
   "channel_slug = ?request_context",
   "locale = ?request_context",
 ]) forbidText(customerBody, payload, "complete customer cause or raw identity/context diagnostic");
-if (
-  countText(customerBody, "let error_type = std::any::type_name_of_val(&error);") !== 1
-) {
+if (countText(customerBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
   failures.push("expected exactly one customer type-only diagnostic site");
-}
-if (
-  countText(
-    customerBody,
-    "correlation_id = ?request_context.map(|context| context.correlation_id)",
-  ) !== 1
-) {
-  failures.push("expected exactly one optional customer correlation diagnostic site");
 }
 
 const cartBody = functionBody(safe, "cart_error");
 for (const [value, label] of [
   ["let error_type = std::any::type_name_of_val(&error);", "Cart owner error type"],
-  [
-    "let correlation_id = request_context.map(|context| context.correlation_id);",
-    "Cart owner correlation derivation",
-  ],
+  ["let correlation_id = request_context.map", "Cart owner correlation derivation"],
   ["let request_context_present = request_context.is_some();", "Cart request context presence"],
   ["let request_tenant_id_non_nil", "Cart request tenant shape"],
   ["let tenant_id_non_nil = !tenant_id.is_nil();", "Cart tenant shape"],
@@ -183,12 +165,6 @@ for (const [value, label] of [
   ["let locale_present", "Cart locale presence"],
   ["let locale_length", "Cart locale length"],
   ["correlation_id = ?correlation_id", "Cart owner correlation diagnostic"],
-  ["request_tenant_id_non_nil = ?request_tenant_id_non_nil", "Cart request tenant diagnostic"],
-  ["cart_id_non_nil = ?cart_id_non_nil", "Cart id diagnostic"],
-  ["line_item_id_non_nil = ?line_item_id_non_nil", "Cart line-item diagnostic"],
-  ["channel_id_non_nil = ?channel_id_non_nil", "Cart channel diagnostic"],
-  ["channel_slug_length = ?channel_slug_length", "Cart slug diagnostic"],
-  ["locale_length = ?locale_length", "Cart locale diagnostic"],
   ["public_retryable = retryable", "Cart retryability diagnostic"],
   ["ServerFnError::new(public_message)", "Cart public envelope mapping"],
   ["cart storefront owner operation failed", "Cart technical diagnostic message"],
@@ -226,14 +202,11 @@ for (const [value, label] of [
   ['"cart.storefront_tax_unavailable"', "Cart tax unavailable code"],
   ['"cart.storefront_tax_failed"', "Cart tax failure code"],
 ]) requireText(cartBody, value, label);
-if (countText(cartBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
-  failures.push("expected exactly one Cart owner type-only diagnostic site");
-}
 if (countText(cartBody, "tracing::error!(") !== 1) {
-  failures.push("expected exactly one Cart owner technical error diagnostic path");
+  failures.push("expected exactly one Cart owner technical diagnostic path");
 }
 if (countText(cartBody, "tracing::warn!(") !== 1) {
-  failures.push("expected exactly one Cart owner rejection warning diagnostic path");
+  failures.push("expected exactly one Cart owner rejection diagnostic path");
 }
 if (countText(cartBody, "correlation_id = ?correlation_id") !== 2) {
   failures.push("both Cart owner severity paths must retain optional correlation diagnostics");
@@ -241,14 +214,90 @@ if (countText(cartBody, "correlation_id = ?correlation_id") !== 2) {
 if (countText(cartBody, "public_retryable = retryable") !== 2) {
   failures.push("both Cart owner severity paths must retain retryability diagnostics");
 }
-if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 2) {
-  failures.push("expected customer and Cart owner type-only diagnostic sites");
+
+const pricingBody = functionBody(safe, "pricing_error");
+for (const [value, label] of [
+  ["let technical = matches!(", "pricing technical classification"],
+  ["rustok_api::PortErrorKind::Unavailable", "pricing unavailable classification"],
+  ["rustok_api::PortErrorKind::Timeout", "pricing timeout classification"],
+  ["rustok_api::PortErrorKind::InvariantViolation", "pricing invariant classification"],
+  ["let error_type = std::any::type_name_of_val(&error);", "pricing error type"],
+  ["let correlation_id = request_context.map", "pricing correlation derivation"],
+  ["let request_context_present = request_context.is_some();", "pricing request context presence"],
+  ["let request_tenant_id_non_nil", "pricing request tenant shape"],
+  ["let tenant_id_non_nil = !tenant_id.is_nil();", "pricing tenant shape"],
+  ["let cart_id_non_nil = !cart_id.is_nil();", "pricing cart shape"],
+  ["let line_item_id_non_nil = !line_item_id.is_nil();", "pricing line-item shape"],
+  ["let channel_id_present", "pricing channel id presence"],
+  ["let channel_id_non_nil", "pricing channel id shape"],
+  ["let channel_slug_present", "pricing channel slug presence"],
+  ["let channel_slug_length", "pricing channel slug length"],
+  ["let locale_present", "pricing locale presence"],
+  ["let locale_length", "pricing locale length"],
+  ["correlation_id = ?correlation_id", "pricing correlation diagnostic"],
+  ["request_tenant_id_non_nil = ?request_tenant_id_non_nil", "pricing request tenant diagnostic"],
+  ["tenant_id_non_nil", "pricing tenant diagnostic"],
+  ["cart_id_non_nil", "pricing cart diagnostic"],
+  ["line_item_id_non_nil", "pricing line-item diagnostic"],
+  ["channel_id_non_nil = ?channel_id_non_nil", "pricing channel diagnostic"],
+  ["channel_slug_length = ?channel_slug_length", "pricing slug diagnostic"],
+  ["locale_length = ?locale_length", "pricing locale diagnostic"],
+  ["owner_code = %error.code", "pricing owner code diagnostic"],
+  ["owner_kind = ?error.kind", "pricing owner kind diagnostic"],
+  ["owner_retryable = error.retryable", "pricing owner retryability diagnostic"],
+  ["cart storefront pricing operation failed", "pricing technical message"],
+  ["cart storefront pricing operation was rejected", "pricing rejection message"],
+  ["ServerFnError::new(error.message)", "pricing sanitized public envelope"],
+]) requireText(pricingBody, value, label);
+for (const payload of [
+  "error = ?error",
+  "error = %error",
+  "request_tenant_id = ?request_context.map",
+  "tenant_id = %tenant_id",
+  "cart_id = %cart_id",
+  "cart_id = ?cart_id",
+  "line_item_id = %line_item_id",
+  "line_item_id = ?line_item_id",
+  "channel_id = ?request_context",
+  "channel_slug = ?request_context",
+  "locale = ?request_context",
+]) forbidText(pricingBody, payload, "complete pricing cause or raw identity/context diagnostic");
+if (countText(pricingBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
+  failures.push("expected exactly one pricing type-only diagnostic site");
 }
-if (countText(safe, "error = ?error") !== 3) {
+if (countText(pricingBody, "tracing::error!(") !== 1) {
+  failures.push("expected exactly one pricing technical diagnostic path");
+}
+if (countText(pricingBody, "tracing::warn!(") !== 1) {
+  failures.push("expected exactly one pricing rejection diagnostic path");
+}
+for (const marker of [
+  "correlation_id = ?correlation_id",
+  "owner_code = %error.code",
+  "owner_kind = ?error.kind",
+  "owner_retryable = error.retryable",
+]) {
+  if (countText(pricingBody, marker) !== 2) {
+    failures.push(`both pricing severity paths must retain ${marker}`);
+  }
+}
+if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 3) {
+  failures.push("expected customer, Cart owner, and pricing type-only diagnostic sites");
+}
+if (countText(safe, "error = ?error") !== 1) {
   failures.push(
-    "cart input and pricing owner diagnostics must remain unchanged in this bounded Cart-owner-only slice",
+    "only the Cart input diagnostic may retain a complete error in this bounded pricing-only slice",
   );
 }
+
+const missingVariantBody = functionBody(safe, "missing_variant_error");
+for (const marker of [
+  "tenant_id = %tenant_id",
+  "cart_id = %cart_id",
+  "line_item_id = %line_item_id",
+  'code = "cart.storefront_line_item_variant_missing"',
+  'ServerFnError::new("Cart line item could not be updated safely")',
+]) requireText(missingVariantBody, marker, "unchanged missing-variant diagnostic boundary");
 
 for (const value of [
   ".map_err(ServerFnError::new)",
@@ -304,9 +353,17 @@ for (const [key, expected] of Object.entries({
   cart_public_mapping_preserved: true,
   cart_severity_split_preserved: true,
   cart_raw_error_public: false,
+  pricing_error_type_only: true,
+  complete_pricing_error_logged: false,
+  pricing_correlation_diagnostic: true,
+  pricing_identity_shape_only: true,
+  pricing_context_shape_only: true,
+  raw_pricing_identity_context_logged: false,
+  pricing_owner_metadata_preserved: true,
+  pricing_severity_split_preserved: true,
   pricing_port_message_remains_domain_sanitized: true,
   owner_context_logging: true,
-  pricing_identifier_mapper_cleanup_out_of_scope: true,
+  input_identifier_mapper_cleanup_out_of_scope: true,
   cart_dto_changed: false,
   transport_selection_changed: false,
   graphql_transport_changed: false,
@@ -351,7 +408,12 @@ requireText(
 );
 requireText(
   doc,
-  "Pricing and identifier diagnostics remain separate open cleanup slices",
+  "Pricing failures are recorded by concrete error type",
+  "documentation pricing diagnostic policy",
+);
+requireText(
+  doc,
+  "Cart input and missing-variant diagnostics remain separate open cleanup slices",
   "documentation remaining mapper boundary",
 );
 
@@ -362,5 +424,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ cart storefront framework, customer, and Cart owner diagnostics use bounded causes/context while pricing and identifier cleanup remains open; source evidence remains unvalidated",
+  "✔ cart storefront framework, customer, Cart owner, and pricing diagnostics use bounded causes/context while input and identifier cleanup remains open; source evidence remains unvalidated",
 );
