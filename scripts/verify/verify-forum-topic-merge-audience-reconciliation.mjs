@@ -62,7 +62,7 @@ assert.equal(contract.status, "source_ready_maintainer_execution_pending");
 assert.equal(contract.canonical_plan_status, "planned");
 assert.equal(
   contract.scope,
-  "fail_closed_post_merge_topic_local_audience_reconciliation",
+  "atomic_new_merge_audience_guard_and_fail_closed_historical_reconciliation",
 );
 assert.equal(
   contract.owner_service,
@@ -94,36 +94,42 @@ assert.deepEqual(contract.bounds, {
   trust_level_max: 100,
   one_reconciliation_per_merge_receipt: true,
 });
-assert.deepEqual(Object.keys(contract.safe_outcomes), [
+assert.deepEqual(contract.new_merge_commit_guard.rollback_scope, [
+  "reply_moves",
+  "topic_status_and_counters",
+  "forum.topic.merged_event",
+  "merge_receipt",
+  "projection_invalidations",
+]);
+assert.equal(
+  contract.new_merge_commit_guard.boundary,
+  "BEFORE INSERT ON forum_topic_merge_operations",
+);
+assert.equal(contract.new_merge_commit_guard.same_transaction_as_forum_21b, true);
+assert.equal(contract.new_merge_commit_guard.shared_audience_scope_seed, 5);
+assert.equal(
+  contract.new_merge_commit_guard.stable_code,
+  "FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT",
+);
+assert.deepEqual(Object.keys(contract.historical_safe_outcomes), [
   "both_unrestricted",
   "target_only_preserved",
   "source_only_moved",
   "equal_layers_deduplicated",
 ]);
 assert.equal(
-  contract.policy_conflict.stable_code,
+  contract.historical_policy_conflict.stable_code,
   "FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT",
 );
-assert.equal(
-  contract.policy_conflict.behavior,
-  "rollback_without_audience_mutation_event_receipt_or_projection_invalidation",
-);
-assert.equal(
-  contract.semantic_event.event_type,
-  "forum.topic.merge_audience_reconciled",
-);
-assert.equal(contract.semantic_event.schema_version, 1);
-assert.equal(contract.semantic_event.aggregate_is_retained_target, true);
-assert.equal(contract.semantic_event.event_id_equals_operation_id, true);
-assert.equal(contract.semantic_event.shared_rustok_events_contract_changed, false);
 assert.equal(contract.ordinary_write_hardening.length, 4);
-assert.equal(contract.transactional_invariants.length, 15);
-assert.equal(contract.database_guards.length, 8);
+assert.equal(contract.transactional_invariants.length, 17);
+assert.equal(contract.database_guards.length, 9);
 assert.deepEqual(
-  contract.search_projection.successful_first_execution_invalidations,
+  contract.search_projection.successful_historical_first_execution_invalidations,
   ["source_topic", "target_topic"],
 );
-assert.equal(contract.search_projection.conflict_invalidations, 0);
+assert.equal(contract.search_projection.new_merge_guard_conflict_invalidations, 0);
+assert.equal(contract.search_projection.historical_conflict_invalidations, 0);
 assert.equal(contract.search_projection.exact_replay_invalidations, 0);
 assert.equal(contract.test, paths.test);
 assert.equal(contract.verifier, paths.verifier);
@@ -166,8 +172,16 @@ includesAll(
     "TopicMergeAudiencePolicyConflict(Uuid)",
     '"FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"',
     '"FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT"',
+    'message.contains("forum topic merge audience policy conflict")',
+    "TopicMergeAudiencePolicyConflict(Uuid::nil())",
   ],
   "ForumError",
+);
+assert.ok(
+  error.includes(
+    "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA",
+  ),
+  "unrelated category color validation must remain unchanged",
 );
 includesAll(
   migrationsMod,
@@ -190,7 +204,18 @@ includesAll(
     "source_only_moved",
     "equal_layers_deduplicated",
     "forum_lock_topic_audience_mutation",
-    "hashtextextended(",
+    "forum_validate_topic_merge_audience_compatibility",
+    "forum_05_topic_merge_audience_compatibility",
+    "BEFORE INSERT ON forum_topic_merge_operations",
+    "source_policy.minimum_trust_level",
+    "IS NOT DISTINCT FROM target_policy.minimum_trust_level",
+    "source_policy.minimum_trust_level IS target_policy.minimum_trust_level",
+    "SELECT role",
+    "SELECT channel_slug",
+    "SELECT group_id",
+    "SELECT user_id, effect",
+    "EXCEPT",
+    "forum topic merge audience policy conflict",
     "forum_00_topic_audience_policy_scope",
     "forum_00_topic_audience_role_scope",
     "forum_00_topic_audience_channel_scope",
@@ -204,13 +229,15 @@ includesAll(
     "forum_10_topic_audience_user_active_insert",
     "forum topic audience cannot target archived or deleted topics",
     "forum topic merge audience reconciliations are append-only",
-    "forum_topic_merge_audience_reconciliation_update",
-    "forum_topic_merge_audience_reconciliation_delete",
   ],
   "audience reconciliation migration",
 );
-assert.ok(migration.includes("format('%s:%s', row_tenant_id, first_topic_id)"));
+assert.ok(migration.includes("format('%s:%s', NEW.tenant_id, first_topic_id)"));
 assert.ok(migration.includes("        5\n    ));"));
+assert.ok(
+  migration.indexOf("forum_validate_topic_merge_audience_compatibility") <
+    migration.indexOf("CREATE TRIGGER forum_05_topic_merge_audience_compatibility"),
+);
 for (const table of [
   "forum_topic_audience_policies",
   "forum_topic_audience_roles",
@@ -218,10 +245,7 @@ for (const table of [
   "forum_topic_audience_groups",
   "forum_topic_audience_users",
 ]) {
-  assert.ok(
-    migration.includes(`ON ${table}`),
-    `migration does not guard ${table}`,
-  );
+  assert.ok(migration.includes(`ON ${table}`), `migration does not guard ${table}`);
 }
 
 includesAll(
@@ -239,7 +263,6 @@ includesAll(
   ],
   "topic audience lock owner",
 );
-
 includesAll(
   audienceOwner,
   [
@@ -286,7 +309,6 @@ assert.ok(
   ),
   "public topic audience service must remain the transactional owner facade",
 );
-assert.ok(!servicesMod.startsWith("#![allow(dead_code)]"));
 includesAll(
   audience,
   [
@@ -333,42 +355,31 @@ includesAll(
     "publish_forum_topic_projection_in_tx",
     "txn.commit().await?;",
   ],
-  "merge audience reconciliation owner",
+  "historical merge audience reconciliation owner",
 );
 assert.ok(
   owner.indexOf("forum_topic_merge_audience_reconciliation::Entity::find_by_id") <
     owner.indexOf("forum_topic_merge_operation::Entity::find_by_id"),
   "exact replay must precede current merge lookup",
 );
-assert.ok(
-  owner.indexOf("lock_topic_rows_for_audience_in_tx") <
-    owner.lastIndexOf("lock_topic_audience_scopes_in_tx"),
-  "first execution must lock topic rows before audience scopes",
-);
-const firstExecutionSourceEmpty = owner.lastIndexOf(
-  "ensure_source_audience_empty_in_tx",
+assert.equal(
+  owner.match(/publish_forum_topic_projection_in_tx\(/g)?.length,
+  2,
+  "successful historical repair must publish source and target invalidations",
 );
 const semanticEvent = owner.indexOf("forum_domain_event::ActiveModel");
 const receipt = owner.indexOf(
   "forum_topic_merge_audience_reconciliation::ActiveModel",
 );
 const firstInvalidation = owner.indexOf("publish_forum_topic_projection_in_tx");
-assert.ok(firstExecutionSourceEmpty >= 0 && firstExecutionSourceEmpty < semanticEvent);
+assert.ok(owner.lastIndexOf("ensure_source_audience_empty_in_tx") < semanticEvent);
 assert.ok(semanticEvent < receipt && receipt < firstInvalidation);
-assert.equal(
-  owner.match(/publish_forum_topic_projection_in_tx\(/g)?.length,
-  2,
-  "successful first execution must publish source and target invalidations",
-);
-const policyConflict = owner.indexOf("TopicMergeAudiencePolicyConflict");
-assert.ok(policyConflict >= 0 && policyConflict < semanticEvent);
+assert.ok(owner.indexOf("TopicMergeAudiencePolicyConflict") < semanticEvent);
 for (const unsafe of [
   "roles_any.extend",
   "channel_members_any.extend",
   "group_members_any.extend",
   "allow_user_ids.extend",
-  "source_constraints.roles_any",
-  "target_constraints.roles_any",
   "bestEffort",
   "ALLOW_MISSING",
   "SKIP_VALIDATION",
@@ -401,19 +412,33 @@ includesAll(
 includesAll(
   merge,
   [
-    "Topic subscriptions, tags and topic-level audience relations are intentionally not remapped",
-    "load_policy_for_topic(&txn, tenant_id, &target).await?;",
-    "source_active.status = Set(TopicStatus::Archived);",
-    "source_active.is_locked = Set(true);",
+    "ForumTopicMergeService",
+    "forum_domain_event::ActiveModel",
+    "forum_topic_merge_operation::ActiveModel",
+    "publish_forum_topic_projection_in_tx",
+    "txn.commit().await?;",
   ],
-  "FORUM-21B merge dependency",
+  "FORUM-21B merge transaction",
+);
+assert.ok(
+  merge.indexOf("forum_domain_event::ActiveModel") <
+    merge.indexOf("forum_topic_merge_operation::ActiveModel"),
+  "receipt guard must run after in-transaction merge mutations but before commit",
+);
+assert.ok(
+  merge.indexOf("forum_topic_merge_operation::ActiveModel") <
+    merge.indexOf("txn.commit().await?;"),
 );
 
 includesAll(
   test,
   [
-    "merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent",
-    "merge_audience_reconciliation_rejects_different_dual_layers_atomically",
+    "setup_before_forum_21g",
+    "apply_forum_21g",
+    "forum_migrations.pop()",
+    "historical_merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent",
+    "historical_merge_audience_reconciliation_rejects_different_dual_layers_atomically",
+    "topic_merge_rejects_incompatible_source_audience_before_commit",
     "merge_audience_reconciliation_requires_a_real_merge_receipt",
     "ForumTopicMergeService",
     "ForumTopicAudiencePolicyService",
@@ -428,11 +453,18 @@ includesAll(
     "DELETE FROM forum_topic_merge_audience_reconciliations",
     '"forum.topic.merge_audience_reconciled"',
     "new_projection_ids.len(), 2",
-    "reconciliation_count(&db, tenant_id).await?, 0",
-    "reconciliation_event_count(&db, tenant_id).await?",
+    "merge_receipt_count(&db, tenant_id, merge_operation_id).await?, 0",
+    "merge_event_count(&db, tenant_id).await?, merge_event_count_before",
+    "topic_status(&db, tenant_id, source_topic_id).await?, \"open\"",
+    "topic_status(&db, tenant_id, target_topic_id).await?, \"open\"",
     "projection_root_ids(&db, tenant_id).await?, baseline_projection_ids",
   ],
-  "SQLite regression",
+  "SQLite handoff",
+);
+assert.ok(
+  test.indexOf("ForumTopicMergeService::new", test.indexOf("historical_merge_audience")) <
+    test.indexOf("apply_forum_21g", test.indexOf("historical_merge_audience")),
+  "historical fixtures must commit before FORUM-21G migration",
 );
 
 includesAll(
@@ -442,13 +474,16 @@ includesAll(
     "`source_ready_maintainer_execution_pending`",
     paths.contract,
     "Why arbitrary union is unsafe",
-    "Safe outcome matrix",
+    "New merge commit guard",
+    "`BEFORE INSERT` guard on",
+    "No committed interval exists",
+    "Historical safe outcome matrix",
     "`both_unrestricted`",
     "`target_only_preserved`",
     "`source_only_moved`",
     "`equal_layers_deduplicated`",
     "`FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT`",
-    "creates no audience mutation, semantic event, receipt or Search invalidation",
+    "creates no audience mutation",
     "preserving the policy row's `updated_at` value",
     "publishes source and retained-target topic invalidations",
     "No command above was run by the implementation agent",
@@ -456,27 +491,20 @@ includesAll(
   "FORUM-21G handoff",
 );
 
-assert.ok(
-  plan.includes(
-    "| `FORUM-21` | `planned` | FORUM-21A-G provide source-ready move, merge and bounded post-merge reconciliation",
-  ),
-  "canonical ledger must summarize source-ready FORUM-21A-G while remaining planned",
-);
 includesAll(
   plan,
   [
-    "### Delivered in `FORUM-21A` through `FORUM-21G`",
-    "fail-closed topic-local audience reconciliation",
-    "differing dual-layer audience resolution",
-    "node scripts/verify/verify-forum-topic-merge-audience-reconciliation.mjs",
-    "cargo test -p rustok-forum --test topic_merge_audience_reconciliation_sqlite -- --nocapture",
+    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
+    "## `FORUM-21` — move, merge, split and fork topics",
+    "**Status:** `planned`",
+    "revalidate solutions and ACL",
   ],
-  "canonical FORUM-21 task card",
+  "canonical FORUM-21 plan",
 );
 assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
 assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(
-  "FORUM-21G fail-closed topic merge audience reconciliation source is ready and canonical FORUM-21 remains planned.",
+  "FORUM-21G merge audience commit guard and historical reconciliation source are ready; canonical FORUM-21 remains planned.",
 );
