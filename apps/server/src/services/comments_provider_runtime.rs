@@ -48,10 +48,15 @@ mod keyring_schedule_audit_canonical_writer {
 
 mod keyring_schedule_audit_handoff_postgres {
     include!("comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs");
+    include!("comments_provider_runtime_keyring_schedule_audit_handoff_postgres_test_support.rs");
 }
 
 mod keyring_schedule_audit_handoff_worker {
     include!("comments_provider_runtime_keyring_schedule_audit_handoff_worker.rs");
+}
+
+mod keyring_schedule_audit_source_retry_postgres {
+    include!("comments_provider_runtime_keyring_schedule_audit_source_retry_postgres.rs");
 }
 
 mod keyring_schedule_persisted_trigger {
@@ -123,6 +128,15 @@ pub use keyring_schedule_audit_publication::{
     CommentsTcpDelegationScheduleAuditCanonicalWriteError,
     CommentsTcpDelegationScheduleAuditCanonicalWriter,
     SharedCommentsTcpDelegationScheduleAuditCanonicalWriter,
+};
+pub use keyring_schedule_audit_source_retry_postgres::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_RETRY_DELAY_SECONDS,
+    CommentsTcpDelegationScheduleAuditSourceDeadLetterInspection,
+    CommentsTcpDelegationScheduleAuditSourceFailureCode,
+    CommentsTcpDelegationScheduleAuditSourceFailureTransition,
+    CommentsTcpDelegationScheduleAuditSourceRetryPolicyError,
+    PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
 };
 pub use keyring_schedule_trigger::{
     DEFAULT_COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_CAPACITY,
