@@ -80,10 +80,12 @@ for (const [value, label] of [
   ['"Invalid cart line item selection"', "line-item input public envelope"],
   ['"Customer information is temporarily unavailable"', "customer public envelope"],
   ['"Cart is temporarily unavailable"', "cart storage public envelope"],
-  ["request_tenant_id = ?request_context.map", "request tenant diagnostics"],
-  ["tenant_id = %tenant_id", "tenant diagnostics"],
   ["owner_code = %error.code", "pricing owner code diagnostics"],
   ["ServerFnError::new(error.message)", "sanitized pricing message forwarding"],
+  [
+    "Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None)",
+    "customer not-found behavior",
+  ],
 ]) requireText(safe, value, label);
 
 for (const obsolete of [
@@ -108,9 +110,58 @@ for (const payload of [
 if (countText(safe, "let error_type = std::any::type_name::<E>();") !== 1) {
   failures.push("expected exactly one shared framework context type-only diagnostic site");
 }
-if (countText(safe, "error = ?error") !== 6) {
+
+const customerBody = functionBody(safe, "customer_error");
+for (const [value, label] of [
+  ["let error_type = std::any::type_name_of_val(&error);", "customer error type"],
+  ["error_type", "customer type-only diagnostic"],
+  [
+    "correlation_id = ?request_context.map(|context| context.correlation_id)",
+    "customer correlation diagnostic",
+  ],
+  ["request_context_present = request_context.is_some()", "request context presence"],
+  [
+    "request_tenant_id_non_nil = ?request_context.map(|context| !context.tenant_id.is_nil())",
+    "request tenant shape",
+  ],
+  ["tenant_id_non_nil = !tenant_id.is_nil()", "tenant shape"],
+  ["user_id_non_nil = !user_id.is_nil()", "user shape"],
+  ["channel_id_present", "channel id presence"],
+  ["channel_id_non_nil", "channel id shape"],
+  ["channel_slug_present", "channel slug presence"],
+  ["channel_slug_length", "channel slug length"],
+  ["locale_present", "locale presence"],
+  ["locale_length", "locale length"],
+  ['code = "cart.storefront_customer_unavailable"', "customer diagnostic code"],
+  [
+    'ServerFnError::new("Customer information is temporarily unavailable")',
+    "customer static public envelope",
+  ],
+]) requireText(customerBody, value, label);
+for (const payload of [
+  "error = ?error",
+  "error = %error",
+  "request_tenant_id = ?request_context.map",
+  "tenant_id = %tenant_id",
+  "user_id = %user_id",
+  "channel_id = ?request_context",
+  "channel_slug = ?request_context",
+  "locale = ?request_context",
+]) forbidText(customerBody, payload, "complete customer cause or raw identity/context diagnostic");
+if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
+  failures.push("expected exactly one customer type-only diagnostic site");
+}
+if (
+  countText(
+    safe,
+    "correlation_id = ?request_context.map(|context| context.correlation_id)",
+  ) !== 1
+) {
+  failures.push("expected exactly one optional customer correlation diagnostic site");
+}
+if (countText(safe, "error = ?error") !== 5) {
   failures.push(
-    "cart input, customer, cart owner, and pricing owner diagnostics must remain unchanged in this bounded context-only slice",
+    "cart input, Cart owner, and pricing owner diagnostics must remain unchanged in this bounded customer-only slice",
   );
 }
 
@@ -121,7 +172,6 @@ for (const value of [
   "ServerFnError::new(format!(",
   "Err(ServerFnError::new(err.to_string()))",
   'requires TransactionalEventBus in host runtime context',
-  "request_context.correlation_id",
 ]) forbidText(safe, value, "safe cart SSR adapter");
 
 for (const [value, label] of [
@@ -150,11 +200,19 @@ for (const [key, expected] of Object.entries({
   framework_context_debug_bounds_removed: true,
   framework_context_error_type_only: true,
   complete_framework_context_error_logged: false,
+  customer_static_public_envelope: true,
+  customer_error_type_only: true,
+  complete_customer_error_logged: false,
+  customer_correlation_diagnostic: true,
+  customer_identity_shape_only: true,
+  customer_context_shape_only: true,
+  raw_customer_identity_context_logged: false,
+  customer_not_found_behavior_preserved: true,
   customer_raw_error_public: false,
   cart_raw_error_public: false,
   pricing_port_message_remains_domain_sanitized: true,
   owner_context_logging: true,
-  owner_mapper_cleanup_out_of_scope: true,
+  cart_pricing_identifier_mapper_cleanup_out_of_scope: true,
   cart_dto_changed: false,
   transport_selection_changed: false,
   graphql_transport_changed: false,
@@ -189,7 +247,12 @@ requireText(
 );
 requireText(
   doc,
-  "Customer, Cart owner, pricing, and identifier diagnostics remain separate open cleanup slices",
+  "Customer lookup failures are recorded by concrete error type",
+  "documentation customer diagnostic policy",
+);
+requireText(
+  doc,
+  "Cart owner, pricing, and identifier diagnostics remain separate open cleanup slices",
   "documentation remaining mapper boundary",
 );
 
@@ -200,5 +263,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ cart storefront framework context diagnostics use type-only causes while owner mapper cleanup remains open; source evidence remains unvalidated",
+  "✔ cart storefront framework and customer diagnostics use bounded causes/context while Cart owner and pricing cleanup remains open; source evidence remains unvalidated",
 );
