@@ -14,6 +14,7 @@ const pagesModule = read("crates/rustok-pages/src/lib.rs");
 const reviewedPublish = read(
   "crates/rustok-pages/src/services/page/reviewed_publish.rs",
 );
+const rollback = read("crates/rustok-pages/src/services/page/rollback.rs");
 const pagesControllers = read("crates/rustok-pages/src/controllers/mod.rs");
 const storefrontReader = read(
   "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
@@ -22,6 +23,17 @@ const serverAdapter = read(
   "apps/server/src/services/pages_cache_invalidation.rs",
 );
 const dispatcher = read("apps/server/src/services/module_event_dispatcher.rs");
+const correlationEvidence = JSON.parse(
+  read(
+    "crates/rustok-pages/contracts/evidence/pages-publish-rollback-cache-correlation-source.json",
+  ),
+);
+const correlationRegression = read(
+  "crates/rustok-pages/tests/publish_rollback_cache_correlation.rs",
+);
+const correlationVerifier = read(
+  "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs",
+);
 
 function fail(message) {
   console.error(`[verify-pages-cache-invalidation] ${message}`);
@@ -97,13 +109,21 @@ for (const marker of [
   requireMarker(pagesModule, marker, "Pages module cache exports and listener registration");
 }
 
-for (const marker of [
-  "DomainEvent::NodePublished",
-  "insert_publish_operation_in_tx",
-  "txn.commit().await?",
-]) {
-  requireMarker(reviewedPublish, marker, "Pages reviewed publish outbox boundary");
-}
+const reviewedPublishOwner = sliceBetween(
+  reviewedPublish,
+  "pub async fn publish_reviewed(",
+  "fn require_builder_sources(",
+  "Pages reviewed publish owner transaction",
+);
+requireOrder(
+  reviewedPublishOwner,
+  [
+    "DomainEvent::NodePublished",
+    "insert_publish_operation_in_tx",
+    "txn.commit().await?",
+  ],
+  "Pages reviewed publish outbox receipt commit order",
+);
 for (const forbidden of [
   "CacheService",
   "namespace_generations",
@@ -111,9 +131,37 @@ for (const forbidden of [
   "PagesCacheReadRuntime",
 ]) {
   forbidMarker(
-    reviewedPublish,
+    reviewedPublishOwner,
     forbidden,
     "reviewed publish must remain event-driven instead of invalidating caches inline",
+  );
+}
+
+const rollbackOwner = sliceBetween(
+  rollback,
+  "pub async fn rollback_to_previous(",
+  "async fn find_previous_publish_target_in_tx(",
+  "Pages rollback owner transaction",
+);
+requireOrder(
+  rollbackOwner,
+  [
+    "DomainEvent::NodePublished",
+    "insert_rollback_operation_in_tx",
+    "txn.commit().await?",
+  ],
+  "Pages rollback outbox receipt commit order",
+);
+for (const forbidden of [
+  "CacheService",
+  "namespace_generations",
+  "page_cache_namespace",
+  "PagesCacheReadRuntime",
+]) {
+  forbidMarker(
+    rollbackOwner,
+    forbidden,
+    "rollback must remain event-driven instead of invalidating caches inline",
   );
 }
 
@@ -249,4 +297,49 @@ requireOrder(
   "Pages artifact authorization/cache/source order",
 );
 
-console.log("[verify-pages-cache-invalidation] PASS");
+if (
+  correlationEvidence.status !==
+    "pages_publish_rollback_cache_correlation_source_unvalidated" ||
+  !Array.isArray(correlationEvidence.execution) ||
+  correlationEvidence.execution.length !== 0 ||
+  correlationEvidence.validation?.tests_run !== false ||
+  correlationEvidence.validation?.verifiers_run !== false ||
+  correlationEvidence.validation?.runtime_proven !== false
+) {
+  fail("publish/rollback cache correlation evidence status is invalid");
+}
+for (const marker of [
+  "published_event_rotates_generations_and_forces_storefront_and_artifact_miss_refill",
+  "struct CorrelatingCachePort",
+  "handler.handle(&envelope).await.unwrap()",
+  "assert_eq!(requests[0].event_id, envelope.id)",
+  "assert_eq!(receipts[0].correlation_id, envelope.correlation_id)",
+  "assert_ne!(new_storefront_key, old_storefront_key)",
+  "assert_ne!(new_artifact_key, old_artifact_key)",
+  "put_json(new_storefront_key.clone(), &refilled_storefront)",
+  "put_json(new_artifact_key.clone(), &refilled_artifact)",
+]) {
+  requireMarker(
+    correlationRegression,
+    marker,
+    "Pages publish/rollback cache correlation regression",
+  );
+}
+for (const marker of [
+  "pages_publish_rollback_cache_correlation_source_unvalidated",
+  "reviewed publish event receipt commit ordering",
+  "rollback event receipt commit ordering",
+  "storefront generation miss source refill order",
+  "artifact generation miss source refill order",
+  "source_ready=true execution=pending",
+]) {
+  requireMarker(
+    correlationVerifier,
+    marker,
+    "Pages publish/rollback cache correlation verifier",
+  );
+}
+
+console.log(
+  "[verify-pages-cache-invalidation] PASS correlation_source_ready=true execution=pending",
+);

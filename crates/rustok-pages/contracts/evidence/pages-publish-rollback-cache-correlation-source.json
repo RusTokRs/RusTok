@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "pages_publish_rollback_cache_correlation_source_unvalidated",
+  "scope": "Pages reviewed publish and immutable rollback NodePublished outbox to cache generation miss/refill correlation",
+  "source_contract": {
+    "reviewed_publish_emits_node_published_in_owner_transaction": true,
+    "reviewed_publish_receipt_inserted_before_commit": true,
+    "rollback_emits_node_published_in_owner_transaction": true,
+    "rollback_receipt_inserted_before_commit": true,
+    "publish_and_rollback_share_cache_event_contract": true,
+    "node_published_rotates_route_page_and_artifact_generations": true,
+    "handler_request_binds_event_id": true,
+    "handler_request_binds_correlation_id": true,
+    "handler_receipt_validated_before_ack": true,
+    "storefront_key_binds_route_page_and_artifact_generations": true,
+    "artifact_key_binds_artifact_generation": true,
+    "old_generation_values_remain_physical_but_unreachable_by_current_keys": true,
+    "new_generation_storefront_key_misses_before_refill": true,
+    "new_generation_artifact_key_misses_before_refill": true,
+    "storefront_refill_becomes_hit": true,
+    "artifact_refill_becomes_hit": true,
+    "reader_fail_open_behavior_changed": false,
+    "publish_behavior_changed": false,
+    "rollback_behavior_changed": false,
+    "public_transport_changed": false,
+    "database_schema_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "source_regression": {
+    "path": "crates/rustok-pages/tests/publish_rollback_cache_correlation.rs",
+    "test": "published_event_rotates_generations_and_forces_storefront_and_artifact_miss_refill"
+  },
+  "linked_sources": {
+    "reviewed_publish": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "rollback": "crates/rustok-pages/src/services/page/rollback.rs",
+    "cache_owner": "crates/rustok-pages/src/cache_invalidation.rs",
+    "storefront_reader": "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    "artifact_reader": "crates/rustok-pages/src/controllers/mod.rs"
+  },
+  "suggested_execution": [
+    "node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs",
+    "node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+    "cargo test -p rustok-pages --test publish_rollback_cache_correlation -- --nocapture",
+    "cargo check -p rustok-pages --all-targets"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "database_run": false,
+    "storefront_run": false,
+    "artifact_http_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}
