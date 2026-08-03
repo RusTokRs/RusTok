@@ -10,6 +10,9 @@ const paths = {
   cumulativeDocs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   error: "crates/rustok-forum/src/error.rs",
   merge: "crates/rustok-forum/src/services/topic_merge.rs",
+  moderationOwner: "crates/rustok-forum/src/services/moderation_owner.rs",
+  solutionLock: "crates/rustok-forum/src/services/topic_solution_lock.rs",
+  servicesMod: "crates/rustok-forum/src/services/mod.rs",
   migration:
     "crates/rustok-forum/src/migrations/m20260803_000016_add_forum_topic_merge_solution_policy.rs",
   migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
@@ -31,6 +34,9 @@ const docs = read(paths.docs);
 const cumulativeDocs = read(paths.cumulativeDocs);
 const error = read(paths.error);
 const merge = read(paths.merge);
+const moderationOwner = read(paths.moderationOwner);
+const solutionLock = read(paths.solutionLock);
+const servicesMod = read(paths.servicesMod);
 const migration = read(paths.migration);
 const migrationsMod = read(paths.migrationsMod);
 const test = read(paths.test);
@@ -79,6 +85,11 @@ includesAll(
   "migration registry",
 );
 includesAll(
+  servicesMod,
+  ["mod topic_solution_lock;"],
+  "service registry",
+);
+includesAll(
   migration,
   [
     "CREATE TABLE IF NOT EXISTS forum_topic_solution_locks",
@@ -105,6 +116,61 @@ includesAll(
 );
 assert.ok((migration.match(/forum_00_topic_solution_scope/g) ?? []).length >= 4);
 assert.ok((migration.match(/forum_10_topic_solution_target/g) ?? []).length >= 4);
+
+includesAll(
+  solutionLock,
+  [
+    "pub(crate) async fn lock_topic_solution_scopes_in_tx(",
+    "ids.sort();",
+    "ids.dedup();",
+    "deleted_at IS NULL FOR SHARE",
+    "pg_advisory_xact_lock(hashtextextended($1, 31))",
+    "INSERT INTO forum_topic_solution_locks",
+  ],
+  "shared solution lock",
+);
+includesAll(
+  moderationOwner,
+  [
+    "use crate::services::topic_solution_lock::lock_topic_solution_scopes_in_tx;",
+    "ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id)",
+    "let previous_solution_reply_id = forum_solution::Entity::find()",
+    "let solution_author_id = if let Some(solution) = forum_solution::Entity::find()",
+  ],
+  "moderation solution owner",
+);
+const markStart = moderationOwner.indexOf(
+  "async fn mark_solution_with_optional_audience_context(",
+);
+const markTxn = moderationOwner.indexOf("let txn = self.db.begin().await?;", markStart);
+const markLock = moderationOwner.indexOf(
+  "lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;",
+  markTxn,
+);
+const markReplyRead = moderationOwner.indexOf(
+  "ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id)",
+  markLock,
+);
+const markSolutionRead = moderationOwner.indexOf(
+  "let previous_solution_reply_id = forum_solution::Entity::find()",
+  markReplyRead,
+);
+assert.ok(markStart < markTxn && markTxn < markLock);
+assert.ok(markLock < markReplyRead && markReplyRead < markSolutionRead);
+const clearStart = moderationOwner.indexOf(
+  "async fn clear_solution_with_optional_audience_context(",
+);
+const clearTxn = moderationOwner.indexOf("let txn = self.db.begin().await?;", clearStart);
+const clearLock = moderationOwner.indexOf(
+  "lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;",
+  clearTxn,
+);
+const clearSolutionRead = moderationOwner.indexOf(
+  "let solution_author_id = if let Some(solution) = forum_solution::Entity::find()",
+  clearLock,
+);
+assert.ok(clearStart < clearTxn && clearTxn < clearLock);
+assert.ok(clearLock < clearSolutionRead);
 
 includesAll(
   merge,
