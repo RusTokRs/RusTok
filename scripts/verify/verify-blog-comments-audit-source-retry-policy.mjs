@@ -140,7 +140,7 @@ forbidAll("bootstrap remains uncomposed", bootstrap, [
 requireAll("plan", plan, [
   "# rustok-blog implementation plan — slice 92 continuation",
   "source_retry_policy_ready_runner_composition_pending",
-  "exact source claim",
+  "exact source fence",
   "FOR UPDATE SKIP LOCKED",
   "does not construct the owner in bootstrap",
   "claim selection honors `handoff_next_attempt_at`",
