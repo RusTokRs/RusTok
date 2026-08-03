@@ -73,6 +73,9 @@ pub enum ForumError {
     #[error("Forum topic merge accepted solutions require explicit resolution: {0}")]
     TopicMergeSolutionConflict(Uuid),
 
+    #[error("Forum topic canonical resolution is inconsistent: {0}")]
+    TopicCanonicalResolutionConflict(Uuid),
+
     #[error("Forum topic merge audience reconciliation conflicts with an existing command: {0}")]
     TopicMergeAudienceReconciliationConflict(Uuid),
 
@@ -160,6 +163,9 @@ impl ForumError {
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
             Self::TopicMergeSolutionConflict(_) => "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
+            Self::TopicCanonicalResolutionConflict(_) => {
+                "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT"
+            }
             Self::TopicMergeAudienceReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"
             }
@@ -198,7 +204,10 @@ impl ForumError {
     pub const fn is_retryable(&self) -> bool {
         match self {
             Self::CapabilityFailure { retryable, .. } => *retryable,
-            Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
+            Self::Database(_)
+            | Self::Internal(_)
+            | Self::RelationRevisionConflict
+            | Self::TopicCanonicalResolutionConflict(_) => true,
             _ => false,
         }
     }
