@@ -1,5 +1,6 @@
 mod aggregate_ordering;
 mod cursor;
+mod mutation_event;
 mod planner;
 mod postgres_compiler;
 mod postgres_query_result;
@@ -32,6 +33,13 @@ mod source_replay_tests;
 
 pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
+pub use mutation_event::{
+    IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
+    IndexMutationEventCatalog, IndexMutationEventDelivery, IndexMutationEventDescriptor,
+    IndexMutationEventError, IndexMutationEventProcessError, IndexMutationEventProcessOutcome,
+    IndexMutationEventWorker, IndexMutationEventAcknowledger, SharedIndexMutationEventRegistry,
+    materialize_index_mutation_event_registry, register_index_mutation_event,
+};
 pub use planner::{
     ExecutableQueryPlan, PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder,
     QueryPlanError, QueryPlanFingerprint,
