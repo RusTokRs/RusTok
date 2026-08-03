@@ -19,6 +19,7 @@ const cumulative = JSON.parse(
 const redirect = read("crates/rustok-forum/src/controllers/topic_redirect.rs");
 const controller = read("crates/rustok-forum/src/controllers/mod.rs");
 const topics = read("crates/rustok-forum/src/controllers/topics.rs");
+const publicBoundary = read("crates/rustok-forum/tests/public_boundary_contract.rs");
 const openapi = read("crates/rustok-forum/src/openapi.rs");
 const cargo = read("crates/rustok-forum/Cargo.toml");
 const docs = read("crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md");
@@ -43,6 +44,8 @@ assert.equal(
 assert.equal(contract.http_redirect.target_read_is_hydrated_before_redirect, true);
 assert.equal(contract.http_redirect.missing_and_forbidden_responses_have_no_location, true);
 assert.equal(contract.http_redirect.middleware_is_scoped_to_get_only, true);
+assert.equal(contract.http_redirect.mutation_commands_follow_canonical_target, false);
+assert.equal(contract.http_redirect.put_delete_and_other_mutations_are_unchanged, true);
 assert.equal(contract.compatibility.rest_route_shape_changed, false);
 assert.equal(contract.compatibility.rest_direct_target_status_changed, false);
 assert.equal(contract.compatibility.rest_merged_source_status_changed, true);
@@ -104,7 +107,7 @@ includesAll(
 includesAll(
   controller,
   [
-    "mod topic_redirect;",
+    "pub(crate) mod topic_redirect;",
     "get(topics::get_topic)",
     ".route_layer(axum::middleware::from_fn_with_state(",
     "topic_redirect::redirect_merged_topic",
@@ -121,10 +124,21 @@ assert.ok(getRoute >= 0 && getRoute < getLayer && getLayer < putRoute && putRout
 
 includesAll(
   topics,
-  ["pub async fn get_topic(", "ensure_forum_permission(", ".get_with_locale_fallback(", "Ok(Json(topic))"],
+  [
+    "pub async fn get_topic(",
+    "ensure_forum_permission(",
+    '"forum_permission_denied"',
+    ".get_with_locale_fallback(",
+    "Ok(Json(topic))",
+  ],
   "existing topic GET handler",
 );
 assert.ok(!topics.includes("StatusCode::PERMANENT_REDIRECT"));
+includesAll(
+  publicBoundary,
+  ['include_str!("../src/controllers/topic_redirect.rs")'],
+  "public boundary controller guard",
+);
 includesAll(openapi, ["crate::controllers::topic_redirect::redirect_merged_topic"], "OpenAPI");
 assert.ok(!openapi.includes("crate::controllers::topics::get_topic,"));
 includesAll(cargo, ["[dev-dependencies]", "tower.workspace = true"], "Cargo test support");
