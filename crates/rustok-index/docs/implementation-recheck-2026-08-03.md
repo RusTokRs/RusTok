@@ -8,8 +8,10 @@
 - Validation owner: repository maintainer
 
 The source tree, current canonical plan, recent Index pull-request history, and still-open
-PostgreSQL evidence pull requests were rechecked. Tests, verifiers, formatting, Cargo commands,
-PostgreSQL execution, workflows, and CI were not run, per maintainer instruction.
+PostgreSQL evidence pull requests were rechecked. The dated
+`implementation-plan-current-2026-08-03.md` overlay records the corrected current checklist
+without rewriting historical architecture and evidence sections. Tests, verifiers, formatting,
+Cargo commands, PostgreSQL execution, workflows, and CI were not run, per maintainer instruction.
 
 ## Corrected merged state
 
