@@ -15,13 +15,12 @@ use uuid::Uuid;
 const MAX_PERMISSION_KEY_LENGTH: usize = 256;
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 128;
 
-/// An explicit role grant or revocation for one admitted artifact permission.
+/// An explicit role grant or revocation for one exact admitted artifact permission.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactRolePermissionAssignmentCommand {
     pub tenant_id: Uuid,
     pub role_id: Uuid,
-    pub installation_id: Uuid,
-    pub permission_key: String,
+    pub artifact_permission_id: Uuid,
     pub actor_id: Uuid,
     pub granted: bool,
     pub idempotency_key: String,
@@ -43,9 +42,7 @@ pub enum ArtifactPermissionAssignmentError {
     IdempotencyConflict,
     #[error("role does not exist in the requested tenant")]
     RoleNotFound,
-    #[error(
-        "artifact permission is not registered for the requested installation and tenant scope"
-    )]
+    #[error("artifact permission identity is not registered for the requested tenant scope")]
     PermissionNotRegistered,
     #[error("artifact permission assignment storage failed: {0}")]
     Database(String),
@@ -138,7 +135,7 @@ impl RbacArtifactPermissionAssignmentService {
                     &transaction,
                     command.tenant_id,
                     command.actor_id,
-                    assignment_event(operation_id, artifact_permission.id, &command),
+                    assignment_event(operation_id, &artifact_permission, &command),
                 )
                 .await
         {
@@ -205,6 +202,8 @@ impl SeaOrmArtifactPermissionAuthorizer {
 struct ArtifactPermissionIdentity {
     id: Uuid,
     scope_key: String,
+    installation_id: Uuid,
+    permission_key: String,
 }
 
 #[derive(Debug)]
@@ -221,14 +220,13 @@ fn validate_command(
 ) -> Result<(), ArtifactPermissionAssignmentError> {
     if command.tenant_id.is_nil()
         || command.role_id.is_nil()
-        || command.installation_id.is_nil()
+        || command.artifact_permission_id.is_nil()
         || command.actor_id.is_nil()
     {
         return Err(ArtifactPermissionAssignmentError::InvalidCommand(
-            "tenant, role, installation, and actor identities must be present",
+            "tenant, role, artifact permission, and actor identities must be present",
         ));
     }
-    validate_permission_key(&command.permission_key)?;
     validate_text_token(
         &command.idempotency_key,
         MAX_IDEMPOTENCY_KEY_LENGTH,
@@ -375,15 +373,14 @@ async fn resolve_artifact_permission_identity(
     let tenant_scope = format!("tenant:{}", command.tenant_id);
     let sql = placeholders(
         backend,
-        "SELECT id, scope_key FROM rbac_artifact_permission_definitions WHERE installation_id = {installation_id} AND permission_key = {permission_key} AND (scope_key = 'platform' OR scope_key = {tenant_scope}) ORDER BY CASE WHEN scope_key = {tenant_scope} THEN 0 ELSE 1 END LIMIT 1",
+        "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE id = {artifact_permission_id} AND (scope_key = 'platform' OR scope_key = {tenant_scope}) LIMIT 1",
     );
     transaction
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                command.installation_id.into(),
-                command.permission_key.clone().into(),
+                command.artifact_permission_id.into(),
                 tenant_scope.into(),
             ],
         ))
@@ -393,6 +390,12 @@ async fn resolve_artifact_permission_identity(
             Ok(ArtifactPermissionIdentity {
                 id: row.try_get("", "id").map_err(database_error)?,
                 scope_key: row.try_get("", "scope_key").map_err(database_error)?,
+                installation_id: row
+                    .try_get("", "installation_id")
+                    .map_err(database_error)?,
+                permission_key: row
+                    .try_get("", "permission_key")
+                    .map_err(database_error)?,
             })
         })
         .transpose()?
@@ -455,15 +458,15 @@ async fn revoke_permission(
 
 fn assignment_event(
     operation_id: Uuid,
-    artifact_permission_id: Uuid,
+    artifact_permission: &ArtifactPermissionIdentity,
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> RbacArtifactPermissionEvent {
     RbacArtifactPermissionEvent::AssignmentChanged {
         operation_id,
-        artifact_permission_id,
+        artifact_permission_id: artifact_permission.id,
         role_id: command.role_id,
-        installation_id: command.installation_id,
-        permission_key: command.permission_key.clone(),
+        installation_id: artifact_permission.installation_id,
+        permission_key: artifact_permission.permission_key.clone(),
         granted: command.granted,
     }
 }
@@ -506,8 +509,7 @@ mod tests {
         ArtifactRolePermissionAssignmentCommand {
             tenant_id: Uuid::new_v4(),
             role_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            permission_key: "sample.events.handle".to_string(),
+            artifact_permission_id: Uuid::new_v4(),
             actor_id: Uuid::new_v4(),
             granted: true,
             idempotency_key: "grant-1".to_string(),
@@ -515,20 +517,13 @@ mod tests {
     }
 
     #[test]
-    fn assignment_validation_rejects_empty_or_control_text_tokens() {
+    fn assignment_validation_rejects_nil_artifact_permission_identity() {
         let mut command = command();
-        command.permission_key = " sample.events.handle".to_string();
+        command.artifact_permission_id = Uuid::nil();
         assert!(matches!(
             validate_command(&command),
             Err(ArtifactPermissionAssignmentError::InvalidCommand(
-                "permission key"
-            ))
-        ));
-        command.permission_key = "sample.events\n.handle".to_string();
-        assert!(matches!(
-            validate_command(&command),
-            Err(ArtifactPermissionAssignmentError::InvalidCommand(
-                "permission key"
+                "tenant, role, artifact permission, and actor identities must be present"
             ))
         ));
     }
@@ -537,8 +532,10 @@ mod tests {
     fn exact_operation_retry_is_not_applied_twice() {
         let command = command();
         let artifact_permission = ArtifactPermissionIdentity {
-            id: Uuid::new_v4(),
+            id: command.artifact_permission_id,
             scope_key: format!("tenant:{}", command.tenant_id),
+            installation_id: Uuid::new_v4(),
+            permission_key: "sample.events.handle".to_string(),
         };
         let result = match_operation(
             StoredOperation {
@@ -559,15 +556,20 @@ mod tests {
     fn assignment_event_retains_operation_and_exact_permission_identity() {
         let command = command();
         let operation_id = Uuid::new_v4();
-        let artifact_permission_id = Uuid::new_v4();
+        let artifact_permission = ArtifactPermissionIdentity {
+            id: command.artifact_permission_id,
+            scope_key: "platform".to_string(),
+            installation_id: Uuid::new_v4(),
+            permission_key: "sample.events.handle".to_string(),
+        };
         assert_eq!(
-            assignment_event(operation_id, artifact_permission_id, &command),
+            assignment_event(operation_id, &artifact_permission, &command),
             RbacArtifactPermissionEvent::AssignmentChanged {
                 operation_id,
-                artifact_permission_id,
+                artifact_permission_id: artifact_permission.id,
                 role_id: command.role_id,
-                installation_id: command.installation_id,
-                permission_key: command.permission_key,
+                installation_id: artifact_permission.installation_id,
+                permission_key: artifact_permission.permission_key,
                 granted: command.granted,
             }
         );
