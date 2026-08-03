@@ -31,9 +31,8 @@ execution ordering remain unchanged.
 3. checkout causation validation;
 4. owner execution.
 
-Admission failures continue through `inspect_err`, so the original `PortError` is returned by
-the policy or write-semantics result without reconstruction. The diagnostic helper does not
-select a replacement code, message, kind, or retryability value.
+The original admission `PortError` continues through `inspect_err` unchanged. The diagnostic
+helper does not select a replacement code, message, kind, or retryability value.
 
 ## Bounded diagnostic policy
 
