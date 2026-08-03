@@ -578,14 +578,26 @@ async fn load_valid_solution_in_tx(
     let Some(solution) = solution else {
         return Ok(None);
     };
-    let reply = forum_reply::Entity::find_by_id(solution.reply_id)
-        .filter(forum_reply::Column::TenantId.eq(tenant_id))
-        .filter(forum_reply::Column::TopicId.eq(topic_id))
-        .one(txn)
-        .await?;
-    if !reply.is_some_and(|reply| reply.status == ReplyStatus::Approved) {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM forum_replies WHERE tenant_id = $1 AND topic_id = $2 AND id = $3 AND deleted_at IS NULL AND status = 'approved'",
+            vec![tenant_id.into(), topic_id.into(), solution.reply_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT 1 FROM forum_replies WHERE tenant_id = ? AND topic_id = ? AND id = ? AND deleted_at IS NULL AND status = 'approved'",
+            vec![tenant_id.into(), topic_id.into(), solution.reply_id.into()],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum topic merge solution validation does not support database backend {backend:?}"
+            )));
+        }
+    };
+    if txn.query_one(statement).await?.is_none() {
         return Err(ForumError::Validation(format!(
-            "Forum topic merge requires a valid approved {label} solution"
+            "Forum topic merge requires a valid approved non-deleted {label} solution"
         )));
     }
     Ok(Some(solution))
