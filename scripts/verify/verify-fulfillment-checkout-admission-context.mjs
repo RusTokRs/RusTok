@@ -8,10 +8,14 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const source = readFileSync(
-  new URL('crates/rustok-fulfillment/src/checkout_execution.rs', root),
-  'utf8',
+const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
+const source = read('crates/rustok-fulfillment/src/checkout_execution.rs');
+const evidence = JSON.parse(
+  read(
+    'crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json',
+  ),
 );
+const doc = read('crates/rustok-fulfillment/docs/checkout-admission-context.md');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -20,6 +24,7 @@ const requireText = (content, value, label) => {
 const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+const countText = (content, value) => content.split(value).length - 1;
 const between = (content, start, end, label) => {
   const startIndex = content.indexOf(start);
   const endIndex = content.indexOf(end, startIndex + start.length);
@@ -30,11 +35,17 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const admission = between(
+const admissionHelpers = between(
   source,
   'fn require_checkout_fulfillment_read_admission(',
   '#[async_trait]\nimpl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionPort',
   'checkout fulfillment admission helpers',
+);
+const admissionMapper = between(
+  source,
+  'fn log_checkout_fulfillment_admission_rejection(',
+  '#[async_trait]\nimpl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionPort',
+  'checkout fulfillment admission mapper',
 );
 const portImpl = between(
   source,
@@ -48,7 +59,7 @@ const ensure = between(
   'async fn read_checkout_fulfillments(',
   'ensure fulfillment operation',
 );
-const read = between(
+const readOperation = between(
   portImpl,
   'async fn read_checkout_fulfillments(',
   '\n}',
@@ -67,47 +78,91 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['fn require_checkout_fulfillment_read_admission(', 'read admission helper'],
-  ['context.require_policy(PortCallPolicy::read()).map_err(|error| {', 'read policy interception'],
-  [
-    'log_checkout_fulfillment_admission_rejection(\n            context,\n            owner_operation,\n            "policy",\n            &error,',
-    'read policy diagnostics',
-  ],
+  ['.require_policy(PortCallPolicy::read())', 'read policy selection'],
+  ['.inspect_err(|error| {', 'read original-error inspection'],
+  ['log_checkout_fulfillment_admission_rejection(context, owner_operation, "policy", error);', 'read policy diagnostics'],
   ['fn require_checkout_fulfillment_write_admission(', 'write admission helper'],
-  ['context.require_policy(PortCallPolicy::write()).map_err(|error| {', 'write policy interception'],
-  ['context.require_write_semantics().map_err(|error| {', 'write semantics interception'],
+  ['.require_policy(PortCallPolicy::write())', 'write policy selection'],
+  ['context.require_write_semantics().inspect_err(|error| {', 'write semantics inspection'],
   ['"write_semantics",', 'write semantics phase'],
-  ['fn log_checkout_fulfillment_admission_rejection(', 'shared rejection diagnostics'],
-  ['context: &PortContext', 'retained context input'],
-  ["owner_operation: &'static str", 'exact owner operation input'],
-  ["admission_phase: &'static str", 'admission phase input'],
-  ['error: &PortError', 'original port error input'],
-  [
-    'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
-    'technical severity classification',
-  ],
-  ['tracing::error!(', 'technical rejection severity'],
-  ['tracing::warn!(', 'ordinary rejection severity'],
-  ['error = ?error', 'original error evidence'],
+]) requireText(admissionHelpers, value, label);
+
+for (const [value, label] of [
+  ['fn log_checkout_fulfillment_admission_rejection(', 'shared admission mapper'],
+  ['error: &PortError', 'borrowed original port error'],
+  ['let error_kind = match &error.kind', 'closed error-kind classification'],
+  ['PortErrorKind::Validation => "validation"', 'validation kind label'],
+  ['PortErrorKind::NotFound => "not_found"', 'not-found kind label'],
+  ['PortErrorKind::Conflict => "conflict"', 'conflict kind label'],
+  ['PortErrorKind::Forbidden => "forbidden"', 'forbidden kind label'],
+  ['PortErrorKind::Unavailable => "unavailable"', 'unavailable kind label'],
+  ['PortErrorKind::Timeout => "timeout"', 'timeout kind label'],
+  ['PortErrorKind::InvariantViolation => "invariant_violation"', 'invariant kind label'],
+  ['let technical_failure = matches!(', 'technical severity classification'],
+  ['let actor_kind = match &context.actor.kind', 'bounded actor kind'],
+  ['let tenant_id_length = context.tenant_id.chars().count();', 'tenant shape'],
+  ['let actor_id_length = context.actor.id.chars().count();', 'actor identity shape'],
+  ['let claim_count = context.claims.len();', 'claim count'],
+  ['let role_count = context.roles.len();', 'role count'],
+  ['let channel_present = context.channel.is_some();', 'channel presence'],
+  ['let channel_length = context.channel.as_ref()', 'channel length'],
+  ['let locale_length = context.locale.chars().count();', 'locale length'],
+  ['let causation_id_present = context.causation_id.is_some();', 'causation presence'],
+  ['let causation_id_length = context', 'causation length'],
+  ['let traceparent_present = context.traceparent.is_some();', 'traceparent presence'],
+  ['let traceparent_length = context', 'traceparent length'],
+  ['let idempotency_key_present = context.idempotency_key.is_some();', 'idempotency presence'],
+  ['let idempotency_key_length = context', 'idempotency length'],
+  ['let internal_message_present = !error.message.trim().is_empty();', 'message presence'],
+  ['let internal_message_length = error.message.chars().count();', 'message length'],
   ['owner = CHECKOUT_FULFILLMENT_OWNER', 'truthful owner field'],
-  ['owner_operation,', 'exact operation field'],
-  ['admission_phase,', 'admission phase field'],
-  ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['internal_code = %error.code', 'original internal code'],
-  ['internal_message = %error.message', 'original internal message'],
-  ['error_kind = ?error.kind', 'typed error kind'],
-  ['retryable = error.retryable', 'original retryability'],
-  ['boundary = CHECKOUT_FULFILLMENT_BOUNDARY', 'fulfillment boundary field'],
+  ['owner_operation,', 'exact owner operation field'],
+  ['admission_phase,', 'exact admission phase field'],
+  ['correlation_id = %context.correlation_id', 'correlation diagnostic'],
+  ['internal_code = %error.code', 'stable internal code'],
+  ['internal_message_present', 'bounded message presence'],
+  ['internal_message_length', 'bounded message length'],
+  ['error_kind', 'closed kind diagnostic'],
+  ['retryable = error.retryable', 'retryability diagnostic'],
+  ['boundary = CHECKOUT_FULFILLMENT_BOUNDARY', 'execution boundary'],
   ['"checkout fulfillment owner admission failed"', 'technical event'],
   ['"checkout fulfillment owner admission was rejected"', 'ordinary event'],
-]) requireText(admission, value, label);
+]) requireText(admissionMapper, value, label);
+
+for (const value of [
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+]) forbidText(admissionMapper, value, 'unsafe admission diagnostic payload');
+
+if (countText(admissionMapper, 'tracing::error!(') !== 1) {
+  failures.push('expected exactly one admission technical diagnostic path');
+}
+if (countText(admissionMapper, 'tracing::warn!(') !== 1) {
+  failures.push('expected exactly one admission rejection diagnostic path');
+}
+for (const marker of [
+  'owner_operation,',
+  'admission_phase,',
+  'correlation_id = %context.correlation_id',
+  'internal_code = %error.code',
+  'internal_message_present',
+  'internal_message_length',
+  'error_kind',
+  'retryable = error.retryable',
+]) {
+  if (countText(admissionMapper, marker) < 2) {
+    failures.push(`both admission severity paths must retain ${marker}`);
+  }
+}
 
 for (const [block, values, label] of [
   [
@@ -121,7 +176,7 @@ for (const [block, values, label] of [
     'ensure behavior',
   ],
   [
-    read,
+    readOperation,
     [
       'require_checkout_fulfillment_read_admission(&context, READ_OPERATION)?;',
       'let tenant_id = parse_tenant_id(&context, READ_OPERATION)?;',
@@ -149,8 +204,6 @@ for (const [pattern, expected, label] of [
   [/require_checkout_fulfillment_read_admission\(/g, 2, 'read helper definition/use count'],
   [/require_checkout_fulfillment_write_admission\(/g, 2, 'write helper definition/use count'],
   [/log_checkout_fulfillment_admission_rejection\(/g, 4, 'diagnostic helper definition/use count'],
-  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 6, 'owner diagnostic count'],
-  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 6, 'boundary diagnostic count'],
   [/"policy"/g, 2, 'policy phase count'],
   [/"write_semantics"/g, 1, 'write semantics phase count'],
 ]) {
@@ -159,23 +212,73 @@ for (const [pattern, expected, label] of [
 }
 
 for (const [value, label] of [
-  ['fn validate_request(', 'request validation'],
-  ['fn validate_fulfillment(', 'fulfillment validation'],
+  ['fn map_checkout_fulfillment_local_port_error(', 'bounded local PortError mapper'],
   ['fn require_operation_context(', 'causation validation'],
   ['fn parse_tenant_id(', 'tenant parser'],
-  ['fn fulfillment_error_to_port_error(', 'stable fulfillment mapper'],
+  ['fn fulfillment_error_to_port_error(', 'canonical fulfillment mapper'],
   ['"find_checkout_fulfillment_before_create"', 'pre-create lookup'],
   ['"adopt_checkout_fulfillment_after_create_error"', 'post-error adoption'],
   ['"create_checkout_fulfillment"', 'create operation'],
   ['"list_checkout_fulfillments_for_read"', 'read list operation'],
 ]) requireText(source, value, label);
 
+if (evidence.status !== 'fulfillment_checkout_admission_diagnostic_safety_source_unvalidated') {
+  failures.push(`evidence status mismatch: ${evidence.status}`);
+}
+for (const [key, expected] of Object.entries({
+  admission_mapper_bounded: true,
+  complete_admission_port_error_logged: false,
+  admission_internal_message_text_logged: false,
+  admission_context_shape_only: true,
+  admission_correlation_preserved: true,
+  admission_owner_operations_preserved: true,
+  admission_phases_preserved: true,
+  admission_error_kind_closed: true,
+  admission_severity_split_preserved: true,
+  original_admission_port_error_returned: true,
+  read_write_admission_order_preserved: true,
+  local_porterror_mapper_unchanged: true,
+  causation_tenant_parser_cleanup_out_of_scope: true,
+  canonical_fulfillment_error_mapper_cleanup_out_of_scope: true,
+  execution_behavior_changed: false,
+  public_port_error_changed: false,
+  ffa_promoted: false,
+  fba_promoted: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`evidence source_contract.${key} must be ${expected}`);
+  }
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push('evidence execution must remain empty');
+}
+for (const key of [
+  'tests_run',
+  'cargo_run',
+  'format_run',
+  'verifiers_run',
+  'workflow_checks_run',
+  'ci_run',
+  'runtime_proven',
+]) {
+  if (evidence.validation?.[key] !== false) {
+    failures.push(`evidence validation.${key} must remain false`);
+  }
+}
+
+for (const [value, label] of [
+  ['Status: **source-ready / unvalidated**', 'documentation status'],
+  ['Admission diagnostics record only a closed error-kind label', 'documentation error policy'],
+  ['The original admission `PortError` continues through `inspect_err` unchanged', 'documentation pass-through policy'],
+  ['Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain separate', 'documentation remaining boundary'],
+]) requireText(doc, value, label);
+
 if (failures.length > 0) {
-  console.error('Fulfillment checkout admission context verification failed:');
+  console.error('Fulfillment checkout admission diagnostic-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Fulfillment checkout owner admission retains full PortContext, exact operation and phase, original PortError, stable behavior, and technical-versus-ordinary severity',
+  '✔ Fulfillment checkout admission diagnostics use bounded kind, message-shape, and context-shape facts while preserving admission order and original-error pass-through',
 );
