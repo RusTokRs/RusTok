@@ -22,6 +22,7 @@ const scripts = [
   'verify-index-replay-multipage-runner.mjs',
   'verify-index-source-reconciliation.mjs',
   'verify-index-replay-runtime-composition.mjs',
+  'verify-index-server-reconciliation-guard.mjs',
   'verify-index-replay-dry-run.mjs',
   'verify-index-replay-page-interruption.mjs',
   'verify-index-replay-retry-store.mjs',
