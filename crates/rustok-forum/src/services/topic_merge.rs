@@ -17,7 +17,7 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{
     forum_category_lifecycle, forum_domain_event, forum_reply, forum_solution, forum_topic,
-    forum_topic_merge_operation,
+    forum_topic_merge_operation, forum_topic_merge_solution_resolution,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -34,7 +34,6 @@ pub const MAX_FORUM_TOPIC_MERGE_REPLIES: u64 = 500;
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 const FORUM_TOPIC_MERGED_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_SCHEMA_VERSION: i16 = 1;
-const FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION: i16 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MergeForumTopicInput {
@@ -90,10 +89,11 @@ struct ForumTopicMergeSolutionPlan {
 /// reply-owned relations are retained while reply positions are shifted after the target's
 /// current maximum. A source-only accepted solution follows its unchanged reply identity and
 /// preserves its marker metadata. Competing accepted solutions require the explicit manager
-/// command, which selects one reply, audits both candidates in the immutable semantic event and
-/// decrements the losing reply author's solution statistic exactly once. The source topic becomes
-/// an archived, locked redirect-ready identity. Topic subscriptions, tags and topic-level audience
-/// relations are reconciled by their dedicated bounded policies.
+/// command, which selects one reply, stores both candidates in an append-only audit row linked to
+/// the immutable merge receipt, and decrements the losing reply author's solution statistic
+/// exactly once. The source topic becomes an archived, locked redirect-ready identity. Topic
+/// subscriptions, tags and topic-level audience relations are reconciled by their dedicated
+/// bounded policies against the unchanged schema-version-1 merge event.
 pub struct ForumTopicMergeService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -171,8 +171,13 @@ impl ForumTopicMergeService {
             {
                 return Err(ForumError::TopicMergeOperationConflict(input.operation_id));
             }
-            let stored_resolution =
-                validate_existing_semantic_event_in_tx(&txn, &existing).await?;
+            validate_existing_semantic_event_in_tx(&txn, &existing).await?;
+            let stored_resolution = load_solution_resolution_audit_in_tx(
+                &txn,
+                existing.tenant_id,
+                existing.operation_id,
+            )
+            .await?;
             if stored_resolution
                 .as_ref()
                 .map(|audit| audit.selected_solution_reply_id)
@@ -351,13 +356,7 @@ impl ForumTopicMergeService {
             resulting_published_reply_count,
             position_offset,
             &reason,
-            solution_plan.audit.as_ref(),
         );
-        let schema_version = if solution_plan.audit.is_some() {
-            FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION
-        } else {
-            FORUM_TOPIC_MERGED_SCHEMA_VERSION
-        };
         forum_domain_event::ActiveModel {
             sequence_no: NotSet,
             event_id: Set(input.operation_id),
@@ -365,7 +364,7 @@ impl ForumTopicMergeService {
             aggregate_type: Set(FORUM_TOPIC_MERGED_AGGREGATE_TYPE.to_string()),
             aggregate_id: Set(target_topic_id),
             event_type: Set(FORUM_TOPIC_MERGED_EVENT_TYPE.to_string()),
-            schema_version: Set(schema_version),
+            schema_version: Set(FORUM_TOPIC_MERGED_SCHEMA_VERSION),
             actor_id: Set(Some(actor_id)),
             payload: Set(payload),
             created_at: Set(now.into()),
@@ -390,6 +389,21 @@ impl ForumTopicMergeService {
         }
         .insert(&txn)
         .await?;
+
+        if let Some(audit) = solution_plan.audit.as_ref() {
+            forum_topic_merge_solution_resolution::ActiveModel {
+                tenant_id: Set(tenant_id),
+                operation_id: Set(input.operation_id),
+                source_solution_reply_id: Set(audit.source_solution_reply_id),
+                target_solution_reply_id: Set(audit.target_solution_reply_id),
+                selected_solution_reply_id: Set(audit.selected_solution_reply_id),
+                rejected_solution_reply_id: Set(audit.rejected_solution_reply_id),
+                rejected_solution_author_id: Set(audit.rejected_solution_author_id),
+                resolved_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await?;
+        }
 
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
@@ -889,45 +903,24 @@ fn topic_merged_payload(
     resulting_published_reply_count: i32,
     position_offset: i64,
     reason: &str,
-    resolution: Option<&ForumTopicMergeSolutionResolutionAudit>,
 ) -> JsonValue {
-    match resolution {
-        Some(resolution) => json!({
-            "operation_id": operation_id,
-            "source_topic_id": source_topic_id,
-            "target_topic_id": target_topic_id,
-            "category_id": category_id,
-            "moved_reply_count": moved_reply_count,
-            "moved_published_reply_count": moved_published_reply_count,
-            "resulting_published_reply_count": resulting_published_reply_count,
-            "position_offset": position_offset,
-            "reason": reason,
-            "solution_resolution": {
-                "source_solution_reply_id": resolution.source_solution_reply_id,
-                "target_solution_reply_id": resolution.target_solution_reply_id,
-                "selected_solution_reply_id": resolution.selected_solution_reply_id,
-                "rejected_solution_reply_id": resolution.rejected_solution_reply_id,
-                "rejected_solution_author_id": resolution.rejected_solution_author_id,
-            },
-        }),
-        None => json!({
-            "operation_id": operation_id,
-            "source_topic_id": source_topic_id,
-            "target_topic_id": target_topic_id,
-            "category_id": category_id,
-            "moved_reply_count": moved_reply_count,
-            "moved_published_reply_count": moved_published_reply_count,
-            "resulting_published_reply_count": resulting_published_reply_count,
-            "position_offset": position_offset,
-            "reason": reason,
-        }),
-    }
+    json!({
+        "operation_id": operation_id,
+        "source_topic_id": source_topic_id,
+        "target_topic_id": target_topic_id,
+        "category_id": category_id,
+        "moved_reply_count": moved_reply_count,
+        "moved_published_reply_count": moved_published_reply_count,
+        "resulting_published_reply_count": resulting_published_reply_count,
+        "position_offset": position_offset,
+        "reason": reason,
+    })
 }
 
 async fn validate_existing_semantic_event_in_tx(
     txn: &DatabaseTransaction,
     operation: &forum_topic_merge_operation::Model,
-) -> ForumResult<Option<ForumTopicMergeSolutionResolutionAudit>> {
+) -> ForumResult<()> {
     let event = forum_domain_event::Entity::find()
         .filter(forum_domain_event::Column::TenantId.eq(operation.tenant_id))
         .filter(forum_domain_event::Column::EventId.eq(operation.event_id))
@@ -938,33 +931,6 @@ async fn validate_existing_semantic_event_in_tx(
                 "Forum topic merge operation is missing its semantic event".to_string(),
             )
         })?;
-    let resolution = match event.schema_version {
-        FORUM_TOPIC_MERGED_SCHEMA_VERSION => None,
-        FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION => {
-            let value = event
-                .payload
-                .get("solution_resolution")
-                .cloned()
-                .ok_or_else(|| {
-                    ForumError::Validation(
-                        "Forum topic merge solution-resolution audit is missing".to_string(),
-                    )
-                })?;
-            let audit: ForumTopicMergeSolutionResolutionAudit =
-                serde_json::from_value(value).map_err(|_| {
-                    ForumError::Validation(
-                        "Forum topic merge solution-resolution audit is invalid".to_string(),
-                    )
-                })?;
-            validate_solution_resolution_audit(&audit)?;
-            Some(audit)
-        }
-        _ => {
-            return Err(ForumError::Validation(
-                "Forum topic merge operation semantic event schema is unsupported".to_string(),
-            ));
-        }
-    };
     let expected_payload = topic_merged_payload(
         operation.operation_id,
         operation.source_topic_id,
@@ -975,11 +941,11 @@ async fn validate_existing_semantic_event_in_tx(
         operation.resulting_published_reply_count,
         operation.position_offset,
         &operation.reason,
-        resolution.as_ref(),
     );
     if event.aggregate_type != FORUM_TOPIC_MERGED_AGGREGATE_TYPE
         || event.aggregate_id != operation.target_topic_id
         || event.event_type != FORUM_TOPIC_MERGED_EVENT_TYPE
+        || event.schema_version != FORUM_TOPIC_MERGED_SCHEMA_VERSION
         || event.actor_id != Some(operation.actor_id)
         || event.payload != expected_payload
     {
@@ -987,7 +953,29 @@ async fn validate_existing_semantic_event_in_tx(
             "Forum topic merge operation semantic event does not match its receipt".to_string(),
         ));
     }
-    Ok(resolution)
+    Ok(())
+}
+
+async fn load_solution_resolution_audit_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+) -> ForumResult<Option<ForumTopicMergeSolutionResolutionAudit>> {
+    let row = forum_topic_merge_solution_resolution::Entity::find_by_id((tenant_id, operation_id))
+        .one(txn)
+        .await?;
+    row.map(|row| {
+        let audit = ForumTopicMergeSolutionResolutionAudit {
+            source_solution_reply_id: row.source_solution_reply_id,
+            target_solution_reply_id: row.target_solution_reply_id,
+            selected_solution_reply_id: row.selected_solution_reply_id,
+            rejected_solution_reply_id: row.rejected_solution_reply_id,
+            rejected_solution_author_id: row.rejected_solution_author_id,
+        };
+        validate_solution_resolution_audit(&audit)?;
+        Ok(audit)
+    })
+    .transpose()
 }
 
 fn validate_solution_resolution_audit(
@@ -999,7 +987,7 @@ fn validate_solution_resolution_audit(
         audit.selected_solution_reply_id,
         audit.rejected_solution_reply_id,
     ];
-    if ids.iter().any(Uuid::is_nil)
+    if ids.iter().any(|id| id.is_nil())
         || audit.source_solution_reply_id == audit.target_solution_reply_id
         || audit.selected_solution_reply_id == audit.rejected_solution_reply_id
         || !((audit.selected_solution_reply_id == audit.source_solution_reply_id
