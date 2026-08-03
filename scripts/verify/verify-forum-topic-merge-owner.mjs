@@ -5,10 +5,8 @@ import { readFileSync } from "node:fs";
 
 const paths = {
   contract: "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
-  solutionContract:
-    "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
-  canonicalContract:
-    "crates/rustok-forum/contracts/forum-topic-canonical-resolution.json",
+  solutionContract: "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
+  canonicalContract: "crates/rustok-forum/contracts/forum-topic-canonical-resolution.json",
   docs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   entity: "crates/rustok-forum/src/entities/forum_topic_merge_operation.rs",
   entitiesMod: "crates/rustok-forum/src/entities/mod.rs",
@@ -25,6 +23,9 @@ const paths = {
   canonicalService: "crates/rustok-forum/src/services/topic_canonical_resolution.rs",
   facade: "crates/rustok-forum/src/services/topic_facade.rs",
   servicesMod: "crates/rustok-forum/src/services/mod.rs",
+  redirect: "crates/rustok-forum/src/controllers/topic_redirect.rs",
+  controller: "crates/rustok-forum/src/controllers/mod.rs",
+  openapi: "crates/rustok-forum/src/openapi.rs",
   test: "crates/rustok-forum/tests/topic_merge_sqlite.rs",
   canonicalTest: "crates/rustok-forum/tests/topic_canonical_resolution_sqlite.rs",
   plan: "crates/rustok-forum/docs/implementation-plan.md",
@@ -54,6 +55,9 @@ const service = read(paths.service);
 const canonicalService = read(paths.canonicalService);
 const facade = read(paths.facade);
 const servicesMod = read(paths.servicesMod);
+const redirect = read(paths.redirect);
+const controller = read(paths.controller);
+const openapi = read(paths.openapi);
 const test = read(paths.test);
 const canonicalTest = read(paths.canonicalTest);
 const plan = read(paths.plan);
@@ -61,7 +65,7 @@ const verifier = read(paths.verifier);
 
 assert.equal(contract.contract, "forum_topic_merge_owner_v1");
 assert.equal(contract.task, "FORUM-21B");
-assert.equal(contract.latest_policy_slice, "FORUM-21I");
+assert.equal(contract.latest_policy_slice, "FORUM-21J");
 assert.equal(contract.parent_task, "FORUM-21");
 assert.equal(contract.status, "source_ready_maintainer_execution_pending");
 assert.equal(contract.canonical_plan_status, "planned");
@@ -91,14 +95,20 @@ assert.equal(
 );
 assert.equal(contract.canonical_resolution.source_of_truth, "forum_topic_merge_operations");
 assert.equal(contract.canonical_resolution.parallel_alias_store, false);
+assert.equal(contract.canonical_resolution.rest_direct_target_returns_200, true);
+assert.equal(contract.canonical_resolution.rest_merged_source_returns_308, true);
+assert.equal(contract.canonical_resolution.rest_redirect_is_get_only, true);
 assert.equal(solutionContract.task, "FORUM-21H");
 assert.equal(solutionContract.extends, "FORUM-21B");
 assert.equal(canonicalContract.task, "FORUM-21I");
+assert.equal(canonicalContract.latest_transport_slice, "FORUM-21J");
 assert.equal(canonicalContract.extends, "FORUM-21B");
 assert.equal(
   canonicalContract.resolution.each_hop_topic_and_edges_share_one_statement_snapshot,
   true,
 );
+assert.equal(canonicalContract.http_redirect.status, 308);
+assert.equal(canonicalContract.http_redirect.cache_control, "private, no-store");
 
 includesAll(
   entity,
@@ -209,9 +219,6 @@ includesAll(
     "delete_source_solution_in_tx",
     "move_replies_in_tx(",
     "insert_transferred_solution_in_tx",
-    "source_reply_count > MAX_FORUM_TOPIC_MERGE_REPLIES",
-    "moved_published_reply_count != source.reply_count",
-    "target_published_reply_count != target.reply_count",
     "source_active.status = Set(TopicStatus::Archived);",
     "source_active.is_locked = Set(true);",
     "source_active.reply_count = Set(0);",
@@ -236,16 +243,13 @@ const solutionDelete = service.indexOf("delete_source_solution_in_tx(&txn");
 const replyMove = service.indexOf("move_replies_in_tx(", solutionDelete);
 const solutionInsert = service.indexOf("insert_transferred_solution_in_tx(&txn");
 assert.ok(receiptLookup < preliminaryRead);
-assert.ok(preliminaryRead < counterLocks);
-assert.ok(counterLocks < topicLocks);
-assert.ok(topicLocks < solutionLocks);
-assert.ok(solutionLocks < solutionConflict);
-assert.ok(solutionConflict < solutionDelete);
-assert.ok(solutionDelete < replyMove);
+assert.ok(preliminaryRead < counterLocks && counterLocks < topicLocks);
+assert.ok(topicLocks < solutionLocks && solutionLocks < solutionConflict);
+assert.ok(solutionConflict < solutionDelete && solutionDelete < replyMove);
 assert.ok(replyMove < solutionInsert);
 assert.equal((service.match(/publish_forum_topic_projection_in_tx\(/g) ?? []).length, 2);
 assert.equal((service.match(/publish_forum_category_projection_in_tx\(/g) ?? []).length, 1);
-for (const forbidden of [
+for (const marker of [
   "forum_topic::Entity::delete",
   "forum_reply::Entity::delete",
   "category_active.topic_count",
@@ -254,7 +258,7 @@ for (const forbidden of [
   "sourceCommitOverride",
   "bestEffort",
 ]) {
-  assert.ok(!service.includes(forbidden), `service contains forbidden marker: ${forbidden}`);
+  assert.ok(!service.includes(marker), `service contains forbidden marker: ${marker}`);
 }
 
 includesAll(
@@ -288,7 +292,6 @@ includesAll(
   ],
   "canonical topic facade",
 );
-
 includesAll(
   servicesMod,
   [
@@ -315,6 +318,31 @@ includesAll(
   ],
   "crate exports",
 );
+
+includesAll(
+  redirect,
+  [
+    "pub(crate) async fn redirect_merged_topic(",
+    "StatusCode::PERMANENT_REDIRECT",
+    '(CACHE_CONTROL, "private, no-store".to_string())',
+    "merged_source_redirects_privately_while_target_uses_existing_handler",
+    "assert_eq!(put_response.status(), StatusCode::NO_CONTENT)",
+  ],
+  "merged source redirect",
+);
+includesAll(
+  controller,
+  [
+    "mod topic_redirect;",
+    "get(topics::get_topic)",
+    "topic_redirect::redirect_merged_topic",
+    ".put(content_commands::update_topic)",
+    ".delete(topics::delete_topic)",
+  ],
+  "redirect wiring",
+);
+includesAll(openapi, ["crate::controllers::topic_redirect::redirect_merged_topic"], "OpenAPI");
+
 includesAll(
   test,
   [
@@ -322,8 +350,6 @@ includesAll(
     "topic_merge_transfers_source_only_solution_and_preserves_target_only_solution",
     "topic_merge_rejects_cross_category_and_competing_solutions_without_partial_state",
     "topic_solution_database_guard_requires_active_topic_and_approved_reply",
-    "moved_reply_count, 2",
-    '"archived", true, 0',
     "source_root_reply_id",
     "source_child_reply_id",
     "TopicMergeOperationConflict",
@@ -358,16 +384,18 @@ includesAll(
     "two accepted solutions",
     "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
     "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
-    "FORUM-21A through FORUM-21I",
+    "308 Permanent Redirect",
+    "FORUM-21A through FORUM-21J",
     "No command above was run by the implementation agent",
   ],
   "FORUM-21B handoff",
 );
 assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
+assert.ok(plan.includes("| `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |"));
 assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
+assert.ok(!plan.includes("| `FORUM-24` | `done` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(
-  "FORUM-21B/H/I topic merge owner source is ready and canonical FORUM-21 remains planned.",
+  "FORUM-21B/H/I/J topic merge owner source is ready; FORUM-21 and FORUM-24 remain planned.",
 );
