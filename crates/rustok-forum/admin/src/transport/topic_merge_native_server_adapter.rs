@@ -30,6 +30,20 @@ fn require_permission(
 }
 
 #[cfg(feature = "ssr")]
+async fn require_forum_module_enabled(
+    host: &rustok_api::HostRuntimeContext,
+    tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    match rustok_api::is_tenant_module_enabled(host.db(), tenant_id, "forum").await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ServerFnError::new("Forum module is not enabled")),
+        Err(error) => Err(ServerFnError::new(format!(
+            "Forum module state is unavailable: {error}"
+        ))),
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn runtime() -> Result<
     (
         rustok_api::HostRuntimeContext,
@@ -88,13 +102,14 @@ pub(super) async fn fetch_topic_merge_candidates_native(
             .map_err(ServerFnError::new)?;
 
         require_tenant_scope(&auth, &tenant)?;
+        let (host, event_bus) = runtime()?;
+        require_forum_module_enabled(&host, tenant.id).await?;
         require_permission(
             &auth,
             rustok_api::Permission::FORUM_TOPICS_LIST,
             "forum_topics:list required",
         )?;
 
-        let (host, event_bus) = runtime()?;
         let service = rustok_forum::TopicService::new(host.db_clone(), event_bus);
         let (topics, _) = service
             .list_with_locale_fallback(
@@ -149,6 +164,8 @@ pub(super) async fn merge_topic_native(
             .map_err(ServerFnError::new)?;
 
         require_tenant_scope(&auth, &tenant)?;
+        let (host, event_bus) = runtime()?;
+        require_forum_module_enabled(&host, tenant.id).await?;
         require_permission(
             &auth,
             rustok_api::Permission::FORUM_TOPICS_MANAGE,
@@ -164,7 +181,6 @@ pub(super) async fn merge_topic_native(
             .map(|value| parse_uuid(value, "selected_solution_reply_id"))
             .transpose()?;
 
-        let (host, event_bus) = runtime()?;
         let service = rustok_forum::ForumTopicMergeService::new(host.db_clone(), event_bus);
         let security = rustok_core::SecurityContext::from_permission_snapshot(
             Some(auth.user_id),
