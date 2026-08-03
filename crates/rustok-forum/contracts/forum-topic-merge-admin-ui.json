@@ -35,8 +35,12 @@
     "package_api": "apps/next-admin/packages/forum/src/api/forum.ts",
     "framework_neutral_policy": "apps/next-admin/packages/forum/src/core/topic-merge.ts",
     "ui_adapter": "apps/next-admin/packages/forum/src/components/forum-topic-merge.tsx",
+    "graphql_proxy": "apps/next-admin/src/app/api/rustok/graphql/route.ts",
     "host_page_is_composition_only": true,
     "candidate_limit": 100,
+    "browser_transport": "same_origin_graphql_proxy",
+    "proxy_session_authentication": true,
+    "client_access_token_serialized": false,
     "package_owned_locales": ["en", "ru"],
     "navigation_permission": "forum_topics:manage"
   },
