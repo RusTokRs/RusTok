@@ -71,6 +71,9 @@ const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
     "m20260726_000003_create_command_receipts",
     "m20260727_000004_create_index_dlq_receipts",
     "m20260728_000001_create_consumer_poison_receipts",
+    "m20260803_000017_add_forum_topic_canonical_resolution",
+    "m20260803_000009_add_blog_comments_audit_canonical_handoff",
+    "m20260803_000001_canonicalize_artifact_permissions",
 ];
 
 struct ModuleMigrationSource {
