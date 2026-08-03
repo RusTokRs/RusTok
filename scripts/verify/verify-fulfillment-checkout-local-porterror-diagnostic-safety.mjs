@@ -33,6 +33,11 @@ const evidence = JSON.parse(
     "crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json",
   ),
 );
+const admissionEvidence = JSON.parse(
+  read(
+    "crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json",
+  ),
+);
 const doc = read(
   "crates/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md",
 );
@@ -124,11 +129,29 @@ if (countText(source, "map_checkout_fulfillment_local_port_error(") !== 9) {
 }
 
 for (const [value, label] of [
-  ["error = ?error", "open admission complete error diagnostic"],
-  ["tenant_id = %context.tenant_id", "open admission tenant diagnostic"],
-  ["actor = ?context.actor", "open admission actor diagnostic"],
-  ["internal_message = %error.message", "open admission message diagnostic"],
+  ["let error_kind = match &error.kind", "bounded admission kind classification"],
+  ["let internal_message_present = !error.message.trim().is_empty();", "bounded admission message presence"],
+  ["let internal_message_length = error.message.chars().count();", "bounded admission message length"],
+  ["tenant_id_length", "bounded admission tenant shape"],
+  ["actor_kind", "bounded admission actor shape"],
+  ["channel_present", "bounded admission channel shape"],
+  ["correlation_id = %context.correlation_id", "admission correlation"],
+  ["internal_code = %error.code", "admission code"],
+  ["retryable = error.retryable", "admission retryability"],
 ]) requireText(admission, value, label);
+for (const payload of [
+  "error = ?error",
+  "error = %error",
+  "tenant_id = %context.tenant_id",
+  "actor = ?context.actor",
+  "channel = ?context.channel",
+  "locale = %context.locale",
+  "causation_id = ?context.causation_id",
+  "traceparent = ?context.traceparent",
+  "idempotency_key = ?context.idempotency_key",
+  "internal_message = %error.message",
+  "error_kind = ?error.kind",
+]) forbidText(admission, payload, "unsafe admission payload after separate cleanup");
 
 if (evidence.status !== "fulfillment_checkout_local_porterror_diagnostic_safety_source_unvalidated") {
   failures.push(`evidence status mismatch: ${evidence.status}`);
@@ -144,7 +167,7 @@ for (const [key, expected] of Object.entries({
   local_severity_split_preserved: true,
   original_port_error_returned: true,
   local_mapper_call_sites_preserved: true,
-  admission_diagnostic_cleanup_out_of_scope: true,
+  admission_diagnostic_cleanup_source_closed_separately: true,
   causation_tenant_parser_cleanup_out_of_scope: true,
   canonical_fulfillment_error_mapper_cleanup_out_of_scope: true,
   execution_behavior_changed: false,
@@ -155,6 +178,15 @@ for (const [key, expected] of Object.entries({
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`evidence source_contract.${key} must be ${expected}`);
   }
+}
+if (admissionEvidence.status !== "fulfillment_checkout_admission_diagnostic_safety_source_unvalidated") {
+  failures.push(`admission evidence status mismatch: ${admissionEvidence.status}`);
+}
+if (admissionEvidence.source_contract?.admission_mapper_bounded !== true) {
+  failures.push("admission evidence must mark the mapper bounded");
+}
+if (admissionEvidence.source_contract?.complete_admission_port_error_logged !== false) {
+  failures.push("admission evidence must reject complete PortError logging");
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
   failures.push("evidence execution must remain empty");
@@ -177,7 +209,7 @@ for (const [value, label] of [
   ["Status: **source-ready / unvalidated**", "documentation status"],
   ["The local mapper records only a closed error-kind label", "documentation local error policy"],
   ["The exact delegated `PortError` is returned unchanged", "documentation pass-through policy"],
-  ["Admission diagnostics remain a separate open cleanup slice", "documentation remaining boundary"],
+  ["Admission diagnostics are source-ready / unvalidated under a separate contract", "documentation admission boundary"],
 ]) requireText(doc, value, label);
 
 if (failures.length > 0) {
@@ -187,5 +219,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ fulfillment checkout local PortError diagnostics use bounded kind, message-shape, and context-shape facts while admission cleanup remains open",
+  "✔ fulfillment checkout local and admission PortError diagnostics use bounded kind, message-shape, and context-shape facts under separate source-only contracts",
 );

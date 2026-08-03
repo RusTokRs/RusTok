@@ -133,7 +133,7 @@ delegated context value is copied into a new public envelope.
 - preservation of admission, tenant, causation, service mapping, input construction, metadata,
   and service-operation behavior.
 
-The dedicated payload-safety guard is:
+The dedicated local payload-safety guard is:
 
 - `scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs`.
 
@@ -142,11 +142,16 @@ Its source evidence and detailed policy are recorded in:
 - `crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`;
 - `crates/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md`.
 
+Admission diagnostics are now source-ready / unvalidated under their separate bounded contract:
+
+- `scripts/verify/verify-fulfillment-checkout-admission-context.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
+
 ## Remaining gaps
 
-Admission diagnostics remain a separate open cleanup slice and still retain complete
-`PortError`, message text, and raw delegated context. Causation validation, tenant parsing,
-and canonical `FulfillmentError` diagnostics remain separate bounded slices.
+Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain
+separate bounded slices.
 
 Compile, runtime, replay, restart, remote-port, workflow, and CI evidence remain open. The
 broad ecommerce correlation-safe mapper cleanup and FFA/FBA status are not promoted.

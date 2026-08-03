@@ -1,49 +1,80 @@
-# Fulfillment checkout owner admission context
+# Fulfillment checkout owner admission diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the admission diagnostic gap for the two operations published by
-`CheckoutFulfillmentExecutionPort` in
+This bounded source slice hardens the read/write admission diagnostics for the two operations
+published by `CheckoutFulfillmentExecutionPort` in
 `crates/rustok-fulfillment/src/checkout_execution.rs`:
 
 - `ensure_checkout_fulfillments`;
 - `read_checkout_fulfillments`.
 
-Both operations previously called `PortContext` admission methods directly. A policy or
-write-semantics rejection returned the correct typed `PortError`, but the fulfillment owner
-did not retain the delegated context, exact owner operation, or admission phase in structured
-diagnostics.
+The public methods, helper signatures, policy selection, write-semantics requirement, and
+execution ordering remain unchanged.
 
-This slice changes only that admission boundary.
+## Preserved admission flow
 
-## Delivered source contract
+`ensure_checkout_fulfillments` still evaluates:
 
-The public operations now use fulfillment-owned admission helpers:
+1. write policy;
+2. write semantics;
+3. tenant parsing;
+4. checkout causation validation;
+5. owner execution.
 
-- `ensure_checkout_fulfillments` uses write policy followed by write semantics;
-- `read_checkout_fulfillments` uses read policy only.
+`read_checkout_fulfillments` still evaluates:
 
-Admission is still evaluated before tenant parsing, causation identity validation, or owner
-service execution.
+1. read policy;
+2. tenant parsing;
+3. checkout causation validation;
+4. owner execution.
 
-Each rejected admission records:
+The original admission `PortError` continues through `inspect_err` unchanged. The diagnostic
+helper does not select a replacement code, message, kind, or retryability value.
+
+## Bounded diagnostic policy
+
+Admission diagnostics record only a closed error-kind label:
+
+- `validation`;
+- `not_found`;
+- `conflict`;
+- `forbidden`;
+- `unavailable`;
+- `timeout`;
+- `invariant_violation`.
+
+They retain:
 
 - truthful owner `rustok_fulfillment`;
-- exact operation `ensure_checkout_fulfillments` or `read_checkout_fulfillments`;
-- phase `policy` or `write_semantics`;
+- exact owner operation;
+- exact phase `policy` or `write_semantics`;
 - boundary `checkout_fulfillment_execution_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- the original `PortError`;
-- original code, message, kind, and retryability.
+- correlation id;
+- stable internal code and retryability;
+- message presence and character length;
+- tenant-id and actor-id character lengths;
+- a closed actor-kind label;
+- claim and role counts;
+- channel presence and optional character length;
+- locale character length;
+- causation-id, traceparent, and idempotency-key presence plus optional character lengths;
+- optional deadline milliseconds.
 
-Unavailable, timeout, and invariant failures use error severity. Ordinary policy,
-validation, conflict, forbidden, and other admission rejections use warning severity. The
-original `PortError` is returned unchanged after diagnostics.
+The complete admission `PortError` is not logged. Human-readable message text is not logged.
+Raw tenant, actor, channel, locale, causation, traceparent, and idempotency values are not
+recorded by this mapper.
+
+## Preserved severity
+
+Unavailable, timeout, and invariant-violation failures continue through `tracing::error!`.
+Validation, not-found, conflict, forbidden, and other ordinary admission rejections continue
+through `tracing::warn!`.
+
+Both paths preserve the exact owner operation, phase, correlation id, code, closed kind label,
+retryability, boundary, and bounded context/message facts.
 
 ## Preserved behavior
 
@@ -55,50 +86,47 @@ This slice does not change:
 - admission-before-tenant-parsing ordering;
 - tenant UUID parsing;
 - checkout-operation causation validation;
-- request and fulfillment validation;
-- create/adopt/read service calls or ordering;
-- immutable fulfillment identity checks;
+- local request, identity, set, or immutable-plan validation;
+- fulfillment creation, post-error adoption, lookup, read, or sorting behavior;
+- canonical `FulfillmentError` public mappings;
 - metadata construction;
-- existing `FulfillmentError` public mappings;
-- public codes, messages, kinds, or retryability;
-- existing source verifiers and contracts;
+- Commerce orchestration;
 - FBA, FFA, or ecommerce audit status.
-
-No delegated context value or internal admission cause is copied into a new public envelope.
 
 ## Static evidence
 
-`scripts/verify/verify-fulfillment-checkout-admission-context.mjs` guards:
+The focused guard is:
+
+- `scripts/verify/verify-fulfillment-checkout-admission-context.mjs`.
+
+It requires:
 
 - one read and one write admission helper;
-- policy and write-semantics interception;
-- exact operation and phase attribution;
-- full available `PortContext` and original `PortError` diagnostics;
+- read policy, write policy, and write-semantics interception through `inspect_err`;
+- exact owner-operation and phase attribution;
+- the closed error-kind classification;
+- bounded message and delegated-context facts;
 - technical-versus-ordinary severity;
-- unchanged error return;
-- admission before tenant parsing;
-- absence of the superseded direct admission forms;
-- preservation of tenant, causation, request, fulfillment, create/adopt/read, and stable
-  owner-mapper behavior.
+- original-error pass-through and admission-before-tenant-parsing ordering;
+- absence of complete errors, raw context values, raw message text, and Debug kind output;
+- preservation of local, tenant, causation, service, and owner mapper boundaries.
 
-The existing `verify-fulfillment-checkout-execution-error-safety.mjs` contract remains
-compatible and continues to guard tenant, causation, service-error, and public-envelope
-behavior.
+Source evidence is recorded in:
 
-## Remaining gaps
+- `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`.
 
-The master ecommerce correlation-safe mapper task remains open for:
+The previously closed local-`PortError` contract is synchronized to treat admission cleanup as
+a separate source-ready/unvalidated contract rather than an open unsafe payload site.
 
-- fulfillment tenant UUID and checkout causation validation diagnostics;
-- fulfillment request, identity, and immutable-plan validation diagnostics;
-- order settlement and compensation owner admission and validation;
-- inventory reservation owner admission and validation;
-- remaining payment execution and compensation consumers;
-- GraphQL query customer reads and the shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
+## Remaining diagnostic boundaries
 
-No architecture status is promoted from source inspection alone.
+Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain separate
+bounded slices. This change does not claim that the complete `checkout_execution.rs` diagnostic
+surface is source-closed.
+
+Compile, runtime, replay, restart, contention, mounted Commerce behavior, remote-port parity,
+workflows, CI, and production evidence remain open. The broad ecommerce correlation-safe
+mapper cleanup and FFA/FBA status are not promoted.
 
 ## Suggested maintainer checks
 
@@ -106,8 +134,8 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-fulfillment-checkout-admission-context.mjs
+node scripts/verify/verify-fulfillment-checkout-local-porterror-diagnostic-safety.mjs
+node scripts/verify/verify-fulfillment-checkout-local-validation-context.mjs
 node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs
-node scripts/verify/verify-fulfillment-checkout-lifecycle-error-safety.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-fulfillment --lib
 ```
