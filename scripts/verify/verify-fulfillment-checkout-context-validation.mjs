@@ -10,9 +10,14 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const source = read('crates/rustok-fulfillment/src/checkout_execution.rs');
-const evidence = JSON.parse(
+const causationEvidence = JSON.parse(
   read(
     'crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json',
+  ),
+);
+const tenantEvidence = JSON.parse(
+  read(
+    'crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json',
   ),
 );
 const doc = read('crates/rustok-fulfillment/docs/checkout-context-validation.md');
@@ -84,25 +89,25 @@ for (const [value, label] of [
     '"checkout fulfillment causation_id must match the checkout operation"',
     'causation stable message',
   ],
-  ['let actor_kind = match &context.actor.kind', 'bounded actor kind'],
-  ['let tenant_id_length = context.tenant_id.chars().count();', 'tenant shape'],
-  ['let actor_id_length = context.actor.id.chars().count();', 'actor identity shape'],
-  ['let claim_count = context.claims.len();', 'claim count'],
-  ['let role_count = context.roles.len();', 'role count'],
-  ['let channel_present = context.channel.is_some();', 'channel presence'],
-  ['let channel_length = context.channel.as_ref()', 'channel length'],
-  ['let locale_length = context.locale.chars().count();', 'locale length'],
-  ['let traceparent_present = context.traceparent.is_some();', 'traceparent presence'],
-  ['let traceparent_length = context', 'traceparent length'],
-  ['let idempotency_key_present = context.idempotency_key.is_some();', 'idempotency presence'],
-  ['let idempotency_key_length = context', 'idempotency length'],
+  ['let actor_kind = match &context.actor.kind', 'causation bounded actor kind'],
+  ['let tenant_id_length = context.tenant_id.chars().count();', 'causation tenant shape'],
+  ['let actor_id_length = context.actor.id.chars().count();', 'causation actor identity shape'],
+  ['let claim_count = context.claims.len();', 'causation claim count'],
+  ['let role_count = context.roles.len();', 'causation role count'],
+  ['let channel_present = context.channel.is_some();', 'causation channel presence'],
+  ['let channel_length = context.channel.as_ref()', 'causation channel length'],
+  ['let locale_length = context.locale.chars().count();', 'causation locale length'],
+  ['let traceparent_present = context.traceparent.is_some();', 'causation traceparent presence'],
+  ['let traceparent_length = context', 'causation traceparent length'],
+  ['let idempotency_key_present = context.idempotency_key.is_some();', 'causation idempotency presence'],
+  ['let idempotency_key_length = context', 'causation idempotency length'],
   [
     'let expected_checkout_operation_id_non_nil = !checkout_operation_id.is_nil();',
     'expected operation identity shape',
   ],
-  ['let internal_message_present = !error.message.trim().is_empty();', 'message presence'],
-  ['let internal_message_length = error.message.chars().count();', 'message length'],
-  ['let error_kind = "validation";', 'closed validation kind'],
+  ['let internal_message_present = !error.message.trim().is_empty();', 'causation message presence'],
+  ['let internal_message_length = error.message.chars().count();', 'causation message length'],
+  ['let error_kind = "validation";', 'causation closed validation kind'],
   ['tracing::warn!(', 'causation warning severity'],
   ['owner = CHECKOUT_FULFILLMENT_OWNER', 'causation truthful owner'],
   ['operation = owner_operation', 'causation exact operation'],
@@ -113,9 +118,9 @@ for (const [value, label] of [
   ['expected_checkout_operation_id_non_nil', 'expected identity shape diagnostic'],
   ['code = "fulfillment.checkout_operation_id_invalid"', 'causation code diagnostic'],
   ['internal_code = %error.code', 'causation internal code'],
-  ['internal_message_present', 'bounded message presence diagnostic'],
-  ['internal_message_length', 'bounded message length diagnostic'],
-  ['error_kind', 'closed kind diagnostic'],
+  ['internal_message_present', 'causation bounded message presence'],
+  ['internal_message_length', 'causation bounded message length'],
+  ['error_kind', 'causation closed kind diagnostic'],
   ['retryable = error.retryable', 'causation retryability'],
   ['boundary = CHECKOUT_FULFILLMENT_BOUNDARY', 'causation boundary'],
   ['return Err(error);', 'same causation error returned'],
@@ -142,28 +147,80 @@ if (countText(operationContext, 'tracing::warn!(') !== 1) {
 
 for (const [value, label] of [
   ['fn parse_tenant_id(', 'tenant parser'],
-  ['Uuid::parse_str(&context.tenant_id).map_err(|cause| {', 'tenant parse cause capture'],
+  ['context: &PortContext', 'retained tenant context'],
+  ["owner_operation: &'static str", 'tenant owner operation'],
+  ['Uuid::parse_str(&context.tenant_id).map_err(|cause| {', 'tenant UUID parsing and cause capture'],
+  ['let error = PortError::validation(', 'tenant stable error construction'],
   ['"fulfillment.tenant_id_invalid"', 'tenant stable code'],
   ['"PortContext.tenant_id must be a UUID for fulfillment ports"', 'tenant stable message'],
-  ['cause = ?cause', 'open tenant parse cause diagnostic'],
-  ['error = ?error', 'open tenant complete error diagnostic'],
-  ['tenant_id = %context.tenant_id', 'open tenant identity diagnostic'],
-  ['actor = ?context.actor', 'open tenant actor diagnostic'],
-  ['channel = ?context.channel', 'open tenant channel diagnostic'],
-  ['locale = %context.locale', 'open tenant locale diagnostic'],
-  ['causation_id = ?context.causation_id', 'open tenant causation diagnostic'],
-  ['traceparent = ?context.traceparent', 'open tenant trace diagnostic'],
-  ['idempotency_key = ?context.idempotency_key', 'open tenant idempotency diagnostic'],
-  ['internal_message = %error.message', 'open tenant message diagnostic'],
-  ['error_kind = ?error.kind', 'open tenant kind diagnostic'],
+  ['let parse_cause_type = std::any::type_name_of_val(&cause);', 'tenant parse-cause type only'],
+  ['let tenant_id_length = context.tenant_id.chars().count();', 'tenant identity shape'],
+  ['let tenant_id_parse_failed = true;', 'tenant parse-failure fact'],
+  ['let actor_kind = match &context.actor.kind', 'tenant bounded actor kind'],
+  ['let actor_id_length = context.actor.id.chars().count();', 'tenant actor identity shape'],
+  ['let claim_count = context.claims.len();', 'tenant claim count'],
+  ['let role_count = context.roles.len();', 'tenant role count'],
+  ['let channel_present = context.channel.is_some();', 'tenant channel presence'],
+  ['let channel_length = context.channel.as_ref()', 'tenant channel length'],
+  ['let locale_length = context.locale.chars().count();', 'tenant locale length'],
+  ['let causation_id_present = context.causation_id.is_some();', 'tenant causation presence'],
+  ['let causation_id_length = context', 'tenant causation length'],
+  ['let traceparent_present = context.traceparent.is_some();', 'tenant traceparent presence'],
+  ['let traceparent_length = context', 'tenant traceparent length'],
+  ['let idempotency_key_present = context.idempotency_key.is_some();', 'tenant idempotency presence'],
+  ['let idempotency_key_length = context', 'tenant idempotency length'],
+  ['let internal_message_present = !error.message.trim().is_empty();', 'tenant message presence'],
+  ['let internal_message_length = error.message.chars().count();', 'tenant message length'],
+  ['let error_kind = "validation";', 'tenant closed validation kind'],
+  ['tracing::warn!(', 'tenant warning severity'],
+  ['parse_cause_type,', 'tenant parse-cause type diagnostic'],
+  ['owner = CHECKOUT_FULFILLMENT_OWNER', 'tenant truthful owner'],
+  ['operation = owner_operation', 'tenant exact operation'],
+  ['validation_phase = "tenant_id"', 'tenant validation phase'],
+  ['correlation_id = %context.correlation_id', 'tenant correlation context'],
+  ['tenant_id_parse_failed', 'tenant parse-failure diagnostic'],
+  ['code = "fulfillment.tenant_id_invalid"', 'tenant code diagnostic'],
+  ['internal_code = %error.code', 'tenant internal code'],
+  ['internal_message_present', 'tenant bounded message presence'],
+  ['internal_message_length', 'tenant bounded message length'],
+  ['error_kind', 'tenant closed kind diagnostic'],
+  ['retryable = error.retryable', 'tenant retryability'],
+  ['boundary = CHECKOUT_FULFILLMENT_BOUNDARY', 'tenant boundary'],
   ['error\n    })', 'same tenant error returned'],
 ]) requireText(tenantContext, value, label);
+
+for (const value of [
+  'cause = ?cause',
+  'cause = %cause',
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+]) forbidText(tenantContext, value, 'unsafe tenant diagnostic payload');
+
+if (countText(tenantContext, 'tracing::warn!(') !== 1) {
+  failures.push('expected exactly one tenant warning path');
+}
 
 const operationErrorIndex = operationContext.indexOf('let error = PortError::validation(');
 const operationLogIndex = operationContext.indexOf('tracing::warn!(');
 const operationReturnIndex = operationContext.indexOf('return Err(error);');
 if (!(operationErrorIndex >= 0 && operationErrorIndex < operationLogIndex && operationLogIndex < operationReturnIndex)) {
   failures.push('causation validation must construct the stable error, log bounded facts, then return the same error');
+}
+
+const tenantErrorIndex = tenantContext.indexOf('let error = PortError::validation(');
+const tenantLogIndex = tenantContext.indexOf('tracing::warn!(');
+const tenantReturnIndex = tenantContext.lastIndexOf('error\n    })');
+if (!(tenantErrorIndex >= 0 && tenantErrorIndex < tenantLogIndex && tenantLogIndex < tenantReturnIndex)) {
+  failures.push('tenant validation must construct the stable error, log bounded facts, then return the same error');
 }
 
 for (const [block, values, label] of [
@@ -201,8 +258,8 @@ for (const [pattern, expected, label] of [
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 }
 
-if (evidence.status !== 'fulfillment_checkout_causation_diagnostic_safety_source_unvalidated') {
-  failures.push(`evidence status mismatch: ${evidence.status}`);
+if (causationEvidence.status !== 'fulfillment_checkout_causation_diagnostic_safety_source_unvalidated') {
+  failures.push(`causation evidence status mismatch: ${causationEvidence.status}`);
 }
 for (const [key, expected] of Object.entries({
   causation_validation_bounded: true,
@@ -217,7 +274,34 @@ for (const [key, expected] of Object.entries({
   causation_parse_and_match_facts_preserved: true,
   expected_operation_identity_shape_only: true,
   original_causation_port_error_returned: true,
-  tenant_parser_cleanup_out_of_scope: true,
+  execution_behavior_changed: false,
+  public_port_error_changed: false,
+  ffa_promoted: false,
+  fba_promoted: false,
+})) {
+  if (causationEvidence.source_contract?.[key] !== expected) {
+    failures.push(`causation evidence source_contract.${key} must be ${expected}`);
+  }
+}
+
+if (tenantEvidence.status !== 'fulfillment_checkout_tenant_diagnostic_safety_source_unvalidated') {
+  failures.push(`tenant evidence status mismatch: ${tenantEvidence.status}`);
+}
+for (const [key, expected] of Object.entries({
+  tenant_parser_bounded: true,
+  complete_tenant_port_error_logged: false,
+  tenant_parse_cause_type_only: true,
+  tenant_internal_message_text_logged: false,
+  tenant_context_shape_only: true,
+  tenant_correlation_preserved: true,
+  tenant_owner_operations_preserved: true,
+  tenant_validation_phase_preserved: true,
+  tenant_error_kind_closed: true,
+  tenant_warning_severity_preserved: true,
+  tenant_parse_failure_fact_preserved: true,
+  original_tenant_port_error_returned: true,
+  tenant_parse_behavior_preserved: true,
+  causation_validation_unchanged: true,
   admission_mapper_unchanged: true,
   local_porterror_mapper_unchanged: true,
   canonical_fulfillment_error_mapper_cleanup_out_of_scope: true,
@@ -226,40 +310,47 @@ for (const [key, expected] of Object.entries({
   ffa_promoted: false,
   fba_promoted: false,
 })) {
-  if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`evidence source_contract.${key} must be ${expected}`);
+  if (tenantEvidence.source_contract?.[key] !== expected) {
+    failures.push(`tenant evidence source_contract.${key} must be ${expected}`);
   }
 }
-if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
-  failures.push('evidence execution must remain empty');
-}
-for (const key of [
-  'tests_run',
-  'cargo_run',
-  'format_run',
-  'verifiers_run',
-  'workflow_checks_run',
-  'ci_run',
-  'runtime_proven',
+
+for (const [name, evidence] of [
+  ['causation', causationEvidence],
+  ['tenant', tenantEvidence],
 ]) {
-  if (evidence.validation?.[key] !== false) {
-    failures.push(`evidence validation.${key} must remain false`);
+  if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+    failures.push(`${name} evidence execution must remain empty`);
+  }
+  for (const key of [
+    'tests_run',
+    'cargo_run',
+    'format_run',
+    'verifiers_run',
+    'workflow_checks_run',
+    'ci_run',
+    'runtime_proven',
+  ]) {
+    if (evidence.validation?.[key] !== false) {
+      failures.push(`${name} evidence validation.${key} must remain false`);
+    }
   }
 }
 
 for (const [value, label] of [
   ['Status: **source-ready / unvalidated**', 'documentation status'],
   ['Causation diagnostics retain only bounded context and identity-shape facts', 'documentation causation policy'],
-  ['The exact constructed causation `PortError` is returned unchanged', 'documentation pass-through policy'],
-  ['Tenant parsing remains the next separate diagnostic cleanup slice', 'documentation remaining boundary'],
+  ['Tenant parse-failure diagnostics retain only type and bounded context-shape facts', 'documentation tenant policy'],
+  ['The exact constructed tenant `PortError` is returned unchanged', 'documentation tenant pass-through policy'],
+  ['Canonical `FulfillmentError` diagnostics remain the next separate cleanup slice', 'documentation remaining boundary'],
 ]) requireText(doc, value, label);
 
 if (failures.length > 0) {
-  console.error('Fulfillment checkout causation diagnostic-safety verification failed:');
+  console.error('Fulfillment checkout context diagnostic-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Fulfillment checkout causation diagnostics use bounded context and identity-shape facts while tenant parser cleanup remains open',
+  '✔ Fulfillment checkout causation and tenant diagnostics use bounded context, identity-shape, and type-only facts while preserving typed error behavior',
 );
