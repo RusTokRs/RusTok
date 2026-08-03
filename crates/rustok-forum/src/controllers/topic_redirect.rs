@@ -1,10 +1,15 @@
 use axum::{
     extract::{Path, Query, Request, State},
-    http::{StatusCode, header::{CACHE_CONTROL, LOCATION}},
+    http::{
+        StatusCode,
+        header::{CACHE_CONTROL, LOCATION},
+    },
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::{
+    AuthContext, Permission, RequestContext, TenantContext, has_any_effective_permission,
+};
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
@@ -12,24 +17,50 @@ use crate::{ListTopicsFilter, TopicService};
 
 use super::ForumHttpRuntime;
 
+#[utoipa::path(
+    get,
+    path = "/api/forum/topics/{id}",
+    tag = "forum",
+    params(
+        ("id" = Uuid, Path, description = "Topic ID"),
+        ("locale" = Option<String>, Query, description = "Locale")
+    ),
+    responses(
+        (status = 200, description = "Topic details", body = crate::TopicResponse),
+        (
+            status = 308,
+            description = "Merged source topic redirects to the retained canonical topic",
+            headers(
+                ("Location" = String, description = "Tenant-relative canonical topic API path"),
+                ("Cache-Control" = String, description = "Private no-store redirect policy")
+            )
+        ),
+        (status = 404, description = "Topic not found"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
 pub(crate) async fn redirect_merged_topic(
     State(runtime): State<ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
     Query(filter): Query<ListTopicsFilter>,
     request: Request,
     next: Next,
 ) -> HttpResult<Response> {
-    let resolution = TopicService::new(runtime.db_clone(), runtime.event_bus())
-        .resolve_canonical_topic(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            topic_id,
-        )
+    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_READ]) {
+        return Ok(next.run(request).await);
+    }
+
+    let security = rustok_core::SecurityContext::from_permission_snapshot(
+        Some(auth.user_id),
+        &auth.permissions,
+    );
+    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
+    let resolution = service
+        .resolve_canonical_topic(tenant.id, security.clone(), topic_id)
         .await
         .map_err(super::map_forum_error)?;
 
@@ -37,10 +68,23 @@ pub(crate) async fn redirect_merged_topic(
         return Ok(next.run(request).await);
     }
 
-    let location = canonical_topic_location(
-        resolution.canonical_topic_id,
-        filter.locale.as_deref(),
-    );
+    let locale = filter
+        .locale
+        .as_deref()
+        .unwrap_or(request_context.locale.as_str());
+    service
+        .get_with_locale_fallback(
+            tenant.id,
+            security,
+            resolution.canonical_topic_id,
+            locale,
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(super::map_forum_error)?;
+
+    let location =
+        canonical_topic_location(resolution.canonical_topic_id, filter.locale.as_deref());
     Ok((
         StatusCode::PERMANENT_REDIRECT,
         [
@@ -68,8 +112,11 @@ mod tests {
 
     use axum::{
         Router,
-        body::Body,
-        http::{Request, StatusCode, header::{CACHE_CONTROL, LOCATION}},
+        body::{Body, to_bytes},
+        http::{
+            Method, Request, StatusCode,
+            header::{CACHE_CONTROL, LOCATION},
+        },
         middleware,
         routing::get,
     };
@@ -84,10 +131,11 @@ mod tests {
     };
     use sea_orm_migration::SchemaManager;
     use tower::ServiceExt;
+    use uuid::Uuid;
 
     use crate::{
         CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule,
-        ForumTopicMergeService, MergeForumTopicInput, TopicService,
+        ForumTopicMergeService, MergeForumTopicInput, TopicResponse, TopicService,
     };
 
     use super::{ForumHttpRuntime, canonical_topic_location, redirect_merged_topic};
@@ -219,11 +267,7 @@ mod tests {
         }
     }
 
-    fn request(
-        uri: String,
-        tenant: TenantContext,
-        auth: AuthContext,
-    ) -> Request<Body> {
+    fn request(uri: String, tenant: TenantContext, auth: AuthContext) -> Request<Body> {
         let mut request = Request::builder()
             .uri(uri)
             .body(Body::empty())
@@ -237,7 +281,7 @@ mod tests {
         request
     }
 
-    async fn passthrough() -> StatusCode {
+    async fn put_passthrough() -> StatusCode {
         StatusCode::NO_CONTENT
     }
 
@@ -255,7 +299,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn merged_source_redirects_privately_while_target_passes_through() -> TestResult<()> {
+    async fn merged_source_redirects_privately_while_target_uses_existing_handler() -> TestResult<()>
+    {
         let (db, event_bus) = setup().await?;
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
@@ -301,10 +346,12 @@ mod tests {
         let app = Router::new()
             .route(
                 "/api/forum/topics/{id}",
-                get(passthrough).route_layer(middleware::from_fn_with_state(
-                    runtime.clone(),
-                    redirect_merged_topic,
-                )),
+                get(crate::controllers::topics::get_topic)
+                    .route_layer(middleware::from_fn_with_state(
+                        runtime.clone(),
+                        redirect_merged_topic,
+                    ))
+                    .put(put_passthrough),
             )
             .with_state(runtime);
         let tenant = tenant_context(tenant_id);
@@ -317,18 +364,19 @@ mod tests {
         let source_response = app
             .clone()
             .oneshot(request(
-                format!("/api/forum/topics/{source_topic_id}?locale=en%2FUS"),
+                format!("/api/forum/topics/{source_topic_id}?locale=en-US"),
                 tenant.clone(),
                 read_auth.clone(),
             ))
             .await?;
         assert_eq!(source_response.status(), StatusCode::PERMANENT_REDIRECT);
+        let expected_location = format!("/api/forum/topics/{target_topic_id}?locale=en-US");
         assert_eq!(
             source_response
                 .headers()
                 .get(LOCATION)
                 .and_then(|value| value.to_str().ok()),
-            Some(format!("/api/forum/topics/{target_topic_id}?locale=en%2FUS").as_str())
+            Some(expected_location.as_str())
         );
         assert_eq!(
             source_response
@@ -346,8 +394,11 @@ mod tests {
                 read_auth.clone(),
             ))
             .await?;
-        assert_eq!(target_response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(target_response.status(), StatusCode::OK);
         assert!(target_response.headers().get(LOCATION).is_none());
+        let target_body = to_bytes(target_response.into_body(), usize::MAX).await?;
+        let target: TopicResponse = serde_json::from_slice(&target_body)?;
+        assert_eq!(target.id, target_topic_id);
 
         let missing_response = app
             .clone()
@@ -361,6 +412,7 @@ mod tests {
         assert!(missing_response.headers().get(LOCATION).is_none());
 
         let forbidden_response = app
+            .clone()
             .oneshot(request(
                 format!("/api/forum/topics/{source_topic_id}"),
                 tenant,
@@ -369,6 +421,17 @@ mod tests {
             .await?;
         assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
         assert!(forbidden_response.headers().get(LOCATION).is_none());
+
+        let put_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri(format!("/api/forum/topics/{source_topic_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(put_response.status(), StatusCode::NO_CONTENT);
+        assert!(put_response.headers().get(LOCATION).is_none());
 
         Ok(())
     }
