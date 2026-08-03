@@ -1,4 +1,7 @@
 use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
+use super::topic_tag_lock::{lock_active_topic_tag_write_in_tx, lock_topic_tag_scopes_in_tx};
+
+pub const MAX_FORUM_TOPIC_TAGS: usize = 100;
 
 impl TopicService {
     pub(crate) async fn create_with_inline_relations(
@@ -12,6 +15,7 @@ impl TopicService {
         validate_topic_title(&input.title)?;
         let locale = normalize_locale(&input.locale)?;
         let normalized_tags = normalize_tags(&input.tags);
+        validate_normalized_topic_tags(&normalized_tags)?;
         let document = crate::richtext::normalize_discussion(input.body)?;
         let stored_body = crate::richtext::serialize_discussion(document.clone())?;
         let prepared_custom_fields = self
@@ -55,6 +59,8 @@ impl TopicService {
         }
         .insert(&txn)
         .await?;
+        lock_active_topic_tag_write_in_tx(&txn, tenant_id, topic_id).await?;
+        lock_topic_tag_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
 
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -150,6 +156,9 @@ impl TopicService {
             None
         };
         let normalized_tags = input.tags.as_ref().map(|tags| normalize_tags(tags));
+        if let Some(tags) = normalized_tags.as_ref() {
+            validate_normalized_topic_tags(tags)?;
+        }
         let mut prepared_relation_body = self
             .prepare_topic_relation_body_for_update(tenant_id, topic_id, &locale, &input)
             .await?;
@@ -209,6 +218,10 @@ impl TopicService {
                 expectation,
             )
             .await?;
+        }
+        if normalized_tags.is_some() {
+            lock_active_topic_tag_write_in_tx(&txn, tenant_id, topic_id).await?;
+            lock_topic_tag_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         }
         let mut active: forum_topic::ActiveModel = topic.into();
         active.updated_at = Set(Utc::now().into());
@@ -281,4 +294,13 @@ impl TopicService {
         txn.commit().await?;
         self.get(tenant_id, security, topic_id, &locale).await
     }
+}
+
+fn validate_normalized_topic_tags(tags: &[String]) -> ForumResult<()> {
+    if tags.len() > MAX_FORUM_TOPIC_TAGS {
+        return Err(ForumError::Validation(format!(
+            "Forum topic tags must not exceed {MAX_FORUM_TOPIC_TAGS} entries"
+        )));
+    }
+    Ok(())
 }
