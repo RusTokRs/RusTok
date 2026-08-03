@@ -27,10 +27,8 @@ fn locale_bearing_key_bytes_remain_compatible_and_no_locale_is_distinct() {
         locale: locale.clone(),
     };
     let locale_request = request(tenant_id, locale_scope);
-    assert_eq!(
-        locale_request.finding_key(),
-        legacy_locale_key(tenant_id, CHECK_NAME, &schema, entity_id, &locale)
-    );
+    let legacy_key = legacy_locale_key(tenant_id, CHECK_NAME, &schema, entity_id, &locale);
+    assert_eq!(locale_request.finding_key(), legacy_key.as_str());
 
     let no_locale_request = request(
         tenant_id,
