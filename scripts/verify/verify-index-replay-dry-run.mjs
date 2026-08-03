@@ -1,0 +1,137 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const fail = (message) => {
+  console.error(`[verify-index-replay-dry-run] ${message}`);
+  process.exit(1);
+};
+const requireMarkers = (relative, markers) => {
+  const source = read(relative);
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
+
+const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
+const dryRun = requireMarkers(dryRunPath, [
+  'const MAX_DRY_RUN_PAGES: usize = 1_024;',
+  'pub struct IndexReplayDryRunRequest',
+  'pub enum IndexReplayDryRunStatus',
+  'pub struct IndexReplayDryRunOutcome',
+  'pub struct SharedIndexReplayDryRunRuntime',
+  'pub async fn run(',
+  'source_for_schema(request.schema())',
+  '.scan(scan_request)',
+  'let mut event_ids = BTreeSet::new();',
+  'event_id.is_nil()',
+  'DuplicateEventId',
+  'self.schemas.validate_mutation(mutation)',
+  'IndexMutation::Upsert',
+  'IndexMutation::Delete',
+  'next_cursor: cursor',
+  'pub fn materialize_index_replay_dry_run_runtime(',
+  'extensions.get::<SharedIndexSourceRegistry>().cloned()',
+  '.get::<SharedIndexSchemaRegistry>()',
+  'extensions.insert(runtime.clone())',
+]);
+for (const forbidden of [
+  'DatabaseConnection',
+  'PostgresMutationStore',
+  'PostgresIndexReplayJobStore',
+  'PostgresIndexReplayCheckpointStore',
+  'IndexSourceCatalog::register',
+  'index_entities',
+  'index_links',
+  'index_inbox',
+  'index_jobs',
+  'index_checkpoints',
+  'tokio::spawn',
+  'tokio::time::sleep',
+  '.execute(',
+  '.begin()',
+  'INSERT ',
+  'UPDATE ',
+  'DELETE FROM',
+]) {
+  if (dryRun.includes(forbidden)) {
+    fail(`${dryRunPath} contains forbidden persistence/scheduler marker ${forbidden}`);
+  }
+}
+
+requireMarkers('crates/rustok-index/tests/replay_dry_run_contract.rs', [
+  'dry_run_rejects_nil_event_id_before_accepting_the_page',
+  'IndexReplayDryRunError::NilEventId',
+  'dry_run_rejects_page_local_duplicate_event_id',
+  'IndexReplayDryRunError::DuplicateEventId',
+  'valid_event_identity_page_completes_without_a_resume_cursor',
+  'dry_run_materialization_requires_the_complete_registry_pair',
+  'IndexReplayDryRunRuntimeCompositionError::MissingSchemaRegistry',
+  'dry_run_runtime_is_single_assignment',
+  'IndexReplayDryRunRuntimeCompositionError::AlreadyMaterialized',
+]);
+
+const replayRuntimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const replayRuntime = requireMarkers(replayRuntimePath, [
+  'DryRun(#[from] IndexReplayDryRunRuntimeCompositionError)',
+  'materialize_index_replay_dry_run_runtime(extensions)?;',
+  'extensions.contains::<SharedIndexReplayDryRunRuntime>()',
+  'complete_registries_materialize_one_shared_replay_runtime',
+]);
+for (const forbidden of ['tokio::spawn', '.execute(', '.begin()']) {
+  if (replayRuntime.includes(forbidden)) {
+    fail(`${replayRuntimePath} contains forbidden IO/task marker ${forbidden}`);
+  }
+}
+
+requireMarkers('crates/rustok-index/src/lib.rs', [
+  'bounded side-effect-free',
+  'pub mod replay_dry_run;',
+  'pub use replay_dry_run::*;',
+]);
+requireMarkers('crates/rustok-index/src/application/mod.rs', [
+  'mod source_timeout;',
+  'pub use source_timeout::register_index_source;',
+]);
+requireMarkers('crates/rustok-index/src/application/source_timeout.rs', [
+  'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
+  'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
+  'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
+]);
+
+const serverRuntimePath = 'apps/server/src/services/index_replay_runtime_composition.rs';
+const serverRuntime = read(serverRuntimePath);
+if (serverRuntime.includes('SharedIndexReplayDryRunRuntime')) {
+  fail(`${serverRuntimePath} must not expose the raw dry-run capability before a request-bound guard exists`);
+}
+
+requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
+  'Status: `source_complete_host_guard_pending`',
+  '`IndexReplayDryRunRequest`',
+  '`SharedIndexReplayDryRunRuntime::run`',
+  'one invocation budget from 1 through 1024 pages',
+  'complete `SchemaRegistry::validate_mutation` validity',
+  'Product, ProductVariant, SalesChannel',
+  '30-second source-call timeout',
+  'Direct low-level `IndexSourceCatalog::register` usage',
+  'No-write boundary',
+  'server-owned request-bound `modules:manage` delegation for dry-run invocation',
+  'canonical combined roadmap item',
+  'maintainer-run',
+]);
+requireMarkers('crates/rustok-index/docs/README.md', [
+  '[M6 Bounded Replay Dry-run](./m6-bounded-replay-dry-run.md)',
+]);
+requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+  '- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.',
+]);
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-replay-dry-run.mjs'",
+]);
+
+console.log('[verify-index-replay-dry-run] OK');

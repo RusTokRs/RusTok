@@ -1,5 +1,6 @@
 //! Canonical event contracts crate for RusToK.
 
+mod blog_comments_schedule_audit;
 mod contract;
 mod forum_mention;
 mod forum_search_projection;
@@ -13,6 +14,11 @@ mod translation_workflow;
 mod types;
 pub mod validation;
 
+pub use blog_comments_schedule_audit::{
+    BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS, BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE,
+    BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION, BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
+    BlogCommentsDelegationScheduleAuditEvent, blog_comments_schedule_audit_event_schema,
+};
 pub use contract::{
     ContractEventEnvelope, ContractEventPayload, EventContract, EventContractEnvelopeError,
 };
@@ -57,6 +63,7 @@ pub use EventEnvelope as RootEventEnvelope;
 
 pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
     schema::event_schema(event_type)
+        .or_else(|| blog_comments_schedule_audit_event_schema(event_type))
         .or_else(|| forum_mention_event_schema(event_type))
         .or_else(|| forum_search_projection_event_schema(event_type))
         .or_else(|| marketplace_listing_event_schema(event_type))
@@ -70,6 +77,7 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
 pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
     EVENT_SCHEMAS
         .iter()
+        .chain(BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS.iter())
         .chain(FORUM_MENTION_EVENT_SCHEMAS.iter())
         .chain(FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())

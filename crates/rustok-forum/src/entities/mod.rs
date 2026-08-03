@@ -42,10 +42,12 @@ pub mod forum_topic_audience_policy;
 pub mod forum_topic_audience_role;
 pub mod forum_topic_audience_user;
 pub mod forum_topic_channel_access;
+pub mod forum_topic_merge_audience_reconciliation;
 pub mod forum_topic_merge_operation;
 pub mod forum_topic_merge_read_state_reconciliation;
 pub mod forum_topic_merge_subscription_reconciliation;
 pub mod forum_topic_merge_tag_reconciliation;
+pub mod forum_topic_merge_vote_reconciliation;
 pub mod forum_topic_move_operation;
 pub mod forum_topic_read_state;
 pub mod forum_topic_reply_create_audience_channel;
@@ -76,10 +78,14 @@ pub use forum_reply::Entity as ForumReply;
 pub use forum_reply_revision::Entity as ForumReplyRevision;
 pub use forum_topic::Entity as ForumTopic;
 pub use forum_topic_audience_policy::Entity as ForumTopicAudiencePolicyEntity;
+pub use forum_topic_merge_audience_reconciliation::{
+    Entity as ForumTopicMergeAudienceReconciliationEntity, ForumTopicMergeAudienceOutcome,
+};
 pub use forum_topic_merge_operation::Entity as ForumTopicMergeOperationEntity;
 pub use forum_topic_merge_read_state_reconciliation::Entity as ForumTopicMergeReadStateReconciliationEntity;
 pub use forum_topic_merge_subscription_reconciliation::Entity as ForumTopicMergeSubscriptionReconciliationEntity;
 pub use forum_topic_merge_tag_reconciliation::Entity as ForumTopicMergeTagReconciliationEntity;
+pub use forum_topic_merge_vote_reconciliation::Entity as ForumTopicMergeVoteReconciliationEntity;
 pub use forum_topic_move_operation::Entity as ForumTopicMoveOperationEntity;
 pub use forum_topic_read_state::Entity as ForumTopicReadStateEntity;
 pub use forum_topic_reply_create_audience_policy::Entity as ForumTopicReplyCreateAudiencePolicyEntity;

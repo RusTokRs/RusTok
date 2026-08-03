@@ -104,6 +104,7 @@ for (let index = 0; index < operationNames.length; index += 1) {
       ? ""
       : wrappers.slice(from);
   if (from < 0) failures.push(`${paths.wrappers}: missing ${start}`);
+
   const context = `GraphqlFallbackMutationContext::for_${name}(`;
   const call = `legacy::${name}(`;
   const mapper =
@@ -138,7 +139,22 @@ for (const [marker, label] of [
   ['"product.admin_graphql_http_unavailable"', "HTTP code"],
   ['"product.admin_graphql_authentication_required"', "auth code"],
   ['"product.admin_graphql_request_rejected"', "GraphQL code"],
-  ["raw_error = ?error", "private typed diagnostics"],
+  ["let error_payload_length = match &error", "payload shape derivation"],
+  [
+    "GraphqlHttpError::Http(value) | GraphqlHttpError::Graphql(value)",
+    "payload-bearing variants",
+  ],
+  ["Some(value.chars().count())", "payload character length"],
+  [
+    "GraphqlHttpError::Network | GraphqlHttpError::Unauthorized => None",
+    "payload-free variants",
+  ],
+  [
+    "let error_payload_present = error_payload_length.is_some_and(|length| length > 0);",
+    "payload presence",
+  ],
+  ["error_payload_present,", "bounded payload presence diagnostic"],
+  ["error_payload_length = ?error_payload_length", "bounded payload length diagnostic"],
   ["correlation_id = %self.correlation_id", "correlation diagnostics"],
   ["token_present = self.token_present", "token presence"],
   ["tenant_slug_length = ?self.tenant_slug_length", "tenant slug shape"],
@@ -154,8 +170,25 @@ for (const [marker, label] of [
 ]) {
   requireText(safety, marker, `${paths.safety}: ${label}`);
 }
+if (countText(safety, "error_payload_present,") !== 2) {
+  failures.push(`${paths.safety}: both severity branches must emit payload presence`);
+}
+if (countText(safety, "error_payload_length = ?error_payload_length") !== 2) {
+  failures.push(`${paths.safety}: both severity branches must emit payload length`);
+}
 for (const name of operationNames) {
   requireText(safety, `pub(super) fn for_${name}(`, `${paths.safety}: context ${name}`);
+}
+
+for (const marker of [
+  "raw_error = ?error",
+  "raw_error = %error",
+  "error = ?error",
+  "error = %error",
+  "internal_message = %",
+  "parsed_error = ?",
+]) {
+  forbidText(safety, marker, `${paths.safety}: complete typed error payload`);
 }
 for (const marker of [
   "token = %",
@@ -229,10 +262,10 @@ for (const marker of [
 }
 
 for (const [source, marker, label] of [
-  [primaryMutationGuard, "create_product", "primary mutation guard"],
-  [categoryReadGuard, "fetch_product_attributes", "category read guard"],
-  [primaryReadGuard, "fetch_bootstrap", "primary read guard"],
-  [catalogOptionsGuard, "fetch_catalog_search_options", "catalog options guard"],
+  [primaryMutationGuard, "complete typed error is not logged", "primary mutation guard"],
+  [categoryReadGuard, "verify-product-admin-graphql-read-diagnostic-safety.mjs", "category read guard"],
+  [primaryReadGuard, "verify-product-admin-graphql-read-diagnostic-safety.mjs", "primary read guard"],
+  [catalogOptionsGuard, "raw_error_shape_only", "catalog options guard"],
 ]) {
   requireText(source, marker, `${label}: prior focused guard remains present`);
 }
@@ -256,7 +289,9 @@ for (const [key, expected] of Object.entries({
   graphql_static_public_envelope: true,
   raw_http_status_public: false,
   raw_graphql_message_public: false,
-  private_typed_error_diagnostics: true,
+  complete_typed_error_logged: false,
+  error_payload_shape_only: true,
+  private_typed_error_classification: true,
   safe_request_shape_only: true,
   native_first_preserved: true,
   single_graphql_fallback_preserved: true,
@@ -270,6 +305,20 @@ for (const [key, expected] of Object.entries({
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+  }
+}
+if (evidence.safe_diagnostics?.includes("private_typed_graphql_error")) {
+  failures.push(`${paths.evidence}: safe_diagnostics must not retain private_typed_graphql_error`);
+}
+for (const marker of [
+  "error_payload_present",
+  "error_payload_length",
+  "error_kind",
+  "code",
+  "boundary",
+]) {
+  if (!evidence.safe_diagnostics?.includes(marker)) {
+    failures.push(`${paths.evidence}: safe_diagnostics must include ${marker}`);
   }
 }
 for (const key of [
@@ -297,6 +346,16 @@ if (
   review.status !==
   "product_admin_fallback_graphql_mutation_error_safety_source_reviewed_unvalidated"
 ) failures.push(`${paths.review}: status mismatch`);
+const expectedChangedFiles = [
+  paths.safety,
+  paths.evidence,
+  paths.review,
+  paths.doc,
+  "scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
+];
+if (JSON.stringify(review.changed_files_expected) !== JSON.stringify(expectedChangedFiles)) {
+  failures.push(`${paths.review}: changed_files_expected drift`);
+}
 for (const key of [
   "tests_run",
   "cargo_run",
@@ -318,6 +377,8 @@ if (!Array.isArray(review.execution) || review.execution.length !== 0) {
 requireText(doc, "Status: **source-ready / unvalidated**", `${paths.doc}: source status`);
 requireText(doc, "eleven Product Admin commands", `${paths.doc}: operation scope`);
 requireText(doc, "native-first", `${paths.doc}: transport policy`);
+requireText(doc, "payload presence and character length", `${paths.doc}: bounded payload policy`);
+requireText(doc, "complete typed error is not logged", `${paths.doc}: no full payload claim`);
 requireText(doc, "Product admin service is temporarily unavailable", `${paths.doc}: HTTP policy`);
 requireText(doc, "Product admin request could not be completed", `${paths.doc}: GraphQL policy`);
 requireText(
@@ -333,5 +394,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Product Admin native-first GraphQL fallback mutations retain one fallback and correlation-safe static public errors; execution evidence remains open",
+  "Product Admin native-first GraphQL fallback mutations retain one fallback and typed classification with bounded payload-shape diagnostics; execution evidence remains open",
 );

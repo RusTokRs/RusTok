@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
+  "generated_at_utc": "2026-08-03T10:42:00Z",
   "status": "customer_admin_native_error_safety_source_unvalidated",
-  "scope": "rustok-customer-admin mounted native bootstrap, list, detail, create, and update error envelopes",
+  "scope": "rustok-customer-admin mounted native bootstrap, list, detail, create, and update public plus diagnostic error envelopes",
   "source_contract": {
     "mounted_endpoint_set_preserved": true,
     "auth_context_static_public_envelope": true,
@@ -14,6 +15,11 @@
     "profile_failure_static_public_envelope": true,
     "storage_failure_static_public_envelope": true,
     "owner_context_logging": true,
+    "context_error_type_only": true,
+    "complete_context_error_logged": false,
+    "typed_customer_error_classification": true,
+    "complete_customer_error_logged": false,
+    "customer_error_payload_logged": false,
     "raw_customer_error_public": false,
     "raw_profile_error_public": false,
     "raw_framework_error_public": false,
@@ -33,6 +39,58 @@
     "profile": "Customer profile is temporarily unavailable",
     "storage": "Customer data is temporarily unavailable"
   },
+  "safe_diagnostics": [
+    "owner",
+    "consumer",
+    "owner_operation",
+    "correlation_id",
+    "context_kind",
+    "error_type",
+    "error_kind",
+    "tenant_id",
+    "actor_id",
+    "customer_id",
+    "request_tenant_id",
+    "request_user_id",
+    "channel_id",
+    "channel_slug",
+    "locale",
+    "public_code",
+    "boundary"
+  ],
+  "forbidden_diagnostics": [
+    "complete framework extraction error",
+    "complete CustomerError Debug payload",
+    "validation text",
+    "duplicate email value",
+    "profile error payload",
+    "database error payload",
+    "customer request body",
+    "customer profile payload"
+  ],
+  "preserved": [
+    "five mounted native server-function endpoints",
+    "CustomerAdminBootstrap, CustomerList, CustomerDetail, and CustomerDraft DTOs",
+    "customer permissions and UUID validation",
+    "pagination and search normalization",
+    "profile audience selection and locale fallback",
+    "customer/profile owner bridge",
+    "static public error messages and severity policy"
+  ],
+  "remaining_scope": [
+    "Customer Admin native runtime and profile-audience execution evidence",
+    "other Customer public and diagnostic envelopes outside this mounted adapter",
+    "inventory, tax, promotion, and remaining ecommerce mapper cleanup",
+    "remaining ecommerce non-PortError public envelopes"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-customer-admin-native-error-safety.mjs",
+    "node scripts/verify/verify-customer-admin-client-transport-error-safety.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-customer-admin",
+    "cargo check -p rustok-customer-admin --features hydrate",
+    "cargo check -p rustok-customer-admin --features ssr"
+  ],
   "validation": {
     "tests_run": false,
     "cargo_run": false,
@@ -42,5 +100,6 @@
     "ci_run": false,
     "native_runtime_proven": false,
     "profile_audience_runtime_proven": false
-  }
+  },
+  "execution": []
 }

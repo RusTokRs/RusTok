@@ -6,10 +6,10 @@ use ulid::Ulid;
 use uuid::Uuid;
 
 use crate::{
-    DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent,
-    ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    RbacArtifactPermissionEvent, RbacRoleMutationEvent, SocialGraphRelationEvent,
-    TranslationWorkflowEvent, ValidateEvent,
+    BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
+    ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent,
+    MarketplaceSellerEvent, RbacArtifactPermissionEvent, RbacRoleMutationEvent,
+    SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -17,6 +17,9 @@ pub(crate) mod sealed {
 }
 
 /// Closed platform contract for typed events accepted by durable transports.
+///
+/// Implementations live in `rustok-events`; domain modules cannot publish
+/// arbitrary string event names or unregistered payloads.
 pub trait EventContract:
     sealed::Sealed + Clone + Serialize + DeserializeOwned + ValidateEvent + Send + Sync + 'static
 {
@@ -25,11 +28,17 @@ pub trait EventContract:
     fn into_contract_payload(self) -> ContractEventPayload;
 }
 
+/// Typed family wrapper used by durable and streaming transports.
+///
+/// Adding a bounded family requires one platform variant, while lifecycle
+/// evolution remains inside the family's own enum.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(tag = "family", content = "event")]
 pub enum ContractEventPayload {
     #[serde(rename = "root")]
     Root(DomainEvent),
+    #[serde(rename = "blog_comments_delegation_schedule_audit")]
+    BlogCommentsDelegationScheduleAudit(BlogCommentsDelegationScheduleAuditEvent),
     #[serde(rename = "forum_mention")]
     ForumMention(ForumMentionEvent),
     #[serde(rename = "forum_search_projection")]
@@ -52,6 +61,7 @@ impl ContractEventPayload {
     fn event_type(&self) -> &'static str {
         match self {
             Self::Root(event) => event.event_type(),
+            Self::BlogCommentsDelegationScheduleAudit(event) => event.event_type(),
             Self::ForumMention(event) => event.event_type(),
             Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
@@ -66,6 +76,7 @@ impl ContractEventPayload {
     fn schema_version(&self) -> u16 {
         match self {
             Self::Root(event) => event.schema_version(),
+            Self::BlogCommentsDelegationScheduleAudit(event) => event.schema_version(),
             Self::ForumMention(event) => event.schema_version(),
             Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
@@ -82,6 +93,7 @@ impl ValidateEvent for ContractEventPayload {
     fn validate(&self) -> Result<(), EventValidationError> {
         match self {
             Self::Root(event) => event.validate(),
+            Self::BlogCommentsDelegationScheduleAudit(event) => event.validate(),
             Self::ForumMention(event) => event.validate(),
             Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
@@ -110,6 +122,7 @@ impl EventContract for DomainEvent {
     }
 }
 
+/// Transport-neutral envelope for any sealed typed platform event contract.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct ContractEventEnvelope {
     id: Uuid,
@@ -139,6 +152,12 @@ impl ContractEventEnvelope {
         Self::new_with_causation(tenant_id, actor_id, None, event)
     }
 
+    /// Creates a typed envelope that is causally linked to one exact durable
+    /// predecessor envelope.
+    ///
+    /// The causation identity is transport metadata, not payload data. A nil
+    /// identity is rejected by the same registered-envelope validation used for
+    /// decoded and relayed events.
     pub fn new_caused_by<E>(
         tenant_id: Uuid,
         actor_id: Option<Uuid>,

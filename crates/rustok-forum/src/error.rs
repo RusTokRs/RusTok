@@ -70,6 +70,12 @@ pub enum ForumError {
     #[error("Forum topic merge operation conflicts with an existing command: {0}")]
     TopicMergeOperationConflict(Uuid),
 
+    #[error("Forum topic merge audience reconciliation conflicts with an existing command: {0}")]
+    TopicMergeAudienceReconciliationConflict(Uuid),
+
+    #[error("Forum topic merge audience layers require explicit resolution")]
+    TopicMergeAudiencePolicyConflict(Uuid),
+
     #[error("Forum topic merge read-state reconciliation conflicts with an existing command: {0}")]
     TopicMergeReadStateReconciliationConflict(Uuid),
 
@@ -78,6 +84,9 @@ pub enum ForumError {
 
     #[error("Forum topic merge tag reconciliation conflicts with an existing command: {0}")]
     TopicMergeTagReconciliationConflict(Uuid),
+
+    #[error("Forum topic merge vote reconciliation conflicts with an existing command: {0}")]
+    TopicMergeVoteReconciliationConflict(Uuid),
 
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
@@ -147,6 +156,12 @@ impl ForumError {
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
+            Self::TopicMergeAudienceReconciliationConflict(_) => {
+                "FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"
+            }
+            Self::TopicMergeAudiencePolicyConflict(_) => {
+                "FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT"
+            }
             Self::TopicMergeReadStateReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_READ_STATE_RECONCILIATION_CONFLICT"
             }
@@ -155,6 +170,9 @@ impl ForumError {
             }
             Self::TopicMergeTagReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_TAG_RECONCILIATION_CONFLICT"
+            }
+            Self::TopicMergeVoteReconciliationConflict(_) => {
+                "FORUM_TOPIC_MERGE_VOTE_RECONCILIATION_CONFLICT"
             }
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
@@ -185,6 +203,9 @@ impl ForumError {
 impl From<sea_orm::DbErr> for ForumError {
     fn from(error: sea_orm::DbErr) -> Self {
         let message = error.to_string();
+        if message.contains("forum topic merge audience policy conflict") {
+            return Self::TopicMergeAudiencePolicyConflict(Uuid::nil());
+        }
         if message.contains("forum category does not allow topic creation") {
             return Self::Validation("Forum category does not allow topic creation".to_string());
         }

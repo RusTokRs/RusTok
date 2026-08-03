@@ -103,14 +103,17 @@ mod topic_audience {
     include!("topic_audience_owner.rs");
 }
 mod topic_audience_list;
+mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_merge;
+mod topic_merge_audience_reconciliation;
 mod topic_merge_read_state_reconciliation;
 mod topic_merge_subscription_reconciliation;
 mod topic_merge_tag_reconciliation;
+mod topic_merge_vote_reconciliation;
 mod topic_move;
 mod topic_owner {
     include!("topic_owner.rs");
@@ -120,6 +123,7 @@ mod topic_read_state_lock;
 mod topic_reply_create_audience;
 mod topic_subscription_lock;
 mod topic_tag_lock;
+mod topic_vote_lock;
 pub mod topic_visibility;
 pub mod user_stats;
 mod user_trust;
@@ -230,6 +234,11 @@ pub use topic_merge::{
     ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
 };
+pub use topic_merge_audience_reconciliation::{
+    ForumTopicMergeAudienceReconciliationResult,
+    ForumTopicMergeAudienceReconciliationService, MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN,
+    ReconcileForumTopicMergeAudienceInput,
+};
 pub use topic_merge_read_state_reconciliation::{
     ForumTopicMergeReadStateReconciliationResult,
     ForumTopicMergeReadStateReconciliationService, MAX_FORUM_TOPIC_MERGE_READ_STATE_REASON_LEN,
@@ -245,6 +254,11 @@ pub use topic_merge_tag_reconciliation::{
     ForumTopicMergeTagReconciliationResult, ForumTopicMergeTagReconciliationService,
     MAX_FORUM_TOPIC_MERGE_TAG_REASON_LEN, MAX_FORUM_TOPIC_MERGE_TAGS,
     ReconcileForumTopicMergeTagsInput,
+};
+pub use topic_merge_vote_reconciliation::{
+    ForumTopicMergeVoteReconciliationResult, ForumTopicMergeVoteReconciliationService,
+    MAX_FORUM_TOPIC_MERGE_VOTE_REASON_LEN, MAX_FORUM_TOPIC_MERGE_VOTES,
+    ReconcileForumTopicMergeVotesInput,
 };
 pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
