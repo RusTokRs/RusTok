@@ -58,6 +58,8 @@
     "rest_direct_target_returns_200": true,
     "rest_merged_source_returns_308": true,
     "rest_location_is_tenant_relative": true,
+    "rest_location_uses_hydrated_target_identity": true,
+    "rest_runtime_topic_service_composition_is_reused": true,
     "rest_redirect_cache_control": "private, no-store",
     "rest_redirect_requires_read_authorization_and_target_hydration": true,
     "rest_redirect_is_get_only": true
