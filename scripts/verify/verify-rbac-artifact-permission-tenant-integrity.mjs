@@ -129,6 +129,8 @@ requireAll(cutoverMigration, [
   "FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key)",
   "rustok_reject_artifact_permission_definition_update",
   "cannot roll back distinct scoped grants that collapse to one legacy key",
+  "validate_rollback_legacy_selectors",
+  "cannot roll back artifact permission {label} with ambiguous legacy selector",
 ]);
 
 requireAll(catalog, [
@@ -199,6 +201,10 @@ requireAll(upgradeProof, [
   "roll back append-only cutover",
   "legacy_grant_with_platform_and_tenant_candidates_fails_closed",
   "ambiguous legacy selector must fail closed",
+  "canonical_grant_with_later_scope_collision_fails_rollback",
+  "canonical_receipt_with_later_scope_collision_fails_rollback",
+  "grant with ambiguous legacy selector",
+  "operation receipt with ambiguous legacy selector",
 ]);
 requireAll(outboxProof, [
   "explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition",
