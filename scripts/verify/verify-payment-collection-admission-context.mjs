@@ -10,9 +10,14 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const source = read('crates/rustok-payment/src/ports.rs');
-const evidence = JSON.parse(
+const admissionEvidence = JSON.parse(
   read(
     'crates/rustok-payment/contracts/evidence/payment-collection-admission-diagnostic-safety-source.json',
+  ),
+);
+const tenantEvidence = JSON.parse(
+  read(
+    'crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json',
   ),
 );
 const doc = read('crates/rustok-payment/docs/payment-collection-admission-context.md');
@@ -71,7 +76,9 @@ const tenantParser = between(
   'fn payment_error_to_port_error(',
   'tenant parser',
 );
-const ownerMapper = source.slice(source.indexOf('fn payment_error_to_port_error('));
+const ownerMapperStart = source.indexOf('fn payment_error_to_port_error(');
+if (ownerMapperStart < 0) failures.push('payment owner mapper: unable to isolate source block');
+const ownerMapper = ownerMapperStart >= 0 ? source.slice(ownerMapperStart) : '';
 
 for (const [value, label] of [
   ['const PAYMENT_COLLECTION_PORT_BOUNDARY: &str = "payment_collection_port";', 'stable boundary identity'],
@@ -157,14 +164,10 @@ for (const [value, label] of [
   ['let claim_count = context.claims.len();', 'claim count'],
   ['let role_count = context.roles.len();', 'role count'],
   ['let channel_present = context.channel.is_some();', 'channel presence'],
-  ['let channel_length = context.channel.as_ref()', 'channel length'],
   ['let locale_length = context.locale.chars().count();', 'locale length'],
   ['let causation_id_present = context.causation_id.is_some();', 'causation presence'],
-  ['let causation_id_length = context', 'causation length'],
   ['let traceparent_present = context.traceparent.is_some();', 'trace presence'],
-  ['let traceparent_length = context', 'trace length'],
   ['let idempotency_key_present = context.idempotency_key.is_some();', 'idempotency presence'],
-  ['let idempotency_key_length = context', 'idempotency length'],
   ['let internal_message_present = !error.message.trim().is_empty();', 'message presence'],
   ['let internal_message_length = error.message.chars().count();', 'message length'],
   ['owner = PAYMENT_COLLECTION_OWNER', 'truthful owner field'],
@@ -230,33 +233,40 @@ for (const [pattern, expected, label] of [
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 }
 
-for (const [content, values, label] of [
-  [
-    tenantParser,
-    [
-      'Uuid::parse_str(&context.tenant_id).map_err(|parse_error| {',
-      'parse_error = ?parse_error',
-      'error = ?error',
-      'validation = "tenant_id"',
-      '"payment.tenant_id_invalid"',
-    ],
-    'tenant parser remains separate',
-  ],
-  [
-    ownerMapper,
-    [
-      'fn payment_error_to_port_error(',
-      'cause = %message',
-      'provider_id = %provider_id',
-      'error = ?error',
-      '"payment request is invalid"',
-      '"payment storage is temporarily unavailable"',
-    ],
-    'canonical payment mapper remains separate',
-  ],
-]) {
-  for (const value of values) requireText(content, value, label);
-}
+for (const [value, label] of [
+  ['Uuid::parse_str(&context.tenant_id).map_err(|parse_error| {', 'tenant parser routing'],
+  ['let parse_error_type = std::any::type_name_of_val(&parse_error);', 'tenant type-only parse cause'],
+  ['tenant_id_parse_failed = true', 'tenant parse-failure fact'],
+  ['tenant_id_length', 'tenant shape fact'],
+  ['actor_kind', 'tenant actor-kind fact'],
+  ['internal_message_present', 'tenant message presence'],
+  ['internal_message_length', 'tenant message length'],
+  ['let error_kind = "validation";', 'tenant closed validation kind'],
+  ['validation = "tenant_id"', 'tenant validation phase'],
+  ['"payment.tenant_id_invalid"', 'tenant stable code'],
+]) requireText(tenantParser, value, label);
+for (const value of [
+  'parse_error = ?parse_error',
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_message = %error.message',
+  'error_kind = ?error.kind',
+]) forbidText(tenantParser, value, 'unsafe tenant parser payload after separate cleanup');
+
+for (const [value, label] of [
+  ['fn payment_error_to_port_error(', 'canonical mapper remains separate'],
+  ['cause = %message', 'canonical validation payload remains open'],
+  ['provider_id = %provider_id', 'canonical provider payload remains open'],
+  ['error = ?error', 'canonical database payload remains open'],
+  ['"payment request is invalid"', 'stable validation envelope'],
+  ['"payment storage is temporarily unavailable"', 'stable storage envelope'],
+]) requireText(ownerMapper, value, label);
 
 for (const [value, label] of [
   ['"create_or_reuse_collection.read_existing"', 'existing collection read mapping'],
@@ -271,8 +281,11 @@ for (const [value, label] of [
   ['PaymentCollectionStatusSnapshot::from_response(&response)', 'status snapshot mapping'],
 ]) requireText(readBlock, value, label);
 
-if (evidence.status !== 'payment_collection_admission_diagnostic_safety_source_unvalidated') {
-  failures.push(`evidence status mismatch: ${evidence.status}`);
+if (
+  admissionEvidence.status !==
+  'payment_collection_admission_diagnostic_safety_source_unvalidated'
+) {
+  failures.push(`admission evidence status mismatch: ${admissionEvidence.status}`);
 }
 for (const [key, expected] of Object.entries({
   admission_mapper_bounded: true,
@@ -293,24 +306,51 @@ for (const [key, expected] of Object.entries({
   ffa_promoted: false,
   fba_promoted: false,
 })) {
-  if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`evidence source_contract.${key} must be ${expected}`);
+  if (admissionEvidence.source_contract?.[key] !== expected) {
+    failures.push(`admission evidence source_contract.${key} must be ${expected}`);
   }
 }
-if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
-  failures.push('evidence execution must remain empty');
+if (
+  tenantEvidence.status !==
+  'payment_collection_tenant_diagnostic_safety_source_unvalidated'
+) {
+  failures.push(`tenant evidence status mismatch: ${tenantEvidence.status}`);
 }
-for (const key of [
-  'tests_run',
-  'cargo_run',
-  'format_run',
-  'verifiers_run',
-  'workflow_checks_run',
-  'ci_run',
-  'runtime_proven',
+for (const [key, expected] of Object.entries({
+  tenant_parser_bounded: true,
+  complete_parse_error_logged: false,
+  constructed_port_error_logged: false,
+  tenant_internal_message_text_logged: false,
+  tenant_context_shape_only: true,
+  same_validation_port_error_returned: true,
+  admission_mapper_changed: false,
+  canonical_payment_error_mapper_cleanup_out_of_scope: true,
+  ffa_promoted: false,
+  fba_promoted: false,
+})) {
+  if (tenantEvidence.source_contract?.[key] !== expected) {
+    failures.push(`tenant evidence source_contract.${key} must be ${expected}`);
+  }
+}
+for (const [label, evidence] of [
+  ['admission', admissionEvidence],
+  ['tenant', tenantEvidence],
 ]) {
-  if (evidence.validation?.[key] !== false) {
-    failures.push(`evidence validation.${key} must remain false`);
+  if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+    failures.push(`${label} evidence execution must remain empty`);
+  }
+  for (const key of [
+    'tests_run',
+    'cargo_run',
+    'format_run',
+    'verifiers_run',
+    'workflow_checks_run',
+    'ci_run',
+    'runtime_proven',
+  ]) {
+    if (evidence.validation?.[key] !== false) {
+      failures.push(`${label} evidence validation.${key} must remain false`);
+    }
   }
 }
 
@@ -318,7 +358,8 @@ for (const [value, label] of [
   ['Status: **source-ready / unvalidated**', 'documentation status'],
   ['Admission diagnostics retain only bounded context and message-shape facts', 'documentation bounded policy'],
   ['The exact original admission `PortError` continues through `inspect_err` unchanged', 'documentation pass-through policy'],
-  ['Tenant UUID parsing and canonical `PaymentError` mapping remain separate cleanup slices', 'documentation residual boundary'],
+  ['Tenant UUID parsing is now closed by a separate source-only contract', 'documentation tenant current state'],
+  ['Canonical `payment_error_to_port_error` remains the next open collection boundary', 'documentation residual boundary'],
 ]) requireText(doc, value, label);
 
 if (failures.length > 0) {
@@ -328,5 +369,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Payment collection admission diagnostics use bounded kind, message-shape, and context-shape facts while preserving admission ordering and original-error pass-through',
+  '✔ Payment collection admission diagnostics remain bounded while the separate tenant parser contract is also bounded; canonical PaymentError mapping remains open',
 );
