@@ -13403,8 +13403,10 @@ dependencies = [
  "postcard",
  "proptest",
  "rust_decimal",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-runtime",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -14410,6 +14412,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
