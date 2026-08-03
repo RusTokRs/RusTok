@@ -3,7 +3,7 @@ name: Temporary Blog Comments event digests
 on:
   pull_request:
     branches:
-      - main
+      - agent/tmp-blog-comments-digest-base-20260803
 
 permissions:
   contents: read
