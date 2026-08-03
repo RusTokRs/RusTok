@@ -13,7 +13,7 @@ use rustok_api::{
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use crate::{ListTopicsFilter, TopicService};
+use crate::ListTopicsFilter;
 
 use super::ForumHttpRuntime;
 
@@ -58,7 +58,7 @@ pub(crate) async fn redirect_merged_topic(
         Some(auth.user_id),
         &auth.permissions,
     );
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.topic_service();
     let resolution = service
         .resolve_canonical_topic(tenant.id, security.clone(), topic_id)
         .await
@@ -72,7 +72,7 @@ pub(crate) async fn redirect_merged_topic(
         .locale
         .as_deref()
         .unwrap_or(request_context.locale.as_str());
-    service
+    let canonical_topic = service
         .get_with_locale_fallback(
             tenant.id,
             security,
@@ -83,8 +83,7 @@ pub(crate) async fn redirect_merged_topic(
         .await
         .map_err(super::map_forum_error)?;
 
-    let location =
-        canonical_topic_location(resolution.canonical_topic_id, filter.locale.as_deref());
+    let location = canonical_topic_location(canonical_topic.id, filter.locale.as_deref());
     Ok((
         StatusCode::PERMANENT_REDIRECT,
         [
