@@ -19,6 +19,23 @@ The public messages remain static:
 - `Storefront tenant context is temporarily unavailable`;
 - `Storefront authentication context is temporarily unavailable`.
 
+## Cart input diagnostic boundary
+
+Cart input failures are recorded by concrete error type together with the Cart storefront
+owner, caller-selected parser operation, stable internal code, and native boundary. The
+complete `CartCoreError` payload is not recorded.
+
+The existing warning severity and public forwarding remain unchanged:
+
+- input rejections continue to use `tracing::warn!`;
+- cart-id parsing continues to use `cart.storefront_cart_id_invalid` and
+  `Invalid cart selection`;
+- line-item parsing continues to use `cart.storefront_line_item_id_invalid` and
+  `Invalid cart line item selection`;
+- `ServerFnError::new(public_message)` remains the final public envelope.
+
+The storefront read, decrement, and remove flows retain their existing five parser operations.
+
 ## Customer diagnostic boundary
 
 Customer lookup failures are recorded by concrete error type together with the Customer
@@ -79,14 +96,16 @@ The mounted adapter continues to provide static public envelopes for:
 - Cart owner storage, validation, transition, tax-boundary, repricing, decrement, and
   removal failures.
 
-This bounded slice does not claim that Cart input or missing-variant diagnostics are
-correlation-safe. Cart input and missing-variant diagnostics remain separate open cleanup slices.
+Missing-variant identifiers remain a separate open cleanup slice. This bounded change does
+not modify its raw tenant, cart, or line-item UUID diagnostics.
 
 ## Preserved behavior
 
 - The three endpoint names and request/response DTOs are unchanged.
 - Empty cart selection still returns an empty storefront-cart workspace.
 - Missing carts on the read endpoint still return `cart: null`.
+- All five cart and line-item parsing operations, codes, warning severity, and public messages
+  are unchanged.
 - Customer lookup, ownership, authentication checks, and not-found handling are unchanged.
 - Cart owner variant classification, public messages, public codes, retryability, and
   technical/rejection severity split are unchanged.
@@ -96,15 +115,15 @@ correlation-safe. Cart input and missing-variant diagnostics remain separate ope
 - Decrement still removes a line item at quantity one and otherwise reprices the next
   quantity.
 - Explicit native/GraphQL transport selection is unchanged.
-- Cart input and missing-variant mapper behavior is unchanged in this pricing-only slice.
+- Missing-variant mapper behavior is unchanged in this input-only slice.
 
 ## Static evidence
 
-`scripts/verify/verify-cart-storefront-native-error-safety.mjs` requires the type-only
-framework-context, customer, Cart owner, and pricing diagnostics; rejects complete pricing
-causes and raw pricing identity/context fields; preserves customer not-found handling, every
-Cart owner public mapping, Pricing owner metadata, both severity paths, all three endpoints,
-and shared DTO mapping; and leaves execution claims open.
+`scripts/verify/verify-cart-storefront-native-error-safety.mjs` requires type-only framework,
+Cart input, customer, Cart owner, and pricing diagnostics; rejects every complete error payload
+in the mounted adapter; preserves all five parser operations and their codes, customer
+not-found handling, every Cart owner public mapping, Pricing owner metadata, both severity
+paths, all three endpoints, and shared DTO mapping; and leaves execution claims open.
 
 The source evidence remains in
 `crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json`.
