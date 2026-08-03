@@ -1,4 +1,7 @@
-use sea_orm_migration::{prelude::*, sea_orm::ConnectionTrait};
+use sea_orm_migration::{
+    prelude::*,
+    sea_orm::{ConnectionTrait, DbBackend},
+};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
