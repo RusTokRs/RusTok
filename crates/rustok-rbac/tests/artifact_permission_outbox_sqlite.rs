@@ -3,8 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_events::RbacArtifactPermissionEvent;
 use rustok_rbac::{
-    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
-    ArtifactRolePermissionAssignmentCommand, RbacArtifactPermissionAssignmentService,
+    ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
+    ArtifactPermissionEventPublisher, ArtifactRolePermissionAssignmentCommand,
+    RbacArtifactPermissionAssignmentService,
 };
 use sea_orm::{
     ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, Statement,
@@ -132,10 +133,13 @@ async fn insert_definition(
     artifact_permission_id
 }
 
+#[allow(clippy::too_many_arguments)]
 fn command(
     tenant_id: Uuid,
     role_id: Uuid,
-    artifact_permission_id: Uuid,
+    scope: ArtifactPermissionAssignmentScope,
+    installation_id: Uuid,
+    permission_key: &str,
     actor_id: Uuid,
     granted: bool,
     idempotency_key: &str,
@@ -143,7 +147,9 @@ fn command(
     ArtifactRolePermissionAssignmentCommand {
         tenant_id,
         role_id,
-        artifact_permission_id,
+        scope,
+        installation_id,
+        permission_key: permission_key.to_string(),
         actor_id,
         granted,
         idempotency_key: idempotency_key.to_string(),
@@ -198,7 +204,9 @@ async fn only_state_changes_publish_artifact_permission_events() {
     let grant = command(
         tenant_id,
         role_id,
-        artifact_permission_id,
+        ArtifactPermissionAssignmentScope::Tenant,
+        installation_id,
+        permission_key,
         actor_id,
         true,
         "grant-1",
@@ -211,7 +219,9 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .assign(command(
                 tenant_id,
                 role_id,
-                artifact_permission_id,
+                ArtifactPermissionAssignmentScope::Tenant,
+                installation_id,
+                permission_key,
                 actor_id,
                 true,
                 "grant-confirmation",
@@ -252,7 +262,9 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .assign(command(
                 tenant_id,
                 role_id,
-                artifact_permission_id,
+                ArtifactPermissionAssignmentScope::Tenant,
+                installation_id,
+                permission_key,
                 actor_id,
                 false,
                 "revoke-1",
@@ -266,7 +278,9 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .assign(command(
                 tenant_id,
                 role_id,
-                artifact_permission_id,
+                ArtifactPermissionAssignmentScope::Tenant,
+                installation_id,
+                permission_key,
                 actor_id,
                 false,
                 "revoke-confirmation",
@@ -279,7 +293,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
 }
 
 #[tokio::test]
-async fn exact_identity_mutation_does_not_shadow_platform_or_tenant_definition() {
+async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition() {
     let db = setup_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
@@ -301,21 +315,23 @@ async fn exact_identity_mutation_does_not_shadow_platform_or_tenant_definition()
         Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
     );
 
-    for (artifact_permission_id, idempotency_key) in [
-        (platform_permission_id, "grant-platform"),
-        (tenant_permission_id, "grant-tenant"),
+    for (scope, idempotency_key) in [
+        (ArtifactPermissionAssignmentScope::Platform, "grant-platform"),
+        (ArtifactPermissionAssignmentScope::Tenant, "grant-tenant"),
     ] {
         service
             .assign(command(
                 tenant_id,
                 role_id,
-                artifact_permission_id,
+                scope,
+                installation_id,
+                permission_key,
                 actor_id,
                 true,
                 idempotency_key,
             ))
             .await
-            .expect("grant exact permission identity");
+            .expect("grant explicit permission scope");
     }
     assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 2);
 
@@ -323,13 +339,15 @@ async fn exact_identity_mutation_does_not_shadow_platform_or_tenant_definition()
         .assign(command(
             tenant_id,
             role_id,
-            platform_permission_id,
+            ArtifactPermissionAssignmentScope::Platform,
+            installation_id,
+            permission_key,
             actor_id,
             false,
             "revoke-platform",
         ))
         .await
-        .expect("revoke exact platform identity");
+        .expect("revoke explicit platform scope");
     let remaining_id: Uuid = db
         .query_one(Statement::from_string(
             db.get_database_backend(),
@@ -342,18 +360,21 @@ async fn exact_identity_mutation_does_not_shadow_platform_or_tenant_definition()
         .try_get("", "artifact_permission_id")
         .expect("decode remaining identity");
     assert_eq!(remaining_id, tenant_permission_id);
+    assert_ne!(remaining_id, platform_permission_id);
 
     service
         .assign(command(
             tenant_id,
             role_id,
-            tenant_permission_id,
+            ArtifactPermissionAssignmentScope::Tenant,
+            installation_id,
+            permission_key,
             actor_id,
             false,
             "revoke-tenant",
         ))
         .await
-        .expect("revoke exact tenant identity");
+        .expect("revoke explicit tenant scope");
     assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 0);
     assert_eq!(event_grants(&db).await, vec![true, true, false, false]);
 }
@@ -367,7 +388,7 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
     let actor_id = Uuid::new_v4();
     let permission_key = "sample.events.handle";
     insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
-    let artifact_permission_id = insert_definition(
+    insert_definition(
         &db,
         &format!("tenant:{tenant_id}"),
         installation_id,
@@ -383,7 +404,9 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
         .assign(command(
             tenant_id,
             role_id,
-            artifact_permission_id,
+            ArtifactPermissionAssignmentScope::Tenant,
+            installation_id,
+            permission_key,
             actor_id,
             true,
             "grant-without-publication",
