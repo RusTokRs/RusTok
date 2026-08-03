@@ -80,6 +80,10 @@ assert.equal(
   contract.solution_resolution_command.calls_owner_method,
   "merge_topic_resolving_solution",
 );
+assert.equal(
+  contract.solution_resolution_command.decision_audit_table,
+  "forum_topic_merge_solution_resolutions",
+);
 assert.equal(contract.receipt_result.returns_immutable_owner_receipt, true);
 assert.equal(contract.receipt_result.exact_replay_returns_same_result, true);
 assert.equal(contract.composition.resolvers_contain_no_merge_business_logic, true);
@@ -89,18 +93,22 @@ assert.equal(
 );
 assert.equal(contract.composition.topic_body_hydration_after_merge, false);
 assert.equal(contract.composition.canonical_source_alias_resolution_for_mutation, false);
-assert.equal(contract.composition.raw_solution_table_access_in_resolver, false);
+assert.equal(contract.composition.raw_solution_or_audit_table_access_in_resolver, false);
 assert.equal(contract.compatibility.ordinary_field_changed, false);
 assert.equal(contract.compatibility.ordinary_input_changed, false);
 assert.equal(contract.compatibility.receipt_result_changed, false);
+assert.equal(contract.compatibility.merge_event_schema_or_payload_changed, false);
+assert.equal(contract.compatibility.post_merge_reconciliation_owner_changed, false);
 assert.equal(contract.compatibility.solution_resolution_field_is_additive, true);
 assert.equal(resolutionContract.task, "FORUM-21L");
 assert.equal(resolutionContract.graphql.field, "mergeForumTopicResolvingSolution");
+assert.equal(resolutionContract.semantic_event_compatibility.schema_version, 1);
 assert.equal(cumulativeContract.latest_policy_slice, "FORUM-21L");
 assert.equal(
   cumulativeContract.graphql_transport.solution_resolution_field,
   "mergeForumTopicResolvingSolution",
 );
+assert.equal(cumulativeContract.semantic_event.schema_version, 1);
 
 includesAll(
   graphql,
@@ -142,6 +150,7 @@ assert.ok(permission > resolutionResolver && permission < tenantScope && tenantS
 for (const forbidden of [
   "resolve_canonical_topic",
   "forum_topic_merge_operations",
+  "forum_topic_merge_solution_resolutions",
   "forum_solutions::",
   "TopicService::new",
   "get_with_locale_fallback",
@@ -172,10 +181,14 @@ includesAll(
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
     "TopicMergeSolutionConflict(operation_id)",
     "TopicMergeOperationConflict(input.operation_id)",
+    "schema_version: Set(FORUM_TOPIC_MERGED_SCHEMA_VERSION)",
+    "forum_topic_merge_solution_resolution::ActiveModel",
   ],
   "topic merge owner",
 );
 assert.equal((owner.match(/self\.db\.begin\(\)\.await\?/g) ?? []).length, 1);
+assert.ok(!owner.includes("FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION"));
+assert.ok(!owner.includes('"solution_resolution"'));
 
 includesAll(
   ordinarySchemaTest,
@@ -199,6 +212,7 @@ includesAll(
     '"selectedSolutionReplyId"',
     "resolution_adapter_uses_routed_manager_context_and_same_owner",
     "ordinary_and_resolved_commands_share_one_private_transaction_owner",
+    "resolution_audit_is_append_only_and_keeps_merge_event_schema_one",
   ],
   "resolution GraphQL schema contract",
 );
@@ -207,6 +221,7 @@ includesAll(
   [
     "manager_can_select_source_solution_and_replay_exact_audit",
     "manager_can_select_target_solution_and_invalid_selection_is_atomic",
+    "forum_topic_merge_solution_resolutions",
   ],
   "resolution owner runtime test",
 );
@@ -220,6 +235,8 @@ includesAll(
     "mergeForumTopicResolvingSolution",
     "selectedSolutionReplyId",
     "one private `merge_topic_internal` transaction",
+    "forum_topic_merge_solution_resolutions",
+    "schema version 1",
     "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
     "FORUM-21` entry remains `planned`",
     "No command above was run by the implementation agent",
@@ -232,6 +249,7 @@ includesAll(
     "# FORUM-21L competing accepted-solution resolution",
     "mergeForumTopicResolvingSolution",
     "forum_topics:manage",
+    "forum_topic_merge_solution_resolutions",
   ],
   "resolution handoff",
 );
@@ -241,6 +259,7 @@ includesAll(
     "FORUM-21L",
     "mergeForumTopicResolvingSolution",
     "Both require the `forum` module",
+    "schema-version-1 event",
   ],
   "cumulative merge handoff",
 );
@@ -249,6 +268,7 @@ includesAll(
   [
     "`mergeForumTopic`",
     "`mergeForumTopicResolvingSolution`",
+    "`forum_topic_merge_solution_resolutions`",
     "`graphql::ResolveForumTopicMergeSolutionGraphqlInput`",
     "`graphql::GqlForumTopicMergeSolutionResolution`",
   ],
