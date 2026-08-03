@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice covers the eleven Product Admin commands that retain a native
+This source slice covers the eleven Product Admin commands that retain a native-first
 server-function path and use GraphQL only as the compatibility fallback:
 
 - `create_product_attribute`
@@ -19,40 +19,44 @@ server-function path and use GraphQL only as the compatibility fallback:
 - `save_product_attribute_values`
 - `clear_detached_product_attribute_values`
 
-Primary product create, update, status, and delete mutations are covered by the
-separate primary-mutation policy. Primary reads, category reads, and catalog
-search options also retain their previously merged policies.
+Primary product create, update, status and delete mutations are covered by the separate
+primary-mutation policy. Primary reads, category reads and catalog search options retain their
+previously merged bounded diagnostic policies.
 
-## Confirmed boundary gap
+## Confirmed diagnostic gap
 
-The compatibility executors already attempted native server functions first.
-When native execution failed, they delegated once to the existing GraphQL
-mutation. A final `GraphqlHttpError::Http(String)` could carry response status
-text and `GraphqlHttpError::Graphql(String)` could carry the first server error
-message into Product Admin command handling.
+The public fallback-mutation envelope was already static and owner-controlled:
+
+- `GraphqlHttpError::Network` remained `Network`;
+- `GraphqlHttpError::Http(String)` mapped to `Product admin service is temporarily unavailable`;
+- `GraphqlHttpError::Unauthorized` remained `Unauthorized`;
+- `GraphqlHttpError::Graphql(String)` mapped to `Product admin request could not be completed`.
+
+However, `GraphqlFallbackMutationContext::map_error` still wrote the complete typed error through
+`raw_error = ?error` in both tracing severity branches. HTTP status text or a GraphQL server
+message could therefore be copied into structured diagnostics even though the public result was
+safe.
 
 ## Boundary placement
 
-`catalog_transport.rs` keeps the legacy glob for all unchanged functions and
-explicitly re-exports the eleven sanitized wrappers. The named exports take
-precedence over the glob without deleting or rewriting the compatibility
-executors.
+`catalog_transport.rs` keeps the legacy glob for unchanged functions and explicitly re-exports the
+eleven sanitized wrappers. The named exports take precedence over the glob without deleting or
+rewriting compatibility executors.
 
 Each wrapper:
 
-1. creates a correlation context before invoking the compatibility executor;
+1. creates one correlation context before invoking the compatibility executor;
 2. invokes that executor exactly once;
 3. maps only a final returned `GraphqlHttpError`;
 4. preserves the original result type and successful response;
-5. adds no retry, native call, GraphQL call, or fallback.
+5. adds no retry, native call, GraphQL call or fallback.
 
-The compatibility executor remains responsible for the original native-first
-selection. Therefore a final wrapper error means the native path failed and the
-single GraphQL fallback also failed.
+The compatibility executor remains responsible for native-first selection. A final wrapper error
+therefore means the native path failed and the single GraphQL fallback also failed.
 
 ## Public error policy
 
-The public type remains `GraphqlHttpError`.
+The public type and messages remain unchanged.
 
 | Internal variant | Public result |
 | --- | --- |
@@ -61,24 +65,24 @@ The public type remains `GraphqlHttpError`.
 | `Unauthorized` | `Unauthorized` |
 | `Graphql(raw)` | `Graphql("Product admin request could not be completed")` |
 
-HTTP status text and GraphQL server messages remain available only in private
-structured diagnostics.
-
 ## Correlation-safe diagnostics
 
-Every final fallback failure receives a UUID-based correlation identifier in the
-`product-admin-fallback-mutation` namespace. Structured fields are limited to:
+The complete typed error is not logged. The mapper still matches the typed variant before building
+the public result, severity and stable code, but tracing retains only payload presence and character
+length for `Http` and `Graphql` variants. `Network` and `Unauthorized` retain no invented payload.
 
-- owner, operation, stable code, boundary, and error classification;
+Every final fallback failure also records:
+
+- owner, operation, stable code, boundary and error classification;
+- a UUID-based correlation identifier in the `product-admin-fallback-mutation` namespace;
 - token and tenant-slug presence;
-- tenant, actor, resource, and locale character lengths;
-- patch or attribute-id collection counts where applicable;
-- input presence and native-fallback state;
-- the original typed error as a private tracing field.
+- tenant, actor, resource and locale character lengths;
+- patch or attribute-ID collection counts where applicable;
+- input presence and native-fallback state.
 
-The logger does not emit token, tenant slug, tenant ID, actor ID, product ID,
-locale, draft contents, patch contents, or attribute identifiers as structured
-values.
+The logger does not emit token, tenant slug, tenant ID, actor ID, product ID, locale, draft
+contents, patch contents, attribute identifiers, HTTP status text or GraphQL server messages as
+structured values.
 
 ## Preserved transport behavior
 
@@ -92,7 +96,8 @@ This slice does not change:
 - mutation input DTOs or normalization;
 - boolean and attribute-value response mapping;
 - UI action composition;
-- retries, timeouts, or transport selection.
+- retries, timeouts or transport selection;
+- Product FFA/FBA, browser, mounted-runtime, workflow, CI or production status.
 
 ## Source evidence
 
@@ -105,19 +110,22 @@ The focused fail-closed guard is:
 
 - `scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs`
 
+The guard preserves the original facade, wrapper, native-first, GraphQL document, variable, result,
+input-mapping and prior-policy checks while also failing closed against complete fallback error
+payload logging.
+
 ## Validation status
 
-No repository tests, Node verifiers, Cargo commands, formatting, workflows, CI,
-browser execution, or mounted transport execution were run for this source
-slice. The evidence intentionally remains unvalidated.
+No repository tests, Node verifiers, Cargo commands, formatting, workflows, CI, browser execution
+or mounted transport execution were run for this source slice. The evidence intentionally remains
+unvalidated.
 
 Suggested maintainer execution:
 
 ```bash
 node scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs
 node scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs
-node scripts/verify/verify-product-admin-category-read-error-safety.mjs
-node scripts/verify/verify-product-admin-primary-read-error-safety.mjs
+node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs
 node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs
 node scripts/verify/verify-product-admin-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
@@ -128,7 +136,7 @@ cargo check -p rustok-product-admin --features ssr
 
 ## Remaining work
 
-The known Product Admin GraphQL transport functions are now source-covered by
-bounded policies. Product Admin browser and mounted transport execution evidence
-remain open, as does the broader ecommerce cleanup for non-`PortError` public
-envelopes in other owners.
+The known Product Admin catalog-options, read, primary mutation and fallback mutation GraphQL
+diagnostic envelopes no longer intentionally retain complete backend error payloads. Product Admin
+browser and mounted execution evidence remain open, as does the broader ecommerce cleanup for
+non-`PortError` public and diagnostic envelopes in other owners.
