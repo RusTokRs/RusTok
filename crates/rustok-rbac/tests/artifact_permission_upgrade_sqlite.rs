@@ -54,6 +54,20 @@ async fn count(db: &DatabaseConnection, table: &str) -> i64 {
     .expect("decode count")
 }
 
+async fn table_exists(db: &DatabaseConnection, table: &str) -> bool {
+    db.query_one(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table.into()],
+    ))
+    .await
+    .expect("table existence query")
+    .expect("table existence row")
+    .try_get::<i64>("", "count")
+    .expect("decode table count")
+        == 1
+}
+
 async fn add_tenant_scope_collision(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -171,7 +185,7 @@ async fn legacy_catalog_grant_and_receipt_upgrade_and_rollback_truthfully() {
 }
 
 #[tokio::test]
-async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed() {
+async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed_atomically() {
     let (db, migration) = legacy_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
@@ -205,6 +219,11 @@ async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed() {
         .await
         .expect_err("ambiguous legacy selector must fail closed");
     assert!(error.to_string().contains("ambiguous or orphan identity"));
+    assert!(table_exists(&db, "rbac_artifact_permission_catalog").await);
+    assert!(!table_exists(&db, "rbac_artifact_permission_definitions").await);
+    assert!(!table_exists(&db, "rbac_artifact_permission_definitions_new").await);
+    assert_eq!(count(&db, "rbac_artifact_permission_catalog").await, 2);
+    assert_eq!(count(&db, "rbac_artifact_role_permissions").await, 1);
 }
 
 #[tokio::test]
@@ -291,4 +310,52 @@ async fn canonical_receipt_with_later_scope_collision_fails_rollback() {
             .to_string()
             .contains("operation receipt with ambiguous legacy selector")
     );
+}
+
+#[tokio::test]
+async fn late_sqlite_down_failure_restores_canonical_schema() {
+    let (db, migration) = legacy_database().await;
+    let tenant_id = Uuid::new_v4();
+    let role_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let installation_id = Uuid::new_v4();
+    let definition_id = Uuid::new_v4();
+
+    db.execute_unprepared(&format!(
+        r#"
+        INSERT INTO roles (id, tenant_id) VALUES ('{role_id}', '{tenant_id}');
+        INSERT INTO users (id, tenant_id) VALUES ('{actor_id}', '{tenant_id}');
+        INSERT INTO rbac_artifact_permission_catalog
+            (id, scope_key, installation_id, module_slug, release_digest, permission_key, locale, label, description)
+        VALUES
+            ('{definition_id}', 'platform', '{installation_id}', 'sample', 'sha256:platform', 'sample.events.handle', 'en', 'Platform handle', 'Platform permission');
+        "#
+    ))
+    .await
+    .expect("seed legacy definition");
+    migration
+        .up(&SchemaManager::new(&db))
+        .await
+        .expect("upgrade definition");
+
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE conflicting_index_owner (id INTEGER PRIMARY KEY);
+        CREATE INDEX rbac_artifact_permission_catalog_lookup_idx
+            ON conflicting_index_owner (id);
+        "#,
+    )
+    .await
+    .expect("reserve legacy index name to force a late rollback failure");
+
+    let error = migration
+        .down(&SchemaManager::new(&db))
+        .await
+        .expect_err("late rollback DDL failure must be returned");
+    assert!(error.to_string().contains("already exists"));
+    assert!(table_exists(&db, "rbac_artifact_permission_definitions").await);
+    assert!(table_exists(&db, "rbac_artifact_permission_translations").await);
+    assert!(!table_exists(&db, "rbac_artifact_permission_catalog").await);
+    assert!(!table_exists(&db, "rbac_artifact_permission_catalog_restore").await);
+    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);
 }
