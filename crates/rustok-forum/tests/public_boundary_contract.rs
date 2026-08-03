@@ -43,6 +43,7 @@ fn http_controllers_use_stable_forum_error_mapping() {
         include_str!("../src/controllers/quote_commands.rs"),
         include_str!("../src/controllers/replies.rs"),
         include_str!("../src/controllers/subscriptions.rs"),
+        include_str!("../src/controllers/topic_redirect.rs"),
         include_str!("../src/controllers/topics.rs"),
         include_str!("../src/controllers/users.rs"),
         include_str!("../src/controllers/widgets.rs"),
