@@ -37,6 +37,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Bounded Multi-page Replay Runner](./m6-bounded-multipage-runner.md)
 - [M6 Replay Runtime Host Composition](./m6-replay-runtime-composition.md)
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
+- [M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
 - [M4 Query Runtime Composition](./m4-query-runtime-composition.md)
 - [M4 PostgreSQL Query Port Contract](./m4-postgres-query-port.md)
