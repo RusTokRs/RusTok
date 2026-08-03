@@ -48,6 +48,8 @@
     "implicit_request_locale_is_not_materialized_into_location": true,
     "authorization_is_checked_before_canonical_identity_disclosure": true,
     "target_read_is_hydrated_before_redirect": true,
+    "location_uses_hydrated_target_identity": true,
+    "runtime_topic_service_composition_is_reused": true,
     "missing_and_forbidden_responses_have_no_location": true,
     "cache_control": "private, no-store",
     "middleware_is_scoped_to_get_only": true,
