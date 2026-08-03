@@ -1,7 +1,8 @@
 {
   "contract": "forum_topic_merge_owner_v1",
   "task": "FORUM-21B",
-  "latest_policy_slice": "FORUM-21M",
+  "latest_policy_slice": "FORUM-21L",
+  "latest_category_slice": "FORUM-21M",
   "parent_task": "FORUM-21",
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
