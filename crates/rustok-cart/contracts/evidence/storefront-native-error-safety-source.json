@@ -46,8 +46,12 @@
     "pricing_owner_metadata_preserved": true,
     "pricing_severity_split_preserved": true,
     "pricing_port_message_remains_domain_sanitized": true,
+    "missing_variant_identity_shape_only": true,
+    "raw_missing_variant_identifiers_logged": false,
+    "missing_variant_error_severity_preserved": true,
+    "missing_variant_public_mapping_preserved": true,
+    "mounted_cart_ssr_mapper_cleanup_complete": true,
     "owner_context_logging": true,
-    "identifier_mapper_cleanup_out_of_scope": true,
     "cart_dto_changed": false,
     "transport_selection_changed": false,
     "graphql_transport_changed": false
@@ -61,7 +65,8 @@
     "customer_unavailable": "Customer information is temporarily unavailable",
     "cart_unavailable": "Cart is temporarily unavailable",
     "cart_not_found": "Cart was not found",
-    "line_item_not_found": "Cart line item was not found"
+    "line_item_not_found": "Cart line item was not found",
+    "missing_variant": "Cart line item could not be updated safely"
   },
   "suggested_execution": [
     "node scripts/verify/verify-cart-storefront-native-error-safety.mjs",
