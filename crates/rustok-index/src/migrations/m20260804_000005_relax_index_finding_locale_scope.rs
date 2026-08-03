@@ -98,7 +98,6 @@ async fn rebuild_sqlite_table(
     scope_check: &str,
 ) -> Result<(), DbErr> {
     let connection = manager.get_connection();
-    connection.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
     connection
         .execute_unprepared(&format!(
             "CREATE TABLE {TEMP_TABLE_NAME} (tenant_id TEXT NOT NULL, finding_id TEXT NOT NULL, finding_key VARCHAR(64) NOT NULL, check_name VARCHAR(128) NOT NULL, severity VARCHAR(16) NOT NULL, state VARCHAR(16) NOT NULL DEFAULT 'open', scope_kind VARCHAR(16) NOT NULL, module_name VARCHAR(128), entity_name VARCHAR(128), schema_version INTEGER, entity_id TEXT, locale_key VARCHAR(32), expected_digest VARCHAR(64), actual_digest VARCHAR(64), details JSON NOT NULL, first_detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, closed_at TEXT, PRIMARY KEY (tenant_id, finding_id), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE CASCADE, CHECK (length(finding_key) = 64 AND finding_key = lower(finding_key)), CHECK (length(check_name) BETWEEN 1 AND 128 AND check_name = trim(check_name)), CHECK (severity IN ('info', 'warning', 'error')), CHECK (state IN ('open', 'resolved', 'ignored')), CHECK (schema_version IS NULL OR schema_version > 0), CHECK (locale_key IS NULL OR (length(locale_key) <= 32 AND locale_key = trim(locale_key))), CHECK (expected_digest IS NULL OR (length(expected_digest) = 64 AND expected_digest = lower(expected_digest))), CHECK (actual_digest IS NULL OR (length(actual_digest) = 64 AND actual_digest = lower(actual_digest))), CHECK ({scope_check}), CHECK ((state = 'open' AND closed_at IS NULL) OR (state IN ('resolved', 'ignored') AND closed_at IS NOT NULL)))"
@@ -127,6 +126,5 @@ async fn rebuild_sqlite_table(
             "CREATE INDEX idx_index_consistency_open ON index_consistency_findings (tenant_id, state, severity, last_detected_at)",
         )
         .await?;
-    connection.execute_unprepared("PRAGMA foreign_keys = ON").await?;
     Ok(())
 }
