@@ -9,6 +9,9 @@ const paths = {
   docs: "crates/rustok-forum/docs/forum-21m-topic-merge-cross-category.md",
   cumulativeDocs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   owner: "crates/rustok-forum/src/services/topic_merge.rs",
+  migration:
+    "crates/rustok-forum/src/migrations/m20260803_000019_allow_cross_category_topic_merge_redirect_edges.rs",
+  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
   test: "crates/rustok-forum/tests/topic_merge_cross_category_sqlite.rs",
   subscriptionReconciliation:
     "crates/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
@@ -43,6 +46,8 @@ const cumulativeContract = JSON.parse(read(paths.cumulativeContract));
 const docs = read(paths.docs);
 const cumulativeDocs = read(paths.cumulativeDocs);
 const owner = read(paths.owner);
+const migration = read(paths.migration);
+const migrationsMod = read(paths.migrationsMod);
 const test = read(paths.test);
 const plan = read(paths.plan);
 const reconciliations = [
@@ -90,6 +95,14 @@ assert.equal(contract.semantic_event_compatibility.category_id_is_retained_targe
 assert.equal(contract.semantic_event_compatibility.source_category_id_added_to_payload, false);
 assert.equal(contract.semantic_event_compatibility.receipt_schema_changed, false);
 assert.equal(contract.semantic_event_compatibility.post_merge_reconciliation_owners_changed, false);
+assert.equal(
+  contract.redirect_edge_migration.migration,
+  "m20260803_000019_allow_cross_category_topic_merge_redirect_edges",
+);
+assert.equal(contract.redirect_edge_migration.source_category_may_differ_from_receipt_category, true);
+assert.equal(contract.redirect_edge_migration.target_category_must_equal_receipt_category, true);
+assert.equal(contract.redirect_edge_migration.unique_source_edge_is_unchanged, true);
+assert.equal(contract.redirect_edge_migration.down_restores_same_category_guard, true);
 assert.deepEqual(contract.projection_invalidation.cross_category_targets, [
   "source_topic",
   "target_topic",
@@ -99,13 +112,59 @@ assert.deepEqual(contract.projection_invalidation.cross_category_targets, [
 assert.equal(contract.projection_invalidation.category_targets_are_deduplicated, true);
 assert.equal(contract.idempotency.cross_category_counters_are_not_reapplied, true);
 assert.equal(contract.atomicity.partial_cross_category_merge_is_possible, false);
-assert.equal(contract.migration_added, false);
+assert.equal(contract.migration_added, true);
 
-assert.equal(cumulativeContract.latest_policy_slice, "FORUM-21M");
+assert.equal(cumulativeContract.latest_policy_slice, "FORUM-21L");
+assert.equal(cumulativeContract.latest_category_slice, "FORUM-21M");
 assert.equal(cumulativeContract.bounds.same_category_only, false);
 assert.equal(cumulativeContract.cross_category_merge.task, "FORUM-21M");
+assert.equal(
+  cumulativeContract.cross_category_merge.redirect_edge_migration,
+  "m20260803_000019_allow_cross_category_topic_merge_redirect_edges",
+);
 assert.equal(cumulativeContract.cross_category_merge.receipt_schema_changed, false);
 assert.equal(cumulativeContract.cross_category_merge.event_contract_changed, false);
+assert.equal(cumulativeContract.cross_category_merge.migration_added, true);
+
+includesAll(
+  migration,
+  [
+    "m20260803_000019_allow_cross_category_topic_merge_redirect_edges",
+    "CREATE OR REPLACE FUNCTION forum_validate_topic_merge_redirect_edge()",
+    "source.id = NEW.source_topic_id",
+    "source.status::text = 'archived'",
+    "source.is_locked = TRUE",
+    "source.reply_count = 0",
+    "target.id = NEW.target_topic_id",
+    "target.category_id = NEW.category_id",
+    "DROP TRIGGER IF EXISTS forum_05_topic_merge_redirect_edge",
+    "CREATE TRIGGER forum_05_topic_merge_redirect_edge",
+    "const POSTGRES_DOWN",
+    "source.category_id = NEW.category_id",
+    "const SQLITE_DOWN",
+  ],
+  "cross-category redirect migration",
+);
+const postgresUp = migration.slice(
+  migration.indexOf('const POSTGRES_UP: &str = r#"'),
+  migration.indexOf('const POSTGRES_DOWN: &str = r#"'),
+);
+const sqliteUp = migration.slice(
+  migration.indexOf('const SQLITE_UP: &str = r#"'),
+  migration.indexOf('const SQLITE_DOWN: &str = r#"'),
+);
+assert.ok(!postgresUp.includes("source.category_id = NEW.category_id"));
+assert.ok(!sqliteUp.includes("source.category_id = NEW.category_id"));
+assert.ok(postgresUp.includes("target.category_id = NEW.category_id"));
+assert.ok(sqliteUp.includes("target.category_id = NEW.category_id"));
+includesAll(
+  migrationsMod,
+  [
+    "mod m20260803_000019_allow_cross_category_topic_merge_redirect_edges;",
+    "m20260803_000019_allow_cross_category_topic_merge_redirect_edges::Migration",
+  ],
+  "migration registration",
+);
 
 includesAll(
   owner,
@@ -213,6 +272,7 @@ includesAll(
     "`source_ready_maintainer_execution_pending`",
     paths.contract,
     "category `topic_count` values do not change",
+    "m20260803_000019_allow_cross_category_topic_merge_redirect_edges",
     "forum.topic.merged / schema version 1",
     "No command above was run by the implementation agent",
   ],
@@ -229,6 +289,7 @@ includesAll(
 );
 assert.ok(plan.includes("### Delivered through `FORUM-21M`"));
 assert.ok(plan.includes("checked cross-category merge"));
+assert.ok(plan.includes("m20260803_000019_allow_cross_category_topic_merge_redirect_edges"));
 assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
 assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
 assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
