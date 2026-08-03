@@ -30,10 +30,13 @@ const owner = "crates/rustok-rbac/src/artifact_permission_assignment.rs";
 const catalog = "crates/rustok-rbac/src/artifact_permission_catalog.rs";
 const exports = "crates/rustok-rbac/src/lib.rs";
 const docs = "crates/rustok-rbac/docs/README.md";
+const host = "apps/server/src/controllers/artifact_permissions.rs";
 const userAdmin =
   "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs";
 const sqliteProof =
   "crates/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs";
+const outboxProof =
+  "crates/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs";
 
 if (existsSync(path.join(root, correctiveMigration))) {
   failures.push(`${correctiveMigration}: superseded corrective migration must be deleted`);
@@ -88,16 +91,29 @@ requireAll(catalog, [
   "assert_eq!(locale, \"en-US\")",
 ]);
 requireAll(owner, [
+  "pub artifact_permission_id: Uuid",
+  "command.artifact_permission_id.is_nil()",
   "struct ArtifactPermissionIdentity",
   "resolve_artifact_permission_identity(&transaction, &command).await?",
-  "SELECT id, scope_key FROM rbac_artifact_permission_definitions",
+  "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE id = {artifact_permission_id}",
+  "command.artifact_permission_id.into()",
   "permission_scope_key: String",
   "permission_scope_key != artifact_permission.scope_key",
   "INNER JOIN rbac_artifact_permission_definitions apd ON apd.id = arp.artifact_permission_id AND apd.scope_key = arp.permission_scope_key",
-  "ORDER BY CASE WHEN scope_key = {tenant_scope} THEN 0 ELSE 1 END",
   "ON CONFLICT (tenant_id, role_id, artifact_permission_id) DO NOTHING",
 ]);
-forbidAll(owner, ["permission_is_registered", "rbac_artifact_permission_catalog"]);
+forbidAll(owner, [
+  "permission_is_registered",
+  "rbac_artifact_permission_catalog",
+  "ORDER BY CASE WHEN scope_key",
+  "WHERE installation_id = {installation_id} AND permission_key = {permission_key}",
+]);
+
+requireAll(host, [
+  "pub artifact_permission_id: Uuid",
+  "artifact_permission_id: input.artifact_permission_id",
+  "Role or exact artifact permission identity not found",
+]);
 
 requireAll(sqliteProof, [
   "artifact integrity must remain consolidated in canonical migrations",
@@ -113,6 +129,14 @@ requireAll(sqliteProof, [
   "UPDATE rbac_artifact_permission_definitions SET permission_key",
   "UPDATE rbac_artifact_permission_definitions SET scope_key",
   "DELETE FROM rbac_artifact_permission_definitions",
+]);
+requireAll(outboxProof, [
+  "exact_identity_mutation_does_not_shadow_platform_or_tenant_definition",
+  "grant exact permission identity",
+  "revoke exact platform identity",
+  "revoke exact tenant identity",
+  "assert_eq!(remaining_id, tenant_permission_id)",
+  "assert_eq!(event_grants(&db).await, vec![true, true, false, false])",
 ]);
 
 requireAll(userAdmin, [
