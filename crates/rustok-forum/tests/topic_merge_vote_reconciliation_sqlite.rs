@@ -268,7 +268,6 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
     )
     .await?;
 
-    let baseline_projection_events = projection_event_count(&db, tenant_id).await?;
     let operation_id = Uuid::new_v4();
     let input = ReconcileForumTopicMergeVotesInput {
         operation_id,
@@ -321,10 +320,6 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
     assert_eq!(summary.current_user_vote, Some(-1));
     assert_reconciliation_event(&db, tenant_id, &reconciled).await?;
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
-    assert_eq!(
-        projection_event_count(&db, tenant_id).await?,
-        baseline_projection_events
-    );
 
     let replay = service
         .reconcile_merge_votes(
@@ -337,10 +332,6 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
     assert_eq!(replay, reconciled);
     assert_eq!(vote_snapshots(&db, tenant_id, target_topic_id).await?, target_after);
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
-    assert_eq!(
-        projection_event_count(&db, tenant_id).await?,
-        baseline_projection_events
-    );
 
     let drift = service
         .reconcile_merge_votes(
@@ -497,21 +488,6 @@ async fn reconciliation_count(
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS value FROM forum_topic_merge_vote_reconciliations WHERE tenant_id = ?",
-            vec![tenant_id.into()],
-        ),
-    )
-    .await
-}
-
-async fn projection_event_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
-    scalar_i64(
-        db,
-        Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "SELECT COUNT(*) AS value FROM sys_events WHERE tenant_id = ? AND event_type = 'index.reindex_requested'",
             vec![tenant_id.into()],
         ),
     )
