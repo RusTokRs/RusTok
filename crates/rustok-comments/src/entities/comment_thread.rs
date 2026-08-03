@@ -7,8 +7,7 @@ use uuid::Uuid;
 
 use crate::dto::CommentThreadStatus;
 
-pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str =
-    "comment_thread_identity_conflict";
+pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str = "comment_thread_identity_conflict";
 
 pub(crate) fn is_thread_identity_conflict(
     error: &DbErr,
@@ -16,9 +15,8 @@ pub(crate) fn is_thread_identity_conflict(
     target_type: &str,
     target_id: Uuid,
 ) -> bool {
-    let expected_prefix = format!(
-        "{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:"
-    );
+    let expected_prefix =
+        format!("{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:");
     let DbErr::Custom(message) = error else {
         return false;
     };

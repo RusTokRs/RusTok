@@ -11,8 +11,8 @@ use rustok_iggy_connector::migrations::{
     ConsumerPoisonIdentity, ConsumerPoisonPublishClaim, ConsumerPoisonReceiptStore,
 };
 use rustok_search::{
-    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC,
-    ForumSearchContractIngress, ForumSearchContractIngressOutcome,
+    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress,
+    ForumSearchContractIngressOutcome,
 };
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -50,14 +50,12 @@ impl ForumSearchContractWorkerConfig {
         };
         let max_attempts = u32::try_from(configured_attempts).map_err(|_| {
             Error::Message(
-                "Forum Search contract consumer max attempts must fit a positive u32"
-                    .to_string(),
+                "Forum Search contract consumer max attempts must fit a positive u32".to_string(),
             )
         })?;
         if max_attempts == 0 {
             return Err(Error::Message(
-                "Forum Search contract consumer max attempts must be greater than zero"
-                    .to_string(),
+                "Forum Search contract consumer max attempts must be greater than zero".to_string(),
             ));
         }
 
@@ -176,8 +174,7 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
     let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
     let poison_publisher_id = Uuid::new_v4();
 
-    let instance_id =
-        FORUM_SEARCH_CONTRACT_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    let instance_id = FORUM_SEARCH_CONTRACT_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
         instance_id,
         consumer_group = FORUM_SEARCH_CONTRACT_CONSUMER_GROUP,
@@ -379,8 +376,7 @@ async fn terminalize_semantic_poison(
             "Forum Search semantic poison identity failed; broker offset remains uncommitted"
         );
     })
-    .ok()
-    else {
+    .ok() else {
         return false;
     };
 
@@ -511,17 +507,11 @@ async fn establish_poison_result(
     stable_error_code: &'static str,
     observed_attempts: u32,
 ) -> std::result::Result<(), ()> {
-    let continuing_receipt = match lookup_poison_receipt(
-        poison_receipts,
-        identity,
-        config,
-        stop_rx,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(()) => return Err(()),
-    };
+    let continuing_receipt =
+        match lookup_poison_receipt(poison_receipts, identity, config, stop_rx).await {
+            Ok(value) => value,
+            Err(()) => return Err(()),
+        };
     if !config.dlq_enabled && !continuing_receipt {
         tracing::error!(
             error_code = stable_error_code,
@@ -825,10 +815,7 @@ fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-async fn wait_or_stop(
-    delay: Duration,
-    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
-) -> bool {
+async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
     tokio::select! {
         _ = tokio::time::sleep(delay) => false,
         changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),

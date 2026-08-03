@@ -17,8 +17,8 @@ use rustok_iggy::{
     TopologyConfig,
 };
 use rustok_search::{
-    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC,
-    ForumSearchContractIngress, ForumSearchContractIngressOutcome, SearchModule,
+    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress,
+    ForumSearchContractIngressOutcome, SearchModule,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -37,10 +37,8 @@ const IGGY_USERNAME_ENV: &str = "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME";
 const IGGY_PASSWORD_ENV: &str = "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD";
 const RECEIVE_TIMEOUT: Duration = Duration::from_secs(20);
 const ROOT_EVENT_TYPE: &str = "index.reindex_requested";
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_versioned_invalidation_ack_restart_evidence_v1";
-const EVIDENCE_PATH: &str =
-    "target/forum-search-versioned-invalidation-ack-restart-evidence.json";
+const EVIDENCE_CONTRACT: &str = "forum_search_versioned_invalidation_ack_restart_evidence_v1";
+const EVIDENCE_PATH: &str = "target/forum-search-versioned-invalidation-ack-restart-evidence.json";
 
 struct PostgresSearchTestDb {
     control: DatabaseConnection,
@@ -402,8 +400,7 @@ fn ensure_delivery_identity(
         || delivery.envelope.id() != expected_typed_envelope_id
         || delivery.envelope.causation_id() != Some(expected_root_event_id)
         || delivery.envelope.tenant_id() != expected_tenant_id
-        || delivery.envelope.event_type()
-            != "forum.search_projection.invalidation_issued"
+        || delivery.envelope.event_type() != "forum.search_projection.invalidation_issued"
         || delivery.envelope.schema_version() != 1
         || delivery.offset().is_none()
         || delivery.ack_token().is_none()
@@ -429,7 +426,10 @@ fn ensure_durable_outcome(
             root_event_id,
             owner_revision,
         } if root_event_id == expected_root_event_id
-            && owner_revision == expected_owner_revision => Ok(()),
+            && owner_revision == expected_owner_revision =>
+        {
+            Ok(())
+        }
         other => Err(invalid_data(format!(
             "unexpected Forum Search durable ingress outcome: {other:?}"
         ))

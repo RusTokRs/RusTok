@@ -104,6 +104,40 @@ trunk/
 # PostgreSQL
 postgresql_data/
 
+
+# Backup files
+*.bak
+*.backup
+
+# Temporary files
+.tmp/
+tmp/
+temp/
+
+# Editor directories and files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Rust analyzer
+.rust-analyzer/
+
+# Trunk (for Leptos)
+trunk/
+*.css.map
+
+# Docker
+.dockerignore
+
+# PostgreSQL
+postgresql_data/
+
 # Redis
 dump.rdb
 
@@ -116,6 +150,12 @@ config.*.local.toml
 modules.local.toml
 /target_codex_permissions/
 .github/pull_request_template.md
+
+# Agent and tool temporary directories
+.*-codex/
+*-codex/
+.codex/
+.playwright-cli/
 
 # Athanor local store and outputs
 .athanor/*

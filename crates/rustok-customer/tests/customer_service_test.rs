@@ -7,9 +7,11 @@ use rustok_customer::ports::{
     CustomerListProjectionRequest, CustomerProjectionRequest, CustomerReadPort,
 };
 use rustok_customer::services::CustomerService;
+use rustok_outbox::SysEventsMigration;
 use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
 use rustok_profiles::services::ProfileService;
 use rustok_test_utils::db::setup_test_db;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 mod support;
@@ -338,6 +340,10 @@ async fn upsert_customer_for_user_updates_existing_profile() {
 async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() {
     let db = setup_test_db().await;
     support::ensure_customer_schema(&db).await;
+    SysEventsMigration
+        .up(&SchemaManager::new(&db))
+        .await
+        .expect("outbox schema should be available for profile mutation");
     let customer_service = CustomerService::new(db.clone());
     let profile_service = ProfileService::new(db.clone());
     let tenant_id = Uuid::new_v4();
@@ -359,9 +365,12 @@ async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() 
     let profile_mutations = rustok_profiles::ProfileMutationService::new(&db, &event_bus);
     profile_mutations
         .upsert_profile_with_event(
-            tenant_id,
-            user_id,
-            user_id,
+            rustok_profiles::ProfileMutationContext {
+                tenant_id,
+                actor_id: user_id,
+                user_id,
+                tenant_default_locale: Some("en"),
+            },
             UpsertProfileInput {
                 handle: "customer-user".to_string(),
                 display_name: "Customer User".to_string(),
@@ -372,7 +381,6 @@ async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() 
                 preferred_locale: Some("en".to_string()),
                 visibility: ProfileVisibility::Public,
             },
-            Some("en"),
         )
         .await
         .unwrap();

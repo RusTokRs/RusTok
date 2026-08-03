@@ -9,6 +9,7 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub location: String,
+    pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

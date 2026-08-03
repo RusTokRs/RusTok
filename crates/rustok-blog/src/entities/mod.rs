@@ -7,6 +7,7 @@ pub mod blog_post;
 pub mod blog_post_channel_visibility;
 pub mod blog_post_tag;
 pub mod blog_post_translation;
+pub mod translation_change;
 
 pub use blog_category::Entity as BlogCategory;
 pub use blog_category_translation::Entity as BlogCategoryTranslation;
@@ -15,3 +16,4 @@ pub use blog_post::Entity as BlogPost;
 pub use blog_post_channel_visibility::Entity as BlogPostChannelVisibility;
 pub use blog_post_tag::Entity as BlogPostTag;
 pub use blog_post_translation::Entity as BlogPostTranslation;
+pub use translation_change::Entity as BlogTranslationChange;

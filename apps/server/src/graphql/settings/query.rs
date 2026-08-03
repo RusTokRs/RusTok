@@ -3,14 +3,12 @@ use async_graphql::{Context, FieldError, Object, Result};
 use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::SettingsService;
-use rustok_api::{
-    HostAuthority, Permission, graphql::GraphQLError, has_effective_permission,
-};
+use rustok_api::{HostAuthority, Permission, graphql::GraphQLError, has_effective_permission};
 
-use super::{require_host_authority, require_tenant_settings_scope};
 use super::types::{
     EventDeliveryConfigurationPayload, IggyConnectorConfigurationPayload, PlatformSettingsPayload,
 };
+use super::{require_host_authority, require_tenant_settings_scope};
 
 #[derive(Default)]
 pub struct SettingsQuery;

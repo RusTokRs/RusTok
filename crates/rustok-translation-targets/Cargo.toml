@@ -7,9 +7,12 @@ description = "Owner-neutral translation target provider contracts and runtime r
 
 [dependencies]
 async-trait.workspace = true
+hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

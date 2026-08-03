@@ -15,8 +15,8 @@ use rustok_search::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRecord,
     ForumProjectionOwnerRevisionRequest, ForumProjectionOwnerRevisionSourcePort,
     ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
-    ForumProjectionReconciler, SearchModule, SearchProjectionDocument,
-    SearchProjectionPage, SearchProjectionSource,
+    ForumProjectionReconciler, SearchModule, SearchProjectionDocument, SearchProjectionPage,
+    SearchProjectionSource,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -39,8 +39,7 @@ const CONTENDER_ROLE: &str = "contender";
 const NEXT_ROLE: &str = "next";
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_versioned_invalidation_multi_process_evidence_v1";
+const EVIDENCE_CONTRACT: &str = "forum_search_versioned_invalidation_multi_process_evidence_v1";
 const EVIDENCE_PATH: &str =
     "target/forum-search-versioned-invalidation-multi-process-evidence.json";
 
@@ -277,7 +276,9 @@ impl SearchProjectionSource for DatabaseProjectionSource {
                     "multi-process projection fixture returned no current document".to_string(),
                 )
             })?;
-        let document_id: Uuid = row.try_get("", "document_id").map_err(CoreError::Database)?;
+        let document_id: Uuid = row
+            .try_get("", "document_id")
+            .map_err(CoreError::Database)?;
         let title: String = row.try_get("", "title").map_err(CoreError::Database)?;
         let slug: String = row.try_get("", "slug").map_err(CoreError::Database)?;
         let now = Utc::now();
@@ -486,10 +487,9 @@ fn ensure_role_report(report: &ProcessReport) -> TestResult<()> {
         _ => false,
     };
     if !valid {
-        return Err(invalid_data(format!(
-            "unexpected multi-process sweep report: {report:?}"
-        ))
-        .into());
+        return Err(
+            invalid_data(format!("unexpected multi-process sweep report: {report:?}")).into(),
+        );
     }
     Ok(())
 }
@@ -533,9 +533,7 @@ async fn run_multi_process_proof(
 
     let cursor_after_holder = load_scan_cursor(&evidence.db).await?;
     let cursor_audit_after_holder = load_cursor_audit(&evidence.db).await?;
-    if cursor_after_holder != Some(first_tenant_id())
-        || cursor_audit_after_holder.len() != 1
-    {
+    if cursor_after_holder != Some(first_tenant_id()) || cursor_audit_after_holder.len() != 1 {
         return Err(invalid_data(format!(
             "stale holder regressed or duplicated the contender-owned cursor CAS: cursor={cursor_after_holder:?}, audit={cursor_audit_after_holder:?}"
         ))
@@ -548,9 +546,9 @@ async fn run_multi_process_proof(
         .map(|row| row.owner_revision)
         .collect::<Vec<_>>();
     if first_revisions != [1, 2]
-        || first_checkpoint_audit.iter().any(|row| {
-            row.outcome != "rebuild_repaired" || row.observed_forum_documents != 1
-        })
+        || first_checkpoint_audit
+            .iter()
+            .any(|row| row.outcome != "rebuild_repaired" || row.observed_forum_documents != 1)
         || first_checkpoint_audit[0].event_id != first_event_one_id()
         || first_checkpoint_audit[1].event_id != first_event_two_id()
         || rebuild_calls(&evidence.db, first_tenant_id()).await? != 1
@@ -649,10 +647,7 @@ fn spawn_child(evidence: &PostgresMultiProcessEvidence, role: &str) -> TestResul
         .spawn()?)
 }
 
-async fn wait_for_holder_entry(
-    db: &DatabaseConnection,
-    child: &mut Child,
-) -> TestResult<()> {
+async fn wait_for_holder_entry(db: &DatabaseConnection, child: &mut Child) -> TestResult<()> {
     let started = Instant::now();
     loop {
         if holder_entered(db).await? {
@@ -680,18 +675,14 @@ async fn wait_child_success(mut child: Child, role: &str) -> TestResult<()> {
             if status.success() {
                 return Ok(());
             }
-            return Err(invalid_data(format!(
-                "multi-process child `{role}` failed with {status}"
-            ))
-            .into());
+            return Err(
+                invalid_data(format!("multi-process child `{role}` failed with {status}")).into(),
+            );
         }
         if started.elapsed() >= PROCESS_TIMEOUT {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(invalid_data(format!(
-                "multi-process child `{role}` timed out"
-            ))
-            .into());
+            return Err(invalid_data(format!("multi-process child `{role}` timed out")).into());
         }
         sleep(POLL_INTERVAL).await;
     }
@@ -881,10 +872,7 @@ async fn store_process_report(
     Ok(())
 }
 
-async fn require_process_report(
-    db: &DatabaseConnection,
-    role: &str,
-) -> TestResult<ProcessReport> {
+async fn require_process_report(db: &DatabaseConnection, role: &str) -> TestResult<ProcessReport> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -934,10 +922,7 @@ async fn release_holder(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     Ok(())
 }
 
-async fn rebuild_calls(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> Result<i64, sea_orm::DbErr> {
+async fn rebuild_calls(db: &DatabaseConnection, tenant_id: Uuid) -> Result<i64, sea_orm::DbErr> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -962,9 +947,7 @@ async fn load_scan_cursor(db: &DatabaseConnection) -> Result<Option<Uuid>, sea_o
         .map(Option::flatten)
 }
 
-async fn load_cursor_audit(
-    db: &DatabaseConnection,
-) -> Result<Vec<CursorAuditRow>, sea_orm::DbErr> {
+async fn load_cursor_audit(db: &DatabaseConnection) -> Result<Vec<CursorAuditRow>, sea_orm::DbErr> {
     db.query_all(Statement::from_string(
         DbBackend::Postgres,
         "SELECT previous_tenant_id, next_tenant_id FROM forum_d7_scan_cursor_audit ORDER BY sequence ASC"
@@ -1103,9 +1086,7 @@ async fn connect_in_schema(
 
 fn database_url_in_schema(database_url: &str, schema_name: &str) -> String {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
-    )
+    format!("{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic")
 }
 
 async fn connect(database_url: &str, max_connections: u32) -> TestResult<DatabaseConnection> {

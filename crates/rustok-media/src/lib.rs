@@ -3,7 +3,6 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
-mod idempotency;
 pub mod image;
 pub mod lifecycle;
 pub mod migrations;
@@ -61,6 +60,10 @@ impl RusToKModule for MediaModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["outbox"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

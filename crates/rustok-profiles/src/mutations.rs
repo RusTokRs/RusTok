@@ -12,6 +12,33 @@ use crate::{
     visibility_write::update_profile_visibility_with_event,
 };
 
+/// Tenant, actor, subject, and locale context required by a user-initiated
+/// profile mutation.
+///
+/// The actor is deliberately mandatory here: every self-service write must
+/// produce an attributable `ProfileUpdated` event in the same transaction.
+#[derive(Debug, Clone, Copy)]
+pub struct ProfileMutationContext<'a> {
+    pub tenant_id: Uuid,
+    pub actor_id: Uuid,
+    pub user_id: Uuid,
+    pub tenant_default_locale: Option<&'a str>,
+}
+
+/// Owner-local request for provisioning one missing profile.
+///
+/// Backfill is system-initiated, so it intentionally has no human actor id.
+#[derive(Debug, Clone, Copy)]
+pub struct ProfileBackfillRequest<'a> {
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub email: &'a str,
+    pub display_name: Option<&'a str>,
+    pub preferred_locale: Option<&'a str>,
+    pub visibility: ProfileVisibility,
+    pub tenant_default_locale: Option<&'a str>,
+}
+
 /// Public Profiles mutation facade whose construction requires the durable event bus.
 ///
 /// Every method delegates to a Profiles-owned transaction that commits the owner write only after
@@ -27,158 +54,67 @@ impl<'a> ProfileMutationService<'a> {
         Self { db, event_bus }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn upsert_profile_with_event(
         &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        user_id: Uuid,
+        context: ProfileMutationContext<'_>,
         input: UpsertProfileInput,
-        tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
-        upsert_profile_with_event(
-            self.db,
-            self.event_bus,
-            tenant_id,
-            actor_id,
-            user_id,
-            input,
-            tenant_default_locale,
-        )
-        .await
+        upsert_profile_with_event(self.db, self.event_bus, context, input).await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_profile_handle_with_event(
         &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        user_id: Uuid,
+        context: ProfileMutationContext<'_>,
         handle: &str,
-        tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
-        update_profile_handle_with_event(
-            self.db,
-            self.event_bus,
-            tenant_id,
-            actor_id,
-            user_id,
-            handle,
-            tenant_default_locale,
-        )
-        .await
+        update_profile_handle_with_event(self.db, self.event_bus, context, handle).await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_profile_content_with_event(
         &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        user_id: Uuid,
+        context: ProfileMutationContext<'_>,
         display_name: &str,
         bio: Option<&str>,
-        tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
-        update_profile_content_with_event(
-            self.db,
-            self.event_bus,
-            tenant_id,
-            actor_id,
-            user_id,
-            display_name,
-            bio,
-            tenant_default_locale,
-        )
-        .await
+        update_profile_content_with_event(self.db, self.event_bus, context, display_name, bio).await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_profile_locale_with_event(
         &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        user_id: Uuid,
+        context: ProfileMutationContext<'_>,
         preferred_locale: Option<&str>,
-        tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
-        update_profile_locale_with_event(
-            self.db,
-            self.event_bus,
-            tenant_id,
-            actor_id,
-            user_id,
-            preferred_locale,
-            tenant_default_locale,
-        )
-        .await
+        update_profile_locale_with_event(self.db, self.event_bus, context, preferred_locale).await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_profile_visibility_with_event(
         &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        user_id: Uuid,
+        context: ProfileMutationContext<'_>,
         visibility: ProfileVisibility,
-        tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
-        update_profile_visibility_with_event(
-            self.db,
-            self.event_bus,
-            tenant_id,
-            actor_id,
-            user_id,
-            visibility,
-            tenant_default_locale,
-        )
-        .await
+        update_profile_visibility_with_event(self.db, self.event_bus, context, visibility).await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_profile_media_with_event(
         &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        user_id: Uuid,
+        context: ProfileMutationContext<'_>,
         avatar_media_id: Option<Uuid>,
         banner_media_id: Option<Uuid>,
-        tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
         update_profile_media_with_event(
             self.db,
             self.event_bus,
-            tenant_id,
-            actor_id,
-            user_id,
+            context,
             avatar_media_id,
             banner_media_id,
-            tenant_default_locale,
         )
         .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn backfill_profile_with_event(
         &self,
-        tenant_id: Uuid,
-        user_id: Uuid,
-        email: &str,
-        display_name: Option<&str>,
-        preferred_locale: Option<&str>,
-        visibility: ProfileVisibility,
-        tenant_default_locale: Option<&str>,
+        request: ProfileBackfillRequest<'_>,
     ) -> ProfileResult<ProfileBackfillResult> {
-        backfill_profile_with_event(
-            self.db,
-            self.event_bus,
-            tenant_id,
-            user_id,
-            email,
-            display_name,
-            preferred_locale,
-            visibility,
-            tenant_default_locale,
-        )
-        .await
+        backfill_profile_with_event(self.db, self.event_bus, request).await
     }
 }

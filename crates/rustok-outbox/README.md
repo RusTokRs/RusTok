@@ -2,13 +2,16 @@
 
 ## Purpose
 
-`rustok-outbox` owns the canonical outbox transport and relay pipeline for reliable event delivery in RusToK.
+`rustok-outbox` owns the canonical outbox transport and relay pipeline for reliable event delivery in RusToK, plus the generic durable receipt primitive used by owner write ports.
 
 ## Responsibilities
 
 - Persist outbound events through the shared outbox transport.
 - Relay pending events with claim, dispatch, retry, and DLQ semantics.
 - Own the `sys_events` schema and related migrations.
+- Own the generic `owner_operation_receipts` schema and fenced idempotency
+  admission/replay primitive; owner services retain their domain mutations and
+  semantic side effects.
 - Expose the runtime services used by `apps/server` event bootstrap and background delivery.
 - Ship the module-owned Leptos admin UI package for relay visibility with a `core/transport/ui` FFA split.
 
@@ -19,6 +22,7 @@
 - `TransactionalEventWriter`
 - `OutboxRelay`
 - `migration`
+- `idempotency`
 
 ## Interactions
 
@@ -28,6 +32,9 @@
   object-safe `TransactionalEventWriter` lets an owner append an `EventEnvelope`
   through its live SeaORM transaction without depending on the concrete
   transport, while host composition remains outside the crate.
+- The append-only platform migration invokes the Outbox-owned receipt schema
+  helper. A receipt is scoped by tenant, owner slug, and idempotency key, so
+  unrelated owner operations cannot collide.
 - Used by `apps/server` for runtime relay wiring, background processing, and migrations.
 - Integrates with target transports such as `rustok-iggy` instead of owning transport-specific adapters inline.
 - The Leptos admin UI lives in `crates/rustok-outbox/admin`, keeps framework-agnostic DTO/view-model helpers in `admin/src/core.rs`, and is mounted through manifest-driven host wiring.

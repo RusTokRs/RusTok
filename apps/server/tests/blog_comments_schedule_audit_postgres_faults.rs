@@ -17,25 +17,21 @@ use rustok_server::services::comments_provider_runtime::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE,
     COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY,
     COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE,
-    CommentsTcpDelegationSchedulePersistenceDocument,
-    CommentsTcpDelegationSchedulePersistenceKey,
+    CommentsTcpDelegationSchedulePersistenceDocument, CommentsTcpDelegationSchedulePersistenceKey,
     CommentsTcpDelegationSchedulePersistenceStartupMode,
     CommentsTcpDelegationScheduleTriggerAuthorizationError,
     CommentsTcpDelegationScheduleTriggerAuthorizationRequest,
-    CommentsTcpDelegationScheduleTriggerAuthorizer,
-    CommentsTcpDelegationScheduleTriggerContext,
+    CommentsTcpDelegationScheduleTriggerAuthorizer, CommentsTcpDelegationScheduleTriggerContext,
     PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore,
     SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger,
     SharedCommentsTcpDelegationScheduleTriggerAuthorizer,
 };
 use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,
-    drop_postgres_database_if_exists, postgres_database_url,
-    unique_postgres_database_name,
+    drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    Statement,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
 use sea_orm_migration::MigratorTrait;
 use tokio::{
@@ -49,18 +45,13 @@ use url::Url;
 use uuid::Uuid;
 
 const ADMIN_URL_ENV: &str = "RUSTOK_MIGRATION_SMOKE_ADMIN_URL";
-const CHILD_DATABASE_URL_ENV: &str =
-    "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_DATABASE_URL";
-const CHILD_REQUEST_ID_ENV: &str =
-    "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_REQUEST_ID";
-const CHILD_ACTOR_ID_ENV: &str =
-    "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_ACTOR_ID";
-const CHILD_PRIMARY_ACTIVATION_ENV: &str =
-    "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_PRIMARY_ACTIVATION_MS";
+const CHILD_DATABASE_URL_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_DATABASE_URL";
+const CHILD_REQUEST_ID_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_REQUEST_ID";
+const CHILD_ACTOR_ID_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_ACTOR_ID";
+const CHILD_PRIMARY_ACTIVATION_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_PRIMARY_ACTIVATION_MS";
 const CHILD_SUCCESSOR_ACTIVATION_ENV: &str =
     "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_SUCCESSOR_ACTIVATION_MS";
-const CHILD_PRIMARY_RETIREMENT_ENV: &str =
-    "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_PRIMARY_RETIREMENT_MS";
+const CHILD_PRIMARY_RETIREMENT_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_PRIMARY_RETIREMENT_MS";
 const CHILD_ROLE_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_FAULT_CHILD";
 const CHILD_TEST_NAME: &str = "blog_comments_schedule_audit_fault_child";
 
@@ -75,10 +66,8 @@ const POSTGRES_SSL_REQUEST_CODE: u32 = 80_877_103;
 const POSTGRES_GSSENC_REQUEST_CODE: u32 = 80_877_104;
 const THIRD_STATE_DIGEST_HEX: &str =
     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-const SECRET_A: &str =
-    "comments-audit-fault-secret-a-000000000001";
-const SECRET_B: &str =
-    "comments-audit-fault-secret-b-000000000002";
+const SECRET_A: &str = "comments-audit-fault-secret-a-000000000001";
+const SECRET_B: &str = "comments-audit-fault-secret-b-000000000002";
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -94,9 +83,7 @@ impl CommitAckFaultMode {
         match self {
             Self::ExactPair => "rustok_blog_comments_ack_exact",
             Self::ThirdState => "rustok_blog_comments_ack_third",
-            Self::UnreadableReconciliation => {
-                "rustok_blog_comments_ack_unreadable"
-            }
+            Self::UnreadableReconciliation => "rustok_blog_comments_ack_unreadable",
         }
     }
 
@@ -177,9 +164,7 @@ async fn commit_ack_loss_unreadable_reconciliation_fail_stops() {
     run_fault_scenario(CommitAckFaultMode::UnreadableReconciliation)
         .await
         .unwrap_or_else(|error| {
-            panic!(
-                "unreadable commit reconciliation evidence failed: {error}"
-            )
+            panic!("unreadable commit reconciliation evidence failed: {error}")
         });
 }
 
@@ -196,24 +181,19 @@ fn blog_comments_schedule_audit_fault_child() {
         .expect("build Comments audited fault child runtime");
     runtime
         .block_on(run_fault_child())
-        .unwrap_or_else(|error| {
-            panic!("Comments audited fault child failed: {error}")
-        });
+        .unwrap_or_else(|error| panic!("Comments audited fault child failed: {error}"));
 }
 
 async fn run_fault_scenario(mode: CommitAckFaultMode) -> TestResult<()> {
-    let admin_url = std::env::var(ADMIN_URL_ENV).unwrap_or_else(|_| {
-        "postgres://postgres:postgres@localhost:5432/postgres".to_string()
-    });
+    let admin_url = std::env::var(ADMIN_URL_ENV)
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
 
     let database_name = unique_postgres_database_name(mode.database_prefix());
     let target_url = postgres_database_url(&admin_url, &database_name);
     let admin = connect_postgres(&admin_url)
         .await
-        .map_err(|error| {
-            format!("PostgreSQL admin database must be reachable: {error}")
-        })?;
+        .map_err(|error| format!("PostgreSQL admin database must be reachable: {error}"))?;
     drop_postgres_database_if_exists(&admin, &database_name).await?;
     create_postgres_database(&admin, &database_name).await?;
 
@@ -227,12 +207,10 @@ async fn run_fault_scenario(mode: CommitAckFaultMode) -> TestResult<()> {
 
         let request_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
-        let proxy =
-            CommitAckProxy::start(&target_url, mode, database.clone()).await?;
+        let proxy = CommitAckProxy::start(&target_url, mode, database.clone()).await?;
         let proxy_url = proxy_database_url(&target_url, proxy.address)?;
 
-        let child_result =
-            spawn_fault_child(&proxy_url, request_id, actor_id, anchor).await;
+        let child_result = spawn_fault_child(&proxy_url, request_id, actor_id, anchor).await;
         let proxy_stop_result = proxy.stop().await;
         proxy_stop_result?;
         let output = child_result?;
@@ -252,33 +230,22 @@ async fn run_fault_scenario(mode: CommitAckFaultMode) -> TestResult<()> {
             || audit.candidate_generation != 2
             || !audit.unpublished
         {
-            return Err(format!(
-                "fault child retained an invalid audit row: {audit:?}"
-            )
-            .into());
+            return Err(format!("fault child retained an invalid audit row: {audit:?}").into());
         }
         if count_outbox(&database).await? != 1 {
-            return Err(
-                "fault scenario must retain exactly one outbox row".into()
-            );
+            return Err("fault scenario must retain exactly one outbox row".into());
         }
 
         match mode {
-            CommitAckFaultMode::ExactPair
-            | CommitAckFaultMode::UnreadableReconciliation => {
-                if state.generation != 2
-                    || state.digest_hex == THIRD_STATE_DIGEST_HEX
-                {
-                    return Err(format!(
-                        "expected committed generation-2 pair, found {state:?}"
-                    )
-                    .into());
+            CommitAckFaultMode::ExactPair | CommitAckFaultMode::UnreadableReconciliation => {
+                if state.generation != 2 || state.digest_hex == THIRD_STATE_DIGEST_HEX {
+                    return Err(
+                        format!("expected committed generation-2 pair, found {state:?}").into(),
+                    );
                 }
             }
             CommitAckFaultMode::ThirdState => {
-                if state.generation != 3
-                    || state.digest_hex != THIRD_STATE_DIGEST_HEX
-                {
+                if state.generation != 3 || state.digest_hex != THIRD_STATE_DIGEST_HEX {
                     return Err(format!(
                         "third-state injector did not advance the state row: {state:?}"
                     )
@@ -300,16 +267,12 @@ async fn run_fault_scenario(mode: CommitAckFaultMode) -> TestResult<()> {
 
 async fn run_fault_child() -> TestResult<()> {
     let database_url = required_env(CHILD_DATABASE_URL_ENV)?;
-    let request_id =
-        Uuid::parse_str(&required_env(CHILD_REQUEST_ID_ENV)?)?;
+    let request_id = Uuid::parse_str(&required_env(CHILD_REQUEST_ID_ENV)?)?;
     let actor_id = Uuid::parse_str(&required_env(CHILD_ACTOR_ID_ENV)?)?;
     let anchor = ScheduleAnchor {
-        primary_activation_ms:
-            required_env(CHILD_PRIMARY_ACTIVATION_ENV)?.parse()?,
-        successor_activation_ms:
-            required_env(CHILD_SUCCESSOR_ACTIVATION_ENV)?.parse()?,
-        primary_retirement_ms:
-            required_env(CHILD_PRIMARY_RETIREMENT_ENV)?.parse()?,
+        primary_activation_ms: required_env(CHILD_PRIMARY_ACTIVATION_ENV)?.parse()?,
+        successor_activation_ms: required_env(CHILD_SUCCESSOR_ACTIVATION_ENV)?.parse()?,
+        primary_retirement_ms: required_env(CHILD_PRIMARY_RETIREMENT_ENV)?.parse()?,
     };
 
     let mut options = ConnectOptions::new(database_url);
@@ -328,18 +291,15 @@ async fn run_fault_child() -> TestResult<()> {
         initial,
         CommentsTcpDelegationSchedulePersistenceStartupMode::ResumeExact,
     )?;
-    let outcome = trigger.replace_host_schedule(
-        trigger_context(request_id, actor_id)?,
-        replacement,
-    )?;
+    let outcome =
+        trigger.replace_host_schedule(trigger_context(request_id, actor_id)?, replacement)?;
     if outcome.previous_generation != 1
         || outcome.current.generation != 2
         || trigger.current_selection()?.generation != 2
     {
-        return Err(format!(
-            "exact-pair reconciliation returned an invalid outcome: {outcome:?}"
-        )
-        .into());
+        return Err(
+            format!("exact-pair reconciliation returned an invalid outcome: {outcome:?}").into(),
+        );
     }
 
     drop(trigger);
@@ -369,10 +329,7 @@ fn audited_trigger(
     document: CommentsTcpDelegationSchedulePersistenceDocument,
     startup_mode: CommentsTcpDelegationSchedulePersistenceStartupMode,
 ) -> TestResult<SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger> {
-    let store =
-        PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore::new(
-            database,
-        )?;
+    let store = PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore::new(database)?;
     Ok(
         SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger::from_host_document(
             document,
@@ -385,8 +342,7 @@ fn audited_trigger(
     )
 }
 
-fn shared_authorizer(
-) -> SharedCommentsTcpDelegationScheduleTriggerAuthorizer {
+fn shared_authorizer() -> SharedCommentsTcpDelegationScheduleTriggerAuthorizer {
     Arc::new(AllowAuthorizer)
 }
 
@@ -410,9 +366,7 @@ fn schedule_anchor() -> TestResult<ScheduleAnchor> {
         .checked_add(PROPAGATION_BUDGET_MS)
         .and_then(|value| value.checked_add(MAX_TTL_MS))
         .and_then(|value| {
-            value.checked_add(
-                rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
-            )
+            value.checked_add(rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS)
         })
         .and_then(|value| value.checked_add(1_000))
         .ok_or("primary retirement overflow")?;
@@ -475,11 +429,7 @@ impl CommitAckProxy {
             mutation_db,
         });
         let (shutdown_sender, shutdown_receiver) = oneshot::channel();
-        let task = tokio::spawn(run_proxy(
-            listener,
-            shared,
-            shutdown_receiver,
-        ));
+        let task = tokio::spawn(run_proxy(listener, shared, shutdown_receiver));
         Ok(Self {
             address,
             shutdown: Some(shutdown_sender),
@@ -491,10 +441,9 @@ impl CommitAckProxy {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
         }
-        let proxy_result =
-            tokio::time::timeout(PROXY_STOP_TIMEOUT, &mut self.task)
-                .await
-                .map_err(|_| "PostgreSQL fault proxy did not stop")??;
+        let proxy_result = tokio::time::timeout(PROXY_STOP_TIMEOUT, &mut self.task)
+            .await
+            .map_err(|_| "PostgreSQL fault proxy did not stop")??;
         proxy_result?;
         Ok(())
     }
@@ -527,15 +476,9 @@ async fn run_proxy(
     }
 }
 
-async fn proxy_connection(
-    mut client: TcpStream,
-    shared: Arc<ProxyShared>,
-) -> io::Result<()> {
-    let mut upstream = TcpStream::connect((
-        shared.upstream_host.as_str(),
-        shared.upstream_port,
-    ))
-    .await?;
+async fn proxy_connection(mut client: TcpStream, shared: Arc<ProxyShared>) -> io::Result<()> {
+    let mut upstream =
+        TcpStream::connect((shared.upstream_host.as_str(), shared.upstream_port)).await?;
     relay_startup(&mut client, &mut upstream).await?;
 
     let (client_reader, client_writer) = client.into_split();
@@ -566,9 +509,7 @@ async fn proxy_connection(
     }
 }
 
-fn flatten_proxy_task(
-    result: Result<io::Result<()>, tokio::task::JoinError>,
-) -> io::Result<()> {
+fn flatten_proxy_task(result: Result<io::Result<()>, tokio::task::JoinError>) -> io::Result<()> {
     match result {
         Ok(result) => result,
         Err(error) if error.is_cancelled() => Ok(()),
@@ -578,16 +519,12 @@ fn flatten_proxy_task(
     }
 }
 
-async fn relay_startup(
-    client: &mut TcpStream,
-    upstream: &mut TcpStream,
-) -> io::Result<()> {
+async fn relay_startup(client: &mut TcpStream, upstream: &mut TcpStream) -> io::Result<()> {
     let first = read_startup_packet(client).await?;
     let request_code = startup_request_code(&first);
     upstream.write_all(&first).await?;
     if request_code.is_some_and(|code| {
-        code == POSTGRES_SSL_REQUEST_CODE
-            || code == POSTGRES_GSSENC_REQUEST_CODE
+        code == POSTGRES_SSL_REQUEST_CODE || code == POSTGRES_GSSENC_REQUEST_CODE
     }) {
         let mut response = [0u8; 1];
         upstream.read_exact(&mut response).await?;
@@ -604,9 +541,7 @@ async fn relay_startup(
     Ok(())
 }
 
-async fn read_startup_packet(
-    stream: &mut TcpStream,
-) -> io::Result<Vec<u8>> {
+async fn read_startup_packet(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut length_bytes = [0u8; 4];
     stream.read_exact(&mut length_bytes).await?;
     let length = u32::from_be_bytes(length_bytes) as usize;
@@ -623,9 +558,7 @@ async fn read_startup_packet(
 }
 
 fn startup_request_code(packet: &[u8]) -> Option<u32> {
-    (packet.len() == 8).then(|| {
-        u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]])
-    })
+    (packet.len() == 8).then(|| u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]))
 }
 
 async fn relay_frontend(
@@ -635,13 +568,10 @@ async fn relay_frontend(
     shared: Arc<ProxyShared>,
 ) -> io::Result<()> {
     loop {
-        let Some((message_type, body, header)) =
-            read_protocol_message(&mut client).await?
-        else {
+        let Some((message_type, body, header)) = read_protocol_message(&mut client).await? else {
             return Ok(());
         };
-        if frontend_query(message_type, &body)
-            .is_some_and(is_commit_query)
+        if frontend_query(message_type, &body).is_some_and(is_commit_query)
             && !shared.fault_consumed.load(Ordering::Acquire)
         {
             intercept_commit.store(true, Ordering::Release);
@@ -658,9 +588,7 @@ async fn relay_backend(
     shared: Arc<ProxyShared>,
 ) -> io::Result<()> {
     loop {
-        let Some((message_type, body, header)) =
-            read_protocol_message(&mut upstream).await?
-        else {
+        let Some((message_type, body, header)) = read_protocol_message(&mut upstream).await? else {
             return Ok(());
         };
 
@@ -668,22 +596,13 @@ async fn relay_backend(
             if message_type == b'Z' {
                 let claimed = shared
                     .fault_consumed
-                    .compare_exchange(
-                        false,
-                        true,
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
-                    )
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                     .is_ok();
-                if claimed
-                    && shared.mode == CommitAckFaultMode::ThirdState
-                {
+                if claimed && shared.mode == CommitAckFaultMode::ThirdState {
                     inject_third_state(&shared.mutation_db)
                         .await
                         .map_err(|error| {
-                            io::Error::other(format!(
-                                "third-state injection failed: {error}"
-                            ))
+                            io::Error::other(format!("third-state injection failed: {error}"))
                         })?;
                 }
                 let _ = client.shutdown().await;
@@ -697,9 +616,7 @@ async fn relay_backend(
     }
 }
 
-async fn read_protocol_message<R>(
-    reader: &mut R,
-) -> io::Result<Option<(u8, Vec<u8>, [u8; 5])>>
+async fn read_protocol_message<R>(reader: &mut R) -> io::Result<Option<(u8, Vec<u8>, [u8; 5])>>
 where
     R: tokio::io::AsyncRead + Unpin,
 {
@@ -711,9 +628,7 @@ where
         }
         Err(error) => return Err(error),
     }
-    let length =
-        u32::from_be_bytes([header[1], header[2], header[3], header[4]])
-            as usize;
+    let length = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
     if !(4..=MAX_POSTGRES_PACKET_BYTES).contains(&length) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -753,9 +668,7 @@ fn is_commit_query(query: &[u8]) -> bool {
     matches!(normalized.as_str(), "COMMIT" | "COMMIT TRANSACTION")
 }
 
-async fn inject_third_state(
-    database: &DatabaseConnection,
-) -> TestResult<()> {
+async fn inject_third_state(database: &DatabaseConnection) -> TestResult<()> {
     let result = database
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -772,9 +685,7 @@ async fn inject_third_state(
         ))
         .await?;
     if result.rows_affected() != 1 {
-        return Err(
-            "third-state injection affected an unexpected row count".into()
-        );
+        return Err("third-state injection affected an unexpected row count".into());
     }
     Ok(())
 }
@@ -813,12 +724,9 @@ async fn spawn_fault_child(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     let child = command.spawn()?;
-    let output = tokio::time::timeout(
-        CHILD_TIMEOUT,
-        child.wait_with_output(),
-    )
-    .await
-    .map_err(|_| "audited PostgreSQL fault child timed out")??;
+    let output = tokio::time::timeout(CHILD_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| "audited PostgreSQL fault child timed out")??;
     Ok(output)
 }
 
@@ -851,9 +759,7 @@ fn require_child_abort(output: &Output) -> TestResult<()> {
     Ok(())
 }
 
-fn unexpected_abort_status(
-    output: &Output,
-) -> Box<dyn std::error::Error + Send + Sync> {
+fn unexpected_abort_status(output: &Output) -> Box<dyn std::error::Error + Send + Sync> {
     format!(
         "fault child did not terminate through process abort: status={:?}, stdout={}, stderr={}",
         output.status,
@@ -863,10 +769,7 @@ fn unexpected_abort_status(
     .into()
 }
 
-fn proxy_database_url(
-    target_url: &str,
-    address: std::net::SocketAddr,
-) -> TestResult<String> {
+fn proxy_database_url(target_url: &str, address: std::net::SocketAddr) -> TestResult<String> {
     let mut url = Url::parse(target_url)?;
     url.set_host(Some("127.0.0.1"))
         .map_err(|_| "failed to set PostgreSQL proxy host")?;
@@ -888,9 +791,7 @@ fn proxy_database_url(
     Ok(url.to_string())
 }
 
-async fn read_state(
-    database: &DatabaseConnection,
-) -> TestResult<StateRow> {
+async fn read_state(database: &DatabaseConnection) -> TestResult<StateRow> {
     let row = database
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -899,9 +800,7 @@ async fn read_state(
                  FROM {COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE} \
                  WHERE state_key = $1"
             ),
-            vec![
-                COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY.into()
-            ],
+            vec![COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY.into()],
         ))
         .await?
         .ok_or("schedule state row is missing")?;
@@ -930,19 +829,15 @@ async fn read_audit(
     row.map(|row| {
         Ok(AuditRow {
             request_id: row.try_get("", "request_id")?,
-            previous_generation:
-                row.try_get("", "previous_generation")?,
-            candidate_generation:
-                row.try_get("", "candidate_generation")?,
+            previous_generation: row.try_get("", "previous_generation")?,
+            candidate_generation: row.try_get("", "candidate_generation")?,
             unpublished: row.try_get("", "unpublished")?,
         })
     })
     .transpose()
 }
 
-async fn count_outbox(
-    database: &DatabaseConnection,
-) -> TestResult<i64> {
+async fn count_outbox(database: &DatabaseConnection) -> TestResult<i64> {
     let row = database
         .query_one(Statement::from_string(
             DbBackend::Postgres,
@@ -957,8 +852,7 @@ async fn count_outbox(
 }
 
 fn required_env(name: &str) -> TestResult<String> {
-    std::env::var(name)
-        .map_err(|_| format!("{name} is required").into())
+    std::env::var(name).map_err(|_| format!("{name} is required").into())
 }
 
 fn unix_ms() -> TestResult<u64> {

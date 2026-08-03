@@ -1,6 +1,8 @@
 import type {
   AdminGraphqlExecutor,
   ApplyResult,
+  Assignment,
+  Cancellation,
   Glossary,
   GlossarySummary,
   InventoryResult,
@@ -18,6 +20,7 @@ import type {
   Proposal,
   ProviderProgress,
   RequiredProviderProgress,
+  Retry,
   TranslationOperation,
   TranslationPolicy,
   TranslationResponse,
@@ -40,6 +43,13 @@ const MACHINE_CANCELLATION_FIELDS =
   'cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt';
 const MACHINE_OPERATION_STATUS_FIELDS =
   'operationId itemId status providerExecutionId providerStatus providerErrorCode updatedAt';
+const APPLY_RESULT_FIELDS =
+  'operationId itemId proposalId providerReceiptId resourceRevision targetRevision appliedFieldKeys';
+const ASSIGNMENT_FIELDS =
+  'operationId itemId assignee { kind id } itemRevision';
+const CANCELLATION_FIELDS =
+  'cancellationId jobId jobRevision cancelledItemCount';
+const RETRY_FIELDS = 'retryId itemId itemRevision status';
 const GLOSSARY_SUMMARY_FIELDS =
   'id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision';
 const GLOSSARY_FIELDS =
@@ -644,6 +654,71 @@ export async function executeTranslationOperation(
         value: data.recoverMachineTranslationOperation
       };
     }
+    case 'assign_item':
+    case 'unassign_item': {
+      const input = withoutKind(operation);
+      const field =
+        operation.kind === 'assign_item'
+          ? 'assignTranslationItem'
+          : 'unassignTranslationItem';
+      const inputType =
+        operation.kind === 'assign_item'
+          ? 'AssignTranslationItemInput'
+          : 'UnassignTranslationItemInput';
+      const data = await request<
+        { input: typeof input },
+        Record<typeof field, Assignment>
+      >(
+        context,
+        `mutation TranslationItemAssignment($input: ${inputType}!) {
+          ${field}(input: $input) { ${ASSIGNMENT_FIELDS} }
+        }`,
+        { input }
+      );
+      return { kind: 'assignment', value: data[field] };
+    }
+    case 'cancel_job': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { cancelTranslationJob: Cancellation }
+      >(
+        context,
+        `mutation CancelTranslationJob($input: CancelTranslationJobInput!) {
+          cancelTranslationJob(input: $input) { ${CANCELLATION_FIELDS} }
+        }`,
+        { input }
+      );
+      return { kind: 'cancellation', value: data.cancelTranslationJob };
+    }
+    case 'retry_item': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { retryTranslationItem: Retry }
+      >(
+        context,
+        `mutation RetryTranslationItem($input: RetryTranslationItemInput!) {
+          retryTranslationItem(input: $input) { ${RETRY_FIELDS} }
+        }`,
+        { input }
+      );
+      return { kind: 'retry', value: data.retryTranslationItem };
+    }
+    case 'recover_apply': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { recoverTranslationApply: ApplyResult }
+      >(
+        context,
+        `mutation RecoverTranslationApply($input: RecoverTranslationApplyInput!) {
+          recoverTranslationApply(input: $input) { ${APPLY_RESULT_FIELDS} }
+        }`,
+        { input }
+      );
+      return { kind: 'apply', value: data.recoverTranslationApply };
+    }
     case 'submit_proposal':
     case 'approve_proposal':
     case 'apply_proposal':
@@ -670,9 +745,7 @@ async function transitionProposal(
         ? 'approveTranslationProposal'
         : 'applyTranslationProposal';
   const selection =
-    operation.kind === 'apply_proposal'
-      ? 'operationId itemId proposalId providerReceiptId resourceRevision targetRevision appliedFieldKeys'
-      : PROPOSAL_FIELDS;
+    operation.kind === 'apply_proposal' ? APPLY_RESULT_FIELDS : PROPOSAL_FIELDS;
   const data = await request<
     { input: typeof input },
     Record<string, Proposal | ApplyResult>

@@ -33,11 +33,9 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(
-                            BlogCommentsDelegationScheduleState::ScheduleDigestHex,
-                        )
-                        .string_len(64)
-                        .not_null(),
+                        ColumnDef::new(BlogCommentsDelegationScheduleState::ScheduleDigestHex)
+                            .string_len(64)
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(BlogCommentsDelegationScheduleState::UpdatedAt)
@@ -46,9 +44,7 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .check(Expr::cust("schema_version = 1"))
-                    .check(Expr::cust(
-                        "source IN ('host_provided', 'file')",
-                    ))
+                    .check(Expr::cust("source IN ('host_provided', 'file')"))
                     .check(Expr::cust("generation > 0"))
                     .check(Expr::cust("length(schedule_digest_hex) = 64"))
                     .to_owned(),

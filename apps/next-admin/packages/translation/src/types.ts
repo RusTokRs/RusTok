@@ -330,8 +330,37 @@ export type ApplyResult = {
   itemId: string;
   proposalId: string;
   providerReceiptId: string;
+  resourceRevision: string;
   targetRevision: string;
-  [key: string]: unknown;
+  appliedFieldKeys: string[];
+};
+
+export type ActorKind = 'USER' | 'SERVICE';
+
+export type Actor = {
+  kind: ActorKind;
+  id: string;
+};
+
+export type Assignment = {
+  operationId: string;
+  itemId: string;
+  assignee: Actor | null;
+  itemRevision: number;
+};
+
+export type Cancellation = {
+  cancellationId: string;
+  jobId: string;
+  jobRevision: number;
+  cancelledItemCount: number;
+};
+
+export type Retry = {
+  retryId: string;
+  itemId: string;
+  itemRevision: number;
+  status: string;
 };
 
 export type InventoryResult = {
@@ -508,6 +537,40 @@ export type TranslationOperation =
       idempotencyKey: string;
     }
   | {
+      kind: 'assign_item';
+      itemId: string;
+      expectedRevision: number;
+      assignee: Actor;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'unassign_item';
+      itemId: string;
+      expectedRevision: number;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'cancel_job';
+      jobId: string;
+      expectedRevision: number;
+      reason: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'retry_item';
+      itemId: string;
+      expectedRevision: number;
+      reason: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'recover_apply';
+      operationId: string;
+      expectedAttemptCount: number;
+      reason: string;
+      idempotencyKey: string;
+    }
+  | {
       kind: 'submit_proposal' | 'approve_proposal' | 'apply_proposal';
       itemId: string;
       proposalId: string;
@@ -535,4 +598,7 @@ export type TranslationResponse =
   | { kind: 'machine_operation_status'; value: MachineOperationStatus }
   | { kind: 'machine_cancellation'; value: MachineCancellation }
   | { kind: 'apply'; value: ApplyResult }
+  | { kind: 'assignment'; value: Assignment }
+  | { kind: 'cancellation'; value: Cancellation }
+  | { kind: 'retry'; value: Retry }
   | { kind: 'inventory'; value: InventoryResult };

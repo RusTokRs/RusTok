@@ -108,13 +108,7 @@ impl BlogCommentProjectionHandler {
             return Ok(());
         }
 
-        update_comment_count_in_tx(
-            &txn,
-            envelope.tenant_id,
-            change.post_id,
-            change.delta,
-        )
-        .await?;
+        update_comment_count_in_tx(&txn, envelope.tenant_id, change.post_id, change.delta).await?;
 
         // The delivery marker is committed with the counter and outbox event. If
         // a concurrent duplicate wins this unique insert, this transaction rolls

@@ -13,9 +13,7 @@ use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,
     drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sea_orm_migration::MigratorTrait;
 use tokio::sync::Barrier;
 use uuid::Uuid;
@@ -82,10 +80,8 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             .one(&assertion_db)
             .await?
             .ok_or("final role assignment points to a missing tenant role")?;
-        let accepted_roles = HashSet::from([
-            UserRole::Admin.to_string(),
-            UserRole::Manager.to_string(),
-        ]);
+        let accepted_roles =
+            HashSet::from([UserRole::Admin.to_string(), UserRole::Manager.to_string()]);
         if !accepted_roles.contains(&final_role.slug) {
             return Err(format!(
                 "concurrent replacement produced unexpected role {}",

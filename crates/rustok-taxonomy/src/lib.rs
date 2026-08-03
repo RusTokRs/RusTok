@@ -8,13 +8,21 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod services;
+mod translation_evidence;
+pub mod translation_target;
 
 pub use dto::{
-    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, TaxonomyScopeType, TaxonomyTermKind,
-    TaxonomyTermListItem, TaxonomyTermResponse, TaxonomyTermStatus, UpdateTaxonomyTermInput,
+    ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
+    ResolveTaxonomyTermInput, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
+    TaxonomyTermResponse, TaxonomyTermStatus, TaxonomyTranslationApplyResult,
+    UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
 pub use services::TaxonomyService;
+pub use translation_target::TaxonomyTranslationTargetProvider;
+
+#[cfg(test)]
+mod translation_target_tests;
 
 pub struct TaxonomyModule;
 
@@ -37,7 +45,7 @@ impl RusToKModule for TaxonomyModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content"]
+        &["content", "outbox"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -55,6 +63,10 @@ impl RusToKModule for TaxonomyModule {
 impl MigrationSource for TaxonomyModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }
 
@@ -74,7 +86,7 @@ mod tests {
             "Scope-aware taxonomy dictionary for shared and module-local terms"
         );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(module.dependencies(), &["content"]);
+        assert_eq!(module.dependencies(), &["content", "outbox"]);
     }
 
     #[test]

@@ -73,12 +73,17 @@
       "owner_slug": "taxonomy",
       "resource_kind": "term",
       "readiness": "pilot_candidate",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text", "slug"],
       "data_classification": ["public"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-taxonomy/README.md"],
-      "blockers": ["Add exact-locale read, per-locale CAS apply, idempotency receipts, and owner change events."]
+      "evidence_paths": [
+        "crates/rustok-taxonomy/README.md",
+        "crates/rustok-taxonomy/src/translation_target.rs",
+        "crates/rustok-taxonomy/src/translation_target_tests.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
     },
     {
       "id": "media_copy",
@@ -100,12 +105,17 @@
       "owner_slug": "blog",
       "resource_kind": "category",
       "readiness": "pilot_candidate",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text", "slug"],
       "data_classification": ["public"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-blog/docs/README.md"],
-      "blockers": ["Add provider-visible revisions, atomic per-locale apply, and change-event evidence."]
+      "evidence_paths": [
+        "crates/rustok-blog/docs/README.md",
+        "crates/rustok-blog/src/translation_target.rs",
+        "crates/rustok-blog/src/translation_target_tests.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
     },
     {
       "id": "content_nodes",
@@ -159,13 +169,18 @@
       "id": "navigation_menus",
       "owner_slug": "navigation",
       "resource_kind": "menu",
-      "readiness": "blocked",
-      "provider_status": "not_registered",
+      "readiness": "pilot_candidate",
+      "provider_status": "registered",
       "field_profiles": ["plain_text"],
       "data_classification": ["public"],
       "ai_export": "allowed",
-      "evidence_paths": ["crates/rustok-navigation/README.md"],
-      "blockers": ["Provide atomic aggregate apply for menu and item locale consistency."]
+      "evidence_paths": [
+        "crates/rustok-navigation/README.md",
+        "crates/rustok-navigation/src/translation_target.rs",
+        "crates/rustok-navigation/src/translation_target_tests.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained production PostgreSQL migration, concurrent aggregate CAS, and change-cursor recovery evidence before enabling this pilot in production."]
     },
     {
       "id": "forum_categories",

@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-08-03](./2026-08-03-owner-operation-receipts.md) | Shared owner-operation receipt ledger | Accepted |
 | [2026-07-26](./2026-07-26-translation-control-plane-boundary.md) | Translation control plane and owner-owned localized data | Proposed |
 | [2026-07-24](./2026-07-24-index-storage-layout.md) | Physical PostgreSQL layout for the Index Engine | Accepted |
 | [2026-07-23](./2026-07-23-global-event-delivery-profiles.md) | Global event delivery profiles | Accepted |

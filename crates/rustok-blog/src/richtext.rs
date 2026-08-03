@@ -144,8 +144,7 @@ mod tests {
             }]
         });
 
-        let (view, text) =
-            project_stored_article(&stored.to_string()).expect("projection");
+        let (view, text) = project_stored_article(&stored.to_string()).expect("projection");
         assert_eq!(view.document.kind, "doc");
         assert_eq!(text, "Article");
     }

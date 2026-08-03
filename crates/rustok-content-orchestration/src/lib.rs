@@ -80,8 +80,8 @@ use rustok_outbox::TransactionalEventBus;
     feature = "mod-comments"
 ))]
 use rustok_taxonomy::{
-    TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus,
-    entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
+    TaxonomyError, TaxonomyService, TaxonomyTermKind,
+    entities::{taxonomy_term, taxonomy_term_translation},
 };
 #[cfg(all(
     feature = "mod-content",
@@ -91,7 +91,7 @@ use rustok_taxonomy::{
 ))]
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -142,11 +142,8 @@ pub fn build_content_orchestration_service(
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
 ) -> SharedContentOrchestrationService {
-    let service = Arc::new(ContentOrchestrationService::new(
-        db,
-        event_bus,
-        Arc::new(ServerContentOrchestrationBridge),
-    ));
+    let bridge = Arc::new(ServerContentOrchestrationBridge::new(db.clone()));
+    let service = Arc::new(ContentOrchestrationService::new(db, event_bus, bridge));
     SharedContentOrchestrationService(service)
 }
 
@@ -190,7 +187,23 @@ pub fn build_content_orchestration_service(
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-struct ServerContentOrchestrationBridge;
+struct ServerContentOrchestrationBridge {
+    taxonomy: TaxonomyService,
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+impl ServerContentOrchestrationBridge {
+    fn new(db: DatabaseConnection) -> Self {
+        Self {
+            taxonomy: TaxonomyService::new(db),
+        }
+    }
+}
 
 #[cfg(all(
     feature = "mod-content",
@@ -218,7 +231,7 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
         actor_id: Option<Uuid>,
         input: &PromoteTopicToPostInput,
     ) -> ContentResult<PromoteTopicToPostOutput> {
-        promote_topic_to_post(txn, tenant_id, actor_id, input).await
+        promote_topic_to_post(&self.taxonomy, txn, tenant_id, actor_id, input).await
     }
 
     async fn demote_post_to_topic(
@@ -228,7 +241,7 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
         actor_id: Option<Uuid>,
         input: &DemotePostToTopicInput,
     ) -> ContentResult<DemotePostToTopicOutput> {
-        demote_post_to_topic(txn, tenant_id, actor_id, input).await
+        demote_post_to_topic(&self.taxonomy, txn, tenant_id, actor_id, input).await
     }
 
     async fn split_topic(
@@ -238,7 +251,7 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
         actor_id: Option<Uuid>,
         input: &SplitTopicInput,
     ) -> ContentResult<SplitTopicOutput> {
-        split_topic(txn, tenant_id, actor_id, input).await
+        split_topic(&self.taxonomy, txn, tenant_id, actor_id, input).await
     }
 
     async fn merge_topics(
@@ -260,6 +273,27 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
 ))]
 fn normalize_locale(locale: &str) -> ContentResult<String> {
     normalize_locale_code(locale).ok_or_else(|| ContentError::validation("Locale cannot be empty"))
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+fn taxonomy_error_to_content_error(error: TaxonomyError) -> ContentError {
+    let message = error.to_string();
+    match error {
+        TaxonomyError::Database(error) => ContentError::Database(error),
+        TaxonomyError::Forbidden(message) => ContentError::forbidden(message),
+        TaxonomyError::TermNotFound(_)
+        | TaxonomyError::DuplicateCanonicalKey(_)
+        | TaxonomyError::DuplicateSlug(_)
+        | TaxonomyError::DuplicateAlias(_)
+        | TaxonomyError::Conflict(_)
+        | TaxonomyError::TranslationRevisionExhausted { .. }
+        | TaxonomyError::Validation(_) => ContentError::validation(message),
+    }
 }
 
 #[cfg(all(
@@ -363,6 +397,7 @@ fn locales_from_strs<'a>(locales: impl IntoIterator<Item = &'a str>) -> ContentR
     feature = "mod-comments"
 ))]
 async fn promote_topic_to_post(
+    taxonomy: &TaxonomyService,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     actor_id: Option<Uuid>,
@@ -474,8 +509,15 @@ async fn promote_topic_to_post(
         None,
     )
     .await?;
-    sync_blog_tags_for_post_in_tx(txn, tenant_id, post_id, &tags, &resolved.effective_locale)
-        .await?;
+    sync_blog_tags_for_post_in_tx(
+        taxonomy,
+        txn,
+        tenant_id,
+        post_id,
+        &tags,
+        &resolved.effective_locale,
+    )
+    .await?;
 
     let active_comments =
         move_forum_replies_to_comments_in_tx(txn, tenant_id, post_id, actor_id, &reply_records)
@@ -524,6 +566,7 @@ async fn promote_topic_to_post(
     feature = "mod-comments"
 ))]
 async fn demote_post_to_topic(
+    taxonomy: &TaxonomyService,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     _actor_id: Option<Uuid>,
@@ -589,6 +632,7 @@ async fn demote_post_to_topic(
     }
 
     sync_forum_tags_for_topic_in_tx(
+        taxonomy,
         txn,
         tenant_id,
         topic_id,
@@ -645,6 +689,7 @@ async fn demote_post_to_topic(
     feature = "mod-comments"
 ))]
 async fn split_topic(
+    taxonomy: &TaxonomyService,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     _actor_id: Option<Uuid>,
@@ -725,6 +770,7 @@ async fn split_topic(
     }
 
     sync_forum_tags_for_topic_in_tx(
+        taxonomy,
         txn,
         tenant_id,
         target_topic_id,
@@ -1134,6 +1180,7 @@ async fn move_forum_replies_to_comments_in_tx(
     feature = "mod-comments"
 ))]
 async fn sync_blog_tags_for_post_in_tx(
+    taxonomy: &TaxonomyService,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -1154,14 +1201,19 @@ async fn sync_blog_tags_for_post_in_tx(
         .exec(txn)
         .await?;
 
-    for name in names {
-        let slug = normalize_slug(&name);
-        if slug.is_empty() {
-            continue;
-        }
-        let tag_id =
-            find_or_create_blog_taxonomy_term_in_tx(txn, tenant_id, &locale, &name, &slug).await?;
+    let tag_ids = taxonomy
+        .ensure_terms_for_module_in_tx(
+            txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            &locale,
+            &names,
+        )
+        .await
+        .map_err(taxonomy_error_to_content_error)?;
 
+    for tag_id in tag_ids {
         blog_post_tag::ActiveModel {
             post_id: Set(post_id),
             tag_id: Set(tag_id),
@@ -1172,122 +1224,6 @@ async fn sync_blog_tags_for_post_in_tx(
     }
 
     Ok(())
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-async fn find_or_create_blog_taxonomy_term_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    locale: &str,
-    name: &str,
-    slug: &str,
-) -> ContentResult<Uuid> {
-    if let Some(term_id) = find_blog_taxonomy_term_id_in_tx(txn, tenant_id, locale, slug).await? {
-        return Ok(term_id);
-    }
-
-    let now = Utc::now();
-    let term_id = Uuid::new_v4();
-    taxonomy_term::ActiveModel {
-        id: Set(term_id),
-        tenant_id: Set(tenant_id),
-        kind: Set(TaxonomyTermKind::Tag),
-        scope_type: Set(TaxonomyScopeType::Module),
-        scope_value: Set("blog".to_string()),
-        canonical_key: Set(slug.to_string()),
-        status: Set(TaxonomyTermStatus::Active),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(txn)
-    .await?;
-
-    taxonomy_term_translation::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        term_id: Set(term_id),
-        tenant_id: Set(tenant_id),
-        locale: Set(locale.to_string()),
-        name: Set(name.to_string()),
-        slug: Set(slug.to_string()),
-        description: Set(None),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(txn)
-    .await?;
-
-    Ok(term_id)
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-async fn find_blog_taxonomy_term_id_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    locale: &str,
-    slug: &str,
-) -> ContentResult<Option<Uuid>> {
-    for (scope_type, scope_value) in [
-        (TaxonomyScopeType::Module, "blog"),
-        (TaxonomyScopeType::Global, ""),
-    ] {
-        if let Some(translation) = taxonomy_term_translation::Entity::find()
-            .join(
-                JoinType::InnerJoin,
-                taxonomy_term_translation::Relation::Term.def(),
-            )
-            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term_translation::Column::Locale.eq(locale))
-            .filter(taxonomy_term_translation::Column::Slug.eq(slug))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(translation.term_id));
-        }
-
-        if let Some(alias) = taxonomy_term_alias::Entity::find()
-            .join(
-                JoinType::InnerJoin,
-                taxonomy_term_alias::Relation::Term.def(),
-            )
-            .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term_alias::Column::Locale.eq(locale))
-            .filter(taxonomy_term_alias::Column::Slug.eq(slug))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(alias.term_id));
-        }
-
-        if let Some(term) = taxonomy_term::Entity::find()
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-            .filter(taxonomy_term::Column::CanonicalKey.eq(slug))
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(term.id));
-        }
-    }
-
-    Ok(None)
 }
 
 #[cfg(all(
@@ -1601,6 +1537,7 @@ async fn load_forum_tag_names_for_topic_in_tx(
     feature = "mod-comments"
 ))]
 async fn sync_forum_tags_for_topic_in_tx(
+    taxonomy: &TaxonomyService,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic_id: Uuid,
@@ -1621,14 +1558,19 @@ async fn sync_forum_tags_for_topic_in_tx(
         .exec(txn)
         .await?;
 
-    for name in names {
-        let slug = normalize_slug(&name);
-        if slug.is_empty() {
-            continue;
-        }
-        let term_id =
-            find_or_create_forum_taxonomy_term_in_tx(txn, tenant_id, &locale, &name, &slug).await?;
+    let term_ids = taxonomy
+        .ensure_terms_for_module_in_tx(
+            txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "forum",
+            &locale,
+            &names,
+        )
+        .await
+        .map_err(taxonomy_error_to_content_error)?;
 
+    for term_id in term_ids {
         forum_topic_tag::ActiveModel {
             id: Set(Uuid::new_v4()),
             topic_id: Set(topic_id),
@@ -1641,122 +1583,6 @@ async fn sync_forum_tags_for_topic_in_tx(
     }
 
     Ok(())
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-async fn find_or_create_forum_taxonomy_term_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    locale: &str,
-    name: &str,
-    slug: &str,
-) -> ContentResult<Uuid> {
-    if let Some(term_id) = find_forum_taxonomy_term_id_in_tx(txn, tenant_id, locale, slug).await? {
-        return Ok(term_id);
-    }
-
-    let now = Utc::now();
-    let term_id = Uuid::new_v4();
-    taxonomy_term::ActiveModel {
-        id: Set(term_id),
-        tenant_id: Set(tenant_id),
-        kind: Set(TaxonomyTermKind::Tag),
-        scope_type: Set(TaxonomyScopeType::Module),
-        scope_value: Set("forum".to_string()),
-        canonical_key: Set(slug.to_string()),
-        status: Set(TaxonomyTermStatus::Active),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(txn)
-    .await?;
-
-    taxonomy_term_translation::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        term_id: Set(term_id),
-        tenant_id: Set(tenant_id),
-        locale: Set(locale.to_string()),
-        name: Set(name.to_string()),
-        slug: Set(slug.to_string()),
-        description: Set(None),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(txn)
-    .await?;
-
-    Ok(term_id)
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-async fn find_forum_taxonomy_term_id_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    locale: &str,
-    slug: &str,
-) -> ContentResult<Option<Uuid>> {
-    for (scope_type, scope_value) in [
-        (TaxonomyScopeType::Module, "forum"),
-        (TaxonomyScopeType::Global, ""),
-    ] {
-        if let Some(translation) = taxonomy_term_translation::Entity::find()
-            .join(
-                JoinType::InnerJoin,
-                taxonomy_term_translation::Relation::Term.def(),
-            )
-            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term_translation::Column::Locale.eq(locale))
-            .filter(taxonomy_term_translation::Column::Slug.eq(slug))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(translation.term_id));
-        }
-
-        if let Some(alias) = taxonomy_term_alias::Entity::find()
-            .join(
-                JoinType::InnerJoin,
-                taxonomy_term_alias::Relation::Term.def(),
-            )
-            .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term_alias::Column::Locale.eq(locale))
-            .filter(taxonomy_term_alias::Column::Slug.eq(slug))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(alias.term_id));
-        }
-
-        if let Some(term) = taxonomy_term::Entity::find()
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-            .filter(taxonomy_term::Column::CanonicalKey.eq(slug))
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(term.id));
-        }
-    }
-
-    Ok(None)
 }
 
 #[cfg(all(
@@ -1814,15 +1640,16 @@ mod tests {
         ListRepliesFilter, ReplyService, ReplyStatus, TopicService,
         entities::{forum_reply, forum_reply_body, forum_topic, forum_topic_translation},
     };
-    use rustok_outbox::TransactionalEventBus;
+    use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
     use rustok_taxonomy::{
         TaxonomyModule, TaxonomyScopeType,
         entities::{taxonomy_term, taxonomy_term_translation},
     };
     use sea_orm::{
-        ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+        ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+        EntityTrait, QueryFilter, Statement,
     };
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     fn richtext(text: &str) -> RichTextDocument {
         serde_json::from_value(serde_json::json!({
@@ -1836,12 +1663,8 @@ mod tests {
     }
 
     async fn setup_conversion_test_db() -> DatabaseConnection {
-        let db_url = format!(
-            "sqlite:file:server_content_orchestration_{}?mode=memory&cache=shared",
-            Uuid::new_v4()
-        );
-        let mut opts = ConnectOptions::new(db_url);
-        opts.max_connections(5)
+        let mut opts = ConnectOptions::new("sqlite::memory:");
+        opts.max_connections(1)
             .min_connections(1)
             .sqlx_logging(false);
 
@@ -1851,7 +1674,16 @@ mod tests {
     }
 
     async fn ensure_conversion_schema(db: &DatabaseConnection) {
+        db.execute_unprepared(
+            "CREATE TABLE users (id TEXT NOT NULL PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
+        )
+        .await
+        .expect("minimal platform identity relation should apply");
         let manager = SchemaManager::new(db);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
         for migration in ContentModule.migrations() {
             migration
                 .up(&manager)
@@ -1888,8 +1720,24 @@ mod tests {
         SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
     }
 
+    async fn insert_test_actor(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+    ) {
+        let user_id = security
+            .user_id
+            .expect("test admin security should carry a user id");
+        db.execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
+            [user_id.to_string().into(), tenant_id.to_string().into()],
+        ))
+        .await
+        .expect("test actor should be inserted into the platform identity relation");
+    }
+
     #[tokio::test]
-    #[allow(unreachable_code, unused_variables)]
     async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
         let db = setup_conversion_test_db().await;
         ensure_conversion_schema(&db).await;
@@ -1899,6 +1747,7 @@ mod tests {
         let events = TransactionalEventBus::new(Arc::new(transport));
         let security = admin_security();
         let tenant_id = Uuid::new_v4();
+        insert_test_actor(&db, tenant_id, &security).await;
 
         let category = CategoryService::new(db.clone())
             .create(
@@ -1968,7 +1817,7 @@ mod tests {
         let orchestration = ContentOrchestrationService::new(
             db.clone(),
             events.clone(),
-            Arc::new(ServerContentOrchestrationBridge),
+            Arc::new(ServerContentOrchestrationBridge::new(db.clone())),
         );
         let promoted = match orchestration
             .promote_topic_to_post(
@@ -2153,7 +2002,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(unreachable_code, unused_variables)]
     async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
         let db = setup_conversion_test_db().await;
         ensure_conversion_schema(&db).await;
@@ -2163,6 +2011,7 @@ mod tests {
         let events = TransactionalEventBus::new(Arc::new(transport));
         let security = admin_security();
         let tenant_id = Uuid::new_v4();
+        insert_test_actor(&db, tenant_id, &security).await;
 
         let forum_category = CategoryService::new(db.clone())
             .create(
@@ -2237,7 +2086,7 @@ mod tests {
         let orchestration = ContentOrchestrationService::new(
             db.clone(),
             events.clone(),
-            Arc::new(ServerContentOrchestrationBridge),
+            Arc::new(ServerContentOrchestrationBridge::new(db.clone())),
         );
         let demoted = match orchestration
             .demote_post_to_topic(

@@ -39,10 +39,7 @@ impl OutboxTransport {
     /// it crate-private avoids adding a second public raw-envelope entry point.
     /// New external domain code must publish through `TransactionalEventBus`;
     /// the existing instance compatibility API remains unchanged.
-    pub(crate) async fn write_envelope_in_tx<C>(
-        txn: &C,
-        envelope: EventEnvelope,
-    ) -> Result<()>
+    pub(crate) async fn write_envelope_in_tx<C>(txn: &C, envelope: EventEnvelope) -> Result<()>
     where
         C: ConnectionTrait,
     {

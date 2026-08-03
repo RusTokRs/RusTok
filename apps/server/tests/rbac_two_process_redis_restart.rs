@@ -255,7 +255,9 @@ async fn run_child(role: &str) -> TestResult<()> {
     let context = ServerRuntimeContext::new(db.clone(), settings_with_redis(redis_url.as_str()));
     let cache = ensure_cache_service(&context);
     if !cache.redis_client_initialized() {
-        return Err(test_error("RBAC Redis child did not initialize the Redis client"));
+        return Err(test_error(
+            "RBAC Redis child did not initialize the Redis client",
+        ));
     }
     start_rbac_cache_invalidation_listener(&context, cache.clone()).await?;
 
@@ -289,7 +291,9 @@ async fn run_child(role: &str) -> TestResult<()> {
             )
             .await
         }
-        other => Err(test_error(format!("unsupported RBAC Redis child role {other}"))),
+        other => Err(test_error(format!(
+            "unsupported RBAC Redis child role {other}"
+        ))),
     }
 }
 
@@ -307,13 +311,9 @@ async fn run_observer(
     restart_result_path: PathBuf,
 ) -> TestResult<()> {
     let initial_generation = rustok_rbac::read_permission_invalidation_generation(&db).await?;
-    let fast_user_allowed = RbacService::has_permission(
-        &db,
-        &tenant_id,
-        &fast_user_id,
-        &Permission::SETTINGS_MANAGE,
-    )
-    .await?;
+    let fast_user_allowed =
+        RbacService::has_permission(&db, &tenant_id, &fast_user_id, &Permission::SETTINGS_MANAGE)
+            .await?;
     let restart_user_allowed = RbacService::has_permission(
         &db,
         &tenant_id,
@@ -331,20 +331,10 @@ async fn run_observer(
         },
     )?;
 
-    let fast_allowed = wait_for_permission(
-        &db,
-        tenant_id,
-        fast_user_id,
-        false,
-        FAST_PATH_BOUND,
-    )
-    .await?;
-    let fast_authoritative = RbacService::get_user_permissions_authoritative(
-        &db,
-        &tenant_id,
-        &fast_user_id,
-    )
-    .await?;
+    let fast_allowed =
+        wait_for_permission(&db, tenant_id, fast_user_id, false, FAST_PATH_BOUND).await?;
+    let fast_authoritative =
+        RbacService::get_user_permissions_authoritative(&db, &tenant_id, &fast_user_id).await?;
     write_json(
         &fast_result_path,
         &DecisionResult {
@@ -362,12 +352,8 @@ async fn run_observer(
         &Permission::SETTINGS_MANAGE,
     )
     .await?;
-    let outage_authoritative = RbacService::get_user_permissions_authoritative(
-        &db,
-        &tenant_id,
-        &restart_user_id,
-    )
-    .await?;
+    let outage_authoritative =
+        RbacService::get_user_permissions_authoritative(&db, &tenant_id, &restart_user_id).await?;
     write_json(
         &outage_result_path,
         &DecisionResult {
@@ -385,12 +371,8 @@ async fn run_observer(
         RESTART_RECOVERY_BOUND,
     )
     .await?;
-    let restart_authoritative = RbacService::get_user_permissions_authoritative(
-        &db,
-        &tenant_id,
-        &restart_user_id,
-    )
-    .await?;
+    let restart_authoritative =
+        RbacService::get_user_permissions_authoritative(&db, &tenant_id, &restart_user_id).await?;
     write_json(
         &restart_result_path,
         &DecisionResult {
@@ -430,13 +412,9 @@ async fn wait_for_permission(
 ) -> TestResult<bool> {
     tokio::time::timeout(timeout, async {
         loop {
-            let allowed = RbacService::has_permission(
-                db,
-                &tenant_id,
-                &user_id,
-                &Permission::SETTINGS_MANAGE,
-            )
-            .await?;
+            let allowed =
+                RbacService::has_permission(db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+                    .await?;
             if allowed == expected {
                 return Ok::<bool, Box<dyn std::error::Error + Send + Sync>>(allowed);
             }
@@ -444,7 +422,11 @@ async fn wait_for_permission(
         }
     })
     .await
-    .map_err(|_| test_error(format!("permission did not converge to {expected} before {timeout:?}")))?
+    .map_err(|_| {
+        test_error(format!(
+            "permission did not converge to {expected} before {timeout:?}"
+        ))
+    })?
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -516,9 +498,7 @@ fn settings_with_redis(url: &str) -> RustokSettings {
 }
 
 fn reserve_loopback_port() -> TestResult<u16> {
-    Ok(TcpListener::bind(("127.0.0.1", 0))?
-        .local_addr()?
-        .port())
+    Ok(TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port())
 }
 
 async fn spawn_redis(binary: &str, port: u16) -> TestResult<Child> {
@@ -656,11 +636,7 @@ async fn insert_tenant(db: &DatabaseConnection) -> TestResult<Uuid> {
     Ok(tenant_id)
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    suffix: &str,
-) -> TestResult<Uuid> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, suffix: &str) -> TestResult<Uuid> {
     let user_id = Uuid::new_v4();
     users::Entity::insert(users::ActiveModel {
         id: Set(user_id),

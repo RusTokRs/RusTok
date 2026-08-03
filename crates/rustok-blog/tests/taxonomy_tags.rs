@@ -75,7 +75,9 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Tagged post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
                 excerpt: None,
                 slug: Some("tagged-post".to_string()),
                 publish: true,
@@ -172,7 +174,9 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Global tag reuse".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
                 excerpt: None,
                 slug: Some("global-tag-reuse".to_string()),
                 publish: true,

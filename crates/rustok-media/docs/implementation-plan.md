@@ -8,7 +8,10 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 
 ## Current state
 
-- `rustok-media` publishes the migration for `media_assets`, `media_blobs`, `media_renditions`, `media_upload_sessions`, `media_translations`, and `media_port_operations`.
+- `rustok-media` publishes the migration for `media_assets`, `media_blobs`,
+  `media_renditions`, `media_upload_sessions`, `media_translations`, and
+  `media_translation_changes`. The Core Outbox migration owns the shared
+  `owner_operation_receipts` ledger used by Media under owner slug `media`.
 - Media translation writes convert transport strings to the canonical
   `rustok_api::TenantLocale` at the owner boundary; `und` and malformed locale
   tags cannot reach `media_translations`.

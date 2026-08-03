@@ -5,7 +5,10 @@ use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
 use rustok_profiles::entities;
 use rustok_profiles::error::ProfileError;
 use rustok_profiles::services::ProfileService;
-use rustok_profiles::{ProfileMutationService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader};
+use rustok_profiles::{
+    ProfileAccessAudience, ProfileBackfillRequest, ProfileMutationContext, ProfileMutationService,
+    ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
+};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
@@ -30,6 +33,19 @@ fn profile_input() -> UpsertProfileInput {
         banner_media_id: Some(Uuid::new_v4()),
         preferred_locale: Some("ru".to_string()),
         visibility: ProfileVisibility::Public,
+    }
+}
+
+fn mutation_context<'a>(
+    tenant_id: Uuid,
+    user_id: Uuid,
+    tenant_default_locale: Option<&'a str>,
+) -> ProfileMutationContext<'a> {
+    ProfileMutationContext {
+        tenant_id,
+        actor_id: user_id,
+        user_id,
+        tenant_default_locale,
     }
 }
 
@@ -63,7 +79,10 @@ async fn upsert_and_get_profile_by_user() {
     let user_id = Uuid::new_v4();
 
     let created = mutations
-        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
+        .upsert_profile_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            profile_input(),
+        )
         .await
         .unwrap();
 
@@ -98,7 +117,10 @@ async fn get_profile_by_handle_normalizes_lookup() {
     let user_id = Uuid::new_v4();
 
     mutations
-        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
+        .upsert_profile_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            profile_input(),
+        )
         .await
         .unwrap();
 
@@ -120,15 +142,16 @@ async fn duplicate_handle_is_rejected_per_tenant() {
     let second_user_id = Uuid::new_v4();
 
     mutations
-        .upsert_profile_with_event(tenant_id, first_user_id, first_user_id, profile_input(), Some("en"))
+        .upsert_profile_with_event(
+            mutation_context(tenant_id, first_user_id, Some("en")),
+            profile_input(),
+        )
         .await
         .unwrap();
 
     let error = mutations
         .upsert_profile_with_event(
-            tenant_id,
-            second_user_id,
-            second_user_id,
+            mutation_context(tenant_id, second_user_id, Some("en")),
             UpsertProfileInput {
                 handle: "creator-one".to_string(),
                 display_name: "Second User".to_string(),
@@ -139,7 +162,6 @@ async fn duplicate_handle_is_rejected_per_tenant() {
                 preferred_locale: Some("en".to_string()),
                 visibility: ProfileVisibility::Authenticated,
             },
-            Some("en"),
         )
         .await
         .unwrap_err();
@@ -158,7 +180,10 @@ async fn summary_uses_profile_reader_path() {
     let user_id = Uuid::new_v4();
 
     mutations
-        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
+        .upsert_profile_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            profile_input(),
+        )
         .await
         .unwrap();
 
@@ -188,9 +213,7 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
 
     mutations
         .upsert_profile_with_event(
-            tenant_id,
-            first_user_id,
-            first_user_id,
+            mutation_context(tenant_id, first_user_id, Some("en")),
             UpsertProfileInput {
                 handle: "creator-one".to_string(),
                 display_name: "Creator One".to_string(),
@@ -201,15 +224,12 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
                 preferred_locale: Some("en".to_string()),
                 visibility: ProfileVisibility::Public,
             },
-            Some("en"),
         )
         .await
         .unwrap();
     mutations
         .upsert_profile_with_event(
-            tenant_id,
-            second_user_id,
-            second_user_id,
+            mutation_context(tenant_id, second_user_id, Some("en")),
             UpsertProfileInput {
                 handle: "creator-two".to_string(),
                 display_name: "Creator Two".to_string(),
@@ -220,7 +240,6 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
                 preferred_locale: Some("en".to_string()),
                 visibility: ProfileVisibility::Authenticated,
             },
-            Some("en"),
         )
         .await
         .unwrap();
@@ -275,9 +294,7 @@ async fn dataloader_batches_profile_summary_requests() {
 
     mutations
         .upsert_profile_with_event(
-            tenant_id,
-            first_user_id,
-            first_user_id,
+            mutation_context(tenant_id, first_user_id, Some("en")),
             UpsertProfileInput {
                 handle: "loader-one".to_string(),
                 display_name: "Loader One".to_string(),
@@ -288,15 +305,12 @@ async fn dataloader_batches_profile_summary_requests() {
                 preferred_locale: Some("en".to_string()),
                 visibility: ProfileVisibility::Public,
             },
-            Some("en"),
         )
         .await
         .unwrap();
     mutations
         .upsert_profile_with_event(
-            tenant_id,
-            second_user_id,
-            second_user_id,
+            mutation_context(tenant_id, second_user_id, Some("en")),
             UpsertProfileInput {
                 handle: "loader-two".to_string(),
                 display_name: "Loader Two".to_string(),
@@ -307,12 +321,19 @@ async fn dataloader_batches_profile_summary_requests() {
                 preferred_locale: Some("en".to_string()),
                 visibility: ProfileVisibility::Authenticated,
             },
-            Some("en"),
         )
         .await
         .unwrap();
 
-    let loader = DataLoader::new(ProfileSummaryLoader::new(db), tokio::spawn);
+    let loader = DataLoader::new(
+        ProfileSummaryLoader::for_audience(
+            db,
+            ProfileAccessAudience::Authenticated {
+                actor_id: first_user_id,
+            },
+        ),
+        tokio::spawn,
+    );
     let loaded = loader
         .load_many(vec![
             ProfileSummaryLoaderKey {
@@ -403,25 +424,30 @@ async fn targeted_updates_modify_existing_profile() {
     let avatar_media_id = Uuid::new_v4();
     let banner_media_id = Uuid::new_v4();
 
+    let mut initial_input = profile_input();
+    initial_input.preferred_locale = Some("en".to_string());
     mutations
-        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
+        .upsert_profile_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            initial_input,
+        )
         .await
         .unwrap();
 
     let updated = mutations
-        .update_profile_handle_with_event(tenant_id, user_id, user_id, "updated-handle", Some("en"))
+        .update_profile_handle_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            "updated-handle",
+        )
         .await
         .unwrap();
     assert_eq!(updated.handle, "updated-handle");
 
     let updated = mutations
         .update_profile_content_with_event(
-            tenant_id,
-            user_id,
-            user_id,
+            mutation_context(tenant_id, user_id, Some("en")),
             "Updated Name",
             Some("Updated bio"),
-            Some("en"),
         )
         .await
         .unwrap();
@@ -429,25 +455,28 @@ async fn targeted_updates_modify_existing_profile() {
     assert_eq!(updated.bio.as_deref(), Some("Updated bio"));
 
     let updated = mutations
-        .update_profile_locale_with_event(tenant_id, user_id, user_id, Some("fr"), Some("en"))
+        .update_profile_locale_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            Some("fr"),
+        )
         .await
         .unwrap();
     assert_eq!(updated.preferred_locale.as_deref(), Some("fr"));
 
     let updated = mutations
-        .update_profile_visibility_with_event(tenant_id, user_id, user_id, ProfileVisibility::Private, Some("en"))
+        .update_profile_visibility_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            ProfileVisibility::Private,
+        )
         .await
         .unwrap();
     assert_eq!(updated.visibility, ProfileVisibility::Private);
 
     let updated = mutations
         .update_profile_media_with_event(
-            tenant_id,
-            user_id,
-            user_id,
+            mutation_context(tenant_id, user_id, Some("en")),
             Some(avatar_media_id),
             Some(banner_media_id),
-            Some("en"),
         )
         .await
         .unwrap();
@@ -463,7 +492,10 @@ async fn targeted_updates_require_existing_profile() {
     let user_id = Uuid::new_v4();
 
     let error = mutations
-        .update_profile_handle_with_event(tenant_id, user_id, user_id, "missing-user", Some("en"))
+        .update_profile_handle_with_event(
+            mutation_context(tenant_id, user_id, Some("en")),
+            "missing-user",
+        )
         .await
         .unwrap_err();
 
@@ -478,15 +510,15 @@ async fn backfill_profile_creates_missing_profile_with_generated_handle() {
     let user_id = Uuid::new_v4();
 
     let result = mutations
-        .backfill_profile_with_event(
+        .backfill_profile_with_event(ProfileBackfillRequest {
             tenant_id,
             user_id,
-            "jane.doe@example.com",
-            None,
-            Some("de"),
-            ProfileVisibility::Authenticated,
-            Some("en"),
-        )
+            email: "jane.doe@example.com",
+            display_name: None,
+            preferred_locale: Some("de"),
+            visibility: ProfileVisibility::Authenticated,
+            tenant_default_locale: Some("en"),
+        })
         .await
         .unwrap();
 
@@ -507,39 +539,39 @@ async fn backfill_profile_uses_suffix_and_skips_existing_profile() {
     let second_user_id = Uuid::new_v4();
 
     let first = mutations
-        .backfill_profile_with_event(
+        .backfill_profile_with_event(ProfileBackfillRequest {
             tenant_id,
-            first_user_id,
-            "same@example.com",
-            Some("Same Name"),
-            Some("en"),
-            ProfileVisibility::Public,
-            Some("en"),
-        )
+            user_id: first_user_id,
+            email: "same@example.com",
+            display_name: Some("Same Name"),
+            preferred_locale: Some("en"),
+            visibility: ProfileVisibility::Public,
+            tenant_default_locale: Some("en"),
+        })
         .await
         .unwrap();
     let second = mutations
-        .backfill_profile_with_event(
+        .backfill_profile_with_event(ProfileBackfillRequest {
             tenant_id,
-            second_user_id,
-            "same@example.com",
-            Some("Same Name"),
-            Some("en"),
-            ProfileVisibility::Public,
-            Some("en"),
-        )
+            user_id: second_user_id,
+            email: "same@example.com",
+            display_name: Some("Same Name"),
+            preferred_locale: Some("en"),
+            visibility: ProfileVisibility::Public,
+            tenant_default_locale: Some("en"),
+        })
         .await
         .unwrap();
     let repeat = mutations
-        .backfill_profile_with_event(
+        .backfill_profile_with_event(ProfileBackfillRequest {
             tenant_id,
-            second_user_id,
-            "changed@example.com",
-            Some("Changed Name"),
-            Some("fr"),
-            ProfileVisibility::Private,
-            Some("en"),
-        )
+            user_id: second_user_id,
+            email: "changed@example.com",
+            display_name: Some("Changed Name"),
+            preferred_locale: Some("fr"),
+            visibility: ProfileVisibility::Private,
+            tenant_default_locale: Some("en"),
+        })
         .await
         .unwrap();
 

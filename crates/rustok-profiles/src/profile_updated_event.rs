@@ -3,9 +3,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseTransaction;
 use uuid::Uuid;
 
-use crate::{
-    ProfileError, ProfileOperation, ProfileOperationTimer, ProfileResult, entities,
-};
+use crate::{ProfileError, ProfileOperation, ProfileOperationTimer, ProfileResult, entities};
 
 pub(crate) async fn publish_profile_updated_in_tx(
     event_bus: &TransactionalEventBus,
@@ -14,14 +12,8 @@ pub(crate) async fn publish_profile_updated_in_tx(
     actor_id: Uuid,
     profile: &entities::profile::Model,
 ) -> ProfileResult<()> {
-    publish_profile_updated_with_actor_in_tx(
-        event_bus,
-        txn,
-        tenant_id,
-        Some(actor_id),
-        profile,
-    )
-    .await
+    publish_profile_updated_with_actor_in_tx(event_bus, txn, tenant_id, Some(actor_id), profile)
+        .await
 }
 
 pub(crate) async fn publish_profile_updated_with_actor_in_tx(

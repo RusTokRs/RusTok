@@ -17,9 +17,7 @@ use std::time::Instant;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::extractors::{
-    auth::CurrentUser, rbac::RequireLogsRead, tenant::CurrentTenant,
-};
+use crate::extractors::{auth::CurrentUser, rbac::RequireLogsRead, tenant::CurrentTenant};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Deserialize)]

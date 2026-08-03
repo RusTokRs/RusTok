@@ -12,21 +12,18 @@ use rustok_server::services::comments_provider_runtime::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY,
     COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE,
     CommentsTcpDelegationPersistedScheduleAuditOutcome,
-    CommentsTcpDelegationSchedulePersistenceDocument,
-    CommentsTcpDelegationSchedulePersistenceKey,
+    CommentsTcpDelegationSchedulePersistenceDocument, CommentsTcpDelegationSchedulePersistenceKey,
     CommentsTcpDelegationSchedulePersistenceStartupMode,
     CommentsTcpDelegationScheduleTriggerAuthorizationError,
     CommentsTcpDelegationScheduleTriggerAuthorizationRequest,
-    CommentsTcpDelegationScheduleTriggerAuthorizer,
-    CommentsTcpDelegationScheduleTriggerContext,
+    CommentsTcpDelegationScheduleTriggerAuthorizer, CommentsTcpDelegationScheduleTriggerContext,
     PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore,
     SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger,
     SharedCommentsTcpDelegationScheduleTriggerAuthorizer,
 };
 use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,
-    drop_postgres_database_if_exists, postgres_database_url,
-    unique_postgres_database_name,
+    drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -109,14 +106,18 @@ async fn audited_schedule_success_resume_and_conflicts_are_atomic() {
                 replacement.clone(),
             )?;
             if outcome.previous_generation != 1 || outcome.current.generation != 2 {
-                return Err(format!("unexpected successful replacement outcome: {outcome:?}").into());
+                return Err(
+                    format!("unexpected successful replacement outcome: {outcome:?}").into(),
+                );
             }
 
             let state_after_success = read_state(&db_a).await?;
             assert_state(&state_after_success, 2)?;
             let persisted = trigger.current_persistence_record()?;
             if state_after_success.digest_hex != persisted.schedule_digest().to_hex() {
-                return Err("PostgreSQL state digest does not match the accepted trigger record".into());
+                return Err(
+                    "PostgreSQL state digest does not match the accepted trigger record".into(),
+                );
             }
             let audit = read_audit(&db_a, request_id)
                 .await?
@@ -162,7 +163,9 @@ async fn audited_schedule_success_resume_and_conflicts_are_atomic() {
             let seeded_request_id = Uuid::new_v4();
             seed_generation_conflict(&db_a, seeded_request_id, Uuid::new_v4()).await?;
             if count_outbox(&db_a).await? != 2 {
-                return Err("generation-conflict fixture did not create exactly one seed row".into());
+                return Err(
+                    "generation-conflict fixture did not create exactly one seed row".into(),
+                );
             }
 
             let generation_conflict = trigger.replace_host_schedule(
@@ -174,7 +177,9 @@ async fn audited_schedule_success_resume_and_conflicts_are_atomic() {
             }
             assert_state(&read_state(&db_a).await?, 2)?;
             if count_outbox(&db_a).await? != 2 {
-                return Err("generation conflict did not roll back the attempted outbox insert".into());
+                return Err(
+                    "generation conflict did not roll back the attempted outbox insert".into(),
+                );
             }
             if trigger.current_selection()?.generation != 2 {
                 return Err("generation conflict published an in-memory generation".into());
@@ -288,21 +293,26 @@ fn audited_trigger(
     startup_mode: CommentsTcpDelegationSchedulePersistenceStartupMode,
 ) -> TestResult<SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger> {
     let store = PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore::new(database)?;
-    Ok(SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger::from_host_document(
-        document,
-        Duration::from_millis(MAX_TTL_MS),
-        shared_authorizer(),
-        store,
-        startup_mode,
-        32,
-    )?)
+    Ok(
+        SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger::from_host_document(
+            document,
+            Duration::from_millis(MAX_TTL_MS),
+            shared_authorizer(),
+            store,
+            startup_mode,
+            32,
+        )?,
+    )
 }
 
 fn shared_authorizer() -> SharedCommentsTcpDelegationScheduleTriggerAuthorizer {
     Arc::new(AllowAuthorizer)
 }
 
-fn trigger_context(request_id: Uuid, actor_id: Uuid) -> TestResult<CommentsTcpDelegationScheduleTriggerContext> {
+fn trigger_context(
+    request_id: Uuid,
+    actor_id: Uuid,
+) -> TestResult<CommentsTcpDelegationScheduleTriggerContext> {
     Ok(CommentsTcpDelegationScheduleTriggerContext::new(
         request_id,
         actor_id,

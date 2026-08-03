@@ -1,22 +1,21 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "media_port_operations")]
+#[sea_orm(table_name = "blog_translation_changes")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
-    pub idempotency_key: String,
+    pub resource_kind: String,
+    pub resource_id: Uuid,
+    pub locale: String,
+    pub resource_revision: i64,
+    pub target_revision: i64,
     pub operation: String,
-    pub request_hash: String,
-    pub lease_token: Uuid,
-    pub status: String,
-    pub response_json: Option<Json>,
-    pub error_json: Option<Json>,
+    pub lifecycle: String,
     pub created_at: DateTimeWithTimeZone,
-    pub updated_at: DateTimeWithTimeZone,
-    pub completed_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

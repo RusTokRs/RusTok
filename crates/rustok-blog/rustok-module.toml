@@ -16,6 +16,7 @@ tags = ["content", "editorial", "news"]
 [dependencies]
 content = { version_req = ">=0.1.0" }
 comments = { version_req = ">=0.1.0" }
+outbox = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
 
 [settings]

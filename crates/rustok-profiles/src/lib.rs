@@ -18,8 +18,8 @@ pub mod migrations;
 pub mod mutations;
 pub mod observability;
 pub mod presentation;
-mod profile_updated_event;
 pub mod privacy;
+mod profile_updated_event;
 pub mod reader;
 pub mod services;
 mod upsert_write;
@@ -34,7 +34,7 @@ pub use media::{
     ProfileImagePresentation, ProfileMediaPublicImageProvider, ProfileMediaSlot,
     profile_image_presentation, validate_profile_media_asset,
 };
-pub use mutations::ProfileMutationService;
+pub use mutations::{ProfileBackfillRequest, ProfileMutationContext, ProfileMutationService};
 pub use observability::{
     PROFILE_BACKFILL_OPERATION, PROFILE_OPERATION_TARGET, ProfileBackfillTimer, ProfileOperation,
     ProfileOperationTimer,
@@ -47,7 +47,6 @@ pub use privacy::{
 };
 pub use reader::ProfilesReader;
 pub use services::{ProfileBackfillResult, ProfileService};
-pub use upsert_write::backfill_profile_with_event;
 
 pub struct ProfilesModule;
 

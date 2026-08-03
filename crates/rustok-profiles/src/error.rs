@@ -78,9 +78,15 @@ impl From<rustok_taxonomy::TaxonomyError> for ProfileError {
             | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
             | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
             | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
-            | rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Validation(message),
+            | rustok_taxonomy::TaxonomyError::Forbidden(message)
+            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Validation(message),
             rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
                 Self::Validation(format!("taxonomy term not found: {term_id}"))
+            }
+            rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
+                Self::Validation(format!(
+                    "taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
+                ))
             }
         }
     }

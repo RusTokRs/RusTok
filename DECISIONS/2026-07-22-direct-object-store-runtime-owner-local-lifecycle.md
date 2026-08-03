@@ -65,13 +65,15 @@ verified against the durable row before compensation; when the outcome is
 ambiguous, the object is preserved and owner-local reconciliation resolves the
 state. Failed and obsolete objects are reconciled asynchronously.
 
-Write-port idempotency is owned by Media in durable `media_port_operations`
-receipts. Receipts bind tenant, operation, request digest, status and response;
-stale processing leases can be reclaimed only after the operation's owner-local
-state makes retry safe, and fencing tokens prevent an old worker from completing
-after its lease has been reclaimed. Remote gRPC authority is established by a
-host-owned authentication/authorization interceptor, carries an explicit
-operation allow-list, and is never accepted from serialized caller claims.
+Media owns the semantic idempotency of its write ports and uses the shared
+Outbox `owner_operation_receipts` ledger under `owner_slug = media`. Receipts
+bind tenant, operation, request digest, status and response; Media completes
+the receipt in the same transaction as its owner mutation. Stale processing
+leases can be reclaimed only after the operation's owner-local state makes
+retry safe, and fencing tokens prevent an old worker from completing after its
+lease has been reclaimed. Remote gRPC authority is established by a host-owned
+authentication/authorization interceptor, carries an explicit operation
+allow-list, and is never accepted from serialized caller claims.
 
 ## Consequences
 
@@ -93,4 +95,5 @@ operation allow-list, and is never accepted from serialized caller claims.
 
 - [`rustok-storage`](../crates/rustok-storage/README.md)
 - [`rustok-media`](../crates/rustok-media/README.md)
+- [Shared owner-operation receipt ledger](./2026-08-03-owner-operation-receipts.md)
 - [Media and Search extraction boundaries](./2026-07-16-media-search-extraction-boundaries.md)

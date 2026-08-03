@@ -1,9 +1,7 @@
 use sea_orm::DbErr;
 use uuid::Uuid;
 
-use super::comment_thread::{
-    THREAD_IDENTITY_CONFLICT_MARKER, is_thread_identity_conflict,
-};
+use super::comment_thread::{THREAD_IDENTITY_CONFLICT_MARKER, is_thread_identity_conflict};
 use crate::error::CommentsError;
 
 fn identity_conflict_error(
@@ -21,12 +19,7 @@ fn identity_conflict_error(
 fn thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid() {
     let tenant_id = Uuid::new_v4();
     let target_id = Uuid::new_v4();
-    let error = identity_conflict_error(
-        tenant_id,
-        "blog_post",
-        target_id,
-        Uuid::new_v4(),
-    );
+    let error = identity_conflict_error(tenant_id, "blog_post", target_id, Uuid::new_v4());
 
     assert!(is_thread_identity_conflict(
         &error,
@@ -56,12 +49,7 @@ fn thread_identity_conflict_classifier_rejects_malformed_owner_uuid() {
 fn thread_identity_conflict_classifier_rejects_wrong_scope() {
     let tenant_id = Uuid::new_v4();
     let target_id = Uuid::new_v4();
-    let error = identity_conflict_error(
-        tenant_id,
-        "blog_post",
-        target_id,
-        Uuid::new_v4(),
-    );
+    let error = identity_conflict_error(tenant_id, "blog_post", target_id, Uuid::new_v4());
 
     assert!(!is_thread_identity_conflict(
         &error,

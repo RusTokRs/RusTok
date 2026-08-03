@@ -14,8 +14,8 @@ use rustok_core::events::EventTransport;
 use rustok_customer::CustomerService;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::{
-    ProfileBackfillTimer, ProfileError, ProfileMutationService, ProfileService, ProfileVisibility,
-    ProfilesReader,
+    ProfileBackfillRequest, ProfileBackfillTimer, ProfileError, ProfileMutationService,
+    ProfileService, ProfileVisibility, ProfilesReader,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService};
@@ -164,15 +164,15 @@ impl ProfilesCommandProvider {
                 continue;
             }
             let result = profile_mutations
-                .backfill_profile_with_event(
-                    tenant.id,
-                    user.id,
-                    &user.email,
+                .backfill_profile_with_event(ProfileBackfillRequest {
+                    tenant_id: tenant.id,
+                    user_id: user.id,
+                    email: &user.email,
                     display_name,
-                    Some(locale),
+                    preferred_locale: Some(locale),
                     visibility,
-                    Some(&tenant.default_locale),
-                )
+                    tenant_default_locale: Some(&tenant.default_locale),
+                })
                 .await
                 .map_err(|error| backfill_profile_failed(&telemetry, "profile_create", error))?;
             let event_published = result.created;

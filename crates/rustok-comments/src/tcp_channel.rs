@@ -65,7 +65,10 @@ impl fmt::Debug for PlaintextLoopbackCommentsTcpChannel {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("PlaintextLoopbackCommentsTcpChannel")
-            .field("protection", &CommentsTcpChannelProtection::PlaintextLoopback)
+            .field(
+                "protection",
+                &CommentsTcpChannelProtection::PlaintextLoopback,
+            )
             .finish()
     }
 }
@@ -77,7 +80,8 @@ impl CommentsTcpClientChannelConnector for PlaintextLoopbackCommentsTcpChannel {
         let stream = TcpStream::connect(endpoint)
             .await
             .map_err(|error| io_error("connect", error))?;
-        stream.set_nodelay(true)
+        stream
+            .set_nodelay(true)
             .map_err(|error| io_error("set_nodelay", error))?;
         Ok(Box::new(stream))
     }
@@ -95,7 +99,8 @@ impl CommentsTcpServerChannelAcceptor for PlaintextLoopbackCommentsTcpChannel {
         peer_addr: SocketAddr,
     ) -> Result<BoxCommentsTcpIo, PortError> {
         ensure_loopback(peer_addr, "peer")?;
-        stream.set_nodelay(true)
+        stream
+            .set_nodelay(true)
             .map_err(|error| io_error("server_set_nodelay", error))?;
         Ok(Box::new(stream))
     }
@@ -122,14 +127,11 @@ mod tests {
     #[test]
     fn plaintext_channel_is_explicitly_loopback_only() {
         assert_eq!(
-            CommentsTcpClientChannelConnector::protection(
-                &PlaintextLoopbackCommentsTcpChannel,
-            ),
+            CommentsTcpClientChannelConnector::protection(&PlaintextLoopbackCommentsTcpChannel,),
             CommentsTcpChannelProtection::PlaintextLoopback
         );
         assert!(ensure_loopback("127.0.0.1:9000".parse().unwrap(), "endpoint").is_ok());
-        let error = ensure_loopback("192.0.2.10:9000".parse().unwrap(), "endpoint")
-            .unwrap_err();
+        let error = ensure_loopback("192.0.2.10:9000".parse().unwrap(), "endpoint").unwrap_err();
         assert_eq!(error.code, "comments.tcp_plaintext_non_loopback");
     }
 }

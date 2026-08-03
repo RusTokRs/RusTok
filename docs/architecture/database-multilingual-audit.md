@@ -36,7 +36,9 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
 - **Navigation** — `rustok-navigation` owns language-agnostic menu/menu-item
   rows and their parallel localized records. Clean schema creation uses
   `VARCHAR(32)` locale columns and tenant-composite uniqueness; Pages does not
-  migrate Navigation tables.
+  migrate Navigation tables. The Translation-target support migration adds
+  positive parent/locale aggregate revisions and a content-free owner change
+  journal without moving localized copy into the Translation schema.
 - **Forum** — category/topic/reply base rows remain language-agnostic; localized
   records are parallel and the core tenant-integrity migration widens their
   locale columns to `VARCHAR(32)` without narrowing rollback. A later wave

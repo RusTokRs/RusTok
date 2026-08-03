@@ -13,6 +13,7 @@ pub struct Model {
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
+    pub revision: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

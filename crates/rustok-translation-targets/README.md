@@ -20,6 +20,10 @@ plane.
   evidence; consumers never infer placeholder syntax.
 - Register owner-contributed providers through `ModuleRuntimeExtensions`.
 - Provide contract validation and conformance fixtures.
+- Provide `provider_support` helpers for contract-level source hashing, patch
+  CAS validation, opaque revision conversion, sparse patch merging, lifecycle
+  parsing, and receipt decoding without taking ownership of domain persistence
+  or authorization.
 
 ## Interactions
 
@@ -43,6 +47,7 @@ plane.
 - `TranslationApplicationReceipt`
 - `TranslationTargetProgressRequest`
 - `TranslationTargetProgressFacts`
+- `provider_support`
 
 Executable positive and negative reference-provider fixtures live in
 `tests/reference_provider_conformance.rs`. They cover exact-locale discovery,

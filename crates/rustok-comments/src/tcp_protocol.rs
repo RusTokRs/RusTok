@@ -68,10 +68,7 @@ pub(crate) fn validate_frame_limit(max_frame_bytes: usize) -> Result<(), PortErr
     Ok(())
 }
 
-pub(crate) fn ensure_frame_size(
-    length: usize,
-    max_frame_bytes: usize,
-) -> Result<(), PortError> {
+pub(crate) fn ensure_frame_size(length: usize, max_frame_bytes: usize) -> Result<(), PortError> {
     validate_frame_limit(max_frame_bytes)?;
     if length > max_frame_bytes {
         return Err(PortError::invariant_violation(

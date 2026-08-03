@@ -23,9 +23,7 @@ pub(super) fn require_tenant_settings_scope(
         boundary = "server_settings_graphql",
         "tenant settings authority cannot cross the resolved tenant boundary"
     );
-    Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-        "Settings access is denied",
-    ))
+    Err(<async_graphql::FieldError as GraphQLError>::permission_denied("Settings access is denied"))
 }
 
 pub(super) fn require_host_authority(

@@ -87,7 +87,12 @@ impl CustomerReadDiagnosticFacts {
 
     fn enrichment(request: &CustomerProfileEnrichmentRequest) -> Self {
         let requested_user_count = request.user_ids.len();
-        let unique_user_count = request.user_ids.iter().copied().collect::<HashSet<_>>().len();
+        let unique_user_count = request
+            .user_ids
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>()
+            .len();
         Self {
             requested_user_ids_present: true,
             requested_user_ids_empty: request.user_ids.is_empty(),
@@ -129,7 +134,8 @@ impl CustomerReadPort for InProcessCustomerReadPort {
     ) -> Result<CustomerResponse, PortError> {
         let diagnostic_context = context.clone();
         let diagnostic_facts = CustomerReadDiagnosticFacts::customer(request.customer_id);
-        let result = CustomerReadPort::read_customer_projection(&self.inner, context, request).await;
+        let result =
+            CustomerReadPort::read_customer_projection(&self.inner, context, request).await;
         result.map_err(|error| {
             map_customer_read_local_port_error(
                 &diagnostic_context,
@@ -249,11 +255,7 @@ fn map_customer_read_local_port_error(
     facts: &CustomerReadDiagnosticFacts,
     error: PortError,
 ) -> PortError {
-    let local_operation = match (
-        owner_operation,
-        error.code.as_str(),
-        error.message.as_str(),
-    ) {
+    let local_operation = match (owner_operation, error.code.as_str(), error.message.as_str()) {
         (_, "customer.context_invalid", "customer request context is invalid") => {
             "validate_tenant_context"
         }
@@ -267,11 +269,9 @@ fn map_customer_read_local_port_error(
             "customer.per_page_invalid",
             "customer projection page size is invalid",
         ) => "validate_page_size",
-        (
-            _,
-            "customer.database_unavailable",
-            "customer storage is temporarily unavailable",
-        ) => "owner_storage",
+        (_, "customer.database_unavailable", "customer storage is temporarily unavailable") => {
+            "owner_storage"
+        }
         (
             READ_CUSTOMER_PROJECTION_OPERATION,
             "customer.customer_not_found",

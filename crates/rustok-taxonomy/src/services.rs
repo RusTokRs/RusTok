@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, JoinType, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, TransactionTrait,
+    EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+    TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -16,19 +16,51 @@ use rustok_content::{
 use rustok_core::{PermissionScope, SecurityContext};
 
 use crate::dto::{
-    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, TaxonomyScopeType, TaxonomyTermKind,
-    TaxonomyTermListItem, TaxonomyTermResponse, TaxonomyTermStatus, UpdateTaxonomyTermInput,
+    ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
+    ResolveTaxonomyTermInput, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
+    TaxonomyTermResponse, TaxonomyTermStatus, TaxonomyTranslationApplyResult,
+    UpdateTaxonomyTermInput,
 };
 use crate::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
+use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 pub struct TaxonomyService {
     db: DatabaseConnection,
 }
 
+#[derive(Clone, Copy)]
+struct TermScope<'a> {
+    tenant_id: Uuid,
+    kind: TaxonomyTermKind,
+    scope_type: TaxonomyScopeType,
+    scope_value: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct LocalizedLookup<'a> {
+    scope: TermScope<'a>,
+    locale: &'a str,
+    fallback_locale: Option<&'a str>,
+    slug: &'a str,
+}
+
+struct ModuleTerm<'a> {
+    tenant_id: Uuid,
+    kind: TaxonomyTermKind,
+    module_scope: &'a str,
+    locale: &'a str,
+    name: &'a str,
+    normalized_slug: &'a str,
+}
+
 impl TaxonomyService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
     }
 
     #[instrument(skip(self, security, input))]
@@ -67,43 +99,23 @@ impl TaxonomyService {
 
         let aliases = normalize_aliases(&input.aliases);
         let txn = self.db.begin().await?;
+        let scope = TermScope {
+            tenant_id,
+            kind: input.kind,
+            scope_type: input.scope_type,
+            scope_value: &scope_value,
+        };
 
-        self.ensure_canonical_key_available_in_tx(
-            &txn,
-            tenant_id,
-            input.kind,
-            input.scope_type,
-            &scope_value,
-            &canonical_key,
-            None,
-        )
-        .await?;
-        self.ensure_translation_slug_available_in_tx(
-            &txn,
-            tenant_id,
-            input.kind,
-            input.scope_type,
-            &scope_value,
-            &locale,
-            &translation_slug,
-            None,
-        )
-        .await?;
-        self.ensure_aliases_available_in_tx(
-            &txn,
-            tenant_id,
-            input.kind,
-            input.scope_type,
-            &scope_value,
-            &locale,
-            &aliases,
-            None,
-        )
-        .await?;
+        self.ensure_canonical_key_available_in_tx(&txn, scope, &canonical_key, None)
+            .await?;
+        self.ensure_translation_slug_available_in_tx(&txn, scope, &locale, &translation_slug, None)
+            .await?;
+        self.ensure_aliases_available_in_tx(&txn, scope, &locale, &aliases, None)
+            .await?;
 
         let now = Utc::now();
         let term_id = Uuid::new_v4();
-        taxonomy_term::ActiveModel {
+        let term = taxonomy_term::ActiveModel {
             id: Set(term_id),
             tenant_id: Set(tenant_id),
             kind: Set(input.kind),
@@ -111,13 +123,14 @@ impl TaxonomyService {
             scope_value: Set(scope_value.clone()),
             canonical_key: Set(canonical_key),
             status: Set(TaxonomyTermStatus::Active),
+            revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
         .insert(&txn)
         .await?;
 
-        taxonomy_term_translation::ActiveModel {
+        let translation = taxonomy_term_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             term_id: Set(term_id),
             tenant_id: Set(tenant_id),
@@ -125,6 +138,7 @@ impl TaxonomyService {
             name: Set(input.name),
             slug: Set(translation_slug),
             description: Set(input.description),
+            revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -133,6 +147,19 @@ impl TaxonomyService {
 
         self.replace_aliases_in_tx(&txn, tenant_id, term_id, &locale, &aliases)
             .await?;
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                term_id,
+                locale: &locale,
+                resource_revision: term.revision,
+                target_revision: translation.revision,
+                operation: "upsert",
+                lifecycle: "active",
+            },
+        )
+        .await?;
 
         txn.commit().await?;
         Ok(term_id)
@@ -178,13 +205,14 @@ impl TaxonomyService {
         let term = self.find_term(tenant_id, term_id).await?;
         let txn = self.db.begin().await?;
         let now = Utc::now();
+        let scope = TermScope {
+            tenant_id,
+            kind: term.kind,
+            scope_type: term.scope_type,
+            scope_value: &term.scope_value,
+        };
 
-        if let Some(status) = input.status {
-            let mut active: taxonomy_term::ActiveModel = term.clone().into();
-            active.status = Set(status);
-            active.updated_at = Set(now.into());
-            active.update(&txn).await?;
-        }
+        let status = input.status.unwrap_or(term.status);
 
         let existing_translation = taxonomy_term_translation::Entity::find()
             .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
@@ -192,8 +220,10 @@ impl TaxonomyService {
             .one(&txn)
             .await?;
 
-        match existing_translation {
+        let target_revision = match existing_translation {
             Some(existing_translation) => {
+                let revision =
+                    next_translation_revision(term_id, &locale, existing_translation.revision)?;
                 let mut active: taxonomy_term_translation::ActiveModel =
                     existing_translation.into();
                 if let Some(name) = &input.name {
@@ -203,10 +233,7 @@ impl TaxonomyService {
                         let generated_slug = normalize_term_slug(name);
                         self.ensure_translation_slug_available_in_tx(
                             &txn,
-                            tenant_id,
-                            term.kind,
-                            term.scope_type,
-                            &term.scope_value,
+                            scope,
                             &locale,
                             &generated_slug,
                             Some(term_id),
@@ -224,10 +251,7 @@ impl TaxonomyService {
                     }
                     self.ensure_translation_slug_available_in_tx(
                         &txn,
-                        tenant_id,
-                        term.kind,
-                        term.scope_type,
-                        &term.scope_value,
+                        scope,
                         &locale,
                         &slug,
                         Some(term_id),
@@ -245,8 +269,10 @@ impl TaxonomyService {
                     }
                     None => {}
                 }
+                active.revision = Set(revision);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
+                revision
             }
             None => {
                 let name = input.name.clone().ok_or_else(|| {
@@ -262,10 +288,7 @@ impl TaxonomyService {
                 }
                 self.ensure_translation_slug_available_in_tx(
                     &txn,
-                    tenant_id,
-                    term.kind,
-                    term.scope_type,
-                    &term.scope_value,
+                    scope,
                     &locale,
                     &slug,
                     Some(term_id),
@@ -280,30 +303,40 @@ impl TaxonomyService {
                     name: Set(name),
                     slug: Set(slug),
                     description: Set(input.description.clone()),
+                    revision: Set(1),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
                 .insert(&txn)
                 .await?;
+                1
             }
-        }
+        };
 
         if let Some(aliases) = input.aliases.as_ref() {
             let aliases = normalize_aliases(aliases);
-            self.ensure_aliases_available_in_tx(
-                &txn,
-                tenant_id,
-                term.kind,
-                term.scope_type,
-                &term.scope_value,
-                &locale,
-                &aliases,
-                Some(term_id),
-            )
-            .await?;
+            self.ensure_aliases_available_in_tx(&txn, scope, &locale, &aliases, Some(term_id))
+                .await?;
             self.replace_aliases_in_tx(&txn, tenant_id, term_id, &locale, &aliases)
                 .await?;
         }
+
+        let resource_revision = self
+            .update_term_state_in_tx(&txn, &term, status, now)
+            .await?;
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                term_id,
+                locale: &locale,
+                resource_revision,
+                target_revision,
+                operation: "upsert",
+                lifecycle: lifecycle_for_status(status),
+            },
+        )
+        .await?;
 
         txn.commit().await?;
         self.get_term(
@@ -325,7 +358,45 @@ impl TaxonomyService {
     ) -> TaxonomyResult<()> {
         enforce_scope(&security, Resource::Taxonomy, Action::Delete)?;
         let term = self.find_term(tenant_id, term_id).await?;
-        term.delete(&self.db).await?;
+        let translations = self.load_translations(term_id).await?;
+        let deletion_translation = translations.iter().min_by(|left, right| {
+            left.locale
+                .cmp(&right.locale)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        let locale = deletion_translation
+            .map(|translation| translation.locale.as_str())
+            .unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        let target_revision = deletion_translation
+            .map(|translation| translation.revision)
+            .unwrap_or_default();
+        let resource_revision = next_term_revision(&term)?;
+        let txn = self.db.begin().await?;
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                term_id,
+                locale,
+                resource_revision,
+                target_revision,
+                operation: "delete",
+                lifecycle: "deleted",
+            },
+        )
+        .await?;
+        let deleted = taxonomy_term::Entity::delete_many()
+            .filter(taxonomy_term::Column::Id.eq(term_id))
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Revision.eq(term.revision))
+            .exec(&txn)
+            .await?;
+        if deleted.rows_affected != 1 {
+            return Err(TaxonomyError::conflict(
+                "taxonomy term changed before deletion could commit",
+            ));
+        }
+        txn.commit().await?;
         Ok(())
     }
 
@@ -462,12 +533,14 @@ impl TaxonomyService {
             } else {
                 self.create_module_term_in_tx(
                     txn,
-                    tenant_id,
-                    kind,
-                    &module_scope,
-                    &locale,
-                    label,
-                    &normalized_slug,
+                    ModuleTerm {
+                        tenant_id,
+                        kind,
+                        module_scope: &module_scope,
+                        locale: &locale,
+                        name: label,
+                        normalized_slug: &normalized_slug,
+                    },
                 )
                 .await?
             };
@@ -525,24 +598,24 @@ impl TaxonomyService {
         Ok(names)
     }
 
-    #[instrument(skip(self, security))]
-    #[allow(clippy::too_many_arguments)]
+    #[instrument(skip(self, security, input))]
     pub async fn resolve_term_for_module(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        kind: TaxonomyTermKind,
-        module_slug: &str,
-        locale: &str,
-        slug_or_alias: &str,
-        fallback_locale: Option<&str>,
+        input: ResolveTaxonomyTermInput,
     ) -> TaxonomyResult<Option<TaxonomyTermResponse>> {
         enforce_scope(&security, Resource::Taxonomy, Action::Read)?;
 
-        let locale = normalize_locale(locale)?;
-        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let module_scope = normalize_scope_value(TaxonomyScopeType::Module, Some(module_slug))?;
-        let normalized_slug = normalize_term_slug(slug_or_alias);
+        let locale = normalize_locale(&input.locale)?;
+        let fallback_locale = input
+            .fallback_locale
+            .as_deref()
+            .map(normalize_locale)
+            .transpose()?;
+        let module_scope =
+            normalize_scope_value(TaxonomyScopeType::Module, Some(&input.module_slug))?;
+        let normalized_slug = normalize_term_slug(&input.slug_or_alias);
         if normalized_slug.is_empty() {
             return Ok(None);
         }
@@ -552,15 +625,17 @@ impl TaxonomyService {
             (TaxonomyScopeType::Global, ""),
         ] {
             if let Some(term_id) = self
-                .find_term_id_by_localized_slug_or_alias(
-                    tenant_id,
-                    kind,
-                    scope_type,
-                    scope_value,
-                    &locale,
-                    fallback_locale.as_deref(),
-                    &normalized_slug,
-                )
+                .find_term_id_by_localized_slug_or_alias(LocalizedLookup {
+                    scope: TermScope {
+                        tenant_id,
+                        kind: input.kind,
+                        scope_type,
+                        scope_value,
+                    },
+                    locale: &locale,
+                    fallback_locale: fallback_locale.as_deref(),
+                    slug: &normalized_slug,
+                })
                 .await?
             {
                 return self
@@ -629,22 +704,18 @@ impl TaxonomyService {
         Ok(map)
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn ensure_canonical_key_available_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        scope_type: TaxonomyScopeType,
-        scope_value: &str,
+        scope: TermScope<'_>,
         canonical_key: &str,
         exclude_term_id: Option<Uuid>,
     ) -> TaxonomyResult<()> {
         let mut select = taxonomy_term::Entity::find()
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(kind))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .filter(taxonomy_term::Column::TenantId.eq(scope.tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(scope.kind))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value))
             .filter(taxonomy_term::Column::CanonicalKey.eq(canonical_key));
         if let Some(exclude_term_id) = exclude_term_id {
             select = select.filter(taxonomy_term::Column::Id.ne(exclude_term_id));
@@ -657,14 +728,10 @@ impl TaxonomyService {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn ensure_translation_slug_available_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        scope_type: TaxonomyScopeType,
-        scope_value: &str,
+        scope: TermScope<'_>,
         locale: &str,
         slug: &str,
         exclude_term_id: Option<Uuid>,
@@ -674,12 +741,12 @@ impl TaxonomyService {
                 JoinType::InnerJoin,
                 taxonomy_term_translation::Relation::Term.def(),
             )
-            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::TenantId.eq(scope.tenant_id))
             .filter(taxonomy_term_translation::Column::Locale.eq(locale))
             .filter(taxonomy_term_translation::Column::Slug.eq(slug))
-            .filter(taxonomy_term::Column::Kind.eq(kind))
-            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value));
+            .filter(taxonomy_term::Column::Kind.eq(scope.kind))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value));
         if let Some(exclude_term_id) = exclude_term_id {
             select = select.filter(taxonomy_term_translation::Column::TermId.ne(exclude_term_id));
         }
@@ -689,14 +756,10 @@ impl TaxonomyService {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn ensure_aliases_available_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        scope_type: TaxonomyScopeType,
-        scope_value: &str,
+        scope: TermScope<'_>,
         locale: &str,
         aliases: &[String],
         exclude_term_id: Option<Uuid>,
@@ -712,12 +775,12 @@ impl TaxonomyService {
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
                 )
-                .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_alias::Column::TenantId.eq(scope.tenant_id))
                 .filter(taxonomy_term_alias::Column::Locale.eq(locale))
                 .filter(taxonomy_term_alias::Column::Slug.eq(alias))
-                .filter(taxonomy_term::Column::Kind.eq(kind))
-                .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-                .filter(taxonomy_term::Column::ScopeValue.eq(scope_value));
+                .filter(taxonomy_term::Column::Kind.eq(scope.kind))
+                .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
+                .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value));
             if let Some(exclude_term_id) = exclude_term_id {
                 select = select.filter(taxonomy_term_alias::Column::TermId.ne(exclude_term_id));
             }
@@ -760,18 +823,11 @@ impl TaxonomyService {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn find_term_id_by_localized_slug_or_alias(
         &self,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        scope_type: TaxonomyScopeType,
-        scope_value: &str,
-        locale: &str,
-        fallback_locale: Option<&str>,
-        slug: &str,
+        lookup: LocalizedLookup<'_>,
     ) -> TaxonomyResult<Option<Uuid>> {
-        let locales = resolve_locale_candidates(locale, fallback_locale);
+        let locales = resolve_locale_candidates(lookup.locale, lookup.fallback_locale);
 
         for locale_candidate in locales {
             if let Some(translation) = taxonomy_term_translation::Entity::find()
@@ -779,12 +835,12 @@ impl TaxonomyService {
                     JoinType::InnerJoin,
                     taxonomy_term_translation::Relation::Term.def(),
                 )
-                .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_translation::Column::TenantId.eq(lookup.scope.tenant_id))
                 .filter(taxonomy_term_translation::Column::Locale.eq(&locale_candidate))
-                .filter(taxonomy_term_translation::Column::Slug.eq(slug))
-                .filter(taxonomy_term::Column::Kind.eq(kind))
-                .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-                .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+                .filter(taxonomy_term_translation::Column::Slug.eq(lookup.slug))
+                .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
+                .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
+                .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
                 .one(&self.db)
                 .await?
             {
@@ -796,12 +852,12 @@ impl TaxonomyService {
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
                 )
-                .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_alias::Column::TenantId.eq(lookup.scope.tenant_id))
                 .filter(taxonomy_term_alias::Column::Locale.eq(&locale_candidate))
-                .filter(taxonomy_term_alias::Column::Slug.eq(slug))
-                .filter(taxonomy_term::Column::Kind.eq(kind))
-                .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-                .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+                .filter(taxonomy_term_alias::Column::Slug.eq(lookup.slug))
+                .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
+                .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
+                .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
                 .one(&self.db)
                 .await?
             {
@@ -828,13 +884,17 @@ impl TaxonomyService {
             if let Some(term_id) = self
                 .find_term_id_by_localized_slug_or_alias_in_tx(
                     txn,
-                    tenant_id,
-                    kind,
-                    scope_type,
-                    scope_value,
-                    locale,
-                    Some(PLATFORM_FALLBACK_LOCALE),
-                    slug,
+                    LocalizedLookup {
+                        scope: TermScope {
+                            tenant_id,
+                            kind,
+                            scope_type,
+                            scope_value,
+                        },
+                        locale,
+                        fallback_locale: Some(PLATFORM_FALLBACK_LOCALE),
+                        slug,
+                    },
                 )
                 .await?
             {
@@ -859,70 +919,263 @@ impl TaxonomyService {
         Ok(None)
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn create_module_term_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        module_scope: &str,
-        locale: &str,
-        name: &str,
-        normalized_slug: &str,
+        term: ModuleTerm<'_>,
     ) -> TaxonomyResult<Uuid> {
-        self.ensure_canonical_key_available_in_tx(
-            txn,
-            tenant_id,
-            kind,
-            TaxonomyScopeType::Module,
-            module_scope,
-            normalized_slug,
-            None,
-        )
-        .await?;
+        let scope = TermScope {
+            tenant_id: term.tenant_id,
+            kind: term.kind,
+            scope_type: TaxonomyScopeType::Module,
+            scope_value: term.module_scope,
+        };
+        self.ensure_canonical_key_available_in_tx(txn, scope, term.normalized_slug, None)
+            .await?;
         self.ensure_translation_slug_available_in_tx(
             txn,
-            tenant_id,
-            kind,
-            TaxonomyScopeType::Module,
-            module_scope,
-            locale,
-            normalized_slug,
+            scope,
+            term.locale,
+            term.normalized_slug,
             None,
         )
         .await?;
 
         let now = Utc::now();
         let term_id = Uuid::new_v4();
-        taxonomy_term::ActiveModel {
+        let created_term = taxonomy_term::ActiveModel {
             id: Set(term_id),
-            tenant_id: Set(tenant_id),
-            kind: Set(kind),
+            tenant_id: Set(term.tenant_id),
+            kind: Set(term.kind),
             scope_type: Set(TaxonomyScopeType::Module),
-            scope_value: Set(module_scope.to_string()),
-            canonical_key: Set(normalized_slug.to_string()),
+            scope_value: Set(term.module_scope.to_string()),
+            canonical_key: Set(term.normalized_slug.to_string()),
             status: Set(TaxonomyTermStatus::Active),
+            revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
         .insert(txn)
         .await?;
 
-        taxonomy_term_translation::ActiveModel {
+        let created_translation = taxonomy_term_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             term_id: Set(term_id),
-            tenant_id: Set(tenant_id),
-            locale: Set(locale.to_string()),
-            name: Set(name.to_string()),
-            slug: Set(normalized_slug.to_string()),
+            tenant_id: Set(term.tenant_id),
+            locale: Set(term.locale.to_string()),
+            name: Set(term.name.to_string()),
+            slug: Set(term.normalized_slug.to_string()),
             description: Set(None),
+            revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
         .insert(txn)
+        .await?;
+        record_translation_change_in_tx(
+            txn,
+            TranslationChangeEvidence {
+                tenant_id: term.tenant_id,
+                term_id,
+                locale: term.locale,
+                resource_revision: created_term.revision,
+                target_revision: created_translation.revision,
+                operation: "upsert",
+                lifecycle: "active",
+            },
+        )
         .await?;
 
         Ok(term_id)
+    }
+
+    pub(crate) async fn apply_exact_translation_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        term_id: Uuid,
+        input: ApplyExactTaxonomyTranslationInput,
+    ) -> TaxonomyResult<TaxonomyTranslationApplyResult> {
+        let term = self.find_term_in_tx(txn, tenant_id, term_id).await?;
+        if term.status != TaxonomyTermStatus::Active {
+            return Err(TaxonomyError::validation(
+                "Cannot apply a translation to a deprecated taxonomy term",
+            ));
+        }
+        if term.revision != input.expected_resource_revision {
+            return Err(TaxonomyError::conflict(
+                "taxonomy term resource revision does not match the translation proposal",
+            ));
+        }
+
+        let source = taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::Locale.eq(input.source_locale.as_str()))
+            .one(txn)
+            .await?
+            .ok_or_else(|| TaxonomyError::validation("Exact source locale is not present"))?;
+        if source.revision != input.expected_source_revision {
+            return Err(TaxonomyError::conflict(
+                "source locale revision does not match the translation proposal",
+            ));
+        }
+
+        validate_term_name(&input.name)?;
+        let slug = normalize_term_slug(&input.slug);
+        if slug.is_empty() {
+            return Err(TaxonomyError::validation(
+                "Localized slug cannot be empty after normalization",
+            ));
+        }
+        let description = normalize_optional_text(input.description.as_deref());
+        validate_optional_description(description.as_deref())?;
+        let scope = TermScope {
+            tenant_id,
+            kind: term.kind,
+            scope_type: term.scope_type,
+            scope_value: &term.scope_value,
+        };
+        self.ensure_translation_slug_available_in_tx(
+            txn,
+            scope,
+            input.target_locale.as_str(),
+            &slug,
+            Some(term_id),
+        )
+        .await?;
+
+        let existing_target = taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::Locale.eq(input.target_locale.as_str()))
+            .one(txn)
+            .await?;
+        let now = Utc::now().fixed_offset();
+        let target_revision = match existing_target {
+            Some(target) => {
+                if input.expected_target_revision != Some(target.revision) {
+                    return Err(TaxonomyError::conflict(
+                        "target locale revision does not match the translation proposal",
+                    ));
+                }
+                let revision = next_translation_revision(
+                    term_id,
+                    input.target_locale.as_str(),
+                    target.revision,
+                )?;
+                let updated = taxonomy_term_translation::Entity::update_many()
+                    .col_expr(
+                        taxonomy_term_translation::Column::Name,
+                        Expr::value(input.name.clone()),
+                    )
+                    .col_expr(
+                        taxonomy_term_translation::Column::Slug,
+                        Expr::value(slug.clone()),
+                    )
+                    .col_expr(
+                        taxonomy_term_translation::Column::Description,
+                        Expr::value(description.clone()),
+                    )
+                    .col_expr(
+                        taxonomy_term_translation::Column::Revision,
+                        Expr::value(revision),
+                    )
+                    .col_expr(
+                        taxonomy_term_translation::Column::UpdatedAt,
+                        Expr::value(now),
+                    )
+                    .filter(taxonomy_term_translation::Column::Id.eq(target.id))
+                    .filter(taxonomy_term_translation::Column::Revision.eq(target.revision))
+                    .exec(txn)
+                    .await?;
+                if updated.rows_affected != 1 {
+                    return Err(TaxonomyError::conflict(
+                        "target locale changed before translation apply could commit",
+                    ));
+                }
+                revision
+            }
+            None => {
+                if input.expected_target_revision.is_some() {
+                    return Err(TaxonomyError::conflict(
+                        "translation proposal expected a target locale that does not exist",
+                    ));
+                }
+                let inserted = taxonomy_term_translation::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    term_id: Set(term_id),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(input.target_locale.as_str().to_string()),
+                    name: Set(input.name),
+                    slug: Set(slug),
+                    description: Set(description),
+                    revision: Set(1),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                }
+                .insert(txn)
+                .await;
+                match inserted {
+                    Ok(_) => 1,
+                    Err(error) if is_unique_constraint(&error) => {
+                        return Err(TaxonomyError::conflict(
+                            "target locale was created before translation apply could commit",
+                        ));
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        };
+
+        let resource_revision = self
+            .update_term_state_in_tx(txn, &term, TaxonomyTermStatus::Active, Utc::now())
+            .await?;
+        Ok(TaxonomyTranslationApplyResult {
+            resource_revision,
+            target_revision,
+        })
+    }
+
+    async fn find_term_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        term_id: Uuid,
+    ) -> TaxonomyResult<taxonomy_term::Model> {
+        taxonomy_term::Entity::find_by_id(term_id)
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or(TaxonomyError::TermNotFound(term_id))
+    }
+
+    async fn update_term_state_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        term: &taxonomy_term::Model,
+        status: TaxonomyTermStatus,
+        now: chrono::DateTime<Utc>,
+    ) -> TaxonomyResult<i64> {
+        let revision = next_term_revision(term)?;
+        let updated = taxonomy_term::Entity::update_many()
+            .col_expr(taxonomy_term::Column::Status, Expr::value(status))
+            .col_expr(taxonomy_term::Column::Revision, Expr::value(revision))
+            .col_expr(
+                taxonomy_term::Column::UpdatedAt,
+                Expr::value(now.fixed_offset()),
+            )
+            .filter(taxonomy_term::Column::Id.eq(term.id))
+            .filter(taxonomy_term::Column::TenantId.eq(term.tenant_id))
+            .filter(taxonomy_term::Column::Revision.eq(term.revision))
+            .exec(txn)
+            .await?;
+        if updated.rows_affected != 1 {
+            return Err(TaxonomyError::conflict(
+                "taxonomy term changed before the localized update could commit",
+            ));
+        }
+        Ok(revision)
     }
 
     async fn find_term_id_by_canonical_key_in_tx(
@@ -945,19 +1198,12 @@ impl TaxonomyService {
             .map(|term| term.id))
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn find_term_id_by_localized_slug_or_alias_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        scope_type: TaxonomyScopeType,
-        scope_value: &str,
-        locale: &str,
-        fallback_locale: Option<&str>,
-        slug: &str,
+        lookup: LocalizedLookup<'_>,
     ) -> TaxonomyResult<Option<Uuid>> {
-        let locales = resolve_locale_candidates(locale, fallback_locale);
+        let locales = resolve_locale_candidates(lookup.locale, lookup.fallback_locale);
 
         for locale_candidate in locales {
             if let Some(translation) = taxonomy_term_translation::Entity::find()
@@ -965,12 +1211,12 @@ impl TaxonomyService {
                     JoinType::InnerJoin,
                     taxonomy_term_translation::Relation::Term.def(),
                 )
-                .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_translation::Column::TenantId.eq(lookup.scope.tenant_id))
                 .filter(taxonomy_term_translation::Column::Locale.eq(&locale_candidate))
-                .filter(taxonomy_term_translation::Column::Slug.eq(slug))
-                .filter(taxonomy_term::Column::Kind.eq(kind))
-                .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-                .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+                .filter(taxonomy_term_translation::Column::Slug.eq(lookup.slug))
+                .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
+                .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
+                .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
                 .one(txn)
                 .await?
             {
@@ -982,12 +1228,12 @@ impl TaxonomyService {
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
                 )
-                .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_alias::Column::TenantId.eq(lookup.scope.tenant_id))
                 .filter(taxonomy_term_alias::Column::Locale.eq(&locale_candidate))
-                .filter(taxonomy_term_alias::Column::Slug.eq(slug))
-                .filter(taxonomy_term::Column::Kind.eq(kind))
-                .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-                .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+                .filter(taxonomy_term_alias::Column::Slug.eq(lookup.slug))
+                .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
+                .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
+                .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
                 .one(txn)
                 .await?
             {
@@ -997,6 +1243,49 @@ impl TaxonomyService {
 
         Ok(None)
     }
+}
+
+fn next_term_revision(term: &taxonomy_term::Model) -> TaxonomyResult<i64> {
+    term.revision
+        .checked_add(1)
+        .filter(|revision| term.revision > 0 && *revision > 0)
+        .ok_or_else(|| {
+            TaxonomyError::conflict(format!(
+                "taxonomy term {} has an invalid or exhausted resource revision",
+                term.id
+            ))
+        })
+}
+
+fn next_translation_revision(term_id: Uuid, locale: &str, revision: i64) -> TaxonomyResult<i64> {
+    revision
+        .checked_add(1)
+        .filter(|next_revision| revision > 0 && *next_revision > 0)
+        .ok_or_else(|| TaxonomyError::TranslationRevisionExhausted {
+            term_id,
+            locale: locale.to_string(),
+        })
+}
+
+fn lifecycle_for_status(status: TaxonomyTermStatus) -> &'static str {
+    match status {
+        TaxonomyTermStatus::Active => "active",
+        TaxonomyTermStatus::Deprecated => "archived",
+    }
+}
+
+fn normalize_optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 fn build_term_response(
@@ -1428,11 +1717,13 @@ mod tests {
             .resolve_term_for_module(
                 tenant_id,
                 security,
-                TaxonomyTermKind::Tag,
-                "blog",
-                "en",
-                "rust",
-                Some("en"),
+                ResolveTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    module_slug: "blog".to_string(),
+                    locale: "en".to_string(),
+                    slug_or_alias: "rust".to_string(),
+                    fallback_locale: Some("en".to_string()),
+                },
             )
             .await
             .expect("resolve should succeed")

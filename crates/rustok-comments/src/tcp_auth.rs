@@ -2,17 +2,16 @@ use std::{collections::HashSet, fmt, net::SocketAddr};
 
 use async_trait::async_trait;
 use rustok_api::{
-    PortActor, PortContext, PortError, SHA256_DIGEST_BYTES, fixed_work_sha256_eq,
-    sha256_digest,
+    PortActor, PortContext, PortError, SHA256_DIGEST_BYTES, fixed_work_sha256_eq, sha256_digest,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::CommentsThreadRequest;
 use crate::tcp_server::{
     CommentsTcpAuthorityResolver, CommentsTcpOperation, TrustedCommentsTcpAuthority,
 };
-use crate::CommentsThreadRequest;
 
 pub const COMMENTS_TCP_PROTOCOL_VERSION: u16 = 1;
 
@@ -77,9 +76,7 @@ impl fmt::Debug for CommentsTcpBearerToken {
 
 #[derive(Debug, Clone, Copy, Eq, Error, PartialEq)]
 pub enum CommentsTcpAuthenticationConfigError {
-    #[error(
-        "Comments TCP bearer token must be 1..=4096 visible non-whitespace ASCII bytes"
-    )]
+    #[error("Comments TCP bearer token must be 1..=4096 visible non-whitespace ASCII bytes")]
     InvalidBearerToken,
 }
 
@@ -172,9 +169,7 @@ impl CommentsTcpRequestEnvelope {
         &self.request
     }
 
-    pub(crate) fn into_parts(
-        self,
-    ) -> (u16, Option<CommentsTcpCredential>, CommentsThreadRequest) {
+    pub(crate) fn into_parts(self) -> (u16, Option<CommentsTcpCredential>, CommentsThreadRequest) {
         (self.protocol_version, self.credential, self.request)
     }
 }
@@ -348,7 +343,9 @@ mod tests {
     fn tenant_authority_requires_canonical_uuid_text() {
         let tenant_id = Uuid::new_v4();
         assert!(is_canonical_uuid(&tenant_id.to_string()));
-        assert!(!is_canonical_uuid(&tenant_id.to_string().to_ascii_uppercase()));
+        assert!(!is_canonical_uuid(
+            &tenant_id.to_string().to_ascii_uppercase()
+        ));
         assert!(!is_canonical_uuid("not-a-uuid"));
     }
 

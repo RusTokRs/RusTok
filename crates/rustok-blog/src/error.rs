@@ -26,6 +26,14 @@ pub enum BlogError {
     #[error("Duplicate slug: {slug} already exists for locale {locale}")]
     DuplicateSlug { slug: String, locale: String },
 
+    #[error("Blog revision conflict: {0}")]
+    Conflict(String),
+
+    #[error(
+        "Category translation revision is exhausted for category {category_id} and locale {locale}"
+    )]
+    CategoryTranslationRevisionExhausted { category_id: Uuid, locale: String },
+
     #[error("Cannot delete published post")]
     CannotDeletePublished,
 
@@ -97,6 +105,18 @@ impl From<BlogError> for RichError {
             .with_field("slug", slug)
             .with_field("locale", locale)
             .with_error_code("DUPLICATE_SLUG"),
+            BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
+                .with_user_message("The blog category changed before the request could be applied")
+                .with_error_code("BLOG_CONFLICT"),
+            BlogError::CategoryTranslationRevisionExhausted {
+                category_id,
+                locale,
+            } => RichError::new(
+                ErrorKind::Conflict,
+                format!("Category translation revision is exhausted for {category_id} in {locale}"),
+            )
+            .with_user_message("The category translation can no longer be updated safely")
+            .with_error_code("CATEGORY_TRANSLATION_REVISION_EXHAUSTED"),
             BlogError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published post")
                     .with_user_message(
@@ -203,6 +223,11 @@ impl BlogError {
         }
     }
 
+    /// Create a revision conflict error.
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::Conflict(message.into())
+    }
+
     /// Create a validation error
     pub fn validation(message: impl Into<String>) -> Self {
         BlogError::Validation(message.into())
@@ -222,9 +247,15 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
             rustok_taxonomy::TaxonomyError::Validation(message)
             | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
             | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message) => Self::Validation(message),
+            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
+            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Validation(message),
             rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
                 Self::Validation(format!("Taxonomy term not found: {term_id}"))
+            }
+            rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
+                Self::Validation(format!(
+                    "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
+                ))
             }
         }
     }

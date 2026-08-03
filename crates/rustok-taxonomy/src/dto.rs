@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rustok_api::TenantLocale;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -79,6 +80,33 @@ pub struct UpdateTaxonomyTermInput {
     pub description: Option<String>,
     pub status: Option<TaxonomyTermStatus>,
     pub aliases: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolveTaxonomyTermInput {
+    pub kind: TaxonomyTermKind,
+    pub module_slug: String,
+    pub locale: String,
+    pub slug_or_alias: String,
+    pub fallback_locale: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyExactTaxonomyTranslationInput {
+    pub source_locale: TenantLocale,
+    pub target_locale: TenantLocale,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub expected_resource_revision: i64,
+    pub expected_source_revision: i64,
+    pub expected_target_revision: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaxonomyTranslationApplyResult {
+    pub resource_revision: i64,
+    pub target_revision: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

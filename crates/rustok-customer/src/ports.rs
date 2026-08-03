@@ -364,10 +364,7 @@ fn log_customer_list_validation_rejection(
     );
 }
 
-fn log_customer_tenant_parse_rejection(
-    context: &PortContext,
-    owner_operation: &'static str,
-) {
+fn log_customer_tenant_parse_rejection(context: &PortContext, owner_operation: &'static str) {
     let context_facts = customer_read_context_facts(context);
     tracing::warn!(
         owner = "rustok_customer",

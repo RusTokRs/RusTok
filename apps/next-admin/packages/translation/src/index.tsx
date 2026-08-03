@@ -36,6 +36,7 @@ import { registerAdminModule } from '@/modules/registry';
 import { executeTranslationOperation } from './api';
 import { translationNavItems } from './nav';
 import type {
+  ActorKind,
   Glossary,
   GlossaryConcept,
   GlossarySummary,
@@ -113,6 +114,24 @@ export function TranslationAdminPage({
   const [proposalId, setProposalId] = React.useState('');
   const [fieldKey, setFieldKey] = React.useState('alt');
   const [fieldValue, setFieldValue] = React.useState('');
+  const [machineFieldKeys, setMachineFieldKeys] = React.useState('alt');
+  const [machineMinimumSimilarity, setMachineMinimumSimilarity] =
+    React.useState('8500');
+  const [machineTone, setMachineTone] = React.useState('');
+  const [machineDomain, setMachineDomain] = React.useState('');
+  const [machineStyle, setMachineStyle] = React.useState('');
+  const [machineOperationId, setMachineOperationId] = React.useState('');
+  const [machineExpectedUpdatedAt, setMachineExpectedUpdatedAt] =
+    React.useState('');
+  const [machineReason, setMachineReason] = React.useState('');
+  const [itemRevision, setItemRevision] = React.useState('1');
+  const [assigneeKind, setAssigneeKind] = React.useState<ActorKind>('USER');
+  const [assigneeId, setAssigneeId] = React.useState('');
+  const [jobRevision, setJobRevision] = React.useState('1');
+  const [applyOperationId, setApplyOperationId] = React.useState('');
+  const [expectedAttemptCount, setExpectedAttemptCount] = React.useState('1');
+  const [itemRetryReason, setItemRetryReason] = React.useState('');
+  const [recoveryReason, setRecoveryReason] = React.useState('');
   const [jobGlossaryId, setJobGlossaryId] = React.useState('');
   const [jobGlossaryRevision, setJobGlossaryRevision] = React.useState('');
   const [glossaryName, setGlossaryName] = React.useState('');
@@ -244,6 +263,48 @@ export function TranslationAdminPage({
         if (response.kind === 'interchange_document') {
           setExportDocument(JSON.stringify(response.value, null, 2));
         }
+        if (response.kind === 'job') {
+          setJobId(response.value.id);
+          setJobRevision(String(response.value.revision));
+        }
+        if (response.kind === 'item') {
+          setJobId(response.value.jobId);
+          setItemId(response.value.id);
+          setItemRevision(String(response.value.revision));
+        }
+        if (response.kind === 'machine_proposal') {
+          setMachineOperationId(response.value.operationId);
+          setMachineExpectedUpdatedAt(response.value.updatedAt);
+          setProposalId(response.value.proposalId);
+        }
+        if (response.kind === 'machine_operation_status') {
+          setMachineOperationId(response.value.operationId);
+          setMachineExpectedUpdatedAt(response.value.updatedAt);
+          setItemId(response.value.itemId);
+        }
+        if (response.kind === 'assignment') {
+          setItemId(response.value.itemId);
+          setItemRevision(String(response.value.itemRevision));
+          if (response.value.assignee) {
+            setAssigneeKind(response.value.assignee.kind);
+            setAssigneeId(response.value.assignee.id);
+          } else {
+            setAssigneeId('');
+          }
+        }
+        if (response.kind === 'cancellation') {
+          setJobId(response.value.jobId);
+          setJobRevision(String(response.value.jobRevision));
+        }
+        if (response.kind === 'retry') {
+          setItemId(response.value.itemId);
+          setItemRevision(String(response.value.itemRevision));
+        }
+        if (response.kind === 'apply') {
+          setApplyOperationId(response.value.operationId);
+          setItemId(response.value.itemId);
+          setProposalId(response.value.proposalId);
+        }
         if (keyName) delete idempotencyKeys.current[keyName];
       } catch (error: unknown) {
         setOperationError(errorMessage(error));
@@ -288,6 +349,15 @@ export function TranslationAdminPage({
       setOperationError(errorMessage(error));
     }
   }
+
+  const machineProposalForm = {
+    itemId,
+    fieldKeys: machineFieldKeys,
+    minimumMemorySimilarity: machineMinimumSimilarity,
+    tone: machineTone,
+    domain: machineDomain,
+    style: machineStyle
+  };
 
   return (
     <div className='space-y-6' data-testid='translation-admin-next'>
@@ -1175,7 +1245,405 @@ export function TranslationAdminPage({
                 </Button>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('workflow.machine')}</CardTitle>
+                <CardDescription>
+                  {t('workflow.machineDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-4'>
+                <div className='grid gap-4 sm:grid-cols-2'>
+                  <TextInput
+                    id='translation-machine-item'
+                    label={t('field.itemId')}
+                    value={itemId}
+                    onChange={setItemId}
+                  />
+                  <TextInput
+                    id='translation-machine-field-keys'
+                    label={t('field.fieldKeys')}
+                    value={machineFieldKeys}
+                    onChange={setMachineFieldKeys}
+                  />
+                  <TextInput
+                    id='translation-machine-minimum-similarity'
+                    label={t('field.minimumMemorySimilarity')}
+                    value={machineMinimumSimilarity}
+                    onChange={setMachineMinimumSimilarity}
+                  />
+                  <TextInput
+                    id='translation-machine-tone'
+                    label={t('field.tone')}
+                    value={machineTone}
+                    onChange={setMachineTone}
+                  />
+                  <TextInput
+                    id='translation-machine-domain'
+                    label={t('field.domain')}
+                    value={machineDomain}
+                    onChange={setMachineDomain}
+                  />
+                  <TextInput
+                    id='translation-machine-style'
+                    label={t('field.style')}
+                    value={machineStyle}
+                    onChange={setMachineStyle}
+                  />
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () =>
+                          machineProposalOperation(
+                            'estimate_machine_translation',
+                            machineProposalValues(machineProposalForm),
+                            commandKey('estimate-machine-translation')
+                          ),
+                        'estimate-machine-translation'
+                      )
+                    }
+                  >
+                    {t('action.estimateMachineTranslation')}
+                  </Button>
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () =>
+                          machineProposalOperation(
+                            'generate_machine_proposal',
+                            machineProposalValues(machineProposalForm),
+                            commandKey('generate-machine-proposal')
+                          ),
+                        'generate-machine-proposal'
+                      )
+                    }
+                  >
+                    {t('action.generateMachineProposal')}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('workflow.assignment')}</CardTitle>
+                <CardDescription>
+                  {t('workflow.assignmentDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-4'>
+                <div className='grid gap-4 sm:grid-cols-2'>
+                  <TextInput
+                    id='translation-assignment-item'
+                    label={t('field.itemId')}
+                    value={itemId}
+                    onChange={setItemId}
+                  />
+                  <TextInput
+                    id='translation-assignment-revision'
+                    label={t('field.itemRevision')}
+                    value={itemRevision}
+                    onChange={setItemRevision}
+                  />
+                  <div className='space-y-2'>
+                    <Label htmlFor='translation-assignee-kind'>
+                      {t('field.assigneeKind')}
+                    </Label>
+                    <Select
+                      value={assigneeKind}
+                      onValueChange={(value) =>
+                        setAssigneeKind(parseActorKind(value))
+                      }
+                    >
+                      <SelectTrigger
+                        id='translation-assignee-kind'
+                        className='w-full'
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='USER'>
+                          {t('field.assigneeUser')}
+                        </SelectItem>
+                        <SelectItem value='SERVICE'>
+                          {t('field.assigneeService')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <TextInput
+                    id='translation-assignee-id'
+                    label={t('field.assigneeId')}
+                    value={assigneeId}
+                    onChange={setAssigneeId}
+                  />
+                  <div className='space-y-2 sm:col-span-2'>
+                    <Label htmlFor='translation-item-retry-reason'>
+                      {t('field.reason')}
+                    </Label>
+                    <Textarea
+                      id='translation-item-retry-reason'
+                      value={itemRetryReason}
+                      onChange={(event) =>
+                        setItemRetryReason(event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'assign_item',
+                          itemId: required(itemId, 'item_id'),
+                          expectedRevision: positiveRevision(
+                            itemRevision,
+                            'expected_revision'
+                          ),
+                          assignee: {
+                            kind: assigneeKind,
+                            id: required(assigneeId, 'assignee_id')
+                          },
+                          idempotencyKey: commandKey('assign-item')
+                        }),
+                        'assign-item'
+                      )
+                    }
+                  >
+                    {t('action.assignItem')}
+                  </Button>
+                  <Button
+                    variant='secondary'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'unassign_item',
+                          itemId: required(itemId, 'item_id'),
+                          expectedRevision: positiveRevision(
+                            itemRevision,
+                            'expected_revision'
+                          ),
+                          idempotencyKey: commandKey('unassign-item')
+                        }),
+                        'unassign-item'
+                      )
+                    }
+                  >
+                    {t('action.unassignItem')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'retry_item',
+                          itemId: required(itemId, 'item_id'),
+                          expectedRevision: positiveRevision(
+                            itemRevision,
+                            'expected_revision'
+                          ),
+                          reason: required(itemRetryReason, 'reason', false),
+                          idempotencyKey: commandKey('retry-item')
+                        }),
+                        'retry-item'
+                      )
+                    }
+                  >
+                    {t('action.retryItem')}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('workflow.machineControl')}</CardTitle>
+              <CardDescription>
+                {t('workflow.machineControlDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <TextInput
+                  id='translation-machine-operation'
+                  label={t('field.operationId')}
+                  value={machineOperationId}
+                  onChange={setMachineOperationId}
+                />
+                <TextInput
+                  id='translation-machine-expected-updated-at'
+                  label={t('field.expectedUpdatedAt')}
+                  value={machineExpectedUpdatedAt}
+                  onChange={setMachineExpectedUpdatedAt}
+                />
+                <div className='space-y-2 sm:col-span-2'>
+                  <Label htmlFor='translation-machine-reason'>
+                    {t('field.reason')}
+                  </Label>
+                  <Textarea
+                    id='translation-machine-reason'
+                    value={machineReason}
+                    onChange={(event) => setMachineReason(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  variant='outline'
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(() => ({
+                      kind: 'read_machine_operation_status',
+                      operationId: required(machineOperationId, 'operation_id')
+                    }))
+                  }
+                >
+                  {t('action.readMachineStatus')}
+                </Button>
+                <Button
+                  variant='secondary'
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(
+                      () => ({
+                        kind: 'cancel_machine_operation',
+                        operationId: required(
+                          machineOperationId,
+                          'operation_id'
+                        ),
+                        reason: required(machineReason, 'reason', false),
+                        idempotencyKey: commandKey('cancel-machine-operation')
+                      }),
+                      'cancel-machine-operation'
+                    )
+                  }
+                >
+                  {t('action.cancelMachineOperation')}
+                </Button>
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(
+                      () => ({
+                        kind: 'recover_machine_operation',
+                        operationId: required(
+                          machineOperationId,
+                          'operation_id'
+                        ),
+                        expectedUpdatedAt: required(
+                          machineExpectedUpdatedAt,
+                          'expected_updated_at'
+                        ),
+                        ...machineProposalValues(machineProposalForm),
+                        reason: required(machineReason, 'reason', false),
+                        idempotencyKey: commandKey('recover-machine-operation')
+                      }),
+                      'recover-machine-operation'
+                    )
+                  }
+                >
+                  {t('action.recoverMachineOperation')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('workflow.jobControl')}</CardTitle>
+              <CardDescription>
+                {t('workflow.jobControlDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <TextInput
+                  id='translation-job-control-id'
+                  label={t('field.jobId')}
+                  value={jobId}
+                  onChange={setJobId}
+                />
+                <TextInput
+                  id='translation-job-control-revision'
+                  label={t('field.jobRevision')}
+                  value={jobRevision}
+                  onChange={setJobRevision}
+                />
+                <TextInput
+                  id='translation-apply-operation'
+                  label={t('field.operationId')}
+                  value={applyOperationId}
+                  onChange={setApplyOperationId}
+                />
+                <TextInput
+                  id='translation-apply-attempt-count'
+                  label={t('field.expectedAttemptCount')}
+                  value={expectedAttemptCount}
+                  onChange={setExpectedAttemptCount}
+                />
+                <div className='space-y-2 sm:col-span-2'>
+                  <Label htmlFor='translation-job-control-reason'>
+                    {t('field.reason')}
+                  </Label>
+                  <Textarea
+                    id='translation-job-control-reason'
+                    value={recoveryReason}
+                    onChange={(event) => setRecoveryReason(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  variant='secondary'
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(
+                      () => ({
+                        kind: 'cancel_job',
+                        jobId: required(jobId, 'job_id'),
+                        expectedRevision: positiveRevision(
+                          jobRevision,
+                          'expected_revision'
+                        ),
+                        reason: required(recoveryReason, 'reason', false),
+                        idempotencyKey: commandKey('cancel-job')
+                      }),
+                      'cancel-job'
+                    )
+                  }
+                >
+                  {t('action.cancelJob')}
+                </Button>
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(
+                      () => ({
+                        kind: 'recover_apply',
+                        operationId: required(applyOperationId, 'operation_id'),
+                        expectedAttemptCount: positiveRevision(
+                          expectedAttemptCount,
+                          'expected_attempt_count'
+                        ),
+                        reason: required(recoveryReason, 'reason', false),
+                        idempotencyKey: commandKey('recover-apply')
+                      }),
+                      'recover-apply'
+                    )
+                  }
+                >
+                  {t('action.recoverApply')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle>{t('workflow.review')}</CardTitle>
@@ -2140,12 +2608,63 @@ function positiveRevision(value: string, field: string): number {
   return parsed;
 }
 
+function parseActorKind(value: string): ActorKind {
+  if (value === 'USER' || value === 'SERVICE') return value;
+  throw new Error('assignee_kind: must be USER or SERVICE');
+}
+
 function basisPoints(value: string, field: string): number {
   const parsed = integer(value, field);
   if (parsed < 0 || parsed > 10_000) {
     throw new Error(`${field}: must be between 0 and 10000`);
   }
   return parsed;
+}
+
+type MachineProposalFormInput = {
+  itemId: string;
+  fieldKeys: string;
+  minimumMemorySimilarity: string;
+  tone: string;
+  domain: string;
+  style: string;
+};
+
+type MachineProposalValues = {
+  itemId: string;
+  fieldKeys: string[];
+  minimumMemorySimilarityBasisPoints: number;
+  tone?: string;
+  domain?: string;
+  style?: string;
+};
+
+function machineProposalValues(
+  input: MachineProposalFormInput
+): MachineProposalValues {
+  return {
+    itemId: required(input.itemId, 'item_id'),
+    fieldKeys: distinctCsv(input.fieldKeys, 'field_keys'),
+    minimumMemorySimilarityBasisPoints: basisPoints(
+      input.minimumMemorySimilarity,
+      'minimum_memory_similarity_basis_points'
+    ),
+    tone: optionalText(input.tone),
+    domain: optionalText(input.domain),
+    style: optionalText(input.style)
+  };
+}
+
+function machineProposalOperation(
+  kind: 'estimate_machine_translation' | 'generate_machine_proposal',
+  values: MachineProposalValues,
+  idempotencyKey: string
+): TranslationOperation {
+  return { kind, ...values, idempotencyKey };
+}
+
+function optionalText(value: string): string | undefined {
+  return value.trim() || undefined;
 }
 
 function retentionTimestamp(
@@ -2170,7 +2689,15 @@ function csv(value: string, field: string): string[] {
     .map((entry) => entry.trim())
     .filter(Boolean);
   if (!values.length)
-    throw new Error(`${field}: at least one locale is required`);
+    throw new Error(`${field}: at least one value is required`);
+  return values;
+}
+
+function distinctCsv(value: string, field: string): string[] {
+  const values = csv(value, field);
+  if (new Set(values).size !== values.length) {
+    throw new Error(`${field}: must not contain duplicates`);
+  }
   return values;
 }
 
@@ -2355,6 +2882,32 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
         ['Operation ID', response.value.operationId],
         ['Provider receipt', response.value.providerReceiptId],
         ['Target revision', response.value.targetRevision]
+      ];
+    case 'assignment':
+      return [
+        ['Operation ID', response.value.operationId],
+        ['Item ID', response.value.itemId],
+        [
+          'Assignee',
+          response.value.assignee
+            ? `${response.value.assignee.kind}:${response.value.assignee.id}`
+            : 'unassigned'
+        ],
+        ['Item revision', String(response.value.itemRevision)]
+      ];
+    case 'cancellation':
+      return [
+        ['Cancellation ID', response.value.cancellationId],
+        ['Job ID', response.value.jobId],
+        ['Job revision', String(response.value.jobRevision)],
+        ['Cancelled items', String(response.value.cancelledItemCount)]
+      ];
+    case 'retry':
+      return [
+        ['Retry ID', response.value.retryId],
+        ['Item ID', response.value.itemId],
+        ['Item revision', String(response.value.itemRevision)],
+        ['Status', response.value.status]
       ];
   }
 }

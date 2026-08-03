@@ -156,10 +156,20 @@ Tenant locale-policy revision changes. Stale policy remains readable with its
 CAS revision and disabled-locale evidence, while required-target progress fails
 closed until an authorized replacement revalidates it.
 
-The first production aggregate is `media/asset`. Translation never reads Media
-tables: Media counts exact target values for source-eligible active assets and
-returns the cursor from a stable owner-change window. Runtime locale fallback
-does not contribute to those counts.
+Registered pilot aggregates are `media/asset`, `taxonomy/term`,
+`blog/category`, and `navigation/menu`.
+Translation never reads their tables: each owner supplies exact target facts and
+an opaque owner cursor. Media counts source-eligible active assets in a stable
+change window; Taxonomy counts active terms; Blog counts categories with an
+exact source row; Navigation counts only full exact menu aggregates. Taxonomy
+and Blog expose exact `name`, review-only `slug`, and optional `description`;
+Navigation exposes a required menu name plus one required exact title per menu
+item. Blog applies through its category service and emits the existing Search
+reindex request transactionally; Navigation applies through `MenuService` and
+uses its content-free cursor journal rather than claiming a generic owner
+event. Runtime locale fallback does not contribute to any aggregate. All four
+pilots still require their documented production database evidence before
+inventory enablement.
 
 `rustok-translation-targets` remains a separate Cargo package even if its
 physical directory is later moved under `crates/rustok-translation/`. This
@@ -206,12 +216,14 @@ table. Both adapters share Translation's redacted public-error classification.
 Its six-tab Leptos `core/transport/ui` workbench is manifest-mounted in
 `apps/admin`; the matching `@rustok/translation-admin` package is mounted by
 the Next host through a thin client wrapper and uses the same 39-operation
-GraphQL contract. The Jobs surface includes a non-billable conservative
+GraphQL contract. The Workflow surface includes a non-billable conservative
 machine-translation estimate derived from AI-owned tenant routing and immutable
-price snapshots before proposal generation, plus bounded immutable snapshot export
-and atomic per-item import through canonical QA. Both clients use
-`memory_entry_id` for explicit memory selection and never auto-select the first
-entry.
+price snapshots before proposal generation, along with generation, status,
+cancellation, and recovery controls. It also provides revision-guarded
+assignment/unassignment, blocked-item retry, job cancellation, and owner-apply
+recovery. The Jobs surface provides bounded immutable snapshot export and atomic
+per-item import through canonical QA. Both clients use `memory_entry_id` for
+explicit memory selection and never auto-select the first entry.
 
 ## Verification
 

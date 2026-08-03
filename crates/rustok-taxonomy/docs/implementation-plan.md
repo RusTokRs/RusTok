@@ -11,12 +11,24 @@ Term identity is locale-independent. Locale normalization and fallback use the
 shared content contract. New consumers must attach terms through an explicit
 owner-module relation table.
 
+`TaxonomyTranslationTargetProvider` is registered by server composition as
+`taxonomy/term`. It exposes exact source/target snapshots for `name`, `slug`,
+and optional `description`; applies one target locale through resource/source/
+target revision CAS; reports exact source/target progress; and reads the
+append-only owner change cursor. `slug` remains review-only for machine
+translation. Provider apply uses the shared Outbox receipt ledger under owner
+slug `taxonomy`, while Taxonomy retains authorization, validation, and the
+owner transaction. The provider records durable owner change evidence but does
+not claim a global `translation.target.changed` event contract.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
-- FBA status: `not_started`
+- FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
-- This dictionary module has no module-owned UI or FBA provider port.
+- This dictionary module has no module-owned UI. Its owner-neutral Translation
+  target SPI is an embedded capability boundary; no Taxonomy-specific UI or
+  external transport is implied.
 
 ## Open results
 
@@ -39,12 +51,20 @@ owner-module relation table.
    **Done when:** operators can reconcile terms, aliases, and owner attachments
    without inventing shared relation ownership.
 
+4. **Collect production target evidence.** Run the append-only Outbox and
+   Taxonomy migrations plus PostgreSQL concurrent apply/change-cursor scenarios
+   before enabling the `taxonomy/term` pilot in production.
+   **Depends on:** a production-like PostgreSQL runtime.
+   **Done when:** retained migration, concurrent CAS, and cursor-recovery
+   evidence proves the registered provider under multi-replica conditions.
+
 ## Verification
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
 - Targeted term CRUD, alias lookup, scope restriction, locale fallback, and
   consumer-integration tests.
+- `cargo test -p rustok-taxonomy --lib`
 
 ## Change rules
 

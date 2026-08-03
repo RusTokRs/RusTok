@@ -1,7 +1,7 @@
 use rustok_profiles::entities;
 use rustok_profiles::{
-    ProfileAccessAudience, ProfileError, ProfilePresentationService, ProfileService, ProfileStatus,
-    ProfileVisibility, UpsertProfileInput,
+    ProfileAccessAudience, ProfileError, ProfileMutationContext, ProfilePresentationService,
+    ProfileService, ProfileStatus, ProfileVisibility, UpsertProfileInput,
 };
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
@@ -39,11 +39,13 @@ async fn create_profile(
     let mutations = rustok_profiles::ProfileMutationService::new(db, &event_bus);
     mutations
         .upsert_profile_with_event(
-            tenant_id,
-            user_id,
-            user_id,
+            ProfileMutationContext {
+                tenant_id,
+                actor_id: user_id,
+                user_id,
+                tenant_default_locale: Some("en"),
+            },
             profile_input(handle, display_name, visibility),
-            Some("en"),
         )
         .await
         .expect("profile should be created");

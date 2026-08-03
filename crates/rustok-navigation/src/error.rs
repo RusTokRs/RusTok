@@ -13,6 +13,10 @@ pub enum NavigationError {
     MenuNotFound(Uuid),
     #[error("Validation error: {0}")]
     Validation(String),
+    #[error("Conflict: {0}")]
+    Conflict(String),
+    #[error("Menu translation revision exhausted for menu {menu_id} locale {locale}")]
+    TranslationRevisionExhausted { menu_id: Uuid, locale: String },
     #[error("Forbidden: {0}")]
     Forbidden(String),
     #[error("Rich error: {0}")]
@@ -27,6 +31,9 @@ impl NavigationError {
     }
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
+    }
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::Conflict(message.into())
     }
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::Forbidden(message.into())
@@ -50,6 +57,13 @@ impl From<NavigationError> for RichError {
             }
             NavigationError::Validation(message) => RichError::new(ErrorKind::Validation, message)
                 .with_user_message("Invalid navigation input"),
+            NavigationError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
+                .with_user_message("Navigation data changed; refresh and retry"),
+            NavigationError::TranslationRevisionExhausted { menu_id, locale } => RichError::new(
+                ErrorKind::Internal,
+                format!("Menu translation revision exhausted for menu {menu_id} locale {locale}"),
+            )
+            .with_user_message("Navigation translation state is unavailable"),
             NavigationError::Forbidden(message) => RichError::new(ErrorKind::Forbidden, message)
                 .with_user_message("You do not have permission to manage navigation"),
             NavigationError::Rich(error) => *error,

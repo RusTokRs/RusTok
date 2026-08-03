@@ -11,7 +11,7 @@ use rustok_ui_core::UiRouteContext;
 use crate::core::{self, ProposalCommand, TranslationAdminTab, operation_receipt_view_model};
 use crate::i18n::t;
 use crate::model::{
-    Glossary, GlossarySummary, MemoryEntry, MemorySuggestion, TranslationAdminOperation,
+    ActorKind, Glossary, GlossarySummary, MemoryEntry, MemorySuggestion, TranslationAdminOperation,
     TranslationAdminResponse, TranslationAdminTransportContext, TranslationPolicy,
     TranslationTarget,
 };
@@ -1336,18 +1336,18 @@ fn MemoryTab(
         move |_: ()| {
             run_operation(
                 core::transport_context(token.get(), tenant.get(), locale.clone()),
-                core::lookup_memory_operation(
-                    &lookup_source_locale.get_untracked(),
-                    &lookup_target_locale.get_untracked(),
-                    &lookup_owner_slug.get_untracked(),
-                    &lookup_resource_kind.get_untracked(),
-                    &lookup_resource_id.get_untracked(),
-                    &lookup_subresource_id.get_untracked(),
-                    &lookup_field_key.get_untracked(),
-                    &lookup_source_text.get_untracked(),
-                    &lookup_minimum_score.get_untracked(),
-                    &lookup_limit.get_untracked(),
-                ),
+                core::lookup_memory_operation(core::MemoryLookupInput {
+                    source_locale: &lookup_source_locale.get_untracked(),
+                    target_locale: &lookup_target_locale.get_untracked(),
+                    owner_slug: &lookup_owner_slug.get_untracked(),
+                    resource_kind: &lookup_resource_kind.get_untracked(),
+                    resource_id: &lookup_resource_id.get_untracked(),
+                    subresource_id: &lookup_subresource_id.get_untracked(),
+                    field_key: &lookup_field_key.get_untracked(),
+                    source_text: &lookup_source_text.get_untracked(),
+                    minimum_similarity_basis_points: &lookup_minimum_score.get_untracked(),
+                    limit: &lookup_limit.get_untracked(),
+                }),
                 set_busy,
                 set_outcome,
                 Callback::new(move |response| {
@@ -2064,6 +2064,22 @@ fn WorkflowTab(
     let (proposal_id, set_proposal_id) = signal(String::new());
     let (field_key, set_field_key) = signal("alt".to_string());
     let (field_value, set_field_value) = signal(String::new());
+    let (machine_field_keys, set_machine_field_keys) = signal("alt".to_string());
+    let (machine_minimum_similarity, set_machine_minimum_similarity) = signal("8500".to_string());
+    let (machine_tone, set_machine_tone) = signal(String::new());
+    let (machine_domain, set_machine_domain) = signal(String::new());
+    let (machine_style, set_machine_style) = signal(String::new());
+    let (machine_operation_id, set_machine_operation_id) = signal(String::new());
+    let (machine_expected_updated_at, set_machine_expected_updated_at) = signal(String::new());
+    let (machine_reason, set_machine_reason) = signal(String::new());
+    let (item_revision, set_item_revision) = signal("1".to_string());
+    let (assignee_kind, set_assignee_kind) = signal("user".to_string());
+    let (assignee_id, set_assignee_id) = signal(String::new());
+    let (item_retry_reason, set_item_retry_reason) = signal(String::new());
+    let (job_revision, set_job_revision) = signal("1".to_string());
+    let (apply_operation_id, set_apply_operation_id) = signal(String::new());
+    let (expected_attempt_count, set_expected_attempt_count) = signal("1".to_string());
+    let (recovery_reason, set_recovery_reason) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (outcome, set_outcome) = signal(OperationOutcome::None);
     let (add_key, set_add_key) = signal(core::new_idempotency_key("add-item"));
@@ -2071,6 +2087,20 @@ fn WorkflowTab(
     let (submit_key, set_submit_key) = signal(core::new_idempotency_key("submit-proposal"));
     let (approve_key, set_approve_key) = signal(core::new_idempotency_key("approve-proposal"));
     let (apply_key, set_apply_key) = signal(core::new_idempotency_key("apply-proposal"));
+    let (estimate_machine_key, set_estimate_machine_key) =
+        signal(core::new_idempotency_key("estimate-machine-translation"));
+    let (generate_machine_key, set_generate_machine_key) =
+        signal(core::new_idempotency_key("generate-machine-proposal"));
+    let (cancel_machine_key, set_cancel_machine_key) =
+        signal(core::new_idempotency_key("cancel-machine-operation"));
+    let (recover_machine_key, set_recover_machine_key) =
+        signal(core::new_idempotency_key("recover-machine-operation"));
+    let (assign_key, set_assign_key) = signal(core::new_idempotency_key("assign-item"));
+    let (unassign_key, set_unassign_key) = signal(core::new_idempotency_key("unassign-item"));
+    let (retry_key, set_retry_key) = signal(core::new_idempotency_key("retry-item"));
+    let (cancel_job_key, set_cancel_job_key) = signal(core::new_idempotency_key("cancel-job"));
+    let (recover_apply_key, set_recover_apply_key) =
+        signal(core::new_idempotency_key("recover-apply"));
 
     let admit_title = t(
         locale.as_deref(),
@@ -2092,6 +2122,46 @@ fn WorkflowTab(
         "translation.workflow.proposalDescription",
         "Save one exact field value; deterministic and owner QA run before review.",
     );
+    let machine_title = t(
+        locale.as_deref(),
+        "translation.workflow.machine",
+        "Machine translation",
+    );
+    let machine_description = t(
+        locale.as_deref(),
+        "translation.workflow.machineDescription",
+        "Estimate the upper bound before creating a review-required machine proposal.",
+    );
+    let machine_control_title = t(
+        locale.as_deref(),
+        "translation.workflow.machineControl",
+        "Machine operation control",
+    );
+    let machine_control_description = t(
+        locale.as_deref(),
+        "translation.workflow.machineControlDescription",
+        "Read the durable operation state, cancel a request, or recover an observed stuck save.",
+    );
+    let assignment_title = t(
+        locale.as_deref(),
+        "translation.workflow.assignment",
+        "Assignment and item recovery",
+    );
+    let assignment_description = t(
+        locale.as_deref(),
+        "translation.workflow.assignmentDescription",
+        "Assign or unassign an item at its observed revision, or retry a blocked item with a reason.",
+    );
+    let job_control_title = t(
+        locale.as_deref(),
+        "translation.workflow.jobControl",
+        "Job and owner apply control",
+    );
+    let job_control_description = t(
+        locale.as_deref(),
+        "translation.workflow.jobControlDescription",
+        "Cancel a job at its observed revision or recover a durable owner-apply operation.",
+    );
     let review_title = t(
         locale.as_deref(),
         "translation.workflow.review",
@@ -2103,6 +2173,7 @@ fn WorkflowTab(
         "Each transition is explicit, idempotent, and never retries through another protocol.",
     );
     let job_id_label = t(locale.as_deref(), "translation.field.jobId", "Job ID");
+    let job_control_job_id_label = job_id_label.clone();
     let resource_id_label = t(
         locale.as_deref(),
         "translation.field.resourceId",
@@ -2125,7 +2196,67 @@ fn WorkflowTab(
     );
     let item_id_label = t(locale.as_deref(), "translation.field.itemId", "Item ID");
     let review_item_id_label = item_id_label.clone();
+    let machine_item_id_label = item_id_label.clone();
+    let assignment_item_id_label = item_id_label.clone();
+    let item_revision_label = t(
+        locale.as_deref(),
+        "translation.field.itemRevision",
+        "Observed item revision",
+    );
+    let assignee_kind_label = t(
+        locale.as_deref(),
+        "translation.field.assigneeKind",
+        "Assignee kind",
+    );
+    let assignee_id_label = t(
+        locale.as_deref(),
+        "translation.field.assigneeId",
+        "Assignee ID",
+    );
+    let assignee_user_label = t(locale.as_deref(), "translation.field.assigneeUser", "User");
+    let assignee_service_label = t(
+        locale.as_deref(),
+        "translation.field.assigneeService",
+        "Service",
+    );
     let field_key_label = t(locale.as_deref(), "translation.field.fieldKey", "Field key");
+    let field_keys_label = t(
+        locale.as_deref(),
+        "translation.field.fieldKeys",
+        "Field keys (comma-separated)",
+    );
+    let minimum_memory_similarity_label = t(
+        locale.as_deref(),
+        "translation.field.minimumMemorySimilarity",
+        "Minimum memory similarity (basis points)",
+    );
+    let tone_label = t(locale.as_deref(), "translation.field.tone", "Tone");
+    let domain_label = t(locale.as_deref(), "translation.field.domain", "Domain");
+    let style_label = t(locale.as_deref(), "translation.field.style", "Style");
+    let operation_id_label = t(
+        locale.as_deref(),
+        "translation.field.operationId",
+        "Operation ID",
+    );
+    let apply_operation_id_label = operation_id_label.clone();
+    let expected_updated_at_label = t(
+        locale.as_deref(),
+        "translation.field.expectedUpdatedAt",
+        "Observed updated at (RFC 3339)",
+    );
+    let machine_reason_label = t(locale.as_deref(), "translation.field.reason", "Reason");
+    let item_retry_reason_label = machine_reason_label.clone();
+    let recovery_reason_label = machine_reason_label.clone();
+    let job_revision_label = t(
+        locale.as_deref(),
+        "translation.field.jobRevision",
+        "Observed job revision",
+    );
+    let expected_attempt_count_label = t(
+        locale.as_deref(),
+        "translation.field.expectedAttemptCount",
+        "Expected apply attempt count",
+    );
     let value_label = t(
         locale.as_deref(),
         "translation.field.value",
@@ -2157,6 +2288,56 @@ fn WorkflowTab(
         "translation.action.applyProposal",
         "Apply through owner",
     );
+    let estimate_machine_label = t(
+        locale.as_deref(),
+        "translation.action.estimateMachineTranslation",
+        "Estimate machine translation",
+    );
+    let generate_machine_label = t(
+        locale.as_deref(),
+        "translation.action.generateMachineProposal",
+        "Generate machine proposal",
+    );
+    let read_machine_status_label = t(
+        locale.as_deref(),
+        "translation.action.readMachineStatus",
+        "Read machine status",
+    );
+    let cancel_machine_label = t(
+        locale.as_deref(),
+        "translation.action.cancelMachineOperation",
+        "Cancel machine operation",
+    );
+    let recover_machine_label = t(
+        locale.as_deref(),
+        "translation.action.recoverMachineOperation",
+        "Recover machine operation",
+    );
+    let assign_label = t(
+        locale.as_deref(),
+        "translation.action.assignItem",
+        "Assign item",
+    );
+    let unassign_label = t(
+        locale.as_deref(),
+        "translation.action.unassignItem",
+        "Unassign item",
+    );
+    let retry_label = t(
+        locale.as_deref(),
+        "translation.action.retryItem",
+        "Retry item",
+    );
+    let cancel_job_label = t(
+        locale.as_deref(),
+        "translation.action.cancelJob",
+        "Cancel job",
+    );
+    let recover_apply_label = t(
+        locale.as_deref(),
+        "translation.action.recoverApply",
+        "Recover owner apply",
+    );
 
     let add_action = {
         let locale = locale.clone();
@@ -2173,8 +2354,13 @@ fn WorkflowTab(
                 ),
                 set_busy,
                 set_outcome,
-                Callback::new(move |_| {
+                Callback::new(move |response| {
                     set_add_key.set(core::new_idempotency_key("add-item"));
+                    if let TranslationAdminResponse::Item(item) = response {
+                        set_job_id.set(item.job_id);
+                        set_item_id.set(item.id);
+                        set_item_revision.set(item.revision.to_string());
+                    }
                 }),
             );
         }
@@ -2249,8 +2435,275 @@ fn WorkflowTab(
                 ),
                 set_busy,
                 set_outcome,
-                Callback::new(move |_| {
+                Callback::new(move |response| {
                     set_apply_key.set(core::new_idempotency_key("apply-proposal"));
+                    if let TranslationAdminResponse::Apply(apply) = response {
+                        set_apply_operation_id.set(apply.operation_id);
+                        set_item_id.set(apply.item_id);
+                        set_proposal_id.set(apply.proposal_id);
+                    }
+                }),
+            );
+        }
+    };
+    let estimate_machine_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::machine_proposal_operation(
+                    core::MachineProposalCommand::Estimate,
+                    core::MachineProposalInput {
+                        item_id: &item_id.get_untracked(),
+                        field_keys: &machine_field_keys.get_untracked(),
+                        minimum_memory_similarity_basis_points: &machine_minimum_similarity
+                            .get_untracked(),
+                        tone: &machine_tone.get_untracked(),
+                        domain: &machine_domain.get_untracked(),
+                        style: &machine_style.get_untracked(),
+                    },
+                    &estimate_machine_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_estimate_machine_key
+                        .set(core::new_idempotency_key("estimate-machine-translation"));
+                }),
+            );
+        }
+    };
+    let generate_machine_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::machine_proposal_operation(
+                    core::MachineProposalCommand::Generate,
+                    core::MachineProposalInput {
+                        item_id: &item_id.get_untracked(),
+                        field_keys: &machine_field_keys.get_untracked(),
+                        minimum_memory_similarity_basis_points: &machine_minimum_similarity
+                            .get_untracked(),
+                        tone: &machine_tone.get_untracked(),
+                        domain: &machine_domain.get_untracked(),
+                        style: &machine_style.get_untracked(),
+                    },
+                    &generate_machine_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_generate_machine_key
+                        .set(core::new_idempotency_key("generate-machine-proposal"));
+                    if let TranslationAdminResponse::MachineProposal(proposal) = response {
+                        set_machine_operation_id.set(proposal.operation_id);
+                        set_machine_expected_updated_at.set(proposal.updated_at);
+                        set_proposal_id.set(proposal.proposal_id);
+                    }
+                }),
+            );
+        }
+    };
+    let read_machine_status_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_machine_operation_status_operation(
+                    &machine_operation_id.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::MachineOperationStatus(status) = response {
+                        set_machine_operation_id.set(status.operation_id);
+                        set_machine_expected_updated_at.set(status.updated_at);
+                        set_item_id.set(status.item_id);
+                    }
+                }),
+            );
+        }
+    };
+    let cancel_machine_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::cancel_machine_operation(core::MachineCancellationInput {
+                    operation_id: &machine_operation_id.get_untracked(),
+                    reason: &machine_reason.get_untracked(),
+                    idempotency_key: &cancel_machine_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_cancel_machine_key
+                        .set(core::new_idempotency_key("cancel-machine-operation"));
+                }),
+            );
+        }
+    };
+    let recover_machine_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::recover_machine_operation(core::MachineRecoveryInput {
+                    operation_id: &machine_operation_id.get_untracked(),
+                    expected_updated_at: &machine_expected_updated_at.get_untracked(),
+                    proposal: core::MachineProposalInput {
+                        item_id: &item_id.get_untracked(),
+                        field_keys: &machine_field_keys.get_untracked(),
+                        minimum_memory_similarity_basis_points: &machine_minimum_similarity
+                            .get_untracked(),
+                        tone: &machine_tone.get_untracked(),
+                        domain: &machine_domain.get_untracked(),
+                        style: &machine_style.get_untracked(),
+                    },
+                    reason: &machine_reason.get_untracked(),
+                    idempotency_key: &recover_machine_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_recover_machine_key
+                        .set(core::new_idempotency_key("recover-machine-operation"));
+                    if let TranslationAdminResponse::MachineProposal(proposal) = response {
+                        set_machine_operation_id.set(proposal.operation_id);
+                        set_machine_expected_updated_at.set(proposal.updated_at);
+                        set_proposal_id.set(proposal.proposal_id);
+                    }
+                }),
+            );
+        }
+    };
+    let assign_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::assign_item_operation(core::AssignmentInput {
+                    item_id: &item_id.get_untracked(),
+                    expected_revision: &item_revision.get_untracked(),
+                    assignee_kind: &assignee_kind.get_untracked(),
+                    assignee_id: &assignee_id.get_untracked(),
+                    idempotency_key: &assign_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_assign_key.set(core::new_idempotency_key("assign-item"));
+                    if let TranslationAdminResponse::Assignment(assignment) = response {
+                        set_item_id.set(assignment.item_id);
+                        set_item_revision.set(assignment.item_revision.to_string());
+                        match assignment.assignee {
+                            Some(assignee) => {
+                                set_assignee_kind.set(
+                                    match assignee.kind {
+                                        ActorKind::User => "user",
+                                        ActorKind::Service => "service",
+                                    }
+                                    .to_string(),
+                                );
+                                set_assignee_id.set(assignee.id);
+                            }
+                            None => set_assignee_id.set(String::new()),
+                        }
+                    }
+                }),
+            );
+        }
+    };
+    let unassign_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::unassign_item_operation(core::UnassignmentInput {
+                    item_id: &item_id.get_untracked(),
+                    expected_revision: &item_revision.get_untracked(),
+                    idempotency_key: &unassign_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_unassign_key.set(core::new_idempotency_key("unassign-item"));
+                    if let TranslationAdminResponse::Assignment(assignment) = response {
+                        set_item_id.set(assignment.item_id);
+                        set_item_revision.set(assignment.item_revision.to_string());
+                        set_assignee_id.set(String::new());
+                    }
+                }),
+            );
+        }
+    };
+    let retry_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::retry_item_operation(core::ItemRetryInput {
+                    item_id: &item_id.get_untracked(),
+                    expected_revision: &item_revision.get_untracked(),
+                    reason: &item_retry_reason.get_untracked(),
+                    idempotency_key: &retry_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_retry_key.set(core::new_idempotency_key("retry-item"));
+                    if let TranslationAdminResponse::Retry(retry) = response {
+                        set_item_id.set(retry.item_id);
+                        set_item_revision.set(retry.item_revision.to_string());
+                    }
+                }),
+            );
+        }
+    };
+    let cancel_job_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::cancel_job_operation(core::JobCancellationInput {
+                    job_id: &job_id.get_untracked(),
+                    expected_revision: &job_revision.get_untracked(),
+                    reason: &recovery_reason.get_untracked(),
+                    idempotency_key: &cancel_job_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_cancel_job_key.set(core::new_idempotency_key("cancel-job"));
+                    if let TranslationAdminResponse::Cancellation(cancellation) = response {
+                        set_job_id.set(cancellation.job_id);
+                        set_job_revision.set(cancellation.job_revision.to_string());
+                    }
+                }),
+            );
+        }
+    };
+    let recover_apply_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::recover_apply_operation(core::ApplyRecoveryInput {
+                    operation_id: &apply_operation_id.get_untracked(),
+                    expected_attempt_count: &expected_attempt_count.get_untracked(),
+                    reason: &recovery_reason.get_untracked(),
+                    idempotency_key: &recover_apply_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_recover_apply_key.set(core::new_idempotency_key("recover-apply"));
+                    if let TranslationAdminResponse::Apply(apply) = response {
+                        set_apply_operation_id.set(apply.operation_id);
+                        set_item_id.set(apply.item_id);
+                        set_proposal_id.set(apply.proposal_id);
+                    }
                 }),
             );
         }
@@ -2290,7 +2743,99 @@ fn WorkflowTab(
                         <Button on_click=Box::new(save_action)>{save_label}</Button>
                     </CardContent>
                 </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{machine_title}</CardTitle>
+                        <CardDescription>{machine_description}</CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-2"><Label required=true r#for="machine_item_id">{machine_item_id_label}</Label><Input value=item_id set_value=set_item_id id="machine_item_id" name="machine_item_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="machine_field_keys">{field_keys_label}</Label><Input value=machine_field_keys set_value=set_machine_field_keys id="machine_field_keys" name="machine_field_keys" /></div>
+                            <div class="space-y-2"><Label required=true r#for="machine_minimum_similarity">{minimum_memory_similarity_label}</Label><Input value=machine_minimum_similarity set_value=set_machine_minimum_similarity id="machine_minimum_similarity" name="machine_minimum_similarity" /></div>
+                            <div class="space-y-2"><Label r#for="machine_tone">{tone_label}</Label><Input value=machine_tone set_value=set_machine_tone id="machine_tone" name="machine_tone" /></div>
+                            <div class="space-y-2"><Label r#for="machine_domain">{domain_label}</Label><Input value=machine_domain set_value=set_machine_domain id="machine_domain" name="machine_domain" /></div>
+                            <div class="space-y-2"><Label r#for="machine_style">{style_label}</Label><Input value=machine_style set_value=set_machine_style id="machine_style" name="machine_style" /></div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <Button variant=ButtonVariant::Outline on_click=Box::new(estimate_machine_action)>{estimate_machine_label}</Button>
+                            <Button on_click=Box::new(generate_machine_action)>{generate_machine_label}</Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{assignment_title}</CardTitle>
+                        <CardDescription>{assignment_description}</CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-2"><Label required=true r#for="assignment_item_id">{assignment_item_id_label}</Label><Input value=item_id set_value=set_item_id id="assignment_item_id" name="assignment_item_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="item_revision">{item_revision_label}</Label><Input value=item_revision set_value=set_item_revision id="item_revision" name="item_revision" /></div>
+                            <div class="space-y-2">
+                                <Label r#for="assignee_kind">{assignee_kind_label}</Label>
+                                <Select
+                                    options=vec![
+                                        SelectOption::new("user", assignee_user_label),
+                                        SelectOption::new("service", assignee_service_label),
+                                    ]
+                                    value=assignee_kind
+                                    set_value=set_assignee_kind
+                                    id="assignee_kind" name="assignee_kind"
+                                />
+                            </div>
+                            <div class="space-y-2"><Label r#for="assignee_id">{assignee_id_label}</Label><Input value=assignee_id set_value=set_assignee_id id="assignee_id" name="assignee_id" /></div>
+                            <div class="space-y-2 sm:col-span-2"><Label r#for="item_retry_reason">{item_retry_reason_label}</Label><Textarea value=item_retry_reason set_value=set_item_retry_reason id="item_retry_reason" name="item_retry_reason" rows=3 /></div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <Button on_click=Box::new(assign_action)>{assign_label}</Button>
+                            <Button variant=ButtonVariant::Secondary on_click=Box::new(unassign_action)>{unassign_label}</Button>
+                            <Button variant=ButtonVariant::Outline on_click=Box::new(retry_action)>{retry_label}</Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{machine_control_title}</CardTitle>
+                    <CardDescription>{machine_control_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="space-y-2"><Label required=true r#for="machine_operation_id">{operation_id_label}</Label><Input value=machine_operation_id set_value=set_machine_operation_id id="machine_operation_id" name="machine_operation_id" /></div>
+                        <div class="space-y-2"><Label r#for="machine_expected_updated_at">{expected_updated_at_label}</Label><Input value=machine_expected_updated_at set_value=set_machine_expected_updated_at id="machine_expected_updated_at" name="machine_expected_updated_at" /></div>
+                        <div class="space-y-2 sm:col-span-2"><Label r#for="machine_reason">{machine_reason_label}</Label><Textarea value=machine_reason set_value=set_machine_reason id="machine_reason" name="machine_reason" rows=3 /></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(read_machine_status_action)>{read_machine_status_label}</Button>
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(cancel_machine_action)>{cancel_machine_label}</Button>
+                        <Button on_click=Box::new(recover_machine_action)>{recover_machine_label}</Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{job_control_title}</CardTitle>
+                    <CardDescription>{job_control_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="space-y-2"><Label r#for="job_control_id">{job_control_job_id_label}</Label><Input value=job_id set_value=set_job_id id="job_control_id" name="job_control_id" /></div>
+                        <div class="space-y-2"><Label r#for="job_revision">{job_revision_label}</Label><Input value=job_revision set_value=set_job_revision id="job_revision" name="job_revision" /></div>
+                        <div class="space-y-2"><Label r#for="apply_operation_id">{apply_operation_id_label}</Label><Input value=apply_operation_id set_value=set_apply_operation_id id="apply_operation_id" name="apply_operation_id" /></div>
+                        <div class="space-y-2"><Label r#for="expected_attempt_count">{expected_attempt_count_label}</Label><Input value=expected_attempt_count set_value=set_expected_attempt_count id="expected_attempt_count" name="expected_attempt_count" /></div>
+                        <div class="space-y-2 sm:col-span-2"><Label required=true r#for="recovery_reason">{recovery_reason_label}</Label><Textarea value=recovery_reason set_value=set_recovery_reason id="recovery_reason" name="recovery_reason" rows=3 /></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(cancel_job_action)>{cancel_job_label}</Button>
+                        <Button on_click=Box::new(recover_apply_action)>{recover_apply_label}</Button>
+                    </div>
+                </CardContent>
+            </Card>
 
             <Card>
                 <CardHeader>

@@ -266,7 +266,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     }
 
     const expectedBackfillContracts = new Map([
-      ["m20260726_000001_enforce_tenant_locale_policy", { owner: "rustok-tenant", mode: "none" }],
+      ["m20260726_000001_enforce_tenant_locale_policy", { owner: "rustok-tenant", mode: "fixture" }],
       ["m20260726_000002_add_media_translation_revision", { owner: "rustok-media", mode: "none" }],
       ["m20260727_000003_create_media_translation_changes", { owner: "rustok-media", mode: "none" }],
       ["m20260721_000003_expand_pages_locale_storage_columns", { owner: "rustok-pages", mode: "none" }],

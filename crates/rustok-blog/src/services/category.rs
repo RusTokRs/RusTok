@@ -1,13 +1,12 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -19,15 +18,41 @@ use crate::dto::{
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
 use crate::services::rbac::enforce_scope;
+use crate::translation_evidence::{
+    TRANSLATION_RESOURCE_KIND, TranslationChangeEvidence, record_translation_change_in_tx,
+};
 
 pub struct CategoryService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApplyExactCategoryTranslationInput {
+    pub source_locale: TenantLocale,
+    pub target_locale: TenantLocale,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub expected_resource_revision: i64,
+    pub expected_source_revision: i64,
+    pub expected_target_revision: Option<i64>,
+    pub actor_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CategoryTranslationApplyResult {
+    pub resource_revision: i64,
+    pub target_revision: i64,
+}
+
 impl CategoryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
+    }
+
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
     }
 
     #[instrument(skip(self, security, input))]
@@ -39,6 +64,7 @@ impl CategoryService {
     ) -> BlogResult<Uuid> {
         enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
         validate_category_name(&input.name)?;
+        validate_optional_description(input.description.as_deref())?;
         let slug = normalize_category_slug(input.slug.as_deref(), &input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let now = Utc::now();
@@ -48,8 +74,10 @@ impl CategoryService {
         if let Some(parent_id) = input.parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
+        self.ensure_translation_slug_available_in_tx(&txn, tenant_id, &locale, &slug, None)
+            .await?;
 
-        blog_category::ActiveModel {
+        let category = blog_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
             parent_id: Set(input.parent_id),
@@ -57,22 +85,39 @@ impl CategoryService {
             depth: Set(0),
             post_count: Set(0),
             settings: Set(input.settings),
+            revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
         .insert(&txn)
         .await?;
 
-        blog_category_translation::ActiveModel {
+        let translation = blog_category_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             category_id: Set(id),
             tenant_id: Set(tenant_id),
-            locale: Set(locale),
+            locale: Set(locale.clone()),
             name: Set(input.name),
             slug: Set(slug),
             description: Set(input.description),
+            revision: Set(1),
         }
         .insert(&txn)
+        .await?;
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                resource_kind: TRANSLATION_RESOURCE_KIND,
+                resource_id: id,
+                locale: &locale,
+                resource_revision: category.revision,
+                target_revision: translation.revision,
+                operation: "upsert",
+                lifecycle: "active",
+            },
+        )
         .await?;
 
         txn.commit().await.map_err(BlogError::from)?;
@@ -88,6 +133,7 @@ impl CategoryService {
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
+        let locale = normalize_locale(locale)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -100,7 +146,7 @@ impl CategoryService {
             .all(&self.db)
             .await?;
 
-        Ok(to_category_response(category, translations, locale))
+        Ok(to_category_response(category, translations, &locale))
     }
 
     #[instrument(skip(self, security, input))]
@@ -118,18 +164,43 @@ impl CategoryService {
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-
-        let mut active: blog_category::ActiveModel = category.into();
-        active.updated_at = Set(Utc::now().into());
-        if let Some(position) = input.position {
-            active.position = Set(position);
-        }
-        if let Some(settings) = input.settings {
-            active.settings = Set(settings);
-        }
-        let category = active.update(&txn).await?;
-
         let locale = normalize_locale(&input.locale)?;
+        let next_resource_revision = next_category_revision(&category)?;
+        let now = Utc::now().fixed_offset();
+        let position = input.position.unwrap_or(category.position);
+        let settings = input
+            .settings
+            .clone()
+            .unwrap_or_else(|| category.settings.clone());
+        let resource_updated = blog_category::Entity::update_many()
+            .col_expr(blog_category::Column::Position, Expr::value(position))
+            .col_expr(
+                blog_category::Column::Settings,
+                Expr::value(settings.clone()),
+            )
+            .col_expr(
+                blog_category::Column::Revision,
+                Expr::value(next_resource_revision),
+            )
+            .col_expr(blog_category::Column::UpdatedAt, Expr::value(now))
+            .filter(blog_category::Column::Id.eq(category_id))
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .filter(blog_category::Column::Revision.eq(category.revision))
+            .exec(&txn)
+            .await?;
+        if resource_updated.rows_affected != 1 {
+            return Err(BlogError::conflict(
+                "blog category changed before the update could commit",
+            ));
+        }
+        let category = blog_category::Model {
+            position,
+            settings,
+            revision: next_resource_revision,
+            updated_at: now,
+            ..category
+        };
+
         let existing_translation = blog_category_translation::Entity::find()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
             .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
@@ -137,47 +208,114 @@ impl CategoryService {
             .one(&txn)
             .await?;
 
-        match existing_translation {
+        let target_revision = match existing_translation {
             Some(translation) => {
-                let mut active: blog_category_translation::ActiveModel = translation.into();
-                if let Some(name) = &input.name {
-                    validate_category_name(name)?;
-                    active.name = Set(name.to_string());
-                    if input.slug.is_none() {
-                        active.slug = Set(normalize_non_empty_slug(name)?);
-                    }
+                let name = input
+                    .name
+                    .as_deref()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| translation.name.clone());
+                validate_category_name(&name)?;
+                let slug = match input.slug.as_deref() {
+                    Some(slug) => normalize_non_empty_slug(slug)?,
+                    None if input.name.is_some() => normalize_non_empty_slug(&name)?,
+                    None => translation.slug.clone(),
+                };
+                self.ensure_translation_slug_available_in_tx(
+                    &txn,
+                    tenant_id,
+                    &locale,
+                    &slug,
+                    Some(category_id),
+                )
+                .await?;
+                let description = input
+                    .description
+                    .clone()
+                    .or_else(|| translation.description.clone());
+                validate_optional_description(description.as_deref())?;
+                let revision =
+                    next_category_translation_revision(category_id, &locale, translation.revision)?;
+                let translation_updated = blog_category_translation::Entity::update_many()
+                    .col_expr(blog_category_translation::Column::Name, Expr::value(name))
+                    .col_expr(blog_category_translation::Column::Slug, Expr::value(slug))
+                    .col_expr(
+                        blog_category_translation::Column::Description,
+                        Expr::value(description),
+                    )
+                    .col_expr(
+                        blog_category_translation::Column::Revision,
+                        Expr::value(revision),
+                    )
+                    .filter(blog_category_translation::Column::Id.eq(translation.id))
+                    .filter(blog_category_translation::Column::Revision.eq(translation.revision))
+                    .exec(&txn)
+                    .await?;
+                if translation_updated.rows_affected != 1 {
+                    return Err(BlogError::conflict(
+                        "category translation changed before the update could commit",
+                    ));
                 }
-                if let Some(slug_value) = input.slug.as_deref() {
-                    active.slug = Set(normalize_non_empty_slug(slug_value)?);
-                }
-                if input.description.is_some() {
-                    active.description = Set(input.description);
-                }
-                active.update(&txn).await?;
+                revision
             }
             None => {
                 let name = input
                     .name
+                    .as_deref()
+                    .map(str::to_owned)
                     .ok_or_else(|| BlogError::validation("Category name is required"))?;
                 validate_category_name(&name)?;
                 let slug = match input.slug.as_deref() {
                     Some(slug_value) => normalize_non_empty_slug(slug_value)?,
                     None => normalize_non_empty_slug(&name)?,
                 };
-
-                blog_category_translation::ActiveModel {
+                self.ensure_translation_slug_available_in_tx(
+                    &txn,
+                    tenant_id,
+                    &locale,
+                    &slug,
+                    Some(category_id),
+                )
+                .await?;
+                validate_optional_description(input.description.as_deref())?;
+                let translation = blog_category_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     category_id: Set(category_id),
                     tenant_id: Set(tenant_id),
                     locale: Set(locale.clone()),
                     name: Set(name),
                     slug: Set(slug),
-                    description: Set(input.description),
+                    description: Set(input.description.clone()),
+                    revision: Set(1),
                 }
                 .insert(&txn)
-                .await?;
+                .await;
+                match translation {
+                    Ok(_) => 1,
+                    Err(error) if is_unique_constraint(&error) => {
+                        return Err(BlogError::conflict(
+                            "category translation was created before the update could commit",
+                        ));
+                    }
+                    Err(error) => return Err(error.into()),
+                }
             }
-        }
+        };
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                resource_kind: TRANSLATION_RESOURCE_KIND,
+                resource_id: category_id,
+                locale: &locale,
+                resource_revision: category.revision,
+                target_revision,
+                operation: "upsert",
+                lifecycle: "active",
+            },
+        )
+        .await?;
 
         self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
@@ -208,13 +346,46 @@ impl CategoryService {
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
 
-        blog_category_translation::Entity::delete_many()
+        let translations = blog_category_translation::Entity::find()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
             .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+        let (locale, target_revision) = translations
+            .iter()
+            .min_by(|left, right| {
+                left.locale
+                    .cmp(&right.locale)
+                    .then_with(|| left.id.cmp(&right.id))
+            })
+            .map(|translation| (translation.locale.clone(), translation.revision))
+            .unwrap_or_else(|| (PLATFORM_FALLBACK_LOCALE.to_string(), 0));
+        let resource_revision = next_category_revision(&category)?;
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                resource_kind: TRANSLATION_RESOURCE_KIND,
+                resource_id: category_id,
+                locale: &locale,
+                resource_revision,
+                target_revision,
+                operation: "delete",
+                lifecycle: "deleted",
+            },
+        )
+        .await?;
+        let deleted = blog_category::Entity::delete_many()
+            .filter(blog_category::Column::Id.eq(category_id))
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .filter(blog_category::Column::Revision.eq(category.revision))
             .exec(&txn)
             .await?;
-
-        category.delete(&txn).await?;
+        if deleted.rows_affected != 1 {
+            return Err(BlogError::conflict(
+                "blog category changed before deletion could commit",
+            ));
+        }
 
         self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
@@ -234,6 +405,7 @@ impl CategoryService {
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
         let page = filter.page.max(1);
         let per_page = filter.per_page.clamp(1, 100);
 
@@ -286,6 +458,176 @@ impl CategoryService {
         Ok((items, total))
     }
 
+    pub(crate) async fn apply_exact_translation_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        input: ApplyExactCategoryTranslationInput,
+    ) -> BlogResult<CategoryTranslationApplyResult> {
+        if input.source_locale == input.target_locale {
+            return Err(BlogError::validation(
+                "Source and target locales must differ for an exact category translation",
+            ));
+        }
+
+        let category = blog_category::Entity::find_by_id(category_id)
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| BlogError::category_not_found(category_id))?;
+        if category.revision != input.expected_resource_revision {
+            return Err(BlogError::conflict(
+                "blog category resource revision does not match the translation proposal",
+            ));
+        }
+
+        let source = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(blog_category_translation::Column::Locale.eq(input.source_locale.as_str()))
+            .one(txn)
+            .await?
+            .ok_or_else(|| BlogError::validation("Exact source locale is not present"))?;
+        if source.revision != input.expected_source_revision {
+            return Err(BlogError::conflict(
+                "source locale revision does not match the translation proposal",
+            ));
+        }
+
+        validate_category_name(&input.name)?;
+        let slug = normalize_non_empty_slug(&input.slug)?;
+        let description = normalize_optional_description(input.description.as_deref());
+        validate_optional_description(description.as_deref())?;
+        self.ensure_translation_slug_available_in_tx(
+            txn,
+            tenant_id,
+            input.target_locale.as_str(),
+            &slug,
+            Some(category_id),
+        )
+        .await?;
+
+        let existing_target = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(blog_category_translation::Column::Locale.eq(input.target_locale.as_str()))
+            .one(txn)
+            .await?;
+        let target_revision = match existing_target {
+            Some(target) => {
+                if input.expected_target_revision != Some(target.revision) {
+                    return Err(BlogError::conflict(
+                        "target locale revision does not match the translation proposal",
+                    ));
+                }
+                let revision = next_category_translation_revision(
+                    category_id,
+                    input.target_locale.as_str(),
+                    target.revision,
+                )?;
+                let updated = blog_category_translation::Entity::update_many()
+                    .col_expr(
+                        blog_category_translation::Column::Name,
+                        Expr::value(input.name.clone()),
+                    )
+                    .col_expr(
+                        blog_category_translation::Column::Slug,
+                        Expr::value(slug.clone()),
+                    )
+                    .col_expr(
+                        blog_category_translation::Column::Description,
+                        Expr::value(description.clone()),
+                    )
+                    .col_expr(
+                        blog_category_translation::Column::Revision,
+                        Expr::value(revision),
+                    )
+                    .filter(blog_category_translation::Column::Id.eq(target.id))
+                    .filter(blog_category_translation::Column::Revision.eq(target.revision))
+                    .exec(txn)
+                    .await?;
+                if updated.rows_affected != 1 {
+                    return Err(BlogError::conflict(
+                        "target locale changed before translation apply could commit",
+                    ));
+                }
+                revision
+            }
+            None => {
+                if input.expected_target_revision.is_some() {
+                    return Err(BlogError::conflict(
+                        "translation proposal expected a target locale that does not exist",
+                    ));
+                }
+                let inserted = blog_category_translation::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    category_id: Set(category_id),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(input.target_locale.as_str().to_string()),
+                    name: Set(input.name.clone()),
+                    slug: Set(slug),
+                    description: Set(description),
+                    revision: Set(1),
+                }
+                .insert(txn)
+                .await;
+                match inserted {
+                    Ok(_) => 1,
+                    Err(error) if is_unique_constraint(&error) => {
+                        return Err(BlogError::conflict(
+                            "target locale was created before translation apply could commit",
+                        ));
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        };
+
+        let resource_revision = next_category_revision(&category)?;
+        let category_updated = blog_category::Entity::update_many()
+            .col_expr(
+                blog_category::Column::Revision,
+                Expr::value(resource_revision),
+            )
+            .col_expr(
+                blog_category::Column::UpdatedAt,
+                Expr::value(Utc::now().fixed_offset()),
+            )
+            .filter(blog_category::Column::Id.eq(category_id))
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .filter(blog_category::Column::Revision.eq(category.revision))
+            .exec(txn)
+            .await?;
+        if category_updated.rows_affected != 1 {
+            return Err(BlogError::conflict(
+                "blog category changed before translation apply could commit",
+            ));
+        }
+
+        record_translation_change_in_tx(
+            txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                resource_kind: TRANSLATION_RESOURCE_KIND,
+                resource_id: category_id,
+                locale: input.target_locale.as_str(),
+                resource_revision,
+                target_revision,
+                operation: "upsert",
+                lifecycle: "active",
+            },
+        )
+        .await?;
+        self.publish_blog_reindex_in_tx(txn, tenant_id, input.actor_id)
+            .await?;
+
+        Ok(CategoryTranslationApplyResult {
+            resource_revision,
+            target_revision,
+        })
+    }
+
     pub(crate) async fn ensure_exists_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -297,6 +639,27 @@ impl CategoryService {
             .await?;
         if exists.is_none() {
             return Err(BlogError::category_not_found(category_id));
+        }
+        Ok(())
+    }
+
+    async fn ensure_translation_slug_available_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        locale: &str,
+        slug: &str,
+        exclude_category_id: Option<Uuid>,
+    ) -> BlogResult<()> {
+        let mut select = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(blog_category_translation::Column::Locale.eq(locale))
+            .filter(blog_category_translation::Column::Slug.eq(slug));
+        if let Some(category_id) = exclude_category_id {
+            select = select.filter(blog_category_translation::Column::CategoryId.ne(category_id));
+        }
+        if select.one(txn).await?.is_some() {
+            return Err(BlogError::duplicate_slug(slug, locale));
         }
         Ok(())
     }
@@ -326,7 +689,7 @@ fn validate_category_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Category name cannot be empty"));
     }
-    if name.len() > 255 {
+    if name.chars().count() > 255 {
         return Err(BlogError::validation(
             "Category name cannot exceed 255 characters",
         ));
@@ -335,11 +698,61 @@ fn validate_category_name(name: &str) -> BlogResult<()> {
 }
 
 fn normalize_locale(locale: &str) -> BlogResult<String> {
-    let normalized = locale.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return Err(BlogError::validation("Locale cannot be empty"));
+    TenantLocale::new(locale)
+        .map(TenantLocale::into_inner)
+        .map_err(|_| BlogError::validation("Invalid locale"))
+}
+
+fn validate_optional_description(description: Option<&str>) -> BlogResult<()> {
+    if let Some(description) = description
+        && description.chars().count() > 1_000
+    {
+        return Err(BlogError::validation(
+            "Category description cannot exceed 1000 characters",
+        ));
     }
-    Ok(normalized)
+    Ok(())
+}
+
+fn normalize_optional_description(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn next_category_revision(category: &blog_category::Model) -> BlogResult<i64> {
+    category
+        .revision
+        .checked_add(1)
+        .filter(|revision| category.revision > 0 && *revision > 0)
+        .ok_or_else(|| {
+            BlogError::conflict(format!(
+                "blog category {} has an invalid or exhausted resource revision",
+                category.id
+            ))
+        })
+}
+
+fn next_category_translation_revision(
+    category_id: Uuid,
+    locale: &str,
+    revision: i64,
+) -> BlogResult<i64> {
+    revision
+        .checked_add(1)
+        .filter(|next_revision| revision > 0 && *next_revision > 0)
+        .ok_or_else(|| BlogError::CategoryTranslationRevisionExhausted {
+            category_id,
+            locale: locale.to_string(),
+        })
+}
+
+fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResult<String> {

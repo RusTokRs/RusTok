@@ -51,6 +51,7 @@ mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000001_add_module_operation_idempotency_key;
 mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
+mod m20260803_000001_create_owner_operation_receipts;
 
 #[cfg(test)]
 mod rbac_system_role_repair_tests;
@@ -71,6 +72,10 @@ const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
     "m20260726_000003_create_command_receipts",
     "m20260727_000004_create_index_dlq_receipts",
     "m20260728_000001_create_consumer_poison_receipts",
+    "m20260803_000001_create_owner_operation_receipts",
+    "m20260803_000007_add_translation_target_support",
+    "m20260803_000016_add_blog_category_translation_target_support",
+    "m20260803_000017_add_translation_target_support",
 ];
 
 struct ModuleMigrationSource {
@@ -347,6 +352,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260717_000002_create_registry_publish_build_staging::Migration),
             Box::new(m20260717_000003_add_registry_artifact_origin_and_external_staging::Migration),
             Box::new(m20260723_000001_create_event_delivery_settings::Migration),
+            Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

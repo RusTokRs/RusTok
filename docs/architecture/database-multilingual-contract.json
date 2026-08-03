@@ -97,7 +97,18 @@
           "required_markers": [
             "mod m20260722_000001_create_navigation_tables;",
             "Box::new(",
-            "m20260722_000001_create_navigation_tables::Migration"
+            "m20260722_000001_create_navigation_tables::Migration",
+            "mod m20260803_000017_add_translation_target_support;",
+            "m20260803_000017_add_translation_target_support::Migration"
+          ]
+        },
+        {
+          "path": "crates/rustok-navigation/src/migrations/m20260803_000017_add_translation_target_support.rs",
+          "required_markers": [
+            "ColumnDef::new(Menus::Revision)",
+            "ColumnDef::new(MenuTranslations::Revision)",
+            "NavigationTranslationChanges::Table",
+            "navigation_translation_changes"
           ]
         }
       ]

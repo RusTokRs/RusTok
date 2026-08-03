@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use chrono::Utc;
 use rustok_iggy::{
-    ConsumedContractDecodeFailure, ContractDecodeFailureKind, ExternalConfig, IggyConfig,
-    IggyMode, IggyTransport, PersistentContractConsumerGroup, PersistentContractDelivery,
+    ConsumedContractDecodeFailure, ContractDecodeFailureKind, ExternalConfig, IggyConfig, IggyMode,
+    IggyTransport, PersistentContractConsumerGroup, PersistentContractDelivery,
     SerializationFormat, TopologyConfig,
 };
 use rustok_iggy_connector::migrations::{
@@ -20,12 +20,8 @@ use rustok_iggy_connector::{
     ConnectorConfig, ConsumerCursor, ExternalConnector, IggyConnector, PublishRequest,
     SubscriberMessage,
 };
-use rustok_search::{
-    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC,
-};
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-};
+use rustok_search::{FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
@@ -41,10 +37,8 @@ const IGGY_PASSWORD_ENV: &str = "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD";
 const RECEIVE_TIMEOUT: Duration = Duration::from_secs(20);
 const NO_DUPLICATE_DLQ_TIMEOUT: Duration = Duration::from_millis(750);
 const PUBLISH_LEASE: Duration = Duration::from_secs(30);
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_versioned_invalidation_raw_poison_evidence_v1";
-const EVIDENCE_PATH: &str =
-    "target/forum-search-versioned-invalidation-raw-poison-evidence.json";
+const EVIDENCE_CONTRACT: &str = "forum_search_versioned_invalidation_raw_poison_evidence_v1";
+const EVIDENCE_PATH: &str = "target/forum-search-versioned-invalidation-raw-poison-evidence.json";
 
 struct PostgresIggyEvidence {
     control: DatabaseConnection,
@@ -63,9 +57,7 @@ impl PostgresIggyEvidence {
             return Ok(None);
         };
         let Some(config) = external_iggy_config(scope)? else {
-            eprintln!(
-                "{IGGY_ADDRESS_ENV} is not set; skipping Forum Search raw poison proof"
-            );
+            eprintln!("{IGGY_ADDRESS_ENV} is not set; skipping Forum Search raw poison proof");
             return Ok(None);
         };
 
@@ -176,9 +168,7 @@ async fn raw_poison_receipt_prevents_duplicate_dlq_after_restart() -> TestResult
     Ok(())
 }
 
-async fn run_raw_poison_proof(
-    evidence: &PostgresIggyEvidence,
-) -> TestResult<ScenarioEvidence> {
+async fn run_raw_poison_proof(evidence: &PostgresIggyEvidence) -> TestResult<ScenarioEvidence> {
     let stream = evidence.config.topology.stream_name.clone();
     let dlq_group = unique_name("dlq-observer");
     let first_payload = vec![0xff, 0x00, 0x46, 0x04, 0x01];
@@ -257,9 +247,7 @@ async fn run_raw_poison_proof(
         first_failure.stable_error_code(),
         1,
     )?;
-    store
-        .mark_published(&identity, first_publisher_id)
-        .await?;
+    store.mark_published(&identity, first_publisher_id).await?;
     let published_receipt = require_receipt(&store, &identity).await?;
     ensure_receipt(
         &published_receipt,
@@ -487,18 +475,15 @@ async fn acknowledge_cursor_message(
     cursor: &mut Box<dyn ConsumerCursor>,
     message: &SubscriberMessage,
 ) -> TestResult<()> {
-    let ack_token = message
-        .metadata
-        .ack_token
-        .as_deref()
-        .ok_or_else(|| invalid_data("Forum Search DLQ delivery has no acknowledgement token"))?;
+    let ack_token =
+        message.metadata.ack_token.as_deref().ok_or_else(|| {
+            invalid_data("Forum Search DLQ delivery has no acknowledgement token")
+        })?;
     cursor.acknowledge(ack_token).await?;
     Ok(())
 }
 
-async fn assert_no_duplicate_dlq_message(
-    cursor: &mut Box<dyn ConsumerCursor>,
-) -> TestResult<()> {
+async fn assert_no_duplicate_dlq_message(cursor: &mut Box<dyn ConsumerCursor>) -> TestResult<()> {
     match timeout(NO_DUPLICATE_DLQ_TIMEOUT, cursor.receive()).await {
         Err(_) | Ok(Ok(None)) => Ok(()),
         Ok(Ok(Some(_))) => Err(invalid_data(

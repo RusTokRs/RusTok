@@ -27,14 +27,14 @@ use rustok_forum::{
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
-    ForumProjectionReconciler, ForumSearchContractIngress,
-    ForumSearchContractIngressOutcome, ForumStorefrontSearchAttributeFilter,
-    ForumStorefrontSearchRequest, SearchModule, SearchProjectionSourceFactory,
-    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
-    StorefrontSearchTransport, execute_forum_storefront_search,
+    ForumProjectionReconciler, ForumSearchContractIngress, ForumSearchContractIngressOutcome,
+    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
+    SearchProjectionSourceFactory, SharedStorefrontSearchCategoryScopePort,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
+    execute_forum_storefront_search,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -51,8 +51,7 @@ const SEARCH_TEST_DATABASE_ENV: &str = "RUSTOK_SEARCH_TEST_DATABASE_URL";
 const FORUM_TEST_DATABASE_ENV: &str = "RUSTOK_FORUM_TEST_DATABASE_URL";
 const ROOT_EVENT_TYPE: &str = "index.reindex_requested";
 const TYPED_EVENT_TYPE: &str = "forum.search_projection.invalidation_issued";
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_link_forum_03_private_trusted_exclusion_proof_v1";
+const EVIDENCE_CONTRACT: &str = "forum_search_link_forum_03_private_trusted_exclusion_proof_v1";
 const EVIDENCE_PATH: &str =
     "target/forum-search-link-forum-03-private-trusted-exclusion-evidence.json";
 const PUBLIC_TOPIC_MARKER: &str = "d15publictopicmarker";
@@ -337,13 +336,11 @@ impl StorefrontSearchResultEligibilityPort for ExactForumEligibilityPort {
             .as_ref()
             .and_then(|context| context.channel_slug.as_deref());
         let allowed = match &self.mode {
-            ViewerMode::Public => ForumSearchResultEligibilityService::new(self.db.clone())
-                .filter_public_storefront_visible(
-                    request.tenant_id,
-                    channel_slug,
-                    &candidates,
-                )
-                .await,
+            ViewerMode::Public => {
+                ForumSearchResultEligibilityService::new(self.db.clone())
+                    .filter_public_storefront_visible(request.tenant_id, channel_slug, &candidates)
+                    .await
+            }
             ViewerMode::Authenticated { user_id, facts } => {
                 let mut context = PortContext::new(
                     request.tenant_id.to_string(),
@@ -407,7 +404,8 @@ fn from_forum_candidate(candidate: ForumSearchResultCandidate) -> StorefrontSear
 }
 
 #[tokio::test]
-async fn private_and_trusted_channel_candidates_fail_closed_in_storefront_search() -> TestResult<()> {
+async fn private_and_trusted_channel_candidates_fail_closed_in_storefront_search() -> TestResult<()>
+{
     let Some(evidence) = PostgresPrivateTrustedEvidence::setup("link").await? else {
         return Ok(());
     };
@@ -955,10 +953,7 @@ fn exact_facts_port(
     })
 }
 
-fn ensure_revision_shape(
-    revisions: &[OwnerRevisionRow],
-    fixture: ForumFixture,
-) -> TestResult<()> {
+fn ensure_revision_shape(revisions: &[OwnerRevisionRow], fixture: ForumFixture) -> TestResult<()> {
     let expected = [
         (1, "forum", None),
         (2, "forum", None),
@@ -1581,9 +1576,7 @@ async fn connect_in_schema(
 
 fn database_url_in_schema(database_url: &str, schema_name: &str) -> String {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
-    )
+    format!("{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic")
 }
 
 async fn connect(database_url: &str, max_connections: u32) -> TestResult<DatabaseConnection> {
@@ -1630,7 +1623,9 @@ fn source_commit() -> TestResult<String> {
         .args(["rev-parse", "HEAD"])
         .output()?;
     if !output.status.success() {
-        return Err(test_error("git rev-parse HEAD failed for D15 evidence generation"));
+        return Err(test_error(
+            "git rev-parse HEAD failed for D15 evidence generation",
+        ));
     }
     let value = String::from_utf8(output.stdout)?;
     let value = value.trim();

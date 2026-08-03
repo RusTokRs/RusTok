@@ -7,19 +7,17 @@ use std::{
 };
 
 use async_trait::async_trait;
-use rustok_api::{
-    PortActor, PortActorKind, PortError, SHA256_DIGEST_BYTES, sha256_digest,
-};
+use rustok_api::{PortActor, PortActorKind, PortError, SHA256_DIGEST_BYTES, sha256_digest};
 use serde::Deserialize;
 
 use crate::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
     CommentsTcpCredential, CommentsTcpDelegatingAuthorityResolver,
-    CommentsTcpDelegationConfigError, CommentsTcpDelegationKeyring,
-    CommentsTcpDelegationSigner, CommentsTcpOperation, CommentsThreadRequest,
-    TrustedCommentsTcpAuthority, DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
+    CommentsTcpDelegationConfigError, CommentsTcpDelegationKeyring, CommentsTcpDelegationSigner,
+    CommentsTcpOperation, CommentsThreadRequest, DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
     DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
     MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
+    TrustedCommentsTcpAuthority,
 };
 
 const RELOADABLE_SERVICE_OPERATIONS: [CommentsTcpOperation; 4] = [
@@ -85,8 +83,8 @@ impl ReloadableCommentsTcpDelegationSigner {
         request: &CommentsThreadRequest,
     ) -> Result<CommentsTcpCredential, PortError> {
         let keyring = self.keyring_provider.current_keyring()?;
-        let signer = CommentsTcpDelegationSigner::with_keyring_and_ttl(keyring, self.ttl)
-            .map_err(|_| {
+        let signer =
+            CommentsTcpDelegationSigner::with_keyring_and_ttl(keyring, self.ttl).map_err(|_| {
                 PortError::invariant_violation(
                     "comments.tcp_delegation_reload_signer_invalid",
                     "Comments TCP reloadable delegation signer configuration is invalid",
@@ -174,9 +172,7 @@ impl ReloadableCommentsTcpDelegatingAuthorityResolver {
         if capacity == 0 || capacity > MAX_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY {
             return Err(CommentsTcpDelegationConfigError::InvalidReplayCapacity);
         }
-        self.replay = Arc::new(Mutex::new(ReloadableDelegationReplayState::new(
-            capacity,
-        )));
+        self.replay = Arc::new(Mutex::new(ReloadableDelegationReplayState::new(capacity)));
         Ok(self)
     }
 
@@ -218,9 +214,7 @@ impl ReloadableCommentsTcpDelegatingAuthorityResolver {
             .map_err(|_| reload_delegation_invalid())?;
         let nonce_digest = sha256_digest(&[claims.nonce.as_bytes()]);
         let now_ms = reload_current_unix_ms()?;
-        let expires_at_ms = claims
-            .expires_at_unix_ms
-            .saturating_add(self.clock_skew_ms);
+        let expires_at_ms = claims.expires_at_unix_ms.saturating_add(self.clock_skew_ms);
         let mut replay = self.replay.lock().map_err(|_| {
             PortError::unavailable(
                 "comments.tcp_delegation_replay_unavailable",

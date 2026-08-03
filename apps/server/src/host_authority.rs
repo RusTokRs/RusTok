@@ -194,8 +194,8 @@ fn resolve_with_policy(
 #[cfg(test)]
 mod tests {
     use super::{
-        HOST_AUTHORITY_TOKEN_HEADER, HostAuthorityPolicy, current_host_authority,
-        take_with_policy, with_host_authority_scope,
+        HOST_AUTHORITY_TOKEN_HEADER, HostAuthorityPolicy, current_host_authority, take_with_policy,
+        with_host_authority_scope,
     };
     use axum::http::HeaderMap;
     use rustok_api::{HostAuthority, HostAuthorityContext};
@@ -217,7 +217,11 @@ mod tests {
 
     #[test]
     fn absent_configuration_has_no_host_credentials() {
-        assert!(HostAuthorityPolicy::parse(" ").expect("empty policy").is_empty());
+        assert!(
+            HostAuthorityPolicy::parse(" ")
+                .expect("empty policy")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -227,7 +231,9 @@ mod tests {
         let policy = HostAuthorityPolicy::parse(&policy_json(actor_id, "manage", token))
             .expect("valid host policy");
 
-        let authority = policy.authenticate(token).expect("configured host operator");
+        let authority = policy
+            .authenticate(token)
+            .expect("configured host operator");
         assert_eq!(authority.actor_id(), actor_id);
         assert_eq!(authority.authority(), HostAuthority::Manage);
         assert!(
@@ -300,11 +306,15 @@ mod tests {
         .expect("overlapping rotation policy");
 
         assert_eq!(
-            policy.authenticate(old_token).map(|value| value.authority()),
+            policy
+                .authenticate(old_token)
+                .map(|value| value.authority()),
             Some(HostAuthority::Read)
         );
         assert_eq!(
-            policy.authenticate(new_token).map(|value| value.authority()),
+            policy
+                .authenticate(new_token)
+                .map(|value| value.authority()),
             Some(HostAuthority::Manage)
         );
     }
@@ -355,14 +365,12 @@ mod tests {
 
     #[tokio::test]
     async fn typed_authority_is_request_scoped_and_does_not_leak() {
-        let authority = HostAuthorityContext::manage(Uuid::new_v4())
-            .expect("non-nil host operator actor");
+        let authority =
+            HostAuthorityContext::manage(Uuid::new_v4()).expect("non-nil host operator actor");
         assert!(current_host_authority().is_none());
 
-        let observed = with_host_authority_scope(Some(authority), async {
-            current_host_authority()
-        })
-        .await;
+        let observed =
+            with_host_authority_scope(Some(authority), async { current_host_authority() }).await;
 
         assert_eq!(observed, Some(authority));
         assert!(current_host_authority().is_none());

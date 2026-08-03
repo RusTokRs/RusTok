@@ -77,7 +77,7 @@ impl CommentsThreadRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "result", content = "payload", rename_all = "snake_case")]
 pub enum CommentsThreadResponse {
-    Comment(CommentRecord),
+    Comment(Box<CommentRecord>),
     CommentsPage {
         items: Vec<CommentListItem>,
         total: u64,
@@ -89,7 +89,7 @@ pub enum CommentsThreadResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", content = "payload", rename_all = "snake_case")]
 pub enum CommentsThreadTransportReply {
-    Success(CommentsThreadResponse),
+    Success(Box<CommentsThreadResponse>),
     Error(PortError),
 }
 
@@ -269,7 +269,7 @@ fn expect_comment(
     response: CommentsThreadResponse,
 ) -> Result<CommentRecord, PortError> {
     match response {
-        CommentsThreadResponse::Comment(comment) => Ok(comment),
+        CommentsThreadResponse::Comment(comment) => Ok(*comment),
         response => Err(response_mismatch(operation, &response)),
     }
 }
@@ -284,10 +284,7 @@ fn expect_comments_page(
     }
 }
 
-fn response_mismatch(
-    operation: &'static str,
-    _response: &CommentsThreadResponse,
-) -> PortError {
+fn response_mismatch(operation: &'static str, _response: &CommentsThreadResponse) -> PortError {
     PortError::invariant_violation(
         "comments.remote_response_mismatch",
         format!("comments remote transport returned an incompatible response for {operation}"),
@@ -300,9 +297,8 @@ mod tests {
 
     #[test]
     fn remote_adapter_accepts_a_transport_trait_object() {
-        let constructor: fn(
-            Arc<dyn CommentsThreadTransport>,
-        ) -> Arc<dyn CommentsThreadPort> = remote_comments_thread_port;
+        let constructor: fn(Arc<dyn CommentsThreadTransport>) -> Arc<dyn CommentsThreadPort> =
+            remote_comments_thread_port;
         let _ = constructor;
     }
 }

@@ -4,15 +4,15 @@ use async_trait::async_trait;
 use rustok_api::{PortActorKind, PortError};
 use tokio::time::timeout;
 
+use crate::tcp_protocol::{
+    DEFAULT_MAX_COMMENTS_FRAME_BYTES, ensure_frame_size, read_frame, validate_frame_limit,
+    write_frame,
+};
 use crate::{
     CommentsTcpBearerToken, CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
     CommentsTcpOperation, CommentsTcpRequestEnvelope, CommentsThreadRequest,
     CommentsThreadResponse, CommentsThreadTransport, CommentsThreadTransportReply,
     ReloadableCommentsTcpDelegationSigner,
-};
-use crate::tcp_protocol::{
-    DEFAULT_MAX_COMMENTS_FRAME_BYTES, ensure_frame_size, read_frame,
-    validate_frame_limit, write_frame,
 };
 
 /// One-request-per-channel Comments TCP transport whose delegated user-write
@@ -79,10 +79,7 @@ impl ReloadableTcpJsonCommentsTransport {
         true
     }
 
-    async fn exchange(
-        &self,
-        request_payload: &[u8],
-    ) -> Result<CommentsThreadResponse, PortError> {
+    async fn exchange(&self, request_payload: &[u8]) -> Result<CommentsThreadResponse, PortError> {
         let mut channel = self.channel_connector.connect(self.endpoint).await?;
         write_frame(&mut *channel, request_payload, self.max_frame_bytes).await?;
         let response_payload = read_frame(&mut *channel, self.max_frame_bytes).await?;
@@ -156,7 +153,7 @@ fn decode_reloadable_reply(payload: &[u8]) -> Result<CommentsThreadResponse, Por
         )
     })?;
     match reply {
-        CommentsThreadTransportReply::Success(response) => Ok(response),
+        CommentsThreadTransportReply::Success(response) => Ok(*response),
         CommentsThreadTransportReply::Error(error) => Err(error),
     }
 }

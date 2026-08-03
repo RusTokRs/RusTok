@@ -60,9 +60,14 @@ pub mod richtext;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;
+mod translation_evidence;
+pub mod translation_target;
 
 #[cfg(test)]
 mod state_machine_proptest;
+
+#[cfg(test)]
+mod translation_target_tests;
 
 pub use dto::{
     CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
@@ -79,6 +84,7 @@ pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
 };
+pub use translation_target::BlogCategoryTranslationTargetProvider;
 
 pub struct BlogModule;
 
@@ -101,7 +107,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "comments", "taxonomy"]
+        &["content", "comments", "taxonomy", "outbox"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -169,7 +175,10 @@ mod tests {
         assert_eq!(module.name(), "Blog");
         assert_eq!(module.description(), "Posts, Comments, Categories, Tags");
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(module.dependencies(), &["content", "comments", "taxonomy"]);
+        assert_eq!(
+            module.dependencies(),
+            &["content", "comments", "taxonomy", "outbox"]
+        );
     }
 
     #[test]

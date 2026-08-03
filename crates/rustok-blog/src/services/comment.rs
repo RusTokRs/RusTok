@@ -490,10 +490,8 @@ mod port_injection_tests {
 
     #[test]
     fn comment_service_accepts_an_injected_comments_thread_port() {
-        let constructor: fn(
-            DatabaseConnection,
-            Arc<dyn CommentsThreadPort>,
-        ) -> CommentService = CommentService::with_comments_thread_port;
+        let constructor: fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService =
+            CommentService::with_comments_thread_port;
         let _ = constructor;
     }
 }

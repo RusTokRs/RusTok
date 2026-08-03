@@ -37,10 +37,7 @@ impl PostgresBlogProjectionRestartTestDb {
         };
 
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_blog_projection_restart_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_blog_projection_restart_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -109,7 +106,10 @@ async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -
     let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());
     restarted_handler.handle(&envelope).await?;
 
-    assert_eq!(load_post_state(&restarted_db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&restarted_db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&restarted_db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&restarted_db).await?, 1);
 
@@ -157,7 +157,10 @@ async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter() -
         envelope.id,
     )?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -345,10 +348,7 @@ async fn load_post_state(
     ))
 }
 
-async fn count_delivery(
-    db: &DatabaseConnection,
-    event_id: Uuid,
-) -> Result<i64, sea_orm::DbErr> {
+async fn count_delivery(db: &DatabaseConnection, event_id: Uuid) -> Result<i64, sea_orm::DbErr> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,

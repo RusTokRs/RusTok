@@ -29,7 +29,9 @@ fn artifact_role_permission_routes_require_owner_direct_principal_admission_firs
     );
     assert_eq!(
         controller
-            .matches("ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;")
+            .matches(
+                "ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;"
+            )
             .count(),
         2
     );
@@ -76,7 +78,10 @@ fn native_admin_bootstrap_uses_the_same_owner_principal_policy() {
         "code = \"rbac.admin_control_plane_denied\"",
         "ServerFnError::new(\"RBAC admin access is denied\")",
     ] {
-        assert!(native.contains(required), "native adapter must retain {required}");
+        assert!(
+            native.contains(required),
+            "native adapter must retain {required}"
+        );
     }
 
     let principal_guard = native
@@ -107,7 +112,10 @@ fn module_owned_control_plane_guard_denies_delegated_service_and_cross_tenant_pr
         "delegated_and_service_principals_are_denied_even_with_management_permission",
         "cross_tenant_context_is_denied",
     ] {
-        assert!(owner.contains(required), "owner guard must retain {required}");
+        assert!(
+            owner.contains(required),
+            "owner guard must retain {required}"
+        );
     }
 
     for forbidden in [
@@ -115,7 +123,10 @@ fn module_owned_control_plane_guard_denies_delegated_service_and_cross_tenant_pr
         "principal.grant_type",
         "principal.session_id",
     ] {
-        assert!(!owner.contains(forbidden), "owner must not infer from {forbidden}");
+        assert!(
+            !owner.contains(forbidden),
+            "owner must not infer from {forbidden}"
+        );
     }
 
     assert!(exports.contains("RbacControlPlanePrincipal"));

@@ -14,6 +14,8 @@ const MAX_IDENTITY_LENGTH: usize = 191;
 const MAX_REVISION_LENGTH: usize = 256;
 pub const MAX_TRANSLATION_RESOURCE_PAGE_SIZE: u16 = 200;
 
+pub mod provider_support;
+
 macro_rules! string_identity {
     ($name:ident, $label:literal, $max:expr) => {
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

@@ -767,7 +767,7 @@ async fn translation_target_provider_applies_and_replays_one_exact_locale_patch(
         .await
         .expect_err("same idempotency key must reject a different request");
     assert_eq!(conflict.kind, PortErrorKind::Conflict);
-    assert_eq!(conflict.code, "media.idempotency_conflict");
+    assert_eq!(conflict.code, "outbox.operation_receipt_conflict");
     let events = SysEvents::find()
         .all(&database)
         .await

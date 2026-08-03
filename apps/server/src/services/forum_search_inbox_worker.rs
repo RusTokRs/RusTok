@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_search::{
-    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
-    ForumProjectionReconciler, SharedForumProjectionOwnerRevisionSourcePort,
+    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionReconciler,
+    SharedForumProjectionOwnerRevisionSourcePort,
     search_projection_source_registry_from_extensions,
 };
 use tokio::task::JoinHandle;
@@ -78,9 +78,7 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
         owner_source,
     );
     if !reconciler.supports_background_reconciliation() {
-        tracing::info!(
-            "Forum Search inbox worker not started: PostgreSQL backend is required"
-        );
+        tracing::info!("Forum Search inbox worker not started: PostgreSQL backend is required");
         return Ok(());
     }
 

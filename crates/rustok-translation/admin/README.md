@@ -40,8 +40,11 @@ tables.
 
 - `TranslationAdmin`
 
-The package-internal typed boundary contains 38 operations. Native and GraphQL
-adapters cover the same set, and GraphQL documents are validated against the
+The package-internal typed boundary contains 39 operations. Native and GraphQL
+adapters cover the same set, and the workbench exposes the machine-translation
+estimate, generation, status, cancellation, and recovery flow alongside
+revision-guarded assignment/unassignment, blocked-item retry, job cancellation,
+and owner-apply recovery. GraphQL documents are validated against the
 module-owned schema so the host cannot bypass or redefine the rendered module
 surface.
 

@@ -33,10 +33,7 @@ impl PostgresBlogProjectionDuplicateRaceTestDb {
         };
 
         let control = connect(&database_url, "rustok_blog_duplicate_race_control").await?;
-        let schema_name = format!(
-            "rustok_blog_duplicate_race_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_blog_duplicate_race_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -59,10 +56,7 @@ impl PostgresBlogProjectionDuplicateRaceTestDb {
         }))
     }
 
-    async fn isolated_connection(
-        &self,
-        application_name: &str,
-    ) -> TestResult<DatabaseConnection> {
+    async fn isolated_connection(&self, application_name: &str) -> TestResult<DatabaseConnection> {
         let db = connect(&self.database_url, application_name).await?;
         set_search_path(&db, &self.schema_name).await?;
         Ok(db)
@@ -133,13 +127,19 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
     let outcomes = [task_a.await?, task_b.await?];
     let success_count = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
     let failure_count = outcomes.iter().filter(|outcome| outcome.is_err()).count();
-    assert_eq!(success_count, 1, "exactly one duplicate delivery must commit");
+    assert_eq!(
+        success_count, 1,
+        "exactly one duplicate delivery must commit"
+    );
     assert_eq!(
         failure_count, 1,
         "the losing duplicate transaction must fail and roll back"
     );
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -150,7 +150,10 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
         .handle(&envelope)
         .await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -290,10 +293,7 @@ async fn load_post_state(
     ))
 }
 
-async fn count_delivery(
-    db: &DatabaseConnection,
-    event_id: Uuid,
-) -> Result<i64, sea_orm::DbErr> {
+async fn count_delivery(db: &DatabaseConnection, event_id: Uuid) -> Result<i64, sea_orm::DbErr> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -323,10 +323,7 @@ fn postgres_database_url() -> Option<String> {
         .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
 }
 
-async fn connect(
-    database_url: &str,
-    application_name: &str,
-) -> TestResult<DatabaseConnection> {
+async fn connect(database_url: &str, application_name: &str) -> TestResult<DatabaseConnection> {
     let mut options = ConnectOptions::new(database_url.to_owned());
     options
         .max_connections(1)

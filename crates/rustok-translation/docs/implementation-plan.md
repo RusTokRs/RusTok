@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-07-29
+last_reviewed: 2026-08-03
 ---
 
 # Translation implementation plan
@@ -73,10 +73,16 @@ selection.
   `TranslationProgressService` provides tenant-isolated reads and a
   Manage-authorized deterministic rebuild that verifies source/proposal
   digests and owner receipt evidence.
-- Media is the first owner provider with durable change-cursor repair and
-  exact-locale aggregate coverage. Translation validates provider facts and
-  reports tenant-scoped projection freshness as `current`, `behind`, or
-  `unknown` by opaque cursor equality.
+- Media, Taxonomy, Blog category, and Navigation menu are registered owner
+  providers with durable change-cursor repair and exact-locale aggregate
+  coverage. Taxonomy applies term `name`, review-only `slug`, and optional
+  `description` through owner CAS and the shared Outbox receipt ledger. Blog
+  applies category copy through its service and publishes its existing Search
+  reindex request. Navigation applies its menu name and every item title as one
+  CAS-guarded locale aggregate through `MenuService`, using a content-free
+  cursor journal without claiming a generic menu event. Translation validates
+  provider facts and reports tenant-scoped projection freshness as `current`,
+  `behind`, or `unknown` by opaque cursor equality.
 - `TranslationPolicyService` owns a revisioned, tenant-scoped required-target
   locale subset. It validates through `TenantLocalePolicyPort`, rejects
   disabled/duplicate locales, stores the Tenant policy revision, and uses
@@ -152,7 +158,9 @@ selection.
   39 operations, including the six glossary and six memory operations,
   bounded job export and atomic item import, plus
   non-billable machine-translation estimation, machine-proposal generation,
-  status, and cancellation; GraphQL
+  status, cancellation, and recovery. Both module-owned workbenches expose the
+  same machine workflow controls plus revision-guarded assignment/unassignment,
+  blocked-item retry, job cancellation, and owner-apply recovery; GraphQL
   documents are validated against the module-owned schema, and every
   idempotency-bound command carries its caller key into `PortContext`.
 - Translation exposes one redacted public-error classifier shared by GraphQL

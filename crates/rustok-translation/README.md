@@ -167,12 +167,15 @@ machine-translation orchestration.
 - Shares one redacted public-error classifier between GraphQL and native
   adapters, preserving stable client codes without exposing database details.
 - Publishes the module-owned `rustok-translation-admin` package with one typed
-  38-operation contract, native `#[server]` execution for SSR/hydrate,
+  39-operation contract, native `#[server]` execution for SSR/hydrate,
   `rustok-graphql` execution for CSR/headless, and a six-tab Leptos workbench.
   The manifest mounts that package in the Leptos host; the matching
   `@rustok/translation-admin` package owns the parity Next admin workbench,
-  including Translation Memory lookup/lifecycle management and bounded
-  interchange export/import.
+  including Translation Memory lookup/lifecycle management, bounded
+  interchange export/import, and machine-translation estimate, generation,
+  status, cancellation, and recovery controls, revision-guarded
+  assignment/unassignment, blocked-item retry, job cancellation, and owner-apply
+  recovery.
 
 See the [local module contract](docs/README.md) and
 [implementation plan](docs/implementation-plan.md).

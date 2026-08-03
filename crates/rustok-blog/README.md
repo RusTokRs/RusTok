@@ -13,6 +13,8 @@
 - Publish module-owned Leptos admin/storefront packages for installable UI surfaces.
 - Publish schema-driven tenant settings through `rustok-module.toml`, including curated option sets for admin forms.
 - Publish separate typed RBAC resources: `blog_posts:*` and `blog_categories:*`.
+- Expose the owner-side `blog/category` Translation target without giving the
+  Translation control plane direct Blog-table access.
 
 ## Interactions
 
@@ -39,6 +41,12 @@
 - Catalog `categories:*` and `blog_posts:*` do not authorize Blog category operations.
 - Blog services re-validate RBAC locally. Customer post reads are restricted to published posts.
 - `CategoryService::new(db, event_bus)` is the only category service constructor. The required `TransactionalEventBus` keeps category mutation and Search reindex publication in the same transaction.
+- `BlogCategoryTranslationTargetProvider` exposes exact source and target
+  category locales for `name`, review-only `slug`, and optional `description`.
+  It calls `CategoryService` for revision-CAS writes, owner-change evidence,
+  and Search reindex publication; the provider completes or replays the shared
+  owner-operation receipt in that same owner transaction. Blog post copy remains
+  an editorial-wave target, and Taxonomy-owned tags are intentionally excluded.
 
 ## Entry points
 
@@ -46,6 +54,7 @@
 - `PostService`
 - `CommentService`
 - `CategoryService`
+- `BlogCategoryTranslationTargetProvider`
 - `TagService`
 - `graphql::BlogQuery`
 - `graphql::BlogMutation`

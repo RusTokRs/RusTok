@@ -8,8 +8,8 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::{
-    ProfileBackfillResult, ProfileError, ProfileRecord, ProfileResult, ProfileService,
-    ProfileStatus, ProfileVisibility, UpsertProfileInput, entities,
+    ProfileBackfillRequest, ProfileBackfillResult, ProfileError, ProfileMutationContext,
+    ProfileRecord, ProfileResult, ProfileService, ProfileStatus, UpsertProfileInput, entities,
     profile_updated_event::{
         publish_profile_updated_in_tx, publish_profile_updated_with_actor_in_tx,
     },
@@ -28,49 +28,60 @@ struct ProfileWriteOutcome {
     created: bool,
 }
 
+struct ProfileWriteRequest<'a> {
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    user_id: Uuid,
+    input: UpsertProfileInput,
+    tenant_default_locale: Option<&'a str>,
+    existing_policy: ExistingProfilePolicy,
+}
+
 pub(crate) async fn upsert_profile_with_event(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    user_id: Uuid,
+    context: ProfileMutationContext<'_>,
     input: UpsertProfileInput,
-    tenant_default_locale: Option<&str>,
 ) -> ProfileResult<ProfileRecord> {
+    let ProfileMutationContext {
+        tenant_id,
+        actor_id,
+        user_id,
+        tenant_default_locale,
+    } = context;
     let outcome = write_profile_with_event(
         db,
         event_bus,
-        tenant_id,
-        Some(actor_id),
-        user_id,
-        input,
-        tenant_default_locale,
-        ExistingProfilePolicy::Update,
+        ProfileWriteRequest {
+            tenant_id,
+            actor_id: Some(actor_id),
+            user_id,
+            input,
+            tenant_default_locale,
+            existing_policy: ExistingProfilePolicy::Update,
+        },
     )
     .await?;
     Ok(outcome.profile)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn backfill_profile_with_event(
+pub(crate) async fn backfill_profile_with_event(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant_id: Uuid,
-    user_id: Uuid,
-    email: &str,
-    display_name: Option<&str>,
-    preferred_locale: Option<&str>,
-    visibility: ProfileVisibility,
-    tenant_default_locale: Option<&str>,
+    request: ProfileBackfillRequest<'_>,
 ) -> ProfileResult<ProfileBackfillResult> {
+    let ProfileBackfillRequest {
+        tenant_id,
+        user_id,
+        email,
+        display_name,
+        preferred_locale,
+        visibility,
+        tenant_default_locale,
+    } = request;
     let service = ProfileService::new(db.clone());
     match service
-        .get_profile(
-            tenant_id,
-            user_id,
-            preferred_locale,
-            tenant_default_locale,
-        )
+        .get_profile(tenant_id, user_id, preferred_locale, tenant_default_locale)
         .await
     {
         Ok(profile) => {
@@ -96,12 +107,14 @@ pub async fn backfill_profile_with_event(
     let outcome = write_profile_with_event(
         db,
         event_bus,
-        tenant_id,
-        None,
-        user_id,
-        input,
-        tenant_default_locale,
-        ExistingProfilePolicy::Skip,
+        ProfileWriteRequest {
+            tenant_id,
+            actor_id: None,
+            user_id,
+            input,
+            tenant_default_locale,
+            existing_policy: ExistingProfilePolicy::Skip,
+        },
     )
     .await?;
 
@@ -111,17 +124,19 @@ pub async fn backfill_profile_with_event(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn write_profile_with_event(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant_id: Uuid,
-    actor_id: Option<Uuid>,
-    user_id: Uuid,
-    input: UpsertProfileInput,
-    tenant_default_locale: Option<&str>,
-    existing_policy: ExistingProfilePolicy,
+    request: ProfileWriteRequest<'_>,
 ) -> ProfileResult<ProfileWriteOutcome> {
+    let ProfileWriteRequest {
+        tenant_id,
+        actor_id,
+        user_id,
+        input,
+        tenant_default_locale,
+        existing_policy,
+    } = request;
     let UpsertProfileInput {
         handle,
         display_name,

@@ -85,7 +85,9 @@ pub enum ForumError {
     #[error("Forum topic merge read-state reconciliation conflicts with an existing command: {0}")]
     TopicMergeReadStateReconciliationConflict(Uuid),
 
-    #[error("Forum topic merge subscription reconciliation conflicts with an existing command: {0}")]
+    #[error(
+        "Forum topic merge subscription reconciliation conflicts with an existing command: {0}"
+    )]
     TopicMergeSubscriptionReconciliationConflict(Uuid),
 
     #[error("Forum topic merge tag reconciliation conflicts with an existing command: {0}")]
@@ -247,9 +249,15 @@ impl From<rustok_taxonomy::TaxonomyError> for ForumError {
             rustok_taxonomy::TaxonomyError::Validation(message)
             | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
             | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message) => Self::Validation(message),
+            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
+            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Validation(message),
             rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
                 Self::Validation(format!("Taxonomy term not found: {term_id}"))
+            }
+            rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
+                Self::Validation(format!(
+                    "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
+                ))
             }
         }
     }

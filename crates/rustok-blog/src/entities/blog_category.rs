@@ -13,6 +13,7 @@ pub struct Model {
     pub depth: i32,
     pub post_count: i32,
     pub settings: Json,
+    pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

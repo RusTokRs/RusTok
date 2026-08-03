@@ -73,12 +73,7 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
-        let envelope = build_contract_envelope(
-            tenant_id,
-            actor_id,
-            Some(causation_id),
-            event,
-        )?;
+        let envelope = build_contract_envelope(tenant_id, actor_id, Some(causation_id), event)?;
         let envelope_id = envelope.id();
         OutboxTransport::write_contract_envelope_in_tx(txn, envelope).await?;
         Ok(envelope_id)
@@ -242,12 +237,7 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
-        let envelope = build_contract_envelope(
-            tenant_id,
-            actor_id,
-            Some(causation_id),
-            event,
-        )?;
+        let envelope = build_contract_envelope(tenant_id, actor_id, Some(causation_id), event)?;
         self.write_contract_envelope_in_tx(txn, envelope).await
     }
 

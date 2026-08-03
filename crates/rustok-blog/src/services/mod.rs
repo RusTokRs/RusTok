@@ -7,6 +7,7 @@ mod post;
 mod rbac;
 mod tag;
 
+pub(crate) use category::ApplyExactCategoryTranslationInput;
 pub use category::CategoryService;
 pub use comment::CommentService;
 pub use comment_projection::BlogCommentProjectionHandler;

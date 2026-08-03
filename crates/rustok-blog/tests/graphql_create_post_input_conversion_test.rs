@@ -1,7 +1,6 @@
 use rustok_api::RichTextDocument;
 use rustok_blog::{
-    CreatePostInput as DomainCreatePostInput,
-    graphql::CreatePostInput as GraphqlCreatePostInput,
+    CreatePostInput as DomainCreatePostInput, graphql::CreatePostInput as GraphqlCreatePostInput,
 };
 use uuid::Uuid;
 

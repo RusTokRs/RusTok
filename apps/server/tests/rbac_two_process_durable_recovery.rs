@@ -198,7 +198,9 @@ async fn run_child(role: &str) -> TestResult<()> {
             )
             .await
         }
-        other => Err(test_error(format!("unsupported replica child role {other}"))),
+        other => Err(test_error(format!(
+            "unsupported replica child role {other}"
+        ))),
     }
 }
 
@@ -211,13 +213,9 @@ async fn run_observer(
     result_path: PathBuf,
 ) -> TestResult<()> {
     let initial_generation = rustok_rbac::read_permission_invalidation_generation(&db).await?;
-    let initial_allowed = RbacService::has_permission(
-        &db,
-        &tenant_id,
-        &user_id,
-        &Permission::SETTINGS_MANAGE,
-    )
-    .await?;
+    let initial_allowed =
+        RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+            .await?;
     write_json(
         &ready_path,
         &ObserverReady {
@@ -258,12 +256,9 @@ async fn run_observer(
             .await?;
             permission_checks += 1;
             if !final_allowed {
-                let authoritative = RbacService::get_user_permissions_authoritative(
-                    &db,
-                    &tenant_id,
-                    &user_id,
-                )
-                .await?;
+                let authoritative =
+                    RbacService::get_user_permissions_authoritative(&db, &tenant_id, &user_id)
+                        .await?;
                 write_json(
                     &result_path,
                     &ObserverResult {

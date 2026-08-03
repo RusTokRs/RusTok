@@ -12,9 +12,9 @@ use rustok_api::PortError;
 use thiserror::Error;
 
 use crate::{
-    CommentsTcpDelegationKeyId, CommentsTcpDelegationKeyring,
-    CommentsTcpDelegationKeyringProvider, CommentsTcpDelegationSecret,
-    MAX_COMMENTS_TCP_DELEGATION_KEYS, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
+    CommentsTcpDelegationKeyId, CommentsTcpDelegationKeyring, CommentsTcpDelegationKeyringProvider,
+    CommentsTcpDelegationSecret, MAX_COMMENTS_TCP_DELEGATION_KEYS,
+    MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
 };
 
 pub const MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS: u64 = 300_000;
@@ -97,8 +97,8 @@ impl CommentsTcpDelegationSchedule {
         {
             return Err(CommentsTcpDelegationScheduleConfigError::InvalidPropagationBudget);
         }
-        let max_ttl_ms = duration_ms(max_ttl)
-            .ok_or(CommentsTcpDelegationScheduleConfigError::InvalidTtl)?;
+        let max_ttl_ms =
+            duration_ms(max_ttl).ok_or(CommentsTcpDelegationScheduleConfigError::InvalidTtl)?;
         if max_ttl_ms == 0 || max_ttl_ms > MAX_COMMENTS_TCP_DELEGATION_TTL_MS {
             return Err(CommentsTcpDelegationScheduleConfigError::InvalidTtl);
         }
@@ -206,11 +206,9 @@ impl CommentsTcpDelegationSchedule {
                 verification_keys.push((key.key_id.clone(), key.secret.clone()));
             }
         }
-        let mut keyring = CommentsTcpDelegationKeyring::new(
-            active.key_id.clone(),
-            verification_keys,
-        )
-        .map_err(|_| schedule_unavailable())?;
+        let mut keyring =
+            CommentsTcpDelegationKeyring::new(active.key_id.clone(), verification_keys)
+                .map_err(|_| schedule_unavailable())?;
         if legacy_key_is_retained {
             keyring = keyring
                 .with_legacy_unkeyed_key_id(
@@ -228,9 +226,7 @@ impl CommentsTcpDelegationSchedule {
         previous: &Self,
         now_ms: u64,
     ) -> Result<(), CommentsTcpDelegationScheduleConfigError> {
-        if self.max_ttl_ms != previous.max_ttl_ms
-            || self.clock_skew_ms != previous.clock_skew_ms
-        {
+        if self.max_ttl_ms != previous.max_ttl_ms || self.clock_skew_ms != previous.clock_skew_ms {
             return Err(CommentsTcpDelegationScheduleConfigError::RuntimePolicyChanged);
         }
         if self.propagation_budget_ms < previous.propagation_budget_ms {
@@ -263,10 +259,9 @@ impl CommentsTcpDelegationSchedule {
             {
                 return Err(CommentsTcpDelegationScheduleConfigError::RetainedKeyChanged);
             }
-            if let (Some(previous_retirement), Some(candidate_retirement)) = (
-                retained.retires_at_unix_ms,
-                candidate.retires_at_unix_ms,
-            ) {
+            if let (Some(previous_retirement), Some(candidate_retirement)) =
+                (retained.retires_at_unix_ms, candidate.retires_at_unix_ms)
+            {
                 if candidate_retirement < previous_retirement {
                     return Err(CommentsTcpDelegationScheduleConfigError::RetirementReduced);
                 }
@@ -307,9 +302,7 @@ impl CommentsTcpDelegationSchedule {
                     .retires_at_unix_ms
                     .is_none_or(|retirement| retirement >= now_ms);
                 if legacy_still_required {
-                    return Err(
-                        CommentsTcpDelegationScheduleConfigError::LegacyPolicyChangedEarly,
-                    );
+                    return Err(CommentsTcpDelegationScheduleConfigError::LegacyPolicyChangedEarly);
                 }
             }
             (Some(_), Some(_)) => {
@@ -400,9 +393,13 @@ pub enum CommentsTcpDelegationScheduleConfigError {
     TerminalKeyMustRemain,
     #[error("Comments TCP delegation legacy key must exist in the schedule")]
     LegacyKeyMissing,
-    #[error("Comments TCP delegation runtime TTL or clock-skew policy cannot change during schedule replacement")]
+    #[error(
+        "Comments TCP delegation runtime TTL or clock-skew policy cannot change during schedule replacement"
+    )]
     RuntimePolicyChanged,
-    #[error("Comments TCP delegation propagation budget cannot decrease during schedule replacement")]
+    #[error(
+        "Comments TCP delegation propagation budget cannot decrease during schedule replacement"
+    )]
     PropagationReduced,
     #[error("Comments TCP delegation schedule has no active signing key")]
     ScheduleNotActive,
@@ -414,9 +411,13 @@ pub enum CommentsTcpDelegationScheduleConfigError {
     RetainedKeyChanged,
     #[error("A retained delegation key retirement cannot move earlier")]
     RetirementReduced,
-    #[error("A new delegation key must be installed at least one propagation budget before activation")]
+    #[error(
+        "A new delegation key must be installed at least one propagation budget before activation"
+    )]
     NewKeyActivatesTooEarly,
-    #[error("Legacy-unkeyed verification cannot be enabled or changed during replacement and cannot be disabled before retirement")]
+    #[error(
+        "Legacy-unkeyed verification cannot be enabled or changed during replacement and cannot be disabled before retirement"
+    )]
     LegacyPolicyChangedEarly,
 }
 

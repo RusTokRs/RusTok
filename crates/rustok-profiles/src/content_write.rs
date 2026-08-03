@@ -7,20 +7,23 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::{
-    ProfileError, ProfileRecord, ProfileResult, ProfileService, entities,
+    ProfileError, ProfileMutationContext, ProfileRecord, ProfileResult, ProfileService, entities,
     profile_updated_event::publish_profile_updated_in_tx,
 };
 
 pub(crate) async fn update_profile_content_with_event(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    user_id: Uuid,
+    context: ProfileMutationContext<'_>,
     display_name: &str,
     bio: Option<&str>,
-    tenant_default_locale: Option<&str>,
 ) -> ProfileResult<ProfileRecord> {
+    let ProfileMutationContext {
+        tenant_id,
+        actor_id,
+        user_id,
+        tenant_default_locale,
+    } = context;
     let display_name = ProfileService::normalize_display_name(display_name)?;
     let txn = db.begin().await?;
 

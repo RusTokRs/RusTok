@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_outbox::idempotency;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -336,7 +337,7 @@ impl MediaAssetWritePort for MediaService {
 }
 
 enum WriteAdmission {
-    Run(crate::idempotency::OperationLease),
+    Run(idempotency::Lease),
     Replay(serde_json::Value),
     ReplayError(PortError),
 }
@@ -349,27 +350,34 @@ async fn admit_write<T: Serialize>(
     request: &T,
 ) -> Result<WriteAdmission, PortError> {
     let key = context.idempotency_key.as_deref().unwrap_or_default();
-    match crate::idempotency::admit(service.database(), tenant_id, key, operation, request).await? {
-        crate::idempotency::Admission::Run(lease) => Ok(WriteAdmission::Run(lease)),
-        crate::idempotency::Admission::Replay(value) => Ok(WriteAdmission::Replay(value)),
-        crate::idempotency::Admission::ReplayError(error) => Ok(WriteAdmission::ReplayError(error)),
+    match idempotency::admit(
+        service.database(),
+        tenant_id,
+        "media",
+        key,
+        operation,
+        request,
+    )
+    .await?
+    {
+        idempotency::Admission::Run(lease) => Ok(WriteAdmission::Run(lease)),
+        idempotency::Admission::Replay(value) => Ok(WriteAdmission::Replay(value)),
+        idempotency::Admission::ReplayError(error) => Ok(WriteAdmission::ReplayError(error)),
     }
 }
 
 async fn finish_write<T: Serialize>(
     service: &MediaService,
-    lease: crate::idempotency::OperationLease,
+    lease: idempotency::Lease,
     result: Result<T, PortError>,
 ) -> Result<T, PortError> {
     match result {
         Ok(value) => {
-            crate::idempotency::complete(service.database(), lease, &value).await?;
+            idempotency::complete(service.database(), lease, &value).await?;
             Ok(value)
         }
         Err(error) => {
-            if let Err(receipt_error) =
-                crate::idempotency::fail(service.database(), lease, &error).await
-            {
+            if let Err(receipt_error) = idempotency::fail(service.database(), lease, &error).await {
                 tracing::error!(
                     operation_id = %lease.operation_id,
                     error = %receipt_error.message,
@@ -383,7 +391,7 @@ async fn finish_write<T: Serialize>(
 
 fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, PortError> {
     serde_json::from_value(value).map_err(|error| {
-        PortError::invariant_violation("media.idempotency_receipt_corrupt", error.to_string())
+        PortError::invariant_violation("outbox.operation_receipt_corrupt", error.to_string())
     })
 }
 

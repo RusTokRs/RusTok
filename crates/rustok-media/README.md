@@ -11,7 +11,9 @@
 - Keep REST upload/list/get/delete/translation handlers on narrow `MediaHttpRuntime` state; the manifest-declared Axum router builds it from `HostRuntimeContext` and a typed storage handle.
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Own storage-backed media lifecycle state while calling the shared `object_store` runtime directly.
-- Own durable write-port idempotency receipts and tenant-composite persistence integrity.
+- Own write-port idempotency semantics and tenant-composite persistence
+  integrity through the shared Outbox `owner_operation_receipts` ledger under
+  the `media` owner namespace.
 - Publish `MediaTranslationTargetProvider` for bounded exact-locale discovery,
   exact reads, validation, CAS apply, exact aggregate coverage, and
   tenant-scoped change-cursor repair through the shared translation target
@@ -39,8 +41,8 @@
 - Depends on `object_store` directly for blob operations and on `rustok-storage` only for runtime construction, delivery configuration, and key policy.
 - Depends on `rustok-api` for shared tenant/auth and port contracts.
 - Depends on `rustok-translation-targets` for the neutral provider SPI and on
-  `rustok-outbox` for atomic owner change evidence; translation workflow state
-  remains outside Media.
+  `rustok-outbox` for atomic owner change evidence plus the generic durable
+  receipt primitive; translation workflow state remains outside Media.
 - Exposes its own GraphQL and REST adapters; `apps/server` acts only as a composition root and re-export shim for media transport entry points.
 - Exposes `mediaUsage` from the owner `MediaQuery`; `apps/server` only composes the module query.
 - Media-library REST adapters require authenticated `AuthContext`; the public-image capability GET is intentionally unauthenticated and derives tenant authority from `TenantContext`, while an invalid id/checksum/tenant/lifecycle/MIME combination is indistinguishable as not found.
@@ -80,6 +82,9 @@
 - `apply_exact_translation` locks the asset and ordered source/target locale
   rows in one owner transaction, checks both expected revisions, and advances
   only the exact target revision.
+- Provider apply admits a `media`-scoped shared receipt before the owner write,
+  then commits its result with the Media mutation and change evidence in the
+  same transaction; the generic ledger never owns Media lifecycle semantics.
 - Change cursors are ordered owner-generated identifiers. Every non-empty
   `read_changes` page returns the last consumed identifier as its checkpoint;
   replaying a provider idempotency key does not append another change or event.

@@ -56,6 +56,7 @@ rustok-media.workspace = true
 rustok-profiles.workspace = true
 rustok-social-graph.workspace = true
 rustok-translation.workspace = true
+rustok-outbox.workspace = true
 rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 
 [dev-dependencies]
@@ -63,7 +64,6 @@ async-trait.workspace = true
 chrono.workspace = true
 flex.workspace = true
 rust_decimal.workspace = true
-rustok-outbox.workspace = true
 rustok-test-utils.workspace = true
 sea-orm.workspace = true
 serde_json.workspace = true

@@ -4,9 +4,9 @@ use rustok_ui_core::{UiRouteQueryIntent, normalize_ui_text, parse_ui_csv};
 use uuid::Uuid;
 
 use crate::model::{
-    GlossaryBinding, GlossaryConcept, GlossaryScope, InterchangeDocument, MemoryRetentionPolicy,
-    ProposalOrigin, ProposalValueInput, TranslationAdminOperation, TranslationAdminResponse,
-    TranslationAdminTransportContext, TranslationResourceIdentity,
+    Actor, ActorKind, GlossaryBinding, GlossaryConcept, GlossaryScope, InterchangeDocument,
+    MemoryRetentionPolicy, ProposalOrigin, ProposalValueInput, TranslationAdminOperation,
+    TranslationAdminResponse, TranslationAdminTransportContext, TranslationResourceIdentity,
 };
 
 pub const TAB_QUERY_KEY: &str = "tab";
@@ -787,22 +787,26 @@ pub fn read_memory_entry_operation(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryLookupInput<'a> {
+    pub source_locale: &'a str,
+    pub target_locale: &'a str,
+    pub owner_slug: &'a str,
+    pub resource_kind: &'a str,
+    pub resource_id: &'a str,
+    pub subresource_id: &'a str,
+    pub field_key: &'a str,
+    pub source_text: &'a str,
+    pub minimum_similarity_basis_points: &'a str,
+    pub limit: &'a str,
+}
+
 pub fn lookup_memory_operation(
-    source_locale: &str,
-    target_locale: &str,
-    owner_slug: &str,
-    resource_kind: &str,
-    resource_id: &str,
-    subresource_id: &str,
-    field_key: &str,
-    source_text: &str,
-    minimum_similarity_basis_points: &str,
-    limit: &str,
+    input: MemoryLookupInput<'_>,
 ) -> Result<TranslationAdminOperation, CommandInputError> {
     let minimum_similarity_basis_points = parse_nonnegative_u16(
         "minimum_similarity_basis_points",
-        minimum_similarity_basis_points,
+        input.minimum_similarity_basis_points,
     )?;
     if minimum_similarity_basis_points > 10_000 {
         return Err(CommandInputError {
@@ -812,18 +816,18 @@ pub fn lookup_memory_operation(
     }
 
     Ok(TranslationAdminOperation::LookupMemory {
-        source_locale: required_text("source_locale", source_locale)?,
-        target_locale: required_text("target_locale", target_locale)?,
+        source_locale: required_text("source_locale", input.source_locale)?,
+        target_locale: required_text("target_locale", input.target_locale)?,
         identity: TranslationResourceIdentity {
-            owner_slug: required_text("owner_slug", owner_slug)?,
-            resource_kind: required_text("resource_kind", resource_kind)?,
-            resource_id: required_text("resource_id", resource_id)?,
-            subresource_id: normalize_ui_text(subresource_id),
+            owner_slug: required_text("owner_slug", input.owner_slug)?,
+            resource_kind: required_text("resource_kind", input.resource_kind)?,
+            resource_id: required_text("resource_id", input.resource_id)?,
+            subresource_id: normalize_ui_text(input.subresource_id),
         },
-        field_key: required_text("field_key", field_key)?,
-        source_text: required_value("source_text", source_text)?,
+        field_key: required_text("field_key", input.field_key)?,
+        source_text: required_value("source_text", input.source_text)?,
         minimum_similarity_basis_points,
-        limit: parse_u16("limit", limit)?,
+        limit: parse_u16("limit", input.limit)?,
     })
 }
 
@@ -1091,6 +1095,280 @@ pub fn save_proposal_operation(
         }],
         idempotency_key: required_text("idempotency_key", idempotency_key)?,
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MachineProposalCommand {
+    Estimate,
+    Generate,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MachineProposalInput<'a> {
+    pub item_id: &'a str,
+    pub field_keys: &'a str,
+    pub minimum_memory_similarity_basis_points: &'a str,
+    pub tone: &'a str,
+    pub domain: &'a str,
+    pub style: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MachineCancellationInput<'a> {
+    pub operation_id: &'a str,
+    pub reason: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MachineRecoveryInput<'a> {
+    pub operation_id: &'a str,
+    pub expected_updated_at: &'a str,
+    pub proposal: MachineProposalInput<'a>,
+    pub reason: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+struct ParsedMachineProposal {
+    item_id: String,
+    field_keys: Vec<String>,
+    minimum_memory_similarity_basis_points: u16,
+    tone: Option<String>,
+    domain: Option<String>,
+    style: Option<String>,
+}
+
+pub fn machine_proposal_operation(
+    command: MachineProposalCommand,
+    input: MachineProposalInput<'_>,
+    idempotency_key: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let ParsedMachineProposal {
+        item_id,
+        field_keys,
+        minimum_memory_similarity_basis_points,
+        tone,
+        domain,
+        style,
+    } = parse_machine_proposal(input)?;
+    let idempotency_key = required_text("idempotency_key", idempotency_key)?;
+
+    Ok(match command {
+        MachineProposalCommand::Estimate => TranslationAdminOperation::EstimateMachineTranslation {
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            idempotency_key,
+        },
+        MachineProposalCommand::Generate => TranslationAdminOperation::GenerateMachineProposal {
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            idempotency_key,
+        },
+    })
+}
+
+pub fn read_machine_operation_status_operation(
+    operation_id: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::ReadMachineOperationStatus {
+        operation_id: required_text("operation_id", operation_id)?,
+    })
+}
+
+pub fn cancel_machine_operation(
+    input: MachineCancellationInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::CancelMachineOperation {
+        operation_id: required_text("operation_id", input.operation_id)?,
+        reason: required_value("reason", input.reason)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+pub fn recover_machine_operation(
+    input: MachineRecoveryInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let ParsedMachineProposal {
+        item_id,
+        field_keys,
+        minimum_memory_similarity_basis_points,
+        tone,
+        domain,
+        style,
+    } = parse_machine_proposal(input.proposal)?;
+
+    Ok(TranslationAdminOperation::RecoverMachineOperation {
+        operation_id: required_text("operation_id", input.operation_id)?,
+        expected_updated_at: required_text("expected_updated_at", input.expected_updated_at)?,
+        item_id,
+        field_keys,
+        minimum_memory_similarity_basis_points,
+        tone,
+        domain,
+        style,
+        reason: required_value("reason", input.reason)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+fn parse_machine_proposal(
+    input: MachineProposalInput<'_>,
+) -> Result<ParsedMachineProposal, CommandInputError> {
+    let field_keys = parse_ui_csv(input.field_keys);
+    if field_keys.is_empty() {
+        return Err(CommandInputError {
+            field: "field_keys",
+            message: "at least one field key is required".to_string(),
+        });
+    }
+    let mut distinct_field_keys = field_keys.clone();
+    distinct_field_keys.sort_unstable();
+    distinct_field_keys.dedup();
+    if distinct_field_keys.len() != field_keys.len() {
+        return Err(CommandInputError {
+            field: "field_keys",
+            message: "must not contain duplicates".to_string(),
+        });
+    }
+
+    let minimum_memory_similarity_basis_points = parse_nonnegative_u16(
+        "minimum_memory_similarity_basis_points",
+        input.minimum_memory_similarity_basis_points,
+    )?;
+    if minimum_memory_similarity_basis_points > 10_000 {
+        return Err(CommandInputError {
+            field: "minimum_memory_similarity_basis_points",
+            message: "must be between 0 and 10000".to_string(),
+        });
+    }
+
+    Ok(ParsedMachineProposal {
+        item_id: required_text("item_id", input.item_id)?,
+        field_keys,
+        minimum_memory_similarity_basis_points,
+        tone: normalize_ui_text(input.tone),
+        domain: normalize_ui_text(input.domain),
+        style: normalize_ui_text(input.style),
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AssignmentInput<'a> {
+    pub item_id: &'a str,
+    pub expected_revision: &'a str,
+    pub assignee_kind: &'a str,
+    pub assignee_id: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UnassignmentInput<'a> {
+    pub item_id: &'a str,
+    pub expected_revision: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct JobCancellationInput<'a> {
+    pub job_id: &'a str,
+    pub expected_revision: &'a str,
+    pub reason: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ItemRetryInput<'a> {
+    pub item_id: &'a str,
+    pub expected_revision: &'a str,
+    pub reason: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ApplyRecoveryInput<'a> {
+    pub operation_id: &'a str,
+    pub expected_attempt_count: &'a str,
+    pub reason: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+pub fn assign_item_operation(
+    input: AssignmentInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::AssignItem {
+        item_id: required_text("item_id", input.item_id)?,
+        expected_revision: parse_positive_i64("expected_revision", input.expected_revision)?,
+        assignee: Actor {
+            kind: parse_actor_kind(input.assignee_kind)?,
+            id: required_text("assignee_id", input.assignee_id)?,
+        },
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+pub fn unassign_item_operation(
+    input: UnassignmentInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::UnassignItem {
+        item_id: required_text("item_id", input.item_id)?,
+        expected_revision: parse_positive_i64("expected_revision", input.expected_revision)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+pub fn cancel_job_operation(
+    input: JobCancellationInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::CancelJob {
+        job_id: required_text("job_id", input.job_id)?,
+        expected_revision: parse_positive_i64("expected_revision", input.expected_revision)?,
+        reason: required_value("reason", input.reason)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+pub fn retry_item_operation(
+    input: ItemRetryInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::RetryItem {
+        item_id: required_text("item_id", input.item_id)?,
+        expected_revision: parse_positive_i64("expected_revision", input.expected_revision)?,
+        reason: required_value("reason", input.reason)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+pub fn recover_apply_operation(
+    input: ApplyRecoveryInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::RecoverApply {
+        operation_id: required_text("operation_id", input.operation_id)?,
+        expected_attempt_count: parse_positive_i64(
+            "expected_attempt_count",
+            input.expected_attempt_count,
+        )?,
+        reason: required_value("reason", input.reason)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+fn parse_actor_kind(value: &str) -> Result<ActorKind, CommandInputError> {
+    match normalize_ui_text(value).as_deref() {
+        Some("user") => Ok(ActorKind::User),
+        Some("service") => Ok(ActorKind::Service),
+        _ => Err(CommandInputError {
+            field: "assignee_kind",
+            message: "must be user or service".to_string(),
+        }),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1363,19 +1641,19 @@ mod tests {
 
     #[test]
     fn memory_lookup_is_typed_and_bounded_before_transport() {
-        let operation = lookup_memory_operation(
-            "en",
-            "de",
-            "media",
-            "asset",
-            "asset-1",
-            "",
-            "alt",
-            "Source copy",
-            "8500",
-            "10",
-        )
-        .unwrap();
+        let input = MemoryLookupInput {
+            source_locale: "en",
+            target_locale: "de",
+            owner_slug: "media",
+            resource_kind: "asset",
+            resource_id: "asset-1",
+            subresource_id: "",
+            field_key: "alt",
+            source_text: "Source copy",
+            minimum_similarity_basis_points: "8500",
+            limit: "10",
+        };
+        let operation = lookup_memory_operation(input).unwrap();
         assert!(matches!(
             operation,
             TranslationAdminOperation::LookupMemory {
@@ -1385,21 +1663,228 @@ mod tests {
             }
         ));
         assert_eq!(
-            lookup_memory_operation(
-                "en",
-                "de",
-                "media",
-                "asset",
-                "asset-1",
-                "",
-                "alt",
-                "Source copy",
-                "10001",
-                "10",
-            )
+            lookup_memory_operation(MemoryLookupInput {
+                minimum_similarity_basis_points: "10001",
+                ..input
+            })
             .unwrap_err()
             .field,
             "minimum_similarity_basis_points"
+        );
+    }
+
+    #[test]
+    fn machine_commands_are_typed_bounded_and_share_request_validation() {
+        let input = MachineProposalInput {
+            item_id: "item-1",
+            field_keys: " title, alt_text ",
+            minimum_memory_similarity_basis_points: "8500",
+            tone: "formal",
+            domain: "retail",
+            style: "concise",
+        };
+
+        let estimate = machine_proposal_operation(
+            MachineProposalCommand::Estimate,
+            input,
+            "estimate-machine-key",
+        )
+        .unwrap();
+        assert!(matches!(
+            estimate,
+            TranslationAdminOperation::EstimateMachineTranslation {
+                field_keys,
+                minimum_memory_similarity_basis_points: 8500,
+                tone: Some(tone),
+                domain: Some(domain),
+                style: Some(style),
+                ..
+            } if field_keys == ["title", "alt_text"]
+                && tone == "formal"
+                && domain == "retail"
+                && style == "concise"
+        ));
+        assert!(matches!(
+            machine_proposal_operation(
+                MachineProposalCommand::Generate,
+                input,
+                "generate-machine-key",
+            )
+            .unwrap(),
+            TranslationAdminOperation::GenerateMachineProposal { .. }
+        ));
+        assert_eq!(
+            machine_proposal_operation(
+                MachineProposalCommand::Estimate,
+                MachineProposalInput {
+                    field_keys: "title, title",
+                    ..input
+                },
+                "estimate-machine-key",
+            )
+            .unwrap_err()
+            .field,
+            "field_keys"
+        );
+        assert_eq!(
+            machine_proposal_operation(
+                MachineProposalCommand::Estimate,
+                MachineProposalInput {
+                    minimum_memory_similarity_basis_points: "10001",
+                    ..input
+                },
+                "estimate-machine-key",
+            )
+            .unwrap_err()
+            .field,
+            "minimum_memory_similarity_basis_points"
+        );
+    }
+
+    #[test]
+    fn machine_control_commands_preserve_observed_state_and_recovery_request() {
+        assert!(matches!(
+            read_machine_operation_status_operation("operation-1").unwrap(),
+            TranslationAdminOperation::ReadMachineOperationStatus { operation_id }
+                if operation_id == "operation-1"
+        ));
+        assert!(matches!(
+            cancel_machine_operation(MachineCancellationInput {
+                operation_id: "operation-1",
+                reason: "Operator cancelled the request",
+                idempotency_key: "cancel-machine-key",
+            })
+            .unwrap(),
+            TranslationAdminOperation::CancelMachineOperation { .. }
+        ));
+        assert!(matches!(
+            recover_machine_operation(MachineRecoveryInput {
+                operation_id: "operation-1",
+                expected_updated_at: "2026-08-03T10:00:00Z",
+                proposal: MachineProposalInput {
+                    item_id: "item-1",
+                    field_keys: "alt_text",
+                    minimum_memory_similarity_basis_points: "7000",
+                    tone: "",
+                    domain: "",
+                    style: "",
+                },
+                reason: "Recover a stuck proposal save",
+                idempotency_key: "recover-machine-key",
+            })
+            .unwrap(),
+            TranslationAdminOperation::RecoverMachineOperation {
+                expected_updated_at,
+                field_keys,
+                tone: None,
+                domain: None,
+                style: None,
+                ..
+            } if expected_updated_at == "2026-08-03T10:00:00Z" && field_keys == ["alt_text"]
+        ));
+    }
+
+    #[test]
+    fn workflow_recovery_commands_are_typed_and_revision_guarded() {
+        let assignment_input = AssignmentInput {
+            item_id: "item-1",
+            expected_revision: "4",
+            assignee_kind: "user",
+            assignee_id: "actor-1",
+            idempotency_key: "assign-key",
+        };
+        assert!(matches!(
+            assign_item_operation(assignment_input).unwrap(),
+            TranslationAdminOperation::AssignItem {
+                expected_revision: 4,
+                assignee: Actor {
+                    kind: ActorKind::User,
+                    id,
+                },
+                ..
+            } if id == "actor-1"
+        ));
+        assert!(matches!(
+            unassign_item_operation(UnassignmentInput {
+                item_id: "item-1",
+                expected_revision: "5",
+                idempotency_key: "unassign-key",
+            })
+            .unwrap(),
+            TranslationAdminOperation::UnassignItem {
+                expected_revision: 5,
+                ..
+            }
+        ));
+        assert!(matches!(
+            cancel_job_operation(JobCancellationInput {
+                job_id: "job-1",
+                expected_revision: "2",
+                reason: "Operator cancelled the job",
+                idempotency_key: "cancel-key",
+            })
+            .unwrap(),
+            TranslationAdminOperation::CancelJob {
+                expected_revision: 2,
+                ..
+            }
+        ));
+        assert!(matches!(
+            retry_item_operation(ItemRetryInput {
+                item_id: "item-1",
+                expected_revision: "6",
+                reason: "Retry after owner correction",
+                idempotency_key: "retry-key",
+            })
+            .unwrap(),
+            TranslationAdminOperation::RetryItem {
+                expected_revision: 6,
+                ..
+            }
+        ));
+        assert!(matches!(
+            recover_apply_operation(ApplyRecoveryInput {
+                operation_id: "operation-1",
+                expected_attempt_count: "3",
+                reason: "Recover a stuck owner apply",
+                idempotency_key: "recover-apply-key",
+            })
+            .unwrap(),
+            TranslationAdminOperation::RecoverApply {
+                expected_attempt_count: 3,
+                ..
+            }
+        ));
+        assert_eq!(
+            assign_item_operation(AssignmentInput {
+                assignee_kind: "automation",
+                ..assignment_input
+            })
+            .unwrap_err()
+            .field,
+            "assignee_kind"
+        );
+        assert_eq!(
+            recover_apply_operation(ApplyRecoveryInput {
+                operation_id: "operation-1",
+                expected_attempt_count: "0",
+                reason: "Recover a stuck owner apply",
+                idempotency_key: "recover-apply-key",
+            })
+            .unwrap_err()
+            .field,
+            "expected_attempt_count"
+        );
+        assert_eq!(
+            retry_item_operation(ItemRetryInput {
+                item_id: "item-1",
+                expected_revision: "6",
+                reason: "",
+                idempotency_key: "retry-key",
+            })
+            .unwrap_err()
+            .field,
+            "reason"
         );
     }
 

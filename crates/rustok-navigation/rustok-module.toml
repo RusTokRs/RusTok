@@ -13,6 +13,7 @@ tags = ["navigation", "menus", "storefront"]
 
 [dependencies]
 channel = { version_req = ">=0.1.0" }
+outbox = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "NavigationModule"

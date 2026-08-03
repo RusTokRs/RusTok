@@ -8,10 +8,10 @@ use crate::tcp_protocol::{
     DEFAULT_MAX_COMMENTS_FRAME_BYTES, read_frame, validate_frame_limit, write_frame,
 };
 use crate::{
-    BoxCommentsTcpIo, COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpCredential,
-    CommentsTcpIo, CommentsTcpRequestEnvelope, CommentsTcpServerChannelAcceptor,
-    CommentsThreadPort, CommentsThreadRequest, CommentsThreadResponse,
-    CommentsThreadTransportReply, PlaintextLoopbackCommentsTcpChannel,
+    BoxCommentsTcpIo, COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpCredential, CommentsTcpIo,
+    CommentsTcpRequestEnvelope, CommentsTcpServerChannelAcceptor, CommentsThreadPort,
+    CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransportReply,
+    PlaintextLoopbackCommentsTcpChannel,
 };
 
 /// Stable operation identity exposed to host-owned TCP authority resolvers.
@@ -63,9 +63,7 @@ impl CommentsTcpOperation {
         match request {
             CommentsThreadRequest::CreateComment { .. } => Self::CreateComment,
             CommentsThreadRequest::GetComment { .. } => Self::GetComment,
-            CommentsThreadRequest::ListCommentsForTarget { .. } => {
-                Self::ListCommentsForTarget
-            }
+            CommentsThreadRequest::ListCommentsForTarget { .. } => Self::ListCommentsForTarget,
             CommentsThreadRequest::ListPublicCommentsForTarget { .. } => {
                 Self::ListPublicCommentsForTarget
             }
@@ -231,13 +229,8 @@ impl TcpJsonCommentsServerAdapter {
                 "comments TCP pre-request timeout must be greater than zero",
             ));
         }
-        self.accept_and_handle(
-            stream,
-            peer_addr,
-            acceptor,
-            Some(pre_request_timeout),
-        )
-        .await
+        self.accept_and_handle(stream, peer_addr, acceptor, Some(pre_request_timeout))
+            .await
     }
 
     async fn accept_and_handle(
@@ -262,7 +255,7 @@ impl TcpJsonCommentsServerAdapter {
             .read_authorize_and_dispatch(&mut *channel, peer_addr, pre_request_timeout)
             .await
         {
-            Ok(response) => CommentsThreadTransportReply::Success(response),
+            Ok(response) => CommentsThreadTransportReply::Success(Box::new(response)),
             Err(error) => CommentsThreadTransportReply::Error(error),
         };
         let reply_payload = serde_json::to_vec(&reply).map_err(|_| {
@@ -369,7 +362,7 @@ async fn dispatch_request(
         CommentsThreadRequest::CreateComment { context, request } => provider
             .create_comment(context, request)
             .await
-            .map(CommentsThreadResponse::Comment),
+            .map(|comment| CommentsThreadResponse::Comment(Box::new(comment))),
         CommentsThreadRequest::GetComment {
             context,
             comment_id,
@@ -377,7 +370,7 @@ async fn dispatch_request(
         } => provider
             .get_comment(context, comment_id, fallback_locale)
             .await
-            .map(CommentsThreadResponse::Comment),
+            .map(|comment| CommentsThreadResponse::Comment(Box::new(comment))),
         CommentsThreadRequest::ListCommentsForTarget {
             context,
             target_type,
@@ -385,13 +378,7 @@ async fn dispatch_request(
             filter,
             fallback_locale,
         } => provider
-            .list_comments_for_target(
-                context,
-                target_type,
-                target_id,
-                filter,
-                fallback_locale,
-            )
+            .list_comments_for_target(context, target_type, target_id, filter, fallback_locale)
             .await
             .map(|(items, total)| CommentsThreadResponse::CommentsPage { items, total }),
         CommentsThreadRequest::ListPublicCommentsForTarget {
@@ -417,7 +404,7 @@ async fn dispatch_request(
         } => provider
             .update_comment(context, comment_id, request)
             .await
-            .map(CommentsThreadResponse::Comment),
+            .map(|comment| CommentsThreadResponse::Comment(Box::new(comment))),
         CommentsThreadRequest::SetCommentStatus {
             context,
             comment_id,
@@ -425,7 +412,7 @@ async fn dispatch_request(
         } => provider
             .set_comment_status(context, comment_id, request)
             .await
-            .map(CommentsThreadResponse::Comment),
+            .map(|comment| CommentsThreadResponse::Comment(Box::new(comment))),
         CommentsThreadRequest::DeleteComment {
             context,
             comment_id,
@@ -442,27 +429,19 @@ mod tests {
 
     #[test]
     fn trusted_authority_replaces_only_principal_fields() {
-        let claimed = PortContext::new(
-            "tenant-a",
-            PortActor::user("forged-user"),
-            "en",
-            "corr-1",
-        )
-        .with_claim("forged-claim")
-        .with_role("forged-role")
-        .with_channel("storefront")
-        .with_causation_id("cause-1")
-        .with_traceparent("trace-1")
-        .with_idempotency_key("idem-1")
-        .with_deadline(Duration::from_millis(500));
+        let claimed = PortContext::new("tenant-a", PortActor::user("forged-user"), "en", "corr-1")
+            .with_claim("forged-claim")
+            .with_role("forged-role")
+            .with_channel("storefront")
+            .with_causation_id("cause-1")
+            .with_traceparent("trace-1")
+            .with_idempotency_key("idem-1")
+            .with_deadline(Duration::from_millis(500));
         let trusted = apply_authority(
             &claimed,
-            TrustedCommentsTcpAuthority::new(
-                "tenant-a",
-                PortActor::service("comments-sidecar"),
-            )
-            .with_claim("comments:read")
-            .with_role("comments-worker"),
+            TrustedCommentsTcpAuthority::new("tenant-a", PortActor::service("comments-sidecar"))
+                .with_claim("comments:read")
+                .with_role("comments-worker"),
         )
         .unwrap();
 
@@ -479,18 +458,10 @@ mod tests {
 
     #[test]
     fn trusted_authority_rejects_tenant_mismatch() {
-        let claimed = PortContext::new(
-            "tenant-a",
-            PortActor::user("forged-user"),
-            "en",
-            "corr-1",
-        );
+        let claimed = PortContext::new("tenant-a", PortActor::user("forged-user"), "en", "corr-1");
         let error = apply_authority(
             &claimed,
-            TrustedCommentsTcpAuthority::new(
-                "tenant-b",
-                PortActor::service("comments-sidecar"),
-            ),
+            TrustedCommentsTcpAuthority::new("tenant-b", PortActor::service("comments-sidecar")),
         )
         .unwrap_err();
 

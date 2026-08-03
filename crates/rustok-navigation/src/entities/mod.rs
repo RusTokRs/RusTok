@@ -3,6 +3,7 @@ pub mod menu_binding;
 pub mod menu_item;
 pub mod menu_item_translation;
 pub mod menu_translation;
+pub mod translation_change;
 
 pub use menu::Entity as Menu;
 pub use menu_binding::Entity as MenuBinding;

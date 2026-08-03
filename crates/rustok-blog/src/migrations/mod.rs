@@ -9,6 +9,7 @@ mod m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox;
 mod m20260803_000009_add_blog_comments_audit_canonical_handoff;
 mod m20260803_000010_add_blog_comments_audit_source_retry_policy;
 mod m20260803_000011_create_blog_comments_audit_recovery;
+mod m20260803_000016_add_blog_category_translation_target_support;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -36,12 +37,19 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(
             m20260803_000011_create_blog_comments_audit_recovery::Migration,
         ),
+        Box::new(m20260803_000016_add_blog_category_translation_target_support::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
-    vec![MigrationDependencyDescriptor::new(
-        "m20260328_000002_create_blog_taxonomy_tables",
-        vec!["m20260329_000001_create_taxonomy_tables"],
-    )]
+    vec![
+        MigrationDependencyDescriptor::new(
+            "m20260328_000002_create_blog_taxonomy_tables",
+            vec!["m20260329_000001_create_taxonomy_tables"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260803_000016_add_blog_category_translation_target_support",
+            vec!["m20260803_000001_create_owner_operation_receipts"],
+        ),
+    ]
 }

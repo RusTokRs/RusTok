@@ -28,6 +28,13 @@ Provider registration is keyed by `(owner_slug, resource_kind)` and duplicate
 keys fail startup. Owners declare only implemented capabilities; consumers must
 not emulate a missing capability.
 
+`provider_support` centralizes only contract-level mechanics shared by multiple
+owner adapters: source hashes, sparse patch merge, optimistic patch evidence,
+opaque positive revisions, lifecycle decoding, and durable receipt decoding.
+It deliberately has no database access, authorization rule, domain error
+mapping, or fallback policy. Every owner continues to validate and persist
+through its own service and transaction.
+
 Each field snapshot carries an explicit, unique protected-token ledger. Every
 token must occur in the source value. Translation consumers compare exact token
 multiplicity; they do not guess braces, ICU, template-engine, richtext, or Page

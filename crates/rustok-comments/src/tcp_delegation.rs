@@ -199,11 +199,11 @@ impl fmt::Debug for CommentsTcpDelegationKeyring {
 
 #[derive(Debug, Clone, Copy, Eq, Error, PartialEq)]
 pub enum CommentsTcpDelegationConfigError {
-    #[error(
-        "Comments TCP delegation secret must be 32..=4096 visible non-whitespace ASCII bytes"
-    )]
+    #[error("Comments TCP delegation secret must be 32..=4096 visible non-whitespace ASCII bytes")]
     InvalidSecret,
-    #[error("Comments TCP delegation key ID must be 1..=64 ASCII letters, digits, dot, underscore, or hyphen")]
+    #[error(
+        "Comments TCP delegation key ID must be 1..=64 ASCII letters, digits, dot, underscore, or hyphen"
+    )]
     InvalidKeyId,
     #[error("Comments TCP delegation keyring must contain 1..=8 keys")]
     InvalidKeyCount,
@@ -325,11 +325,8 @@ impl CommentsTcpDelegationSigner {
             return Err(delegation_context_invalid());
         }
         let key_id = self.keyring.active_key_id().as_str().to_string();
-        let signature = keyed_delegation_signature(
-            self.keyring.active_secret(),
-            &key_id,
-            payload.as_bytes(),
-        );
+        let signature =
+            keyed_delegation_signature(self.keyring.active_secret(), &key_id, payload.as_bytes());
         let token = serde_json::to_string(&SignedCommentsTcpDelegation {
             key_id: Some(key_id),
             payload,
@@ -404,8 +401,8 @@ impl CommentsTcpDelegatingAuthorityResolver {
         mut self,
         max_ttl: Duration,
     ) -> Result<Self, CommentsTcpDelegationConfigError> {
-        let max_ttl_ms = duration_ms(max_ttl)
-            .ok_or(CommentsTcpDelegationConfigError::InvalidTtl)?;
+        let max_ttl_ms =
+            duration_ms(max_ttl).ok_or(CommentsTcpDelegationConfigError::InvalidTtl)?;
         if max_ttl_ms == 0 || max_ttl_ms > MAX_COMMENTS_TCP_DELEGATION_TTL_MS {
             return Err(CommentsTcpDelegationConfigError::InvalidTtl);
         }
@@ -540,9 +537,7 @@ impl CommentsTcpDelegatingAuthorityResolver {
                 "Comments TCP delegation replay protection is temporarily unavailable",
             ));
         }
-        replay
-            .entries
-            .insert(nonce.to_string(), expires_at_unix_ms);
+        replay.entries.insert(nonce.to_string(), expires_at_unix_ms);
         Ok(())
     }
 }
@@ -641,9 +636,7 @@ impl DelegationReplayState {
     }
 }
 
-fn request_digest(
-    request: &CommentsThreadRequest,
-) -> Result<[u8; SHA256_DIGEST_BYTES], PortError> {
+fn request_digest(request: &CommentsThreadRequest) -> Result<[u8; SHA256_DIGEST_BYTES], PortError> {
     let payload = serde_json::to_vec(request).map_err(|_| {
         PortError::invariant_violation(
             "comments.tcp_delegation_request_encode",
@@ -843,11 +836,7 @@ mod tests {
         let old_secret = secret("0123456789abcdef0123456789abcdef");
         let request = write_request();
         let credential = CommentsTcpDelegationSigner::with_keyring(
-            CommentsTcpDelegationKeyring::new(
-                old_id.clone(),
-                vec![(old_id, old_secret)],
-            )
-            .unwrap(),
+            CommentsTcpDelegationKeyring::new(old_id.clone(), vec![(old_id, old_secret)]).unwrap(),
         )
         .credential_for_at(&request, 20_000)
         .unwrap();
@@ -857,10 +846,7 @@ mod tests {
             PortActor::service(Uuid::new_v4().to_string()),
             CommentsTcpDelegationKeyring::new(
                 current_id.clone(),
-                vec![(
-                    current_id,
-                    secret("abcdef0123456789abcdef0123456789"),
-                )],
+                vec![(current_id, secret("abcdef0123456789abcdef0123456789"))],
             )
             .unwrap(),
         );

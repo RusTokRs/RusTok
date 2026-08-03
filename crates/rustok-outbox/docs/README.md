@@ -15,6 +15,9 @@ infrastructure for the platform event runtime.
 - object-safe `TransactionalEventWriter` injection for owner services that
   already own a `DatabaseTransaction`;
 - persistence into `sys_events` through transactional transport;
+- `idempotency` admission, fenced lease reclaim, terminal replay, and typed
+  failure persistence in `owner_operation_receipts`; owner services still own
+  business validation, mutation, and side-effect evidence;
 - rejection of root and typed-family envelopes whose metadata, registered schema,
   or semantic payload is invalid before persistence and relay;
 - relay, retry and DLQ semantics for the event runtime;
@@ -58,6 +61,9 @@ When backlog, retry or DLQ grows:
 - exposes host-neutral relay and transactional event contracts; `OutboxTransport`
   implements `TransactionalEventWriter`, and the host or owner facade supplies
   that port without requiring domain services to construct the adapter;
+- owns the generic owner-operation receipt schema used by write-port owners;
+  its append-only production migration and standalone migration share one
+  schema helper;
 - can forward delivery to downstream transports like `rustok-iggy`, without owning provider-specific delivery semantics;
 - remains a `Core` module regardless of the fact that part of the bootstrap wiring lives in the host runtime.
 - module-level `health()` returns `Degraded` when host runtime evidence is unavailable; specific checks are at `/health/ready`.
@@ -86,8 +92,13 @@ Transactional publish and relay failure modes are covered by targeted regression
   - `relay_reclaims_stale_claims` covers reclaiming stuck claims;
   - `relay_bounds_parallel_dispatch` covers bounded concurrency;
   - `relay_processes_baseline_batch_with_bounded_latency` establishes a baseline for batch latency.
+- `cargo test -p rustok-outbox --lib idempotency::tests::completed_receipts_replay_and_keys_remain_owner_scoped`:
+  - proves terminal replay and tenant/owner receipt namespace isolation.
 
-These tests cover transactional rollback/commit and relay retry/reclaim/DLQ semantics. Business idempotency of downstream consumers and restart E2E matrix should be confirmed by separate consumer-level scenarios, because outbox is responsible for durable delivery, not for the side effects of a specific recipient.
+These tests cover transactional rollback/commit, relay retry/reclaim/DLQ, and
+generic receipt semantics. Each owner must still prove that its business
+mutation, owner evidence, and receipt completion commit atomically; Outbox is
+not responsible for a recipient's domain side effects.
 
 ## Related documents
 

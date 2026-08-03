@@ -11,6 +11,7 @@ pub struct Model {
     pub menu_id: Uuid,
     pub locale: String,
     pub name: String,
+    pub revision: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

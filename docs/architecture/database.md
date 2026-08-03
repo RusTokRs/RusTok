@@ -63,6 +63,7 @@ Foundation storage includes:
 - `tenant_locales`
 - `oauth_apps`
 - `sys_events`
+- `owner_operation_receipts`
 
 ### What Matters Here
 
@@ -73,6 +74,9 @@ Foundation storage includes:
   state, input checksums, outcomes and diagnostics; secrets are not stored there
 - `platform_settings` and `tenant_modules` store platform/module settings
 - `sys_events` remains a transactional outbox table, not a generic audit dump
+- `owner_operation_receipts` is the shared durable ledger for owner-scoped
+  idempotent operations. It contains request hashes and redacted terminal
+  outcome evidence, not localized business data.
 
 ## Installer Storage
 
@@ -183,6 +187,43 @@ Principle:
 - `nodes` owns language-agnostic state
 - `node_translations` owns localized short fields
 - `bodies` owns heavy localized content
+
+## Blog-family Storage
+
+Blog category localization follows the same base-plus-exact-translation model:
+
+- `blog_categories` owns language-agnostic hierarchy, settings, and a positive
+  resource revision;
+- `blog_category_translations` owns exact `name`, localized `slug`, optional
+  `description`, and a positive per-locale revision;
+- `blog_translation_changes` is Blog's append-only, content-free owner change
+  journal for Translation cursor repair. It records resource/target revisions,
+  operation, lifecycle, and locale but not copy values.
+
+Translation applies category copy through Blog's service; it does not obtain a
+cross-module foreign key or direct write path into these tables.
+
+## Navigation-family Storage
+
+Navigation menu localization is one exact locale aggregate:
+
+- `menus` owns language-neutral location, timestamps, and a positive resource
+  revision;
+- `menu_translations` owns the exact menu `name` and its positive aggregate
+  locale revision;
+- `menu_items` owns the language-neutral nested tree, position, public URL, and
+  icon;
+- `menu_item_translations` owns exact item `title` rows; it has no independent
+  revision because it changes only through the parent menu-locale aggregate;
+- `navigation_translation_changes` is Navigation's append-only, content-free
+  owner cursor journal, recording resource/target revisions, operation,
+  lifecycle, and locale without copy values.
+
+Translation applies menu copy only through `MenuService`. The owner validates
+that one locale covers the menu name and every item exactly once, then commits
+the full target aggregate, cursor evidence, and shared durable owner-operation
+receipt in one transaction. Navigation does not emit or claim a generic menu
+outbox event for this workflow.
 
 ## Commerce-family Storage
 

@@ -44,6 +44,12 @@ Blog follows the platform language-agnostic storage model:
   `blog_post_translations`;
 - localized category name, slug, and description belong to
   `blog_category_translations`;
+- `blog_categories.revision` is the positive owner resource revision for a
+  category, while `blog_category_translations.revision` is the positive exact
+  locale revision for its localized copy;
+- `blog_translation_changes` is Blog's append-only, content-free owner change
+  journal. Its `category` rows provide the opaque cursor used by Translation
+  inventory repair and progress framing;
 - post and category translation locale columns use the platform-safe
   `VARCHAR(32)` contract after
   `m20260721_000005_expand_blog_locale_storage_columns`;
@@ -53,6 +59,31 @@ Blog follows the platform language-agnostic storage model:
 Changing the canonical post route key is a language-agnostic identity operation.
 A localized alternative URL must be modeled as an explicit alias/projection; it
 must not silently redefine ownership of `blog_posts.slug`.
+
+## Translation target boundary
+
+`BlogCategoryTranslationTargetProvider` registers the exact `blog/category`
+owner target through the server host registry. It supports bounded discovery,
+exact resource reads, patch validation, resource/source/target revision CAS,
+durable owner-operation receipt replay, exact progress, and append-only change
+cursors.
+
+- The exposed fields are public `name` (AI-exportable plain text), public
+  review-only `slug` (not AI-exportable), and optional public `description`
+  (AI-exportable plain text). Their maximum sizes are 255, 255, and 1000
+  characters respectively.
+- Runtime fallback never counts as an exact target value. Source and target
+  rows are always addressed with canonical `TenantLocale` values.
+- Apply delegates to `CategoryService::apply_exact_translation_in_tx`; it
+  validates the localized slug, performs owner CAS, records a `category`
+  change, and publishes the Blog Search reindex request. The provider completes
+  or replays the shared owner-operation receipt in that same transaction.
+- The host constructs this provider with the durable `OutboxTransport` because
+  target registration happens before the general event runtime is available.
+  The adapter never reads or writes Blog storage from `rustok-translation`.
+- Taxonomy-owned Blog tags and all Blog post fields remain outside this pilot.
+  Post title/body/SEO onboarding requires the separate editorial richtext
+  revision and segment-materialization wave.
 
 ## Permission boundary
 
@@ -87,6 +118,9 @@ Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.
 - **Taxonomy sync**: Blog tags ↔ `rustok-taxonomy` vocabulary
 - **RBAC enforcement**: distinct post/category resources and denied cross-resource grants
 - **Category invariants**: mandatory event bus, tenant parent/translation scope, slug validation, pagination cap
+- **Category Translation target**: migration `up/down/up`, exact-locale CAS,
+  idempotent replay, cursor evidence, exact progress, and transactional Search
+  reindex outbox publication
 - **GraphQL read paths**: public vs authenticated channel gating and request-scoped profile author-card privacy
 - **Events**: Blog post lifecycle and category-triggered Search reindex
 - **Comments**: thread, locale resolution, status transitions, RBAC
@@ -97,6 +131,7 @@ Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.
 - `cargo xtask module validate blog`
 - `cargo xtask module test blog`
 - `node scripts/verify/verify-blog-category-search-reindex.mjs`
+- `cargo test -p rustok-blog translation_target --lib`
 - targeted tests for lifecycle, category authority, outbox rollback, Search refresh,
   channel visibility, request-scoped author-summary filtering, and public/admin read
   paths

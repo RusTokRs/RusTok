@@ -96,7 +96,10 @@ async fn duplicate_delivery_updates_counter_and_outbox_once() -> TestResult<()> 
     handler.handle(&envelope).await?;
     handler.handle(&envelope).await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -144,7 +147,10 @@ async fn event_dispatcher_routes_registered_handler_and_commits_projection() -> 
     running.bus().publish_envelope(envelope.clone())?;
     wait_for_dispatch_commit(&test_db.db, envelope.id).await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -217,12 +223,7 @@ async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears() -
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
     install_retry_limit_probe(&test_db.db).await?;
 
-    let envelope = comment_created_envelope(
-        tenant_id,
-        actor_id,
-        Uuid::new_v4(),
-        post_id,
-    );
+    let envelope = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
     let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
 
     let error = handler
@@ -234,14 +235,20 @@ async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears() -
         load_retry_attempt_count(&test_db.db).await?,
         EXPECTED_RETRY_LIMIT_ATTEMPTS
     );
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (0, 1));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (0, 1)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 0);
     assert_eq!(count_outbox_events(&test_db.db).await?, 0);
 
     remove_retry_limit_probe(&test_db.db).await?;
     handler.handle(&envelope).await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -271,17 +278,18 @@ async fn delete_before_create_stays_non_negative_and_replays_in_order() -> TestR
         },
     );
     handler.handle(&deleted).await?;
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (0, 2));
-
-    let created = comment_created_envelope(
-        tenant_id,
-        actor_id,
-        Uuid::new_v4(),
-        post_id,
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (0, 2)
     );
+
+    let created = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
     handler.handle(&created).await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 3));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 3)
+    );
     assert_eq!(count_delivery(&test_db.db, deleted.id).await?, 1);
     assert_eq!(count_delivery(&test_db.db, created.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 2);
@@ -298,12 +306,7 @@ async fn missing_post_replay_commits_only_after_source_appears() -> TestResult<(
     let tenant_id = Uuid::new_v4();
     let post_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let envelope = comment_created_envelope(
-        tenant_id,
-        actor_id,
-        Uuid::new_v4(),
-        post_id,
-    );
+    let envelope = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
     let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
 
     let error = handler
@@ -317,7 +320,10 @@ async fn missing_post_replay_commits_only_after_source_appears() -> TestResult<(
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
     handler.handle(&envelope).await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -335,27 +341,31 @@ async fn outbox_failure_rolls_back_counter_and_delivery_before_retry() -> TestRe
     let actor_id = Uuid::new_v4();
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
 
-    let envelope = comment_created_envelope(
-        tenant_id,
-        actor_id,
-        Uuid::new_v4(),
-        post_id,
-    );
+    let envelope = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
     let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
 
-    test_db.db.execute_unprepared("DROP TABLE sys_events").await?;
+    test_db
+        .db
+        .execute_unprepared("DROP TABLE sys_events")
+        .await?;
     handler
         .handle(&envelope)
         .await
         .expect_err("missing outbox table must fail the projection transaction");
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (0, 1));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (0, 1)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 0);
 
     create_outbox_table(&test_db.db).await?;
     handler.handle(&envelope).await?;
 
-    assert_eq!(load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2));
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 2)
+    );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
@@ -555,10 +565,7 @@ async fn load_post_state(
     ))
 }
 
-async fn count_delivery(
-    db: &DatabaseConnection,
-    event_id: Uuid,
-) -> Result<i64, sea_orm::DbErr> {
+async fn count_delivery(db: &DatabaseConnection, event_id: Uuid) -> Result<i64, sea_orm::DbErr> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,

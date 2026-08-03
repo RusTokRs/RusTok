@@ -1,8 +1,8 @@
 use async_graphql::dataloader::Loader;
 use rustok_profiles::entities;
 use rustok_profiles::{
-    ProfileAccessAudience, ProfileService, ProfileStatus, ProfileSummaryLoader,
-    ProfileSummaryLoaderKey, ProfileVisibility, UpsertProfileInput,
+    ProfileAccessAudience, ProfileMutationContext, ProfileService, ProfileStatus,
+    ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfileVisibility, UpsertProfileInput,
 };
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use uuid::Uuid;
@@ -22,9 +22,12 @@ async fn create_profile(
     let mutations = rustok_profiles::ProfileMutationService::new(db, &event_bus);
     mutations
         .upsert_profile_with_event(
-            tenant_id,
-            user_id,
-            user_id,
+            ProfileMutationContext {
+                tenant_id,
+                actor_id: user_id,
+                user_id,
+                tenant_default_locale: Some("en"),
+            },
             UpsertProfileInput {
                 handle: format!("{label}-{}", &user_id.simple().to_string()[..8]),
                 display_name: label.to_string(),
@@ -35,7 +38,6 @@ async fn create_profile(
                 preferred_locale: Some("en".to_string()),
                 visibility,
             },
-            Some("en"),
         )
         .await
         .expect("profile should be created");

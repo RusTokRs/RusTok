@@ -617,7 +617,7 @@ mod tests {
             Uuid::new_v4()
         );
         let mut opts = ConnectOptions::new(db_url);
-        opts.max_connections(5)
+        opts.max_connections(1)
             .min_connections(1)
             .sqlx_logging(false);
 

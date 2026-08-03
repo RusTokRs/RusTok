@@ -400,6 +400,33 @@ same bound. The retained source contract is
 `verify-blog-category-search-reindex.test.mjs`. Both are registered as the
 `category_search_reindex` leaf gate in the Blog FBA verify/test chain.
 
+### Blog category Translation target pilot
+
+`m20260803_000016_add_blog_category_translation_target_support` adds positive
+resource and exact-locale revisions to Blog categories plus the append-only,
+content-free `blog_translation_changes` owner journal. `CategoryService` writes
+one journal entry for create, update, delete, and exact-locale Translation
+apply. Its target-only apply operation performs resource/source/target CAS,
+localized slug validation, and Blog Search reindex publication. The Translation
+provider completes or replays the shared durable owner-operation receipt in the
+same transaction.
+
+`BlogCategoryTranslationTargetProvider` is registered by the server as
+`blog/category`. It exposes exact `name`, review-only `slug`, and optional
+`description`; it does not use locale fallback for target coverage. The shared
+`rustok-translation-targets::provider_support` helpers centralize target-level
+field hashing, patch CAS validation, revision encoding, and receipt decoding,
+while Blog retains authorization, persistence, validation, and error mapping.
+The focused SQLite suite in `src/translation_target_tests.rs` proves migration
+`up/down/up`, exact apply, idempotent replay, same-key conflict rejection,
+stale validation, cursor/progress facts, denied access, and one transactional
+Search reindex outbox row.
+
+This is a registered pilot, not a production-enablement claim. Retained
+PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence are
+still required before production inventory enablement. Blog posts and
+Taxonomy-owned tags remain out of scope for this pilot.
+
 GraphQL load protection is field-aware over the host `SharedApiRateLimiter`.
 Exceeded responses expose matching GraphQL `retryAfter` and HTTP `Retry-After`;
 backend failure is fail-closed. The retained no-compile harness is

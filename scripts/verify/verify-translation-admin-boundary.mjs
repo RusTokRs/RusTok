@@ -98,6 +98,11 @@ for (const marker of [
     `${files.core}: framework-neutral core contains ${marker}`,
   );
 }
+excludes(
+  source.core,
+  "#[allow(",
+  `${files.core}: command construction must not suppress lint diagnostics`,
+);
 
 contains(
   source.lib,
@@ -314,6 +319,11 @@ const sharedWorkbenchOperations = [
   "generate_machine_proposal",
   "cancel_machine_operation",
   "recover_machine_operation",
+  "assign_item",
+  "unassign_item",
+  "cancel_job",
+  "retry_item",
+  "recover_apply",
   "submit_proposal",
   "approve_proposal",
   "apply_proposal",
@@ -328,6 +338,59 @@ for (const operation of sharedWorkbenchOperations) {
     source.nextApi,
     `case '${operation}'`,
     `${files.nextApi}: Next GraphQL adapter is missing ${operation}`,
+  );
+}
+
+for (const marker of [
+  "core::MachineProposalCommand::Estimate",
+  "core::MachineProposalCommand::Generate",
+  "core::read_machine_operation_status_operation",
+  "core::cancel_machine_operation",
+  "core::recover_machine_operation",
+]) {
+  contains(
+    source.leptos,
+    marker,
+    `${files.leptos}: Workflow UI is missing machine control ${marker}`,
+  );
+}
+for (const operation of [
+  "estimate_machine_translation",
+  "generate_machine_proposal",
+  "read_machine_operation_status",
+  "cancel_machine_operation",
+  "recover_machine_operation",
+]) {
+  contains(
+    source.nextPackage,
+    `'${operation}'`,
+    `${files.nextPackage}: Workflow UI is missing machine control ${operation}`,
+  );
+}
+for (const marker of [
+  "core::assign_item_operation",
+  "core::unassign_item_operation",
+  "core::cancel_job_operation",
+  "core::retry_item_operation",
+  "core::recover_apply_operation",
+]) {
+  contains(
+    source.leptos,
+    marker,
+    `${files.leptos}: Workflow UI is missing recovery control ${marker}`,
+  );
+}
+for (const operation of [
+  "assign_item",
+  "unassign_item",
+  "cancel_job",
+  "retry_item",
+  "recover_apply",
+]) {
+  contains(
+    source.nextPackage,
+    `'${operation}'`,
+    `${files.nextPackage}: Workflow UI is missing recovery control ${operation}`,
   );
 }
 

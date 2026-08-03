@@ -5,17 +5,14 @@ use rustok_api::{PortActorKind, PortError};
 use tokio::time::timeout;
 
 use crate::{
-    CommentsTcpAuthenticationConfigError, CommentsTcpBearerToken,
-    CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
-    CommentsTcpDelegationConfigError, CommentsTcpDelegationSecret, CommentsTcpDelegationSigner,
-    CommentsTcpOperation, CommentsTcpRequestEnvelope, CommentsThreadRequest,
-    CommentsThreadResponse, CommentsThreadTransport, CommentsThreadTransportReply,
-    PlaintextLoopbackCommentsTcpChannel,
+    CommentsTcpAuthenticationConfigError, CommentsTcpBearerToken, CommentsTcpChannelProtection,
+    CommentsTcpClientChannelConnector, CommentsTcpDelegationConfigError,
+    CommentsTcpDelegationSecret, CommentsTcpDelegationSigner, CommentsTcpOperation,
+    CommentsTcpRequestEnvelope, CommentsThreadRequest, CommentsThreadResponse,
+    CommentsThreadTransport, CommentsThreadTransportReply, PlaintextLoopbackCommentsTcpChannel,
 };
 
-use crate::tcp_protocol::{
-    ensure_frame_size, read_frame, validate_frame_limit, write_frame,
-};
+use crate::tcp_protocol::{ensure_frame_size, read_frame, validate_frame_limit, write_frame};
 
 pub use crate::tcp_protocol::DEFAULT_MAX_COMMENTS_FRAME_BYTES;
 
@@ -210,10 +207,7 @@ impl TcpJsonCommentsTransport {
         self.delegation_signer.is_some()
     }
 
-    async fn exchange(
-        &self,
-        request_payload: &[u8],
-    ) -> Result<CommentsThreadResponse, PortError> {
+    async fn exchange(&self, request_payload: &[u8]) -> Result<CommentsThreadResponse, PortError> {
         let mut channel = self.channel_connector.connect(self.endpoint).await?;
         write_frame(&mut *channel, request_payload, self.max_frame_bytes).await?;
         let response_payload = read_frame(&mut *channel, self.max_frame_bytes).await?;
@@ -310,7 +304,7 @@ fn decode_reply(payload: &[u8]) -> Result<CommentsThreadResponse, PortError> {
         )
     })?;
     match reply {
-        CommentsThreadTransportReply::Success(response) => Ok(response),
+        CommentsThreadTransportReply::Success(response) => Ok(*response),
         CommentsThreadTransportReply::Error(error) => Err(error),
     }
 }
@@ -373,8 +367,8 @@ mod tests {
     #[test]
     fn provider_error_reply_is_preserved() {
         let expected = PortError::validation("comments.exact", "exact provider error");
-        let payload = serde_json::to_vec(&CommentsThreadTransportReply::Error(expected.clone()))
-            .unwrap();
+        let payload =
+            serde_json::to_vec(&CommentsThreadTransportReply::Error(expected.clone())).unwrap();
 
         assert_eq!(decode_reply(&payload).unwrap_err(), expected);
     }

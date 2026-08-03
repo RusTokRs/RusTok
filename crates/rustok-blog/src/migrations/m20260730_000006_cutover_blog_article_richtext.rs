@@ -62,8 +62,8 @@ enum BlogPostTranslations {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{Database, DbBackend};
     use super::*;
+    use sea_orm::{Database, DbBackend};
 
     async fn legacy_database(body: &str) -> sea_orm::DatabaseConnection {
         let database = Database::connect(format!(
@@ -121,7 +121,10 @@ mod tests {
         let database = legacy_database(&body).await;
         let manager = SchemaManager::new(&database);
 
-        Migration.up(&manager).await.expect("canonical rows should migrate");
+        Migration
+            .up(&manager)
+            .await
+            .expect("canonical rows should migrate");
 
         assert!(
             !manager
@@ -141,7 +144,11 @@ mod tests {
             .await
             .expect_err("legacy Markdown must fail closed");
 
-        assert!(error.to_string().contains("convert stored Blog article bodies"));
+        assert!(
+            error
+                .to_string()
+                .contains("convert stored Blog article bodies")
+        );
         assert!(
             manager
                 .has_column("blog_post_translations", "body_format")

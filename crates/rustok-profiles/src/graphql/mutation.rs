@@ -12,8 +12,9 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ProfileError, ProfileMediaSlot, ProfileMutationService, ProfileOperation,
-    ProfileOperationTimer, ProfileRecord, ProfileResult, validate_profile_media_asset,
+    ProfileError, ProfileMediaSlot, ProfileMutationContext, ProfileMutationService,
+    ProfileOperation, ProfileOperationTimer, ProfileRecord, ProfileResult,
+    validate_profile_media_asset,
 };
 
 use super::{MODULE_SLUG, types::*};
@@ -51,11 +52,8 @@ impl ProfilesMutation {
             tenant.id,
             auth.user_id,
             mutations.upsert_profile_with_event(
-                tenant.id,
-                auth.user_id,
-                auth.user_id,
+                self_service_mutation_context(tenant, auth.user_id),
                 input.into(),
-                Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
@@ -80,11 +78,8 @@ impl ProfilesMutation {
             tenant.id,
             auth.user_id,
             mutations.update_profile_handle_with_event(
-                tenant.id,
-                auth.user_id,
-                auth.user_id,
+                self_service_mutation_context(tenant, auth.user_id),
                 &handle,
-                Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
@@ -109,12 +104,9 @@ impl ProfilesMutation {
             tenant.id,
             auth.user_id,
             mutations.update_profile_content_with_event(
-                tenant.id,
-                auth.user_id,
-                auth.user_id,
+                self_service_mutation_context(tenant, auth.user_id),
                 &input.display_name,
                 input.bio.as_deref(),
-                Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
@@ -139,11 +131,8 @@ impl ProfilesMutation {
             tenant.id,
             auth.user_id,
             mutations.update_profile_locale_with_event(
-                tenant.id,
-                auth.user_id,
-                auth.user_id,
+                self_service_mutation_context(tenant, auth.user_id),
                 preferred_locale.as_deref(),
-                Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
@@ -168,11 +157,8 @@ impl ProfilesMutation {
             tenant.id,
             auth.user_id,
             mutations.update_profile_visibility_with_event(
-                tenant.id,
-                auth.user_id,
-                auth.user_id,
+                self_service_mutation_context(tenant, auth.user_id),
                 visibility.into(),
-                Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
@@ -206,17 +192,26 @@ impl ProfilesMutation {
             tenant.id,
             auth.user_id,
             mutations.update_profile_media_with_event(
-                tenant.id,
-                auth.user_id,
-                auth.user_id,
+                self_service_mutation_context(tenant, auth.user_id),
                 input.avatar_media_id,
                 input.banner_media_id,
-                Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
 
         Ok(profile.into())
+    }
+}
+
+fn self_service_mutation_context<'a>(
+    tenant: &'a TenantContext,
+    user_id: Uuid,
+) -> ProfileMutationContext<'a> {
+    ProfileMutationContext {
+        tenant_id: tenant.id,
+        actor_id: user_id,
+        user_id,
+        tenant_default_locale: Some(tenant.default_locale.as_str()),
     }
 }
 

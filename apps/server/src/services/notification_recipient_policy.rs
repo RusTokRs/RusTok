@@ -20,8 +20,7 @@ use rustok_profiles::{
 #[cfg(feature = "mod-social_graph")]
 use rustok_social_graph::{
     IndexPrivacyShadowFailureCode, IndexPrivacyShadowObservation, IndexPrivacyShadowObserver,
-    IndexPrivacyShadowOperation, IndexPrivacyShadowOutcome,
-    IndexShadowSocialGraphPrivacyReadPort,
+    IndexPrivacyShadowOperation, IndexPrivacyShadowOutcome, IndexShadowSocialGraphPrivacyReadPort,
 };
 use rustok_social_graph::{
     SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
@@ -167,11 +166,7 @@ impl ServerNotificationRecipientPolicy {
     ) -> NotificationRecipientPolicyRuntime {
         let graph_port: Arc<dyn SocialGraphPrivacyReadPort> =
             Arc::new(SocialGraphService::new(db.clone()));
-        Self::compose_with_graph(
-            db,
-            extensions,
-            SocialGraphPrivacyRuntime::new(graph_port),
-        )
+        Self::compose_with_graph(db, extensions, SocialGraphPrivacyRuntime::new(graph_port))
     }
 
     #[cfg(feature = "mod-social_graph")]
@@ -182,18 +177,13 @@ impl ServerNotificationRecipientPolicy {
     ) -> NotificationRecipientPolicyRuntime {
         let authoritative: Arc<dyn SocialGraphPrivacyReadPort> =
             Arc::new(SocialGraphService::new(db.clone()));
-        let shadow: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(
-            IndexShadowSocialGraphPrivacyReadPort::with_observer(
+        let shadow: Arc<dyn SocialGraphPrivacyReadPort> =
+            Arc::new(IndexShadowSocialGraphPrivacyReadPort::with_observer(
                 authoritative,
                 runtime,
                 Arc::new(TelemetryIndexPrivacyShadowObserver),
-            ),
-        );
-        Self::compose_with_graph(
-            db,
-            extensions,
-            SocialGraphPrivacyRuntime::new(shadow),
-        )
+            ));
+        Self::compose_with_graph(db, extensions, SocialGraphPrivacyRuntime::new(shadow))
     }
 
     fn compose_with_graph(

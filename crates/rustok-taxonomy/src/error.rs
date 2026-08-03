@@ -18,6 +18,12 @@ pub enum TaxonomyError {
     #[error("Alias already exists in this scope: {0}")]
     DuplicateAlias(String),
 
+    #[error("Taxonomy revision conflict: {0}")]
+    Conflict(String),
+
+    #[error("Translation revision is exhausted for term {term_id} and locale {locale}")]
+    TranslationRevisionExhausted { term_id: Uuid, locale: String },
+
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
@@ -34,5 +40,9 @@ impl TaxonomyError {
 
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
+    }
+
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::Conflict(message.into())
     }
 }

@@ -19,8 +19,8 @@ use rustok_events::{
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumEventService,
     ForumModule, ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact,
-    ForumSearchProjectionSourceFactory, ForumSearchResultCandidate,
-    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService, TopicService,
+    ForumSearchProjectionSourceFactory, ForumSearchResultCandidate, ForumSearchResultCandidateKind,
+    ForumSearchResultEligibilityService, TopicService,
 };
 use rustok_iggy::{
     ConsumedContractEvent, ExternalConfig, IggyConfig, IggyMode, IggyTransport,
@@ -33,15 +33,14 @@ use rustok_search::{
     ForumProjectionOwnerRevisionImpact as SearchOwnerRevisionImpact,
     ForumProjectionOwnerRevisionRecord, ForumProjectionOwnerRevisionRequest,
     ForumProjectionOwnerRevisionSourcePort, ForumProjectionOwnerTenantHead,
-    ForumProjectionOwnerTenantPageRequest, ForumProjectionReconciler,
-    ForumSearchContractIngress, ForumSearchContractIngressOutcome,
-    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
-    SearchProjectionSourceFactory, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
-    execute_forum_storefront_search,
+    ForumProjectionOwnerTenantPageRequest, ForumProjectionReconciler, ForumSearchContractIngress,
+    ForumSearchContractIngressOutcome, ForumStorefrontSearchAttributeFilter,
+    ForumStorefrontSearchRequest, SearchModule, SearchProjectionSourceFactory,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
+    StorefrontSearchTransport, execute_forum_storefront_search,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -64,8 +63,7 @@ const RECEIVE_TIMEOUT: Duration = Duration::from_secs(20);
 const ROOT_EVENT_TYPE: &str = "index.reindex_requested";
 const TYPED_EVENT_TYPE: &str = "forum.search_projection.invalidation_issued";
 const TOPIC_MARKER: &str = "d10normaldeliverytopic";
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_versioned_invalidation_normal_delivery_evidence_v1";
+const EVIDENCE_CONTRACT: &str = "forum_search_versioned_invalidation_normal_delivery_evidence_v1";
 const EVIDENCE_PATH: &str =
     "target/forum-search-versioned-invalidation-normal-delivery-evidence.json";
 
@@ -173,9 +171,7 @@ impl ForumProjectionOwnerRevisionSourcePort for RealForumOwnerRevisionSource {
                 event_id: revision.event_id,
                 event_type: revision.event_type,
                 impact: match revision.impact {
-                    ForumOwnerRevisionImpact::FullRebuild => {
-                        SearchOwnerRevisionImpact::FullRebuild
-                    }
+                    ForumOwnerRevisionImpact::FullRebuild => SearchOwnerRevisionImpact::FullRebuild,
                 },
             })
             .collect())
@@ -364,9 +360,7 @@ struct NormalDeliveryEvidenceArtifact {
 #[tokio::test]
 async fn normal_owner_delivery_projects_and_checkpoints_exactly_once() -> TestResult<()> {
     let Some(config) = external_test_config()? else {
-        eprintln!(
-            "{IGGY_ADDRESS_ENV} is not set; skipping Forum normal-delivery Iggy proof"
-        );
+        eprintln!("{IGGY_ADDRESS_ENV} is not set; skipping Forum normal-delivery Iggy proof");
         return Ok(());
     };
     let Some(evidence) = PostgresNormalDeliveryEvidence::setup("normal").await? else {
@@ -514,12 +508,16 @@ async fn run_normal_delivery_proof(
         )));
     }
     let audit = load_checkpoint_audit(db, fixture.tenant_id).await?;
-    if audit.iter().map(|row| row.owner_revision).collect::<Vec<_>>() != [1, 2]
+    if audit
+        .iter()
+        .map(|row| row.owner_revision)
+        .collect::<Vec<_>>()
+        != [1, 2]
         || audit.iter().map(|row| row.event_id).collect::<Vec<_>>()
             != revisions.iter().map(|row| row.event_id).collect::<Vec<_>>()
-        || audit.iter().any(|row| {
-            row.outcome != "delivery_covered" || row.observed_forum_documents != 2
-        })
+        || audit
+            .iter()
+            .any(|row| row.outcome != "delivery_covered" || row.observed_forum_documents != 2)
     {
         return Err(test_error(format!(
             "normal delivery checkpoint audit drifted from projection-before-checkpoint ordering: {audit:?}"
@@ -737,7 +735,10 @@ fn ensure_owner_event_identity(
             typed.len()
         )));
     }
-    let root_ids = roots.iter().map(|envelope| envelope.id).collect::<BTreeSet<_>>();
+    let root_ids = roots
+        .iter()
+        .map(|envelope| envelope.id)
+        .collect::<BTreeSet<_>>();
     let revision_ids = revisions
         .iter()
         .map(|revision| revision.event_id)
@@ -859,10 +860,7 @@ async fn load_inbox_row(db: &DatabaseConnection, event_id: Uuid) -> TestResult<I
     })
 }
 
-async fn load_inbox_rows(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<Vec<InboxRow>> {
+async fn load_inbox_rows(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<Vec<InboxRow>> {
     db.query_all(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
@@ -1161,10 +1159,7 @@ async fn count_rows(db: &DatabaseConnection, table: &str) -> TestResult<i64> {
     .await
 }
 
-async fn count_forum_documents(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn count_forum_documents(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -1275,9 +1270,7 @@ async fn connect_in_schema(
 
 fn database_url_in_schema(database_url: &str, schema_name: &str) -> String {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
-    )
+    format!("{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic")
 }
 
 async fn connect(database_url: &str, max_connections: u32) -> TestResult<DatabaseConnection> {
@@ -1330,7 +1323,9 @@ fn source_commit() -> TestResult<String> {
         .args(["rev-parse", "HEAD"])
         .output()?;
     if !output.status.success() {
-        return Err(test_error("git rev-parse HEAD failed for evidence generation"));
+        return Err(test_error(
+            "git rev-parse HEAD failed for evidence generation",
+        ));
     }
     let value = String::from_utf8(output.stdout)?;
     let value = value.trim();

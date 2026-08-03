@@ -6,6 +6,7 @@ use std::{
 use async_trait::async_trait;
 use rustok_api::{Action, PortActorKind, PortContext, PortError, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext};
+use rustok_outbox::idempotency::{self, Admission};
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
@@ -38,7 +39,6 @@ use crate::{
             Model as TranslationChangeModel,
         },
     },
-    idempotency::{self, Admission},
     lifecycle::AssetState,
     ports::media_error_to_port_error,
     service::media_resource_revision,
@@ -113,7 +113,7 @@ impl MediaTranslationTargetProvider {
         snapshot_from_models(asset, translations, request)
     }
 
-    async fn fail_receipt(&self, lease: idempotency::OperationLease, error: &PortError) {
+    async fn fail_receipt(&self, lease: idempotency::Lease, error: &PortError) {
         if let Err(receipt_error) = idempotency::fail(self.service.database(), lease, error).await {
             tracing::error!(
                 operation_id = %lease.operation_id,
@@ -271,6 +271,7 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
         let lease = match idempotency::admit(
             self.service.database(),
             tenant_id,
+            TRANSLATION_OWNER_SLUG,
             idempotency_key,
             OPERATION_APPLY_PATCH,
             admission_request,
@@ -923,6 +924,6 @@ fn contract_validation_error(message: String) -> PortError {
 
 fn decode_receipt(value: serde_json::Value) -> Result<TranslationApplicationReceipt, PortError> {
     serde_json::from_value(value).map_err(|error| {
-        PortError::invariant_violation("media.idempotency_receipt_corrupt", error.to_string())
+        PortError::invariant_violation("outbox.operation_receipt_corrupt", error.to_string())
     })
 }

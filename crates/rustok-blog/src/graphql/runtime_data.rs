@@ -17,9 +17,7 @@ pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
 }
 
-pub fn attach_schema_data(
-    inputs: &GraphqlRuntimeInputs,
-) -> Result<BlogGraphqlRuntimeData, String> {
+pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
     })

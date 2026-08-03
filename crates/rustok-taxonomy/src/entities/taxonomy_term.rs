@@ -15,6 +15,7 @@ pub struct Model {
     pub scope_value: String,
     pub canonical_key: String,
     pub status: TaxonomyTermStatus,
+    pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

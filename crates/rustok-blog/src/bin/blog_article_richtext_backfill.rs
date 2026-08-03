@@ -110,7 +110,10 @@ impl ReportWriter {
     fn new(path: Option<&Path>) -> Result<Self> {
         let inner = match path {
             Some(path) => {
-                if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+                if let Some(parent) = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                {
                     fs::create_dir_all(parent).with_context(|| {
                         format!("failed to create report directory {}", parent.display())
                     })?;
@@ -229,7 +232,10 @@ async fn preflight_pass(
         if rows.is_empty() {
             break;
         }
-        cursor = rows.last().map(|row| Cursor { updated_at: row.updated_at.clone(), id: row.id });
+        cursor = rows.last().map(|row| Cursor {
+            updated_at: row.updated_at.clone(),
+            id: row.id,
+        });
 
         for row in rows {
             metrics.scanned += 1;
@@ -255,12 +261,7 @@ async fn preflight_pass(
                     metrics.invalid += 1;
                     eprintln!(
                         "[invalid] translation_id={} post_id={} tenant_id={:?} locale={} format={} error={:#}",
-                        row.id,
-                        row.post_id,
-                        row.tenant_id,
-                        row.locale,
-                        row.body_format,
-                        error
+                        row.id, row.post_id, row.tenant_id, row.locale, row.body_format, error
                     );
                     report.write(&ReportRecord {
                         translation_id: row.id,
@@ -288,14 +289,21 @@ async fn apply_pass(db: &DatabaseConnection, cli: &Cli) -> Result<Metrics> {
         if rows.is_empty() {
             break;
         }
-        cursor = rows.last().map(|row| Cursor { updated_at: row.updated_at.clone(), id: row.id });
+        cursor = rows.last().map(|row| Cursor {
+            updated_at: row.updated_at.clone(),
+            id: row.id,
+        });
 
         let mut updates = Vec::new();
         for row in rows {
             metrics.scanned += 1;
-            let conversion = convert_row(&row, cli.allow_markdown_plain_text).with_context(|| {
-                format!("row {} changed after preflight and is no longer convertible", row.id)
-            })?;
+            let conversion =
+                convert_row(&row, cli.allow_markdown_plain_text).with_context(|| {
+                    format!(
+                        "row {} changed after preflight and is no longer convertible",
+                        row.id
+                    )
+                })?;
             if conversion.needs_update(&row) {
                 metrics.planned_updates += 1;
                 updates.push((row, conversion));
@@ -373,9 +381,7 @@ where
                 values.push(cursor.updated_at.clone().into());
                 values.push(cursor.updated_at.into());
                 values.push(cursor.id.into());
-                sql.push_str(
-                    " AND (bt.updated_at > ? OR (bt.updated_at = ? AND bt.id > ?))",
-                );
+                sql.push_str(" AND (bt.updated_at > ? OR (bt.updated_at = ? AND bt.id > ?))");
             }
             values.push((batch_size as i64).into());
             sql.push_str(" ORDER BY bt.updated_at ASC, bt.id ASC LIMIT ?");

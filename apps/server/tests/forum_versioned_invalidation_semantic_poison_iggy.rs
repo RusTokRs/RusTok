@@ -24,9 +24,8 @@ use rustok_iggy_connector::{
     ConnectorConfig, ConsumerCursor, ExternalConnector, IggyConnector, SubscriberMessage,
 };
 use rustok_search::{
-    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC,
-    ForumSearchContractIngress, ForumSearchContractIngressError,
-    ForumSearchContractIngressOutcome, SearchModule,
+    FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress,
+    ForumSearchContractIngressError, ForumSearchContractIngressOutcome, SearchModule,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -48,10 +47,8 @@ const RECEIVE_TIMEOUT: Duration = Duration::from_secs(20);
 const NO_DUPLICATE_DLQ_TIMEOUT: Duration = Duration::from_millis(750);
 const PUBLISH_LEASE: Duration = Duration::from_secs(30);
 const ROOT_EVENT_TYPE: &str = "index.reindex_requested";
-const SEMANTIC_ERROR_CODE: &str =
-    "forum.search_projection.contract_inbox_identity_conflict";
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_versioned_invalidation_semantic_poison_evidence_v1";
+const SEMANTIC_ERROR_CODE: &str = "forum.search_projection.contract_inbox_identity_conflict";
+const EVIDENCE_CONTRACT: &str = "forum_search_versioned_invalidation_semantic_poison_evidence_v1";
 const EVIDENCE_PATH: &str =
     "target/forum-search-versioned-invalidation-semantic-poison-evidence.json";
 
@@ -72,9 +69,7 @@ impl PostgresIggyEvidence {
             return Ok(None);
         };
         let Some(config) = external_iggy_config(scope)? else {
-            eprintln!(
-                "{IGGY_ADDRESS_ENV} is not set; skipping Forum Search semantic poison proof"
-            );
+            eprintln!("{IGGY_ADDRESS_ENV} is not set; skipping Forum Search semantic poison proof");
             return Ok(None);
         };
 
@@ -208,12 +203,7 @@ async fn run_semantic_poison_proof(
     let conflict_category_id = Uuid::new_v4();
     let next_root_id = Uuid::new_v4();
 
-    let conflicting_root = root_envelope(
-        conflicting_tenant_id,
-        conflict_root_id,
-        "forum",
-        None,
-    );
+    let conflicting_root = root_envelope(conflicting_tenant_id, conflict_root_id, "forum", None);
     insert_legacy_root(&evidence.db, &conflicting_root, "forum").await?;
     let conflict_before = load_snapshot(&evidence.db, conflict_root_id).await?;
 
@@ -224,13 +214,7 @@ async fn run_semantic_poison_proof(
         "forum_category",
         Some(conflict_category_id),
     )?;
-    let next_envelope = typed_invalidation(
-        expected_tenant_id,
-        next_root_id,
-        22,
-        "forum",
-        None,
-    )?;
+    let next_envelope = typed_invalidation(expected_tenant_id, next_root_id, 22, "forum", None)?;
     let first_typed_envelope_id = first_envelope.id();
     let next_typed_envelope_id = next_envelope.id();
 
@@ -485,9 +469,9 @@ fn semantic_poison_descriptor(
     consumed: &ConsumedContractEvent,
     observed_attempts: u32,
 ) -> TestResult<(ConsumerPoisonIdentity, DlqEntry)> {
-    let offset = consumed
-        .offset()
-        .ok_or_else(|| invalid_data("validated semantic poison delivery has no connector offset"))?;
+    let offset = consumed.offset().ok_or_else(|| {
+        invalid_data("validated semantic poison delivery has no connector offset")
+    })?;
     let delivery_identity = ConsumedContractDecodeFailure::new(
         consumed.stream.clone(),
         consumed.topic.clone(),
@@ -588,7 +572,9 @@ async fn insert_legacy_root(
     Ok(())
 }
 
-async fn receive_event(group: &PersistentContractConsumerGroup) -> TestResult<ConsumedContractEvent> {
+async fn receive_event(
+    group: &PersistentContractConsumerGroup,
+) -> TestResult<ConsumedContractEvent> {
     let delivery = timeout(RECEIVE_TIMEOUT, group.receive_delivery())
         .await
         .map_err(|_| invalid_data("timed out waiting for a Forum Search typed delivery"))??
@@ -612,8 +598,7 @@ fn ensure_event_identity(
     if delivery.envelope.id() != expected_typed_envelope_id
         || delivery.envelope.causation_id() != Some(expected_root_event_id)
         || delivery.envelope.tenant_id() != expected_tenant_id
-        || delivery.envelope.event_type()
-            != "forum.search_projection.invalidation_issued"
+        || delivery.envelope.event_type() != "forum.search_projection.invalidation_issued"
         || delivery.offset().is_none()
         || delivery.ack_token().is_none()
         || delivery.raw_payload().is_empty()
@@ -629,8 +614,10 @@ fn ensure_event_identity(
 }
 
 fn ensure_identity_conflict(error: &ForumSearchContractIngressError) -> TestResult<()> {
-    if !matches!(error, ForumSearchContractIngressError::InboxIdentityConflict)
-        || error.stable_code() != SEMANTIC_ERROR_CODE
+    if !matches!(
+        error,
+        ForumSearchContractIngressError::InboxIdentityConflict
+    ) || error.stable_code() != SEMANTIC_ERROR_CODE
         || error.is_retryable()
     {
         return Err(invalid_data(format!(
@@ -682,10 +669,9 @@ async fn require_receipt(
     store: &ConsumerPoisonReceiptStore,
     identity: &ConsumerPoisonIdentity,
 ) -> TestResult<ConsumerPoisonReceipt> {
-    store
-        .find(identity)
-        .await?
-        .ok_or_else(|| invalid_data("expected Forum Search semantic poison receipt was not found").into())
+    store.find(identity).await?.ok_or_else(|| {
+        invalid_data("expected Forum Search semantic poison receipt was not found").into()
+    })
 }
 
 fn ensure_receipt(
@@ -718,18 +704,15 @@ async fn acknowledge_cursor_message(
     cursor: &mut Box<dyn ConsumerCursor>,
     message: &SubscriberMessage,
 ) -> TestResult<()> {
-    let ack_token = message
-        .metadata
-        .ack_token
-        .as_deref()
-        .ok_or_else(|| invalid_data("semantic-poison DLQ delivery has no acknowledgement token"))?;
+    let ack_token =
+        message.metadata.ack_token.as_deref().ok_or_else(|| {
+            invalid_data("semantic-poison DLQ delivery has no acknowledgement token")
+        })?;
     cursor.acknowledge(ack_token).await?;
     Ok(())
 }
 
-async fn assert_no_duplicate_dlq_message(
-    cursor: &mut Box<dyn ConsumerCursor>,
-) -> TestResult<()> {
+async fn assert_no_duplicate_dlq_message(cursor: &mut Box<dyn ConsumerCursor>) -> TestResult<()> {
     match timeout(NO_DUPLICATE_DLQ_TIMEOUT, cursor.receive()).await {
         Err(_) | Ok(Ok(None)) => Ok(()),
         Ok(Ok(Some(_))) => Err(invalid_data(

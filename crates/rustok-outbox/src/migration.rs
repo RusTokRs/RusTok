@@ -70,14 +70,113 @@ impl MigrationTrait for SysEventsMigration {
                     .col(SysEvents::ClaimedAt)
                     .to_owned(),
             )
-            .await
+            .await?;
+
+        create_owner_operation_receipts_table(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_owner_operation_receipts_table(manager).await?;
         manager
             .drop_table(Table::drop().table(SysEvents::Table).to_owned())
             .await
     }
+}
+
+/// Creates the schema owned by the generic durable owner-operation receipt
+/// primitive. The platform migrator invokes this helper as an append-only
+/// migration, while standalone owner/test schemas obtain the same invariant
+/// through [`SysEventsMigration`].
+pub async fn create_owner_operation_receipts_table(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(OwnerOperationReceipts::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::TenantId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::OwnerSlug)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::IdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::Operation)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::RequestHash)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::LeaseToken)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::Status)
+                        .string_len(32)
+                        .not_null(),
+                )
+                .col(ColumnDef::new(OwnerOperationReceipts::ResponseJson).json_binary())
+                .col(ColumnDef::new(OwnerOperationReceipts::ErrorJson).json_binary())
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::UpdatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null(),
+                )
+                .col(ColumnDef::new(OwnerOperationReceipts::CompletedAt).timestamp_with_time_zone())
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .if_not_exists()
+                .name("uidx_owner_operation_receipts_tenant_owner_key")
+                .table(OwnerOperationReceipts::Table)
+                .col(OwnerOperationReceipts::TenantId)
+                .col(OwnerOperationReceipts::OwnerSlug)
+                .col(OwnerOperationReceipts::IdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await
+}
+
+/// Drops the owner-operation receipt schema during a full migration rollback.
+pub async fn drop_owner_operation_receipts_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .drop_table(
+            Table::drop()
+                .table(OwnerOperationReceipts::Table)
+                .to_owned(),
+        )
+        .await
 }
 
 #[derive(DeriveIden)]
@@ -95,4 +194,22 @@ enum SysEvents {
     ClaimedAt,
     CreatedAt,
     DispatchedAt,
+}
+
+#[derive(DeriveIden)]
+enum OwnerOperationReceipts {
+    Table,
+    Id,
+    TenantId,
+    OwnerSlug,
+    IdempotencyKey,
+    Operation,
+    RequestHash,
+    LeaseToken,
+    Status,
+    ResponseJson,
+    ErrorJson,
+    CreatedAt,
+    UpdatedAt,
+    CompletedAt,
 }

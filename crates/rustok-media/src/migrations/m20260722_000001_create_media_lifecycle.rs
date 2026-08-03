@@ -152,77 +152,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_table(
-                Table::create()
-                    .table(PortOperations::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(PortOperations::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(ColumnDef::new(PortOperations::TenantId).uuid().not_null())
-                    .col(
-                        ColumnDef::new(PortOperations::IdempotencyKey)
-                            .string_len(191)
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(PortOperations::Operation)
-                            .string_len(64)
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(PortOperations::RequestHash)
-                            .string_len(64)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(PortOperations::LeaseToken).uuid().not_null())
-                    .col(
-                        ColumnDef::new(PortOperations::Status)
-                            .string_len(32)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(PortOperations::ResponseJson).json_binary())
-                    .col(ColumnDef::new(PortOperations::ErrorJson).json_binary())
-                    .col(
-                        ColumnDef::new(PortOperations::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .col(
-                        ColumnDef::new(PortOperations::UpdatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .col(ColumnDef::new(PortOperations::CompletedAt).timestamp_with_time_zone())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_media_port_operations_tenant")
-                            .from(PortOperations::Table, PortOperations::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("uidx_media_port_operations_tenant_key")
-                    .table(PortOperations::Table)
-                    .col(PortOperations::TenantId)
-                    .col(PortOperations::IdempotencyKey)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
         if manager.get_database_backend() == DatabaseBackend::Postgres {
             manager
                 .create_foreign_key(
@@ -448,9 +377,6 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(PortOperations::Table).to_owned())
-            .await?;
-        manager
             .drop_table(Table::drop().table(Translations::Table).to_owned())
             .await?;
         if manager.get_database_backend() == DatabaseBackend::Postgres {
@@ -587,24 +513,6 @@ enum Blobs {
     ReconcileAttempts,
     LastReconciledAt,
     LastError,
-}
-
-#[derive(Iden)]
-enum PortOperations {
-    #[iden = "media_port_operations"]
-    Table,
-    Id,
-    TenantId,
-    IdempotencyKey,
-    Operation,
-    RequestHash,
-    LeaseToken,
-    Status,
-    ResponseJson,
-    ErrorJson,
-    CreatedAt,
-    UpdatedAt,
-    CompletedAt,
 }
 
 #[derive(Iden)]

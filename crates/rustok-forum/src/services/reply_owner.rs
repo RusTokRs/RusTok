@@ -205,14 +205,13 @@ async fn allocate_reply_position_in_tx(
         }
         DatabaseBackend::Sqlite => {
             let row = txn
-                .query_one(Statement::from_string(
+                .query_one(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
-                    format!(
-                        "UPDATE forum_topics \
-                         SET next_reply_position = next_reply_position + 1 \
-                         WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}' \
-                         RETURNING next_reply_position - 1 AS position"
-                    ),
+                    "UPDATE forum_topics \
+                     SET next_reply_position = next_reply_position + 1 \
+                     WHERE tenant_id = ? AND id = ? \
+                     RETURNING next_reply_position - 1 AS position",
+                    vec![tenant_id.into(), topic_id.into()],
                 ))
                 .await?
                 .ok_or(ForumError::TopicNotFound(topic_id))?;
@@ -229,12 +228,19 @@ async fn claim_reply_delete_in_tx(
     tenant_id: Uuid,
     reply_id: Uuid,
 ) -> ForumResult<()> {
+    let statement = tenant_scoped_reply_statement(
+        txn.get_database_backend(),
+        "UPDATE forum_replies \
+         SET updated_at = updated_at \
+         WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL",
+        "UPDATE forum_replies \
+         SET updated_at = updated_at \
+         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+        tenant_id,
+        reply_id,
+    )?;
     let result = txn
-        .execute_unprepared(&format!(
-            "UPDATE forum_replies \
-             SET updated_at = updated_at \
-             WHERE tenant_id = '{tenant_id}' AND id = '{reply_id}' AND deleted_at IS NULL"
-        ))
+        .execute(statement)
         .await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::ReplyDeleted);
@@ -247,15 +253,46 @@ async fn mark_reply_deleted_in_tx(
     tenant_id: Uuid,
     reply_id: Uuid,
 ) -> ForumResult<()> {
+    let statement = tenant_scoped_reply_statement(
+        txn.get_database_backend(),
+        "UPDATE forum_replies \
+         SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
+         WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL",
+        "UPDATE forum_replies \
+         SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
+         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+        tenant_id,
+        reply_id,
+    )?;
     let result = txn
-        .execute_unprepared(&format!(
-            "UPDATE forum_replies \
-             SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
-             WHERE tenant_id = '{tenant_id}' AND id = '{reply_id}' AND deleted_at IS NULL"
-        ))
+        .execute(statement)
         .await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::ReplyDeleted);
     }
     Ok(())
+}
+
+fn tenant_scoped_reply_statement(
+    backend: DatabaseBackend,
+    sqlite_sql: &str,
+    postgres_sql: &str,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> ForumResult<Statement> {
+    match backend {
+        DatabaseBackend::Postgres => Ok(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            postgres_sql,
+            vec![tenant_id.into(), reply_id.into()],
+        )),
+        DatabaseBackend::Sqlite => Ok(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            sqlite_sql,
+            vec![tenant_id.into(), reply_id.into()],
+        )),
+        backend => Err(ForumError::Validation(format!(
+            "Forum reply mutations do not support database backend {backend:?}"
+        ))),
+    }
 }
