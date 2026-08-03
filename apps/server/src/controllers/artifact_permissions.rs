@@ -65,8 +65,7 @@ impl ArtifactPermissionEventPublisher for TransactionalOutboxArtifactPermissionE
 /// The transport input for one exact role-to-artifact-permission operation.
 #[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ArtifactRolePermissionAssignmentRequest {
-    pub installation_id: Uuid,
-    pub permission_key: String,
+    pub artifact_permission_id: Uuid,
     pub idempotency_key: String,
 }
 
@@ -87,7 +86,7 @@ pub(crate) struct ArtifactRolePermissionAssignmentResponse {
         (status = 400, description = "Invalid command"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
-        (status = 404, description = "Role or registered artifact permission not found"),
+        (status = 404, description = "Role or exact artifact permission identity not found"),
         (status = 409, description = "Idempotency command conflict")
     )
 )]
@@ -115,7 +114,7 @@ async fn grant_artifact_permission(
         (status = 400, description = "Invalid command"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
-        (status = 404, description = "Role or registered artifact permission not found"),
+        (status = 404, description = "Role or exact artifact permission identity not found"),
         (status = 409, description = "Idempotency command conflict")
     )
 )]
@@ -147,8 +146,7 @@ async fn assign(
         .assign(ArtifactRolePermissionAssignmentCommand {
             tenant_id,
             role_id,
-            installation_id: input.installation_id,
-            permission_key: input.permission_key,
+            artifact_permission_id: input.artifact_permission_id,
             actor_id,
             granted,
             idempotency_key: input.idempotency_key,
