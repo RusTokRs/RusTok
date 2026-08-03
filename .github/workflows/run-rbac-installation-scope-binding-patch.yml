@@ -70,6 +70,7 @@ jobs:
               raise SystemExit('embedded exact patch has an unterminated triple-quoted literal')
 
           lines = output
+
           label = '    "upgrade binding count assertion",'
           if lines.count(label) != 1:
               raise SystemExit(
@@ -79,7 +80,7 @@ jobs:
           label_index = lines.index(label)
           if label_index < 4 or lines[label_index + 1] != ')':
               raise SystemExit('upgrade binding count block shape changed')
-          replacement = [
+          lines[label_index - 4 : label_index + 2] = [
               'binding_definition_count = \'    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);\'',
               'binding_definition_count_with_installation = \'    assert_eq!(count(&db, "rbac_artifact_permission_installations").await, 1);\\n    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);\'',
               'binding_definition_count_matches = upgrade.count(binding_definition_count)',
@@ -93,7 +94,55 @@ jobs:
               '    binding_definition_count_with_installation,',
               ')',
           ]
-          lines[label_index - 4 : label_index + 2] = replacement
+
+          label = '    "verifier binding migration marker",'
+          if lines.count(label) != 1:
+              raise SystemExit(
+                  'verifier binding migration label: expected one match, found '
+                  + str(lines.count(label))
+              )
+          label_index = lines.index(label)
+          if label_index < 4 or lines[label_index + 1] != ')':
+              raise SystemExit('verifier binding migration block shape changed')
+          lines[label_index - 4 : label_index + 2] = [
+              'verifier_definition_marker = \'  "rbac_artifact_permission_definitions_new",\'',
+              'verifier_definition_with_installation = \'  "rbac_artifact_permission_installations_new",\\n  "rbac_artifact_permission_definitions_new",\'',
+              'verifier_definition_matches = verifier.count(verifier_definition_marker)',
+              'if verifier_definition_matches != 2:',
+              '    raise SystemExit(',
+              '        "verifier binding migration marker: expected two matches, found "',
+              '        + str(verifier_definition_matches)',
+              '    )',
+              'verifier = verifier.replace(',
+              '    verifier_definition_marker,',
+              '    verifier_definition_with_installation,',
+              ')',
+          ]
+
+          label = '    "verifier binding immutability marker",'
+          if lines.count(label) != 1:
+              raise SystemExit(
+                  'verifier binding immutability label: expected one match, found '
+                  + str(lines.count(label))
+              )
+          label_index = lines.index(label)
+          if label_index < 4 or lines[label_index + 1] != ')':
+              raise SystemExit('verifier binding immutability block shape changed')
+          lines[label_index - 4 : label_index + 2] = [
+              'verifier_immutability_marker = \'  "rustok_reject_artifact_permission_definition_update",\'',
+              'verifier_immutability_with_installation = \'  "rustok_reject_artifact_permission_installation_update",\\n  "rustok_reject_artifact_permission_definition_update",\'',
+              'verifier_immutability_matches = verifier.count(verifier_immutability_marker)',
+              'if verifier_immutability_matches != 2:',
+              '    raise SystemExit(',
+              '        "verifier binding immutability marker: expected two matches, found "',
+              '        + str(verifier_immutability_matches)',
+              '    )',
+              'verifier = verifier.replace(',
+              '    verifier_immutability_marker,',
+              '    verifier_immutability_with_installation,',
+              ')',
+          ]
+
           Path('/tmp/apply-rbac-installation-binding.sh').write_text(
               '\n'.join(lines) + '\n'
           )
