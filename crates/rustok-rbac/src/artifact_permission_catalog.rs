@@ -1,9 +1,11 @@
 //! Durable RBAC vocabulary for permissions declared by admitted artifacts.
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use rustok_api::{
     ArtifactPermissionRegistrationPort, ArtifactPermissionRegistrationRequest,
-    ArtifactPermissionScope, PortError,
+    ArtifactPermissionScope, PortError, normalize_locale_tag,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use uuid::Uuid;
@@ -89,6 +91,12 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
             }
 
             for localization in &permission.localizations {
+                let normalized_locale = normalize_locale_tag(&localization.locale).ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "rbac.artifact_permission_locale_not_normalized",
+                        "validated artifact permission locale could not be normalized",
+                    )
+                })?;
                 transaction
                     .execute(Statement::from_sql_and_values(
                         backend,
@@ -96,7 +104,7 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
                         vec![
                             rustok_core::generate_id().into(),
                             persisted_id.into(),
-                            localization.locale.clone().into(),
+                            normalized_locale.into(),
                             localization.label.clone().into(),
                             localization.description.clone().into(),
                         ],
@@ -136,18 +144,21 @@ fn validate_request(request: &ArtifactPermissionRegistrationRequest) -> Result<(
                 "artifact permissions must remain module-owned and localized",
             ));
         }
-        for (index, localization) in permission.localizations.iter().enumerate() {
-            if localization.locale.trim().is_empty()
-                || localization.locale.len() > 32
-                || localization.label.trim().is_empty()
+        let mut normalized_locales = HashSet::new();
+        for localization in &permission.localizations {
+            let Some(normalized_locale) = normalize_locale_tag(&localization.locale) else {
+                return Err(PortError::validation(
+                    "rbac.artifact_permission_registration_invalid",
+                    "artifact permission localizations must use valid canonical locale tags",
+                ));
+            };
+            if localization.label.trim().is_empty()
                 || localization.description.trim().is_empty()
-                || permission.localizations[..index]
-                    .iter()
-                    .any(|previous| previous.locale == localization.locale)
+                || !normalized_locales.insert(normalized_locale)
             {
                 return Err(PortError::validation(
                     "rbac.artifact_permission_registration_invalid",
-                    "artifact permission localizations must be non-empty, bounded, and unique by locale",
+                    "artifact permission localizations must be non-empty and unique after locale normalization",
                 ));
             }
         }
@@ -232,7 +243,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn registration_is_idempotent_and_does_not_require_role_tables() {
+    async fn registration_normalizes_locale_and_is_idempotent_without_role_tables() {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database");
@@ -242,15 +253,19 @@ mod tests {
             .expect("catalog migration");
         let catalog = RbacArtifactPermissionCatalog::new(database.clone());
         let installation_id = Uuid::new_v4();
+        let mut initial = request(installation_id);
+        initial.permissions[0].localizations[0].locale = "EN_us".to_string();
+        let mut retry = request(installation_id);
+        retry.permissions[0].localizations[0].locale = "en-US".to_string();
 
         catalog
-            .register_admitted_permissions(request(installation_id))
+            .register_admitted_permissions(initial)
             .await
             .expect("initial registration");
         catalog
-            .register_admitted_permissions(request(installation_id))
+            .register_admitted_permissions(retry)
             .await
-            .expect("idempotent retry");
+            .expect("canonical idempotent retry");
 
         for (table, expected) in [
             ("rbac_artifact_permission_definitions", 1_i64),
@@ -267,6 +282,17 @@ mod tests {
             let count: i64 = row.try_get("", "count").expect("count");
             assert_eq!(count, expected);
         }
+        let locale: String = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT locale FROM rbac_artifact_permission_translations LIMIT 1".to_string(),
+            ))
+            .await
+            .expect("translation query")
+            .expect("translation row")
+            .try_get("", "locale")
+            .expect("locale");
+        assert_eq!(locale, "en-US");
     }
 
     #[tokio::test]
@@ -309,6 +335,29 @@ mod tests {
             .register_admitted_permissions(request)
             .await
             .expect_err("nil tenant scope must fail closed");
+        assert_eq!(error.code, "rbac.artifact_permission_registration_invalid");
+    }
+
+    #[tokio::test]
+    async fn registration_rejects_duplicate_normalized_locales() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        let catalog = RbacArtifactPermissionCatalog::new(database);
+        let mut request = request(Uuid::new_v4());
+        request.permissions[0].localizations[0].locale = "en-US".to_string();
+        request.permissions[0]
+            .localizations
+            .push(ArtifactPermissionLocalization {
+                locale: "EN_us".to_string(),
+                label: "Duplicate handle event".to_string(),
+                description: "Duplicate normalized locale".to_string(),
+            });
+
+        let error = catalog
+            .register_admitted_permissions(request)
+            .await
+            .expect_err("duplicate normalized locales must fail closed");
         assert_eq!(error.code, "rbac.artifact_permission_registration_invalid");
     }
 
