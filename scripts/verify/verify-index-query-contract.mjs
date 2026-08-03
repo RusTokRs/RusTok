@@ -23,6 +23,7 @@ const scripts = [
   'verify-index-source-reconciliation.mjs',
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-server-reconciliation-guard.mjs',
+  'verify-index-reconciliation-retry-store.mjs',
   'verify-index-reconciliation-dead-letter-admission.mjs',
   'verify-index-reconciliation-dead-letter-inspection.mjs',
   'verify-index-reconciliation-dead-letter-requeue.mjs',
