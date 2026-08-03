@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-07-30T20:05:00Z",
-  "review_base": "9dcbcf31e527a406cb9556bdc2e20165c141e6bf",
+  "reviewed_at_utc": "2026-08-03T10:03:00Z",
+  "review_base": "1643e3c91260e82372b2c96d726cafdaee945002",
   "status": "product_admin_fallback_graphql_mutation_error_safety_source_reviewed_unvalidated",
-  "scope": "Product Admin native-first GraphQL fallback mutation public error boundary",
+  "scope": "Product Admin native-first GraphQL fallback mutation public and private diagnostic boundaries",
   "reviewed_sources": [
     "crates/rustok-commerce/docs/implementation-plan.md",
     "crates/rustok-product/docs/implementation-plan.md",
@@ -15,48 +15,46 @@
     "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
     "crates/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
     "crates/rustok-product/admin/src/ui/leptos.rs",
+    "crates/rustok-product/docs/admin-primary-graphql-mutation-error-safety.md",
     "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
-    "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
-    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
     "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
     "scripts/verify/verify-product-admin-boundary.mjs"
   ],
   "findings": [
     {
-      "id": "product-admin-fallback-mutations-returned-raw-graphql-errors",
+      "id": "fallback-public-envelope-already-bounded",
+      "severity": "preserved",
+      "finding": "All eleven native-first fallback commands already mapped final GraphqlHttpError variants into the Product Admin static public envelope while retaining typed variant classification and stable codes."
+    },
+    {
+      "id": "fallback-private-typed-error-payload-leak",
       "severity": "confirmed",
-      "finding": "Eleven category, schema, binding, and attribute-value commands used native server adapters first and returned the final GraphQL fallback GraphqlHttpError directly. Http carried response status text and Graphql carried the first server error message into Product Admin command handling."
+      "finding": "GraphqlFallbackMutationContext::map_error still emitted raw_error = ?error in both severity branches. Http and Graphql variants could therefore copy complete backend-controlled status or server-message payloads into structured tracing."
     },
     {
-      "id": "separate-fallback-mutation-policy",
+      "id": "bounded-payload-shape-fix",
       "severity": "selected",
-      "finding": "A separate fallback-mutation context keeps the already merged primary mutation and read policies unchanged while applying the same static typed public envelope to the remaining commands."
-    },
-    {
-      "id": "explicit-facade-shadowing",
-      "severity": "selected",
-      "finding": "The facade explicitly re-exports the eleven sanitized wrappers. Named imports take precedence over the retained legacy glob without moving or deleting compatibility executors."
+      "finding": "The smallest compatible fix preserves typed matching, public errors, codes, correlation, severity and request-shape diagnostics while retaining only payload presence and character length for Http and Graphql. Network and Unauthorized retain no invented payload."
     },
     {
       "id": "native-first-single-fallback-preserved",
       "severity": "preserved",
-      "finding": "Each wrapper invokes exactly one unchanged compatibility executor. The executor still performs one native server call and invokes one existing GraphQL mutation only after native failure."
+      "finding": "Each wrapper still invokes exactly one unchanged compatibility executor. The executor performs one native server call and invokes one existing GraphQL mutation only after native failure; no retry or second fallback is introduced."
     },
     {
-      "id": "safe-shape-diagnostics",
+      "id": "prior-diagnostic-slices-preserved",
       "severity": "confirmed",
-      "finding": "Diagnostics record token presence, character lengths, collection counts, input presence, and fallback state. Token, tenant, actor, resource, locale, draft, patch, and attribute identifier values are not structured fields."
+      "finding": "Catalog-options, primary/category reads and primary mutations retain their bounded diagnostic policies and focused guards. This slice changes only the separate fallback mutation mapper and its evidence surface."
     },
     {
-      "id": "product-admin-known-graphql-source-sweep",
+      "id": "product-admin-known-graphql-diagnostic-sweep",
       "severity": "bounded",
-      "finding": "With the catalog-options, primary read, category read, primary mutation, and this fallback mutation slice, the known Product Admin GraphQL transport functions are source-covered. Browser and mounted execution evidence remain open."
+      "finding": "The known Product Admin catalog-options, read, primary mutation and fallback mutation GraphQL diagnostic envelopes no longer intentionally retain complete backend error payloads. Browser, mounted execution and broader ecommerce owners remain open."
     }
   ],
   "changed_files_expected": [
-    "crates/rustok-product/admin/src/catalog_transport.rs",
     "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
-    "crates/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
     "crates/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source.json",
     "crates/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source-review.json",
     "crates/rustok-product/docs/admin-fallback-graphql-mutation-error-safety.md",
@@ -65,6 +63,7 @@
   "preserved": [
     "native server adapter first execution",
     "single existing GraphQL fallback",
+    "typed GraphqlHttpError classification and static public envelopes",
     "mutation documents and variables",
     "mutation DTOs and result types",
     "input normalization and response mapping",
@@ -75,7 +74,7 @@
   "remaining_scope": [
     "Product Admin focused verifier execution and Cargo compilation",
     "Product Admin browser and mounted transport evidence",
-    "remaining ecommerce non-PortError public envelopes"
+    "remaining ecommerce non-PortError public and diagnostic envelopes"
   ],
   "validation": {
     "tests_run": false,
