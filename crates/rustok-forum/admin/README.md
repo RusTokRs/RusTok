@@ -11,32 +11,49 @@ Leptos admin UI package for the `rustok-forum` module.
 
 - Exposes the forum admin root view used by `apps/admin`.
 - Keeps forum-specific admin UX inside the module package.
-- Participates in the manifest-driven UI composition path through `rustok-module.toml`.
-- Owns a GraphQL-first admin transport slice for category/topic CRUD and reply previews, with REST secondary path kept behind the module transport facade.
-- Presents the admin workflow as a NodeBB-inspired moderation workspace with category rail, topic feed, and thread inspector.
-- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
-- Embeds owner-side SEO panels for forum categories and topics through `rustok-seo-admin-support`.
+- Participates in manifest-driven UI composition through `rustok-module.toml`.
+- Keeps category/topic CRUD and reply previews on their existing explicit GraphQL transport.
+- Selects direct authenticated native server functions for the FORUM-21 topic-merge workflow in SSR/hydrate builds and retains GraphQL for CSR/headless builds, without fallback.
+- Presents category, topic, reply-preview, and merge workflows as module-owned Forum pages.
+- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles.
+- Embeds owner-side SEO panels through `rustok-seo-admin-support`.
 
-## Entry Points
+## Entry points
 
-- `ForumAdmin` - root admin page component for the module.
-- `rustok-module.toml [provides.admin_ui]` advertises `leptos_crate`, `route_segment`, `nav_label`, and nested admin pages for host composition.
+- `ForumAdmin` — root route dispatcher for ordinary Forum admin pages and `/modules/forum/merge`.
+- `rustok-module.toml [provides.admin_ui]` — host composition contract.
 
 ## FFA structure
 
-- `admin/src/core.rs` owns framework-agnostic tag parsing, category-filter normalization, status/count helpers, category/topic form snapshots, submit validation, category/topic card view-model mapping, category sidebar mapping, and reply-stack view-model mapping with exact busy item matching.
-- `admin/src/transport.rs` is the module-owned facade over GraphQL-first admin transport and REST secondary-path adapters.
-- `admin/src/ui/leptos.rs` is the explicit Leptos render/effect adapter and does not own draft validation policy.
+- `admin/src/core.rs` owns the existing framework-agnostic category/topic view policy.
+- `admin/src/topic_merge_model.rs` owns merge candidate, command, receipt, validation, accepted-solution selection, and retry-identity policy without Leptos imports.
+- `admin/src/transport.rs` is the only UI-facing transport facade and selects exactly one merge transport per compile profile.
+- `crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs` extracts server-side auth/tenant/runtime context and calls `TopicService` plus `ForumTopicMergeService` directly.
+- `admin/src/transport/topic_merge_graphql_adapter.rs` preserves CSR/headless parity through `mergeForumTopic` and `mergeForumTopicResolvingSolution`.
+- `admin/src/ui/root.rs` performs route-only composition.
+- `admin/src/ui/topic_merge.rs` is the thin Leptos render/effect adapter.
+
+## Transport state
+
+FORUM-21O replaces the historical FORUM-21N GraphQL-only Leptos state with compile-profile selection:
+
+- `ssr` and `hydrate` use native server functions;
+- `csr` and headless/default builds use GraphQL;
+- a failed selected path is returned as an error and never triggers cross-path fallback;
+- native request DTOs contain locale or the framework-neutral merge command only, never access tokens, tenant IDs, actor IDs, permission snapshots, database handles, or event-bus handles.
+
+The native adapter derives tenant and actor authority from `TenantContext` and `AuthContext`, obtains the database and `TransactionalEventBus` from `HostRuntimeContext`, rechecks `forum_topics:list` or `forum_topics:manage`, and delegates to the existing Forum owners.
 
 ## Interactions
 
-- Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
-- Mounted by the Leptos admin host under `/modules/forum`.
-- Uses the `rustok-forum` GraphQL admin contract for category/topic CRUD and reply previews, while keeping REST secondary path hidden behind the transport facade.
-- Keeps the richer forum-specific layout inside the module crate so the host stays generic while `/modules/forum` feels like a native community console.
-- Keeps forum SEO ownership inside the forum package through real category/topic SEO panels rather than a delegated central SEO editor.
-- Reads the effective locale from `UiRouteContext.locale`; package-owned translations must stay aligned with the host locale contract.
+- Consumed by `apps/admin` through manifest-driven code generation.
+- Mounted under `/modules/forum` with child pages for topics, categories, and merge.
+- Requires the routed tenant and `forum_topics:manage`; both transport adapters and the backend owner revalidate authority.
+- Keeps one operation ID stable across an exact retry and rotates it whenever source, target, reason, or accepted-solution selection changes.
+- Uses explicit source/target accepted-solution choice only when both topics are solved.
 
 ## Documentation
 
 - See [platform docs](../../../docs/index.md).
+- See [FORUM-21N admin merge UI](../docs/forum-21n-topic-merge-admin-ui.md).
+- See [FORUM-21O native admin merge transport](../docs/forum-21o-topic-merge-native-admin.md).

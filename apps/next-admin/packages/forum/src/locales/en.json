@@ -1,0 +1,22 @@
+{
+  "title": "Merge forum topics",
+  "subtitle": "Archive one source thread into a retained target through the idempotent Forum owner.",
+  "source": "Source topic",
+  "target": "Retained target topic",
+  "choose": "Choose a topic",
+  "reason": "Reason",
+  "reasonPlaceholder": "Explain why these threads should be merged",
+  "winner": "Accepted solution to retain",
+  "sourceWinner": "Keep the source topic solution",
+  "targetWinner": "Keep the target topic solution",
+  "submit": "Merge topics",
+  "pending": "Merging…",
+  "retryIdentity": "Retry identity",
+  "retryHint": "Retries keep this identity until source, target, reason, or solution choice changes.",
+  "warning": "The source becomes an archived canonical tombstone. This command is not an ordinary edit.",
+  "success": "Topics merged",
+  "failure": "Topic merge failed",
+  "notEnough": "At least two active topics are required.",
+  "movedReplies": "Moved replies",
+  "resultingReplies": "Resulting published replies"
+}

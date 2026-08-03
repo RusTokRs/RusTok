@@ -1,12 +1,30 @@
 mod category_tree_graphql_adapter;
 mod graphql_adapter;
+mod topic_merge_graphql_adapter;
+mod topic_merge_native_server_adapter;
+
+use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
 
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
 };
+use crate::topic_merge_model::{
+    ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,
+};
 
 pub type ApiError = String;
+
+fn selected_topic_merge_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
+    }
+}
 
 pub async fn fetch_category_tree(
     token: Option<String>,
@@ -27,7 +45,6 @@ pub async fn fetch_category(
     graphql_adapter::fetch_category(token, tenant_slug, id, locale).await
 }
 
-/// Execute category creation through exactly one transport.
 pub async fn create_category(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -37,7 +54,6 @@ pub async fn create_category(
     let requested_position = placement_position(draft.position)?;
     let category =
         graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft).await?;
-
     move_category(
         token.clone(),
         tenant_slug.clone(),
@@ -64,7 +80,6 @@ pub async fn update_category(
         draft.clone(),
     )
     .await?;
-
     if category.position != draft.position {
         move_category(
             token.clone(),
@@ -150,6 +165,40 @@ pub async fn fetch_replies(
     graphql_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await
 }
 
+pub async fn fetch_topic_merge_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<ForumTopicMergeCandidate>, ApiError> {
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "forum_topic_merge_admin",
+        selected_topic_merge_transport_path(),
+        move || {
+            topic_merge_native_server_adapter::fetch_topic_merge_candidates_native(native_locale)
+        },
+        move || topic_merge_graphql_adapter::fetch_candidates(token, tenant_slug, locale),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+pub async fn merge_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumTopicMergeCommand,
+) -> Result<ForumTopicMergeReceipt, ApiError> {
+    let native_command = command.clone();
+    execute_selected_transport(
+        "forum_topic_merge_admin",
+        selected_topic_merge_transport_path(),
+        move || topic_merge_native_server_adapter::merge_topic_native(native_command),
+        move || topic_merge_graphql_adapter::merge_topic(token, tenant_slug, command),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
 fn placement_position(position: i32) -> Result<u32, ApiError> {
     u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
@@ -173,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn forum_admin_operations_use_one_transport() {
+    fn legacy_forum_admin_operations_keep_one_explicit_graphql_transport() {
         for operation in [
             "fetch_category_tree",
             "fetch_category",
@@ -189,15 +238,29 @@ mod tests {
             "fetch_replies",
         ] {
             let source = function_source(operation);
-            assert!(
-                !source.contains("rest_adapter"),
-                "{operation} must not retain a fallback transport"
-            );
+            assert!(!source.contains("rest_adapter"));
+            assert!(!source.contains("native_server_adapter"));
             assert!(
                 source.contains("graphql_adapter::")
                     || source.contains("category_tree_graphql_adapter::"),
-                "{operation} must keep an explicit owner transport"
+                "{operation} must keep one explicit GraphQL owner transport"
             );
         }
+    }
+
+    #[test]
+    fn topic_merge_selects_native_or_graphql_without_fallback() {
+        for operation in ["fetch_topic_merge_candidates", "merge_topic"] {
+            let source = function_source(operation);
+            assert!(source.contains("execute_selected_transport"));
+            assert!(source.contains("topic_merge_native_server_adapter::"));
+            assert!(source.contains("topic_merge_graphql_adapter::"));
+            assert!(!source.contains("or_else"));
+            assert!(!source.contains("fallback"));
+        }
+
+        assert!(SOURCE.contains("cfg(any(feature = \"ssr\", feature = \"hydrate\"))"));
+        assert!(SOURCE.contains("UiTransportPath::NativeServer"));
+        assert!(SOURCE.contains("UiTransportPath::Graphql"));
     }
 }

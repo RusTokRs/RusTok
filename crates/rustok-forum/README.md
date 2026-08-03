@@ -60,6 +60,15 @@
 - `m20260803_000019_allow_cross_category_topic_merge_redirect_edges` permits the
   archived source tombstone to differ from the receipt target category while
   retaining all target-category, active-target and unique-source-edge guards.
+- FORUM-21N composes the two manager merge mutations in the module-owned Leptos
+  route `/modules/forum/merge` and Next-admin route `/dashboard/forum/merge`.
+  Both keep one UUID operation identity across an exact retry, derive any selected
+  accepted-solution reply from current candidate state, and display the immutable
+  owner receipt.
+- FORUM-21O selects direct authenticated native server functions for the Leptos
+  merge route in SSR/hydrate builds while retaining the existing GraphQL adapter
+  for CSR/headless builds. Native DTOs carry no access token or owner identity,
+  and a failed selected transport never falls back to the other path.
 - Resolved and ordinary merges retain the exact `forum.topic.merged` schema-1
   event contract so subscription, read-state, tag, vote and audience
   reconciliation owners remain unchanged.
@@ -141,4 +150,6 @@ into README files, issues, or additional planning documents.
 - [Competing solution resolution](./docs/forum-21l-topic-merge-solution-resolution.md)
 - [Canonical merged-topic resolution and HTTP redirect](./docs/forum-21i-topic-canonical-resolution.md)
 - [Topic merge GraphQL transport](./docs/forum-21k-topic-merge-graphql-transport.md)
+- [Admin topic merge workflow](./docs/forum-21n-topic-merge-admin-ui.md)
+- [Native Leptos admin merge transport](./docs/forum-21o-topic-merge-native-admin.md)
 - [Platform docs index](../../docs/index.md)

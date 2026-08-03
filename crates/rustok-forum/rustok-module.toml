@@ -58,6 +58,11 @@ subpath = "categories"
 title = "Forum Categories"
 nav_label = "Categories"
 
+[[provides.admin_ui.child_pages]]
+subpath = "merge"
+title = "Merge Forum Topics"
+nav_label = "Merge Topics"
+
 [fba.builder_consumer]
 provider_module = "page-builder"
 contract = "grapesjs_v1"
@@ -73,7 +78,7 @@ sanitize = "forum.widget.sanitize"
 rbac = "forum.widget.rbac"
 runtime = "forum.widget.runtime"
 
-[[fba.builder_consumer.compatibility_matrix]]
+[fba.builder_consumer.compatibility_matrix]
 provider_contract_version = "1.0"
 consumer_min_version = "1.0"
 
