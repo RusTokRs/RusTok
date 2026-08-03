@@ -42,6 +42,8 @@ assert.equal(
   true,
 );
 assert.equal(contract.http_redirect.target_read_is_hydrated_before_redirect, true);
+assert.equal(contract.http_redirect.location_uses_hydrated_target_identity, true);
+assert.equal(contract.http_redirect.runtime_topic_service_composition_is_reused, true);
 assert.equal(contract.http_redirect.missing_and_forbidden_responses_have_no_location, true);
 assert.equal(contract.http_redirect.middleware_is_scoped_to_get_only, true);
 assert.equal(contract.http_redirect.mutation_commands_follow_canonical_target, false);
@@ -52,6 +54,8 @@ assert.equal(contract.compatibility.rest_merged_source_status_changed, true);
 assert.equal(cumulative.latest_policy_slice, "FORUM-21J");
 assert.equal(cumulative.canonical_resolution.rest_direct_target_returns_200, true);
 assert.equal(cumulative.canonical_resolution.rest_merged_source_returns_308, true);
+assert.equal(cumulative.canonical_resolution.rest_location_uses_hydrated_target_identity, true);
+assert.equal(cumulative.canonical_resolution.rest_runtime_topic_service_composition_is_reused, true);
 assert.equal(cumulative.canonical_resolution.rest_redirect_is_get_only, true);
 
 includesAll(
@@ -64,9 +68,12 @@ includesAll(
     '"Cache-Control" = String',
     "pub(crate) async fn redirect_merged_topic(",
     "has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_READ])",
+    "let service = runtime.topic_service();",
     ".resolve_canonical_topic(tenant.id, security.clone(), topic_id)",
     "if !resolution.redirected",
+    "let canonical_topic = service",
     ".get_with_locale_fallback(",
+    "canonical_topic_location(canonical_topic.id, filter.locale.as_deref())",
     "StatusCode::PERMANENT_REDIRECT",
     "(LOCATION, location)",
     '(CACHE_CONTROL, "private, no-store".to_string())',
@@ -77,13 +84,16 @@ includesAll(
 );
 assert.ok(!redirect.includes("forum_topic_alias"));
 assert.ok(!redirect.includes("forum_topic_redirects"));
+assert.ok(!redirect.includes("TopicService::new(runtime.db_clone()"));
 
 const permissionCheck = redirect.indexOf("has_any_effective_permission(");
 const canonicalResolve = redirect.indexOf(".resolve_canonical_topic(");
-const targetHydration = redirect.indexOf(".get_with_locale_fallback(", canonicalResolve);
-const responseRedirect = redirect.indexOf("StatusCode::PERMANENT_REDIRECT", targetHydration);
+const targetHydration = redirect.indexOf("let canonical_topic = service", canonicalResolve);
+const hydratedLocation = redirect.indexOf("canonical_topic_location(canonical_topic.id", targetHydration);
+const responseRedirect = redirect.indexOf("StatusCode::PERMANENT_REDIRECT", hydratedLocation);
 assert.ok(permissionCheck >= 0 && permissionCheck < canonicalResolve);
-assert.ok(canonicalResolve < targetHydration && targetHydration < responseRedirect);
+assert.ok(canonicalResolve < targetHydration && targetHydration < hydratedLocation);
+assert.ok(hydratedLocation < responseRedirect);
 
 includesAll(
   redirect,
