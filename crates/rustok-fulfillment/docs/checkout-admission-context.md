@@ -120,7 +120,7 @@ a separate source-ready/unvalidated contract rather than an open unsafe payload 
 
 ## Related causation contract
 
-Causation validation is now source-ready / unvalidated under its own bounded contract:
+Causation validation is source-ready / unvalidated under its own bounded contract:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
 - `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
@@ -129,11 +129,25 @@ Causation validation is now source-ready / unvalidated under its own bounded con
 That contract preserves admission-before-tenant-before-causation ordering and does not change
 the admission mapper covered here.
 
+## Related tenant contract
+
+Tenant UUID parse-failure diagnostics are source-ready / unvalidated under a separate bounded
+contract. They retain only parse-cause type, tenant/context shape, message shape, stable code,
+and retryability while preserving `Uuid::parse_str`, `map_err`, and the exact constructed error.
+
+The tenant guard and evidence are:
+
+- `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+
+That contract does not change admission selection or ordering.
+
 ## Remaining diagnostic boundaries
 
 Causation validation, tenant parsing, and canonical `FulfillmentError` diagnostics remain separate
-bounded slices in the admission contract's original scope. Causation is now source-ready under
-the related contract above; tenant parsing and canonical `FulfillmentError` diagnostics remain
+bounded slices in the admission contract's original scope. Causation and tenant parsing are now
+source-ready under the related contracts above; canonical `FulfillmentError` diagnostics remain
 open.
 
 Compile, runtime, replay, restart, contention, mounted Commerce behavior, remote-port parity,
