@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod bounded_compat;
 mod category {
     include!("category.rs");
