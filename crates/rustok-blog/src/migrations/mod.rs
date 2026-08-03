@@ -7,6 +7,7 @@ mod m20260730_000006_cutover_blog_article_richtext;
 mod m20260801_000007_create_blog_comments_delegation_schedule_state;
 mod m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox;
 mod m20260803_000009_add_blog_comments_audit_canonical_handoff;
+mod m20260803_000010_add_blog_comments_audit_source_retry_policy;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -27,6 +28,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         ),
         Box::new(
             m20260803_000009_add_blog_comments_audit_canonical_handoff::Migration,
+        ),
+        Box::new(
+            m20260803_000010_add_blog_comments_audit_source_retry_policy::Migration,
         ),
     ]
 }
