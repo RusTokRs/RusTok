@@ -1,0 +1,63 @@
+name: Run RBAC migration prefix fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/run-rbac-migration-prefix-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run-rbac-migration-prefix-fix
+  cancel-in-progress: true
+
+jobs:
+  patch-and-verify:
+    if: github.event.pull_request.head.ref == 'agent/core-rbac-cycle-001-20260803'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out verification branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/core-rbac-cycle-001-20260803
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Restore immutable main migration prefix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/rustok-migrations/src/lib.rs')
+          text = path.read_text()
+          old = '''    "m20260803_000017_add_forum_topic_canonical_resolution",
+              "m20260803_000009_add_blog_comments_audit_canonical_handoff",
+              "m20260803_000001_canonicalize_artifact_permissions",'''
+          new = '''    "m20260803_000001_canonicalize_artifact_permissions",'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'migration tail replacement: expected one match, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Verify append-only migration tail
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo test --locked -p rustok-migrations migrator_preserves_append_only_migration_tail
+
+      - name: Commit verified migration prefix fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-migrations/src/lib.rs
+          git diff --cached --quiet && { echo "expected migration prefix change is missing" >&2; exit 1; }
+          git commit -m "fix(migrations): preserve current main plan as immutable prefix"
+          git push origin HEAD:agent/core-rbac-cycle-001-20260803
