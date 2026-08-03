@@ -19,7 +19,7 @@ pub mod quote_commands;
 pub mod read_state;
 pub mod replies;
 pub mod subscriptions;
-mod topic_redirect;
+pub(crate) mod topic_redirect;
 pub mod topics;
 pub mod users;
 pub mod widgets;
