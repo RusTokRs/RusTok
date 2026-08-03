@@ -14,12 +14,15 @@ const contract = JSON.parse(
 );
 const providerContract = read(contract.provider.contract_source);
 const providerPanel = read(contract.provider.panel_source);
+const providerModuleExport = read(contract.provider.module_export_source);
+const providerPanelExport = read(contract.provider.panel_export_source);
 const providerFacade = read(contract.provider.facade_source);
 const providerCanvas = read(contract.provider.composition_source);
 const pagesContributions = read(contract.pages_consumer.contribution_source);
 const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
 const pagesBoundary = read(contract.pages_consumer.composition_source);
 const pagesComposition = read(contract.pages_consumer.legacy_form.source);
+const parityPlan = read(contract.parity_plan);
 
 function fail(message) {
   console.error(`[verify-pages-metadata-properties] ${message}`);
@@ -44,7 +47,7 @@ function requireOrderedMarkers(source, markers, label) {
 }
 
 if (
-  contract.status !== "source_connected_legacy_form_pending" ||
+  contract.status !== "standalone_surface_ready_legacy_form_pending" ||
   contract.format !== "page_builder_consumer_properties_v1" ||
   contract.pages_consumer.owner_persistence !== "pages" ||
   contract.pages_consumer.document_revision_independent !== true ||
@@ -66,8 +69,22 @@ if (
   fail("consumer property provider identity binding is invalid");
 }
 if (
+  contract.provider.standalone_host_surface.component !== "ConsumerPropertiesPanel" ||
+  contract.provider.standalone_host_surface.state !== "source_ready" ||
+  contract.provider.standalone_host_surface.requires_fly_canvas !== false ||
+  JSON.stringify(contract.provider.standalone_host_surface.required_inputs) !==
+    JSON.stringify([
+      "ConsumerPropertyEditorRuntime",
+      "ContributionAssemblyResult",
+    ])
+) {
+  fail("standalone consumer property host surface contract is invalid");
+}
+if (
   contract.pages_consumer.legacy_form.state !== "pending_removal" ||
-  contract.pages_consumer.legacy_form.component !== "PageMetadataEditor"
+  contract.pages_consumer.legacy_form.component !== "PageMetadataEditor" ||
+  contract.pages_consumer.legacy_form.unblocked_by !==
+    "provider_standalone_host_surface"
 ) {
   fail("legacy metadata form cutover must remain explicit until the form is removed");
 }
@@ -97,7 +114,7 @@ for (const marker of [
 }
 
 for (const marker of [
-  "pub(crate) fn ConsumerPropertiesPanel",
+  "pub fn ConsumerPropertiesPanel",
   "runtime.verify_contribution(&assembly)",
   "LocalResource::new",
   "runtime.load().await",
@@ -116,6 +133,16 @@ requireOrderedMarkers(
     "runtime.load().await",
   ],
   "consumer property descriptor validation before load",
+);
+requireMarker(
+  providerModuleExport,
+  "pub use consumer_properties::ConsumerPropertiesPanel;",
+  "Page Builder editor module export",
+);
+requireMarker(
+  providerPanelExport,
+  "pub use editor::ConsumerPropertiesPanel;",
+  "Page Builder admin crate export",
 );
 
 for (const marker of [
@@ -195,10 +222,22 @@ for (const marker of [
   requireMarker(pagesBoundary, marker, "Pages admin metadata composition boundary");
 }
 
+for (const marker of [
+  "Rollback control: source-connected",
+  "Typed metadata contribution: source-connected",
+  "Standalone consumer-property surface: source-ready",
+  "Legacy PageMetadataEditor: pending removal",
+  "Replace the bespoke Pages metadata form",
+]) {
+  requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
+}
+
 const legacyFormPresent =
   pagesComposition.includes("fn PageMetadataEditor(") ||
   pagesComposition.includes("<PageMetadataEditor");
 if (!legacyFormPresent) {
   fail("machine contract still says pending removal, but the legacy metadata form is absent");
 }
-console.log("[verify-pages-metadata-properties] PASS legacy_form_pending=true");
+console.log(
+  "[verify-pages-metadata-properties] PASS standalone_surface_ready=true legacy_form_pending=true",
+);

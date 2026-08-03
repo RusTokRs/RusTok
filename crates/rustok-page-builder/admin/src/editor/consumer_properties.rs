@@ -8,7 +8,7 @@ use leptos::task::spawn_local;
 use std::sync::Arc;
 
 #[component]
-pub(crate) fn ConsumerPropertiesPanel(
+pub fn ConsumerPropertiesPanel(
     runtime: Option<Arc<ConsumerPropertyEditorRuntime>>,
     contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
 ) -> impl IntoView {

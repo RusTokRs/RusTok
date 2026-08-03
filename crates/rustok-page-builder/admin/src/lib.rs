@@ -41,6 +41,7 @@ pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
     SsrDraftSessionStore,
 };
+pub use editor::ConsumerPropertiesPanel;
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 pub use palette_access::{
     dispatch_browser_intent_with_palette_access, validate_browser_palette_access,
