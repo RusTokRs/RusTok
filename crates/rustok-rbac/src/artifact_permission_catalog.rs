@@ -10,6 +10,8 @@ use rustok_api::{
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use uuid::Uuid;
 
+const MAX_PERMISSION_KEY_LENGTH: usize = 256;
+
 /// RBAC-owned durable adapter for admitted artifact permission vocabulary.
 ///
 /// It intentionally writes neither `roles` nor `role_permissions`: registration
@@ -137,11 +139,18 @@ fn validate_request(request: &ArtifactPermissionRegistrationRequest) -> Result<(
         ));
     }
     let prefix = format!("{}.", request.module_slug);
+    let mut permission_keys = HashSet::new();
     for permission in &request.permissions {
-        if !permission.key.starts_with(&prefix) || permission.localizations.is_empty() {
+        if !permission.key.starts_with(&prefix)
+            || permission.key.len() > MAX_PERMISSION_KEY_LENGTH
+            || permission.key.trim() != permission.key
+            || permission.key.chars().any(char::is_control)
+            || !permission_keys.insert(permission.key.as_str())
+            || permission.localizations.is_empty()
+        {
             return Err(PortError::validation(
                 "rbac.artifact_permission_registration_invalid",
-                "artifact permissions must remain module-owned and localized",
+                "artifact permissions must remain module-owned, bounded, unique and localized",
             ));
         }
         let mut normalized_locales = HashSet::new();
@@ -358,6 +367,36 @@ mod tests {
             .register_admitted_permissions(request)
             .await
             .expect_err("duplicate normalized locales must fail closed");
+        assert_eq!(error.code, "rbac.artifact_permission_registration_invalid");
+    }
+
+    #[tokio::test]
+    async fn registration_rejects_unassignable_or_duplicate_permission_keys() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        let catalog = RbacArtifactPermissionCatalog::new(database);
+
+        for invalid_key in [
+            "sample_module.events.handle ".to_string(),
+            "sample_module.events.\nhandle".to_string(),
+            format!("sample_module.{}", "x".repeat(MAX_PERMISSION_KEY_LENGTH)),
+        ] {
+            let mut invalid = request(Uuid::new_v4());
+            invalid.permissions[0].key = invalid_key;
+            let error = catalog
+                .register_admitted_permissions(invalid)
+                .await
+                .expect_err("unassignable permission key must fail registration");
+            assert_eq!(error.code, "rbac.artifact_permission_registration_invalid");
+        }
+
+        let mut duplicate = request(Uuid::new_v4());
+        duplicate.permissions.push(duplicate.permissions[0].clone());
+        let error = catalog
+            .register_admitted_permissions(duplicate)
+            .await
+            .expect_err("duplicate permission key must fail registration");
         assert_eq!(error.code, "rbac.artifact_permission_registration_invalid");
     }
 
