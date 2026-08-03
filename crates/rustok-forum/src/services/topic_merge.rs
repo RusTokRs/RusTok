@@ -56,6 +56,7 @@ pub struct ForumTopicMergeResult {
     pub merged_at: DateTime<Utc>,
 }
 
+#[derive(Clone)]
 struct ForumTopicMergeSolutionTransfer {
     reply_id: Uuid,
     marked_by_user_id: Option<Uuid>,
@@ -158,12 +159,7 @@ impl ForumTopicMergeService {
         }
         ensure_category_active_in_tx(&txn, tenant_id, target.category_id).await?;
 
-        lock_topic_solution_scopes_in_tx(
-            &txn,
-            tenant_id,
-            &[source.id, target.id],
-        )
-        .await?;
+        lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[source.id, target.id]).await?;
         let source_solution =
             load_valid_solution_in_tx(&txn, tenant_id, source.id, "source").await?;
         let target_solution =
@@ -235,8 +231,23 @@ impl ForumTopicMergeService {
         )
         .await?;
         if let Some(solution) = source_solution_transfer {
-            insert_transferred_solution_in_tx(&txn, tenant_id, target.id, solution).await?;
-            load_valid_solution_in_tx(&txn, tenant_id, target.id, "transferred target").await?;
+            insert_transferred_solution_in_tx(&txn, tenant_id, target.id, &solution).await?;
+            let transferred =
+                load_valid_solution_in_tx(&txn, tenant_id, target.id, "transferred target")
+                    .await?
+                    .ok_or_else(|| {
+                        ForumError::Validation(
+                            "Forum transferred accepted solution is missing".to_string(),
+                        )
+                    })?;
+            if transferred.reply_id != solution.reply_id
+                || transferred.marked_by_user_id != solution.marked_by_user_id
+                || transferred.marked_at != solution.marked_at
+            {
+                return Err(ForumError::Validation(
+                    "Forum transferred accepted solution metadata changed".to_string(),
+                ));
+            }
         }
 
         let now = Utc::now();
@@ -602,7 +613,7 @@ async fn insert_transferred_solution_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     target_topic_id: Uuid,
-    solution: ForumTopicMergeSolutionTransfer,
+    solution: &ForumTopicMergeSolutionTransfer,
 ) -> ForumResult<()> {
     forum_solution::ActiveModel {
         topic_id: Set(target_topic_id),
