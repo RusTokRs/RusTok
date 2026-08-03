@@ -63,8 +63,8 @@ The original transfer policy remains unchanged:
 6. move the complete bounded source reply set to the retained target;
 7. insert the solution row for the target with the retained marker fields;
 8. re-read and validate the transferred relation;
-9. continue the existing topic counters, source archival, semantic event,
-   immutable receipt and projection invalidation writes;
+9. continue the existing topic counters, source archival, schema-version-1
+   semantic event, immutable receipt and projection invalidation writes;
 10. commit once.
 
 The accepted reply and author remain unchanged, so this path has zero
@@ -79,9 +79,9 @@ FORUM_TOPIC_MERGE_SOLUTION_CONFLICT
 ```
 
 The conflict is detected after solution locks and validity checks but before
-solution deletion, reply movement, topic mutation, statistics, event, receipt or
-projection invalidation. No implicit target preference, newest-marker choice,
-score heuristic or author preference is used.
+solution deletion, reply movement, topic mutation, statistics, event, receipt,
+audit or projection invalidation. No implicit target preference, newest-marker
+choice, score heuristic or author preference is used.
 
 ## Explicit competing-solution resolution
 
@@ -134,21 +134,39 @@ PostgreSQL and SQLite continue to reject solution INSERT and owner-key UPDATE
 unless the topic is active and non-deleted and the reply is approved,
 non-deleted and owned by the exact tenant/topic relation.
 
-## Immutable audit and replay
+## Append-only resolution audit
 
-Ordinary merge preserves `forum.topic.merged` schema version 1 and its exact
-payload. Explicit resolution uses schema version 2 of the same Forum-local event
-type and adds an immutable `solution_resolution` object containing source,
-target, selected and rejected reply IDs plus the rejected reply author ID.
+Migration
+`m20260803_000018_add_forum_topic_merge_solution_resolution` creates the
+append-only `forum_topic_merge_solution_resolutions` table.
 
-The existing event actor and merge reason record who selected the winner and
-why. The append-only merge receipt remains unchanged and continues to be the
-operation identity and canonical redirect edge.
+One row is keyed by `(tenant_id, operation_id)` and foreign-keyed to the
+immutable merge receipt. It stores source/target candidate reply IDs, selected
+and rejected reply IDs, the optional rejected author and `resolved_at`.
+Tenant-composite reply/user foreign keys and a pair-orientation check prevent an
+audit row from naming unrelated identities. PostgreSQL and SQLite reject UPDATE
+and DELETE.
 
-Exact replay validates the receipt and full semantic event before current topic
-state. It requires the same selected reply. Selection drift, or replaying a
-resolved operation through the ordinary command, fails with
-`FORUM_TOPIC_MERGE_OPERATION_CONFLICT` and has no side effects.
+The linked receipt and merge event already record actor, reason, source, target
+and operation time, so the resolution row does not duplicate those values.
+
+## Merge event compatibility and replay
+
+Every merge retains the exact existing Forum-local contract:
+
+```text
+forum.topic.merged / schema version 1
+```
+
+The payload remains unchanged. This preserves the exact validation contract
+used by subscription, read-state, tag, vote and audience reconciliation owners.
+No schema-version branch or payload extension is added to those owners.
+
+Exact replay validates the receipt, its schema-version-1 event and the optional
+append-only resolution row before current topic state. It requires the same
+selected reply. Selection drift, or replaying a resolved operation through the
+ordinary command, fails with `FORUM_TOPIC_MERGE_OPERATION_CONFLICT` and has no
+side effects.
 
 ## GraphQL transport
 
@@ -159,16 +177,17 @@ The existing `mergeForumTopic` field remains strict. FORUM-21L adds
 
 The resolver uses routed tenant authority, requires `forum_topics:manage`, calls
 the same owner service and returns the immutable merge receipt plus selected
-reply identity. It does not read solution tables, hydrate topics or follow
-canonical source aliases.
+reply identity. It does not read solution or audit tables, hydrate topics or
+follow canonical source aliases.
 
 ## Source-ready regression
 
 Existing `topic_merge_sqlite` coverage retains ordinary transfer and strict
 conflict behavior. `topic_merge_solution_resolution_sqlite` adds source-winner,
-target-winner, exact statistics, schema-2 audit, replay and invalid-selection
-atomicity. `topic_merge_solution_resolution_graphql_contract` verifies the
-additive schema and shared owner composition.
+target-winner, exact statistics, exact schema-version-1 event compatibility,
+append-only audit, replay and invalid-selection atomicity.
+`topic_merge_solution_resolution_graphql_contract` verifies the additive schema,
+shared owner composition, audit entity/migration and unchanged event schema.
 
 ## Remaining scope
 
