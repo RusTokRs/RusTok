@@ -10,12 +10,19 @@
     "runtime_dependency_static_public_envelope": true,
     "read_owner_raw_error_public": false,
     "write_owner_raw_error_public": false,
-    "original_causes_logged_privately": true,
+    "original_causes_logged_privately": false,
+    "context_error_type_only": true,
+    "owner_error_type_only": true,
+    "complete_context_error_logged": false,
+    "complete_owner_error_logged": false,
+    "error_payload_logged": false,
     "per_call_correlation_logging": true,
     "request_channel_locale_logging_when_available": true,
     "dto_changed": false,
     "permission_policy_changed": false,
-    "tenant_policy_changed": false
+    "tenant_policy_changed": false,
+    "ffa_status_promoted": false,
+    "fba_status_promoted": false
   },
   "public_messages": {
     "auth_context": "Inventory authentication context is temporarily unavailable",
@@ -29,6 +36,55 @@
     "availability": "Inventory availability is temporarily unavailable",
     "reservation_release": "Inventory reservation could not be released"
   },
+  "safe_diagnostics": [
+    "owner",
+    "consumer",
+    "owner_operation",
+    "context_kind",
+    "error_type",
+    "correlation_id",
+    "tenant_id",
+    "actor_id",
+    "subject_id",
+    "request_tenant_id",
+    "channel_id",
+    "channel_slug",
+    "locale",
+    "code",
+    "boundary"
+  ],
+  "forbidden_diagnostics": [
+    "complete framework extraction error",
+    "complete inventory read error",
+    "complete inventory write error",
+    "database or event publication payload",
+    "validation or invariant detail"
+  ],
+  "preserved": [
+    "eight mounted native endpoint paths",
+    "request and response DTOs",
+    "effective permission policy",
+    "requested tenant matching",
+    "locale and filter normalization",
+    "host TransactionalEventBus dependency policy",
+    "inventory read and mutation owner calls",
+    "operation-specific static public messages",
+    "per-call correlation and bounded request context"
+  ],
+  "remaining_scope": [
+    "Inventory admin focused verifier and Cargo execution",
+    "Inventory admin mounted native runtime evidence",
+    "remaining ecommerce correlation-safe mapper cleanup",
+    "remaining non-PortError public and diagnostic envelopes"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-inventory-admin-native-error-safety.mjs",
+    "node scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-inventory-admin",
+    "cargo check -p rustok-inventory-admin --features hydrate",
+    "cargo check -p rustok-inventory-admin --features ssr"
+  ],
   "validation": {
     "tests_run": false,
     "cargo_run": false,
@@ -37,5 +93,6 @@
     "workflow_checks_run": false,
     "ci_run": false,
     "native_runtime_proven": false
-  }
+  },
+  "execution": []
 }
