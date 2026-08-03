@@ -26,6 +26,8 @@ const docsPath =
   'apps/server/docs/index-reconciliation-operator-runtime.md';
 const inspectionDocsPath =
   'crates/rustok-index/docs/m6-reconciliation-dead-letter-inspection.md';
+const recoveryDocsPath =
+  'crates/rustok-index/docs/m6-reconciliation-dead-letter-requeue.md';
 
 const composition = requireMarkers(compositionPath, [
   '#[path = "index_reconciliation_operator.rs"]',
@@ -51,31 +53,26 @@ if (
 const operator = requireMarkers(operatorPath, [
   'pub struct IndexReconciliationOperatorContext',
   'tenant_id.is_nil() || actor_id.is_nil()',
-  'IndexReconciliationOperatorError::TenantMismatch',
   'permissions_for(&self.tenant_id, &self.actor_id)',
   'Permission::MODULES_MANAGE',
   'pub struct IndexReconciliationOperatorRuntime',
   'inner: rustok_index::PostgresIndexReconciliationRunner,',
   'dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,',
+  'recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,',
   'Inspection(#[from] rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError),',
+  'Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),',
   'context.authorize_for(request.tenant_id())?;',
-  'self.inner.run(request).await.map_err(Into::into)',
-  'context.authorize_for(context.tenant_id())?;',
-  '.request_cancel(context.tenant_id(), job_id)',
+  'pub async fn request_cancel(',
   'pub async fn inspect_dead_letter(',
-  '.inspect(context.tenant_id(), job_id)',
-  'extensions.get::<rustok_index::SharedIndexSourceRegistry>()',
-  'extensions.get::<rustok_index::SharedIndexSchemaRegistry>()',
-  'PostgresIndexReconciliationDeadLetterInspector::new(db.clone())',
+  'pub async fn requeue_dead_letter(',
+  'IndexReconciliationRequeueRequest::new(',
+  'context.tenant_id(),',
+  'context.actor_id(),',
+  '.requeue_failed(request)',
+  'PostgresIndexReconciliationRecoveryStore::new(',
+  'PostgresIndexReconciliationDeadLetterInspector::new(',
   'PostgresIndexReconciliationRunner::new(db, sources, schemas.shared())',
-  'missing_sources_do_not_publish_false_reconciliation_capability',
-  'source_registry_without_shared_schema_registry_fails_closed',
-  'complete_registries_publish_guarded_runtime_to_host_context',
-  'duplicate_guarded_reconciliation_materialization_fails_closed',
-  'operator_authorization_requires_exact_tenant_actor_and_modules_manage',
-  'cross_tenant_run_is_denied_before_database_access',
-  'dead_letter_inspection_authorizes_before_adapter_validation',
-  'operator_context_rejects_nil_identity',
+  'dead_letter_requeue_authorizes_before_request_validation',
 ]);
 
 const authorizeStart = operator.indexOf('    fn authorize_for(');
@@ -94,31 +91,34 @@ if (
   || permissionLookup <= tenantCheck
   || manageCheck <= permissionLookup
 ) {
-  fail(`${operatorPath} must reject tenant mismatch before request-bound permission evaluation`);
+  fail(`${operatorPath} must reject tenant mismatch before permission evaluation`);
 }
 
 const runStart = operator.indexOf('    pub async fn run(');
 const cancelStart = operator.indexOf('    pub async fn request_cancel(', runStart);
 const inspectStart = operator.indexOf('    pub async fn inspect_dead_letter(', cancelStart);
-const runtimeEnd = operator.indexOf('\n}\n\nimpl fmt::Debug', inspectStart);
+const requeueStart = operator.indexOf('    pub async fn requeue_dead_letter(', inspectStart);
+const runtimeEnd = operator.indexOf('\n}\n\nimpl fmt::Debug', requeueStart);
 if (
   runStart < 0
   || cancelStart <= runStart
   || inspectStart <= cancelStart
-  || runtimeEnd <= inspectStart
+  || requeueStart <= inspectStart
+  || runtimeEnd <= requeueStart
 ) {
-  fail(`${operatorPath} guarded run/cancel/inspection surface is malformed`);
+  fail(`${operatorPath} guarded surface is malformed`);
 }
 const run = operator.slice(runStart, cancelStart);
 const cancel = operator.slice(cancelStart, inspectStart);
-const inspect = operator.slice(inspectStart, runtimeEnd);
+const inspect = operator.slice(inspectStart, requeueStart);
+const requeue = operator.slice(requeueStart, runtimeEnd);
 
 if (
   run.indexOf('context.authorize_for(request.tenant_id())?;') < 0
   || run.indexOf('self.inner.run(request)')
     <= run.indexOf('context.authorize_for(request.tenant_id())?;')
 ) {
-  fail(`${operatorPath} run must authorize the request tenant before runner delegation`);
+  fail(`${operatorPath} run must authorize before runner delegation`);
 }
 
 for (const [name, body, delegation] of [
@@ -126,23 +126,49 @@ for (const [name, body, delegation] of [
   ['inspection', inspect, '.inspect(context.tenant_id(), job_id)'],
 ]) {
   if (body.includes('tenant_id: Uuid')) {
-    fail(`${operatorPath} ${name} must not accept a separate caller-supplied tenant`);
+    fail(`${operatorPath} ${name} must not accept a separate tenant`);
   }
   const auth = body.indexOf('context.authorize_for(context.tenant_id())?;');
   const delegate = body.indexOf(delegation);
   if (auth < 0 || delegate <= auth) {
-    fail(`${operatorPath} ${name} must authorize and derive tenant scope from context`);
+    fail(`${operatorPath} ${name} must authorize and derive tenant from context`);
   }
 }
 
+for (const forbidden of ['tenant_id: Uuid', 'actor_id: Uuid']) {
+  if (requeue.includes(forbidden)) {
+    fail(`${operatorPath} recovery must not accept caller-selected ${forbidden}`);
+  }
+}
+const recoveryAuth = requeue.indexOf(
+  'context.authorize_for(context.tenant_id())?;',
+);
+const requestConstruction = requeue.indexOf(
+  'IndexReconciliationRequeueRequest::new(',
+);
+const tenantBinding = requeue.indexOf('context.tenant_id(),', requestConstruction);
+const actorBinding = requeue.indexOf('context.actor_id(),', tenantBinding);
+const recoveryDelegation = requeue.indexOf('.requeue_failed(request)');
+if (
+  recoveryAuth < 0
+  || requestConstruction <= recoveryAuth
+  || tenantBinding <= requestConstruction
+  || actorBinding <= tenantBinding
+  || recoveryDelegation <= actorBinding
+) {
+  fail(`${operatorPath} recovery must authorize, bind context tenant/actor, then delegate`);
+}
 for (const forbidden of [
-  'last_error_details',
-  'dependency_code: String',
   'DatabaseConnection',
-  'PostgresIndexReconciliationDeadLetterInspector::new',
+  'SELECT ',
+  'INSERT ',
+  'UPDATE ',
+  'DELETE ',
+  'last_error_details',
+  "state = 'pending'",
 ]) {
-  if (inspect.includes(forbidden)) {
-    fail(`${operatorPath} inspection method exposes forbidden adapter detail ${forbidden}`);
+  if (requeue.includes(forbidden)) {
+    fail(`${operatorPath} recovery method contains forbidden engine detail ${forbidden}`);
   }
 }
 
@@ -151,8 +177,11 @@ const materializeStart = operator.indexOf(
 );
 const testsStart = operator.indexOf('\n#[cfg(test)]', materializeStart);
 const materialize = operator.slice(materializeStart, testsStart);
+const recoveryConstruction = materialize.indexOf(
+  'PostgresIndexReconciliationRecoveryStore::new(',
+);
 const inspectorConstruction = materialize.indexOf(
-  'PostgresIndexReconciliationDeadLetterInspector::new(db.clone())',
+  'PostgresIndexReconciliationDeadLetterInspector::new(',
 );
 const runnerConstruction = materialize.indexOf(
   'PostgresIndexReconciliationRunner::new(db, sources, schemas.shared())',
@@ -161,11 +190,12 @@ const runtimeInsertion = materialize.indexOf(
   'extensions.insert(IndexReconciliationOperatorRuntime::new(',
 );
 if (
-  inspectorConstruction < 0
+  recoveryConstruction < 0
+  || inspectorConstruction <= recoveryConstruction
   || runnerConstruction <= inspectorConstruction
   || runtimeInsertion <= runnerConstruction
 ) {
-  fail(`${operatorPath} must compose inspector and runner into one guarded runtime`);
+  fail(`${operatorPath} must compose recovery, inspector, and runner into one runtime`);
 }
 
 const productionOperator = operator.split('\n#[cfg(test)]')[0];
@@ -179,34 +209,39 @@ for (const forbidden of [
   'Router::new',
   'route(',
   'async_graphql',
-  'requeue',
-  'retry_epoch',
   "state = 'pending'",
 ]) {
   if (productionOperator.includes(forbidden)) {
-    fail(`${operatorPath} production boundary contains forbidden transport/SQL/recovery marker ${forbidden}`);
+    fail(`${operatorPath} production boundary contains forbidden marker ${forbidden}`);
   }
 }
 
 requireMarkers(docsPath, [
-  'Status: `source_complete_transport_and_recovery_work_pending`.',
+  'Status: `source_complete_transport_and_scheduling_pending`.',
   'requires effective `Permission::MODULES_MANAGE`',
-  'retaining the pre-database denial boundary',
-  'neither operation accepts a separate caller-selected tenant',
-  'Inspection authorization runs before adapter validation or database access',
-  'tenant-scoped read-only `inspect_dead_letter(context, job_id)`',
-  'The existing server replay composition remains the single source-freezing point',
-  'read-only dead-letter inspector over a clone of the host database handle',
-  'authorized requeue with actor/reason audit',
-  'canonical M6 drift-diagnosis and targeted-repair roadmap item remains open',
+  'accept no caller-selected tenant',
+  'accepts no caller-selected actor',
+  'authorization run before adapter or recovery-request validation',
+  'tenant/actor-bound `requeue_dead_letter(context, job_id, reason)`',
+  'construct `IndexReconciliationRequeueRequest` from `context.tenant_id()`',
+  'The same-job failed-to-pending reset',
+  'canonical bounded retry/global scheduling and drift-diagnosis/targeted-repair roadmap items remain open',
   'maintainer-run',
 ]);
 requireMarkers(inspectionDocsPath, [
-  'Status: `source_complete_transport_and_recovery_pending`.',
-  '## Authorized server composition',
+  'Status: `source_complete_transport_pending`.',
+  'beside the canonical reconciliation runner and audited recovery store',
   'There is no caller-supplied tenant parameter.',
-  'requires effective `modules:manage`',
+  'same guarded runtime also exposes manual audited requeue',
   'GraphQL, HTTP, CLI, MCP, and admin transports remain open',
+]);
+requireMarkers(recoveryDocsPath, [
+  'Status: `source_complete_authorized_server_composition_transport_pending`.',
+  '## Authorized server composition',
+  'accepts no tenant or actor argument',
+  'requires effective `Permission::MODULES_MANAGE`',
+  'Authorization occurs before job/reason validation',
+  'GraphQL, HTTP, CLI, MCP, native admin',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',
@@ -215,8 +250,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-server-reconciliation-guard.mjs'",
   "'verify-index-reconciliation-dead-letter-inspection.mjs'",
-  "'verify-index-replay-retry-store.mjs'",
-  "'verify-index-replay-dead-letter-admission.mjs'",
+  "'verify-index-reconciliation-dead-letter-requeue.mjs'",
 ]);
 
 console.log('[verify-index-server-reconciliation-guard] OK');
