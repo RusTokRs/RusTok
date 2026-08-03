@@ -25,8 +25,8 @@ async fn database() -> DatabaseConnection {
     let migrations = RbacModule.migrations();
     assert_eq!(
         migrations.len(),
-        4,
-        "artifact integrity must remain consolidated in canonical migrations"
+        5,
+        "artifact integrity cutover must append after unchanged historical migrations"
     );
     for migration in migrations {
         migration.up(&manager).await.expect("apply RBAC migration");
