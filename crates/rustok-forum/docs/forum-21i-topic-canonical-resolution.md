@@ -103,8 +103,8 @@ review.
 Canonical history inconsistency is an internal integrity failure. REST maps
 `FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT` to a generic HTTP 500 response;
 public messages do not expose storage rows, SQL or traversal details. The error
-is marked retryable so operators can repair corrupted historical evidence before
-a caller retries.
+is non-retryable because duplicate or cyclic immutable history requires an
+explicit operator repair rather than automatic request replay.
 
 ## Source-ready regression
 
