@@ -4,7 +4,7 @@ use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statemen
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-async fn base_database() -> DatabaseConnection {
+async fn database() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("connect SQLite");
@@ -20,16 +20,18 @@ async fn base_database() -> DatabaseConnection {
     )
     .await
     .expect("create RBAC parent tables");
-    db
-}
 
-async fn apply_migrations(db: &DatabaseConnection, count: usize) {
-    let manager = SchemaManager::new(db);
+    let manager = SchemaManager::new(&db);
     let migrations = RbacModule.migrations();
-    assert_eq!(migrations.len(), 5, "RBAC migration inventory changed");
-    for migration in migrations.into_iter().take(count) {
+    assert_eq!(
+        migrations.len(),
+        4,
+        "artifact integrity must remain consolidated in canonical migrations"
+    );
+    for migration in migrations {
         migration.up(&manager).await.expect("apply RBAC migration");
     }
+    db
 }
 
 async fn execute(db: &DatabaseConnection, sql: impl Into<String>) -> Result<(), String> {
@@ -56,62 +58,8 @@ fn quoted(value: Uuid) -> String {
 }
 
 #[tokio::test]
-async fn migration_cleans_legacy_malformed_artifact_rows() {
-    let db = base_database().await;
-    apply_migrations(&db, 4).await;
-
-    let tenant_id = Uuid::new_v4();
-    let role_id = Uuid::new_v4();
-    let installation_id = Uuid::new_v4();
-    let actor_id = Uuid::new_v4();
-    execute(
-        &db,
-        format!(
-            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, 'sample.events.handle', {})",
-            quoted(Uuid::new_v4()),
-            quoted(tenant_id),
-            quoted(role_id),
-            quoted(installation_id),
-            quoted(actor_id),
-        ),
-    )
-    .await
-    .expect("seed malformed grant");
-    execute(
-        &db,
-        format!(
-            "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, installation_id, permission_key, actor_id, granted) VALUES ({}, {}, 'legacy-op', {}, {}, 'sample.events.handle', {}, 1)",
-            quoted(Uuid::new_v4()),
-            quoted(tenant_id),
-            quoted(role_id),
-            quoted(installation_id),
-            quoted(actor_id),
-        ),
-    )
-    .await
-    .expect("seed malformed receipt");
-
-    let manager = SchemaManager::new(&db);
-    RbacModule
-        .migrations()
-        .into_iter()
-        .nth(4)
-        .expect("artifact integrity migration")
-        .up(&manager)
-        .await
-        .expect("apply artifact integrity migration");
-
-    assert_eq!(count(&db, "rbac_artifact_role_permissions").await, 0);
-    assert_eq!(
-        count(&db, "rbac_artifact_role_permission_operations").await,
-        0
-    );
-}
-
-#[tokio::test]
 async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
-    let db = base_database().await;
-    apply_migrations(&db, 5).await;
+    let db = database().await;
 
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
@@ -120,7 +68,7 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
     let actor_a = Uuid::new_v4();
     let actor_b = Uuid::new_v4();
     let installation_id = Uuid::new_v4();
-    let catalog_id = Uuid::new_v4();
+    let artifact_permission_id = Uuid::new_v4();
 
     for sql in [
         format!(
@@ -144,10 +92,15 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
             quoted(tenant_b)
         ),
         format!(
-            "INSERT INTO rbac_artifact_permission_catalog (id, scope_key, installation_id, module_slug, release_digest, permission_key, locale, label, description, registered_at) VALUES ({}, 'tenant:{}', {}, 'sample', 'sha256:test', 'sample.events.handle', 'en', 'Handle events', 'Allows handling events', '2026-08-01T00:00:00Z')",
-            quoted(catalog_id),
+            "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES ({}, 'tenant:{}', {}, 'sample', 'sha256:test', 'sample.events.handle')",
+            quoted(artifact_permission_id),
             tenant_a,
             quoted(installation_id)
+        ),
+        format!(
+            "INSERT INTO rbac_artifact_permission_translations (id, artifact_permission_id, locale, label, description) VALUES ({}, {}, 'en', 'Handle events', 'Allows handling events')",
+            quoted(Uuid::new_v4()),
+            quoted(artifact_permission_id)
         ),
     ] {
         execute(&db, sql).await.expect("seed valid parent state");
@@ -156,11 +109,11 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
     execute(
         &db,
         format!(
-            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, 'sample.events.handle', {})",
+            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, granted_by_actor_id) VALUES ({}, {}, {}, {}, {})",
             quoted(Uuid::new_v4()),
             quoted(tenant_a),
             quoted(role_a),
-            quoted(installation_id),
+            quoted(artifact_permission_id),
             quoted(actor_a),
         ),
     )
@@ -169,11 +122,11 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
     execute(
         &db,
         format!(
-            "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, installation_id, permission_key, actor_id, granted) VALUES ({}, {}, 'valid-op', {}, {}, 'sample.events.handle', {}, 1)",
+            "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, artifact_permission_id, actor_id, granted) VALUES ({}, {}, 'valid-op', {}, {}, {}, 1)",
             quoted(Uuid::new_v4()),
             quoted(tenant_a),
             quoted(role_a),
-            quoted(installation_id),
+            quoted(artifact_permission_id),
             quoted(actor_a),
         ),
     )
@@ -183,8 +136,8 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
     execute(
         &db,
         format!(
-            "UPDATE rbac_artifact_permission_catalog SET label = 'Updated label', description = 'Updated description' WHERE id = {}",
-            quoted(catalog_id)
+            "UPDATE rbac_artifact_permission_translations SET label = 'Updated label', description = 'Updated description' WHERE artifact_permission_id = {}",
+            quoted(artifact_permission_id)
         ),
     )
     .await
@@ -192,20 +145,20 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
 
     let rejected = [
         format!(
-            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, 'sample.events.handle', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_b), quoted(installation_id), quoted(actor_a)
+            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, granted_by_actor_id) VALUES ({}, {}, {}, {}, {})",
+            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_b), quoted(artifact_permission_id), quoted(actor_a)
         ),
         format!(
-            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, 'sample.events.handle', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(installation_id), quoted(actor_b)
+            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, granted_by_actor_id) VALUES ({}, {}, {}, {}, {})",
+            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(artifact_permission_id), quoted(actor_b)
         ),
         format!(
-            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, 'sample.unknown', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(installation_id), quoted(actor_a)
+            "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, granted_by_actor_id) VALUES ({}, {}, {}, {}, {})",
+            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(Uuid::new_v4()), quoted(actor_a)
         ),
         format!(
-            "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, installation_id, permission_key, actor_id, granted) VALUES ({}, {}, 'foreign-op', {}, {}, 'sample.events.handle', {}, 1)",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_b), quoted(installation_id), quoted(actor_a)
+            "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, artifact_permission_id, actor_id, granted) VALUES ({}, {}, 'foreign-op', {}, {}, {}, 1)",
+            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_b), quoted(artifact_permission_id), quoted(actor_a)
         ),
         format!(
             "UPDATE roles SET tenant_id = {} WHERE id = {}",
@@ -218,12 +171,12 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
         format!("DELETE FROM roles WHERE id = {}", quoted(role_a)),
         format!("DELETE FROM users WHERE id = {}", quoted(actor_a)),
         format!(
-            "UPDATE rbac_artifact_permission_catalog SET permission_key = 'sample.changed' WHERE id = {}",
-            quoted(catalog_id)
+            "UPDATE rbac_artifact_permission_definitions SET permission_key = 'sample.changed' WHERE id = {}",
+            quoted(artifact_permission_id)
         ),
         format!(
-            "DELETE FROM rbac_artifact_permission_catalog WHERE id = {}",
-            quoted(catalog_id)
+            "DELETE FROM rbac_artifact_permission_definitions WHERE id = {}",
+            quoted(artifact_permission_id)
         ),
     ];
 
@@ -237,6 +190,11 @@ async fn database_rejects_cross_tenant_and_orphan_artifact_state() {
     assert_eq!(count(&db, "rbac_artifact_role_permissions").await, 1);
     assert_eq!(
         count(&db, "rbac_artifact_role_permission_operations").await,
+        1
+    );
+    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);
+    assert_eq!(
+        count(&db, "rbac_artifact_permission_translations").await,
         1
     );
 }
