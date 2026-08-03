@@ -1,0 +1,93 @@
+{
+  "contract": "forum_topic_merge_native_admin_v1",
+  "task": "FORUM-21O",
+  "parent_task": "FORUM-21",
+  "extends": ["FORUM-21N"],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "surface": "rustok-forum-admin",
+  "route": "/modules/forum/merge",
+  "transport_selection": {
+    "ssr": "native_server",
+    "hydrate": "native_server",
+    "csr": "graphql",
+    "headless_default": "graphql",
+    "fallback": false,
+    "selector": "rustok_ui_transport::execute_selected_transport"
+  },
+  "native_server": {
+    "adapter": "crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs",
+    "candidate_endpoint": "/api/fn/forum/topic-merge-candidates",
+    "merge_endpoint": "/api/fn/forum/topic-merge",
+    "candidate_owner": "TopicService::list_with_locale_fallback",
+    "merge_owner": "ForumTopicMergeService",
+    "server_context": [
+      "AuthContext",
+      "TenantContext",
+      "HostRuntimeContext",
+      "TransactionalEventBus"
+    ],
+    "candidate_permission": "forum_topics:list",
+    "merge_permission": "forum_topics:manage",
+    "auth_tenant_must_equal_routed_tenant": true,
+    "candidate_limit": 100,
+    "selected_solution_path_preserved": true
+  },
+  "request_dto_policy": {
+    "access_token": false,
+    "tenant_id": false,
+    "actor_id": false,
+    "permission_snapshot": false,
+    "database_handle": false,
+    "event_bus_handle": false,
+    "candidate_request_fields": ["locale"],
+    "merge_request_fields": ["command"]
+  },
+  "graphql_parity": {
+    "adapter": "crates/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
+    "candidate_query_retained": true,
+    "ordinary_merge_mutation_retained": true,
+    "solution_resolution_mutation_retained": true,
+    "csr_and_headless_only": true
+  },
+  "host_composition": {
+    "host_manifest": "apps/admin/Cargo.toml",
+    "csr_feature_forwarded": true,
+    "hydrate_feature_forwarded": true,
+    "ssr_feature_forwarded": true
+  },
+  "compatibility": {
+    "owner_changed": false,
+    "graphql_schema_changed": false,
+    "rest_route_changed": false,
+    "receipt_changed": false,
+    "semantic_event_changed": false,
+    "migration_added": false,
+    "next_admin_changed": false
+  },
+  "verification": {
+    "verifier": "scripts/verify/verify-forum-topic-merge-native-admin.mjs",
+    "maintainer_commands": [
+      "node scripts/verify/verify-forum-topic-merge-native-admin.mjs",
+      "node scripts/verify/verify-forum-topic-merge-admin-ui.mjs",
+      "cargo check -p rustok-forum-admin --features ssr --all-targets",
+      "cargo check -p rustok-forum-admin --features hydrate --target wasm32-unknown-unknown",
+      "cargo check -p rustok-forum-admin --features csr --target wasm32-unknown-unknown",
+      "cargo check -p rustok-admin --no-default-features --features ssr",
+      "cargo check -p rustok-admin --no-default-features --features hydrate --target wasm32-unknown-unknown"
+    ]
+  },
+  "remaining_scope": [
+    "maintainer mounted-browser and runtime transport evidence",
+    "idempotent split-selected-replies workflow",
+    "idempotent reply-branch fork workflow",
+    "bounded reply-range movement",
+    "final canonical localized aliases and route tombstones under FORUM-24"
+  ],
+  "non_claims": [
+    "no verifier Cargo formatter workflow browser or CI execution is claimed",
+    "no cross-path runtime fallback is added",
+    "no Next-admin transport change is added",
+    "FORUM-21 remains planned"
+  ]
+}
