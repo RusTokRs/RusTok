@@ -39,7 +39,7 @@
     "variant": "TopicCanonicalResolutionConflict",
     "stable_code": "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
     "http_status": 500,
-    "retryable": true,
+    "retryable": false,
     "public_message_contains_storage_details": false
   },
   "compatibility": {
