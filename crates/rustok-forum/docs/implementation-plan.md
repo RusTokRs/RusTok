@@ -59,10 +59,10 @@ unit tests for the surviving path.
 
 The Next admin Forum surface is module-owned under
 `apps/next-admin/packages/forum/src`. It owns Forum navigation, topic/reply
-GraphQL helpers, and a canonical document reply composer. The host only
-registers and mounts the package. React and Leptos use their shared framed
-richtext lifecycle adapters; Forum supplies only the `discussion` profile and
-host-effective locale.
+GraphQL helpers, a canonical document reply composer, and the FORUM-21N topic
+merge workflow. The host only registers and mounts the package. React and
+Leptos use their shared framed richtext lifecycle adapters; Forum supplies only
+the `discussion` profile and host-effective locale.
 
 ## Verification
 
@@ -1140,9 +1140,6 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
   `category_visibility_policy_sqlite` and
   `verify-forum-category-visibility-policy.mjs` lock inheritance, tenant
   isolation, monotonic narrowing and database enforcement;
-- the static audit also repairs the already-merged FORUM-20A storefront drift
-  error to construct the typed `rustok_core::Error` required by
-  `ForumError::Internal`;
 - this slice adds no transport, storefront, topic/reply read composition, role,
   trust, group or explicit allow/deny behavior.
 
@@ -1584,7 +1581,7 @@ Preserve revisions, attachments, mentions and audit. Remap reply positions
 safely, deduplicate subscriptions, revalidate solutions and ACL, update
 category counters and create canonical URL aliases.
 
-### Delivered through `FORUM-21M`
+### Delivered through `FORUM-21N`
 
 - FORUM-21A adds the bounded idempotent topic-move owner with checked category
   counters, immutable operation receipt and unchanged topic identity;
@@ -1604,6 +1601,11 @@ category counters and create canonical URL aliases.
   the historical same-category receipt trigger predicate while preserving the
   archived/locked/zero-reply source tombstone, active target category, unique
   source edge and unchanged receipt schema;
+- FORUM-21N adds a module-owned admin topic merge workflow in both Leptos and
+  Next-admin over the existing manager GraphQL mutations. Both surfaces retain
+  one UUID operation identity across an exact retry, rotate it when the command
+  shape changes, require an explicit source/target solution winner only when
+  both topics are solved, and display the immutable owner receipt;
 - every ordinary, resolved, same-category and cross-category merge retains the
   exact `forum.topic.merged` schema-version-1 payload so existing post-merge
   reconciliation owners remain compatible.
@@ -1611,11 +1613,17 @@ category counters and create canonical URL aliases.
 ### Compatibility and degraded mode
 
 FORUM-21M adds one append-only PostgreSQL/SQLite migration that changes only the
-canonical receipt trigger predicate. It adds no receipt column, event version,
-GraphQL field, REST route, alternate alias store or public result field.
-Existing same-category receipts and merges keep their previous behavior. The
-source category remains discoverable from the archived source topic and is not
-copied into the semantic event or receipt.
+canonical receipt trigger predicate. FORUM-21N adds no migration and changes no
+owner method, GraphQL schema, REST route, receipt, event, canonical-resolution
+lane or reconciliation owner. Existing same-category receipts and merges keep
+their previous behavior. The source category remains discoverable from the
+archived source topic and is not copied into the semantic event or receipt.
+
+The Leptos package remains in an explicit single-adapter GraphQL state. It does
+not wrap GraphQL in a server function, does not place an access token inside a
+server-function DTO and does not claim a direct native owner path. A later
+native cutover must compose authenticated owner state directly while retaining
+GraphQL for CSR/headless parity.
 
 Forum move and merge commands remain independent from Notifications, Search,
 Page Builder and other optional integrations. Owner state, the Forum semantic
@@ -1631,8 +1639,8 @@ maintainer-executed:
 
 - retained SQLite and PostgreSQL execution evidence for the complete move/merge
   owner and migration chain, including cross-category concurrency and rollback;
-- native/Leptos and Next-admin merge command composition with one bounded
-  merge/resolution UI over the existing owner contracts;
+- direct authenticated Leptos native server-function owner composition while
+  retaining GraphQL parity, plus mounted-browser evidence for both admin hosts;
 - idempotent split-selected-replies workflow with immutable receipt, event,
   relation preservation and counter reconciliation;
 - idempotent reply-branch fork workflow with explicit copy/identity policy;
@@ -1658,6 +1666,9 @@ node scripts/verify/verify-forum-topic-merge-solution-resolution.mjs
 node scripts/verify/verify-forum-topic-canonical-resolution.mjs
 node scripts/verify/verify-forum-topic-http-redirect.mjs
 node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs
+node scripts/verify/verify-forum-topic-merge-admin-ui.mjs
+npm run verify:forum:admin-boundary
+npm run verify:blog:forum-ui-ownership
 cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_merge_cross_category_sqlite -- --nocapture
@@ -1665,12 +1676,15 @@ cargo test -p rustok-forum --test topic_merge_solution_resolution_sqlite -- --no
 cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture
 cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture
 cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
+cargo test -p rustok-forum-admin topic_merge_model -- --nocapture
+cargo check -p rustok-forum-admin --all-targets
+npm --prefix apps/next-admin run typecheck
 ```
 
-The FORUM-21A through FORUM-21M source and contract records do not claim
-successful verifier, SQLite, PostgreSQL, Cargo, formatting, workflow or CI
-execution. The canonical task remains `planned` until the remaining workflows
-and maintainer evidence are complete.
+The FORUM-21A through FORUM-21N source and contract records do not claim
+successful verifier, SQLite, PostgreSQL, Cargo, formatting, npm, browser,
+workflow or CI execution. The canonical task remains `planned` until the
+remaining workflows and maintainer evidence are complete.
 
 ## `FORUM-22` — topic kinds and scheduled policies
 
@@ -2483,8 +2497,9 @@ grouping, digests, retention and delivery attempts. It does not own source
 subscriptions, SMTP, push vendor SDKs, user identity or source authorization.
 
 Define source-provider registration for semantic event descriptors, bounded
-audience resolution and target-open authorization. Producer modules declare an
-optional capability and continue to work when notifications is absent.
+audience resolution and per-recipient target-open authorization. Producer
+modules declare an optional capability and continue to work when notifications
+is absent.
 
 ### Delivered in `NOTIFY-00A`
 
@@ -3044,8 +3059,8 @@ stats, trust, badges, restrictions and activity.
 
 ## Media ownership
 
-Profiles stores avatar/banner media references. Forum stores category and
-post attachment references. `rustok-media` owns files, URLs, MIME, storage,
+Profiles stores avatar/banner media references. Forum stores category and post
+attachment references. `rustok-media` owns files, URLs, MIME, storage,
 quarantine and deletion.
 
 ## Notifications are optional consumers
@@ -3061,8 +3076,8 @@ resolution, preferences, timing, templates, retries and channel selection.
 
 ## No premature shared reactions/reputation/mentions module
 
-Keep these models forum-owned until another real owner consumer demonstrates
-a stable neutral contract. Publish semantic events to make later extraction
+Keep these models forum-owned until another real owner consumer demonstrates a
+stable neutral contract. Publish semantic events to make later extraction
 possible.
 
 # Immediate next action
