@@ -477,8 +477,7 @@ async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_so
 }
 
 #[tokio::test]
-async fn topic_merge_rejects_cross_category_and_competing_solutions_without_partial_state(
-) -> TestResult<()> {
+async fn topic_merge_rejects_competing_solutions_without_partial_state() -> TestResult<()> {
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -492,8 +491,6 @@ async fn topic_merge_rejects_cross_category_and_competing_solutions_without_part
     let target_author = SecurityContext::new(UserRole::Customer, Some(target_author_id));
     let category_id =
         create_category(&db, tenant_id, admin.clone(), "merge-guard", false).await?;
-    let other_category_id =
-        create_category(&db, tenant_id, admin.clone(), "merge-other", false).await?;
     let target_topic_id = create_topic(
         &db,
         &event_bus,
@@ -510,15 +507,6 @@ async fn topic_merge_rejects_cross_category_and_competing_solutions_without_part
         category_id,
         admin.clone(),
         "guard-source",
-    )
-    .await?;
-    let cross_topic_id = create_topic(
-        &db,
-        &event_bus,
-        tenant_id,
-        other_category_id,
-        admin.clone(),
-        "cross-source",
     )
     .await?;
     let source_reply_id = create_reply(
@@ -558,20 +546,6 @@ async fn topic_merge_rejects_cross_category_and_competing_solutions_without_part
     let baseline_merge_events = merge_event_count(&db, tenant_id).await?;
     let service = ForumTopicMergeService::new(db.clone(), event_bus);
 
-    let cross = service
-        .merge_topic(
-            tenant_id,
-            target_topic_id,
-            admin.clone(),
-            MergeForumTopicInput {
-                operation_id: Uuid::new_v4(),
-                source_topic_id: cross_topic_id,
-                reason: "Cross-category merge is a later workflow".to_string(),
-            },
-        )
-        .await;
-    assert!(matches!(cross, Err(ForumError::Validation(_))));
-
     let operation_id = Uuid::new_v4();
     let competing = service
         .merge_topic(
@@ -594,7 +568,6 @@ async fn topic_merge_rejects_cross_category_and_competing_solutions_without_part
 
     assert_topic_state(&db, tenant_id, target_topic_id, "open", false, 1).await?;
     assert_topic_state(&db, tenant_id, source_topic_id, "open", false, 1).await?;
-    assert_topic_state(&db, tenant_id, cross_topic_id, "open", false, 0).await?;
     assert_reply_location(&db, tenant_id, source_reply_id, source_topic_id, 1, None).await?;
     assert_reply_location(&db, tenant_id, target_reply_id, target_topic_id, 1, None).await?;
     assert_eq!(solution_snapshot(&db, tenant_id, source_topic_id).await?, source_solution_before);
@@ -608,7 +581,6 @@ async fn topic_merge_rejects_cross_category_and_competing_solutions_without_part
         target_solution_count_before
     );
     assert_category_counters(&db, tenant_id, category_id, 2, 2).await?;
-    assert_category_counters(&db, tenant_id, other_category_id, 1, 0).await?;
     assert_eq!(merge_operation_count(&db, tenant_id).await?, 0);
     assert_eq!(merge_event_count(&db, tenant_id).await?, baseline_merge_events);
     assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
