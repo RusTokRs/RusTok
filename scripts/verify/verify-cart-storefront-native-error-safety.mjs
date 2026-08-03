@@ -72,8 +72,6 @@ for (const [value, label] of [
   ["fn cart_error", "cart owner mapper"],
   ["fn pricing_error", "pricing port mapper"],
   ["fn missing_variant_error", "missing variant mapper"],
-  ['"extract_tenant_context"', "tenant extraction operation"],
-  ['"extract_optional_auth_context"', "auth extraction operation"],
   ['"Storefront tenant context is temporarily unavailable"', "tenant public envelope"],
   ['"Storefront authentication context is temporarily unavailable"', "auth public envelope"],
   ['"Cart runtime is temporarily unavailable"', "runtime public envelope"],
@@ -110,6 +108,37 @@ if (countText(safe, "let error_type = std::any::type_name::<E>();") !== 1) {
   failures.push("expected exactly one shared framework context type-only diagnostic site");
 }
 
+const inputBody = functionBody(safe, "cart_input_error");
+for (const [value, label] of [
+  ["let error_type = std::any::type_name_of_val(&error);", "Cart input error type"],
+  ["tracing::warn!(", "Cart input warning severity"],
+  ["error_type", "Cart input type diagnostic"],
+  ["owner = CART_STOREFRONT_NATIVE_OWNER", "Cart input owner"],
+  ["owner_operation", "Cart input owner operation"],
+  ["code", "Cart input stable code"],
+  ["boundary = CART_STOREFRONT_NATIVE_BOUNDARY", "Cart input boundary"],
+  ["cart storefront input was rejected", "Cart input diagnostic message"],
+  ["ServerFnError::new(public_message)", "Cart input public mapping"],
+]) requireText(inputBody, value, label);
+for (const payload of ["error = ?error", "error = %error"]) {
+  forbidText(inputBody, payload, "complete Cart input cause");
+}
+if (countText(inputBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
+  failures.push("expected exactly one Cart input type-only diagnostic site");
+}
+if (countText(inputBody, "tracing::warn!(") !== 1) {
+  failures.push("expected exactly one Cart input warning diagnostic path");
+}
+for (const [value, label] of [
+  ['"parse_storefront_cart_id"', "storefront cart parser operation"],
+  ['"parse_decrement_cart_id"', "decrement cart parser operation"],
+  ['"parse_decrement_line_item_id"', "decrement line-item parser operation"],
+  ['"parse_remove_cart_id"', "remove cart parser operation"],
+  ['"parse_remove_line_item_id"', "remove line-item parser operation"],
+  ['"cart.storefront_cart_id_invalid"', "cart input diagnostic code"],
+  ['"cart.storefront_line_item_id_invalid"', "line-item input diagnostic code"],
+]) requireText(safe, value, label);
+
 const customerBody = functionBody(safe, "customer_error");
 for (const [value, label] of [
   ["let error_type = std::any::type_name_of_val(&error);", "customer error type"],
@@ -143,9 +172,6 @@ for (const payload of [
   "channel_slug = ?request_context",
   "locale = ?request_context",
 ]) forbidText(customerBody, payload, "complete customer cause or raw identity/context diagnostic");
-if (countText(customerBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
-  failures.push("expected exactly one customer type-only diagnostic site");
-}
 
 const cartBody = functionBody(safe, "cart_error");
 for (const [value, label] of [
@@ -235,13 +261,6 @@ for (const [value, label] of [
   ["let locale_present", "pricing locale presence"],
   ["let locale_length", "pricing locale length"],
   ["correlation_id = ?correlation_id", "pricing correlation diagnostic"],
-  ["request_tenant_id_non_nil = ?request_tenant_id_non_nil", "pricing request tenant diagnostic"],
-  ["tenant_id_non_nil", "pricing tenant diagnostic"],
-  ["cart_id_non_nil", "pricing cart diagnostic"],
-  ["line_item_id_non_nil", "pricing line-item diagnostic"],
-  ["channel_id_non_nil = ?channel_id_non_nil", "pricing channel diagnostic"],
-  ["channel_slug_length = ?channel_slug_length", "pricing slug diagnostic"],
-  ["locale_length = ?locale_length", "pricing locale diagnostic"],
   ["owner_code = %error.code", "pricing owner code diagnostic"],
   ["owner_kind = ?error.kind", "pricing owner kind diagnostic"],
   ["owner_retryable = error.retryable", "pricing owner retryability diagnostic"],
@@ -262,9 +281,6 @@ for (const payload of [
   "channel_slug = ?request_context",
   "locale = ?request_context",
 ]) forbidText(pricingBody, payload, "complete pricing cause or raw identity/context diagnostic");
-if (countText(pricingBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
-  failures.push("expected exactly one pricing type-only diagnostic site");
-}
 if (countText(pricingBody, "tracing::error!(") !== 1) {
   failures.push("expected exactly one pricing technical diagnostic path");
 }
@@ -281,13 +297,12 @@ for (const marker of [
     failures.push(`both pricing severity paths must retain ${marker}`);
   }
 }
-if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 3) {
-  failures.push("expected customer, Cart owner, and pricing type-only diagnostic sites");
+
+if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 4) {
+  failures.push("expected Cart input, customer, Cart owner, and pricing type-only diagnostic sites");
 }
-if (countText(safe, "error = ?error") !== 1) {
-  failures.push(
-    "only the Cart input diagnostic may retain a complete error in this bounded pricing-only slice",
-  );
+if (countText(safe, "error = ?error") !== 0 || countText(safe, "error = %error") !== 0) {
+  failures.push("complete error payload diagnostics must be absent from the mounted Cart adapter");
 }
 
 const missingVariantBody = functionBody(safe, "missing_variant_error");
@@ -331,6 +346,11 @@ for (const [key, expected] of Object.entries({
   auth_context_static_public_envelope: true,
   runtime_dependency_static_public_envelope: true,
   cart_input_static_public_envelopes: true,
+  cart_input_error_type_only: true,
+  complete_cart_input_error_logged: false,
+  cart_input_warning_preserved: true,
+  cart_input_owner_metadata_preserved: true,
+  cart_input_public_mapping_preserved: true,
   framework_context_debug_bounds_removed: true,
   framework_context_error_type_only: true,
   complete_framework_context_error_logged: false,
@@ -363,7 +383,7 @@ for (const [key, expected] of Object.entries({
   pricing_severity_split_preserved: true,
   pricing_port_message_remains_domain_sanitized: true,
   owner_context_logging: true,
-  input_identifier_mapper_cleanup_out_of_scope: true,
+  identifier_mapper_cleanup_out_of_scope: true,
   cart_dto_changed: false,
   transport_selection_changed: false,
   graphql_transport_changed: false,
@@ -398,6 +418,11 @@ requireText(
 );
 requireText(
   doc,
+  "Cart input failures are recorded by concrete error type",
+  "documentation Cart input diagnostic policy",
+);
+requireText(
+  doc,
   "Customer lookup failures are recorded by concrete error type",
   "documentation customer diagnostic policy",
 );
@@ -413,7 +438,7 @@ requireText(
 );
 requireText(
   doc,
-  "Cart input and missing-variant diagnostics remain separate open cleanup slices",
+  "Missing-variant identifiers remain a separate open cleanup slice",
   "documentation remaining mapper boundary",
 );
 
@@ -424,5 +449,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ cart storefront framework, customer, Cart owner, and pricing diagnostics use bounded causes/context while input and identifier cleanup remains open; source evidence remains unvalidated",
+  "✔ cart storefront framework, input, customer, Cart owner, and pricing diagnostics use bounded causes/context while missing-variant identifier cleanup remains open; source evidence remains unvalidated",
 );
