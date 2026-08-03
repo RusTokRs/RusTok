@@ -29,6 +29,9 @@ const correctiveMigration =
 const owner = "crates/rustok-rbac/src/artifact_permission_assignment.rs";
 const catalog = "crates/rustok-rbac/src/artifact_permission_catalog.rs";
 const exports = "crates/rustok-rbac/src/lib.rs";
+const docs = "crates/rustok-rbac/docs/README.md";
+const userAdmin =
+  "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs";
 const sqliteProof =
   "crates/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs";
 
@@ -62,6 +65,7 @@ requireAll(grantMigration, [
   "FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id)",
   "FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id)",
   "FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key)",
+  "ON UPDATE RESTRICT ON DELETE RESTRICT",
   "UNIQUE (tenant_id, role_id, artifact_permission_id)",
 ]);
 forbidAll(grantMigration, [
@@ -74,7 +78,9 @@ requireAll(catalog, [
   "definition_select_sql",
   "translation_upsert_sql",
   "rbac.artifact_permission_identity_conflict",
+  "ArtifactPermissionScope::Tenant { tenant_id } if tenant_id.is_nil()",
   "localization.locale.len() > 32",
+  "registration_rejects_nil_tenant_scope",
 ]);
 requireAll(owner, [
   "struct ArtifactPermissionIdentity",
@@ -102,6 +108,19 @@ requireAll(sqliteProof, [
   "UPDATE rbac_artifact_permission_definitions SET permission_key",
   "UPDATE rbac_artifact_permission_definitions SET scope_key",
   "DELETE FROM rbac_artifact_permission_definitions",
+]);
+
+requireAll(userAdmin, [
+  "async fn delete_user(",
+  "AuthLifecycleService::deactivate_user_in_tx",
+  "redact_profile_for_account_deactivation_in_tx",
+]);
+forbidAll(userAdmin, ["users::Entity::delete", "DELETE FROM users"]);
+requireAll(docs, [
+  "## Artifact authorization lifecycle and teardown",
+  "The current Auth Admin `delete_user` operation is account deactivation",
+  "A future hard-delete workflow must run in one owner-coordinated transaction",
+  "Until that workflow exists, `RESTRICT` is the canonical behavior",
 ]);
 
 if (failures.length > 0) {
