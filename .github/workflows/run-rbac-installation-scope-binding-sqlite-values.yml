@@ -54,39 +54,39 @@ jobs:
               'm20260803_000001_canonicalize_artifact_permissions.rs'
           )
           migration = migration_path.read_text()
-          old = '''                vec![
-                    translation_id.into(),
-                    definition_id.into(),
-                    locale.into(),
-                    value.label.clone().into(),
-                    value.description.clone().into(),
-                    registered_at.into(),
-                ],'''
-          new = '''                match backend {
-                    DbBackend::Postgres => vec![
-                        translation_id.into(),
-                        definition_id.into(),
-                        locale.into(),
-                        value.label.clone().into(),
-                        value.description.clone().into(),
-                        registered_at.into(),
-                    ],
-                    DbBackend::Sqlite => vec![
-                        translation_id.to_string().into(),
-                        definition_id.to_string().into(),
-                        locale.into(),
-                        value.label.clone().into(),
-                        value.description.clone().into(),
-                        registered_at.into(),
-                    ],
-                    _ => unreachable!(),
-                },'''
-          if migration.count(old) != 1:
+          insert_anchor = '''        connection
+            .execute(Statement::from_sql_and_values(
+                backend,
+                sql,'''
+          identity_binding = '''        let (translation_id_value, definition_id_value):
+            (sea_orm::Value, sea_orm::Value) = match backend {
+                DbBackend::Postgres => (translation_id.into(), definition_id.into()),
+                DbBackend::Sqlite => (
+                    translation_id.to_string().into(),
+                    definition_id.to_string().into(),
+                ),
+                _ => unreachable!(),
+            };
+        connection
+            .execute(Statement::from_sql_and_values(
+                backend,
+                sql,'''
+          if migration.count(insert_anchor) != 1:
               raise SystemExit(
-                  'translation identity bind vector: expected one match, found '
-                  + str(migration.count(old))
+                  'translation insert anchor: expected one match, found '
+                  + str(migration.count(insert_anchor))
               )
-          migration_path.write_text(migration.replace(old, new, 1))
+          migration = migration.replace(insert_anchor, identity_binding, 1)
+          for old, new, label in [
+              ('translation_id.into(),', 'translation_id_value,', 'translation id bind'),
+              ('definition_id.into(),', 'definition_id_value,', 'definition id bind'),
+          ]:
+              if migration.count(old) != 1:
+                  raise SystemExit(
+                      f'{label}: expected one match, found {migration.count(old)}'
+                  )
+              migration = migration.replace(old, new, 1)
+          migration_path.write_text(migration)
           PY
 
       - name: Format changed Rust sources
