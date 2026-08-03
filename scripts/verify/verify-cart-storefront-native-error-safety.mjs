@@ -148,20 +148,105 @@ for (const payload of [
   "channel_slug = ?request_context",
   "locale = ?request_context",
 ]) forbidText(customerBody, payload, "complete customer cause or raw identity/context diagnostic");
-if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
+if (
+  countText(customerBody, "let error_type = std::any::type_name_of_val(&error);") !== 1
+) {
   failures.push("expected exactly one customer type-only diagnostic site");
 }
 if (
   countText(
-    safe,
+    customerBody,
     "correlation_id = ?request_context.map(|context| context.correlation_id)",
   ) !== 1
 ) {
   failures.push("expected exactly one optional customer correlation diagnostic site");
 }
-if (countText(safe, "error = ?error") !== 5) {
+
+const cartBody = functionBody(safe, "cart_error");
+for (const [value, label] of [
+  ["let error_type = std::any::type_name_of_val(&error);", "Cart owner error type"],
+  [
+    "let correlation_id = request_context.map(|context| context.correlation_id);",
+    "Cart owner correlation derivation",
+  ],
+  ["let request_context_present = request_context.is_some();", "Cart request context presence"],
+  ["let request_tenant_id_non_nil", "Cart request tenant shape"],
+  ["let tenant_id_non_nil = !tenant_id.is_nil();", "Cart tenant shape"],
+  ["let cart_id_present = cart_id.is_some();", "Cart id presence"],
+  ["let cart_id_non_nil = cart_id.map", "Cart id shape"],
+  ["let line_item_id_present = line_item_id.is_some();", "Cart line-item presence"],
+  ["let line_item_id_non_nil = line_item_id.map", "Cart line-item shape"],
+  ["let channel_id_present", "Cart channel id presence"],
+  ["let channel_id_non_nil", "Cart channel id shape"],
+  ["let channel_slug_present", "Cart channel slug presence"],
+  ["let channel_slug_length", "Cart channel slug length"],
+  ["let locale_present", "Cart locale presence"],
+  ["let locale_length", "Cart locale length"],
+  ["correlation_id = ?correlation_id", "Cart owner correlation diagnostic"],
+  ["request_tenant_id_non_nil = ?request_tenant_id_non_nil", "Cart request tenant diagnostic"],
+  ["cart_id_non_nil = ?cart_id_non_nil", "Cart id diagnostic"],
+  ["line_item_id_non_nil = ?line_item_id_non_nil", "Cart line-item diagnostic"],
+  ["channel_id_non_nil = ?channel_id_non_nil", "Cart channel diagnostic"],
+  ["channel_slug_length = ?channel_slug_length", "Cart slug diagnostic"],
+  ["locale_length = ?locale_length", "Cart locale diagnostic"],
+  ["public_retryable = retryable", "Cart retryability diagnostic"],
+  ["ServerFnError::new(public_message)", "Cart public envelope mapping"],
+  ["cart storefront owner operation failed", "Cart technical diagnostic message"],
+  ["cart storefront owner operation was rejected", "Cart rejection diagnostic message"],
+]) requireText(cartBody, value, label);
+for (const payload of [
+  "error = ?error",
+  "error = %error",
+  "request_tenant_id = ?request_context.map",
+  "tenant_id = %tenant_id",
+  "cart_id = ?cart_id",
+  "cart_id = %cart_id",
+  "line_item_id = ?line_item_id",
+  "line_item_id = %line_item_id",
+  "channel_id = ?request_context",
+  "channel_slug = ?request_context",
+  "locale = ?request_context",
+]) forbidText(cartBody, payload, "complete Cart cause or raw identity/context diagnostic");
+for (const [value, label] of [
+  ["CartError::Validation(_)", "Cart validation mapping"],
+  ["CartError::CartNotFound(_)", "Cart not-found mapping"],
+  ["CartError::CartLineItemNotFound(_)", "Cart line-item not-found mapping"],
+  ["CartError::InvalidTransition { .. }", "Cart transition mapping"],
+  ["CartError::Database(_)", "Cart database mapping"],
+  ["CartError::TaxBoundary {", "Cart tax-boundary mapping"],
+  ['"cart.storefront_request_invalid"', "Cart validation code"],
+  ['"cart.storefront_cart_not_found"', "Cart not-found code"],
+  ['"cart.storefront_line_item_not_found"', "Cart line-item code"],
+  ['"cart.storefront_state_conflict"', "Cart conflict code"],
+  ['"cart.storefront_storage_unavailable"', "Cart storage code"],
+  ['"cart.storefront_tax_invalid"', "Cart tax validation code"],
+  ['"cart.storefront_tax_not_found"', "Cart tax not-found code"],
+  ['"cart.storefront_tax_conflict"', "Cart tax conflict code"],
+  ['"cart.storefront_tax_forbidden"', "Cart tax forbidden code"],
+  ['"cart.storefront_tax_unavailable"', "Cart tax unavailable code"],
+  ['"cart.storefront_tax_failed"', "Cart tax failure code"],
+]) requireText(cartBody, value, label);
+if (countText(cartBody, "let error_type = std::any::type_name_of_val(&error);") !== 1) {
+  failures.push("expected exactly one Cart owner type-only diagnostic site");
+}
+if (countText(cartBody, "tracing::error!(") !== 1) {
+  failures.push("expected exactly one Cart owner technical error diagnostic path");
+}
+if (countText(cartBody, "tracing::warn!(") !== 1) {
+  failures.push("expected exactly one Cart owner rejection warning diagnostic path");
+}
+if (countText(cartBody, "correlation_id = ?correlation_id") !== 2) {
+  failures.push("both Cart owner severity paths must retain optional correlation diagnostics");
+}
+if (countText(cartBody, "public_retryable = retryable") !== 2) {
+  failures.push("both Cart owner severity paths must retain retryability diagnostics");
+}
+if (countText(safe, "let error_type = std::any::type_name_of_val(&error);") !== 2) {
+  failures.push("expected customer and Cart owner type-only diagnostic sites");
+}
+if (countText(safe, "error = ?error") !== 3) {
   failures.push(
-    "cart input, Cart owner, and pricing owner diagnostics must remain unchanged in this bounded customer-only slice",
+    "cart input and pricing owner diagnostics must remain unchanged in this bounded Cart-owner-only slice",
   );
 }
 
@@ -209,10 +294,19 @@ for (const [key, expected] of Object.entries({
   raw_customer_identity_context_logged: false,
   customer_not_found_behavior_preserved: true,
   customer_raw_error_public: false,
+  cart_static_public_envelopes: true,
+  cart_error_type_only: true,
+  complete_cart_error_logged: false,
+  cart_correlation_diagnostic: true,
+  cart_identity_shape_only: true,
+  cart_context_shape_only: true,
+  raw_cart_identity_context_logged: false,
+  cart_public_mapping_preserved: true,
+  cart_severity_split_preserved: true,
   cart_raw_error_public: false,
   pricing_port_message_remains_domain_sanitized: true,
   owner_context_logging: true,
-  cart_pricing_identifier_mapper_cleanup_out_of_scope: true,
+  pricing_identifier_mapper_cleanup_out_of_scope: true,
   cart_dto_changed: false,
   transport_selection_changed: false,
   graphql_transport_changed: false,
@@ -252,7 +346,12 @@ requireText(
 );
 requireText(
   doc,
-  "Cart owner, pricing, and identifier diagnostics remain separate open cleanup slices",
+  "Cart owner failures are recorded by concrete error type",
+  "documentation Cart owner diagnostic policy",
+);
+requireText(
+  doc,
+  "Pricing and identifier diagnostics remain separate open cleanup slices",
   "documentation remaining mapper boundary",
 );
 
@@ -263,5 +362,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ cart storefront framework and customer diagnostics use bounded causes/context while Cart owner and pricing cleanup remains open; source evidence remains unvalidated",
+  "✔ cart storefront framework, customer, and Cart owner diagnostics use bounded causes/context while pricing and identifier cleanup remains open; source evidence remains unvalidated",
 );

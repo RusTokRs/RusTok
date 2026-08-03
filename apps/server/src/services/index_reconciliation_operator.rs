@@ -67,29 +67,35 @@ pub enum IndexReconciliationOperatorError {
     Reconciliation(#[from] rustok_index::IndexReconciliationRunError),
     #[error(transparent)]
     Inspection(#[from] rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError),
+    #[error(transparent)]
+    Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),
 }
 
 /// Server-owned guarded operator boundary over the canonical PostgreSQL Index reconciliation
-/// runner and bounded dead-letter inspector.
+/// runner, bounded dead-letter inspector, and audited recovery store.
 ///
 /// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
 /// accepts only `modules:manage`, rejects cross-tenant run requests before database access, derives
-/// inspection and cancellation tenant scope from the authorized context, and exposes no connection,
-/// source registry, scheduler, task handle, or worker-spawn capability.
+/// cancellation, inspection, and recovery tenant scope from the authorized context, binds recovery
+/// actor identity to that same context, and exposes no connection, source registry, scheduler, task
+/// handle, or worker-spawn capability.
 #[derive(Clone)]
 pub struct IndexReconciliationOperatorRuntime {
     inner: rustok_index::PostgresIndexReconciliationRunner,
     dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
+    recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
 }
 
 impl IndexReconciliationOperatorRuntime {
     fn new(
         inner: rustok_index::PostgresIndexReconciliationRunner,
         dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
+        recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
     ) -> Self {
         Self {
             inner,
             dead_letters,
+            recovery,
         }
     }
 
@@ -134,6 +140,29 @@ impl IndexReconciliationOperatorRuntime {
             .await
             .map_err(Into::into)
     }
+
+    pub async fn requeue_dead_letter(
+        &self,
+        context: IndexReconciliationOperatorContext,
+        job_id: Uuid,
+        reason: impl Into<String>,
+    ) -> std::result::Result<
+        rustok_index::infrastructure::postgres::IndexReconciliationRequeueOutcome,
+        IndexReconciliationOperatorError,
+    > {
+        context.authorize_for(context.tenant_id())?;
+        let request =
+            rustok_index::infrastructure::postgres::IndexReconciliationRequeueRequest::new(
+                context.tenant_id(),
+                job_id,
+                context.actor_id(),
+                reason,
+            )?;
+        self.recovery
+            .requeue_failed(request)
+            .await
+            .map_err(Into::into)
+    }
 }
 
 impl fmt::Debug for IndexReconciliationOperatorRuntime {
@@ -175,13 +204,20 @@ pub(super) fn materialize_index_reconciliation_operator(
             )
         })?;
 
+    let recovery =
+        rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore::new(
+            db.clone(),
+        );
     let dead_letters =
-        rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector::new(db.clone());
+        rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector::new(
+            db.clone(),
+        );
     let runner =
         rustok_index::PostgresIndexReconciliationRunner::new(db, sources, schemas.shared());
     extensions.insert(IndexReconciliationOperatorRuntime::new(
         runner,
         dead_letters,
+        recovery,
     ));
     Ok(())
 }
@@ -490,6 +526,84 @@ mod tests {
             delegated,
             IndexReconciliationOperatorError::Inspection(
                 rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError::NilJobId
+            )
+        ));
+    }
+
+    #[tokio::test]
+    async fn dead_letter_requeue_authorizes_before_request_validation() {
+        let mut extensions = complete_registries();
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database without Index migrations");
+        materialize_index_reconciliation_operator(&mut extensions, db)
+            .expect("runtime materialization");
+        let runtime = extensions
+            .get::<IndexReconciliationOperatorRuntime>()
+            .cloned()
+            .expect("guarded runtime");
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+
+        let missing = runtime
+            .requeue_dead_letter(context, Uuid::nil(), "")
+            .await
+            .expect_err("missing authority must fail before recovery request validation");
+        assert!(matches!(
+            missing,
+            IndexReconciliationOperatorError::MissingRequestAuthority
+        ));
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            runtime.requeue_dead_letter(context, Uuid::nil(), ""),
+        )
+        .await
+        .expect_err("modules:read must not requeue dead letters");
+        assert!(matches!(
+            forbidden,
+            IndexReconciliationOperatorError::Forbidden
+        ));
+
+        let delegated = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.requeue_dead_letter(context, Uuid::nil(), ""),
+        )
+        .await
+        .expect_err("authorized request must reach bounded recovery DTO validation");
+        assert!(matches!(
+            delegated,
+            IndexReconciliationOperatorError::Recovery(
+                rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError::NilJobId
+            )
+        ));
+
+        let reason = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.requeue_dead_letter(context, Uuid::new_v4(), ""),
+        )
+        .await
+        .expect_err("authorized request must bind context identity before reason validation");
+        assert!(matches!(
+            reason,
+            IndexReconciliationOperatorError::Recovery(
+                rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError::InvalidReason(_)
             )
         ));
     }
