@@ -87,17 +87,35 @@ unchanged:
 - `owner_code`, `owner_kind`, and `owner_retryable` remain in both diagnostic paths;
 - the domain-sanitized owner message continues through `ServerFnError::new(error.message)`.
 
+## Missing-variant diagnostic boundary
+
+Missing-variant failures record only non-nil identifier facts for tenant, cart, and line item.
+The complete UUID values are not logged. Existing behavior remains unchanged:
+
+- the diagnostic continues to use `tracing::error!`;
+- owner `rustok_cart`, operation `decrement_line_item`, Cart storefront consumer, stable code,
+  and native boundary are preserved;
+- `ServerFnError::new("Cart line item could not be updated safely")` remains the static public
+  envelope;
+- the mapper remains called once from the decrement flow when a line item that must be repriced
+  has no variant identity.
+
 ## Existing mounted safety contract
 
-The mounted adapter continues to provide static public envelopes for:
+The mounted adapter continues to provide bounded diagnostics and stable public envelopes for:
 
+- tenant and optional-auth context extraction;
 - missing host `TransactionalEventBus` composition;
 - cart and line-item parsing failures;
-- Cart owner storage, validation, transition, tax-boundary, repricing, decrement, and
-  removal failures.
+- Customer lookup failures;
+- Cart owner storage, validation, transition, tax-boundary, repricing, decrement, and removal
+  failures;
+- Pricing owner failures;
+- missing line-item variant identity.
 
-Missing-variant identifiers remain a separate open cleanup slice. This bounded change does
-not modify its raw tenant, cart, or line-item UUID diagnostics.
+The mounted Cart SSR mapper cleanup is source-complete. This statement is limited to the
+source contract in this adapter and does not claim compilation, execution, transport parity,
+or retained runtime evidence.
 
 ## Preserved behavior
 
@@ -114,16 +132,17 @@ not modify its raw tenant, cart, or line-item UUID diagnostics.
 - Repricing still occurs before the cart DTO is returned.
 - Decrement still removes a line item at quantity one and otherwise reprices the next
   quantity.
+- The missing-variant call path and static error envelope are unchanged.
 - Explicit native/GraphQL transport selection is unchanged.
-- Missing-variant mapper behavior is unchanged in this input-only slice.
 
 ## Static evidence
 
-`scripts/verify/verify-cart-storefront-native-error-safety.mjs` requires type-only framework,
-Cart input, customer, Cart owner, and pricing diagnostics; rejects every complete error payload
-in the mounted adapter; preserves all five parser operations and their codes, customer
-not-found handling, every Cart owner public mapping, Pricing owner metadata, both severity
-paths, all three endpoints, and shared DTO mapping; and leaves execution claims open.
+`scripts/verify/verify-cart-storefront-native-error-safety.mjs` requires bounded framework,
+Cart input, customer, Cart owner, pricing, and missing-variant diagnostics; rejects every
+complete error payload and the raw missing-variant UUID fields; preserves all five parser
+operations and their codes, customer not-found handling, every Cart owner public mapping,
+Pricing owner metadata, all severity paths, the single missing-variant decrement call site,
+all three endpoints, and shared DTO mapping; and leaves execution claims open.
 
 The source evidence remains in
 `crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json`.
