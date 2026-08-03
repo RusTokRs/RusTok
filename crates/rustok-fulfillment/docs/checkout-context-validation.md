@@ -46,9 +46,9 @@ A rejected tenant identity keeps the existing non-retryable validation envelope:
 - validation kind;
 - retryability `false`.
 
-The exact constructed causation `PortError` is returned unchanged. The exact constructed tenant
-`PortError` is returned unchanged. Neither validator selects a replacement code, message, kind,
-or retryability value.
+The exact constructed causation `PortError` is returned unchanged after diagnostics.
+The exact constructed tenant `PortError` is returned unchanged after diagnostics. Neither
+validator selects a replacement code, message, kind, or retryability value.
 
 ## Bounded causation diagnostic policy
 
