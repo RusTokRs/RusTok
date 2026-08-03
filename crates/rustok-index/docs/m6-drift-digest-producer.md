@@ -1,6 +1,6 @@
 # M6 bounded drift digest producer
 
-Status: `producer_contract_source_complete_snapshot_reader_and_scope_completion_pending`
+Status: `producer_contract_and_locale_scope_source_complete_snapshot_reader_pending`
 
 ## Purpose
 
@@ -61,11 +61,14 @@ outcomes to `Created`, `Refreshed`, `Reopened`, or `Suppressed` receipts. Storag
 bounded retryable dependency code; unsupported backend and request/receipt contract failures are
 bounded permanent codes.
 
-The current persisted `IndexDriftFindingScope::Entity` requires a locale. Therefore the adapter
-fails closed with `index_drift_locale_free_scope_unsupported` for `EntityKey { locale: None }`.
-It does not collapse such findings into schema scope or invent a locale. The generic producer itself
-supports locale-free keys; extending persisted finding scope is the next required storage-contract
-slice.
+The adapter is now complete for both valid `EntityKey` locale shapes:
+
+- `locale: Some(locale)` maps to `IndexDriftFindingScope::Entity`;
+- `locale: None` maps to `IndexDriftFindingScope::EntityWithoutLocale`.
+
+The locale-free variant persists `locale_key = NULL`; it is never collapsed into schema scope and no
+locale is invented. Locale-bearing finding-key bytes retain their original v1 component sequence.
+The locale-free scope uses a distinct impossible-for-`LocaleKey` NUL component.
 
 ## Deliberate limits
 
@@ -74,7 +77,6 @@ This slice does not add or claim:
 - a production source/materialized snapshot reader;
 - PostgreSQL exported-snapshot or owner high-watermark admission;
 - automatic entity discovery, full scans, or orphan-link diagnosis;
-- locale-free persisted entity findings;
 - finding resolution when states converge;
 - resolve/ignore commands, actor/reason audit, or authorization;
 - targeted/full/shadow repair;
@@ -85,8 +87,10 @@ This slice does not add or claim:
 
 ```bash
 cargo test -p rustok-index drift_digest -- --nocapture
+cargo test -p rustok-index --test drift_finding_locale_key_contract
 cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-drift-digest-producer.mjs
+node scripts/verify/verify-index-drift-finding-locale-scope.mjs
 git diff --check
 ```
 
