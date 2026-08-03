@@ -1,0 +1,90 @@
+{
+  "contract": "forum_topic_merge_graphql_transport_v1",
+  "task": "FORUM-21K",
+  "parent_task": "FORUM-21",
+  "extends": "FORUM-21B",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "transport": "graphql",
+  "field": "mergeForumTopic",
+  "owner_service": "ForumTopicMergeService",
+  "authorization": {
+    "module_must_be_enabled": "forum",
+    "required_permission": "forum_topics:manage",
+    "authenticated_human_actor_required_by_owner": true,
+    "tenant_is_derived_from_routed_TenantContext": true,
+    "optional_tenant_argument_must_equal_routed_tenant": true,
+    "tenant_mismatch_code": "PERMISSION_DENIED"
+  },
+  "input": {
+    "type": "MergeForumTopicGraphqlInput",
+    "target_topic_id_is_separate_argument": true,
+    "fields": [
+      "operation_id",
+      "source_topic_id",
+      "reason"
+    ],
+    "operation_id_is_idempotency_identity": true,
+    "reason_validation_is_owned_by_service": true
+  },
+  "result": {
+    "type": "GqlForumTopicMerge",
+    "fields": [
+      "operation_id",
+      "event_id",
+      "source_topic_id",
+      "target_topic_id",
+      "category_id",
+      "actor_id",
+      "reason",
+      "moved_reply_count",
+      "moved_published_reply_count",
+      "resulting_published_reply_count",
+      "position_offset",
+      "merged_at"
+    ],
+    "returns_immutable_owner_receipt": true,
+    "exact_replay_returns_same_result": true,
+    "event_id_equals_operation_id": true
+  },
+  "composition": {
+    "resolver_contains_no_merge_business_logic": true,
+    "database_and_transactional_event_bus_are_explicit_schema_data": true,
+    "security_context_uses_authenticated_permission_snapshot": true,
+    "domain_errors_preserve_ForumGraphqlErrorExtension_mapping": true,
+    "topic_body_hydration_after_merge": false,
+    "canonical_source_alias_resolution_for_mutation": false
+  },
+  "compatibility": {
+    "domain_input_changed": false,
+    "domain_result_changed": false,
+    "receipt_schema_changed": false,
+    "event_schema_changed": false,
+    "rest_contract_changed": false,
+    "graphql_existing_fields_changed": false,
+    "admin_UI_added": false,
+    "storefront_UI_added": false
+  },
+  "runtime_test": "crates/rustok-forum/src/graphql/topic_merge_mutation.rs",
+  "schema_contract_test": "crates/rustok-forum/tests/topic_merge_graphql_contract.rs",
+  "documentation": "crates/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md",
+  "cumulative_contract": "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
+  "cumulative_documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  "verifier": "scripts/verify/verify-forum-topic-merge-graphql-transport.mjs",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-merge-owner.mjs",
+    "node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs",
+    "cargo test -p rustok-forum graphql::topic_merge_mutation::tests -- --nocapture",
+    "cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture",
+    "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "no verifier test formatter Cargo SQLite PostgreSQL workflow or CI execution is claimed",
+    "no REST native admin storefront or CLI merge command transport is added",
+    "no merge UI is added",
+    "no competing accepted-solution winner command is added",
+    "no cross-category merge split fork or reply-range workflow is added",
+    "mutation commands do not follow merged source identities",
+    "FORUM-21 remains planned"
+  ]
+}
