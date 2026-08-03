@@ -200,6 +200,47 @@ jobs:
               'wrapping-safe restrict marker',
           )
           verifier_path.write_text(verifier)
+
+          migration_path = Path(
+              'crates/rustok-rbac/src/'
+              'm20260803_000001_canonicalize_artifact_permissions.rs'
+          )
+          migration = migration_path.read_text()
+          migration = replace_once(
+              migration,
+              'SELECT catalog.id AS translation_id, definition.id AS definition_id, '
+              'catalog.locale, catalog.label, catalog.description, '
+              'catalog.registered_at::text AS registered_at_text',
+              'SELECT catalog.id::text AS translation_id, '
+              'definition.id::text AS definition_id, catalog.locale, catalog.label, '
+              'catalog.description, catalog.registered_at::text AS registered_at_text',
+              'PostgreSQL translation UUID text projection',
+          )
+          migration = replace_once(
+              migration,
+              '        let translation_id: Uuid = row.try_get("", "translation_id")?;\n'
+              '        let definition_id: Uuid = row.try_get("", "definition_id")?;',
+              '        let translation_id_text: String = '
+              'row.try_get("", "translation_id")?;\n'
+              '        let translation_id = Uuid::parse_str(&translation_id_text)'
+              '.map_err(|error| {\n'
+              '            DbErr::Migration(format!(\n'
+              '                "artifact permission translation id '
+              '`{translation_id_text}` is invalid: {error}"\n'
+              '            ))\n'
+              '        })?;\n'
+              '        let definition_id_text: String = '
+              'row.try_get("", "definition_id")?;\n'
+              '        let definition_id = Uuid::parse_str(&definition_id_text)'
+              '.map_err(|error| {\n'
+              '            DbErr::Migration(format!(\n'
+              '                "artifact permission definition id '
+              '`{definition_id_text}` is invalid: {error}"\n'
+              '            ))\n'
+              '        })?;',
+              'backend-neutral translation UUID decoding',
+          )
+          migration_path.write_text(migration)
           PY
 
       - name: Format changed Rust sources
