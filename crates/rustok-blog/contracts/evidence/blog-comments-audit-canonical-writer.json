@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-08-03T10:42:00Z",
+  "review_base": "d3400541928b8f81142c64a47b8356165d0b138f",
+  "status": "canonical_writer_source_ready_compile_check_pending",
+  "scope": "Blog Comments delegation schedule audit canonical typed write-once writer",
+  "source_contract": {
+    "event_type": "blog.comments_delegation_schedule.replacement_succeeded",
+    "schema_version": 1,
+    "state_key": "comments_tcp_delegation_schedule",
+    "request_id_is_source_audit_identity": true,
+    "request_id_is_canonical_envelope_id": true,
+    "request_id_is_correlation_id": true,
+    "tenant_in_envelope_metadata": true,
+    "actor_in_envelope_metadata": true
+  },
+  "event_envelope": {
+    "exact_identity_constructor_added": true,
+    "nil_identity_rejected": true,
+    "registered_validation_preserved": true,
+    "serialized_shape_changed": false,
+    "event_contract_digests_changed": false
+  },
+  "canonical_write_once": {
+    "owner": "rustok-outbox",
+    "api": "TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id",
+    "sealed_event_contract_only": true,
+    "caller_owned_transaction_required": true,
+    "insert_conflict_target": "sys_events.id",
+    "on_conflict_do_nothing": true,
+    "winning_row_read_in_same_transaction": true,
+    "exact_replay_returns_existing_envelope_id": true,
+    "mismatched_reuse_returns_conflict": true,
+    "unreadable_state_returns_unavailable": true,
+    "direct_transport_publication": false
+  },
+  "stable_replay_comparison": {
+    "envelope_id": true,
+    "correlation_id": true,
+    "causation_id": true,
+    "tenant_id": true,
+    "actor_id": true,
+    "event_type": true,
+    "schema_version": true,
+    "validated_typed_payload": true
+  },
+  "ignored_replay_metadata": {
+    "trace_id": true,
+    "envelope_timestamp": true,
+    "delivery_status": true,
+    "retry_count": true,
+    "claim_metadata": true,
+    "dispatch_metadata": true,
+    "row_created_at": true
+  },
+  "server_adapter": {
+    "type": "RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter",
+    "implements_slice_87_port": true,
+    "maps_registered_typed_event": true,
+    "uses_request_id_as_envelope_id": true,
+    "maps_conflict_without_details": true,
+    "maps_unavailable_without_details": true,
+    "constructs_outbox_transport": false,
+    "starts_relay": false,
+    "starts_worker": false
+  },
+  "wire_range": {
+    "publication_u64_retained": true,
+    "registered_wire_i64_retained": true,
+    "timestamp_above_i64_max_rejected": true,
+    "generation_above_i64_max_rejected": true,
+    "checked_adapter_conversion_retained": true
+  },
+  "source_coverage": {
+    "exact_identity_unit_tests_added": true,
+    "stable_replay_comparison_tests_added": true,
+    "sqlite_write_once_tests_added": true,
+    "blog_event_mapping_tests_added": true,
+    "closed_error_mapping_tests_added": true,
+    "signed_wire_range_tests_added": true
+  },
+  "preserved_boundaries": {
+    "event_payload_changed": false,
+    "event_type_changed": false,
+    "event_digest_artifact_changed": false,
+    "sys_events_entity_changed": false,
+    "sys_events_migration_changed": false,
+    "outbox_relay_changed": false,
+    "blog_audit_store_changed": false,
+    "blog_audit_migration_changed": false,
+    "source_handoff_worker_added": false,
+    "environment_switch_added": false,
+    "manifest_changed": false
+  },
+  "validation": {
+    "cargo_check_run": false,
+    "cargo_check_conclusion": "pending",
+    "rust_unit_tests_run": false,
+    "rust_integration_tests_run": false,
+    "javascript_verifier_run": false,
+    "postgresql_run": false,
+    "runtime_run": false,
+    "production_run": false
+  },
+  "next_cursor": {
+    "add_blog_audit_canonical_envelope_id": true,
+    "add_source_handoff_fencing": true,
+    "add_atomic_postgresql_handoff": true,
+    "add_skip_locked_source_claiming": true,
+    "add_ambiguous_commit_recovery": true,
+    "add_source_retention_policy": true
+  }
+}
