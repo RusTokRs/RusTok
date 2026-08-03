@@ -117,7 +117,7 @@ This slice does not change:
 - request and immutable fulfillment-plan validation;
 - fulfillment create, post-error adoption, lookup, read, or sorting behavior;
 - metadata construction;
-- canonical `FulfillmentError` mappings;
+- canonical `FulfillmentError` public mapping behavior;
 - Commerce orchestration;
 - FBA, FFA, or ecommerce audit status.
 
@@ -142,10 +142,22 @@ Tenant source evidence is recorded in:
 
 Both records remain source-only: `execution` is empty and every validation flag remains false.
 
-## Remaining diagnostic boundary
+## Related owner mapper contract
 
-Canonical `FulfillmentError` diagnostics remain the next separate cleanup slice in
-`fulfillment_error_to_port_error`.
+Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under their own bounded contract:
+
+- `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
+- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+
+That contract preserves all five public `PortError` envelopes and the existing warning/error
+severity while replacing raw owner causes, identities, transition values, database errors, and
+delegated context with bounded facts. It does not change either context validator covered here.
+
+## Checkout execution source boundary
+
+The admission, local-`PortError`, causation, tenant, and canonical owner mapper contracts now
+make the mounted Fulfillment checkout execution diagnostic mapper surface source-complete.
 
 Compile, runtime, replay, restart, contention, mounted Commerce behavior, remote-port parity,
 workflows, CI, and production evidence remain open. The broad ecommerce correlation-safe mapper
