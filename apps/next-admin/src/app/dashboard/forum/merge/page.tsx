@@ -36,10 +36,7 @@ export default async function ForumTopicMergePage() {
       pageTitle='Merge Forum Topics'
       pageDescription='Archive one source thread into a retained canonical target.'
     >
-      <ForumTopicMerge
-        topics={topics}
-        gqlOpts={{ token, tenantId, tenantSlug }}
-      />
+      <ForumTopicMerge topics={topics} gqlOpts={{ tenantId, tenantSlug }} />
     </PageContainer>
   );
 }
