@@ -249,7 +249,7 @@ assert.ok(
 const sourceEmptiness = owner.indexOf("ensure_source_tags_empty_in_tx");
 const semanticEvent = owner.indexOf("forum_domain_event::ActiveModel");
 const receipt = owner.indexOf("forum_topic_merge_tag_reconciliation::ActiveModel");
-const firstInvalidation = owner.indexOf("publish_forum_topic_projection_in_tx");
+const firstInvalidation = owner.indexOf("publish_forum_topic_projection_in_tx(", receipt);
 assert.ok(sourceEmptiness >= 0 && sourceEmptiness < semanticEvent);
 assert.ok(semanticEvent < receipt && receipt < firstInvalidation);
 assert.equal(
@@ -323,7 +323,7 @@ includesAll(
     paths.contract,
     "Set-union policy",
     "same row `id`",
-    "At most 500",
+    "at most 500 existing source rows",
     "Tags are Forum Search facets",
     "FORUM_TOPIC_MERGE_TAG_RECONCILIATION_CONFLICT",
     "No command above was run by the implementation agent",
