@@ -370,154 +370,303 @@ fn parse_port_tenant_id(
     })
 }
 
+#[derive(Debug)]
+struct PaymentCollectionOwnerErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+fn payment_collection_owner_error_facts(
+    error: &crate::PaymentError,
+) -> PaymentCollectionOwnerErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        crate::PaymentError::Validation(value) => {
+            ("validation", 1, value.chars().count(), 0, 0, false)
+        }
+        crate::PaymentError::PaymentCollectionNotFound(id) => (
+            "payment_collection_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        crate::PaymentError::PaymentNotFound(id) => (
+            "payment_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        crate::PaymentError::RefundNotFound(id) => (
+            "refund_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        crate::PaymentError::InvalidTransition { from, to } => (
+            "invalid_transition",
+            2,
+            from.chars().count() + to.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        crate::PaymentError::ProviderUnavailable {
+            provider_id,
+            operation,
+        } => (
+            "provider_unavailable",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        crate::PaymentError::ProviderRejected {
+            provider_id,
+            operation,
+        } => (
+            "provider_rejected",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        crate::PaymentError::ProviderInvalidResponse {
+            provider_id,
+            operation,
+        } => (
+            "provider_invalid_response",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        crate::PaymentError::ProviderOutcomeUnknown {
+            provider_id,
+            operation,
+        } => (
+            "provider_outcome_unknown",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        crate::PaymentError::ProviderConfiguration { provider_id } => (
+            "provider_configuration",
+            1,
+            provider_id.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        crate::PaymentError::Database(_) => ("database", 0, 0, 0, 0, true),
+    };
+
+    PaymentCollectionOwnerErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
+fn payment_collection_owner_error_code(error: &crate::PaymentError) -> &'static str {
+    match error {
+        crate::PaymentError::Validation(_) => "payment.validation",
+        crate::PaymentError::PaymentCollectionNotFound(_) => "payment.collection_not_found",
+        crate::PaymentError::PaymentNotFound(_) => "payment.payment_not_found",
+        crate::PaymentError::RefundNotFound(_) => "payment.refund_not_found",
+        crate::PaymentError::InvalidTransition { .. } => "payment.invalid_transition",
+        crate::PaymentError::ProviderUnavailable { .. } => "payment.provider_unavailable",
+        crate::PaymentError::ProviderRejected { .. } => "payment.provider_rejected",
+        crate::PaymentError::ProviderInvalidResponse { .. } => {
+            "payment.provider_invalid_response"
+        }
+        crate::PaymentError::ProviderOutcomeUnknown { .. } => {
+            "payment.provider_outcome_unknown"
+        }
+        crate::PaymentError::ProviderConfiguration { .. } => "payment.provider_not_configured",
+        crate::PaymentError::Database(_) => "payment.database_unavailable",
+    }
+}
+
+fn payment_collection_owner_error_is_technical(error: &crate::PaymentError) -> bool {
+    matches!(
+        error,
+        crate::PaymentError::ProviderUnavailable { .. }
+            | crate::PaymentError::ProviderInvalidResponse { .. }
+            | crate::PaymentError::ProviderOutcomeUnknown { .. }
+            | crate::PaymentError::ProviderConfiguration { .. }
+            | crate::PaymentError::Database(_)
+    )
+}
+
 fn payment_error_to_port_error(
     context: &PortContext,
     owner_operation: &'static str,
     error: crate::PaymentError,
 ) -> PortError {
+    let code = payment_collection_owner_error_code(&error);
+    let technical_failure = payment_collection_owner_error_is_technical(&error);
+    let error_facts = payment_collection_owner_error_facts(&error);
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    let tenant_id_length = context.tenant_id.chars().count();
+    let actor_id_length = context.actor.id.chars().count();
+    let claim_count = context.claims.len();
+    let role_count = context.roles.len();
+    let channel_present = context.channel.is_some();
+    let channel_length = context.channel.as_ref().map(|value| value.chars().count());
+    let locale_length = context.locale.chars().count();
+    let causation_id_present = context.causation_id.is_some();
+    let causation_id_length = context
+        .causation_id
+        .as_ref()
+        .map(|value| value.chars().count());
+    let traceparent_present = context.traceparent.is_some();
+    let traceparent_length = context
+        .traceparent
+        .as_ref()
+        .map(|value| value.chars().count());
+    let idempotency_key_present = context.idempotency_key.is_some();
+    let idempotency_key_length = context
+        .idempotency_key
+        .as_ref()
+        .map(|value| value.chars().count());
+
+    if technical_failure {
+        tracing::error!(
+            owner = PAYMENT_COLLECTION_OWNER,
+            owner_error_variant = error_facts.error_variant,
+            owner_error_text_field_count = error_facts.text_field_count,
+            owner_error_text_total_length = error_facts.text_total_length,
+            owner_error_uuid_field_count = error_facts.uuid_field_count,
+            owner_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            owner_error_opaque_payload_present = error_facts.opaque_payload_present,
+            correlation_id = %context.correlation_id,
+            tenant_id_length,
+            actor_kind,
+            actor_id_length,
+            claim_count,
+            role_count,
+            channel_present,
+            channel_length = ?channel_length,
+            locale_length,
+            causation_id_present,
+            causation_id_length = ?causation_id_length,
+            traceparent_present,
+            traceparent_length = ?traceparent_length,
+            idempotency_key_present,
+            idempotency_key_length = ?idempotency_key_length,
+            deadline_ms = ?context.deadline_ms,
+            operation = owner_operation,
+            code,
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            "payment collection owner operation failed"
+        );
+    } else {
+        tracing::warn!(
+            owner = PAYMENT_COLLECTION_OWNER,
+            owner_error_variant = error_facts.error_variant,
+            owner_error_text_field_count = error_facts.text_field_count,
+            owner_error_text_total_length = error_facts.text_total_length,
+            owner_error_uuid_field_count = error_facts.uuid_field_count,
+            owner_error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            owner_error_opaque_payload_present = error_facts.opaque_payload_present,
+            correlation_id = %context.correlation_id,
+            tenant_id_length,
+            actor_kind,
+            actor_id_length,
+            claim_count,
+            role_count,
+            channel_present,
+            channel_length = ?channel_length,
+            locale_length,
+            causation_id_present,
+            causation_id_length = ?causation_id_length,
+            traceparent_present,
+            traceparent_length = ?traceparent_length,
+            idempotency_key_present,
+            idempotency_key_length = ?idempotency_key_length,
+            deadline_ms = ?context.deadline_ms,
+            operation = owner_operation,
+            code,
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            "payment collection owner operation was rejected"
+        );
+    }
+
     match error {
-        crate::PaymentError::Validation(message) => {
-            tracing::warn!(
-                cause = %message,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.validation",
-                "payment owner rejected a collection request"
-            );
+        crate::PaymentError::Validation(_) => {
             PortError::validation("payment.validation", "payment request is invalid")
         }
-        crate::PaymentError::PaymentCollectionNotFound(id) => PortError::not_found(
+        crate::PaymentError::PaymentCollectionNotFound(_) => PortError::not_found(
             "payment.collection_not_found",
-            format!("payment collection {id} not found"),
+            "payment collection was not found",
         ),
-        crate::PaymentError::PaymentNotFound(id) => PortError::not_found(
-            "payment.payment_not_found",
-            format!("payment for collection {id} not found"),
+        crate::PaymentError::PaymentNotFound(_) => {
+            PortError::not_found("payment.payment_not_found", "payment was not found")
+        }
+        crate::PaymentError::RefundNotFound(_) => {
+            PortError::not_found("payment.refund_not_found", "refund was not found")
+        }
+        crate::PaymentError::InvalidTransition { .. } => PortError::conflict(
+            "payment.invalid_transition",
+            "payment lifecycle conflicts with the requested operation",
         ),
-        crate::PaymentError::RefundNotFound(id) => {
-            PortError::not_found("payment.refund_not_found", format!("refund {id} not found"))
-        }
-        crate::PaymentError::InvalidTransition { from, to } => {
-            tracing::warn!(
-                from = %from,
-                to = %to,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.invalid_transition",
-                "payment owner rejected a lifecycle transition"
-            );
-            PortError::conflict(
-                "payment.invalid_transition",
-                "payment lifecycle conflicts with the requested operation",
-            )
-        }
-        crate::PaymentError::ProviderUnavailable {
-            provider_id,
-            operation,
-        } => {
-            tracing::error!(
-                provider_id = %provider_id,
-                provider_operation = %operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.provider_unavailable",
-                "payment provider is unavailable"
-            );
-            PortError::unavailable(
-                "payment.provider_unavailable",
-                "payment provider is temporarily unavailable",
-            )
-        }
-        crate::PaymentError::ProviderRejected {
-            provider_id,
-            operation,
-        } => {
-            tracing::warn!(
-                provider_id = %provider_id,
-                provider_operation = %operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.provider_rejected",
-                "payment provider rejected an owner operation"
-            );
-            PortError::conflict(
-                "payment.provider_rejected",
-                "payment provider rejected the requested operation",
-            )
-        }
-        crate::PaymentError::ProviderInvalidResponse {
-            provider_id,
-            operation,
-        } => {
-            tracing::error!(
-                provider_id = %provider_id,
-                provider_operation = %operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.provider_invalid_response",
-                "payment provider returned invalid normalized facts"
-            );
-            PortError::new(
-                PortErrorKind::InvariantViolation,
-                "payment.provider_invalid_response",
-                "payment provider response could not be applied safely",
-                false,
-            )
-        }
-        crate::PaymentError::ProviderOutcomeUnknown {
-            provider_id,
-            operation,
-        } => {
-            tracing::error!(
-                provider_id = %provider_id,
-                provider_operation = %operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.provider_outcome_unknown",
-                "payment provider outcome requires reconciliation"
-            );
-            PortError::new(
-                PortErrorKind::Conflict,
-                "payment.provider_outcome_unknown",
-                "payment provider outcome requires reconciliation",
-                false,
-            )
-        }
-        crate::PaymentError::ProviderConfiguration { provider_id } => {
-            tracing::error!(
-                provider_id = %provider_id,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.provider_not_configured",
-                "payment provider configuration is unavailable"
-            );
-            PortError::new(
-                PortErrorKind::InvariantViolation,
-                "payment.provider_not_configured",
-                "payment provider is not configured for the requested operation",
-                false,
-            )
-        }
-        crate::PaymentError::Database(error) => {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "payment.database_unavailable",
-                "payment owner storage operation failed"
-            );
-            PortError::unavailable(
-                "payment.database_unavailable",
-                "payment storage is temporarily unavailable",
-            )
-        }
+        crate::PaymentError::ProviderUnavailable { .. } => PortError::unavailable(
+            "payment.provider_unavailable",
+            "payment provider is temporarily unavailable",
+        ),
+        crate::PaymentError::ProviderRejected { .. } => PortError::conflict(
+            "payment.provider_rejected",
+            "payment provider rejected the requested operation",
+        ),
+        crate::PaymentError::ProviderInvalidResponse { .. } => PortError::new(
+            PortErrorKind::InvariantViolation,
+            "payment.provider_invalid_response",
+            "payment provider response could not be applied safely",
+            false,
+        ),
+        crate::PaymentError::ProviderOutcomeUnknown { .. } => PortError::new(
+            PortErrorKind::Conflict,
+            "payment.provider_outcome_unknown",
+            "payment provider outcome requires reconciliation",
+            false,
+        ),
+        crate::PaymentError::ProviderConfiguration { .. } => PortError::new(
+            PortErrorKind::InvariantViolation,
+            "payment.provider_not_configured",
+            "payment provider is not configured for the requested operation",
+            false,
+        ),
+        crate::PaymentError::Database(_) => PortError::unavailable(
+            "payment.database_unavailable",
+            "payment storage is temporarily unavailable",
+        ),
     }
 }
