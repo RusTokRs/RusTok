@@ -861,7 +861,6 @@ async fn load_valid_solution_in_tx(
     let reply = forum_reply::Entity::find_by_id(solution.reply_id)
         .filter(forum_reply::Column::TenantId.eq(tenant_id))
         .filter(forum_reply::Column::TopicId.eq(topic_id))
-        .filter(forum_reply::Column::DeletedAt.is_null())
         .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
         .one(txn)
         .await?;

@@ -99,7 +99,6 @@ pub use source_reconciliation_scheduler::{
     IndexReconciliationSchedulerPolicy, PostgresIndexReconciliationWorkAdapter,
     register_postgres_index_reconciliation_work,
 };
-pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,

@@ -27,10 +27,10 @@ use rustok_modules::{
     MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
     MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION,
     MODULE_BUILD_WIT_WORLD, ModuleArtifactSourceManifest, ModuleAuthoringBuildCommand,
-    ModuleAuthoringBuildControl, ModuleAuthoringPublishCommand, ModuleAuthoringPublishControl,
-    ModuleCommandContext, ModulePublishBundleFiles, SeaOrmModuleAuthoringBuildService,
-    SeaOrmModuleAuthoringPublishService, SharedModuleAuthoringBuildControl,
-    SharedModuleAuthoringPublishControl, build_module_publish_bundle,
+    ModuleAuthoringPublishCommand, ModuleCommandContext, ModulePublishBundleFiles,
+    SeaOrmModuleAuthoringBuildService, SeaOrmModuleAuthoringPublishService,
+    SharedModuleAuthoringBuildControl, SharedModuleAuthoringPublishControl,
+    build_module_publish_bundle,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_sandbox::{
@@ -87,7 +87,6 @@ impl ModuleCommandProvider {
             SeaOrmModuleAuthoringBuildService::new(db_clone(host), PathBuf::from(source_cas_root))
                 .map_err(command_failed)?;
         let shared = SharedModuleAuthoringBuildControl(Arc::new(service));
-        host.shared_insert(shared.clone());
         Ok(shared)
     }
 
@@ -108,7 +107,6 @@ impl ModuleCommandProvider {
         .await
         .map_err(command_failed)?;
         let shared = SharedModuleAuthoringPublishControl(Arc::new(service));
-        host.shared_insert(shared.clone());
         Ok(shared)
     }
 }

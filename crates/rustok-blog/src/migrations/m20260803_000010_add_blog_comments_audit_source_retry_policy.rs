@@ -155,9 +155,6 @@ async fn add_column_if_missing(
 enum BlogCommentsDelegationScheduleAuditOutbox {
     #[sea_orm(iden = "blog_comments_tcp_delegation_schedule_audit_outbox")]
     Table,
-    CanonicalEnvelopeId,
-    HandoffClaimToken,
-    HandoffClaimExpiresAt,
     HandoffNextAttemptAt,
     HandoffLastFailureAt,
     HandoffLastFailureCode,

@@ -172,6 +172,14 @@ pub struct ModuleControlPlaneError {
     pub retryable: bool,
 }
 
+impl std::fmt::Display for ModuleControlPlaneError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code.as_str(), self.message)
+    }
+}
+
+impl std::error::Error for ModuleControlPlaneError {}
+
 impl ModuleControlPlaneError {
     pub fn validation(
         code: ModuleErrorCode,

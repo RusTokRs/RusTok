@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use rustok_sandbox::{
     ExecutionPhase as SandboxExecutionPhase, RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput,
-    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, SandboxContext, SandboxExecutorKind,
-    SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
+    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, RhaiWorkspace, SandboxContext,
+    SandboxExecutorKind, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
 
 use crate::{
