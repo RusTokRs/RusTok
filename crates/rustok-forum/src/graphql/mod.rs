@@ -42,7 +42,10 @@ pub use quote_commands::{
 pub use read_state::*;
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
-pub use topic_merge_mutation::{GqlForumTopicMerge, MergeForumTopicGraphqlInput};
+pub use topic_merge_mutation::{
+    GqlForumTopicMerge, GqlForumTopicMergeSolutionResolution, MergeForumTopicGraphqlInput,
+    ResolveForumTopicMergeSolutionGraphqlInput,
+};
 pub use types::*;
 
 #[derive(MergedObject, Default)]
