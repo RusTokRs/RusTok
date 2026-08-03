@@ -78,8 +78,8 @@ fn inventory_admin_correlation_id(operation: &'static str) -> String {
 }
 
 #[cfg(feature = "ssr")]
-fn inventory_context_error<E: std::fmt::Debug>(
-    error: E,
+fn inventory_context_error<E>(
+    _error: E,
     owner_operation: &'static str,
     context_kind: &'static str,
     correlation_id: &str,
@@ -87,7 +87,7 @@ fn inventory_context_error<E: std::fmt::Debug>(
     public_message: &'static str,
 ) -> ServerFnError {
     tracing::error!(
-        error = ?error,
+        error_type = std::any::type_name::<E>(),
         owner = INVENTORY_ADMIN_OWNER,
         owner_operation,
         context_kind,
@@ -100,7 +100,7 @@ fn inventory_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn auth_context_error<E: std::fmt::Debug>(
+fn auth_context_error<E>(
     error: E,
     owner_operation: &'static str,
     correlation_id: &str,
@@ -116,7 +116,7 @@ fn auth_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn tenant_context_error<E: std::fmt::Debug>(
+fn tenant_context_error<E>(
     error: E,
     owner_operation: &'static str,
     correlation_id: &str,
@@ -132,7 +132,7 @@ fn tenant_context_error<E: std::fmt::Debug>(
 }
 
 #[cfg(feature = "ssr")]
-fn request_context_error<E: std::fmt::Debug>(
+fn request_context_error<E>(
     error: E,
     owner_operation: &'static str,
     correlation_id: &str,
@@ -156,7 +156,7 @@ async fn optional_request_context(
         Ok(context) => Some(context),
         Err(error) => {
             tracing::warn!(
-                error = ?error,
+                error_type = std::any::type_name_of_val(&error),
                 owner = INVENTORY_ADMIN_OWNER,
                 owner_operation,
                 context_kind = "request",
@@ -171,8 +171,8 @@ async fn optional_request_context(
 }
 
 #[cfg(feature = "ssr")]
-fn inventory_owner_error<E: std::fmt::Debug>(
-    error: E,
+fn inventory_owner_error<E>(
+    _error: E,
     owner_operation: &'static str,
     correlation_id: &str,
     tenant_id: uuid::Uuid,
@@ -183,7 +183,7 @@ fn inventory_owner_error<E: std::fmt::Debug>(
     public_message: &'static str,
 ) -> ServerFnError {
     tracing::error!(
-        error = ?error,
+        error_type = std::any::type_name::<E>(),
         owner = "rustok_inventory",
         consumer = INVENTORY_ADMIN_OWNER,
         owner_operation,
