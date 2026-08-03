@@ -15,7 +15,8 @@ implementation:
 - FORUM-21L — explicit manager-selected resolution when both topics have
   accepted solutions;
 - FORUM-21M — checked same-category or cross-category ownership and category
-  reply-counter transfer.
+  reply-counter transfer;
+- FORUM-21N — module-owned Leptos and Next-admin merge workflow composition.
 
 The cumulative machine contract is:
 
@@ -36,6 +37,8 @@ crates/rustok-forum/contracts/forum-topic-canonical-resolution.json
 crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md
 crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json
 crates/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md
+crates/rustok-forum/contracts/forum-topic-merge-admin-ui.json
+crates/rustok-forum/docs/forum-21n-topic-merge-admin-ui.md
 ```
 
 ## Owner API
@@ -198,7 +201,7 @@ zero-reply tombstone, but its original category may differ from the receipt
 category. The retained target must still be non-deleted, non-archived and belong
 to the receipt category. The unique source edge, append-only receipt, receipt
 schema and bounded canonical traversal remain unchanged. Rollback restores the
-same-category source predicate.
+same-category source predicate only when no cross-category receipts exist.
 
 ## Accepted-solution policy
 
@@ -330,6 +333,28 @@ and do not follow canonical mutation aliases. Because category authority is
 owner-derived, both commands inherit FORUM-21M cross-category behavior without
 a GraphQL schema change.
 
+## Admin composition
+
+FORUM-21N composes those existing commands into two module-owned admin routes:
+
+```text
+/modules/forum/merge
+/dashboard/forum/merge
+```
+
+The Leptos package and Next-admin package each keep source/target selection,
+bounded reason validation, accepted-solution winner selection and operation-ID
+rotation in framework-neutral package code. An exact retry keeps the same
+operation ID; changing source, target, reason or winner creates a new identity.
+When both topics have accepted solutions, the selected reply ID is derived from
+the current candidate state and cannot be entered as a free-form UUID.
+
+Both pages display the immutable receipt and refresh the bounded candidate list
+after success. They do not hydrate a target topic or follow a canonical source
+alias. The Leptos package remains explicitly GraphQL-only in this slice; it does
+not wrap GraphQL in `#[server]` or place an access token in a server-function
+DTO. Direct authenticated native owner composition remains a separate cutover.
+
 ## Source-ready coverage
 
 `topic_merge_sqlite` retains same-category atomicity, source-only transfer,
@@ -354,13 +379,19 @@ entity/migration and unchanged merge-event schema. Canonical-resolution and
 Axum controller tests retain chain and redirect coverage; FORUM-21K tests retain
 ordinary GraphQL composition.
 
+`forum_topic_merge_admin_ui_v1`, the Leptos framework-neutral unit cases and the
+source verifier lock the bounded candidate page, explicit solution choice,
+retry-identity behavior, package ownership and no-fake-native boundary. Next
+admin typecheck and mounted browser execution remain maintainer evidence.
+
 ## Remaining FORUM-21 work
 
-The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21M
+The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21N
 are bounded partial slices. Remaining work includes:
 
-- maintainer execution and retained SQLite/PostgreSQL evidence;
-- native/admin merge command composition and merge/resolution UI;
+- maintainer execution and retained SQLite/PostgreSQL and browser evidence;
+- direct authenticated Leptos native owner composition while retaining GraphQL
+  parity;
 - split, fork and reply-range workflows.
 
 Localized routes, canonical storefront URLs, slug aliases and route tombstones
@@ -376,6 +407,9 @@ node scripts/verify/verify-forum-topic-merge-solution-resolution.mjs
 node scripts/verify/verify-forum-topic-canonical-resolution.mjs
 node scripts/verify/verify-forum-topic-http-redirect.mjs
 node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs
+node scripts/verify/verify-forum-topic-merge-admin-ui.mjs
+npm run verify:forum:admin-boundary
+npm run verify:blog:forum-ui-ownership
 cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_merge_cross_category_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_merge_solution_resolution_sqlite -- --nocapture
@@ -384,6 +418,9 @@ cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocaptu
 cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture
 cargo test -p rustok-forum graphql::topic_merge_mutation::tests -- --nocapture
 cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
+cargo test -p rustok-forum-admin topic_merge_model -- --nocapture
+cargo check -p rustok-forum-admin --all-targets
+npm --prefix apps/next-admin run typecheck
 ```
 
 No command above was run by the implementation agent, per maintainer request.

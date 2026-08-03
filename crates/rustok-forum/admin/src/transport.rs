@@ -1,9 +1,13 @@
 mod category_tree_graphql_adapter;
 mod graphql_adapter;
+mod topic_merge_graphql_adapter;
 
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
+};
+use crate::topic_merge_model::{
+    ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,
 };
 
 pub type ApiError = String;
@@ -27,7 +31,6 @@ pub async fn fetch_category(
     graphql_adapter::fetch_category(token, tenant_slug, id, locale).await
 }
 
-/// Execute category creation through exactly one transport.
 pub async fn create_category(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -37,7 +40,6 @@ pub async fn create_category(
     let requested_position = placement_position(draft.position)?;
     let category =
         graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft).await?;
-
     move_category(
         token.clone(),
         tenant_slug.clone(),
@@ -64,7 +66,6 @@ pub async fn update_category(
         draft.clone(),
     )
     .await?;
-
     if category.position != draft.position {
         move_category(
             token.clone(),
@@ -150,6 +151,22 @@ pub async fn fetch_replies(
     graphql_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await
 }
 
+pub async fn fetch_topic_merge_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<ForumTopicMergeCandidate>, ApiError> {
+    topic_merge_graphql_adapter::fetch_candidates(token, tenant_slug, locale).await
+}
+
+pub async fn merge_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumTopicMergeCommand,
+) -> Result<ForumTopicMergeReceipt, ApiError> {
+    topic_merge_graphql_adapter::merge_topic(token, tenant_slug, command).await
+}
+
 fn placement_position(position: i32) -> Result<u32, ApiError> {
     u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
@@ -173,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn forum_admin_operations_use_one_transport() {
+    fn forum_admin_operations_use_one_explicit_graphql_transport() {
         for operation in [
             "fetch_category_tree",
             "fetch_category",
@@ -187,16 +204,17 @@ mod tests {
             "update_topic",
             "delete_topic",
             "fetch_replies",
+            "fetch_topic_merge_candidates",
+            "merge_topic",
         ] {
             let source = function_source(operation);
-            assert!(
-                !source.contains("rest_adapter"),
-                "{operation} must not retain a fallback transport"
-            );
+            assert!(!source.contains("rest_adapter"));
+            assert!(!source.contains("native_server_adapter"));
             assert!(
                 source.contains("graphql_adapter::")
-                    || source.contains("category_tree_graphql_adapter::"),
-                "{operation} must keep an explicit owner transport"
+                    || source.contains("category_tree_graphql_adapter::")
+                    || source.contains("topic_merge_graphql_adapter::"),
+                "{operation} must keep one explicit GraphQL owner transport"
             );
         }
     }
