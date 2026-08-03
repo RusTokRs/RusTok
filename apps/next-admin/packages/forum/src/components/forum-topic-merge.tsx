@@ -18,12 +18,14 @@ import {
 import en from '../locales/en.json';
 import ru from '../locales/ru.json';
 
+type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>;
+
 export function ForumTopicMerge({
   topics,
   gqlOpts = {}
 }: {
   topics: ForumTopicSummary[];
-  gqlOpts?: GqlOpts;
+  gqlOpts?: ClientGqlOpts;
 }) {
   const locale = useLocale();
   const copy = locale.toLowerCase().startsWith('ru') ? ru : en;
