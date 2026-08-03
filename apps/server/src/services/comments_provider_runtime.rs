@@ -62,6 +62,14 @@ mod keyring_schedule_audit_source_retry_postgres {
     include!("comments_provider_runtime_keyring_schedule_audit_source_retry_active.rs");
 }
 
+mod keyring_schedule_audit_recovery_postgres {
+    include!("comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs");
+}
+
+mod keyring_schedule_audit_operator {
+    include!("comments_provider_runtime_keyring_schedule_audit_operator.rs");
+}
+
 mod keyring_schedule_persisted_trigger {
     include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
 }
@@ -126,6 +134,12 @@ pub use keyring_schedule_audit_handoff_worker::{
     CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
     start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled as start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled,
 };
+pub use keyring_schedule_audit_operator::{
+    CommentsTcpDelegationScheduleAuditOperatorContext,
+    CommentsTcpDelegationScheduleAuditOperatorError,
+    CommentsTcpDelegationScheduleAuditOperatorRuntime,
+    materialize_comments_tcp_delegation_schedule_audit_operator,
+};
 pub use keyring_schedule_audit_publication::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_EVENT_TYPE,
     COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_SCHEMA_VERSION,
@@ -134,6 +148,16 @@ pub use keyring_schedule_audit_publication::{
     CommentsTcpDelegationScheduleAuditCanonicalWriteError,
     CommentsTcpDelegationScheduleAuditCanonicalWriter,
     SharedCommentsTcpDelegationScheduleAuditCanonicalWriter,
+};
+pub use keyring_schedule_audit_recovery_postgres::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_RECOVERY_ACTION,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_RECOVERY_MAX_REASON_BYTES,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_RECOVERY_TABLE,
+    CommentsTcpDelegationScheduleAuditRecoveryError,
+    CommentsTcpDelegationScheduleAuditRecoveryInspection,
+    CommentsTcpDelegationScheduleAuditRecoveryOutcome,
+    CommentsTcpDelegationScheduleAuditRecoveryRequest,
+    PostgresCommentsTcpDelegationScheduleAuditRecoveryStore,
 };
 pub use keyring_schedule_audit_source_retry_postgres::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS,
