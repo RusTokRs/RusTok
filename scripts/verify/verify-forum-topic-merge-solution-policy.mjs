@@ -15,8 +15,10 @@ const paths = {
   stats: "crates/rustok-forum/src/services/user_stats.rs",
   moderationOwner: "crates/rustok-forum/src/services/moderation_owner.rs",
   solutionLock: "crates/rustok-forum/src/services/topic_solution_lock.rs",
-  migration:
+  solutionMigration:
     "crates/rustok-forum/src/migrations/m20260803_000016_add_forum_topic_merge_solution_policy.rs",
+  resolutionMigration:
+    "crates/rustok-forum/src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs",
   migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
   ordinaryTest: "crates/rustok-forum/tests/topic_merge_sqlite.rs",
   resolutionTest: "crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
@@ -42,7 +44,8 @@ const merge = read(paths.merge);
 const stats = read(paths.stats);
 const moderationOwner = read(paths.moderationOwner);
 const solutionLock = read(paths.solutionLock);
-const migration = read(paths.migration);
+const solutionMigration = read(paths.solutionMigration);
+const resolutionMigration = read(paths.resolutionMigration);
 const migrationsMod = read(paths.migrationsMod);
 const ordinaryTest = read(paths.ordinaryTest);
 const resolutionTest = read(paths.resolutionTest);
@@ -56,28 +59,37 @@ assert.equal(contract.parent_task, "FORUM-21");
 assert.equal(contract.owner_service, "ForumTopicMergeService");
 assert.equal(contract.ordinary_operation, "merge_topic");
 assert.equal(contract.explicit_resolution_operation, "merge_topic_resolving_solution");
+assert.equal(
+  contract.resolution_audit_migration,
+  "m20260803_000018_add_forum_topic_merge_solution_resolution",
+);
+assert.equal(contract.resolution_audit_table, "forum_topic_merge_solution_resolutions");
 assert.equal(contract.postgres_advisory_seed, 31);
 assert.equal(contract.conflict.stable_code, "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT");
 assert.equal(contract.conflict.ordinary_merge_remains_fail_closed, true);
 assert.equal(contract.policy_matrix.length, 6);
 assert.equal(contract.atomicity.invalid_explicit_selection_precedes_all_mutation, true);
 assert.equal(
-  contract.atomicity.winner_selection_marker_changes_and_loser_statistic_commit_with_existing_merge_transaction,
+  contract.atomicity.winner_selection_marker_changes_loser_statistic_receipt_and_audit_commit_with_existing_merge_transaction,
   true,
 );
 assert.equal(contract.serialization.negative_solution_statistic_transition_is_atomic_and_exact, true);
 assert.equal(contract.database_guards.negative_solution_statistic_requires_existing_positive_count, true);
+assert.equal(contract.database_guards.resolution_audit_is_append_only, true);
 assert.equal(contract.compatibility.ordinary_merge_input_changed, false);
 assert.equal(contract.compatibility.merge_result_changed, false);
 assert.equal(contract.compatibility.merge_receipt_changed, false);
-assert.equal(contract.compatibility.ordinary_forum_topic_merged_schema_changed, false);
-assert.equal(contract.compatibility.resolved_event_schema_version_added, 2);
-assert.equal(contract.compatibility.migration_added, false);
+assert.equal(contract.compatibility.forum_topic_merged_event_changed, false);
+assert.equal(contract.compatibility.forum_topic_merged_schema_version, 1);
+assert.equal(contract.compatibility.existing_post_merge_reconciliation_owners_changed, false);
+assert.equal(contract.compatibility.resolution_audit_migration_added, true);
 assert.equal(resolutionContract.task, "FORUM-21L");
-assert.equal(resolutionContract.selection.requires_exactly_two_valid_competing_solutions, true);
-assert.equal(resolutionContract.statistics.loser_solution_count_delta, -1);
+assert.equal(resolutionContract.audit.table, "forum_topic_merge_solution_resolutions");
+assert.equal(resolutionContract.semantic_event_compatibility.schema_version, 1);
+assert.equal(resolutionContract.semantic_event_compatibility.payload_changed, false);
 assert.equal(cumulativeContract.latest_policy_slice, "FORUM-21L");
 assert.equal(cumulativeContract.solution_policy.loser_solution_count_delta, -1);
+assert.equal(cumulativeContract.semantic_event.schema_version, 1);
 
 includesAll(
   error,
@@ -93,12 +105,13 @@ includesAll(
   migrationsMod,
   [
     "m20260803_000016_add_forum_topic_merge_solution_policy",
-    "Box::new(m20260803_000016_add_forum_topic_merge_solution_policy::Migration)",
+    "m20260803_000018_add_forum_topic_merge_solution_resolution",
+    "Box::new(m20260803_000018_add_forum_topic_merge_solution_resolution::Migration)",
   ],
   "migration registration",
 );
 includesAll(
-  migration,
+  solutionMigration,
   [
     "CREATE TABLE IF NOT EXISTS forum_topic_solution_locks",
     "forum_lock_topic_solution_mutation",
@@ -108,6 +121,17 @@ includesAll(
     "forum solution requires an active topic and approved reply",
   ],
   "solution migration",
+);
+includesAll(
+  resolutionMigration,
+  [
+    "CREATE TABLE IF NOT EXISTS forum_topic_merge_solution_resolutions",
+    "REFERENCES forum_topic_merge_operations (tenant_id, operation_id)",
+    "selected_solution_reply_id = source_solution_reply_id",
+    "selected_solution_reply_id = target_solution_reply_id",
+    "forum topic merge solution resolutions are append-only",
+  ],
+  "resolution audit migration",
 );
 includesAll(
   solutionLock,
@@ -122,10 +146,7 @@ includesAll(
 );
 includesAll(
   moderationOwner,
-  [
-    "lock_topic_solution_scopes_in_tx",
-    "UserStatsService::adjust_solution_count_in_tx",
-  ],
+  ["lock_topic_solution_scopes_in_tx", "UserStatsService::adjust_solution_count_in_tx"],
   "ordinary solution owner",
 );
 
@@ -146,24 +167,29 @@ includesAll(
     "insert_transferred_solution_in_tx",
     "transferred.marked_by_user_id != solution.marked_by_user_id",
     "transferred.marked_at != solution.marked_at",
-    "solution_resolution",
-    "FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION",
-    "validate_solution_resolution_audit",
+    "schema_version: Set(FORUM_TOPIC_MERGED_SCHEMA_VERSION)",
+    "forum_topic_merge_solution_resolution::ActiveModel",
+    "load_solution_resolution_audit_in_tx",
   ],
   "merge solution policy",
 );
 assert.equal((merge.match(/self\.db\.begin\(\)\.await\?/g) ?? []).length, 1);
+assert.ok(!merge.includes("FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION"));
+assert.ok(!merge.includes('"solution_resolution"'));
 const solutionLocks = merge.indexOf("lock_topic_solution_scopes_in_tx(");
-const plan = merge.indexOf("let solution_plan = plan_solution_merge");
+const planIndex = merge.indexOf("let solution_plan = plan_solution_merge");
 const sourceDelete = merge.indexOf("delete_solution_in_tx(&txn, tenant_id, source.id");
 const targetDelete = merge.indexOf("delete_solution_in_tx(&txn, tenant_id, target.id");
 const statDelta = merge.indexOf("UserStatsService::adjust_solution_count_in_tx");
 const replyMove = merge.indexOf("move_replies_in_tx(", sourceDelete);
 const transferInsert = merge.indexOf("insert_transferred_solution_in_tx", replyMove);
-assert.ok(solutionLocks >= 0 && solutionLocks < plan);
-assert.ok(plan < sourceDelete && sourceDelete < statDelta && statDelta < replyMove);
+const receiptInsert = merge.indexOf("forum_topic_merge_operation::ActiveModel");
+const auditInsert = merge.indexOf("forum_topic_merge_solution_resolution::ActiveModel");
+assert.ok(solutionLocks >= 0 && solutionLocks < planIndex);
+assert.ok(planIndex < sourceDelete && sourceDelete < statDelta && statDelta < replyMove);
 assert.ok(targetDelete > sourceDelete && targetDelete < statDelta);
 assert.ok(replyMove < transferInsert);
+assert.ok(receiptInsert < auditInsert);
 for (const forbidden of [
   "newest_solution",
   "highest_score",
@@ -205,8 +231,8 @@ includesAll(
     "ordinary merge must keep competing solutions fail-closed",
     "Select the source answer after moderator review",
     "Retain the target answer after moderator review",
-    "assert_resolution_event",
-    "schema_version",
+    "assert_merge_event_and_resolution_audit",
+    "forum_topic_merge_solution_resolutions",
     "TopicMergeOperationConflict",
   ],
   "resolution regression",
@@ -217,6 +243,7 @@ includesAll(
     '"mergeForumTopicResolvingSolution"',
     '"selectedSolutionReplyId"',
     "ordinary_and_resolved_commands_share_one_private_transaction_owner",
+    "resolution_audit_is_append_only_and_keeps_merge_event_schema_one",
   ],
   "resolution GraphQL contract",
 );
@@ -227,8 +254,8 @@ includesAll(
     "# FORUM-21H topic merge accepted-solution policy",
     "FORUM-21L",
     "## Explicit competing-solution resolution",
-    "## Fail-closed statistics",
-    "schema version 2",
+    "## Append-only resolution audit",
+    "schema version 1",
     "No command above was run by the implementation agent",
   ],
   "solution policy handoff",
@@ -239,7 +266,7 @@ includesAll(
     "# FORUM-21L competing accepted-solution resolution",
     "merge_topic_resolving_solution",
     "mergeForumTopicResolvingSolution",
-    "one exact decrement",
+    "forum_topic_merge_solution_resolutions",
   ],
   "resolution handoff",
 );
@@ -248,7 +275,8 @@ includesAll(
   [
     "FORUM-21L",
     "mergeForumTopicResolvingSolution",
-    "Negative solution-count transitions",
+    "Resolution audit ledger",
+    "schema version 1",
   ],
   "cumulative handoff",
 );
