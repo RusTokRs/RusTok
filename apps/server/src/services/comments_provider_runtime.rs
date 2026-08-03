@@ -38,6 +38,10 @@ mod keyring_schedule_persistence_postgres_audit {
     include!("comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs");
 }
 
+mod keyring_schedule_audit_publication {
+    include!("comments_provider_runtime_keyring_schedule_audit_publication.rs");
+}
+
 mod keyring_schedule_persisted_trigger {
     include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
 }
@@ -80,6 +84,15 @@ pub use keyring_schedule::{
     CommentsTcpDelegationScheduleReloadStatus,
     CommentsTcpDelegationScheduleRuntimeSelection,
     SharedCommentsTcpDelegationScheduleHandle,
+};
+pub use keyring_schedule_audit_publication::{
+    COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_EVENT_TYPE,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_SCHEMA_VERSION,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_STATE_KEY,
+    CommentsTcpDelegationScheduleAuditCanonicalPublication,
+    CommentsTcpDelegationScheduleAuditCanonicalWriteError,
+    CommentsTcpDelegationScheduleAuditCanonicalWriter,
+    SharedCommentsTcpDelegationScheduleAuditCanonicalWriter,
 };
 pub use keyring_schedule_trigger::{
     DEFAULT_COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_CAPACITY,
