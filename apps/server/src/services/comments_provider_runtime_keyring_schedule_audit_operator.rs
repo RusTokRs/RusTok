@@ -1,15 +1,18 @@
 use std::fmt;
 
 use rustok_api::{Permission, has_effective_permission};
-use rustok_core::ModuleRuntimeExtensions;
-use sea_orm::DatabaseConnection;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::error::{Error as ServerError, Result};
 use crate::services::rbac_request_scope::permissions_for;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 use super::{
-    keyring_schedule_audit_handoff_worker::CommentsTcpDelegationScheduleAuditHandoffWorkerConfig,
+    keyring_schedule_audit_handoff_worker::{
+        CommentsTcpDelegationScheduleAuditHandoffWorkerConfig,
+        start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled,
+    },
     keyring_schedule_audit_recovery_postgres::{
         CommentsTcpDelegationScheduleAuditRecoveryError,
         CommentsTcpDelegationScheduleAuditRecoveryInspection,
@@ -151,26 +154,40 @@ impl fmt::Debug for CommentsTcpDelegationScheduleAuditOperatorRuntime {
     }
 }
 
+/// Preserves the single canonical bootstrap startup name while installing the
+/// task-free operator capability immediately before the existing worker starts.
+pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_with_operator_if_enabled(
+    runtime_ctx: &ServerRuntimeContext,
+) -> Result<()> {
+    materialize_comments_tcp_delegation_schedule_audit_operator(runtime_ctx)
+        .map_err(ServerError::BadRequest)?;
+    start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled(
+        runtime_ctx,
+    )
+}
+
 /// Materializes one guarded operator capability when the canonical audit handoff
 /// lane is enabled. Composition performs no database I/O and starts no task.
 pub fn materialize_comments_tcp_delegation_schedule_audit_operator(
-    extensions: &mut ModuleRuntimeExtensions,
-    database: DatabaseConnection,
+    runtime_ctx: &ServerRuntimeContext,
 ) -> std::result::Result<(), String> {
     let Some(config) = CommentsTcpDelegationScheduleAuditHandoffWorkerConfig::from_environment()?
     else {
         return Ok(());
     };
-    if extensions.contains::<CommentsTcpDelegationScheduleAuditOperatorRuntime>() {
-        return Err(
-            "Comments schedule audit operator runtime is already materialized".to_string(),
-        );
+    if runtime_ctx
+        .shared_get::<CommentsTcpDelegationScheduleAuditOperatorRuntime>()
+        .is_some()
+    {
+        return Ok(());
     }
-    let recovery = PostgresCommentsTcpDelegationScheduleAuditRecoveryStore::new(database)?;
-    extensions.insert(CommentsTcpDelegationScheduleAuditOperatorRuntime::new(
+    let recovery =
+        PostgresCommentsTcpDelegationScheduleAuditRecoveryStore::new(runtime_ctx.db_clone())?;
+    let runtime = CommentsTcpDelegationScheduleAuditOperatorRuntime::new(
         config.control_plane_tenant_id(),
         recovery,
-    ));
+    );
+    let _ = runtime_ctx.shared_insert_if_absent(runtime);
     Ok(())
 }
 
