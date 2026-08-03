@@ -1,6 +1,6 @@
 # M6 drift finding inspection
 
-Status: `source_complete_server_authorization_and_repair_pending`.
+Status: `source_complete_server_authorized_repair_pending`.
 
 ## Purpose
 
@@ -43,11 +43,20 @@ Database failures map to one stable detail-free `Storage` error.
 
 The adapter performs no insert, update, delete, state transition, finding acknowledgement, repair admission, source scan, targeted load, scheduling, polling, sleep, or task creation.
 
-## Authorization boundary
+## Authorized server boundary
 
-This crate adapter is not an authorization or transport surface. It accepts no actor, permission snapshot, bearer identity, or caller-selected repair action.
+The guarded server `IndexReconciliationOperatorRuntime` now composes one private `PostgresIndexDriftFindingInspector` beside the canonical runner, dead-letter inspector, and recovery store.
 
-A later server composition must bind the tenant exclusively from the existing request-bound operator context, require effective `modules:manage` before adapter validation or database access, and expose only the bounded inspection value. GraphQL, HTTP, CLI, MCP, native admin, and other transports remain open.
+`inspect_drift_finding(context, finding_id)` accepts no tenant or actor parameter. It:
+
+1. validates the existing request-bound operator context;
+2. resolves the current exact tenant/actor RBAC snapshot;
+3. requires effective `modules:manage`;
+4. only then calls `inspect(context.tenant_id(), finding_id)`.
+
+Missing request authority and `modules:read` fail before nil-finding validation or database access. An authorized nil finding reaches the bounded crate adapter and returns typed `NilFindingId`.
+
+The server returns only `Option<IndexDriftFindingInspection>`. It contains no direct SQL, does not decode or copy raw `details`, and exposes neither the adapter nor the database connection. GraphQL, HTTP, CLI, MCP, native admin, and other transports remain open.
 
 ## Repair boundary
 
@@ -67,17 +76,16 @@ No automatic finding closure or mutation is allowed from inspection alone.
 
 ## Explicitly open
 
-- request-bound server authorization and internal operator composition;
 - source/index digest comparison and finding persistence;
 - orphan diagnosis;
 - targeted repair request/admission and immutable repair audit;
 - full and shadow repair modes;
 - automatic finding resolution after admitted repair;
 - locale or partition checkpoint dimensions;
-- retained PostgreSQL inspection, diagnosis, repair, and concurrency evidence;
+- retained PostgreSQL authorization, inspection, diagnosis, repair, and concurrency evidence;
 - public/admin command transport.
 
-The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open. This slice establishes only the bounded read-only inspection substrate.
+The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open. This slice establishes bounded read-only inspection plus internal request-bound authorization only.
 
 ## Validation ownership
 
