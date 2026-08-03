@@ -92,6 +92,7 @@ includesAll(
     "forum solution requires an active topic and approved reply",
     "CREATE TRIGGER IF NOT EXISTS forum_00_topic_solution_scope_insert",
     "CREATE TRIGGER IF NOT EXISTS forum_00_topic_solution_scope_update",
+    "BEFORE UPDATE ON forum_solutions",
     "CREATE TRIGGER IF NOT EXISTS forum_00_topic_solution_scope_delete",
     "CREATE TRIGGER IF NOT EXISTS forum_10_topic_solution_target_insert",
     "CREATE TRIGGER IF NOT EXISTS forum_10_topic_solution_target_update",
@@ -147,7 +148,7 @@ const solutionInsert = merge.indexOf(
 const sourceArchive = merge.indexOf("source_active.status = Set(TopicStatus::Archived);");
 const semanticEvent = merge.indexOf("forum_domain_event::ActiveModel");
 const receipt = merge.indexOf("forum_topic_merge_operation::ActiveModel");
-const invalidation = merge.indexOf("publish_forum_topic_projection_in_tx");
+const invalidation = merge.indexOf("publish_forum_topic_projection_in_tx", receipt);
 assert.ok(topicLocks < solutionLocks);
 assert.ok(solutionLocks < sourceSolutionRead);
 assert.ok(sourceSolutionRead < conflict);
