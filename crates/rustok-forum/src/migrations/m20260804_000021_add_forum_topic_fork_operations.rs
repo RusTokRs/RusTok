@@ -77,9 +77,9 @@ CREATE TABLE IF NOT EXISTS forum_topic_fork_operations (
         REFERENCES forum_categories (tenant_id, id)
         ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT fk_forum_topic_fork_root_reply
-        FOREIGN KEY (tenant_id, source_topic_id, root_reply_id)
-        REFERENCES forum_replies (tenant_id, topic_id, id)
-        ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (tenant_id, root_reply_id)
+        REFERENCES forum_replies (tenant_id, id)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT fk_forum_topic_fork_actor
         FOREIGN KEY (tenant_id, actor_id)
         REFERENCES users (tenant_id, id)
@@ -308,9 +308,9 @@ CREATE TABLE IF NOT EXISTS forum_topic_fork_operations (
     FOREIGN KEY (tenant_id, category_id)
         REFERENCES forum_categories (tenant_id, id)
         ON UPDATE CASCADE ON DELETE RESTRICT,
-    FOREIGN KEY (tenant_id, source_topic_id, root_reply_id)
-        REFERENCES forum_replies (tenant_id, topic_id, id)
-        ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (tenant_id, root_reply_id)
+        REFERENCES forum_replies (tenant_id, id)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
     FOREIGN KEY (tenant_id, actor_id)
         REFERENCES users (tenant_id, id)
         ON UPDATE CASCADE ON DELETE RESTRICT,
