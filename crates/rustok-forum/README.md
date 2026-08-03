@@ -36,7 +36,10 @@
 - Depends on `rustok-taxonomy` for the shared scope-aware term dictionary behind
   forum topic tags.
 - Category slugs are translation-local, while topic slugs remain stable thread
-  labels; current public forum lookup stays ID-based.
+  labels; current public forum lookup stays ID-based. A selected merged-source ID
+  resolves through the immutable `forum_topic_merge_operations` chain to the
+  terminal retained topic. HTTP 3xx responses and slug aliases are not part of
+  the current contract.
 - Shares SEO target ownership with `rustok-seo`: the shared SEO runtime now resolves
   `forum_category` and `forum_topic`, while owner-side SEO authoring stays embedded
   in `rustok-forum-admin`; public SEO for channel-restricted topics is resolved only
@@ -100,4 +103,5 @@ into README files, issues, or additional planning documents.
 
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
+- [Canonical merged-topic resolution](./docs/forum-21i-topic-canonical-resolution.md)
 - [Platform docs index](../../docs/index.md)
