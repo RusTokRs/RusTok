@@ -92,6 +92,13 @@
       "state": "removed",
       "direct_persistence_path_removed": true,
       "replacement": "registered_consumer_property_surfaces"
+    },
+    "source_evidence": {
+      "metadata_revision_isolation": {
+        "state": "source_ready_execution_pending",
+        "contract": "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
+        "verifier": "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      }
     }
   },
   "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
