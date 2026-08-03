@@ -74,13 +74,18 @@ forbidAll(grantMigration, [
 ]);
 
 requireAll(catalog, [
+  "normalize_locale_tag",
+  "let mut normalized_locales = HashSet::new()",
+  "!normalized_locales.insert(normalized_locale)",
   "definition_insert_sql",
   "definition_select_sql",
   "translation_upsert_sql",
   "rbac.artifact_permission_identity_conflict",
   "ArtifactPermissionScope::Tenant { tenant_id } if tenant_id.is_nil()",
-  "localization.locale.len() > 32",
+  "registration_normalizes_locale_and_is_idempotent_without_role_tables",
   "registration_rejects_nil_tenant_scope",
+  "registration_rejects_duplicate_normalized_locales",
+  "assert_eq!(locale, \"en-US\")",
 ]);
 requireAll(owner, [
   "struct ArtifactPermissionIdentity",
