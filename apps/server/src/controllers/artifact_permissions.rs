@@ -16,9 +16,10 @@ use rustok_api::{
 use rustok_events::RbacArtifactPermissionEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_rbac::{
-    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
-    ArtifactRolePermissionAssignmentCommand, RbacArtifactPermissionAssignmentService,
-    RbacControlPlanePrincipal, require_direct_control_plane_user,
+    ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
+    ArtifactPermissionEventPublisher, ArtifactRolePermissionAssignmentCommand,
+    RbacArtifactPermissionAssignmentService, RbacControlPlanePrincipal,
+    require_direct_control_plane_user,
 };
 use rustok_web::json_response;
 use sea_orm::DatabaseTransaction;
@@ -62,10 +63,29 @@ impl ArtifactPermissionEventPublisher for TransactionalOutboxArtifactPermissionE
     }
 }
 
+/// Explicit admitted scope. Tenant scope always uses the authenticated routed tenant.
+#[derive(Clone, Copy, Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ArtifactPermissionAssignmentScopeRequest {
+    Platform,
+    Tenant,
+}
+
+impl From<ArtifactPermissionAssignmentScopeRequest> for ArtifactPermissionAssignmentScope {
+    fn from(value: ArtifactPermissionAssignmentScopeRequest) -> Self {
+        match value {
+            ArtifactPermissionAssignmentScopeRequest::Platform => Self::Platform,
+            ArtifactPermissionAssignmentScopeRequest::Tenant => Self::Tenant,
+        }
+    }
+}
+
 /// The transport input for one exact role-to-artifact-permission operation.
 #[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ArtifactRolePermissionAssignmentRequest {
-    pub artifact_permission_id: Uuid,
+    pub scope: ArtifactPermissionAssignmentScopeRequest,
+    pub installation_id: Uuid,
+    pub permission_key: String,
     pub idempotency_key: String,
 }
 
@@ -86,7 +106,7 @@ pub(crate) struct ArtifactRolePermissionAssignmentResponse {
         (status = 400, description = "Invalid command"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
-        (status = 404, description = "Role or exact artifact permission identity not found"),
+        (status = 404, description = "Role or permission in the requested explicit scope not found"),
         (status = 409, description = "Idempotency command conflict")
     )
 )]
@@ -114,7 +134,7 @@ async fn grant_artifact_permission(
         (status = 400, description = "Invalid command"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
-        (status = 404, description = "Role or exact artifact permission identity not found"),
+        (status = 404, description = "Role or permission in the requested explicit scope not found"),
         (status = 409, description = "Idempotency command conflict")
     )
 )]
@@ -146,7 +166,9 @@ async fn assign(
         .assign(ArtifactRolePermissionAssignmentCommand {
             tenant_id,
             role_id,
-            artifact_permission_id: input.artifact_permission_id,
+            scope: input.scope.into(),
+            installation_id: input.installation_id,
+            permission_key: input.permission_key,
             actor_id,
             granted,
             idempotency_key: input.idempotency_key,
@@ -217,6 +239,7 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::{
+        ArtifactPermissionAssignmentScopeRequest,
         TransactionalOutboxArtifactPermissionEventPublisher,
         ensure_artifact_permission_control_plane,
     };
@@ -225,7 +248,7 @@ mod tests {
     };
     use rustok_events::RbacArtifactPermissionEvent;
     use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
-    use rustok_rbac::ArtifactPermissionEventPublisher;
+    use rustok_rbac::{ArtifactPermissionAssignmentScope, ArtifactPermissionEventPublisher};
     use sea_orm::{Database, EntityTrait, TransactionTrait};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::sync::Arc;
@@ -241,6 +264,22 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
         }
+    }
+
+    #[test]
+    fn request_scope_maps_without_accepting_a_tenant_identifier() {
+        assert_eq!(
+            ArtifactPermissionAssignmentScope::from(
+                ArtifactPermissionAssignmentScopeRequest::Platform,
+            ),
+            ArtifactPermissionAssignmentScope::Platform
+        );
+        assert_eq!(
+            ArtifactPermissionAssignmentScope::from(
+                ArtifactPermissionAssignmentScopeRequest::Tenant,
+            ),
+            ArtifactPermissionAssignmentScope::Tenant
+        );
     }
 
     #[test]
