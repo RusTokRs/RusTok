@@ -1,0 +1,35 @@
+name: Diagnose workspace lock for Forum repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-workspace-lock-for-forum.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'fix/forum-topic-merge-reply-status-20260803'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/forum-topic-merge-reply-status-20260803
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Print generated lock diff
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+        run: |
+          cargo metadata --format-version 1 >/dev/null
+          git diff -- Cargo.lock
+          test -z "$(git diff --name-only -- Cargo.lock)"
