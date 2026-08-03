@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "reviewed_at_utc": "2026-08-03T08:35:00Z",
-  "review_base": "13c3e5a190e5e0f01d68dad9952ac8f53eb2872e",
+  "review_base": "725700addfab58b7ad32b00ae166a2f86482fbe0",
   "status": "product_admin_catalog_search_options_error_safety_source_reviewed_unvalidated",
   "scope": "Product Admin catalog search-options public error and private diagnostic boundary",
   "reviewed_sources": [
