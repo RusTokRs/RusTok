@@ -83,7 +83,7 @@ requireAll("handoff owner", service, [
   "FOR UPDATE SKIP LOCKED",
   "handoff_claim_expires_at <= NOW()",
   "handoff_attempt_count = handoff_attempt_count + 1",
-  "WHERE request_id = $1 \\\n             FOR UPDATE",
+  "WHERE request_id = $1",
   ".write_once_in_transaction(&transaction, &publication)",
   "canonical_envelope_id = request_id",
   "handoff_claim_token = NULL",
