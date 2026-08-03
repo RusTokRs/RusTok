@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "status": "commerce_admin_order_change_native_error_safety_source_unvalidated",
-  "captured_at": "2026-07-31",
+  "captured_at": "2026-08-03",
   "scope": {
     "package": "rustok-commerce-admin",
     "boundary": "commerce_admin_order_change_native_transport",
@@ -25,6 +25,7 @@
     "tenant_match_and_input_validation_preserved": true,
     "framework_extraction_errors_use_static_public_envelopes": true,
     "framework_error_type_only": true,
+    "framework_debug_bounds_removed": true,
     "complete_framework_error_logged": false,
     "request_context_is_diagnostic_only": true,
     "correlation_is_unique_per_transport_call": true,
@@ -47,6 +48,7 @@
     "mounted_http_parity_executed": false,
     "ci_executed": false
   },
+  "execution": [],
   "reviewed_sources": [
     "crates/rustok-commerce/admin/src/transport/mod.rs",
     "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",

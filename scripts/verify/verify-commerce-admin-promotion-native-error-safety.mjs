@@ -212,8 +212,13 @@ for (const functionName of [
 
 assertContains(
   safeAdapter,
+  "fn order_change_context_error<E>(",
+  `${safeAdapterPath}: independently guarded order-change type-only context mapper must remain present`,
+);
+assertNotContains(
+  safeAdapter,
   "fn order_change_context_error<E: std::fmt::Debug>(",
-  `${safeAdapterPath}: order-change source must remain present and explicitly out of scope`,
+  `${safeAdapterPath}: promotion guard must not require an obsolete order-change Debug bound`,
 );
 
 if (evidence.status !== "commerce_admin_promotion_native_error_safety_source_unvalidated") {

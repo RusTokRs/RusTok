@@ -1,6 +1,6 @@
 # Commerce admin order-change native diagnostic safety
 
-Date: 2026-07-31
+Date: 2026-08-03
 
 Status: `source-complete / unvalidated`
 
@@ -44,6 +44,11 @@ operation, context kind, correlation ID, stable code, boundary, and Rust error t
 complete framework extraction errors are not logged; neither debug nor display text is
 retained.
 
+The order-change auth, tenant, and shared context helpers no longer require a `Debug`
+implementation from the framework extraction error type. This makes the type-only policy
+explicit in the function contract: the payload is accepted for ownership and immediately
+discarded, while only `std::any::type_name::<E>()` is retained for diagnostics.
+
 Optional `RequestContext` extraction remains diagnostic-only. Failure still falls back
 without changing authentication, authorization, tenant matching, validation, or owner-call
 admission.
@@ -51,7 +56,7 @@ admission.
 ## Runtime composition diagnostics
 
 Missing `TransactionalEventBus` still produces the static runtime envelope and stable
-runtime diagnostic code. The event now records only:
+runtime diagnostic code. The event records only:
 
 - tenant and actor UUID non-nil facts;
 - request-context presence;
@@ -65,7 +70,7 @@ full values.
 ## Owner diagnostics
 
 The owner mapper still covers all seven `OrderError` variants and preserves the original
-warning/error split. Diagnostics now retain only:
+warning/error split. Diagnostics retain only:
 
 - owner, consumer, operation, correlation ID, typed error kind, stable public code, and
   boundary;
@@ -100,12 +105,23 @@ framework type-only diagnostics, promotion request-context facts, safe `PortErro
 endpoints, permissions, channel/locale forwarding, deadline, idempotency, public message,
 and owner calls remain unchanged.
 
+The promotion verifier now treats the independently guarded order-change type-only mapper as
+a preserved compatibility marker and fails if the obsolete order-change `Debug` bound
+returns. Promotion evidence and runtime behavior are not promoted or reinterpreted by this
+slice.
+
 ## Evidence boundary
 
 Focused guard:
 
 ```text
 scripts/verify/verify-commerce-admin-order-change-native-error-safety.mjs
+```
+
+Compatibility guard:
+
+```text
+scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs
 ```
 
 Retained evidence:
