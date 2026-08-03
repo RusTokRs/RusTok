@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-08-03T10:42:00Z",
-  "review_base": "d3400541928b8f81142c64a47b8356165d0b138f",
-  "status": "canonical_writer_source_ready_compile_check_pending",
+  "reviewed_at_utc": "2026-08-03T11:48:00Z",
+  "review_base": "447c53e1307f41623f5b030440bb929d9ccb68e1",
+  "status": "canonical_writer_source_ready_partial_compile_blocked_by_unrelated_main_error",
   "scope": "Blog Comments delegation schedule audit canonical typed write-once writer",
   "source_contract": {
     "event_type": "blog.comments_delegation_schedule.replacement_succeeded",
@@ -93,8 +93,23 @@
     "manifest_changed": false
   },
   "validation": {
-    "cargo_check_run": false,
-    "cargo_check_conclusion": "pending",
+    "rust_toolchain": "1.96.0",
+    "workflow_run_id": 30808446857,
+    "workflow_job_id": 91669171415,
+    "rustok_events_cargo_check_run": true,
+    "rustok_events_cargo_check_conclusion": "success",
+    "rustok_outbox_tests_cargo_check_run": true,
+    "rustok_outbox_tests_cargo_check_conclusion": "success",
+    "rustok_server_mod_blog_cargo_check_run": true,
+    "rustok_server_mod_blog_cargo_check_conclusion": "blocked_by_pre_existing_unrelated_error",
+    "rustok_server_blocker_path": "apps/server/src/controllers/marketplace_registry.rs",
+    "rustok_server_blocker_code": "E0004",
+    "rustok_server_blocker_missing_variants": [
+      "ModuleGovernanceError::PublishRequestCreationConflict",
+      "ModuleGovernanceError::InvalidPlatformPublicationEvidenceRequest",
+      "ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable"
+    ],
+    "blocker_intersects_slice_files": false,
     "rust_unit_tests_run": false,
     "rust_integration_tests_run": false,
     "javascript_verifier_run": false,
