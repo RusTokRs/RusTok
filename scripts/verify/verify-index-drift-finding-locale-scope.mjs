@@ -50,8 +50,8 @@ requireMarkers(files.recorder, contents.recorder, [
   "PostgresIndexDriftFindingWriter::record_digest_mismatch",
 ]);
 requireMarkers(files.migration, contents.migration, [
-  "m20260804_000005_relax_index_finding_locale_scope",
   "RELAXED_SCOPE_CHECK",
+  "STRICT_SCOPE_CHECK",
   "pg_get_constraintdef(c.oid)",
   "current_schema()",
   "DROP CONSTRAINT",
@@ -103,12 +103,12 @@ requireMarkers(files.queryVerifier, contents.queryVerifier, [
   "'verify-index-drift-finding-locale-scope.mjs'",
 ]);
 
-for (const forbidden of [
+for (const obsolete of [
   "index_drift_locale_free_scope_unsupported",
-  "locale-free persisted entity findings;",
+  "let Some(locale) = key.locale.clone() else",
 ]) {
-  if (contents.recorder.includes(forbidden) || contents.doc.includes(forbidden)) {
-    throw new Error(`locale-complete boundary retains obsolete marker: ${forbidden}`);
+  if (contents.recorder.includes(obsolete) || contents.doc.includes(obsolete)) {
+    throw new Error(`locale-complete boundary retains obsolete marker: ${obsolete}`);
   }
 }
 
