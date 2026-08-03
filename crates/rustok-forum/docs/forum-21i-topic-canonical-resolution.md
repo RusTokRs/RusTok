@@ -58,6 +58,11 @@ exhaustion or other ambiguous history fail closed with:
 FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT
 ```
 
+Each hop uses one database statement that reads both non-deleted topic existence
+and at most two outgoing receipt edges under the same statement snapshot. A
+concurrent merge therefore linearizes either before that hop or after it; the
+resolver cannot combine a pre-commit edge result with post-commit topic state.
+
 The terminal topic must still exist in the tenant and must not be soft-deleted.
 An unknown unmerged ID returns the original `FORUM_TOPIC_NOT_FOUND` boundary.
 
