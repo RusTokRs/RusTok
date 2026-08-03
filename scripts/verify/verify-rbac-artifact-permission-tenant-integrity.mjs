@@ -78,7 +78,13 @@ forbidAll(grantMigration, [
 ]);
 
 requireAll(catalog, [
+  "const MAX_PERMISSION_KEY_LENGTH: usize = 256;",
   "normalize_locale_tag",
+  "let mut permission_keys = HashSet::new()",
+  "permission.key.len() > MAX_PERMISSION_KEY_LENGTH",
+  "permission.key.trim() != permission.key",
+  "permission.key.chars().any(char::is_control)",
+  "!permission_keys.insert(permission.key.as_str())",
   "let mut normalized_locales = HashSet::new()",
   "!normalized_locales.insert(normalized_locale)",
   "definition_insert_sql",
@@ -89,6 +95,9 @@ requireAll(catalog, [
   "registration_normalizes_locale_and_is_idempotent_without_role_tables",
   "registration_rejects_nil_tenant_scope",
   "registration_rejects_duplicate_normalized_locales",
+  "registration_rejects_unassignable_or_duplicate_permission_keys",
+  "unassignable permission key must fail registration",
+  "duplicate permission key must fail registration",
   "assert_eq!(locale, \"en-US\")",
 ]);
 requireAll(owner, [
