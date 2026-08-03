@@ -166,6 +166,7 @@ impl MigrationTrait for Migration {
             "cannot roll back distinct scoped grants that collapse to one legacy key",
         )
         .await?;
+        validate_rollback_legacy_selectors(connection, backend).await?;
 
         execute_all(
             connection,
@@ -384,6 +385,41 @@ where
             backend,
             &sql,
             &format!("legacy artifact permission {label} has ambiguous or orphan identity"),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn validate_rollback_legacy_selectors<C>(
+    connection: &C,
+    backend: DbBackend,
+) -> Result<(), DbErr>
+where
+    C: ConnectionTrait + ?Sized,
+{
+    let tenant_expression = match backend {
+        DbBackend::Postgres => "'tenant:' || authorization_row.tenant_id::text",
+        DbBackend::Sqlite => "'tenant:' || authorization_row.tenant_id",
+        _ => unreachable!(),
+    };
+    for (table, label) in [
+        ("rbac_artifact_role_permissions", "grant"),
+        (
+            "rbac_artifact_role_permission_operations",
+            "operation receipt",
+        ),
+    ] {
+        let sql = format!(
+            "SELECT COUNT(*) AS count FROM {table} authorization_row WHERE (SELECT COUNT(*) FROM rbac_artifact_permission_definitions selected_definition JOIN rbac_artifact_permission_definitions candidate_definition ON candidate_definition.installation_id = selected_definition.installation_id AND candidate_definition.permission_key = selected_definition.permission_key AND (candidate_definition.scope_key = 'platform' OR candidate_definition.scope_key = {tenant_expression}) WHERE selected_definition.id = authorization_row.artifact_permission_id AND selected_definition.scope_key = authorization_row.permission_scope_key) <> 1"
+        );
+        ensure_zero(
+            connection,
+            backend,
+            &sql,
+            &format!(
+                "cannot roll back artifact permission {label} with ambiguous legacy selector"
+            ),
         )
         .await?;
     }
