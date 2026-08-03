@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    IndexDriftDependencyFailure, IndexDriftDigestError, IndexDriftDigestMismatch,
-    IndexDriftMismatchReceipt, IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder,
+    IndexDriftDependencyFailure, IndexDriftDigestMismatch, IndexDriftMismatchReceipt,
+    IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder,
 };
 
 use super::drift_finding_inspector::{IndexDriftFindingScope, IndexDriftFindingSeverity};
@@ -105,6 +105,3 @@ fn permanent_failure(code: &'static str) -> IndexDriftDependencyFailure {
     IndexDriftDependencyFailure::permanent(code)
         .expect("static Index drift permanent failure code is valid")
 }
-
-#[allow(dead_code)]
-fn _error_contract_is_public(_: IndexDriftDigestError) {}
