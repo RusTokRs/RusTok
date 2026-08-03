@@ -3,8 +3,8 @@ use std::sync::Arc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
-    ForumModule, ForumTopicMergeService, MergeForumTopicInput, ModerationService, ReplyService,
-    TopicService,
+    ForumModule, ForumTopicMergeResult, ForumTopicMergeService, MergeForumTopicInput,
+    ModerationService, ReplyService, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -13,7 +13,7 @@ use sea_orm::{
     Statement,
 };
 use sea_orm_migration::SchemaManager;
-use serde_json::Value as JsonValue;
+use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -317,10 +317,11 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
         reply_topic_id(&fixture.db, fixture.tenant_id, fixture.source_reply_id).await?,
         fixture.target_topic_id
     );
-    assert_resolution_event(
+    assert_merge_event_and_resolution_audit(
         &fixture.db,
         fixture.tenant_id,
-        operation_id,
+        fixture.actor_id,
+        &merged,
         fixture.source_reply_id,
         fixture.target_reply_id,
         fixture.source_reply_id,
@@ -341,6 +342,7 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
     assert_eq!(replay, merged);
     assert_eq!(merge_operation_count(&fixture.db, fixture.tenant_id).await?, 1);
     assert_eq!(merge_event_count(&fixture.db, fixture.tenant_id).await?, 1);
+    assert_eq!(resolution_audit_count(&fixture.db, fixture.tenant_id).await?, 1);
     assert_eq!(
         user_solution_count(
             &fixture.db,
@@ -376,6 +378,23 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
         command_shape_drift,
         Err(ForumError::TopicMergeOperationConflict(id)) if id == operation_id
     ));
+
+    let update_result = fixture
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE forum_topic_merge_solution_resolutions SET selected_solution_reply_id = '{}' WHERE tenant_id = '{}' AND operation_id = '{}'",
+            fixture.target_reply_id, fixture.tenant_id, operation_id
+        ))
+        .await;
+    assert!(update_result.is_err());
+    let delete_result = fixture
+        .db
+        .execute_unprepared(&format!(
+            "DELETE FROM forum_topic_merge_solution_resolutions WHERE tenant_id = '{}' AND operation_id = '{}'",
+            fixture.tenant_id, operation_id
+        ))
+        .await;
+    assert!(delete_result.is_err());
     Ok(())
 }
 
@@ -401,6 +420,7 @@ async fn manager_can_select_target_solution_and_invalid_selection_is_atomic() ->
     assert_eq!(invalid.stable_code(), "FORUM_VALIDATION_FAILED");
     assert_eq!(merge_operation_count(&fixture.db, fixture.tenant_id).await?, 0);
     assert_eq!(merge_event_count(&fixture.db, fixture.tenant_id).await?, 0);
+    assert_eq!(resolution_audit_count(&fixture.db, fixture.tenant_id).await?, 0);
     assert_eq!(
         solution_snapshot(&fixture.db, fixture.tenant_id, fixture.source_topic_id).await?,
         Some(fixture.source_solution.clone())
@@ -447,10 +467,11 @@ async fn manager_can_select_target_solution_and_invalid_selection_is_atomic() ->
         .await?,
         1
     );
-    assert_resolution_event(
+    assert_merge_event_and_resolution_audit(
         &fixture.db,
         fixture.tenant_id,
-        operation_id,
+        fixture.actor_id,
+        &merged,
         fixture.source_reply_id,
         fixture.target_reply_id,
         fixture.target_reply_id,
@@ -515,52 +536,73 @@ async fn reply_topic_id(
     Ok(row.try_get("", "topic_id")?)
 }
 
-async fn assert_resolution_event(
+async fn assert_merge_event_and_resolution_audit(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    operation_id: Uuid,
+    actor_id: Uuid,
+    merge: &ForumTopicMergeResult,
     source_solution_reply_id: Uuid,
     target_solution_reply_id: Uuid,
     selected_solution_reply_id: Uuid,
     rejected_solution_reply_id: Uuid,
     rejected_solution_author_id: Option<Uuid>,
 ) -> TestResult<()> {
-    let row = db
+    let event = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT schema_version, payload FROM forum_domain_events WHERE tenant_id = ? AND event_id = ?",
-            vec![tenant_id.into(), operation_id.into()],
+            "SELECT schema_version, actor_id, payload FROM forum_domain_events WHERE tenant_id = ? AND event_id = ?",
+            vec![tenant_id.into(), merge.operation_id.into()],
         ))
         .await?
         .ok_or("merge semantic event missing")?;
-    assert_eq!(row.try_get::<i16>("", "schema_version")?, 2);
-    let payload: JsonValue = row.try_get("", "payload")?;
-    let resolution = &payload["solution_resolution"];
+    assert_eq!(event.try_get::<i16>("", "schema_version")?, 1);
+    assert_eq!(event.try_get::<Option<Uuid>>("", "actor_id")?, Some(actor_id));
+    let payload: JsonValue = event.try_get("", "payload")?;
     assert_eq!(
-        resolution["source_solution_reply_id"],
-        source_solution_reply_id.to_string()
+        payload,
+        json!({
+            "operation_id": merge.operation_id,
+            "source_topic_id": merge.source_topic_id,
+            "target_topic_id": merge.target_topic_id,
+            "category_id": merge.category_id,
+            "moved_reply_count": merge.moved_reply_count,
+            "moved_published_reply_count": merge.moved_published_reply_count,
+            "resulting_published_reply_count": merge.resulting_published_reply_count,
+            "position_offset": merge.position_offset,
+            "reason": merge.reason,
+        })
+    );
+    assert!(payload.get("solution_resolution").is_none());
+
+    let audit = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT source_solution_reply_id, target_solution_reply_id, selected_solution_reply_id, rejected_solution_reply_id, rejected_solution_author_id, resolved_at FROM forum_topic_merge_solution_resolutions WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), merge.operation_id.into()],
+        ))
+        .await?
+        .ok_or("merge solution resolution audit missing")?;
+    assert_eq!(
+        audit.try_get::<Uuid>("", "source_solution_reply_id")?,
+        source_solution_reply_id
     );
     assert_eq!(
-        resolution["target_solution_reply_id"],
-        target_solution_reply_id.to_string()
+        audit.try_get::<Uuid>("", "target_solution_reply_id")?,
+        target_solution_reply_id
     );
     assert_eq!(
-        resolution["selected_solution_reply_id"],
-        selected_solution_reply_id.to_string()
+        audit.try_get::<Uuid>("", "selected_solution_reply_id")?,
+        selected_solution_reply_id
     );
     assert_eq!(
-        resolution["rejected_solution_reply_id"],
-        rejected_solution_reply_id.to_string()
+        audit.try_get::<Uuid>("", "rejected_solution_reply_id")?,
+        rejected_solution_reply_id
     );
-    match rejected_solution_author_id {
-        Some(author_id) => {
-            assert_eq!(
-                resolution["rejected_solution_author_id"],
-                author_id.to_string()
-            );
-        }
-        None => assert!(resolution["rejected_solution_author_id"].is_null()),
-    }
+    assert_eq!(
+        audit.try_get::<Option<Uuid>>("", "rejected_solution_author_id")?,
+        rejected_solution_author_id
+    );
+    assert!(!audit.try_get::<String>("", "resolved_at")?.is_empty());
     Ok(())
 }
 
@@ -585,6 +627,21 @@ async fn merge_event_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResu
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS value FROM forum_domain_events WHERE tenant_id = ? AND event_type = 'forum.topic.merged'",
+            vec![tenant_id.into()],
+        ),
+    )
+    .await
+}
+
+async fn resolution_audit_count(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> TestResult<i64> {
+    scalar_i64(
+        db,
+        Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS value FROM forum_topic_merge_solution_resolutions WHERE tenant_id = ?",
             vec![tenant_id.into()],
         ),
     )
