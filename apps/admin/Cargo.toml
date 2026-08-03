@@ -31,6 +31,7 @@ csr = [
   "rustok-auth-admin/csr",
   "rustok-page-builder-admin/csr",
   "rustok-blog-admin/csr",
+  "rustok-forum-admin/csr",
 ]
 hydrate = [
   "leptos/hydrate",
@@ -60,6 +61,7 @@ hydrate = [
   "rustok-pages-admin/hydrate",
   "rustok-seo-admin/hydrate",
   "rustok-fulfillment-admin/hydrate",
+  "rustok-forum-admin/hydrate",
   "rustok-inventory-admin/hydrate",
   "rustok-order-admin/hydrate",
   "rustok-pricing-admin/hydrate",
@@ -115,6 +117,7 @@ ssr = [
   "rustok-pages-admin/ssr",
   "rustok-seo-admin/ssr",
   "rustok-fulfillment-admin/ssr",
+  "rustok-forum-admin/ssr",
   "rustok-inventory-admin/ssr",
   "rustok-order-admin/ssr",
   "rustok-pricing-admin/ssr",
