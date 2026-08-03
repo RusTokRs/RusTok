@@ -40,7 +40,8 @@
     ],
     "result_type": "GqlForumTopicMergeSolutionResolution",
     "returns_selected_reply_id_and_merge_receipt": true,
-    "calls_owner_method": "merge_topic_resolving_solution"
+    "calls_owner_method": "merge_topic_resolving_solution",
+    "decision_audit_table": "forum_topic_merge_solution_resolutions"
   },
   "receipt_result": {
     "type": "GqlForumTopicMerge",
@@ -70,15 +71,18 @@
     "ordinary_and_resolution_commands_share_one_owner_service_and_private_transaction": true,
     "topic_body_hydration_after_merge": false,
     "canonical_source_alias_resolution_for_mutation": false,
-    "raw_solution_table_access_in_resolver": false
+    "raw_solution_or_audit_table_access_in_resolver": false
   },
   "compatibility": {
     "ordinary_field_changed": false,
     "ordinary_input_changed": false,
     "receipt_result_changed": false,
     "receipt_schema_changed": false,
+    "merge_event_schema_or_payload_changed": false,
+    "post_merge_reconciliation_owner_changed": false,
     "rest_contract_changed": false,
     "solution_resolution_field_is_additive": true,
+    "resolution_audit_migration_is_owner_internal": true,
     "admin_UI_added": false,
     "storefront_UI_added": false
   },
