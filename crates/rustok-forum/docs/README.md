@@ -15,7 +15,7 @@ notifications module, and cross-module release gates.
 - keep Forum-owned transport surfaces, Q&A capabilities and UI packages inside the module;
 - keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles;
 - resolve selected merged-source topic IDs through the immutable merge receipt ledger;
-- expose manager-only move, merge and selected-reply split owners without duplicating policy;
+- expose manager-only move, merge, split and reply-branch fork owners without duplicating policy;
 - evolve the Forum as a taxonomy-aware and channel-aware domain with explicit observability.
 
 ## Scope
@@ -37,7 +37,8 @@ notifications module, and cross-module release gates.
 - `mergeForumTopic` and `mergeForumTopicResolvingSolution` remain the only admin merge command contracts;
 - FORUM-21N composes those commands in Leptos and Next-admin without changing the owner, receipt or event schema;
 - FORUM-21O selects direct authenticated native owner composition for Leptos SSR/hydrate while retaining GraphQL for CSR/headless with no fallback;
-- FORUM-21P adds the transport-neutral selected-reply split owner with immutable receipt/event, parent-closed movement, exact access-policy cloning and counter reconciliation; public manager transport remains follow-up scope.
+- FORUM-21P adds the transport-neutral selected-reply split owner with immutable receipt/event, parent-closed movement, exact access-policy cloning and counter reconciliation;
+- FORUM-21Q adds the transport-neutral reply-branch fork owner with deterministic copied identities, complete bounded revision/relation provenance, source immutability and explicit non-copy policy; public manager transport remains follow-up scope.
 
 ## Verification
 
@@ -58,6 +59,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21N admin merge workflow](./forum-21n-topic-merge-admin-ui.md)
 - [FORUM-21O native Leptos merge transport](./forum-21o-topic-merge-native-admin.md)
 - [FORUM-21P selected-reply split owner](./forum-21p-topic-split-owner.md)
+- [FORUM-21Q reply-branch fork owner](./forum-21q-topic-fork-owner.md)
 - [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [Admin UI package](../admin/README.md)

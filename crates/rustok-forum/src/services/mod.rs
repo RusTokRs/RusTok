@@ -109,6 +109,7 @@ mod topic_audience_visibility;
 mod topic_canonical_resolution;
 mod topic_create_audience_authorization;
 mod topic_facade;
+mod topic_fork;
 mod topic_merge;
 mod topic_merge_audience_reconciliation;
 mod topic_merge_read_state_reconciliation;
@@ -236,6 +237,13 @@ pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };
 pub use topic_facade::TopicService;
+pub use topic_fork::{
+    ForkForumReplyBranchInput, ForumTopicForkResult, ForumTopicForkService,
+    MAX_FORUM_TOPIC_FORK_BODY_ROWS, MAX_FORUM_TOPIC_FORK_MENTIONS,
+    MAX_FORUM_TOPIC_FORK_QUOTES, MAX_FORUM_TOPIC_FORK_REASON_LEN,
+    MAX_FORUM_TOPIC_FORK_RELATION_REVISIONS, MAX_FORUM_TOPIC_FORK_REPLIES,
+    MAX_FORUM_TOPIC_FORK_REPLY_REVISIONS, MAX_FORUM_TOPIC_FORK_TITLE_LEN,
+};
 pub use topic_merge::{
     ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
