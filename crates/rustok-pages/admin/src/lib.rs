@@ -12,6 +12,7 @@ mod i18n;
 mod metadata_properties;
 mod model;
 mod rollback_control;
+mod standalone_metadata;
 mod transport;
 
 use composition::PagesAdmin as PagesWorkspace;
@@ -21,6 +22,7 @@ use leptos_ui_routing::use_route_query_value;
 use metadata_properties::pages_metadata_property_runtime;
 use rollback_control::PagesRollbackControl;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
+use standalone_metadata::PagesPublishedMetadataSurface;
 
 pub use access::{
     pages_editor_capability_policy, pages_editor_capability_policy_for_role,
@@ -81,6 +83,7 @@ pub fn PagesAdmin() -> impl IntoView {
     view! {
         <div class="space-y-4">
             <PagesRollbackControl on_rolled_back />
+            <PagesPublishedMetadataSurface refresh_generation />
             {move || {
                 let generation = refresh_generation.get();
                 view! {
