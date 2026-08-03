@@ -61,7 +61,7 @@ jobs:
           verifier_path.write_text(verifier.replace(anchor, replacement, 1))
           PY
 
-      - name: Add transient Index lock edges
+      - name: Ensure Index lock edges
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -78,10 +78,17 @@ jobs:
            "rustok-events",
            "rustok-runtime",
            "sea-orm",'''
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f'Index lock dependency block: expected one match, found {count}')
-          path.write_text(text.replace(old, new, 1))
+          old_count = text.count(old)
+          new_count = text.count(new)
+          if old_count == 1 and new_count == 0:
+              path.write_text(text.replace(old, new, 1))
+          elif old_count == 0 and new_count == 1:
+              pass
+          else:
+              raise SystemExit(
+                  f'Index lock dependency block: expected exactly one old or new shape, '
+                  f'found old={old_count}, new={new_count}'
+              )
           PY
 
       - name: Format Forum repair
