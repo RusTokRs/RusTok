@@ -306,6 +306,10 @@ mod tests {
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
     }
 
+    fn test_graphql_error(error: async_graphql::Error) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, format!("{error:?}"))
+    }
+
     #[tokio::test]
     async fn merge_transport_enforces_scope_and_replays_one_receipt() -> TestResult<()> {
         let (db, event_bus) = setup().await?;
@@ -366,7 +370,8 @@ mod tests {
             target_topic_id,
             input.clone(),
         )
-        .await?;
+        .await
+        .map_err(test_graphql_error)?;
         let replay = execute_merge_forum_topic(
             &db,
             &event_bus,
@@ -376,7 +381,8 @@ mod tests {
             target_topic_id,
             input,
         )
-        .await?;
+        .await
+        .map_err(test_graphql_error)?;
 
         assert_eq!(first, replay);
         assert_eq!(first.operation_id, operation_id);
