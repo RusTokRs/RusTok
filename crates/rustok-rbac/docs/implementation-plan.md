@@ -50,11 +50,17 @@ source work:
    generation, session revocation, and fan-out for exact role/status replay;
 4. replace locale-bearing artifact permission identity rows with one immutable,
    language-neutral definition plus owner translations;
-5. bind grants and idempotency receipts to the exact artifact permission definition and
-   enforce concurrency-safe tenant-composite role/user and permission foreign keys;
-6. remove the superseded corrective trigger migration and keep the unreleased schema
+5. bind grants and idempotency receipts to the exact artifact permission definition,
+   admitted scope, tenant-composite role, and tenant-composite actor through real
+   foreign keys and database checks;
+6. reject cross-tenant definition binding, concurrent parent update/delete, definition
+   identity rebinding, and nil tenant registration scope;
+7. remove the superseded corrective trigger migration and keep the unreleased schema
    correction in the canonical artifact migrations;
-7. remove legacy compatibility wording from the only new-user role initialization path
+8. define account deletion as deactivation/redaction and preserve `RESTRICT` as the
+   fail-closed role/user/definition hard-delete contract until an owner-coordinated
+   teardown workflow exists;
+9. remove legacy compatibility wording from the only new-user role initialization path
    and replace a broad event-contract lint allowance with a narrow documented
    expectation.
 
@@ -118,14 +124,22 @@ or merged in parallel with #2870.
 - [x] Declare the RBAC -> Outbox module dependency consistently.
 - [x] Store language-neutral permission definitions separately from localized labels and
   descriptions; use `VARCHAR(32)` locale storage.
-- [x] Enforce tenant-composite role and actor identity plus immutable permission parent
-  identity through real foreign keys.
+- [x] Reject nil tenant scope before opening a registration transaction.
+- [x] Keep definition scope, installation, module, release, and permission identity
+  immutable after admission while allowing localized translation updates.
+- [x] Enforce exact admitted scope, tenant-composite role and actor identity, and exact
+  permission parent identity through checks and real foreign keys.
 - [x] Prevent concurrent parent update/delete from committing orphan grants or receipts.
+- [x] Prevent direct database writes from binding a tenant to another tenant's permission
+  definition while preserving explicit platform definitions.
 - [x] Remove the trigger-only corrective migration instead of preserving two schema paths.
-- [x] Add SQLite valid-write, cross-tenant, orphan, parent-change, deletion, translation,
-  and exact-event-identity regression coverage.
+- [x] Define current account deletion as deactivation/redaction and hard parent deletion
+  as fail-closed `RESTRICT` until a single owner-coordinated teardown exists.
+- [x] Add SQLite valid-write, platform-scope, cross-tenant, orphan, parent-change,
+  deletion, definition-immutability, translation, and exact-event-identity regressions.
 - [x] Add fail-closed source verifiers for canonical migration registration, owner
-  ordering, exact event identity, and removed paths.
+  ordering, exact event identity/scope, nil tenant scope, teardown semantics, and removed
+  paths.
 - [ ] Generate and review the exact-head event digest.
 - [ ] Execute contract, owner transaction, SQLite, PostgreSQL, adapter, source verifier,
   migration rollback, and module gates.
@@ -145,6 +159,8 @@ or merged in parallel with #2870.
 
 ### P0. Exact-head verification
 
+- [ ] Reconcile #2870 with the current `main` merge base without dropping either the
+  RBAC fixes or intervening repository commits.
 - [ ] Generate and review the artifact event contract digest.
 - [ ] Run formatting, Events/RBAC/Admin/server compilation, Clippy, focused Rust/Node
   tests, and module validate/test on the final exact head.
@@ -163,8 +179,8 @@ or merged in parallel with #2870.
 ### P1. Operator parity and lifecycle
 
 - [x] Close superseded draft #2866 without merge and continue only in #2870.
-- [ ] Define deletion ordering for role/user/tenant teardown before referenced artifact
-  grants or operation receipts are intentionally removed.
+- [x] Define current account deletion and fail-closed role/user/definition teardown
+  behavior; do not add cascade or compatibility fallback.
 - [ ] Decide whether remote/headless role management is required.
 - [ ] Define custom-role and arbitrary permission mutation ownership.
 - [ ] Route native operator management through owner policy without host-owned relation
@@ -172,8 +188,11 @@ or merged in parallel with #2870.
 - [ ] Identify idempotent, non-authoritative consumers for RBAC integration events.
 - [ ] Complete incident and live negative transport evidence.
 
-### P2. FBA/FFA promotion evidence
+### P2. Deferred hard-delete workflow and FBA/FFA promotion evidence
 
+- [ ] If product scope introduces role, user, tenant, or installation hard deletion,
+  implement one owner-coordinated transaction that removes operation receipts, grants,
+  admitted definitions/translations, and then parent rows in documented order.
 - [ ] Exercise provider/consumer/degraded paths in a composed host.
 - [ ] Prove the RBAC evaluator remains the only decision engine.
 - [ ] Complete native operator parity before FFA promotion.
@@ -216,7 +235,7 @@ results are recorded only after the corresponding exact-head jobs finish.
 - Source-ready becomes verified only after exact-head commands pass.
 - Artifact event review requires the generated digest.
 - Artifact relation integrity requires retained SQLite and PostgreSQL execution,
-  including the parent-delete concurrency probe.
+  including cross-tenant scope and parent-delete concurrency probes.
 - Durable invalidation requires retained PostgreSQL/watchdog/Redis/CLI evidence.
 - FBA remains `boundary_ready`; FFA and `core/rbac` remain `in_progress`.
 
@@ -225,10 +244,10 @@ results are recorded only after the corresponding exact-head jobs finish.
 - Cycle: `cycle-001`
 - Status: `in_progress`
 - Last verified at (UTC): `2026-08-03`
-- Scope inspected: `resolver ownership; canonical user-role mutation entrypoints; effective status replay; artifact permission storage identity; tenant/concurrency integrity; transactional Outbox event identity; event-contract lint policy`
-- Findings: `P0=0, P1=2, P2=0, P3=2`
-- Fixed in this pass: `draft PR #2870 replaces closed #2866. The pass fixes the trigger-only parent-delete race by binding grant and receipt rows to tenant-composite role/user parents and an exact immutable artifact permission definition through foreign keys. It moves localized permission copy out of the authorization identity row into owner translations with VARCHAR(32) locale storage, removes the superseded corrective migration, propagates artifact_permission_id through authorization and the sealed event, adds SQLite and source regressions, removes compatibility wording from new-user role initialization, and replaces a broad lint allowance with a narrow documented expectation.`
-- Remaining risks or blockers: `#2870 remains draft and source-only. The generated event digest, formatting, compilation, focused tests, canonical SQLite execution, real PostgreSQL apply/integrity/concurrency/rollback evidence, Node/module gates, live negative transports, retained #2849/#2853/#2856/#2862 execution, incident evidence, native operator parity, and FFA/FBA evidence remain absent. Deliberate hard-deletion ordering for referenced artifact grants and receipts remains an explicit P1 lifecycle decision. Issue #2740 remains the known Rust-host PostgreSQL fixture blocker until a current workflow proves otherwise.`
-- Evidence: `static source inspection confirms one language-neutral definition row per scope/installation/key, owner-local translations, exact artifact_permission_id propagation, composite role/user foreign keys, permission-parent foreign keys, no corrective migration registration, transaction-local event publication with rollback on failure, and fail-closed regression/verifier coverage. No local or database execution evidence is claimed.`
-- Next action: `review current exact-head workflow failures, generate and commit the event digest, execute targeted compile/test/verifier/module gates, then run real PostgreSQL integrity and concurrency evidence before considering merge`
+- Scope inspected: `resolver ownership; canonical user-role mutation entrypoints; effective status replay; artifact permission multilingual storage and immutable identity; tenant/scope/concurrency integrity; transactional Outbox event identity; account teardown semantics; event-contract lint policy`
+- Findings: `P0=0, P1=4, P2=1, P3=2`
+- Fixed in this pass: `draft PR #2870 replaces closed #2866. The pass separates language-neutral artifact permission definitions from owner translations with VARCHAR(32) locale storage; replaces trigger-only parent existence checks with tenant-composite role/user and exact permission foreign keys; binds every grant and receipt to the admitted platform-or-exact-tenant scope; prevents definition identity rebinding; rejects nil tenant scope; removes the superseded corrective migration; propagates artifact_permission_id through authorization and the sealed event; defines soft account deactivation plus fail-closed RESTRICT teardown; adds SQLite and source regressions; removes compatibility wording from new-user role initialization; and replaces a broad lint allowance with a narrow documented expectation.`
+- Remaining risks or blockers: `#2870 remains draft, currently requires merge-base reconciliation, and is source-only. The generated event digest, formatting, compilation, focused tests, canonical SQLite execution, real PostgreSQL apply/integrity/scope/parent-delete concurrency/rollback evidence, Node/module gates, live negative transports, retained #2849/#2853/#2856/#2862 execution, incident evidence, native operator parity, and FFA/FBA evidence remain absent. Issue #2740 remains the known Rust-host PostgreSQL fixture blocker until a current workflow proves otherwise.`
+- Evidence: `static source inspection confirms one immutable language-neutral definition row per scope/installation/key, owner-local translations, exact artifact_permission_id and permission_scope_key propagation, tenant-composite role/user foreign keys, exact-scope permission foreign keys and checks, fail-closed parent RESTRICT behavior, no corrective migration registration, transaction-local event publication with rollback on failure, soft account deactivation, and matching regression/verifier coverage. No local or database execution evidence is claimed.`
+- Next action: `reconcile the branch with current main, review current exact-head workflow failures, generate and commit the event digest, execute targeted compile/test/verifier/module gates, then run real PostgreSQL integrity and concurrency evidence before considering merge`
 - Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite && cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard && cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard && cargo test -p rustok-server --test rbac_mutation_api_architecture_guard && node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
