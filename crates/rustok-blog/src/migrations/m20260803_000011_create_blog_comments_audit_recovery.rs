@@ -10,9 +10,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DbBackend::Postgres => postgres_up(manager).await,
             DbBackend::Sqlite => sqlite_up(manager).await,
-            DbBackend::MySql => Err(DbErr::Migration(
-                "Comments schedule audit recovery supports PostgreSQL and SQLite only".to_string(),
-            )),
+            DbBackend::MySql => Ok(()),
         }
     }
 
