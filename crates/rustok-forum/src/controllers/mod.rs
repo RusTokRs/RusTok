@@ -117,13 +117,14 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
                 "A required forum capability is temporarily unavailable",
             )
         }
-        ForumError::Database(_) | ForumError::Content(_) | ForumError::Internal(_) => {
-            HttpError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                code,
-                "The forum operation could not be completed",
-            )
-        }
+        ForumError::Database(_)
+        | ForumError::Content(_)
+        | ForumError::Internal(_)
+        | ForumError::TopicCanonicalResolutionConflict(_) => HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            code,
+            "The forum operation could not be completed",
+        ),
         error => HttpError::bad_request(code, error.to_string()),
     }
 }

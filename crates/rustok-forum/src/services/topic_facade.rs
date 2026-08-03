@@ -15,6 +15,9 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::rbac::enforce_scope;
+use super::topic_canonical_resolution::{
+    ForumTopicCanonicalResolution, ForumTopicCanonicalResolutionService,
+};
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_owner;
 use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
@@ -126,6 +129,39 @@ impl TopicService {
         require_localized_topic_response(response)
     }
 
+    pub async fn resolve_canonical_topic(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+    ) -> ForumResult<ForumTopicCanonicalResolution> {
+        self.resolve_canonical_topic_for_security(tenant_id, &security, topic_id)
+            .await
+    }
+
+    async fn resolve_canonical_topic_for_security(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        topic_id: Uuid,
+    ) -> ForumResult<ForumTopicCanonicalResolution> {
+        enforce_scope(security, Resource::ForumTopics, Action::Read)?;
+        let resolution = ForumTopicCanonicalResolutionService::new(self.db.clone())
+            .resolve_unchecked(tenant_id, topic_id)
+            .await?;
+        let visible = ForumTopicVisibilityService::new(self.db.clone())
+            .is_topic_category_visible_to_viewer(
+                tenant_id,
+                resolution.canonical_topic_id,
+                !security.is_public_read(),
+            )
+            .await?;
+        if !visible {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+        Ok(resolution)
+    }
+
     pub async fn get(
         &self,
         tenant_id: Uuid,
@@ -145,18 +181,39 @@ impl TopicService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<TopicResponse> {
-        enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
-        let visible = ForumTopicVisibilityService::new(self.db.clone())
-            .is_topic_category_visible_to_viewer(tenant_id, topic_id, !security.is_public_read())
+        self.get_with_canonical_resolution_and_locale_fallback(
+            tenant_id,
+            security,
+            topic_id,
+            locale,
+            fallback_locale,
+        )
+        .await
+        .map(|(_, topic)| topic)
+    }
+
+    pub async fn get_with_canonical_resolution_and_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(ForumTopicCanonicalResolution, TopicResponse)> {
+        let resolution = self
+            .resolve_canonical_topic_for_security(tenant_id, &security, topic_id)
             .await?;
-        if !visible {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
         let response = self
             .inner
-            .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
+            .get_with_locale_fallback(
+                tenant_id,
+                security,
+                resolution.canonical_topic_id,
+                locale,
+                fallback_locale,
+            )
             .await?;
-        require_localized_topic_response(response)
+        Ok((resolution, require_localized_topic_response(response)?))
     }
 
     pub async fn get_storefront_visible_with_locale_fallback(
@@ -172,16 +229,31 @@ impl TopicService {
             channel_slug,
             !security.is_public_read(),
         )?;
-        let topic = match self
-            .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
+        let resolution = match self
+            .resolve_canonical_topic_for_security(tenant_id, &security, topic_id)
             .await
         {
-            Ok(topic) => topic,
+            Ok(resolution) => resolution,
+            Err(ForumError::TopicNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let topic = match self
+            .inner
+            .get_with_locale_fallback(
+                tenant_id,
+                security,
+                resolution.canonical_topic_id,
+                locale,
+                fallback_locale,
+            )
+            .await
+        {
+            Ok(topic) => require_localized_topic_response(topic)?,
             Err(ForumError::TopicNotFound(_)) => return Ok(None),
             Err(error) => return Err(error),
         };
         if !ForumTopicVisibilityService::new(self.db.clone())
-            .is_topic_visible(tenant_id, topic_id, &scope)
+            .is_topic_visible(tenant_id, resolution.canonical_topic_id, &scope)
             .await?
         {
             return Ok(None);

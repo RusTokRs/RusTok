@@ -175,7 +175,7 @@ for (const marker of [
   '"command": metadata.command',
   '"owner_module": metadata.owner_module',
   '"create_fulfillment": metadata.create_fulfillment',
-  "native_checkout_runtime_error(&request_context, tenant.id, error)",
+  "native_checkout_runtime_error(&request_context, tenant.id, correlation_id, error)",
   'ServerFnError::new(format!("{public_code}: {public_message}"))',
 ]) {
   requireText(serverFunctions, marker, `${paths.serverFunctions}: mounted runtime contract`);

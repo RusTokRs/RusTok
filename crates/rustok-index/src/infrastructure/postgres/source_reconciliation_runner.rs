@@ -29,6 +29,7 @@ const MAX_PAGES_PER_RUN: usize = 1_024;
 const MAX_PASSES: u32 = 8;
 const MAX_SOURCE_NAME_BYTES: usize = 128;
 const MAX_WORKER_ID_BYTES: usize = 191;
+const MAX_ERROR_CODE_BYTES: usize = 128;
 const MAX_LEASE_SECONDS: u64 = 86_400;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -529,6 +530,7 @@ struct StoredReconciliationJob {
     cursor: ReconciliationCursor,
     attempt_count: u32,
     claimable: bool,
+    last_error_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -596,6 +598,13 @@ async fn acquire_in_transaction(
             "running" | "pending" => {
                 claimable = Some(stored);
                 break;
+            }
+            "failed" => {
+                return Err(IndexReconciliationRunError::DeadLettered {
+                    job_id: stored.job_id,
+                    attempt_count: stored.attempt_count,
+                    error_code: stored.last_error_code,
+                });
             }
             state => {
                 return Err(IndexReconciliationRunError::InvalidStoredJob(format!(
@@ -715,6 +724,16 @@ fn stored_job(
             "attempt count is outside the u32 range".to_owned(),
         )
     })?;
+    let last_error_code: Option<String> = row
+        .try_get("", "last_error_code")
+        .map_err(storage_error)?;
+    if let Some(code) = &last_error_code {
+        validate_storage_text(code, MAX_ERROR_CODE_BYTES).map_err(|_| {
+            IndexReconciliationRunError::InvalidStoredJob(
+                "last_error_code is outside the reconciliation error contract".to_owned(),
+            )
+        })?;
+    }
     Ok(StoredReconciliationJob {
         job_id: stored_uuid(row, "job_id", backend)?,
         state: row.try_get("", "state").map_err(storage_error)?,
@@ -722,6 +741,7 @@ fn stored_job(
         cursor,
         attempt_count,
         claimable: row.try_get("", "claimable").map_err(storage_error)?,
+        last_error_code,
     })
 }
 
@@ -1178,7 +1198,7 @@ fn select_jobs_sql(backend: DbBackend) -> String {
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
-        "SELECT job_id, state, request, cursor, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'reconcile' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 ELSE 2 END, created_at DESC"
+        "SELECT job_id, state, request, cursor, last_error_code, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'reconcile' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded', 'failed') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
     )
 }
 
@@ -1302,6 +1322,14 @@ pub enum IndexReconciliationRunError {
     SchemaNotRegistered(SchemaRef),
     #[error("Index reconciliation schema is retired: {0}")]
     SchemaRetired(SchemaRef),
+    #[error(
+        "Index reconciliation scope is blocked by failed job {job_id} after attempt {attempt_count}"
+    )]
+    DeadLettered {
+        job_id: Uuid,
+        attempt_count: u32,
+        error_code: Option<String>,
+    },
     #[error("stored Index reconciliation job is invalid: {0}")]
     InvalidStoredJob(String),
     #[error("stored Index reconciliation job has unsupported state {0}")]

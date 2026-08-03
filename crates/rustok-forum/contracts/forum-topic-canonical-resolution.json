@@ -1,0 +1,73 @@
+{
+  "contract": "forum_topic_canonical_resolution_v1",
+  "task": "FORUM-21I",
+  "parent_task": "FORUM-21",
+  "extends": "FORUM-21B",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner_service": "TopicService",
+  "source_of_truth": "forum_topic_merge_operations",
+  "migration": "m20260803_000017_add_forum_topic_canonical_resolution",
+  "resolution": {
+    "requested_identity_preserved_in_evidence": true,
+    "canonical_identity_is_terminal_target": true,
+    "maximum_hops": 32,
+    "each_hop_topic_and_edges_share_one_statement_snapshot": true,
+    "duplicate_source_edges_fail_closed": true,
+    "cycles_fail_closed": true,
+    "soft_deleted_terminal_targets_fail_closed": true,
+    "missing_unmerged_topics_return_topic_not_found": true,
+    "merge_operation_ids_are_returned_in_chain_order": true
+  },
+  "database_guards": {
+    "one_source_edge_per_tenant_topic": true,
+    "receipt_table_remains_append_only": true,
+    "source_must_be_non_deleted_archived_locked_zero_reply_tombstone_on_insert": true,
+    "target_must_be_non_deleted_non_archived_and_same_category_on_insert": true,
+    "postgres_and_sqlite": true,
+    "parallel_alias_table_added": false
+  },
+  "selected_read_cutover": {
+    "topic_service_get": "returns_the_canonical_target_representation",
+    "topic_service_storefront_get": "evaluates_category_and_topic_visibility_on_the_canonical_target",
+    "graphql_forum_topic": "inherits_canonical_target_resolution_from_TopicService",
+    "seo_topic_load_and_route": "inherit_canonical_target_resolution_from_TopicService",
+    "rest_get_topic": "returns_the_canonical_target_representation_with_the_target_id",
+    "list_reads_changed": false,
+    "mutation_target_resolution_changed": false
+  },
+  "error": {
+    "variant": "TopicCanonicalResolutionConflict",
+    "stable_code": "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
+    "http_status": 500,
+    "retryable": false,
+    "public_message_contains_storage_details": false
+  },
+  "compatibility": {
+    "topic_response_shape_changed": false,
+    "graphql_schema_changed": false,
+    "rest_route_shape_changed": false,
+    "seo_target_contract_changed": false,
+    "merge_input_result_receipt_or_event_changed": false,
+    "shared_rustok_events_contract_changed": false
+  },
+  "test": "crates/rustok-forum/tests/topic_canonical_resolution_sqlite.rs",
+  "documentation": "crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md",
+  "cumulative_contract": "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
+  "cumulative_documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  "verifier": "scripts/verify/verify-forum-topic-canonical-resolution.mjs",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-merge-owner.mjs",
+    "node scripts/verify/verify-forum-topic-canonical-resolution.mjs",
+    "cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture"
+  ],
+  "non_claims": [
+    "no verifier test formatter Cargo command SQLite PostgreSQL workflow or CI execution is claimed",
+    "no HTTP 3xx Location redirect is added",
+    "no slug alias or slug route is added",
+    "no public merge transport is added",
+    "no mutation command follows merged source identities",
+    "no cross-category merge split fork or reply-range workflow is added",
+    "FORUM-21 is not promoted from planned"
+  ]
+}
