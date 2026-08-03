@@ -96,6 +96,9 @@ for (const marker of [
   "uuid::Uuid::new_v4()",
   "struct PromotionRequestContextFacts",
   "fn promotion_request_context_facts(",
+  "fn promotion_context_error<E>(",
+  "fn promotion_auth_context_error<E>(",
+  "fn promotion_tenant_context_error<E>(",
   "optional_promotion_request_context",
   ".map(|context| context.locale.as_str())",
   "context.with_channel(channel)",
@@ -105,6 +108,18 @@ for (const marker of [
   "ServerFnError::new(error.message)",
 ]) {
   assertContains(safeAdapter, marker, `${safeAdapterPath}: missing preserved or safe promotion marker ${marker}`);
+}
+
+for (const obsolete of [
+  "fn promotion_context_error<E: std::fmt::Debug>(",
+  "fn promotion_auth_context_error<E: std::fmt::Debug>(",
+  "fn promotion_tenant_context_error<E: std::fmt::Debug>(",
+]) {
+  assertNotContains(
+    safeAdapter,
+    obsolete,
+    `${safeAdapterPath}: type-only promotion context helper must not require Debug: ${obsolete}`,
+  );
 }
 
 const contextErrorBody = functionBody(safeAdapter, "promotion_context_error");
@@ -226,13 +241,14 @@ if (evidence.status !== "commerce_admin_promotion_native_error_safety_source_unv
 }
 for (const [field, expected] of Object.entries({
   framework_error_type_only: true,
+  framework_debug_bounds_removed: true,
   complete_framework_error_logged: false,
   owner_port_error_shape_only: true,
   complete_owner_port_error_logged: false,
   raw_tenant_actor_cart_logged: false,
   raw_request_context_values_logged: false,
   public_port_error_message_preserved: true,
-  order_change_cleanup_is_out_of_scope: true,
+  order_change_type_only_context_contract_preserved: true,
 })) {
   if (evidence.source_claims?.[field] !== expected) {
     fail(`${evidencePath}: source_claims.${field} must be ${expected}`);
@@ -250,17 +266,21 @@ for (const field of [
     fail(`${evidencePath}: validation.${field} must remain false until execution evidence exists`);
   }
 }
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  fail(`${evidencePath}: execution must remain empty`);
+}
 
 if (review.status !== "commerce_admin_promotion_native_error_safety_source_reviewed_unvalidated") {
   fail(`${reviewPath}: source review must remain explicitly unvalidated`);
 }
 for (const field of [
   "framework_error_text_removed",
+  "framework_debug_bounds_removed",
   "owner_port_error_text_removed",
   "identity_values_removed",
   "safe_shape_diagnostics_reviewed",
   "public_envelopes_preserved",
-  "order_change_source_explicitly_not_claimed_safe",
+  "order_change_type_only_contract_preserved",
 ]) {
   if (review.review?.[field] !== true) {
     fail(`${reviewPath}: review.${field} must be true`);
@@ -269,6 +289,7 @@ for (const field of [
 
 assertContains(doc, "Status: `source-complete / unvalidated`", `${docPath}: status must remain unvalidated`);
 assertContains(doc, "complete framework extraction errors are not logged", `${docPath}: framework diagnostic policy`);
+assertContains(doc, "no longer require a `Debug`", `${docPath}: type-only helper contract`);
 assertContains(doc, "complete `PortError` and identity values are not logged", `${docPath}: owner diagnostic policy`);
 
 if (failures.length > 0) {
@@ -277,4 +298,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Commerce admin promotion native diagnostics use correlation-safe shape only; execution evidence remains open");
+console.log("✔ Commerce admin promotion native diagnostics use correlation-safe type/shape only; execution evidence remains open");

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "status": "commerce_admin_promotion_native_error_safety_source_unvalidated",
-  "captured_at": "2026-07-31",
+  "captured_at": "2026-08-03",
   "scope": {
     "package": "rustok-commerce-admin",
     "boundary": "commerce_admin_promotion_native_transport",
@@ -19,6 +19,7 @@
     "ssr_routes_through_safe_adapter": true,
     "framework_extraction_errors_use_static_public_envelopes": true,
     "framework_error_type_only": true,
+    "framework_debug_bounds_removed": true,
     "complete_framework_error_logged": false,
     "request_context_is_diagnostic_and_attribution_only": true,
     "request_locale_and_channel_cross_port_context_when_available": true,
@@ -34,7 +35,7 @@
     "public_message_presence_and_length_only": true,
     "public_port_error_message_preserved": true,
     "permission_and_input_validation_messages_are_preserved": true,
-    "order_change_cleanup_is_out_of_scope": true
+    "order_change_type_only_context_contract_preserved": true
   },
   "validation": {
     "focused_verifier_executed": false,
@@ -44,6 +45,7 @@
     "runtime_trace_retained": false,
     "ci_executed": false
   },
+  "execution": [],
   "reviewed_sources": [
     "crates/rustok-commerce/admin/src/transport/mod.rs",
     "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
@@ -52,6 +54,14 @@
     "crates/rustok-api/src/ports.rs",
     "crates/rustok-cart/src/promotion_guard.rs",
     "scripts/verify/verify-commerce-admin-boundary.mjs",
-    "scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs"
+    "scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs",
+    "scripts/verify/verify-commerce-admin-order-change-native-error-safety.mjs"
+  ],
+  "non_claims": [
+    "No Cargo or compiler evidence is retained.",
+    "No static verifier was executed.",
+    "No mounted HTTP or runtime failure trace is retained.",
+    "This slice does not change CartPromotionPort behavior or public envelopes.",
+    "Remaining ecommerce mapper cleanup and non-PortError envelopes stay open."
   ]
 }
