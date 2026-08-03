@@ -124,8 +124,9 @@ struct StoredSplitOperation {
 /// visibility and reply-create narrowing layers before any reply moves. Category reply totals stay
 /// unchanged, the category topic total increases by one, source/target published counters are
 /// reconciled from authoritative reply rows, and an accepted solution follows its unchanged reply
-/// identity only when that reply is selected. Replaying the exact command returns the immutable
-/// receipt; actor or command-shape drift fails closed.
+/// identity through the existing composite foreign-key cascade when that reply is selected.
+/// Replaying the exact command returns the immutable receipt; actor or command-shape drift fails
+/// closed.
 pub struct ForumTopicSplitService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -329,7 +330,7 @@ impl ForumTopicSplitService {
         )
         .await?;
         if let Some(solution) = moved_solution.as_ref() {
-            transfer_solution_in_tx(
+            validate_cascaded_solution_transfer_in_tx(
                 &txn,
                 tenant_id,
                 source_topic_id,
@@ -545,7 +546,10 @@ fn prepare_split_input(
         .as_deref()
         .map(normalize_slug)
         .filter(|value| !value.is_empty());
-    if slug.as_ref().is_some_and(|slug| slug.len() > MAX_FORUM_TOPIC_SPLIT_SLUG_LEN) {
+    if slug
+        .as_ref()
+        .is_some_and(|slug| slug.len() > MAX_FORUM_TOPIC_SPLIT_SLUG_LEN)
+    {
         return Err(ForumError::Validation(format!(
             "Forum topic split slug must not exceed {MAX_FORUM_TOPIC_SPLIT_SLUG_LEN} bytes"
         )));
@@ -609,9 +613,11 @@ fn fingerprint_command(
         "slug": slug,
         "reason": reason,
     }))
-    .map_err(|error| ForumError::Validation(format!(
-        "Forum topic split command cannot be canonicalized: {error}"
-    )))?;
+    .map_err(|error| {
+        ForumError::Validation(format!(
+            "Forum topic split command cannot be canonicalized: {error}"
+        ))
+    })?;
     Ok(hex::encode(Sha256::digest(canonical)))
 }
 
@@ -887,33 +893,32 @@ async fn load_valid_solution_in_tx(
     }))
 }
 
-async fn transfer_solution_in_tx(
+async fn validate_cascaded_solution_transfer_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     source_topic_id: Uuid,
     target_topic_id: Uuid,
-    solution: &SplitSolutionCandidate,
+    expected: &SplitSolutionCandidate,
 ) -> ForumResult<()> {
-    let deleted = forum_solution::Entity::delete_many()
-        .filter(forum_solution::Column::TenantId.eq(tenant_id))
-        .filter(forum_solution::Column::TopicId.eq(source_topic_id))
-        .exec(txn)
+    let source = forum_solution::Entity::find_by_id((source_topic_id, tenant_id))
+        .one(txn)
         .await?;
-    if deleted.rows_affected != 1 {
-        return Err(ForumError::Validation(
-            "Forum topic split source solution changed concurrently".to_string(),
-        ));
+    let target = forum_solution::Entity::find_by_id((target_topic_id, tenant_id))
+        .one(txn)
+        .await?;
+    if source.is_none()
+        && target.is_some_and(|target| {
+            target.reply_id == expected.reply_id
+                && target.marked_by_user_id == expected.marked_by_user_id
+                && target.marked_at == expected.marked_at
+        })
+    {
+        Ok(())
+    } else {
+        Err(ForumError::Validation(
+            "Forum topic split solution foreign-key cascade is inconsistent".to_string(),
+        ))
     }
-    forum_solution::ActiveModel {
-        topic_id: Set(target_topic_id),
-        tenant_id: Set(tenant_id),
-        reply_id: Set(solution.reply_id),
-        marked_by_user_id: Set(solution.marked_by_user_id),
-        marked_at: Set(solution.marked_at),
-    }
-    .insert(txn)
-    .await?;
-    Ok(())
 }
 
 async fn validate_solution_after_split_in_tx(
@@ -1359,12 +1364,8 @@ async fn validate_replay_in_tx(
             prepared.operation_id
         )));
     }
-    let audit_count = split_reply_audit_count_in_tx(
-        txn,
-        existing.tenant_id,
-        existing.operation_id,
-    )
-    .await?;
+    let audit_count =
+        split_reply_audit_count_in_tx(txn, existing.tenant_id, existing.operation_id).await?;
     if audit_count != i64::from(existing.moved_reply_count) {
         return Err(ForumError::Validation(
             "Forum topic split immutable reply audit is inconsistent".to_string(),
