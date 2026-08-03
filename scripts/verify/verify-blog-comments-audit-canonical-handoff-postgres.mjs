@@ -83,7 +83,7 @@ requireAll("handoff owner", service, [
   "FOR UPDATE SKIP LOCKED",
   "handoff_claim_expires_at <= NOW()",
   "handoff_attempt_count = handoff_attempt_count + 1",
-  "FOR UPDATE\"",
+  "WHERE request_id = $1 \\\n             FOR UPDATE",
   ".write_once_in_transaction(&transaction, &publication)",
   "canonical_envelope_id = request_id",
   "handoff_claim_token = NULL",
@@ -137,7 +137,7 @@ requireAll("plan", plan, [
   "FOR UPDATE SKIP LOCKED",
   "same PostgreSQL transaction",
   "does not register the owner in runtime extensions",
-  "rustok-outbox already owns canonical relay",
+  "already owns canonical relay, retry, claim, DLQ, and retention",
 ]);
 
 if (
