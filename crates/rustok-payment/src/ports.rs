@@ -191,53 +191,107 @@ fn log_payment_collection_admission_rejection(
     admission: &'static str,
     error: &PortError,
 ) {
-    match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
-            tracing::error!(
-                error = ?error,
-                owner = PAYMENT_COLLECTION_OWNER,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                operation = owner_operation,
-                admission,
-                code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
-                "payment collection admission failed"
-            );
-        }
-        _ => {
-            tracing::warn!(
-                error = ?error,
-                owner = PAYMENT_COLLECTION_OWNER,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                operation = owner_operation,
-                admission,
-                code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
-                "payment collection admission was rejected"
-            );
-        }
+    let error_kind = match &error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    let technical_failure = matches!(
+        &error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    );
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    let tenant_id_length = context.tenant_id.chars().count();
+    let actor_id_length = context.actor.id.chars().count();
+    let claim_count = context.claims.len();
+    let role_count = context.roles.len();
+    let channel_present = context.channel.is_some();
+    let channel_length = context.channel.as_ref().map(|value| value.chars().count());
+    let locale_length = context.locale.chars().count();
+    let causation_id_present = context.causation_id.is_some();
+    let causation_id_length = context
+        .causation_id
+        .as_ref()
+        .map(|value| value.chars().count());
+    let traceparent_present = context.traceparent.is_some();
+    let traceparent_length = context
+        .traceparent
+        .as_ref()
+        .map(|value| value.chars().count());
+    let idempotency_key_present = context.idempotency_key.is_some();
+    let idempotency_key_length = context
+        .idempotency_key
+        .as_ref()
+        .map(|value| value.chars().count());
+    let internal_message_present = !error.message.trim().is_empty();
+    let internal_message_length = error.message.chars().count();
+
+    if technical_failure {
+        tracing::error!(
+            owner = PAYMENT_COLLECTION_OWNER,
+            correlation_id = %context.correlation_id,
+            tenant_id_length,
+            actor_kind,
+            actor_id_length,
+            claim_count,
+            role_count,
+            channel_present,
+            channel_length = ?channel_length,
+            locale_length,
+            causation_id_present,
+            causation_id_length = ?causation_id_length,
+            traceparent_present,
+            traceparent_length = ?traceparent_length,
+            idempotency_key_present,
+            idempotency_key_length = ?idempotency_key_length,
+            deadline_ms = ?context.deadline_ms,
+            operation = owner_operation,
+            admission,
+            code = %error.code,
+            internal_message_present,
+            internal_message_length,
+            error_kind,
+            retryable = error.retryable,
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            "payment collection admission failed"
+        );
+    } else {
+        tracing::warn!(
+            owner = PAYMENT_COLLECTION_OWNER,
+            correlation_id = %context.correlation_id,
+            tenant_id_length,
+            actor_kind,
+            actor_id_length,
+            claim_count,
+            role_count,
+            channel_present,
+            channel_length = ?channel_length,
+            locale_length,
+            causation_id_present,
+            causation_id_length = ?causation_id_length,
+            traceparent_present,
+            traceparent_length = ?traceparent_length,
+            idempotency_key_present,
+            idempotency_key_length = ?idempotency_key_length,
+            deadline_ms = ?context.deadline_ms,
+            operation = owner_operation,
+            admission,
+            code = %error.code,
+            internal_message_present,
+            internal_message_length,
+            error_kind,
+            retryable = error.retryable,
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            "payment collection admission was rejected"
+        );
     }
 }
 
