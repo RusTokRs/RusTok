@@ -18,10 +18,7 @@ const paths = {
   verifier: "scripts/verify/verify-forum-topic-merge-solution-policy.mjs",
 };
 
-function read(path) {
-  return readFileSync(path, "utf8");
-}
-
+const read = (path) => readFileSync(path, "utf8");
 function includesAll(text, markers, label) {
   for (const marker of markers) {
     assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
@@ -70,13 +67,9 @@ assert.equal(cumulativeContract.solution_policy.solution_count_delta_during_merg
 
 includesAll(
   error,
-  [
-    "TopicMergeSolutionConflict(Uuid)",
-    '"FORUM_TOPIC_MERGE_SOLUTION_CONFLICT"',
-  ],
+  ["TopicMergeSolutionConflict(Uuid)", '"FORUM_TOPIC_MERGE_SOLUTION_CONFLICT"'],
   "ForumError",
 );
-
 includesAll(
   migrationsMod,
   [
@@ -85,7 +78,6 @@ includesAll(
   ],
   "migration registry",
 );
-
 includesAll(
   migration,
   [
@@ -110,14 +102,8 @@ includesAll(
   ],
   "solution migration",
 );
-assert.equal(
-  (migration.match(/forum_00_topic_solution_scope/g) ?? []).length >= 4,
-  true,
-);
-assert.equal(
-  (migration.match(/forum_10_topic_solution_target/g) ?? []).length >= 4,
-  true,
-);
+assert.ok((migration.match(/forum_00_topic_solution_scope/g) ?? []).length >= 4);
+assert.ok((migration.match(/forum_10_topic_solution_target/g) ?? []).length >= 4);
 
 includesAll(
   merge,
@@ -130,10 +116,12 @@ includesAll(
     "TopicMergeSolutionConflict(input.operation_id)",
     "delete_source_solution_in_tx(&txn, tenant_id, source.id).await?;",
     "move_replies_in_tx(",
-    "insert_transferred_solution_in_tx(&txn, tenant_id, target.id, solution).await?;",
+    "insert_transferred_solution_in_tx(&txn, tenant_id, target.id, &solution).await?;",
     "marked_by_user_id: Set(solution.marked_by_user_id)",
     "marked_at: Set(solution.marked_at)",
+    "deleted_at IS NULL AND status = 'approved'",
     "load_valid_solution_in_tx(&txn, tenant_id, target.id, \"transferred target\")",
+    "Forum transferred accepted solution metadata changed",
     "forum_domain_event::ActiveModel",
     "forum_topic_merge_operation::ActiveModel",
     "txn.commit().await?;",
@@ -154,7 +142,7 @@ const sourceDelete = merge.indexOf(
 );
 const replyMove = merge.indexOf("move_replies_in_tx(", sourceDelete);
 const solutionInsert = merge.indexOf(
-  "insert_transferred_solution_in_tx(&txn, tenant_id, target.id, solution).await?;",
+  "insert_transferred_solution_in_tx(&txn, tenant_id, target.id, &solution).await?;",
 );
 const sourceArchive = merge.indexOf("source_active.status = Set(TopicStatus::Archived);");
 const semanticEvent = merge.indexOf("forum_domain_event::ActiveModel");
@@ -222,7 +210,6 @@ includesAll(
   ],
   "cumulative merge docs",
 );
-
 assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
 assert.ok(plan.includes("## `FORUM-21` — move, merge, split and fork topics"));
 assert.ok(plan.includes("**Status:** `planned`"));
