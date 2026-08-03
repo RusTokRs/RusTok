@@ -99,6 +99,34 @@ New HTTP response formatting must use `rustok-web` helpers such as
 `rustok_web::json_response`. The active host and generated module composition
 use Axum routers and a single response/error boundary.
 
+## Owner-authorized canonical redirects
+
+A module may redirect an obsolete or merged resource identity to its canonical
+owner identity only when the owner already has durable canonical-resolution
+evidence. The redirect must not become a parallel alias registry or move domain
+resolution into the host.
+
+The canonical redirect boundary is:
+
+- resolve tenant and authenticated principal before canonical identity lookup;
+- apply the same read authorization and visibility admission required by the
+  canonical resource before disclosing its identity in `Location`;
+- preserve the existing not-found/forbidden response without a `Location`
+  header when admission fails;
+- use a method-preserving permanent status such as `308` only on explicitly
+  selected read methods; do not make mutation methods silently follow stale
+  identities;
+- keep `Location` tenant-relative unless the host owns and supplies an explicit
+  canonical origin contract;
+- percent-encode preserved query values with a standard URL serializer rather
+  than string concatenation;
+- use `Cache-Control: private, no-store` when redirect admission depends on
+  tenant, principal, visibility or request context and no complete shared-cache
+  key contract exists;
+- publish the redirect status and headers in the owner module's OpenAPI surface;
+- keep localized routes, slug aliases and route tombstones in the routing owner
+  that defines those public URL contracts.
+
 ## Route-selection Contract for Module-owned Admin UI
 
 For module-owned admin UI, a single platform contract applies:
