@@ -9,15 +9,16 @@ remaining priorities, verification commands, and the periodic release handoff.
 - `[ ]` means landing or execution evidence remains required.
 - Source-ready is not compiled or operationally verified.
 
-Last reconciled with `main`: 2026-08-01.
+Last reconciled with `main`: 2026-08-03.
 
 ## Ownership boundary
 
 `rustok-rbac` owns permission decisions, role/permission relation semantics, canonical
-built-in role mutation policy, repair, relation integrity, durable generation storage,
-and RBAC integration contracts.
+built-in role mutation policy, artifact permission identity and assignment, repair,
+relation integrity, durable authorization generation storage, and RBAC integration
+contracts.
 
-`apps/server` owns authenticated adapters, database transaction orchestration, cache
+`apps/server` owns authenticated adapters, caller transaction orchestration, cache
 adapters, fast-path delivery, worker supervision, and process telemetry. `rustok-events`
 owns sealed payloads and schema digests; `rustok-outbox` owns transactional durable
 transport.
@@ -37,7 +38,8 @@ Merged PR #2867 owns the canonical built-in user-role mutation contract:
 - typed `rbac.user_role_replaced` and `rbac.user_role_assignment_repaired` events;
 - relation, generation, and event in one caller transaction.
 
-Draft PR #2866 is strictly additive and contains four remaining P1 corrections:
+Draft PR #2870 supersedes closed PR #2866 and carries the active `cycle-001/core-rbac`
+source work:
 
 1. remove mutation methods from `PermissionResolver` and
    `RuntimePermissionResolver`, plus `RoleAssignmentStore` and the server direct-store
@@ -46,13 +48,18 @@ Draft PR #2866 is strictly additive and contains four remaining P1 corrections:
    in one RBAC owner transaction;
 3. compare requested status to the locked user row and skip user-row update,
    generation, session revocation, and fan-out for exact role/status replay;
-4. add an incremental PostgreSQL/SQLite migration that cleans malformed artifact grant
-   and operation rows and enforces tenant, role, actor, catalog, parent-update, parent-
-   delete, and referenced-catalog identity integrity at the database boundary.
+4. replace locale-bearing artifact permission identity rows with one immutable,
+   language-neutral definition plus owner translations;
+5. bind grants and idempotency receipts to the exact artifact permission definition and
+   enforce concurrency-safe tenant-composite role/user and permission foreign keys;
+6. remove the superseded corrective trigger migration and keep the unreleased schema
+   correction in the canonical artifact migrations;
+7. remove legacy compatibility wording from the only new-user role initialization path
+   and replace a broad event-contract lint allowance with a narrow documented
+   expectation.
 
-Historical drafts #2843, #2847, and #2863 were cross-linked and closed without merge on
-2026-08-01 after their unique corrections were reconciled into #2866. They must not be
-reopened or merged in addition to #2866.
+Historical drafts #2843, #2847, #2863, and #2866 are superseded and must not be reopened
+or merged in parallel with #2870.
 
 ## FFA/FBA boundary
 
@@ -74,42 +81,51 @@ reopened or merged in addition to #2866.
 - [x] Enforce cross-tenant base `user_roles` and `role_permissions` integrity.
 - [ ] Execute focused API/server and live negative transport gates.
 
-### Canonical user-role mutation — merged source-ready in #2867
+### Canonical user-role mutation — source-ready
 
 - [x] Keep canonical role policy in `rustok-rbac`.
 - [x] Lock target and continuity facts in the server transaction.
 - [x] Distinguish exact no-op, relation repair, and role replacement.
-- [x] Publish typed role mutation event with the same durable generation.
+- [x] Publish typed role mutation events with the same durable generation.
 - [x] Roll back relation, user row, generation, and event on required publication failure.
 - [x] Preserve exact role replay as no relation mutation, generation, or event.
-- [x] In draft #2866, also preserve exact status replay as no user-row update,
-  generation, session revocation, or fan-out.
-- [ ] Execute owner policy, server adapter, Outbox, and effective-status tests.
+- [x] Preserve exact status replay as no user-row update, generation, session revocation,
+  or fan-out.
+- [x] Confine initial role assignment to caller-owned user creation; existing-user
+  mutations use explicit transactional or committed entrypoints.
+- [ ] Execute owner policy, server adapter, Outbox, effective-status, and architecture
+  guard tests.
 
-### Resolver ownership — source complete in draft #2866
+### Resolver ownership — source complete in draft #2870
 
 - [x] Make `PermissionResolver` and `RuntimePermissionResolver` read-only.
 - [x] Remove `RoleAssignmentStore` and the server-owned direct persistence adapter.
-- [x] Retain no deprecated alias, compatibility mutation path, or local-only
+- [x] Retain no deprecated mutation alias, compatibility path, or local-only
   invalidation bypass.
-- [ ] Land and execute #2866.
+- [ ] Land and execute #2870.
 
-### Artifact permission mutation and events — source complete in draft #2866
+### Artifact permission identity, mutation, and events — source complete in draft #2870
 
 - [x] Add sealed `rbac.artifact_role_permission.assignment_changed` v1.
+- [x] Include exact `artifact_permission_id` in grants, receipts, authorization queries,
+  and events.
 - [x] Keep command validation, idempotency, state-change detection, and publication in
   the RBAC owner.
-- [x] Preserve stable typed role/catalog errors by validating before receipt insert.
+- [x] Preserve stable typed role/permission errors by validating before receipt insert.
 - [x] Publish mutation, receipt, relation, and event in one transaction.
 - [x] Emit no event for exact retry or state no-op.
 - [x] Roll back on required Outbox failure.
 - [x] Declare the RBAC -> Outbox module dependency consistently.
-- [x] Clean legacy malformed grant and receipt rows during incremental migration.
-- [x] Enforce role/actor tenant and admitted catalog scope on grant and receipt writes.
-- [x] Guard parent role/user tenant changes and deletes that would orphan artifact state.
-- [x] Keep referenced catalog identity immutable while allowing label/description upsert.
-- [x] Add SQLite cleanup, valid-write, cross-tenant, parent-change, and catalog guards.
-- [x] Add a fail-closed source verifier for migration registration and owner ordering.
+- [x] Store language-neutral permission definitions separately from localized labels and
+  descriptions; use `VARCHAR(32)` locale storage.
+- [x] Enforce tenant-composite role and actor identity plus immutable permission parent
+  identity through real foreign keys.
+- [x] Prevent concurrent parent update/delete from committing orphan grants or receipts.
+- [x] Remove the trigger-only corrective migration instead of preserving two schema paths.
+- [x] Add SQLite valid-write, cross-tenant, orphan, parent-change, deletion, translation,
+  and exact-event-identity regression coverage.
+- [x] Add fail-closed source verifiers for canonical migration registration, owner
+  ordering, exact event identity, and removed paths.
 - [ ] Generate and review the exact-head event digest.
 - [ ] Execute contract, owner transaction, SQLite, PostgreSQL, adapter, source verifier,
   migration rollback, and module gates.
@@ -129,13 +145,12 @@ reopened or merged in addition to #2866.
 
 ### P0. Exact-head verification
 
-- [x] Rebuild #2866 as one commit on the latest `main` after the migration packet.
 - [ ] Generate and review the artifact event contract digest.
 - [ ] Run formatting, Events/RBAC/Admin/server compilation, Clippy, focused Rust/Node
-  tests, and module validate/test on that exact head.
-- [ ] Run the new SQLite migration proof and a real PostgreSQL apply/integrity/rollback
-  target on the same revision.
-- [ ] Resolve every failure before claiming verification.
+  tests, and module validate/test on the final exact head.
+- [ ] Run the canonical SQLite proof and a real PostgreSQL apply/integrity/concurrency/
+  rollback target on the same revision.
+- [ ] Resolve every product failure before claiming verification.
 
 ### P0. Runtime evidence
 
@@ -147,10 +162,9 @@ reopened or merged in addition to #2866.
 
 ### P1. Operator parity and lifecycle
 
-- [x] Cross-link and close #2843/#2847/#2863 as superseded without merge.
-- [ ] Land #2866 without restoring the superseded branches.
-- [ ] Define cleanup ordering for hard role/user/tenant deletion before referenced
-  artifact grants or operation receipts can be removed.
+- [x] Close superseded draft #2866 without merge and continue only in #2870.
+- [ ] Define deletion ordering for role/user/tenant teardown before referenced artifact
+  grants or operation receipts are intentionally removed.
 - [ ] Decide whether remote/headless role management is required.
 - [ ] Define custom-role and arbitrary permission mutation ownership.
 - [ ] Route native operator management through owner policy without host-owned relation
@@ -194,13 +208,15 @@ cargo xtask module validate rbac
 cargo xtask module test rbac
 ```
 
-No command above was executed in this connector-only source slice.
+No command above was executed in the connector-only source slice. GitHub workflow
+results are recorded only after the corresponding exact-head jobs finish.
 
 ## Completion gates
 
 - Source-ready becomes verified only after exact-head commands pass.
 - Artifact event review requires the generated digest.
-- Artifact relation integrity requires retained SQLite and PostgreSQL execution.
+- Artifact relation integrity requires retained SQLite and PostgreSQL execution,
+  including the parent-delete concurrency probe.
 - Durable invalidation requires retained PostgreSQL/watchdog/Redis/CLI evidence.
 - FBA remains `boundary_ready`; FFA and `core/rbac` remain `in_progress`.
 
@@ -208,11 +224,11 @@ No command above was executed in this connector-only source slice.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-08-01`
-- Scope inspected: `merged owner role mutation policy/events; effective status replay; read-only resolver ownership; artifact permission transaction event; artifact relation database integrity; durable invalidation and recovery packets`
-- Findings: `P0=1, P1=4, P2=0, P3=0`
-- Fixed in this pass: `draft PR #2866 is reconciled atop merged #2867. It removes resolver mutation composition, adds transactional artifact role-permission events, prevents exact status or role/status replay from updating the user row or advancing authorization state, and adds an incremental PostgreSQL/SQLite integrity migration for artifact grants and operation receipts. The migration cleans legacy malformed rows, enforces tenant-bound role/actor/catalog identity, protects parent changes, and keeps typed role/catalog errors by validating before receipt insertion. Historical drafts #2843, #2847, and #2863 were closed without merge. The branch is reconstructed as one commit on the latest main.`
-- Remaining risks or blockers: `#2866 is source-only and lacks the generated artifact event digest. Formatting, compilation, focused tests, SQLite/PostgreSQL migration execution, Node/module gates, live transports, retained #2849/#2853/#2856/#2862 execution, incident evidence, native operator parity, and FFA/FBA evidence remain absent. Hard-deletion cleanup ordering for referenced artifact receipts must be defined. Issue #2740 remains the known Rust-host PostgreSQL fixture blocker.`
-- Evidence: `source review confirms the new migration is registered after artifact tables, cleanup precedes trigger creation, SQLite up/down inventories are symmetric, validation precedes receipt insertion, DB triggers cover grant/receipt writes plus role/user/catalog parent changes, and the branch is one commit zero behind current main. No execution evidence is claimed.`
-- Next action: `generate and review the artifact event digest, then run exact-head compile/test/verifier/module and SQLite/PostgreSQL migration gates`
-- Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite && cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard && cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard && node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Last verified at (UTC): `2026-08-03`
+- Scope inspected: `resolver ownership; canonical user-role mutation entrypoints; effective status replay; artifact permission storage identity; tenant/concurrency integrity; transactional Outbox event identity; event-contract lint policy`
+- Findings: `P0=0, P1=2, P2=0, P3=2`
+- Fixed in this pass: `draft PR #2870 replaces closed #2866. The pass fixes the trigger-only parent-delete race by binding grant and receipt rows to tenant-composite role/user parents and an exact immutable artifact permission definition through foreign keys. It moves localized permission copy out of the authorization identity row into owner translations with VARCHAR(32) locale storage, removes the superseded corrective migration, propagates artifact_permission_id through authorization and the sealed event, adds SQLite and source regressions, removes compatibility wording from new-user role initialization, and replaces a broad lint allowance with a narrow documented expectation.`
+- Remaining risks or blockers: `#2870 remains draft and source-only. The generated event digest, formatting, compilation, focused tests, canonical SQLite execution, real PostgreSQL apply/integrity/concurrency/rollback evidence, Node/module gates, live negative transports, retained #2849/#2853/#2856/#2862 execution, incident evidence, native operator parity, and FFA/FBA evidence remain absent. Deliberate hard-deletion ordering for referenced artifact grants and receipts remains an explicit P1 lifecycle decision. Issue #2740 remains the known Rust-host PostgreSQL fixture blocker until a current workflow proves otherwise.`
+- Evidence: `static source inspection confirms one language-neutral definition row per scope/installation/key, owner-local translations, exact artifact_permission_id propagation, composite role/user foreign keys, permission-parent foreign keys, no corrective migration registration, transaction-local event publication with rollback on failure, and fail-closed regression/verifier coverage. No local or database execution evidence is claimed.`
+- Next action: `review current exact-head workflow failures, generate and commit the event digest, execute targeted compile/test/verifier/module gates, then run real PostgreSQL integrity and concurrency evidence before considering merge`
+- Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite && cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard && cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard && cargo test -p rustok-server --test rbac_mutation_api_architecture_guard && node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
