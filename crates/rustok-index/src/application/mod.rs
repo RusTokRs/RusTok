@@ -1,5 +1,6 @@
 mod aggregate_ordering;
 mod cursor;
+mod drift_digest;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
@@ -34,11 +35,18 @@ mod source_replay_tests;
 
 pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
+pub use drift_digest::{
+    IndexDriftDependencyFailure, IndexDriftDependencyFailureKind, IndexDriftDigestError,
+    IndexDriftDigestMismatch, IndexDriftDigestOutcome, IndexDriftDigestProducer,
+    IndexDriftDigestRequest, IndexDriftEntityState, IndexDriftMismatchReceipt,
+    IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder, IndexDriftSnapshotBoundary,
+    IndexDriftSnapshotPair, IndexDriftSnapshotReader, IndexDriftSnapshotView,
+};
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
-    IndexMutationEventCatalog, IndexMutationEventDelivery, IndexMutationEventDescriptor,
-    IndexMutationEventError, IndexMutationEventProcessError, IndexMutationEventProcessOutcome,
-    IndexMutationEventWorker, IndexMutationEventAcknowledger, SharedIndexMutationEventRegistry,
+    IndexMutationEventAcknowledger, IndexMutationEventCatalog, IndexMutationEventDelivery,
+    IndexMutationEventDescriptor, IndexMutationEventError, IndexMutationEventProcessError,
+    IndexMutationEventProcessOutcome, IndexMutationEventWorker, SharedIndexMutationEventRegistry,
     materialize_index_mutation_event_registry, register_index_mutation_event,
 };
 pub use planner::{
@@ -47,14 +55,12 @@ pub use planner::{
 };
 pub use postgres_compiler::{
     CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
-    CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError,
-    PostgresQueryCompileError,
+    CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError, PostgresQueryCompileError,
 };
 pub use postgres_query_result::{
     CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow,
     IndexNestedRelationItem, IndexNestedRelationProjection, IndexProjectedValue, IndexQueryItem,
-    IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError,
-    PostgresQueryPageBuildError,
+    IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError, PostgresQueryPageBuildError,
 };
 pub use query_port::{
     IndexQueryExecutionError, IndexQueryPort, PersistedSchemaReadinessFailure,
@@ -63,9 +69,7 @@ pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
 };
-pub use source_event_id::{
-    IndexSourceEventIdError, derive_index_source_event_id,
-};
+pub use source_event_id::{IndexSourceEventIdError, derive_index_source_event_id};
 pub use source_registry::{
     IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
     IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
@@ -74,9 +78,8 @@ pub use source_registry::{
 };
 pub use source_replay::{
     IndexReplayCheckpoint, IndexReplayCheckpointKey, IndexReplayCheckpointStore, IndexReplayError,
-    IndexReplayFailure, IndexReplayFailureKind, IndexReplayMutationOutcome,
-    IndexReplayMutationSink, IndexReplayPageOutcome, IndexReplayPageRequest,
-    IndexReplayPageStatus, IndexReplayWorker,
+    IndexReplayFailure, IndexReplayFailureKind, IndexReplayMutationOutcome, IndexReplayMutationSink,
+    IndexReplayPageOutcome, IndexReplayPageRequest, IndexReplayPageStatus, IndexReplayWorker,
 };
 pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,
