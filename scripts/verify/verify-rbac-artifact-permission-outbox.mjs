@@ -30,6 +30,13 @@ function forbidMarker(text, marker, description) {
   if (found) failures.push(description);
 }
 
+function between(text, start, end) {
+  const startIndex = text.indexOf(start);
+  if (startIndex < 0) return "";
+  const endIndex = text.indexOf(end, startIndex + start.length);
+  return endIndex < 0 ? text.slice(startIndex) : text.slice(startIndex, endIndex);
+}
+
 const paths = {
   modules: "modules.toml",
   modulesExample: "modules.toml.example",
@@ -92,9 +99,11 @@ for (const marker of [
   "pub trait ArtifactPermissionEventPublisher",
   "transaction: &DatabaseTransaction",
   "event_publisher: Arc<dyn ArtifactPermissionEventPublisher>",
+  "pub artifact_permission_id: Uuid",
+  "command.artifact_permission_id.is_nil()",
   "resolve_artifact_permission_identity(&transaction, &command).await?",
-  "struct ArtifactPermissionIdentity",
-  "scope_key: String",
+  "WHERE id = {artifact_permission_id}",
+  "command.artifact_permission_id.into()",
   "insert_operation(&transaction, &artifact_permission, &command)",
   "grant_permission(&transaction, &artifact_permission, &command)",
   "assignment_event(operation_id, artifact_permission.id, &command)",
@@ -106,8 +115,12 @@ for (const marker of [
   "transaction.commit().await.map_err(database_error)?",
   "then_some(operation_id)",
   "Ok(result.rows_affected() == 1)",
-]) requireMarker(content.owner, marker, `${paths.owner}: transactional owner path missing ${marker}`);
-forbidMarker(content.owner, "rustok_outbox", `${paths.owner}: owner must not import concrete Outbox types`);
+]) requireMarker(content.owner, marker, `${paths.owner}: transactional exact-identity owner path missing ${marker}`);
+for (const forbidden of [
+  "rustok_outbox",
+  "ORDER BY CASE WHEN scope_key",
+  "WHERE installation_id = {installation_id} AND permission_key = {permission_key}",
+]) forbidMarker(content.owner, forbidden, `${paths.owner}: obsolete or concrete path returned: ${forbidden}`);
 
 const changedIndex = content.owner.indexOf("if changed");
 const publishIndex = content.owner.indexOf(".publish_assignment_changed(", changedIndex);
@@ -121,33 +134,44 @@ if (!(existingIndex >= 0 && existingIndex < publishIndex)) {
   failures.push(`${paths.owner}: exact retry lookup must precede event publication`);
 }
 
+const requestBlock = between(
+  content.host,
+  "pub(crate) struct ArtifactRolePermissionAssignmentRequest {",
+  "pub(crate) struct ArtifactRolePermissionAssignmentResponse",
+);
+for (const marker of ["pub artifact_permission_id: Uuid", "pub idempotency_key: String"]) {
+  requireMarker(requestBlock, marker, `${paths.host}: request must carry ${marker}`);
+}
+for (const forbidden of ["pub installation_id:", "pub permission_key:"]) {
+  forbidMarker(requestBlock, forbidden, `${paths.host}: mutation request must not use ambiguous selector ${forbidden}`);
+}
 for (const marker of [
   "TransactionalOutboxArtifactPermissionEventPublisher",
   "impl ArtifactPermissionEventPublisher",
   ".publish_contract_in_tx(",
   "transactional_event_bus_from_context",
-  "Arc::new(TransactionalOutboxArtifactPermissionEventPublisher::new(",
   "RbacArtifactPermissionAssignmentService::new(ctx.db_clone(), event_publisher)",
+  "artifact_permission_id: input.artifact_permission_id",
   "transactional_outbox_adapter_writes_typed_event",
-  "artifact_permission_id: Uuid::new_v4()",
   '"rbac.artifact_role_permission.assignment_changed"',
-]) requireMarker(content.host, marker, `${paths.host}: host Outbox adapter missing ${marker}`);
+]) requireMarker(content.host, marker, `${paths.host}: host exact-identity Outbox adapter missing ${marker}`);
 
 for (const marker of [
-  "impl ArtifactPermissionEventPublisher for SqliteArtifactPermissionEventPublisher",
-  "artifact_permission_id",
-  "permission_scope_key",
+  "artifact_permission_id: Uuid",
+  "ArtifactRolePermissionAssignmentCommand {",
   "only_state_changes_publish_artifact_permission_events",
-  "assert_eq!(persisted_scope, format!(\"tenant:{tenant_id}\"))",
+  "exact_identity_mutation_does_not_shadow_platform_or_tenant_definition",
+  "grant exact permission identity",
+  "revoke exact platform identity",
+  "revoke exact tenant identity",
+  "assert_eq!(remaining_id, tenant_permission_id)",
   "assert_eq!(event_permission_id, artifact_permission_id)",
-  "assert_eq!(event_grants(&db).await, vec![true])",
-  "assert_eq!(event_grants(&db).await, vec![true, false])",
+  "assert_eq!(event_grants(&db).await, vec![true, true, false, false])",
   "publication_failure_rolls_back_grant_and_idempotency_receipt",
-  "publisher failure must fail closed",
   'table_count(&db, "rbac_artifact_role_permissions")',
   'table_count(&db, "rbac_artifact_role_permission_operations")',
   'table_count(&db, "rbac_artifact_permission_events")',
-]) requireMarker(content.integrationTest, marker, `${paths.integrationTest}: executable owner regression missing ${marker}`);
+]) requireMarker(content.integrationTest, marker, `${paths.integrationTest}: executable exact-identity owner regression missing ${marker}`);
 forbidMarker(content.integrationTest, "rustok_outbox", `${paths.integrationTest}: owner regression must remain transport-neutral`);
 
 if (failures.length > 0) {
