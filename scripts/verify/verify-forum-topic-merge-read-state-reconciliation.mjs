@@ -9,6 +9,7 @@ const docsPath =
   "crates/rustok-forum/docs/forum-21d-topic-merge-read-state-reconciliation.md";
 const entityPath =
   "crates/rustok-forum/src/entities/forum_topic_merge_read_state_reconciliation.rs";
+const topicEntityPath = "crates/rustok-forum/src/entities/forum_topic.rs";
 const entitiesModPath = "crates/rustok-forum/src/entities/mod.rs";
 const errorPath = "crates/rustok-forum/src/error.rs";
 const libPath = "crates/rustok-forum/src/lib.rs";
@@ -41,6 +42,7 @@ function includesAll(text, markers, label) {
 const contract = JSON.parse(read(contractPath));
 const docs = read(docsPath);
 const entity = read(entityPath);
+const topicEntity = read(topicEntityPath);
 const entitiesMod = read(entitiesModPath);
 const error = read(errorPath);
 const lib = read(libPath);
@@ -196,12 +198,19 @@ includesAll(
   [
     "lock_active_topic_read_state_write_in_tx(&txn, tenant_id, topic_id).await?;",
     "lock_topic_read_state_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;",
-    "forum_topic::Column::DeletedAt.is_null()",
     "forum_topic::Column::Status.ne(TopicStatus::Archived)",
     "lock_active_topic_read_state_writes_in_tx(&txn, tenant_id, &topic_ids).await?;",
     "lock_topic_read_state_scopes_in_tx(&txn, tenant_id, &topic_ids).await?;",
   ],
   "raw read tracking",
+);
+assert.ok(
+  !topicEntity.includes("pub deleted_at:"),
+  "forum topic entity must not expose a nonexistent deleted_at field",
+);
+assert.ok(
+  !readTracking.includes("forum_topic::Column::DeletedAt"),
+  "raw read tracking must not reference the nonexistent forum topic DeletedAt column",
 );
 const singleTopicLock = readTracking.indexOf(
   "lock_active_topic_read_state_write_in_tx(&txn, tenant_id, topic_id).await?;",
@@ -229,13 +238,16 @@ assert.ok(bulkScopeLock < bulkHighWater);
 includesAll(
   readTrackingAudience,
   [
-    "forum_topic::Column::DeletedAt.is_null()",
     "forum_topic::Column::Status.ne(TopicStatus::Archived)",
     "lock_active_topic_read_state_writes_in_tx(",
     "lock_topic_read_state_scopes_in_tx(&write_txn, tenant_id, &visible_topic_ids)",
     "latest_public_positions_in_tx(&write_txn, tenant_id, &visible_topic_ids)",
   ],
   "visibility-scoped read tracking",
+);
+assert.ok(
+  !readTrackingAudience.includes("forum_topic::Column::DeletedAt"),
+  "visibility-scoped read tracking must not reference the nonexistent forum topic DeletedAt column",
 );
 assert.ok(
   readTrackingAudience.indexOf("lock_active_topic_read_state_writes_in_tx(") <
