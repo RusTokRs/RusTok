@@ -47,11 +47,17 @@ jobs:
           path.write_text(text.replace(old, new, 1))
           PY
 
-      - name: Verify append-only migration tail
+      - name: Diagnose current base lock and verify migration tail
         env:
           RUSTUP_TOOLCHAIN: 1.96.0
           CARGO_INCREMENTAL: 0
-        run: cargo test --locked -p rustok-migrations migrator_preserves_append_only_migration_tail
+        run: |
+          cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail
+          if ! git diff --quiet -- Cargo.lock; then
+            echo "::error::current main Cargo.lock is stale; generated diff follows"
+            git diff -- Cargo.lock
+            exit 1
+          fi
 
       - name: Commit verified migration prefix fix
         run: |
