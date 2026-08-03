@@ -15,12 +15,25 @@ use uuid::Uuid;
 const MAX_PERMISSION_KEY_LENGTH: usize = 256;
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 128;
 
-/// An explicit role grant or revocation for one exact admitted artifact permission.
+/// Explicit admitted scope selected by an operator-facing mutation.
+///
+/// Tenant scope always resolves against the trusted command tenant. Callers cannot
+/// supply a second tenant identifier or rely on platform/tenant precedence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactPermissionAssignmentScope {
+    Platform,
+    Tenant,
+}
+
+/// An explicit role grant or revocation for one admitted artifact permission.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactRolePermissionAssignmentCommand {
     pub tenant_id: Uuid,
     pub role_id: Uuid,
-    pub artifact_permission_id: Uuid,
+    pub scope: ArtifactPermissionAssignmentScope,
+    pub installation_id: Uuid,
+    pub permission_key: String,
     pub actor_id: Uuid,
     pub granted: bool,
     pub idempotency_key: String,
@@ -42,7 +55,7 @@ pub enum ArtifactPermissionAssignmentError {
     IdempotencyConflict,
     #[error("role does not exist in the requested tenant")]
     RoleNotFound,
-    #[error("artifact permission identity is not registered for the requested tenant scope")]
+    #[error("artifact permission is not registered for the requested explicit scope")]
     PermissionNotRegistered,
     #[error("artifact permission assignment storage failed: {0}")]
     Database(String),
@@ -220,13 +233,14 @@ fn validate_command(
 ) -> Result<(), ArtifactPermissionAssignmentError> {
     if command.tenant_id.is_nil()
         || command.role_id.is_nil()
-        || command.artifact_permission_id.is_nil()
+        || command.installation_id.is_nil()
         || command.actor_id.is_nil()
     {
         return Err(ArtifactPermissionAssignmentError::InvalidCommand(
-            "tenant, role, artifact permission, and actor identities must be present",
+            "tenant, role, installation, and actor identities must be present",
         ));
     }
+    validate_permission_key(&command.permission_key)?;
     validate_text_token(
         &command.idempotency_key,
         MAX_IDEMPOTENCY_KEY_LENGTH,
@@ -251,6 +265,13 @@ fn validate_text_token(
         return Err(ArtifactPermissionAssignmentError::InvalidCommand(label));
     }
     Ok(())
+}
+
+fn scope_key(scope: ArtifactPermissionAssignmentScope, tenant_id: Uuid) -> String {
+    match scope {
+        ArtifactPermissionAssignmentScope::Platform => "platform".to_string(),
+        ArtifactPermissionAssignmentScope::Tenant => format!("tenant:{tenant_id}"),
+    }
 }
 
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermissionAssignmentError> {
@@ -370,18 +391,19 @@ async fn resolve_artifact_permission_identity(
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> Result<ArtifactPermissionIdentity, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
-    let tenant_scope = format!("tenant:{}", command.tenant_id);
+    let requested_scope_key = scope_key(command.scope, command.tenant_id);
     let sql = placeholders(
         backend,
-        "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE id = {artifact_permission_id} AND (scope_key = 'platform' OR scope_key = {tenant_scope}) LIMIT 1",
+        "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
     );
     transaction
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                command.artifact_permission_id.into(),
-                tenant_scope.into(),
+                requested_scope_key.into(),
+                command.installation_id.into(),
+                command.permission_key.clone().into(),
             ],
         ))
         .await
@@ -505,11 +527,13 @@ fn database_error(error: impl std::fmt::Display) -> ArtifactPermissionAssignment
 mod tests {
     use super::*;
 
-    fn command() -> ArtifactRolePermissionAssignmentCommand {
+    fn command(scope: ArtifactPermissionAssignmentScope) -> ArtifactRolePermissionAssignmentCommand {
         ArtifactRolePermissionAssignmentCommand {
             tenant_id: Uuid::new_v4(),
             role_id: Uuid::new_v4(),
-            artifact_permission_id: Uuid::new_v4(),
+            scope,
+            installation_id: Uuid::new_v4(),
+            permission_key: "sample.events.handle".to_string(),
             actor_id: Uuid::new_v4(),
             granted: true,
             idempotency_key: "grant-1".to_string(),
@@ -517,25 +541,47 @@ mod tests {
     }
 
     #[test]
-    fn assignment_validation_rejects_nil_artifact_permission_identity() {
-        let mut command = command();
-        command.artifact_permission_id = Uuid::nil();
+    fn assignment_validation_rejects_nil_installation_and_invalid_key() {
+        let mut invalid_installation = command(ArtifactPermissionAssignmentScope::Tenant);
+        invalid_installation.installation_id = Uuid::nil();
         assert!(matches!(
-            validate_command(&command),
+            validate_command(&invalid_installation),
             Err(ArtifactPermissionAssignmentError::InvalidCommand(
-                "tenant, role, artifact permission, and actor identities must be present"
+                "tenant, role, installation, and actor identities must be present"
+            ))
+        ));
+
+        let mut invalid_key = command(ArtifactPermissionAssignmentScope::Tenant);
+        invalid_key.permission_key = " sample.events.handle".to_string();
+        assert!(matches!(
+            validate_command(&invalid_key),
+            Err(ArtifactPermissionAssignmentError::InvalidCommand(
+                "permission key"
             ))
         ));
     }
 
     #[test]
+    fn assignment_scope_uses_trusted_tenant_without_fallback() {
+        let tenant_id = Uuid::new_v4();
+        assert_eq!(
+            scope_key(ArtifactPermissionAssignmentScope::Platform, tenant_id),
+            "platform"
+        );
+        assert_eq!(
+            scope_key(ArtifactPermissionAssignmentScope::Tenant, tenant_id),
+            format!("tenant:{tenant_id}")
+        );
+    }
+
+    #[test]
     fn exact_operation_retry_is_not_applied_twice() {
-        let command = command();
+        let command = command(ArtifactPermissionAssignmentScope::Tenant);
         let artifact_permission = ArtifactPermissionIdentity {
-            id: command.artifact_permission_id,
-            scope_key: format!("tenant:{}", command.tenant_id),
-            installation_id: Uuid::new_v4(),
-            permission_key: "sample.events.handle".to_string(),
+            id: Uuid::new_v4(),
+            scope_key: scope_key(command.scope, command.tenant_id),
+            installation_id: command.installation_id,
+            permission_key: command.permission_key.clone(),
         };
         let result = match_operation(
             StoredOperation {
@@ -554,13 +600,13 @@ mod tests {
 
     #[test]
     fn assignment_event_retains_operation_and_exact_permission_identity() {
-        let command = command();
+        let command = command(ArtifactPermissionAssignmentScope::Platform);
         let operation_id = Uuid::new_v4();
         let artifact_permission = ArtifactPermissionIdentity {
-            id: command.artifact_permission_id,
+            id: Uuid::new_v4(),
             scope_key: "platform".to_string(),
-            installation_id: Uuid::new_v4(),
-            permission_key: "sample.events.handle".to_string(),
+            installation_id: command.installation_id,
+            permission_key: command.permission_key.clone(),
         };
         assert_eq!(
             assignment_event(operation_id, &artifact_permission, &command),
