@@ -74,7 +74,7 @@ pub enum ForumError {
     TopicMergeAudienceReconciliationConflict(Uuid),
 
     #[error("Forum topic merge audience layers require explicit resolution")]
-    TopicMergeAudiencePolicyConflict,
+    TopicMergeAudiencePolicyConflict(Uuid),
 
     #[error("Forum topic merge read-state reconciliation conflicts with an existing command: {0}")]
     TopicMergeReadStateReconciliationConflict(Uuid),
@@ -159,7 +159,7 @@ impl ForumError {
             Self::TopicMergeAudienceReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"
             }
-            Self::TopicMergeAudiencePolicyConflict => {
+            Self::TopicMergeAudiencePolicyConflict(_) => {
                 "FORUM_TOPIC_MERGE_AUDIENCE_POLICY_CONFLICT"
             }
             Self::TopicMergeReadStateReconciliationConflict(_) => {
@@ -204,7 +204,7 @@ impl From<sea_orm::DbErr> for ForumError {
     fn from(error: sea_orm::DbErr) -> Self {
         let message = error.to_string();
         if message.contains("forum topic merge audience policy conflict") {
-            return Self::TopicMergeAudiencePolicyConflict;
+            return Self::TopicMergeAudiencePolicyConflict(Uuid::nil());
         }
         if message.contains("forum category does not allow topic creation") {
             return Self::Validation("Forum category does not allow topic creation".to_string());
@@ -222,7 +222,7 @@ impl From<sea_orm::DbErr> for ForumError {
         }
         if message.contains("Forum category color") {
             return Self::Validation(
-                "Forum category color must use #RGB, #RGBA, #RRGGBBAA, or #RRGGBBAA".to_string(),
+                "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string(),
             );
         }
         Self::Database(error)
