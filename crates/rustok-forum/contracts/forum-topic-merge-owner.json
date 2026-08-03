@@ -15,7 +15,8 @@
     "m20260801_000010_add_forum_topic_merge_operations",
     "m20260803_000016_add_forum_topic_merge_solution_policy",
     "m20260803_000017_add_forum_topic_canonical_resolution",
-    "m20260803_000018_add_forum_topic_merge_solution_resolution"
+    "m20260803_000018_add_forum_topic_merge_solution_resolution",
+    "m20260803_000019_allow_cross_category_topic_merge_redirect_edges"
   ],
   "receipt_table": "forum_topic_merge_operations",
   "semantic_event": {
@@ -109,9 +110,12 @@
     "same_category_counter_behavior_changed": false,
     "source_category_is_added_to_cross_category_invalidations": true,
     "category_invalidations_are_deduplicated": true,
+    "redirect_edge_migration": "m20260803_000019_allow_cross_category_topic_merge_redirect_edges",
+    "source_category_may_differ_from_receipt_category": true,
+    "target_category_must_equal_receipt_category": true,
     "receipt_schema_changed": false,
     "event_contract_changed": false,
-    "migration_added": false
+    "migration_added": true
   },
   "canonical_resolution": {
     "source_of_truth": "forum_topic_merge_operations",
@@ -193,7 +197,7 @@
     "reason counts and position offset are bounded",
     "receipt updates and deletes are rejected for PostgreSQL and SQLite",
     "one unique receipt edge exists per tenant source topic",
-    "a new canonical edge requires an archived locked non-deleted zero-reply source tombstone and a non-deleted non-archived target in the receipt target category",
+    "a new canonical edge requires an archived locked non-deleted zero-reply source tombstone in any tenant category and a non-deleted non-archived target in the receipt target category",
     "forum solution insert update and delete serialize through deterministic topic rows and solution scope 31",
     "forum solution insert or owner-key update requires an active non-deleted topic and an approved non-deleted reply owned by that topic",
     "exact negative solution statistics use a conditional atomic update requiring solution_count greater than zero",
