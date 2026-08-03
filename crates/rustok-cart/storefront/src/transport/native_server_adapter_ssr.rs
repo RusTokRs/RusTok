@@ -412,13 +412,16 @@ fn pricing_error(
 }
 
 fn missing_variant_error(tenant_id: Uuid, cart_id: Uuid, line_item_id: Uuid) -> ServerFnError {
+    let tenant_id_non_nil = !tenant_id.is_nil();
+    let cart_id_non_nil = !cart_id.is_nil();
+    let line_item_id_non_nil = !line_item_id.is_nil();
     tracing::error!(
         owner = "rustok_cart",
         owner_operation = "decrement_line_item",
         consumer = CART_STOREFRONT_NATIVE_OWNER,
-        tenant_id = %tenant_id,
-        cart_id = %cart_id,
-        line_item_id = %line_item_id,
+        tenant_id_non_nil,
+        cart_id_non_nil,
+        line_item_id_non_nil,
         code = "cart.storefront_line_item_variant_missing",
         boundary = CART_STOREFRONT_NATIVE_BOUNDARY,
         "cart storefront line item is missing variant identity"
