@@ -51,7 +51,8 @@
     "missing_and_forbidden_responses_have_no_location": true,
     "cache_control": "private, no-store",
     "middleware_is_scoped_to_get_only": true,
-    "put_delete_and_other_mutations_follow_source_ids": false
+    "mutation_commands_follow_canonical_target": false,
+    "put_delete_and_other_mutations_are_unchanged": true
   },
   "error": {
     "variant": "TopicCanonicalResolutionConflict",
