@@ -88,6 +88,12 @@ The host page at `/dashboard/forum/merge` only resolves the authenticated
 session/tenant, loads the bounded candidate list and passes public package DTOs.
 Navigation is registry-driven and guarded by `forum_topics:manage`.
 
+The server-rendered page uses the session access token only for the initial
+candidate read. It never serializes that token into the client component. The
+client mutation sends only the routed tenant assertion through the same-origin
+`/api/rustok/graphql` proxy; the proxy restores the bearer token from the
+server-side authenticated session before forwarding the GraphQL request.
+
 Next-admin uses `crypto.randomUUID()` when available and a UUID-shaped fallback
 only for older runtimes. The operation identity stays stable across a failed
 request and rotates on command-shape changes. Package-owned English/Russian copy
