@@ -1,119 +1,133 @@
-# Payment collection owner admission context
+# Payment collection owner admission diagnostic safety
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice closes the owner-side structured-context gap for admission
-rejections in `PaymentCollectionPort`:
+This bounded source slice hardens only admission diagnostics in
+`PaymentCollectionPort`:
 
 - `create_or_reuse_collection` write-policy admission;
 - `create_or_reuse_collection` write-semantics admission;
 - `read_collection_status` read-policy admission.
 
-Before this slice, the port called `PortContext::require_policy` and
-`PortContext::require_write_semantics` directly with `?`. A rejection therefore
-returned the original `PortError`, but the payment owner did not record the
-available correlation, actor, channel, locale, deadline, exact owner operation,
-or the admission phase that rejected the request.
+The public operations, policy selection, write-semantics requirement, tenant parsing, owner
+service calls, and public `PortError` behavior remain unchanged.
 
-This slice is deliberately limited to payment collection admission. Tenant-id
-parsing, request validation, provider execution, collection lifecycle mapping,
-checkout consumers, compensation consumers, and transport adapters remain
-separate concerns.
+## Preserved admission flow
 
-## Delivered source contract
+`create_or_reuse_collection` still evaluates:
 
-Both public owner operations now select their canonical owner operation before
-admission:
+1. write policy;
+2. write semantics;
+3. tenant parsing;
+4. reusable collection lookup and owner execution.
 
-- `create_or_reuse_collection` uses `create_or_reuse_collection`;
-- `read_collection_status` uses `read_collection_status`.
+`read_collection_status` still evaluates:
 
-The write path delegates admission to a payment-owned helper that:
+1. read policy;
+2. tenant parsing;
+3. owner status read.
 
-1. requires `PortCallPolicy::write()`;
-2. records a rejection with admission phase `policy` before returning the
-   original `PortError`;
-3. requires write semantics;
-4. records a rejection with admission phase `write_semantics` before returning
-   the original `PortError`.
+The exact original admission `PortError` continues through `inspect_err` unchanged. The
+diagnostic helper does not construct a replacement code, message, kind, or retryability value.
 
-The read path delegates admission to a payment-owned helper that requires
-`PortCallPolicy::read()` and records phase `policy` before returning the original
-`PortError`.
+## Bounded diagnostic policy
 
-Admission diagnostics record:
+Admission diagnostics retain only bounded context and message-shape facts.
+
+The helper records one closed error-kind label:
+
+- `validation`;
+- `not_found`;
+- `conflict`;
+- `forbidden`;
+- `unavailable`;
+- `timeout`;
+- `invariant_violation`.
+
+Both severity paths retain:
 
 - truthful owner `rustok_payment`;
 - exact owner operation;
-- admission phase;
-- correlation id and tenant id;
-- actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- original error code, message, typed kind, and retryability;
-- boundary `payment_collection_port`.
+- exact admission phase `policy` or `write_semantics`;
+- boundary `payment_collection_port`;
+- correlation id;
+- stable original error code and retryability;
+- internal-message presence and character length;
+- tenant-id and actor-id character lengths;
+- closed actor-kind label;
+- claim and role counts;
+- channel presence and optional character length;
+- locale character length;
+- causation-id, traceparent, and idempotency-key presence plus optional character lengths;
+- optional deadline milliseconds.
 
-Unavailable, timeout, and invariant failures use error severity. Other
-admission rejections use warning severity.
+The helper does not record the complete admission `PortError`, human-readable internal message,
+raw tenant, actor, channel, locale, causation, traceparent, or idempotency values, or Debug
+`PortErrorKind` output.
+
+## Preserved severity
+
+Unavailable, timeout, and invariant-violation failures continue through `tracing::error!`.
+Validation, not-found, conflict, forbidden, and other ordinary admission rejections continue
+through `tracing::warn!`.
 
 ## Preserved behavior
 
 This slice does not change:
 
 - public `PaymentCollectionPort` trait signatures;
-- create/reuse request fields or status request identity;
-- status snapshot fields or typed status conversion;
-- write policy or write-semantics requirements;
-- read policy requirements;
-- tenant UUID parsing or its validation code/message;
-- reusable collection lookup by cart;
-- create-after-read behavior;
-- race adoption after a create error;
-- granular owner operation labels for existing lookup, race adoption, and
-  collection creation errors;
-- payment validation, not-found, lifecycle, provider, reconciliation,
-  configuration, or database `PortError` codes and public messages;
-- provider ids or provider operation diagnostics;
-- retryability values;
-- checkout payment execution or compensation consumer behavior;
-- FBA, FFA, or ecommerce audit status.
-
-Admission helpers return the same original `PortError` produced by
-`PortContext`; they only emit structured diagnostics before propagation.
+- create/reuse or status request and response DTOs;
+- canonical owner operation selection;
+- read/write policy selection;
+- write-semantics requirements;
+- admission-before-tenant-parsing ordering;
+- tenant UUID parsing or its validation envelope;
+- reusable collection lookup, create, or race-adoption behavior;
+- collection status reads or snapshot conversion;
+- `PaymentError` variant mapping;
+- provider, lifecycle, reconciliation, configuration, or database public envelopes;
+- checkout execution or compensation consumers;
+- Commerce orchestration;
+- ecommerce audit, Payment FFA, or Payment FBA status.
 
 ## Static evidence
 
-`scripts/verify/verify-payment-collection-admission-context.mjs` guards:
+The focused guard is:
 
-- stable payment owner and boundary identity;
-- canonical read and write owner operations;
-- operation selection before admission and tenant parsing;
-- read-policy admission without write semantics;
-- write-policy admission followed by write-semantics admission;
-- distinct `policy` and `write_semantics` diagnostic phases;
-- complete available `PortContext` fields;
-- original error code, message, typed kind, and retryability;
-- technical versus ordinary rejection severity;
-- existing create/read/race owner mappings;
-- unchanged status request and snapshot mapping;
-- stable payment public `PortError` messages;
-- absence of the old direct context-dropping admission paths.
+- `scripts/verify/verify-payment-collection-admission-context.mjs`.
 
-## Remaining gaps
+It requires:
 
-The master ecommerce correlation-safe mapper task remains open for:
+- one read and one write admission helper;
+- three preserved diagnostic call sites through `inspect_err`;
+- exact owner-operation and admission-phase attribution;
+- the closed error-kind classification;
+- bounded message and delegated-context facts;
+- technical-versus-ordinary severity;
+- original-error pass-through and admission-before-tenant ordering;
+- unchanged collection lookup, create, adoption, status-read, and snapshot behavior;
+- absence of complete errors, raw context values, raw message text, and Debug kind output inside
+  the covered helper.
 
-- payment tenant-context validation diagnostics;
-- remaining payment execution and compensation consumers;
-- storefront customer read consumers;
-- remaining order, fulfillment, inventory, customer, tax, and promotion
-  adapters;
-- non-`PortError` public envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
+Source evidence is recorded in:
 
-No architecture status is promoted from source-only evidence.
+- `crates/rustok-payment/contracts/evidence/payment-collection-admission-diagnostic-safety-source.json`.
+
+The evidence remains source-only: `execution` is empty and every validation flag is false.
+
+## Remaining diagnostic boundaries
+
+Tenant UUID parsing and canonical `PaymentError` mapping remain separate cleanup slices. The
+current tenant parser still records its complete parse cause, constructed `PortError`, raw
+context, message text, and Debug kind. The canonical mapper still contains raw validation,
+lifecycle, provider, identifier, database, and tenant diagnostics; some not-found public
+envelopes also still interpolate internal UUIDs.
+
+Compile, runtime, replay, restart, remote-port parity, workflows, CI, and production evidence
+remain open. The broad ecommerce correlation-safe mapper cleanup remains open, and no FFA/FBA
+status is promoted.
 
 ## Suggested maintainer checks
 
@@ -121,6 +135,7 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-payment-collection-admission-context.mjs
+node scripts/verify/verify-payment-collection-tenant-context.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-payment --lib
 ```
