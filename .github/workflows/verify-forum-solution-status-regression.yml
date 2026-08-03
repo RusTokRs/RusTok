@@ -1,0 +1,159 @@
+name: Verify Forum solution status regression
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/verify-forum-solution-status-regression.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-forum-solution-status-regression
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.event.pull_request.head.ref == 'fix/forum-topic-merge-solution-status-regression-20260803'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out regression branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/forum-topic-merge-solution-status-regression-20260803
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --no-self-update
+          rustup default 1.96.0
+
+      - name: Add solution-status regression
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          verifier_path = Path('scripts/verify/verify-forum-topic-merge-owner.mjs')
+          verifier = verifier_path.read_text()
+          source_anchor = '''assert.ok(!service.includes("Forum topic merge requires source and target topics in the same category"));
+          assert.ok(!service.includes("FORUM_TOPIC_MERGED_CROSS_CATEGORY_SCHEMA_VERSION"));'''
+          source_replacement = '''assert.ok(!service.includes("Forum topic merge requires source and target topics in the same category"));
+          assert.ok(service.includes("forum_reply::Column::Status.eq(ReplyStatus::Approved)"));
+          assert.ok(!service.includes("forum_reply::Column::DeletedAt"));
+          assert.ok(!service.includes("FORUM_TOPIC_MERGED_CROSS_CATEGORY_SCHEMA_VERSION"));'''
+          count = verifier.count(source_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum solution-status source guard: expected one match, found {count}')
+          verifier = verifier.replace(source_anchor, source_replacement, 1)
+
+          verifier_anchor = '''assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));'''
+          verifier_replacement = '''includesAll(
+            resolutionTest,
+            [
+              "deleted_accepted_solution_is_rejected_atomically",
+              "UPDATE forum_replies SET status = 'deleted'",
+              "FORUM_VALIDATION_FAILED",
+              "merge_operation_count(&fixture.db, fixture.tenant_id).await?, 0",
+              "merge_event_count(&fixture.db, fixture.tenant_id).await?, 0",
+              "resolution_audit_count(&fixture.db, fixture.tenant_id).await?, 0",
+            ],
+            "deleted accepted solution regression",
+          );
+          assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));'''
+          count = verifier.count(verifier_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum deleted-solution verifier guard: expected one match, found {count}')
+          verifier_path.write_text(verifier.replace(verifier_anchor, verifier_replacement, 1))
+
+          test_path = Path('crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs')
+          test = test_path.read_text()
+          test_anchor = '''async fn solution_snapshot(
+              db: &DatabaseConnection,'''
+          test_replacement = '''#[tokio::test]
+          async fn deleted_accepted_solution_is_rejected_atomically() -> TestResult<()> {
+              let fixture = fixture("deleted-solution").await?;
+              let update = fixture
+                  .db
+                  .execute(Statement::from_sql_and_values(
+                      DbBackend::Sqlite,
+                      "UPDATE forum_replies SET status = 'deleted' WHERE tenant_id = ? AND id = ?",
+                      vec![fixture.tenant_id.into(), fixture.source_reply_id.into()],
+                  ))
+                  .await?;
+              assert_eq!(update.rows_affected, 1);
+
+              let operation_id = Uuid::new_v4();
+              let service =
+                  ForumTopicMergeService::new(fixture.db.clone(), fixture.event_bus.clone());
+              let error = service
+                  .merge_topic_resolving_solution(
+                      fixture.tenant_id,
+                      fixture.target_topic_id,
+                      fixture.admin.clone(),
+                      fixture.target_reply_id,
+                      MergeForumTopicInput {
+                          operation_id,
+                          source_topic_id: fixture.source_topic_id,
+                          reason: "Reject a deleted accepted source reply".to_string(),
+                      },
+                  )
+                  .await
+                  .expect_err("deleted accepted solution must fail before mutation");
+              assert_eq!(error.stable_code(), "FORUM_VALIDATION_FAILED");
+              assert_eq!(merge_operation_count(&fixture.db, fixture.tenant_id).await?, 0);
+              assert_eq!(merge_event_count(&fixture.db, fixture.tenant_id).await?, 0);
+              assert_eq!(resolution_audit_count(&fixture.db, fixture.tenant_id).await?, 0);
+              assert_eq!(
+                  solution_snapshot(&fixture.db, fixture.tenant_id, fixture.source_topic_id).await?,
+                  Some(fixture.source_solution)
+              );
+              assert_eq!(
+                  solution_snapshot(&fixture.db, fixture.tenant_id, fixture.target_topic_id).await?,
+                  Some(fixture.target_solution)
+              );
+              assert_eq!(
+                  reply_topic_id(&fixture.db, fixture.tenant_id, fixture.source_reply_id).await?,
+                  fixture.source_topic_id
+              );
+              Ok(())
+          }
+
+          async fn solution_snapshot(
+              db: &DatabaseConnection,'''
+          count = test.count(test_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum solution-status regression insertion: expected one match, found {count}')
+          test_path.write_text(test.replace(test_anchor, test_replacement, 1))
+          PY
+
+      - name: Format regression
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+        run: cargo fmt --all
+
+      - name: Verify owner source contract
+        run: node scripts/verify/verify-forum-topic-merge-owner.mjs
+
+      - name: Check Forum library
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo check --locked -p rustok-forum --lib
+
+      - name: Run solution resolution regressions
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo test --locked -p rustok-forum --test topic_merge_solution_resolution_sqlite
+
+      - name: Commit verified regression
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/verify/verify-forum-topic-merge-owner.mjs crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs
+          git diff --cached --quiet && { echo "expected Forum regression is missing" >&2; exit 1; }
+          test -z "$(git status --short --untracked-files=no | grep -vE '^(M | M)(scripts/verify/verify-forum-topic-merge-owner.mjs|crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs)$')"
+          git commit -m "test(forum): reject deleted merge solutions"
+          git push origin HEAD:fix/forum-topic-merge-solution-status-regression-20260803
