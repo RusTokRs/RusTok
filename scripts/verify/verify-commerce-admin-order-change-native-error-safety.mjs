@@ -89,9 +89,9 @@ for (const marker of [
   "fn order_change_request_context_facts(",
   "struct OrderChangeOwnerErrorFacts",
   "fn order_change_owner_error_facts(",
-  "fn order_change_context_error",
-  "fn order_change_auth_context_error",
-  "fn order_change_tenant_context_error",
+  "fn order_change_context_error<E>(",
+  "fn order_change_auth_context_error<E>(",
+  "fn order_change_tenant_context_error<E>(",
   "optional_order_change_request_context",
   "struct OrderChangeOwnerErrorContext",
   "fn order_change_owner_error(",
@@ -99,6 +99,18 @@ for (const marker of [
   "Commerce order-change runtime is temporarily unavailable",
 ]) {
   assertContains(adapter, marker, `${adapterPath}: missing order-change safety marker ${marker}`);
+}
+
+for (const obsolete of [
+  "fn order_change_context_error<E: std::fmt::Debug>(",
+  "fn order_change_auth_context_error<E: std::fmt::Debug>(",
+  "fn order_change_tenant_context_error<E: std::fmt::Debug>(",
+]) {
+  assertNotContains(
+    adapter,
+    obsolete,
+    `${adapterPath}: type-only context helper must not require Debug: ${obsolete}`,
+  );
 }
 
 for (const [variant, publicMessage] of [
@@ -303,6 +315,7 @@ if (evidence.status !== "commerce_admin_order_change_native_error_safety_source_
 }
 for (const [field, expected] of Object.entries({
   framework_error_type_only: true,
+  framework_debug_bounds_removed: true,
   complete_framework_error_logged: false,
   runtime_identity_shape_only: true,
   owner_error_shape_only: true,
@@ -328,12 +341,16 @@ for (const field of [
     fail(`${evidencePath}: validation.${field} must remain false until execution evidence exists`);
   }
 }
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  fail(`${evidencePath}: execution must remain empty`);
+}
 
 if (review.status !== "commerce_admin_order_change_native_error_safety_source_reviewed_unvalidated") {
   fail(`${reviewPath}: source review must remain explicitly unvalidated`);
 }
 for (const field of [
   "framework_error_text_removed",
+  "framework_debug_bounds_removed",
   "runtime_identity_values_removed",
   "owner_error_text_removed",
   "owner_identity_values_removed",
@@ -348,6 +365,7 @@ for (const field of [
 
 assertContains(doc, "Status: `source-complete / unvalidated`", `${docPath}: status must remain unvalidated`);
 assertContains(doc, "complete framework extraction errors are not logged", `${docPath}: framework diagnostic policy`);
+assertContains(doc, "no longer require a `Debug`", `${docPath}: type-only helper contract`);
 assertContains(doc, "complete `OrderError` and identity values are not logged", `${docPath}: owner diagnostic policy`);
 
 if (failures.length > 0) {
@@ -356,4 +374,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Commerce admin order-change native diagnostics use correlation-safe shape only; execution evidence remains open");
+console.log("✔ Commerce admin order-change native diagnostics use correlation-safe type/shape only; execution evidence remains open");
