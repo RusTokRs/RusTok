@@ -20,9 +20,10 @@ mod role_mutation;
 pub mod services;
 
 pub use artifact_permission_assignment::{
-    ArtifactPermissionAssignmentError, ArtifactPermissionEventPublisher,
-    ArtifactRolePermissionAssignmentCommand, ArtifactRolePermissionAssignmentResult,
-    RbacArtifactPermissionAssignmentService, SeaOrmArtifactPermissionAuthorizer,
+    ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
+    ArtifactPermissionEventPublisher, ArtifactRolePermissionAssignmentCommand,
+    ArtifactRolePermissionAssignmentResult, RbacArtifactPermissionAssignmentService,
+    SeaOrmArtifactPermissionAuthorizer,
 };
 pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
