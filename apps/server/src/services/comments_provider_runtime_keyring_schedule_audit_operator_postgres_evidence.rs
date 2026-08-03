@@ -663,7 +663,8 @@ mod retained_postgres_evidence {
                     tenant_id,
                     writer,
                     Duration::from_secs(60),
-                )?;
+                )
+                .map_err(anyhow::Error::msg)?;
             let claim = handoff
                 .claim_next_retry_ready(8)
                 .await
