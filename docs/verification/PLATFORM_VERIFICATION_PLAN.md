@@ -235,12 +235,13 @@ current-main Forum and Blog cutovers in the global release-order tail. Downgrade
 fails closed when a late sibling-scope definition would make one canonical grant
 or operation receipt ambiguous in the legacy `(tenant, installation, key)` shape.
 Because SeaORM does not automatically make SQLite migrations atomic, the cutover
-now explicitly wraps both directions in `BEGIN IMMEDIATE` and restores the prior
-legacy or canonical schema on validation or late destructive DDL failure. SQLite
-and source regressions cover upgrade, rollback, failure atomicity, explicit scope,
-cross-tenant integrity, event atomicity and both durable rollback identities.
-Technical PR #2909 reconciled current main into the verification branch as merge
-commit `39ab7c4d9bae2953781511dc0eeec4dfb546ffb7` without modifying main or
+now opens one `DatabaseTransaction` for each SQLite direction and executes every
+DDL, data copy, validation, commit or rollback through that same transaction-bound
+connection. SQLite and source regressions cover upgrade, rollback, destructive
+failure atomicity, explicit scope, cross-tenant integrity, event atomicity and both
+durable rollback identities. Technical PR #2909 reconciled current main into the
+verification branch as merge commit
+`39ab7c4d9bae2953781511dc0eeec4dfb546ffb7` without modifying main or
 force-pushing. Generator-produced digest, exact-head formatting, compilation,
 focused tests, source/module gates, Migration Compatibility, real PostgreSQL
 clean apply/N-1 upgrade/integrity/concurrency/rollback, live negative transports,
