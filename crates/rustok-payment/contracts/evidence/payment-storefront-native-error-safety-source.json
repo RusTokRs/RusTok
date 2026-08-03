@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-08-03",
   "status": "payment_storefront_native_error_safety_source_unvalidated",
   "scope": "payment-owned storefront native server functions for refund summary and payment collection read/create",
   "source_contract": {
@@ -9,10 +9,14 @@
     "auth_context_static_public_envelope": true,
     "runtime_composition_static_public_envelope": true,
     "owner_runtime_static_public_envelopes": true,
+    "framework_error_type_only": true,
+    "owner_runtime_error_type_only": true,
+    "complete_internal_error_logged": false,
     "correlation_logging": true,
-    "tenant_logging": true,
-    "channel_logging": true,
-    "locale_logging": true,
+    "tenant_identity_shape_only": true,
+    "channel_context_shape_only": true,
+    "locale_shape_only": true,
+    "raw_tenant_channel_locale_logged": false,
     "stable_owner_operations": true,
     "outer_transport_variant_changed": false,
     "graphql_adapter_changed": false,
@@ -34,6 +38,7 @@
     "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
     "cargo check -p rustok-payment-storefront --all-features"
   ],
+  "execution": [],
   "validation": {
     "tests_run": false,
     "cargo_run": false,
@@ -43,5 +48,11 @@
     "ci_run": false,
     "native_runtime_proven": false,
     "mounted_parity_proven": false
-  }
+  },
+  "non_claims": [
+    "No focused or aggregate verifier was executed.",
+    "No Cargo, compiler, formatting, test, workflow, or CI evidence is retained.",
+    "No mounted native request or owner-failure trace is retained.",
+    "Payment compensation, execution, other ecommerce adapters, and non-PortError envelopes remain open."
+  ]
 }
