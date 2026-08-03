@@ -1,0 +1,148 @@
+name: Run final RBAC installation binding gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/run-rbac-installation-scope-binding-final.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run-rbac-installation-scope-binding-final
+  cancel-in-progress: true
+
+jobs:
+  patch-and-verify:
+    if: github.event.pull_request.head.ref == 'agent/core-rbac-cycle-001-20260803'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out verification branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/core-rbac-cycle-001-20260803
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --no-self-update
+          rustup default 1.96.0
+
+      - name: Apply verified base patch
+        run: |
+          ruby -ryaml -e '
+            workflow = YAML.load_file(".github/workflows/run-rbac-installation-scope-binding-patch.yml")
+            step = workflow.fetch("jobs").fetch("patch-and-verify").fetch("steps").find do |candidate|
+              candidate["name"] == "Apply exact installation identity patch"
+            end
+            abort("base patch step is missing") unless step && step["run"]
+            File.write("/tmp/apply-rbac-installation-binding-base.sh", step.fetch("run"))
+          '
+          bash /tmp/apply-rbac-installation-binding-base.sh
+
+      - name: Use final installation parent name
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          migration_path = Path(
+              'crates/rustok-rbac/src/'
+              'm20260803_000001_canonicalize_artifact_permissions.rs'
+          )
+          migration = migration_path.read_text()
+          rename_marker = (
+              '            "ALTER TABLE '
+              'rbac_artifact_permission_installations_new RENAME TO '
+              'rbac_artifact_permission_installations",\n'
+          )
+          if migration.count(rename_marker) != 1:
+              raise SystemExit(
+                  'installation parent rename: expected one match, found '
+                  + str(migration.count(rename_marker))
+              )
+          migration = migration.replace(rename_marker, '', 1)
+          staging = 'rbac_artifact_permission_installations_new'
+          if migration.count(staging) != 6:
+              raise SystemExit(
+                  'installation staging references: expected six matches, found '
+                  + str(migration.count(staging))
+              )
+          migration = migration.replace(
+              staging,
+              'rbac_artifact_permission_installations',
+          )
+          migration_path.write_text(migration)
+
+          upgrade_path = Path(
+              'crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs'
+          )
+          upgrade = upgrade_path.read_text()
+          if upgrade.count(staging) != 1:
+              raise SystemExit(
+                  'upgrade installation rollback assertion: expected one match, found '
+                  + str(upgrade.count(staging))
+              )
+          upgrade_path.write_text(
+              upgrade.replace(
+                  staging,
+                  'rbac_artifact_permission_installations',
+              )
+          )
+
+          verifier_path = Path(
+              'scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs'
+          )
+          verifier = verifier_path.read_text()
+          if verifier.count(staging) != 2:
+              raise SystemExit(
+                  'verifier installation table markers: expected two matches, found '
+                  + str(verifier.count(staging))
+              )
+          verifier_path.write_text(
+              verifier.replace(
+                  staging,
+                  'rbac_artifact_permission_installations',
+              )
+          )
+          PY
+
+      - name: Format changed Rust sources
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+        run: cargo fmt --all
+
+      - name: Verify RBAC source contract
+        run: node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
+
+      - name: Check RBAC crate
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo check --locked -p rustok-rbac --all-features
+
+      - name: Run artifact permission regressions
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: |
+          cargo test --locked -p rustok-rbac --lib artifact_permission_catalog
+          cargo test --locked -p rustok-rbac --test artifact_permission_upgrade_sqlite
+          cargo test --locked -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite
+          cargo test --locked -p rustok-rbac --test artifact_permission_outbox_sqlite
+
+      - name: Commit verified patch
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            crates/rustok-rbac/src/artifact_permission_catalog.rs \
+            crates/rustok-rbac/src/m20260803_000001_canonicalize_artifact_permissions.rs \
+            crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs \
+            crates/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs \
+            crates/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs \
+            scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
+          git commit -m "fix(rbac): bind permission vocabulary to installation scope"
+          git push origin HEAD:agent/core-rbac-cycle-001-20260803
