@@ -36,9 +36,11 @@ const requiredPlanMarkers = [
   "M6 bounded replay interruption, source timeout, and no-write dry-run",
   "M6 reconciliation retry, dead-letter, recovery, and generic host scheduling",
   "M6 bounded drift-finding inspection and persistence",
+  "M6 snapshot-pair digest producer and mismatch-only recorder delegation",
+  "M6 locale-optional persisted entity finding scope",
   "Add bounded drift-finding inspection and persistence for already-computed digest mismatches.",
-  "Add authoritative digest production under a defined owner snapshot or watermark.",
   "drift_finding_writer_postgres_test",
+  "Add one production snapshot reader",
 ];
 
 function requireMarkers(label, content, markers) {
@@ -73,8 +75,11 @@ for (const claim of forbiddenClaims) {
   }
 }
 
-if (!plan.includes("- [ ] Add authoritative digest production")) {
-  throw new Error("current plan overlay must keep complete drift diagnosis and repair open");
+if (!plan.includes("- [ ] Add one production snapshot reader")) {
+  throw new Error("current plan overlay must keep authoritative snapshot capture open");
+}
+if (!plan.includes("- [ ] Add targeted repair with before/after admitted evidence.")) {
+  throw new Error("current plan overlay must keep targeted repair and evidence open");
 }
 
 console.log("Index drift-finding PostgreSQL harness contract verified");
