@@ -6,7 +6,9 @@ description = "Cross-module relational index and query engine for RusToK"
 license.workspace = true
 
 [dependencies]
+rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-runtime.workspace = true
 
 # Module metadata and M3 persistence
 async-trait.workspace = true
