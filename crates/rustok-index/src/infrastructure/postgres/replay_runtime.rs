@@ -6,8 +6,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    IndexReplayCancelOutcome, IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest,
-    SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+    IndexReplayCancelOutcome, IndexReplayDryRunRuntimeCompositionError, IndexReplayRunError,
+    IndexReplayRunOutcome, IndexReplayRunRequest, SharedIndexSchemaRegistry,
+    SharedIndexSourceRegistry, materialize_index_replay_dry_run_runtime,
 };
 
 use super::PostgresIndexReplayRunner;
@@ -59,6 +60,8 @@ pub enum IndexReplayRuntimeCompositionError {
     AlreadyMaterialized,
     #[error("shared Index source registry exists without the shared schema registry")]
     MissingSchemaRegistry,
+    #[error(transparent)]
+    DryRun(#[from] IndexReplayDryRunRuntimeCompositionError),
 }
 
 /// Materializes the canonical PostgreSQL-backed replay runtime from immutable source registries.
@@ -66,6 +69,7 @@ pub enum IndexReplayRuntimeCompositionError {
 /// An absent source registry returns `Ok(None)` and never publishes a false replay capability.
 /// The function performs no database I/O, starts no scheduler, and makes no tenant readiness or
 /// operator-authorization claim. Those checks remain at invocation and transport boundaries.
+/// The side-effect-free dry-run capability is published from the same immutable registry pair.
 pub fn materialize_postgres_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -82,6 +86,7 @@ pub fn materialize_postgres_index_replay_runtime(
         .cloned()
         .ok_or(IndexReplayRuntimeCompositionError::MissingSchemaRegistry)?;
 
+    materialize_index_replay_dry_run_runtime(extensions)?;
     let runtime = SharedIndexReplayRuntime::new(PostgresIndexReplayRunner::new(
         db,
         sources,
@@ -101,8 +106,9 @@ mod tests {
         EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexSource,
         IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
         IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
-        SharedIndexReplayRuntime, materialize_index_schema_registry,
-        materialize_index_source_registry, register_index_schema_source, register_index_source,
+        SharedIndexReplayDryRunRuntime, SharedIndexReplayRuntime,
+        materialize_index_schema_registry, materialize_index_source_registry,
+        register_index_schema_source, register_index_source,
     };
 
     use super::{
@@ -186,6 +192,7 @@ mod tests {
                 .expect("missing source registry should be accepted");
         assert!(runtime.is_none());
         assert!(!extensions.contains::<SharedIndexReplayRuntime>());
+        assert!(!extensions.contains::<SharedIndexReplayDryRunRuntime>());
     }
 
     #[tokio::test]
@@ -221,6 +228,7 @@ mod tests {
                 .expect("replay runtime should materialize")
                 .expect("complete registries should publish a runtime");
         assert!(extensions.contains::<SharedIndexReplayRuntime>());
+        assert!(extensions.contains::<SharedIndexReplayDryRunRuntime>());
         assert!(format!("{runtime:?}").contains("SharedIndexReplayRuntime"));
     }
 
