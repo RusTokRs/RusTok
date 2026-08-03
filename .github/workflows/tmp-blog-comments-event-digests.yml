@@ -10,8 +10,15 @@ permissions:
 
 jobs:
   digests:
-    runs-on: ubuntu-slim
-    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-slim
+          - macos-15
+          - windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.96.0
