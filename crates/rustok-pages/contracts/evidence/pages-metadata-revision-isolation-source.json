@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "pages_metadata_revision_isolation_source_unvalidated",
+  "scope": "Pages registered metadata owner-port revision conflict and dirty Fly isolation",
+  "source_contract": {
+    "registered_metadata_runtime_preserved": true,
+    "metadata_transport_injected_for_regression_only": true,
+    "production_fetch_transport_preserved": true,
+    "production_patch_transport_preserved": true,
+    "exact_metadata_revision_parsed_before_current_read": true,
+    "current_page_version_rechecked_before_patch": true,
+    "stale_revision_rejected_before_patch_transport": true,
+    "stable_conflict_code": "REVISION_CONFLICT",
+    "metadata_patch_request_contains_document_payload": false,
+    "metadata_patch_request_contains_project_data": false,
+    "metadata_patch_request_contains_controller": false,
+    "metadata_save_callback_contains_project_data": false,
+    "dirty_fly_state_mutated_by_metadata_port": false,
+    "metadata_revision_advances_independently": true,
+    "unit_regressions_added": true,
+    "execution_behavior_changed": false,
+    "public_transport_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "unit_regressions": [
+    "stale_metadata_revision_short_circuits_before_patch_transport",
+    "metadata_save_is_document_free_and_preserves_dirty_fly_state"
+  ],
+  "suggested_execution": [
+    "node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
+    "cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport",
+    "cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state",
+    "cargo check -p rustok-pages-admin --all-targets"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

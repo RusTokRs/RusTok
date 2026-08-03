@@ -19,6 +19,7 @@ const providerPanelExport = read(contract.provider.panel_export_source);
 const providerCanvas = read(contract.provider.composition_source);
 const pagesContributions = read(contract.pages_consumer.contribution_source);
 const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
+const pagesOwnerPortProduction = pagesOwnerPort.split("#[cfg(test)]")[0];
 const pagesBoundary = read(contract.pages_consumer.composition_source);
 const pagesWorkspace = read(contract.pages_consumer.workspace_source);
 const pagesPublishedSurface = read(contract.pages_consumer.published_surface_source);
@@ -111,6 +112,18 @@ if (
   fail("legacy metadata cutover contract is invalid");
 }
 
+const metadataEvidence =
+  contract.pages_consumer.source_evidence?.metadata_revision_isolation;
+if (
+  metadataEvidence?.state !== "source_ready_execution_pending" ||
+  metadataEvidence?.contract !==
+    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json" ||
+  metadataEvidence?.verifier !==
+    "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+) {
+  fail("metadata revision/isolation source evidence registration is invalid");
+}
+
 for (const marker of [
   '"page_builder_consumer_properties_v1"',
   "pub struct ConsumerPropertyEditorSchema",
@@ -196,21 +209,38 @@ for (const field of contract.pages_consumer.fields) {
 
 for (const marker of [
   "pub fn pages_metadata_property_runtime(",
+  "trait PagesMetadataTransport: Send + Sync",
+  "transport: Arc<dyn PagesMetadataTransport>",
+  "transport: Arc::new(ServerPagesMetadataTransport)",
   "impl ConsumerPropertyEditorPort for PagesMetadataPropertyPort",
   "fn load(&self) -> ConsumerPropertyLoadFuture",
   "fn save(&self, input: SaveConsumerPropertiesInput)",
-  "fetch_expected_page(&snapshot).await?",
+  "let command = metadata_save_command(&schema, &snapshot, &input)?;",
+  "fetch_expected_page(transport.as_ref(), &snapshot).await?",
+  "require_current_metadata_version(command.expected_version, current.version)?;",
+  "let request = MetadataPatchRequest {",
+  "transport.patch_metadata(request).await?",
   "schema.validate_values(&input.values)?",
   "expected_metadata_version(&snapshot.page_id, &input.expected_revision)",
-  "current.version != expected_version",
   "transport::patch_page_metadata(",
-  "page.version <= expected_version",
+  "page.version <= command.expected_version",
   "on_saved(PageMutationResult::from(&page))",
   'format!("pages:{page_id}:metadata:v{version}")',
   "PAGE_METADATA_REVISION_CONFLICT",
 ]) {
-  requireMarker(pagesOwnerPort, marker, "Pages metadata owner port");
+  requireMarker(pagesOwnerPortProduction, marker, "Pages metadata owner port");
 }
+requireOrderedMarkers(
+  pagesOwnerPortProduction,
+  [
+    "let command = metadata_save_command(&schema, &snapshot, &input)?;",
+    "fetch_expected_page(transport.as_ref(), &snapshot).await?",
+    "require_current_metadata_version(command.expected_version, current.version)?;",
+    "let request = MetadataPatchRequest {",
+    "transport.patch_metadata(request).await?",
+  ],
+  "Pages metadata conflict-before-patch ordering",
+);
 for (const forbidden of [
   "save_page_document",
   "PageBuilderCapabilityRequest::Publish",
@@ -219,7 +249,7 @@ for (const forbidden of [
   "content_json",
   "project_data",
 ]) {
-  forbidMarker(pagesOwnerPort, forbidden, "Pages metadata owner port");
+  forbidMarker(pagesOwnerPortProduction, forbidden, "Pages metadata owner port");
 }
 
 for (const marker of [
@@ -284,6 +314,7 @@ for (const forbidden of [
 
 for (const marker of [
   "Metadata UI cutover: source-complete",
+  "Metadata revision/isolation source packet: ready, unvalidated",
   "Draft registered metadata surface: source-connected",
   "Published registered metadata surface: source-connected",
   "Legacy PageMetadataEditor: removed",
@@ -293,5 +324,5 @@ for (const marker of [
 }
 
 console.log(
-  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true execution_evidence=pending",
+  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true execution_evidence=pending",
 );

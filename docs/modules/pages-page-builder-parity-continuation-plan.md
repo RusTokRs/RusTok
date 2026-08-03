@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-03
-Status: source-cutover-complete / execution-evidence-pending
+Status: source-cutover-complete / source-regressions-ready / execution-evidence-pending
 Scope: `rustok-pages` admin FFA and `rustok-page-builder` consumer-property surface
 
 ## Audit basis
@@ -61,30 +61,77 @@ The bespoke `PageMetadataEditor` call and component are absent from
 `crates/rustok-pages/admin/src/composition.rs`. Its direct
 `transport::patch_page_metadata` UI path is also absent.
 
-Draft metadata is now reachable only through the registered Fly properties surface.
+Draft metadata is reachable only through the registered Fly properties surface.
 Published metadata is reachable only through the registered standalone surface.
 Persistence remains owned by `PagesMetadataPropertyPort`; no second runtime or owner
 port was introduced.
 
 ### Metadata UI cutover: source-complete
 
-The source now has one registered metadata contract and two lifecycle-specific host
+The source has one registered metadata contract and two lifecycle-specific host
 placements:
 
 - draft: canonical panel inside Fly;
 - published: canonical panel outside Fly, with the immutable document unmounted.
 
-The machine contract and source guard treat the legacy editor as removed. Execution
-evidence remains pending.
+The machine contract and source guard treat the legacy editor as removed.
+
+### Metadata revision/isolation source packet: ready, unvalidated
+
+`PagesMetadataPropertyPort` now separates production transport from metadata command
+preparation through a private `PagesMetadataTransport` seam. The production adapter
+still delegates to the same `fetch_page` and `patch_page_metadata` calls.
+
+The save path has an explicit, guarded order:
+
+1. validate the registered contribution and exact field set;
+2. parse the page-scoped metadata revision;
+3. read the current page;
+4. require the current page version to equal the expected metadata version;
+5. construct a metadata-only transport request;
+6. call the metadata patch transport;
+7. require the returned page version to advance;
+8. publish only `PageMutationResult` to the owner callback.
+
+The focused stale metadata revision short-circuits before patch transport and returns
+the exact stable code `REVISION_CONFLICT`.
+
+The metadata-only transport request contains token, tenant, page identity, expected
+metadata version, locale and the six registered metadata values. It contains no Fly
+body, `content_json`, project data, controller, document revision or Page Builder
+command.
+
+The regression harness also retains an unsaved dirty Fly sentinel beside a successful
+metadata save. The dirty Fly state is not accepted by the metadata owner port and is
+asserted byte-for-byte unchanged after the metadata receipt advances from metadata
+version 7 to 8.
+
+Source evidence is recorded in:
+
+- `crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
+- the focused tests in `crates/rustok-pages/admin/src/metadata_properties.rs`.
+
+Execution evidence remains pending. The new tests and verifier were not run by this
+implementation update.
+
+### Canonical plans: actualized to source parity
+
+The Pages and Page Builder canonical implementation plans now mark the typed rollback
+control, registered metadata contribution, draft/published panel composition and
+legacy editor removal as source-complete. They list the focused conflict/isolation
+regressions as source-ready while keeping every executed packet, browser proof,
+workflow check and rollout gate open.
 
 ## Parity matrix
 
 | Capability | Pages owner | Page Builder owner | Source state | Evidence state |
 | --- | --- | --- | --- | --- |
-| Metadata schema and values | Pages | Contract/runtime validation | Connected | Pending execution |
-| Metadata optimistic revision | Pages | Typed save envelope | Connected | Pending conflict packet |
-| Draft metadata panel inside Fly | Pages runtime/port | Leptos consumer panel | Connected | Pending execution |
-| Published metadata without Fly canvas | Pages shell composition | Standalone consumer panel | Connected | Pending execution |
+| Metadata schema and values | Pages | Contract/runtime validation | Connected | Source regression ready; execution pending |
+| Metadata optimistic revision | Pages | Typed save envelope | Connected | Conflict regression ready; execution pending |
+| Dirty Fly isolation during metadata save | Pages metadata port | Fly/Page Builder controller | Source-guarded | Isolation regression ready; execution pending |
+| Draft metadata panel inside Fly | Pages runtime/port | Leptos consumer panel | Connected | Pending browser execution |
+| Published metadata without Fly canvas | Pages shell composition | Standalone consumer panel | Connected | Pending browser execution |
 | Legacy metadata form | None | None | Removed | Not applicable |
 | Immutable artifact rollback action | Pages | No lifecycle ownership | Connected | Pending rollback/cache packet |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Pending observed packet |
@@ -92,20 +139,25 @@ evidence remains pending.
 
 ## Changes in this slice
 
-1. Remove the duplicated `PageMetadataEditor` invocation and implementation.
-2. Remove the direct metadata persistence call from the Pages workspace composition.
-3. Preserve draft metadata through the existing Fly properties panel.
-4. Preserve published metadata through `PagesPublishedMetadataSurface`.
-5. Promote the machine contract to `metadata_surface_cutover_complete`.
-6. Strengthen the source guard to require the old component, invocation and direct
-   persistence path to remain absent.
-7. Actualize this parity plan while keeping every execution claim open.
+1. Introduce a private metadata transport seam without changing the public runtime or
+   production transport.
+2. Extract an exact metadata save command before the current page read.
+3. Recheck the current page version before constructing or invoking the patch request.
+4. Add a stale-revision regression that requires zero patch transport calls.
+5. Add a metadata-only success regression that records the exact patch request and
+   preserves an external dirty Fly sentinel.
+6. Add a machine-readable source evidence contract and focused static verifier.
+7. Synchronize the existing metadata guard with the private transport seam and keep
+   production document-payload prohibitions scoped before the test module.
+8. Actualize the canonical Pages, Page Builder and parity plans while keeping every
+   execution claim open.
 
 ## Boundaries
 
 This slice does not:
 
-- change Pages metadata persistence, DTOs, GraphQL, HTTP or browser transport;
+- change Pages metadata DTOs, GraphQL, HTTP or browser transport;
+- change the public `ConsumerPropertyEditorRuntime` contract;
 - add a second metadata runtime or owner port;
 - mount an editable Fly document for published pages;
 - change Page Builder capability authorization, rollout policy or contribution
@@ -116,14 +168,12 @@ This slice does not:
 
 ## Next cursor
 
-1. Retain an accepted metadata packet proving exact stale-revision conflict behavior.
-2. Retain an accepted dirty-Fly isolation packet proving metadata save cannot mutate,
-   reset or replace an unsaved Fly document.
-3. Retain a published metadata packet proving the Fly canvas remains unmounted while
+1. Run and retain the focused metadata conflict and dirty-Fly isolation packets.
+2. Retain a published metadata packet proving the Fly canvas remains unmounted while
    the registered property save advances only the metadata version.
-4. Retain publish/rollback cache packets correlating receipts, outbox events, handler
+3. Retain publish/rollback cache packets correlating receipts, outbox events, handler
    receipts, generation rotation and storefront/artifact misses and refills.
-5. Complete compile, browser, workflow and rollout evidence before promoting FFA/FBA
+4. Complete compile, browser, workflow and rollout evidence before promoting FFA/FBA
    status beyond source-connected.
 
 ## Maintainer validation
@@ -132,6 +182,9 @@ Suggested commands, intentionally not run in this slice:
 
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport
+cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state
 cargo check -p rustok-page-builder-admin --all-targets
 cargo check -p rustok-pages-admin --all-targets
 ```
