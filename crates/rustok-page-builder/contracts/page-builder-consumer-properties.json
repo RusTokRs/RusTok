@@ -81,10 +81,24 @@
       "component": "PagesPublishedMetadataSurface",
       "state": "source_connected",
       "selection": "selected_published_page_only",
+      "admission": "exact_status_published_case_insensitive",
+      "draft_hidden": true,
+      "archived_hidden": true,
+      "missing_selection_hidden": true,
       "fly_canvas_mounted": false,
+      "document_authoring_mounted": false,
       "runtime": "existing_pages_metadata_property_runtime",
       "contribution_assembly": "pages_admin_contribution_policy",
-      "workspace_refresh": "shared_refresh_generation"
+      "persistence": "delegated_to_pages_metadata_owner_port",
+      "workspace_refresh": "shared_refresh_generation",
+      "dom_contract": {
+        "surface": "data-pages-published-metadata-surface=registered",
+        "admission": "data-pages-published-metadata-admission=published-only",
+        "fly_canvas": "data-pages-fly-canvas-mounted=false",
+        "document_authoring": "data-pages-document-authoring=false",
+        "runtime": "data-pages-metadata-runtime=registered",
+        "persistence": "data-pages-metadata-persistence=owner-port"
+      }
     },
     "legacy_form": {
       "source": "crates/rustok-pages/admin/src/composition.rs",
@@ -98,6 +112,11 @@
         "state": "source_ready_execution_pending",
         "contract": "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
         "verifier": "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      },
+      "published_metadata_surface": {
+        "state": "source_ready_execution_pending",
+        "contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+        "verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
       }
     }
   },

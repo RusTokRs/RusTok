@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-03
-Status: source-cutover-complete / source-regressions-ready / execution-evidence-pending
+Status: source-cutover-complete / published-surface-regression-ready / execution-evidence-pending
 Scope: `rustok-pages` admin FFA and `rustok-page-builder` consumer-property surface
 
 ## Audit basis
@@ -78,7 +78,7 @@ The machine contract and source guard treat the legacy editor as removed.
 
 ### Metadata revision/isolation source packet: ready, unvalidated
 
-`PagesMetadataPropertyPort` now separates production transport from metadata command
+`PagesMetadataPropertyPort` separates production transport from metadata command
 preparation through a private `PagesMetadataTransport` seam. The production adapter
 still delegates to the same `fetch_page` and `patch_page_metadata` calls.
 
@@ -101,7 +101,7 @@ metadata version, locale and the six registered metadata values. It contains no 
 body, `content_json`, project data, controller, document revision or Page Builder
 command.
 
-The regression harness also retains an unsaved dirty Fly sentinel beside a successful
+The regression harness retains an unsaved dirty Fly sentinel beside a successful
 metadata save. The dirty Fly state is not accepted by the metadata owner port and is
 asserted byte-for-byte unchanged after the metadata receipt advances from metadata
 version 7 to 8.
@@ -112,12 +112,48 @@ Source evidence is recorded in:
 - `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
 - the focused tests in `crates/rustok-pages/admin/src/metadata_properties.rs`.
 
-Execution evidence remains pending. The new tests and verifier were not run by this
-implementation update.
+Execution evidence remains pending.
+
+### Published metadata source packet: ready, unvalidated
+
+The standalone published surface now uses one closed admission state:
+
+- a selected page whose status equals `published` case-insensitively admits the
+  registered metadata panel;
+- draft, archived, empty-status and missing-page states remain hidden.
+
+The source regressions retain this published-only admission policy without requiring a
+browser or network transport. The production surface still reads the selected page,
+reuses the existing `ConsumerPropertyEditorRuntime`, builds the Pages contribution
+assembly and renders the canonical `ConsumerPropertiesPanel`.
+
+The surface publishes a stable DOM contract for a future browser packet:
+
+- `data-pages-published-metadata-surface="registered"`;
+- `data-pages-published-metadata-admission="published-only"`;
+- `data-pages-fly-canvas-mounted="false"`;
+- `data-pages-document-authoring="false"`;
+- `data-pages-metadata-runtime="registered"`;
+- `data-pages-metadata-persistence="owner-port"`.
+
+The source and guard forbid a Pages builder facade, Page Builder host context, Fly
+builder, direct metadata patch call, document save or local runtime provisioning in
+the standalone surface. Persistence remains delegated to the existing metadata owner
+port, whose independent revision and dirty-Fly isolation packet is linked by the new
+evidence contract.
+
+Source evidence is recorded in:
+
+- `crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs`;
+- the focused tests in `crates/rustok-pages/admin/src/standalone_metadata.rs`.
+
+Browser execution remains pending. The DOM markers are selectors for a retained
+browser packet; they are not a claim that the browser scenario ran.
 
 ### Canonical plans: actualized to source parity
 
-The Pages and Page Builder canonical implementation plans now mark the typed rollback
+The Pages and Page Builder canonical implementation plans mark the typed rollback
 control, registered metadata contribution, draft/published panel composition and
 legacy editor removal as source-complete. They list the focused conflict/isolation
 regressions as source-ready while keeping every executed packet, browser proof,
@@ -131,7 +167,7 @@ workflow check and rollout gate open.
 | Metadata optimistic revision | Pages | Typed save envelope | Connected | Conflict regression ready; execution pending |
 | Dirty Fly isolation during metadata save | Pages metadata port | Fly/Page Builder controller | Source-guarded | Isolation regression ready; execution pending |
 | Draft metadata panel inside Fly | Pages runtime/port | Leptos consumer panel | Connected | Pending browser execution |
-| Published metadata without Fly canvas | Pages shell composition | Standalone consumer panel | Connected | Pending browser execution |
+| Published metadata without Fly canvas | Pages shell composition | Standalone consumer panel | Admission and DOM source-guarded | Browser execution pending |
 | Legacy metadata form | None | None | Removed | Not applicable |
 | Immutable artifact rollback action | Pages | No lifecycle ownership | Connected | Pending rollback/cache packet |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Pending observed packet |
@@ -139,18 +175,18 @@ workflow check and rollout gate open.
 
 ## Changes in this slice
 
-1. Introduce a private metadata transport seam without changing the public runtime or
-   production transport.
-2. Extract an exact metadata save command before the current page read.
-3. Recheck the current page version before constructing or invoking the patch request.
-4. Add a stale-revision regression that requires zero patch transport calls.
-5. Add a metadata-only success regression that records the exact patch request and
-   preserves an external dirty Fly sentinel.
-6. Add a machine-readable source evidence contract and focused static verifier.
-7. Synchronize the existing metadata guard with the private transport seam and keep
-   production document-payload prohibitions scoped before the test module.
-8. Actualize the canonical Pages, Page Builder and parity plans while keeping every
-   execution claim open.
+1. Extract one deterministic published metadata surface admission policy.
+2. Add focused source regressions for published, uppercase published, draft,
+   archived, empty-status and missing-page states.
+3. Add stable DOM markers describing the registered panel, published-only admission,
+   absent Fly canvas, absent document authoring, reused runtime and owner-port
+   persistence.
+4. Add a machine-readable published-surface source evidence contract.
+5. Add a focused static verifier that links published admission to the existing
+   metadata revision/isolation evidence.
+6. Register the packet in the Page Builder consumer-properties machine contract and
+   the shared metadata source guard.
+7. Actualize this parity plan while keeping every execution claim open.
 
 ## Boundaries
 
@@ -163,14 +199,15 @@ This slice does not:
 - change Page Builder capability authorization, rollout policy or contribution
   assembly semantics;
 - alter publish, unpublish, rollback, artifact, cache or storefront behavior;
-- add Dioxus or mobile rendering;
+- add a browser harness, Dioxus or mobile rendering;
 - claim executed evidence or test results.
 
 ## Next cursor
 
 1. Run and retain the focused metadata conflict and dirty-Fly isolation packets.
-2. Retain a published metadata packet proving the Fly canvas remains unmounted while
-   the registered property save advances only the metadata version.
+2. Run and retain the published metadata browser packet using the stable DOM contract,
+   proving the registered save advances only metadata version while the Fly canvas
+   and document authoring remain absent.
 3. Retain publish/rollback cache packets correlating receipts, outbox events, handler
    receipts, generation rotation and storefront/artifact misses and refills.
 4. Complete compile, browser, workflow and rollout evidence before promoting FFA/FBA
@@ -183,8 +220,11 @@ Suggested commands, intentionally not run in this slice:
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
 cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport
 cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state
+cargo test -p rustok-pages-admin published_page_admits_registered_metadata_surface
+cargo test -p rustok-pages-admin non_published_or_missing_page_hides_registered_metadata_surface
 cargo check -p rustok-page-builder-admin --all-targets
 cargo check -p rustok-pages-admin --all-targets
 ```
