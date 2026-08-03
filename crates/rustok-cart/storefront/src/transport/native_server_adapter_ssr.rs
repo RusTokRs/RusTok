@@ -107,8 +107,9 @@ fn cart_input_error(
     code: &'static str,
     public_message: &'static str,
 ) -> ServerFnError {
+    let error_type = std::any::type_name_of_val(&error);
     tracing::warn!(
-        error = ?error,
+        error_type,
         owner = CART_STOREFRONT_NATIVE_OWNER,
         owner_operation,
         code,
