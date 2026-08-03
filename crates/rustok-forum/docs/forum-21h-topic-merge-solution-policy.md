@@ -110,11 +110,14 @@ SQLite:
 
 - `forum_topic_solution_locks` records the touched tenant/topic scope;
 - trigger writes participate in SQLite's database write transaction;
+- all solution updates, including marker-only updates, touch the scope;
 - merge explicitly touches both scopes before inspecting solution state.
 
-Ordinary mark, replacement and clear operations pass through these database
-triggers, so they cannot commit a competing solution between merge inspection
-and transfer.
+The public moderation owner also acquires the shared topic/solution scope before
+reading the current marker, accepted reply or author used for a statistics
+delta. Mark, replacement and clear therefore compute their mutation from state
+that cannot change underneath the transaction. Database triggers enforce the
+same scope for direct writers that bypass the owner API.
 
 ## Database validity guard
 
@@ -152,6 +155,9 @@ solution state and creates no additional solution mutation.
 - cross-category rejection;
 - direct pending-reply and archived-topic solution write rejection;
 - cumulative merge atomicity, idempotency and append-only receipt behavior.
+
+The focused source verifier additionally proves that moderation mark and clear
+lock the solution scope before current-marker reads and statistics calculations.
 
 ## Remaining scope
 
