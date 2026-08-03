@@ -12,6 +12,7 @@
     "requested_identity_preserved_in_evidence": true,
     "canonical_identity_is_terminal_target": true,
     "maximum_hops": 32,
+    "each_hop_topic_and_edges_share_one_statement_snapshot": true,
     "duplicate_source_edges_fail_closed": true,
     "cycles_fail_closed": true,
     "soft_deleted_terminal_targets_fail_closed": true,
