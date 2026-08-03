@@ -27,9 +27,10 @@ fn map_runtime_dependency_error(dependency: &'static str) -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
-fn map_tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+fn map_tenant_context_error<E>(_error: E) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
         code = "fulfillment.storefront_tenant_context_unavailable",
@@ -40,12 +41,13 @@ fn map_tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
-fn map_auth_context_error<E: std::fmt::Debug>(tenant_id: Uuid, error: E) -> ServerFnError {
+fn map_auth_context_error<E>(tenant_id: Uuid, _error: E) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
-        tenant_id = %tenant_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
         code = "fulfillment.storefront_auth_context_unavailable",
         boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
         "fulfillment storefront authentication context extraction failed"
@@ -54,12 +56,14 @@ fn map_auth_context_error<E: std::fmt::Debug>(tenant_id: Uuid, error: E) -> Serv
 }
 
 #[cfg(feature = "ssr")]
-fn record_optional_request_context_error<E: std::fmt::Debug>(tenant_id: Uuid, error: E) {
+fn record_optional_request_context_error<E>(tenant_id: Uuid, _error: E) {
+    let error_type = std::any::type_name::<E>();
     tracing::warn!(
-        error = ?error,
+        error_type,
         owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
         owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
-        tenant_id = %tenant_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        request_context_present = false,
         code = "fulfillment.storefront_request_context_unavailable",
         boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
         "optional fulfillment storefront request context extraction failed"
@@ -67,30 +71,37 @@ fn record_optional_request_context_error<E: std::fmt::Debug>(tenant_id: Uuid, er
 }
 
 #[cfg(feature = "ssr")]
-fn map_owner_runtime_error<E: std::fmt::Debug>(
+fn map_owner_runtime_error<E>(
     request_context: Option<&rustok_api::RequestContext>,
     tenant_id: Uuid,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     if let Some(request_context) = request_context {
         tracing::error!(
-            error = ?error,
+            error_type,
             owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
             owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
-            tenant_id = %tenant_id,
-            channel_id = ?request_context.channel_id,
-            channel_slug = ?request_context.channel_slug,
-            locale = %request_context.locale,
+            tenant_id_non_nil = !tenant_id.is_nil(),
+            request_context_present = true,
+            correlation_id = %request_context.correlation_id,
+            channel_id_present = request_context.channel_id.is_some(),
+            channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
+            channel_slug_present = request_context.channel_slug.is_some(),
+            channel_slug_length = ?request_context.channel_slug.as_ref().map(|value| value.chars().count()),
+            locale_present = !request_context.locale.trim().is_empty(),
+            locale_length = request_context.locale.chars().count(),
             code = "fulfillment.storefront_shipping_selection_failed",
             boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
             "fulfillment storefront owner runtime call failed"
         );
     } else {
         tracing::error!(
-            error = ?error,
+            error_type,
             owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
             owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
-            tenant_id = %tenant_id,
+            tenant_id_non_nil = !tenant_id.is_nil(),
+            request_context_present = false,
             code = "fulfillment.storefront_shipping_selection_failed",
             boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
             "fulfillment storefront owner runtime call failed without request context"
