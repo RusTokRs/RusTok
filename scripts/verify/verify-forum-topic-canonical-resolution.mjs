@@ -64,6 +64,10 @@ assert.equal(contract.canonical_plan_status, "planned");
 assert.equal(contract.owner_service, "TopicService");
 assert.equal(contract.source_of_truth, "forum_topic_merge_operations");
 assert.equal(contract.resolution.maximum_hops, 32);
+assert.equal(
+  contract.resolution.each_hop_topic_and_edges_share_one_statement_snapshot,
+  true,
+);
 assert.equal(contract.database_guards.one_source_edge_per_tenant_topic, true);
 assert.equal(contract.database_guards.parallel_alias_table_added, false);
 assert.equal(
@@ -115,6 +119,7 @@ includesAll(
   "ForumError",
 );
 assert.ok(!error.includes("Self::TopicCanonicalResolutionConflict(_) => true"));
+
 includesAll(
   service,
   [
@@ -123,19 +128,26 @@ includesAll(
     "pub requested_topic_id: Uuid",
     "pub canonical_topic_id: Uuid",
     "pub merge_operation_ids: Vec<Uuid>",
+    "struct ForumTopicCanonicalStep",
     "pub(crate) async fn resolve_unchecked(",
-    ".limit(2)",
-    "match edges.as_slice()",
+    "load_resolution_step(",
+    "match step.edges.as_slice()",
     "!visited.insert(edge.target_topic_id)",
     "merge_operation_ids.len() >= MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS",
     "TopicCanonicalResolutionConflict(requested_topic_id)",
-    "deleted_at IS NULL",
+    "EXISTS (",
+    "AS topic_exists",
+    "FROM forum_topic_merge_operations",
+    "LIMIT 2",
+    "LEFT JOIN (",
+    "topic.deleted_at IS NULL",
   ],
   "canonical resolution owner",
 );
 assert.ok(!service.includes("forum_topic_alias"));
 assert.ok(!service.includes("forum_topic_redirects"));
 assert.ok(!service.includes("bestEffort"));
+assert.ok(!service.includes("topic_exists(&self.db"));
 
 includesAll(
   facade,
@@ -145,7 +157,6 @@ includesAll(
     "ForumTopicCanonicalResolutionService::new(self.db.clone())",
     "resolution.canonical_topic_id",
     "pub async fn get_with_canonical_resolution_and_locale_fallback(",
-    "get_with_locale_fallback(\n                tenant_id,\n                security,\n                resolution.canonical_topic_id",
     ".is_topic_visible(tenant_id, resolution.canonical_topic_id, &scope)",
   ],
   "TopicService facade",
@@ -170,6 +181,7 @@ includesAll(
   [
     "ForumTopicCanonicalResolution",
     "MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS",
+    "mod contract_tests;",
   ],
   "crate exports",
 );
@@ -185,11 +197,7 @@ includesAll(
 
 includesAll(
   restTopics,
-  [
-    "pub async fn get_topic(",
-    ".get_with_locale_fallback(",
-    "Ok(Json(topic))",
-  ],
+  ["pub async fn get_topic(", ".get_with_locale_fallback(", "Ok(Json(topic))"],
   "REST selected-topic path",
 );
 assert.ok(!restTopics.includes("PERMANENT_REDIRECT"));
