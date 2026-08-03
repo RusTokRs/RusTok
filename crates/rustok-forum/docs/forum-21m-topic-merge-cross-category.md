@@ -88,6 +88,35 @@ underflow, negative state or overflow returns `FORUM_VALIDATION_FAILED` and
 rolls back category updates, solution changes, reply movement, topic lifecycle,
 semantic event, receipt, optional resolution audit and projection invalidations.
 
+## Redirect-edge migration
+
+The earlier canonical-resolution migration guarded receipt insertion by
+requiring both source and target topics to belong to the receipt `category_id`.
+That requirement encoded the historical same-category merge policy and would
+reject a valid cross-category receipt after the source had been archived in its
+original category.
+
+FORUM-21M adds:
+
+```text
+m20260803_000019_allow_cross_category_topic_merge_redirect_edges
+```
+
+The migration replaces only the existing
+`forum_validate_topic_merge_redirect_edge` trigger behavior on PostgreSQL and
+SQLite:
+
+- source must still be a tenant-owned, non-deleted, archived, locked, zero-reply
+  tombstone;
+- source category may differ from the receipt category;
+- target must still be tenant-owned, non-deleted, non-archived and belong to the
+  receipt category;
+- the unique source edge, receipt table, receipt fields and canonical traversal
+  remain unchanged.
+
+Rollback restores the prior same-category source predicate. Existing receipts
+are not rewritten and no backfill is required.
+
 ## Retained identities and relations
 
 All existing merge bounds and identity rules remain:
@@ -182,6 +211,7 @@ remain FORUM-24.
 `topic_merge_cross_category_sqlite` uses real Forum, Taxonomy and Outbox
 migrations and owner services. It covers:
 
+- migration 19 replacing the historical same-category receipt trigger;
 - two active categories with one source and one target topic;
 - exact transfer of two published replies from the source category aggregate to
   the target category aggregate;
@@ -200,9 +230,10 @@ unchanged behavior.
 
 ## Compatibility and remaining work
 
-FORUM-21M adds no migration. It changes no receipt schema, event schema,
-GraphQL field, REST route, canonical resolution, solution audit or public result
-type.
+FORUM-21M adds one append-only migration that replaces the canonical receipt
+trigger predicate without changing the receipt schema, event schema, GraphQL
+field, REST route, solution audit or public result type. No data backfill or
+parallel alias store is introduced.
 
 The canonical `FORUM-21` entry remains `planned`. Remaining work includes:
 
