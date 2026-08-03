@@ -6,9 +6,10 @@ use ulid::Ulid;
 use uuid::Uuid;
 
 use crate::{
-    DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent,
-    ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    RbacRoleMutationEvent, SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
+    BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
+    ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent,
+    MarketplaceSellerEvent, RbacRoleMutationEvent, SocialGraphRelationEvent,
+    TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -37,6 +38,8 @@ pub trait EventContract:
 pub enum ContractEventPayload {
     #[serde(rename = "root")]
     Root(DomainEvent),
+    #[serde(rename = "blog_comments_delegation_schedule_audit")]
+    BlogCommentsDelegationScheduleAudit(BlogCommentsDelegationScheduleAuditEvent),
     #[serde(rename = "forum_mention")]
     ForumMention(ForumMentionEvent),
     #[serde(rename = "forum_search_projection")]
@@ -57,6 +60,7 @@ impl ContractEventPayload {
     fn event_type(&self) -> &'static str {
         match self {
             Self::Root(event) => event.event_type(),
+            Self::BlogCommentsDelegationScheduleAudit(event) => event.event_type(),
             Self::ForumMention(event) => event.event_type(),
             Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
@@ -70,6 +74,7 @@ impl ContractEventPayload {
     fn schema_version(&self) -> u16 {
         match self {
             Self::Root(event) => event.schema_version(),
+            Self::BlogCommentsDelegationScheduleAudit(event) => event.schema_version(),
             Self::ForumMention(event) => event.schema_version(),
             Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
@@ -85,6 +90,7 @@ impl ValidateEvent for ContractEventPayload {
     fn validate(&self) -> Result<(), EventValidationError> {
         match self {
             Self::Root(event) => event.validate(),
+            Self::BlogCommentsDelegationScheduleAudit(event) => event.validate(),
             Self::ForumMention(event) => event.validate(),
             Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),

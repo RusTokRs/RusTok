@@ -8,6 +8,7 @@
 - `pub use crate::EventEnvelopeError`
 - `pub use crate::{EventSchema, FieldSchema, EventValidationError, ValidateEvent}`
 - `pub use crate::{EventContract, ContractEventPayload, ContractEventEnvelope, EventContractEnvelopeError}`
+- `pub use crate::{BlogCommentsDelegationScheduleAuditEvent, BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS}`
 - `pub use crate::{ForumMentionEvent, FORUM_MENTION_EVENT_SCHEMAS}`
 - `pub use crate::{ForumSearchProjectionEvent, FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
@@ -32,6 +33,11 @@
 - Consumes: N/A.
 - Established root events use `DomainEvent`/`EventEnvelope`.
 - Bounded event families use sealed `EventContract` implementations and `ContractEventEnvelope`.
+- `BlogCommentsDelegationScheduleAuditEvent` defines v1
+  `blog.comments_delegation_schedule.replacement_succeeded`. It carries the
+  exact successful-audit request identity, fixed state key, audit timestamp,
+  bounded principal/operation/source categories, and the strictly increasing
+  generation pair. Tenant and actor remain envelope metadata.
 - `ForumMentionEvent` defines v1 `forum.mention.user_added` and `forum.mention.audience_added` with source revision and target identity only.
 - `ForumSearchProjectionEvent` defines v1
   `forum.search_projection.invalidation_issued` with a positive Forum owner
@@ -60,6 +66,11 @@
 - Continues to import event contracts from `rustok-core` instead of `rustok-events`.
 - Implements arbitrary external `EventContract` types; the trait is intentionally sealed.
 - Stores bounded-family payloads as untyped `serde_json::Value` instead of adding one typed `ContractEventPayload` family variant.
+- Adds a Comments delegation key id, secret, schedule document, schedule digest,
+  file path, database URL, token, nonce, claims, roles, raw database error, or
+  free-form operator text to the Blog Comments audit event.
+- Reconstructs or generates a second request identity instead of preserving the
+  exact non-nil Blog audit `request_id` used for canonical handoff idempotency.
 - Copies causal identity into the event payload instead of using envelope `causation_id`.
 - Uses a nil, reconstructed, or unrelated UUID as a causal predecessor.
 - Publishes the Forum Search typed invalidation without the legacy root envelope
@@ -95,6 +106,14 @@
   `causation_id` was already an optional registered wire field.
 - Root envelope trace identifiers must be non-empty and at most 512 bytes.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
+- Blog Comments schedule-audit events require audit schema version 1, the exact
+  `comments_tcp_delegation_schedule` state key, a non-nil request identity, a
+  positive timestamp, `direct_user|service`,
+  `reload_file|replace_host_schedule`, `host_provided|file`, and
+  `candidate_generation > previous_generation >= 1`.
+- The Blog Comments audit `request_id` is payload data because it is the stable
+  identity of the already durable source fact and the future canonical writer's
+  idempotency key. Control-plane tenant and actor remain envelope metadata.
 - Forum mention events expose source revision and resolved user/audience identity only; contact and rendered content remain owner-private.
 - Forum Search projection invalidations require `owner_revision >= 1`, accept
   only `forum|forum_category|forum_topic`, require `target_id = null` for
@@ -115,6 +134,9 @@
 
 ### Events / Outbox Side Effects
 - Owner modules publish sealed contracts through `TransactionalEventBus::publish_contract_in_tx` inside the owner transaction.
+- The Blog Comments schedule-audit family is registered for canonical typed
+  transport, but this crate does not implement the Blog source-row handoff or a
+  canonical `sys_events` writer.
 - Forum dual publication writes the legacy root first, publishes the typed
   contract caused by that exact root id, and retains the root id as owner-ledger
   and downstream projection identity.
