@@ -21,6 +21,9 @@
     "merge_endpoint": "/api/fn/forum/topic-merge",
     "candidate_owner": "TopicService::list_with_locale_fallback",
     "merge_owner": "ForumTopicMergeService",
+    "module_slug": "forum",
+    "module_lifecycle_check": "rustok_api::is_tenant_module_enabled",
+    "module_must_be_enabled": true,
     "server_context": [
       "AuthContext",
       "TenantContext",
