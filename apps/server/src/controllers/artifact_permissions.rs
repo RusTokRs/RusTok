@@ -332,6 +332,7 @@ mod tests {
                 actor_id,
                 RbacArtifactPermissionEvent::AssignmentChanged {
                     operation_id: Uuid::new_v4(),
+                    artifact_permission_id: Uuid::new_v4(),
                     role_id: Uuid::new_v4(),
                     installation_id: Uuid::new_v4(),
                     permission_key: "sample.events.handle".to_string(),
