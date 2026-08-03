@@ -150,6 +150,58 @@ jobs:
 
           bash /tmp/apply-rbac-installation-binding.sh
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          upgrade_path = Path(
+              'crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs'
+          )
+          upgrade = upgrade_path.read_text()
+          transient_definition_assertion = (
+              '    assert!(!table_exists(&db, '
+              '"rbac_artifact_permission_definitions_new").await);\n'
+          )
+          upgrade = replace_once(
+              upgrade,
+              transient_definition_assertion,
+              transient_definition_assertion
+              + '    assert!(!table_exists(&db, '
+              + '"rbac_artifact_permission_installations_new").await);\n',
+              'installation transient table rollback assertion',
+          )
+          upgrade_path.write_text(upgrade)
+
+          verifier_path = Path(
+              'scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs'
+          )
+          verifier = verifier_path.read_text()
+          verifier = replace_once(
+              verifier,
+              '  "The current Auth Admin `delete_user` operation is account deactivation",',
+              '  "the current Auth Admin `delete_user` operation is account",',
+              'wrapping-safe account deactivation marker',
+          )
+          verifier = replace_once(
+              verifier,
+              '  "A future hard-delete workflow must run in one owner-coordinated transaction",',
+              '  "A future hard-delete",',
+              'wrapping-safe hard-delete workflow marker',
+          )
+          verifier = replace_once(
+              verifier,
+              '  "Until that workflow exists, `RESTRICT` is the canonical behavior",',
+              '  "Until that workflow exists, `RESTRICT` is the canonical",',
+              'wrapping-safe restrict marker',
+          )
+          verifier_path.write_text(verifier)
+          PY
+
       - name: Format changed Rust sources
         env:
           RUSTUP_TOOLCHAIN: 1.96.0
