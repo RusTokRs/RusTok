@@ -58,7 +58,38 @@ jobs:
           count = verifier.count(anchor)
           if count != 1:
               raise SystemExit(f'Forum verifier predicate guard: expected one match, found {count}')
-          verifier_path.write_text(verifier.replace(anchor, replacement, 1))
+          verifier = verifier.replace(anchor, replacement, 1)
+
+          graphql_anchor = '''const graphql = read(paths.graphql);
+          const ordinaryTest = read(paths.ordinaryTest);'''
+          graphql_replacement = '''const graphql = read(paths.graphql);
+          const graphqlProduction = graphql.split("#[cfg(test)]", 1)[0];
+          const ordinaryTest = read(paths.ordinaryTest);'''
+          count = verifier.count(graphql_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum verifier GraphQL production slice: expected one match, found {count}')
+          verifier = verifier.replace(graphql_anchor, graphql_replacement, 1)
+
+          transport_anchor = '''includesAll(
+            graphql,
+            ['''
+          transport_replacement = '''includesAll(
+            graphqlProduction,
+            ['''
+          count = verifier.count(transport_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum verifier GraphQL transport scope: expected one match, found {count}')
+          verifier = verifier.replace(transport_anchor, transport_replacement, 1)
+
+          forbidden_anchor = '''assert.ok(!graphql.includes(forbidden), `GraphQL transport contains forbidden marker: ${forbidden}`);'''
+          forbidden_replacement = '''assert.ok(
+            !graphqlProduction.includes(forbidden),
+            `GraphQL transport contains forbidden marker: ${forbidden}`,
+          );'''
+          count = verifier.count(forbidden_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum verifier forbidden transport scope: expected one match, found {count}')
+          verifier_path.write_text(verifier.replace(forbidden_anchor, forbidden_replacement, 1))
           PY
 
       - name: Ensure Index lock edges
