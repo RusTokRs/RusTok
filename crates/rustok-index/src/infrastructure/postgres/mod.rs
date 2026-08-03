@@ -11,6 +11,7 @@ mod source_reconciliation_dead_letter_inspector;
 mod source_reconciliation_recovery;
 mod source_reconciliation_retry;
 mod source_reconciliation_runner;
+mod source_reconciliation_scheduler;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_retry;
@@ -88,6 +89,12 @@ pub use source_reconciliation_runner::{
     IndexReconciliationRunOutcome, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
     IndexReconciliationTerminalState, PostgresIndexReconciliationRunner,
 };
+pub use source_reconciliation_scheduler::{
+    INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerCompositionError,
+    IndexReconciliationSchedulerPolicy, PostgresIndexReconciliationWorkAdapter,
+    register_postgres_index_reconciliation_work,
+};
+pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,

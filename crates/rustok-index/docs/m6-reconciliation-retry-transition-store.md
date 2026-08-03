@@ -1,119 +1,61 @@
 # M6 reconciliation retry transition store
 
-Status: `runner_complete_scheduler_wiring_pending`.
+Status: `host_scheduler_source_complete_owner_execution_pending`.
 
 ## Purpose
 
-`PostgresIndexReconciliationRetryStore` provides the Index-owned durable transition boundary for bounded reconciliation retry, backoff, and terminal exhaustion.
+`PostgresIndexReconciliationRetryStore` is the Index-owned durable transition boundary for bounded reconciliation retry, backoff, and terminal exhaustion.
 
-`PostgresIndexReconciliationRunner` now classifies page failures and delegates their state transition to this store. The remaining open ownership boundary is host scheduling: neither component starts a task, polls `index_jobs`, sleeps until `available_at`, or claims fleet-wide scheduler leadership.
+`PostgresIndexReconciliationRunner` classifies page failures and delegates their state transition to this store. The Index module now also publishes a due-work adapter through the generic host `ModuleWorkScheduler`; the store itself remains task-free, polling-free, and sleep-free.
 
 ## Retry lease
 
-`IndexReconciliationRetryLease` requires:
+`IndexReconciliationRetryLease` requires one non-nil tenant UUID, one non-nil existing reconciliation job UUID, a bounded worker identity, and a positive durable attempt count.
 
-- one non-nil tenant UUID;
-- one non-nil existing reconciliation job UUID;
-- one bounded, trimmed, control-character-free worker identity;
-- one positive durable attempt count.
+Transition SQL independently verifies the same tenant, job, worker, and attempt together with an unexpired running lease and `cancel_requested = false`.
 
-The runner constructs this lease only from its currently acquired reconciliation attempt. The transition SQL independently verifies the same tenant, job, worker, and attempt together with an unexpired running lease and `cancel_requested = false`.
+## Failure contract and policy
 
-## Failure contract
+`IndexReconciliationRetryFailure` accepts only a validated machine-readable dependency code and one classification: `Retryable` or `Permanent`.
 
-`IndexReconciliationRetryFailure` accepts only a validated machine-readable dependency code and one classification:
+The runner maps source and mutation failure kinds directly. Other source contract failures use `source_contract_invalid`; other page-contract failures use `reconciliation_contract_invalid`.
 
-- `Retryable`;
-- `Permanent`.
-
-The runner maps source and mutation failure kinds directly. Source contract failures use the permanent code `source_contract_invalid`; other page-contract failures use `reconciliation_contract_invalid`.
-
-Codes are limited to 128 ASCII bytes containing lowercase letters, digits, `.`, `_`, or `-`. The retry boundary accepts no raw source, database, SQL, request, transport, payload, tenant, worker, stack, or arbitrary owner detail.
-
-## Bounded policy
-
-The runner uses the fixed default policy:
+The fixed runner policy is:
 
 - maximum attempts: `5`;
 - base backoff: `5 seconds`;
 - maximum backoff: `300 seconds`;
 - delays after attempts 1-4: `5`, `10`, `20`, and `40` seconds;
 - permanent failures terminalize immediately;
-- a retryable failure at attempt 5 terminalizes as exhausted.
-
-Custom store policies remain bounded to 1-100 attempts and whole-second delays from 1 through 86,400 seconds, but per-source or dynamic runner policy selection remains open. The base delay cannot exceed the maximum delay.
+- attempt-5 retryable failure terminalizes as exhausted.
 
 ## Durable transitions
 
-For a retryable failure below the attempt limit, `record_failure` updates the same `index_jobs` row:
+Retryable failure below the attempt limit updates the same row from `running -> pending`, installs deterministic future `available_at`, clears lease ownership, keeps `completed_at = NULL`, and preserves job UUID, cursor, attempt count, and retry epoch.
 
-```text
-running -> pending
-available_at = current time + deterministic backoff
-lease_owner = null
-lease_expires_at = null
-completed_at = null
-```
+Permanent or exhausted failure updates the same row from `running -> failed`, clears the lease, and installs `completed_at = CURRENT_TIMESTAMP`.
 
-The job UUID, cursor, durable attempt count, and retry epoch are preserved. The normal reconciliation claim path already requires `available_at <= CURRENT_TIMESTAMP` and increments the attempt only when the pending row is claimed.
+Both transitions retain `last_error_code = index.reconciliation_page_failed` and the strict three-field `index_reconciliation_run_failure_v1` diagnostic. No retry policy, delay, identity, cursor, request, SQL, database cause, transport, or stack text enters that object.
 
-For a permanent failure or exhausted retry budget, the same store updates that row:
+## Host scheduling interaction
 
-```text
-running -> failed
-lease_owner = null
-lease_expires_at = null
-completed_at = current time
-```
+The module-owned reconciliation work adapter discovers only the authoritative due pending row or expired running row for one exact schema scope. It does not mutate the row.
 
-Both paths are fenced by exact tenant, job, worker, attempt, active lease, running state, and cancellation state. A stale, expired, cancelled, or otherwise replaced attempt receives `LeaseLost` and cannot publish pending or terminal state.
+The generic host scheduler invokes the canonical runner. The runner performs the actual claim or takeover, increments attempts exactly once, and later returns `RetryScheduled`, `FailedPermanent`, or `FailedExhausted` after this store commits the durable failure disposition.
 
-The store inserts no job row, changes no job UUID, sleeps for no delay, polls no table, and starts no task.
+Fleet duplicates remain safe because discovery does not grant ownership; the existing runner lease transition remains the only durable claim.
 
-## Runner outcomes
-
-The runner returns typed outcomes after a successful durable transition:
-
-- `RetryScheduled` with bounded `retry_after` and `next_attempt`;
-- `FailedPermanent` without retry metadata;
-- `FailedExhausted` without retry metadata.
-
-The outcome keeps the exact job UUID, current attempt, and counters already accumulated during the invocation. It does not return the dependency code or raw failure.
-
-Cancellation still wins if it commits before the retry transition. A stale or expired lease maps back to the runner's existing `LeaseLost` error. Other transition failures are wrapped in the detail-free `RetryTransition` error.
-
-## Diagnostic compatibility
-
-Both scheduled and terminal transitions preserve the existing strict `index_reconciliation_run_failure_v1` object:
-
-```json
-{
-  "contract": "index_reconciliation_run_failure_v1",
-  "dependency_code": "<bounded-code>",
-  "retryable": true
-}
-```
-
-`last_error_code` remains `index.reconciliation_page_failed`.
-
-Keeping the exact three-field contract means the merged dead-letter inspector remains compatible when a permanent or exhausted job reaches `failed`. Retry policy, delay, attempt budget, tenant, job, worker, request, source payload, SQL, database causes, and stack text are not added to the diagnostic JSON.
-
-## Interaction with recovery
-
-Automatic retry remains within the existing retry epoch and preserves the attempt count until a later claim increments it.
-
-The merged audited manual requeue contract is different: it operates only on terminal failed rows, increments `retry_epoch`, resets `attempt_count` to zero, installs the initial cursor, and appends an immutable actor/reason audit. Automatic retry does not create recovery audits or perform manual reset semantics.
+Automatic retry stays within the current retry epoch. Audited manual requeue remains a distinct terminal-failure operation that increments the epoch, resets attempts/cursor, and records actor/reason.
 
 ## Explicitly open
 
-- host-owned due-job discovery and bounded invocation;
-- fleet-wide scheduling ownership, takeover, and graceful shutdown;
+- retained PostgreSQL retry, exhaustion, cancellation-race, lease-expiry, restart, multi-host scheduling, and shutdown evidence;
 - per-source policy, jitter, and dynamic configuration;
-- retained PostgreSQL retry, exhaustion, cancellation-race, lease-expiry, restart, and recovery evidence;
-- GraphQL, HTTP, CLI, MCP, or admin transport;
-- source/index digest comparison, orphan diagnosis, and targeted/full/shadow repair.
+- operator-visible scheduler health;
+- transport controls;
+- drift diagnosis and targeted/full/shadow repair.
 
-The canonical implementation-plan item `Add bounded retry/backoff, dead-letter state, and global scheduling ownership` remains open because global scheduling ownership is not part of this slice.
+The canonical implementation-plan item `Add bounded retry/backoff, dead-letter state, and global scheduling ownership` remains open pending owner-retained production and multi-host evidence.
 
 ## Validation ownership
 

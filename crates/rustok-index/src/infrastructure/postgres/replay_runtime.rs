@@ -11,7 +11,10 @@ use crate::{
     SharedIndexSourceRegistry, materialize_index_replay_dry_run_runtime,
 };
 
-use super::PostgresIndexReplayRunner;
+use super::{
+    IndexReconciliationSchedulerCompositionError, PostgresIndexReplayRunner,
+    register_postgres_index_reconciliation_work,
+};
 
 /// Cloneable operator capability for bounded Index replay execution.
 ///
@@ -62,14 +65,17 @@ pub enum IndexReplayRuntimeCompositionError {
     MissingSchemaRegistry,
     #[error(transparent)]
     DryRun(#[from] IndexReplayDryRunRuntimeCompositionError),
+    #[error(transparent)]
+    ReconciliationScheduler(#[from] IndexReconciliationSchedulerCompositionError),
 }
 
-/// Materializes the canonical PostgreSQL-backed replay runtime from immutable source registries.
+/// Materializes canonical PostgreSQL-backed replay and due-reconciliation host capabilities.
 ///
-/// An absent source registry returns `Ok(None)` and never publishes a false replay capability.
-/// The function performs no database I/O, starts no scheduler, and makes no tenant readiness or
-/// operator-authorization claim. Those checks remain at invocation and transport boundaries.
-/// The side-effect-free dry-run capability is published from the same immutable registry pair.
+/// An absent source registry returns `Ok(None)` and publishes neither a false replay capability
+/// nor an empty Index module-work registration. Complete immutable registries publish the dry-run
+/// capability, one module-owned reconciliation work registration, and the replay runtime. This
+/// function performs no database I/O and starts no task; the generic host module-work lifecycle
+/// owns polling and graceful shutdown after all registrations are collected.
 pub fn materialize_postgres_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -87,6 +93,7 @@ pub fn materialize_postgres_index_replay_runtime(
         .ok_or(IndexReplayRuntimeCompositionError::MissingSchemaRegistry)?;
 
     materialize_index_replay_dry_run_runtime(extensions)?;
+    register_postgres_index_reconciliation_work(extensions)?;
     let runtime = SharedIndexReplayRuntime::new(PostgresIndexReplayRunner::new(
         db,
         sources,
@@ -100,6 +107,7 @@ pub fn materialize_postgres_index_replay_runtime(
 mod tests {
     use async_trait::async_trait;
     use rustok_core::ModuleRuntimeExtensions;
+    use rustok_runtime::ModuleWorkRegistrations;
     use sea_orm::Database;
 
     use crate::{
@@ -179,7 +187,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_source_registry_does_not_publish_false_replay_runtime() {
+    async fn missing_source_registry_does_not_publish_false_replay_or_work_runtime() {
         let mut extensions = ModuleRuntimeExtensions::default();
         register_index_schema_source(&mut extensions, "runtime_owner", schema()).unwrap();
         let schemas = materialize_index_schema_registry(&extensions)
@@ -193,6 +201,7 @@ mod tests {
         assert!(runtime.is_none());
         assert!(!extensions.contains::<SharedIndexReplayRuntime>());
         assert!(!extensions.contains::<SharedIndexReplayDryRunRuntime>());
+        assert!(!extensions.contains::<ModuleWorkRegistrations>());
     }
 
     #[tokio::test]
@@ -209,10 +218,11 @@ mod tests {
             error,
             IndexReplayRuntimeCompositionError::MissingSchemaRegistry
         );
+        assert!(!extensions.contains::<ModuleWorkRegistrations>());
     }
 
     #[tokio::test]
-    async fn complete_registries_materialize_one_shared_replay_runtime() {
+    async fn complete_registries_materialize_replay_and_module_work_registration() {
         let mut extensions = source_extensions();
         let schemas = materialize_index_schema_registry(&extensions)
             .unwrap()
@@ -229,6 +239,7 @@ mod tests {
                 .expect("complete registries should publish a runtime");
         assert!(extensions.contains::<SharedIndexReplayRuntime>());
         assert!(extensions.contains::<SharedIndexReplayDryRunRuntime>());
+        assert!(extensions.contains::<ModuleWorkRegistrations>());
         assert!(format!("{runtime:?}").contains("SharedIndexReplayRuntime"));
     }
 

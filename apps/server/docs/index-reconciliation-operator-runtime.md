@@ -1,107 +1,61 @@
 # Index reconciliation operator runtime
 
-Status: `source_complete_transport_and_scheduling_pending`.
+Status: `source_complete_transport_and_owner_execution_pending`.
 
 ## Purpose
 
-The server publishes one guarded `IndexReconciliationOperatorRuntime` after the existing Index replay composition has frozen the complete immutable source and schema registries.
+The server publishes one guarded `IndexReconciliationOperatorRuntime` after the replay composition freezes the immutable source and schema registries.
 
-The boundary wraps three canonical PostgreSQL capabilities exported by `rustok-index`:
+The boundary wraps:
 
 - `PostgresIndexReconciliationRunner` for bounded run and cancellation;
-- `PostgresIndexReconciliationDeadLetterInspector` for bounded read-only failed-job inspection;
-- `PostgresIndexReconciliationRecoveryStore` for audited same-job failed-to-pending recovery.
+- `PostgresIndexReconciliationDeadLetterInspector` for bounded read-only inspection;
+- `PostgresIndexReconciliationRecoveryStore` for audited same-job recovery.
 
-Composition performs no reconciliation database I/O, starts no task, and creates no second source catalog.
+The same registry-freezing composition now also publishes the separate module-owned reconciliation work registration. The operator runtime does not expose or own that scheduler.
 
 ## Request-bound authority
 
-Every operation requires an `IndexReconciliationOperatorContext` containing one non-nil tenant UUID and actor UUID.
+Every operation requires a non-nil tenant/actor `IndexReconciliationOperatorContext`, a current request-scoped RBAC snapshot, and effective `Permission::MODULES_MANAGE`.
 
-Authorization reads the current request-scoped RBAC snapshot through `permissions_for(tenant_id, actor_id)` and requires effective `Permission::MODULES_MANAGE`.
+Run rejects a tenant mismatch before runner delegation. Cancellation, inspection, and requeue accept no caller-selected tenant. Requeue accepts no caller-selected actor; the audit actor is always `context.actor_id()`.
 
-The boundary rejects:
-
-- a nil tenant or actor identity;
-- a missing request-bound permission snapshot;
-- a snapshot without `modules:manage`;
-- a run request whose tenant differs from the authorized context tenant.
-
-Run authorization compares the requested tenant before delegating to the inner reconciliation runner. The focused source regression uses a database without Index migrations and still receives `TenantMismatch`, retaining the pre-database denial boundary.
-
-Cancellation, dead-letter inspection, and dead-letter requeue accept no caller-selected tenant. Their tenant scope is derived only from the authorized context.
-
-Requeue also accepts no caller-selected actor. The actor written to the immutable recovery audit is always `context.actor_id()`.
-
-Inspection and requeue authorization run before adapter or recovery-request validation and before database access. Missing authority returns `MissingRequestAuthority`; `modules:read` alone returns `Forbidden`; only an authorized call reaches the bounded crate validation surface.
+Inspection and requeue authorization occur before adapter or recovery-request validation and before database access.
 
 ## Published surface
 
-The capability exposes only:
+The operator exposes only:
 
-- bounded `run(context, IndexReconciliationRunRequest)`;
-- tenant-scoped `request_cancel(context, job_id)`;
-- tenant-scoped read-only `inspect_dead_letter(context, job_id)`;
-- tenant/actor-bound `requeue_dead_letter(context, job_id, reason)`.
+- `run(context, request)`;
+- `request_cancel(context, job_id)`;
+- `inspect_dead_letter(context, job_id)`;
+- `requeue_dead_letter(context, job_id, reason)`.
 
-A successful dead-letter inspection returns only the bounded crate inspection result.
+It exposes no database connection, registry, scheduler handle, worker-spawn handle, raw failure details, direct SQL, or transport.
 
-A successful requeue returns only the bounded crate recovery outcome: generated audit UUID, retained job UUID, and incremented retry epoch. The server does not duplicate recovery SQL, cursor reset logic, scope locking, audit insertion, or job-state mutation.
+## Composition and scheduling
 
-Raw `last_error_details`, tenant identity, request/cursor JSON, worker and lease fields, timestamps, SQL, database causes, and payloads remain unavailable through the server runtime.
+The server replay composition remains the single source-freezing point:
 
-The runtime does not expose:
+1. PostgreSQL source factories are materialized;
+2. `SharedIndexSourceRegistry` is frozen;
+3. replay dry-run/runtime and the due-reconciliation module-work registration are published;
+4. this guarded reconciliation operator is built from the same source/schema registries and database.
 
-- the database connection;
-- source or schema registries;
-- mutable source catalogs;
-- scheduler, polling, takeover, or task ownership;
-- worker-spawn handles;
-- direct `index_jobs` or recovery-audit SQL;
-- caller-selected tenant or actor identity for recovery;
-- GraphQL, HTTP, CLI, MCP, or admin transport.
+Composition performs no reconciliation SQL and starts no task. The existing generic server module-work bootstrap later owns the one-second polling loop and shared `StopHandle` shutdown. The Index adapter discovers work; the canonical runner owns claim, takeover, attempt fencing, cancellation, retry, exhaustion, and terminal state.
 
-## Recovery ordering
-
-`requeue_dead_letter` performs these server-boundary steps in order:
-
-1. authorize the exact context tenant and actor with request-scoped `modules:manage`;
-2. construct `IndexReconciliationRequeueRequest` from `context.tenant_id()`, the caller job UUID, `context.actor_id()`, and the explicit reason;
-3. delegate to `PostgresIndexReconciliationRecoveryStore::requeue_failed`.
-
-The reason remains owned by the crate validation contract: non-empty, trimmed, control-character-free, and no more than 512 UTF-8 bytes.
-
-Authorization therefore wins over malformed job IDs or reasons, and unauthorized callers cannot use validation differences as a recovery oracle.
-
-## Composition
-
-The existing server replay composition remains the single source-freezing point:
-
-1. selected PostgreSQL source factories are materialized;
-2. the complete immutable `SharedIndexSourceRegistry` is inserted;
-3. the guarded replay capability is materialized from the shared registries;
-4. the guarded reconciliation operator is constructed from the same source registry, shared schema registry, and host database;
-5. the operator receives a recovery store and read-only inspector over cloned host database handles, plus the canonical runner over the retained handle.
-
-An absent source registry publishes no false reconciliation capability. A source registry without `SharedIndexSchemaRegistry` fails closed. Duplicate guarded reconciliation materialization also fails closed.
-
-## Preserved engine behavior
-
-This server slice changes no migration, recovery SQL, reconciliation runner, inspector query, state transition, lease, cursor, mutation, diagnostic, cancellation, or terminal-state contract.
-
-The same-job failed-to-pending reset, retry-epoch increment, scope advisory lock, attempt/epoch fencing, and immutable actor/reason audit remain entirely owned by `rustok-index`.
+The operator remains intentionally independent from automatic scheduling: manual authorized calls and host-scheduled calls converge only at the same canonical runner.
 
 ## Explicitly open
 
-- GraphQL, HTTP, CLI, MCP, admin, or other command transport;
-- automatic retry, backoff, exhaustion, scheduling, or takeover discovery;
-- graceful task shutdown and fleet coordination;
-- source/index digest comparison and orphan diagnosis;
-- targeted, full, or shadow repair modes;
-- locale or partition checkpoint dimensions;
-- retained PostgreSQL authorization, inspection, cancellation, restart, concurrency, and recovery evidence.
+- GraphQL, HTTP, CLI, MCP, native admin, or other command transport;
+- retained PostgreSQL authorization and scheduler execution evidence;
+- operator-visible scheduler health and metrics;
+- per-source retry policy, jitter, and dynamic configuration;
+- source/index digest comparison, orphan diagnosis, and targeted/full/shadow repair;
+- locale or partition checkpoint dimensions.
 
-The canonical bounded retry/global scheduling and drift-diagnosis/targeted-repair roadmap items remain open. Authorized manual recovery does not establish automatic scheduling, complete drift repair, or production readiness.
+The canonical bounded retry/global scheduling item remains open pending owner-retained production and multi-host evidence. The drift-diagnosis/targeted-repair item also remains open.
 
 ## Validation ownership
 
