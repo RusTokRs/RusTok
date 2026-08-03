@@ -21,6 +21,7 @@ const providerCanvas = read(contract.provider.composition_source);
 const pagesContributions = read(contract.pages_consumer.contribution_source);
 const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
 const pagesBoundary = read(contract.pages_consumer.composition_source);
+const pagesPublishedSurface = read(contract.pages_consumer.published_surface_source);
 const pagesComposition = read(contract.pages_consumer.legacy_form.source);
 const parityPlan = read(contract.parity_plan);
 
@@ -47,7 +48,7 @@ function requireOrderedMarkers(source, markers, label) {
 }
 
 if (
-  contract.status !== "standalone_surface_ready_legacy_form_pending" ||
+  contract.status !== "published_surface_connected_legacy_form_pending" ||
   contract.format !== "page_builder_consumer_properties_v1" ||
   contract.pages_consumer.owner_persistence !== "pages" ||
   contract.pages_consumer.document_revision_independent !== true ||
@@ -81,12 +82,29 @@ if (
   fail("standalone consumer property host surface contract is invalid");
 }
 if (
-  contract.pages_consumer.legacy_form.state !== "pending_removal" ||
+  contract.pages_consumer.draft_surface.state !== "source_connected" ||
+  contract.pages_consumer.draft_surface.host !== "fly_properties_column" ||
+  contract.pages_consumer.draft_surface.fly_canvas_mounted !== true ||
+  contract.pages_consumer.published_surface.component !==
+    "PagesPublishedMetadataSurface" ||
+  contract.pages_consumer.published_surface.state !== "source_connected" ||
+  contract.pages_consumer.published_surface.selection !==
+    "selected_published_page_only" ||
+  contract.pages_consumer.published_surface.fly_canvas_mounted !== false ||
+  contract.pages_consumer.published_surface.runtime !==
+    "existing_pages_metadata_property_runtime" ||
+  contract.pages_consumer.published_surface.contribution_assembly !==
+    "pages_admin_contribution_policy"
+) {
+  fail("Pages draft or published metadata surface contract is invalid");
+}
+if (
+  contract.pages_consumer.legacy_form.state !== "pending_duplicate_removal" ||
   contract.pages_consumer.legacy_form.component !== "PageMetadataEditor" ||
   contract.pages_consumer.legacy_form.unblocked_by !==
-    "provider_standalone_host_surface"
+    "published_registered_surface_connected"
 ) {
-  fail("legacy metadata form cutover must remain explicit until the form is removed");
+  fail("legacy metadata duplicate removal must remain explicit until the form is absent");
 }
 
 for (const marker of [
@@ -218,16 +236,51 @@ for (const marker of [
   "provide_context(metadata_runtime)",
   "PagesBuilderSaveSnapshot",
   "metadata_refresh.update",
+  "mod standalone_metadata;",
+  "use standalone_metadata::PagesPublishedMetadataSurface;",
+  "<PagesPublishedMetadataSurface refresh_generation />",
 ]) {
   requireMarker(pagesBoundary, marker, "Pages admin metadata composition boundary");
 }
 
 for (const marker of [
-  "Rollback control: source-connected",
-  "Typed metadata contribution: source-connected",
-  "Standalone consumer-property surface: source-ready",
-  "Legacy PageMetadataEditor: pending removal",
-  "Replace the bespoke Pages metadata form",
+  "pub(crate) fn PagesPublishedMetadataSurface(",
+  "use_context::<Arc<ConsumerPropertyEditorRuntime>>()",
+  "build_pages_admin_contribution_registry(",
+  "&pages_admin_contribution_policy()",
+  "transport::fetch_page(token, tenant, page_id).await",
+  'page.status.eq_ignore_ascii_case("published")',
+  'data-pages-published-metadata-surface="registered"',
+  "<ConsumerPropertiesPanel",
+  "runtime=runtime.clone()",
+  "contribution_assembly=contribution_assembly.clone()",
+  "The immutable Fly document remains unmounted.",
+]) {
+  requireMarker(
+    pagesPublishedSurface,
+    marker,
+    "Pages published registered metadata surface",
+  );
+}
+for (const forbidden of [
+  "PagesBuilderFacade",
+  "PageBuilderAdminHostContext",
+  "patch_page_metadata(",
+  "save_page_document",
+  "provide_context(",
+]) {
+  forbidMarker(
+    pagesPublishedSurface,
+    forbidden,
+    "Pages published registered metadata surface",
+  );
+}
+
+for (const marker of [
+  "Draft registered metadata surface: source-connected",
+  "Published registered metadata surface: source-connected",
+  "Legacy PageMetadataEditor: pending duplicate removal",
+  "Remove the now-duplicated bespoke `PageMetadataEditor`",
 ]) {
   requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
 }
@@ -236,8 +289,8 @@ const legacyFormPresent =
   pagesComposition.includes("fn PageMetadataEditor(") ||
   pagesComposition.includes("<PageMetadataEditor");
 if (!legacyFormPresent) {
-  fail("machine contract still says pending removal, but the legacy metadata form is absent");
+  fail("machine contract still says duplicate removal is pending, but the legacy form is absent");
 }
 console.log(
-  "[verify-pages-metadata-properties] PASS standalone_surface_ready=true legacy_form_pending=true",
+  "[verify-pages-metadata-properties] PASS draft_surface_connected=true published_surface_connected=true legacy_duplicate_pending=true",
 );
