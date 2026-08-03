@@ -1,0 +1,79 @@
+name: Repair server comments provider runtime syntax
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/repair-server-comments-provider-runtime-syntax.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-server-comments-provider-runtime-syntax
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.ref == 'fix/server-comments-provider-runtime-syntax-20260803'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/server-comments-provider-runtime-syntax-20260803
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --no-self-update
+          rustup default 1.96.0
+
+      - name: Remove duplicate module delimiter
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/server/src/services/comments_provider_runtime.rs')
+          text = path.read_text()
+          old = '''pub use keyring_schedule_persisted_trigger::{
+              CommentsTcpDelegationPersistedScheduleAuditOutcome,
+              CommentsTcpDelegationPersistedScheduleAuditRecord,
+              SharedCommentsTcpDelegationPersistedScheduleTrigger,
+          };
+          };
+          pub use keyring_schedule_persistence::{'''
+          new = '''pub use keyring_schedule_persisted_trigger::{
+              CommentsTcpDelegationPersistedScheduleAuditOutcome,
+              CommentsTcpDelegationPersistedScheduleAuditRecord,
+              SharedCommentsTcpDelegationPersistedScheduleTrigger,
+          };
+          pub use keyring_schedule_persistence::{'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'comments provider runtime delimiter: expected one match, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Check formatting
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+        run: cargo fmt --all -- --check
+
+      - name: Check server library
+        env:
+          RUSTUP_TOOLCHAIN: 1.96.0
+          CARGO_INCREMENTAL: 0
+        run: cargo check --locked -p rustok-server --lib
+
+      - name: Commit verified syntax repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/server/src/services/comments_provider_runtime.rs
+          git diff --cached --quiet && { echo "expected server syntax repair is missing" >&2; exit 1; }
+          test "$(git diff --cached --numstat | awk '{a += $1; d += $2} END {print a ":" d}')" = "0:1"
+          test -z "$(git status --short --untracked-files=no | grep -vE '^(M | M)apps/server/src/services/comments_provider_runtime.rs$')"
+          git commit -m "fix(server): remove duplicate comments runtime delimiter"
+          git push origin HEAD:fix/server-comments-provider-runtime-syntax-20260803
