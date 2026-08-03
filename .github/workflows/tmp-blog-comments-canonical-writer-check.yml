@@ -20,4 +20,4 @@ jobs:
           cargo +1.96.0 check -p rustok-events --locked
           cargo +1.96.0 check -p rustok-outbox --tests --locked
       - name: Check Blog server composition
-        run: cargo +1.96.0 check -p rustok-server --features mod-blog --tests --locked
+        run: cargo +1.96.0 check -p rustok-server --no-default-features --features mod-blog --tests --locked
