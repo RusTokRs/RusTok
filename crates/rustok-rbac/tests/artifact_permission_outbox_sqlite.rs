@@ -7,9 +7,7 @@ use rustok_rbac::{
     ArtifactPermissionEventPublisher, ArtifactRolePermissionAssignmentCommand,
     RbacArtifactPermissionAssignmentService,
 };
-use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, Statement,
-};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, Statement};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -75,7 +73,8 @@ async fn setup_database() -> DatabaseConnection {
     for statement in [
         "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
         "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
-        "CREATE TABLE rbac_artifact_permission_definitions (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
+        "CREATE TABLE rbac_artifact_permission_installations (installation_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (installation_id, scope_key, module_slug, release_digest))",
+        "CREATE TABLE rbac_artifact_permission_definitions (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (installation_id, scope_key, module_slug, release_digest) REFERENCES rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
         "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, permission_scope_key TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK (permission_scope_key = 'platform' OR permission_scope_key = 'tenant:' || tenant_id), FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, role_id, artifact_permission_id))",
         "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, permission_scope_key TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK (permission_scope_key = 'platform' OR permission_scope_key = 'tenant:' || tenant_id), FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, idempotency_key))",
         "CREATE TABLE rbac_artifact_permission_events (operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, granted BOOLEAN NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL)",
@@ -96,14 +95,14 @@ async fn insert_role_and_actor(
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO roles (id, tenant_id) VALUES (?1, ?2)",
-        vec![role_id.into(), tenant_id.into()],
+        vec![role_id.to_string().into(), tenant_id.to_string().into()],
     ))
     .await
     .expect("insert role");
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO users (id, tenant_id) VALUES (?1, ?2)",
-        vec![actor_id.into(), tenant_id.into()],
+        vec![actor_id.to_string().into(), tenant_id.to_string().into()],
     ))
     .await
     .expect("insert actor");
@@ -118,11 +117,23 @@ async fn insert_definition(
     let artifact_permission_id = Uuid::new_v4();
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
+        "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (installation_id) DO NOTHING",
+        vec![
+            installation_id.to_string().into(),
+            scope_key.into(),
+            "sample".into(),
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+        ],
+    ))
+    .await
+    .expect("insert artifact permission installation identity");
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
         "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         vec![
-            artifact_permission_id.into(),
+            artifact_permission_id.to_string().into(),
             scope_key.into(),
-            installation_id.into(),
+            installation_id.to_string().into(),
             "sample".into(),
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
             permission_key.into(),
@@ -130,6 +141,36 @@ async fn insert_definition(
     ))
     .await
     .expect("insert artifact permission definition");
+    artifact_permission_id
+}
+
+async fn insert_corrupt_parallel_definition(
+    db: &DatabaseConnection,
+    scope_key: &str,
+    installation_id: Uuid,
+    permission_key: &str,
+) -> Uuid {
+    db.execute_unprepared("PRAGMA foreign_keys = OFF")
+        .await
+        .expect("disable foreign keys for corruption fixture");
+    let artifact_permission_id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        vec![
+            artifact_permission_id.to_string().into(),
+            scope_key.into(),
+            installation_id.to_string().into(),
+            "sample".into(),
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            permission_key.into(),
+        ],
+    ))
+    .await
+    .expect("insert corrupt parallel definition");
+    db.execute_unprepared("PRAGMA foreign_keys = ON")
+        .await
+        .expect("restore foreign keys after corruption fixture");
     artifact_permission_id
 }
 
@@ -234,8 +275,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
     let persisted_scope: String = db
         .query_one(Statement::from_string(
             db.get_database_backend(),
-            "SELECT permission_scope_key FROM rbac_artifact_role_permissions LIMIT 1"
-                .to_string(),
+            "SELECT permission_scope_key FROM rbac_artifact_role_permissions LIMIT 1".to_string(),
         ))
         .await
         .expect("query grant")
@@ -293,7 +333,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
 }
 
 #[tokio::test]
-async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition() {
+async fn explicit_scope_mutation_remains_exact_for_corrupt_parallel_definitions() {
     let db = setup_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
@@ -303,7 +343,7 @@ async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition()
     insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
     let platform_permission_id =
         insert_definition(&db, "platform", installation_id, permission_key).await;
-    let tenant_permission_id = insert_definition(
+    let tenant_permission_id = insert_corrupt_parallel_definition(
         &db,
         &format!("tenant:{tenant_id}"),
         installation_id,
@@ -316,7 +356,10 @@ async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition()
     );
 
     for (scope, idempotency_key) in [
-        (ArtifactPermissionAssignmentScope::Platform, "grant-platform"),
+        (
+            ArtifactPermissionAssignmentScope::Platform,
+            "grant-platform",
+        ),
         (ArtifactPermissionAssignmentScope::Tenant, "grant-tenant"),
     ] {
         service
@@ -348,17 +391,17 @@ async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition()
         ))
         .await
         .expect("revoke explicit platform scope");
-    let remaining_id: Uuid = db
+    let remaining_id_text: String = db
         .query_one(Statement::from_string(
             db.get_database_backend(),
-            "SELECT artifact_permission_id FROM rbac_artifact_role_permissions LIMIT 1"
-                .to_string(),
+            "SELECT artifact_permission_id FROM rbac_artifact_role_permissions LIMIT 1".to_string(),
         ))
         .await
         .expect("query remaining grant")
         .expect("remaining grant")
         .try_get("", "artifact_permission_id")
-        .expect("decode remaining identity");
+        .expect("decode remaining identity text");
+    let remaining_id = Uuid::parse_str(&remaining_id_text).expect("parse remaining identity");
     assert_eq!(remaining_id, tenant_permission_id);
     assert_ne!(remaining_id, platform_permission_id);
 

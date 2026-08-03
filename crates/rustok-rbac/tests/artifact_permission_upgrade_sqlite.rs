@@ -75,6 +75,9 @@ async fn add_tenant_scope_collision(
 ) {
     let definition_id = Uuid::new_v4();
     let translation_id = Uuid::new_v4();
+    db.execute_unprepared("PRAGMA foreign_keys = OFF")
+        .await
+        .expect("disable foreign keys for corruption fixture");
     db.execute_unprepared(&format!(
         r#"
         INSERT INTO rbac_artifact_permission_definitions
@@ -89,6 +92,9 @@ async fn add_tenant_scope_collision(
     ))
     .await
     .expect("add colliding tenant definition");
+    db.execute_unprepared("PRAGMA foreign_keys = ON")
+        .await
+        .expect("restore foreign keys after corruption fixture");
 }
 
 #[tokio::test]
@@ -129,6 +135,10 @@ async fn legacy_catalog_grant_and_receipt_upgrade_and_rollback_truthfully() {
         .await
         .expect("upgrade legacy artifact authorization state");
 
+    assert_eq!(
+        count(&db, "rbac_artifact_permission_installations").await,
+        1
+    );
     assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);
     assert_eq!(count(&db, "rbac_artifact_permission_translations").await, 1);
     assert_eq!(
@@ -185,7 +195,7 @@ async fn legacy_catalog_grant_and_receipt_upgrade_and_rollback_truthfully() {
 }
 
 #[tokio::test]
-async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed_atomically() {
+async fn legacy_installation_with_platform_and_tenant_scope_fails_closed_atomically() {
     let (db, migration) = legacy_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();
@@ -218,10 +228,15 @@ async fn legacy_grant_with_platform_and_tenant_candidates_fails_closed_atomicall
         .up(&SchemaManager::new(&db))
         .await
         .expect_err("ambiguous legacy selector must fail closed");
-    assert!(error.to_string().contains("ambiguous or orphan identity"));
+    assert!(
+        error
+            .to_string()
+            .contains("installation identity is bound to conflicting scope")
+    );
     assert!(table_exists(&db, "rbac_artifact_permission_catalog").await);
     assert!(!table_exists(&db, "rbac_artifact_permission_definitions").await);
     assert!(!table_exists(&db, "rbac_artifact_permission_definitions_new").await);
+    assert!(!table_exists(&db, "rbac_artifact_permission_installations").await);
     assert_eq!(count(&db, "rbac_artifact_permission_catalog").await, 2);
     assert_eq!(count(&db, "rbac_artifact_role_permissions").await, 1);
 }
@@ -357,5 +372,9 @@ async fn late_sqlite_down_failure_restores_canonical_schema() {
     assert!(table_exists(&db, "rbac_artifact_permission_translations").await);
     assert!(!table_exists(&db, "rbac_artifact_permission_catalog").await);
     assert!(!table_exists(&db, "rbac_artifact_permission_catalog_restore").await);
+    assert_eq!(
+        count(&db, "rbac_artifact_permission_installations").await,
+        1
+    );
     assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);
 }

@@ -95,6 +95,7 @@ requireAll(catalogMigration, [
 forbidAll(catalogMigration, [
   "rbac_artifact_permission_definitions",
   "rbac_artifact_permission_translations",
+  "rustok_reject_artifact_permission_installation_update",
   "rustok_reject_artifact_permission_definition_update",
 ]);
 requireAll(grantMigration, [
@@ -113,6 +114,7 @@ forbidAll(grantMigration, [
 
 requireAll(cutoverMigration, [
   "Append-only cutover",
+  "rbac_artifact_permission_installations",
   "rbac_artifact_permission_definitions_new",
   "rbac_artifact_permission_translations_new",
   "normalize_locale_tag",
@@ -127,6 +129,7 @@ requireAll(cutoverMigration, [
   "FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id)",
   "FOREIGN KEY (tenant_id, actor_id) REFERENCES users (tenant_id, id)",
   "FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key)",
+  "rustok_reject_artifact_permission_installation_update",
   "rustok_reject_artifact_permission_definition_update",
   "cannot roll back distinct scoped grants that collapse to one legacy key",
   "validate_rollback_legacy_selectors",
@@ -151,12 +154,17 @@ requireAll(catalog, [
   "!permission_keys.insert(permission.key.as_str())",
   "let mut normalized_locales = HashSet::new()",
   "!normalized_locales.insert(normalized_locale)",
+  "ensure_installation_identity",
+  "rbac_artifact_permission_installations",
+  "installation_insert_sql",
+  "installation_select_sql",
   "definition_insert_sql",
   "definition_select_sql",
   "translation_upsert_sql",
   "rbac.artifact_permission_identity_conflict",
   "ArtifactPermissionScope::Tenant { tenant_id } if tenant_id.is_nil()",
-  "registration_normalizes_locale_and_is_idempotent_without_role_tables",
+  "registration_normalizes_locale_and_is_idempotent",
+  "registration_rejects_installation_scope_rebinding",
   "registration_rejects_nil_tenant_scope",
   "registration_rejects_duplicate_normalized_locales",
   "registration_rejects_unassignable_or_duplicate_permission_keys",
@@ -208,8 +216,9 @@ requireAll(upgradeProof, [
   "SELECT locale FROM rbac_artifact_permission_translations",
   '"en-US"',
   "roll back append-only cutover",
-  "legacy_grant_with_platform_and_tenant_candidates_fails_closed_atomically",
+  "legacy_installation_with_platform_and_tenant_scope_fails_closed_atomically",
   "ambiguous legacy selector must fail closed",
+  "rbac_artifact_permission_installations",
   "rbac_artifact_permission_definitions_new",
   "canonical_grant_with_later_scope_collision_fails_rollback",
   "canonical_receipt_with_later_scope_collision_fails_rollback",
@@ -220,7 +229,7 @@ requireAll(upgradeProof, [
   "rbac_artifact_permission_catalog_restore",
 ]);
 requireAll(outboxProof, [
-  "explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition",
+  "explicit_scope_mutation_remains_exact_for_corrupt_parallel_definitions",
   "grant explicit permission scope",
   "revoke explicit platform scope",
   "revoke explicit tenant scope",
@@ -236,9 +245,9 @@ requireAll(userAdmin, [
 forbidAll(userAdmin, ["users::Entity::delete", "DELETE FROM users"]);
 requireAll(docs, [
   "## Artifact authorization lifecycle and teardown",
-  "The current Auth Admin `delete_user` operation is account deactivation",
-  "A future hard-delete workflow must run in one owner-coordinated transaction",
-  "Until that workflow exists, `RESTRICT` is the canonical behavior",
+  "the current Auth Admin `delete_user` operation is account",
+  "A future hard-delete",
+  "Until that workflow exists, `RESTRICT` is the canonical",
 ]);
 
 if (failures.length > 0) {

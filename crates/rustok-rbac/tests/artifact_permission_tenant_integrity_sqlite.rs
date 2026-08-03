@@ -98,6 +98,20 @@ async fn database_rejects_cross_tenant_scope_and_orphan_artifact_state() {
             quoted(tenant_b)
         ),
         format!(
+            "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) VALUES ({}, '{}', 'sample', 'sha256:a')",
+            quoted(installation_a),
+            tenant_scope_a
+        ),
+        format!(
+            "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) VALUES ({}, '{}', 'sample', 'sha256:b')",
+            quoted(installation_b),
+            tenant_scope_b
+        ),
+        format!(
+            "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) VALUES ({}, 'platform', 'sample', 'sha256:platform')",
+            quoted(platform_installation)
+        ),
+        format!(
             "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES ({}, '{}', {}, 'sample', 'sha256:a', 'sample.events.handle')",
             quoted(permission_a),
             tenant_scope_a,
@@ -178,42 +192,93 @@ async fn database_rejects_cross_tenant_scope_and_orphan_artifact_state() {
     let rejected = [
         format!(
             "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, '{}', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_b), quoted(permission_a), tenant_scope_a, quoted(actor_a)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_b),
+            quoted(permission_a),
+            tenant_scope_a,
+            quoted(actor_a)
         ),
         format!(
             "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, '{}', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(permission_a), tenant_scope_a, quoted(actor_b)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_a),
+            quoted(permission_a),
+            tenant_scope_a,
+            quoted(actor_b)
         ),
         format!(
             "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, '{}', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(Uuid::new_v4()), tenant_scope_a, quoted(actor_a)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_a),
+            quoted(Uuid::new_v4()),
+            tenant_scope_a,
+            quoted(actor_a)
         ),
         format!(
             "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, '{}', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(permission_b), tenant_scope_b, quoted(actor_a)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_a),
+            quoted(permission_b),
+            tenant_scope_b,
+            quoted(actor_a)
         ),
         format!(
             "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({}, {}, {}, {}, '{}', {})",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(permission_a), tenant_scope_b, quoted(actor_a)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_a),
+            quoted(permission_a),
+            tenant_scope_b,
+            quoted(actor_a)
         ),
         format!(
             "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, artifact_permission_id, permission_scope_key, actor_id, granted) VALUES ({}, {}, 'foreign-role-op', {}, {}, '{}', {}, 1)",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_b), quoted(permission_a), tenant_scope_a, quoted(actor_a)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_b),
+            quoted(permission_a),
+            tenant_scope_a,
+            quoted(actor_a)
         ),
         format!(
             "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, artifact_permission_id, permission_scope_key, actor_id, granted) VALUES ({}, {}, 'foreign-scope-op', {}, {}, '{}', {}, 1)",
-            quoted(Uuid::new_v4()), quoted(tenant_a), quoted(role_a), quoted(permission_b), tenant_scope_b, quoted(actor_a)
+            quoted(Uuid::new_v4()),
+            quoted(tenant_a),
+            quoted(role_a),
+            quoted(permission_b),
+            tenant_scope_b,
+            quoted(actor_a)
         ),
         format!(
             "UPDATE roles SET tenant_id = {} WHERE id = {}",
-            quoted(tenant_b), quoted(role_a)
+            quoted(tenant_b),
+            quoted(role_a)
         ),
         format!(
             "UPDATE users SET tenant_id = {} WHERE id = {}",
-            quoted(tenant_b), quoted(actor_a)
+            quoted(tenant_b),
+            quoted(actor_a)
         ),
         format!("DELETE FROM roles WHERE id = {}", quoted(role_a)),
         format!("DELETE FROM users WHERE id = {}", quoted(actor_a)),
+        format!(
+            "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES ({}, '{}', {}, 'sample', 'sha256:a', 'sample.cross_scope')",
+            quoted(Uuid::new_v4()),
+            tenant_scope_b,
+            quoted(installation_a)
+        ),
+        format!(
+            "UPDATE rbac_artifact_permission_installations SET scope_key = 'platform' WHERE installation_id = {}",
+            quoted(installation_a)
+        ),
+        format!(
+            "DELETE FROM rbac_artifact_permission_installations WHERE installation_id = {}",
+            quoted(installation_a)
+        ),
         format!(
             "UPDATE rbac_artifact_permission_definitions SET permission_key = 'sample.changed' WHERE id = {}",
             quoted(permission_b)
@@ -240,9 +305,10 @@ async fn database_rejects_cross_tenant_scope_and_orphan_artifact_state() {
         count(&db, "rbac_artifact_role_permission_operations").await,
         1
     );
-    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 3);
     assert_eq!(
-        count(&db, "rbac_artifact_permission_translations").await,
-        1
+        count(&db, "rbac_artifact_permission_installations").await,
+        3
     );
+    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 3);
+    assert_eq!(count(&db, "rbac_artifact_permission_translations").await, 1);
 }

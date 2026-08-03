@@ -73,14 +73,14 @@ where
         backend,
         match backend {
             DbBackend::Postgres => {
-                "SELECT COUNT(*) AS count FROM (SELECT scope_key, installation_id, permission_key FROM rbac_artifact_permission_catalog GROUP BY scope_key, installation_id, permission_key HAVING COUNT(DISTINCT module_slug) <> 1 OR COUNT(DISTINCT release_digest) <> 1) invalid"
+                "SELECT COUNT(*) AS count FROM (SELECT installation_id FROM rbac_artifact_permission_catalog GROUP BY installation_id HAVING COUNT(DISTINCT scope_key) <> 1 OR COUNT(DISTINCT module_slug) <> 1 OR COUNT(DISTINCT release_digest) <> 1) invalid"
             }
             DbBackend::Sqlite => {
-                "SELECT COUNT(*) AS count FROM (SELECT scope_key, installation_id, permission_key FROM rbac_artifact_permission_catalog GROUP BY scope_key, installation_id, permission_key HAVING COUNT(DISTINCT module_slug) <> 1 OR COUNT(DISTINCT release_digest) <> 1)"
+                "SELECT COUNT(*) AS count FROM (SELECT installation_id FROM rbac_artifact_permission_catalog GROUP BY installation_id HAVING COUNT(DISTINCT scope_key) <> 1 OR COUNT(DISTINCT module_slug) <> 1 OR COUNT(DISTINCT release_digest) <> 1)"
             }
             _ => unreachable!(),
         },
-        "artifact permission definitions contain conflicting admitted metadata",
+        "artifact permission installation identity is bound to conflicting scope or admitted metadata",
     )
     .await?;
 
@@ -89,12 +89,16 @@ where
         backend,
         match backend {
             DbBackend::Postgres => &[
-                "CREATE TABLE rbac_artifact_permission_definitions_new (id UUID PRIMARY KEY, scope_key TEXT NOT NULL, installation_id UUID NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
+                "CREATE TABLE rbac_artifact_permission_installations (installation_id UUID PRIMARY KEY, scope_key TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (installation_id, scope_key, module_slug, release_digest))",
+                "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest, registered_at) SELECT installation_id, MIN(scope_key), MIN(module_slug), MIN(release_digest), MIN(registered_at) FROM rbac_artifact_permission_catalog GROUP BY installation_id",
+                "CREATE TABLE rbac_artifact_permission_definitions_new (id UUID PRIMARY KEY, scope_key TEXT NOT NULL, installation_id UUID NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT fk_rbac_artifact_definition_installation FOREIGN KEY (installation_id, scope_key, module_slug, release_digest) REFERENCES rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
                 "INSERT INTO rbac_artifact_permission_definitions_new (id, scope_key, installation_id, module_slug, release_digest, permission_key, registered_at) SELECT MIN(id::text)::uuid, scope_key, installation_id, MIN(module_slug), MIN(release_digest), permission_key, MIN(registered_at) FROM rbac_artifact_permission_catalog GROUP BY scope_key, installation_id, permission_key",
                 "CREATE TABLE rbac_artifact_permission_translations_new (id UUID PRIMARY KEY, artifact_permission_id UUID NOT NULL REFERENCES rbac_artifact_permission_definitions_new (id) ON UPDATE RESTRICT ON DELETE CASCADE, locale VARCHAR(32) NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (artifact_permission_id, locale))",
             ],
             DbBackend::Sqlite => &[
-                "CREATE TABLE rbac_artifact_permission_definitions_new (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
+                "CREATE TABLE rbac_artifact_permission_installations (installation_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (installation_id, scope_key, module_slug, release_digest))",
+                "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest, registered_at) SELECT installation_id, MIN(scope_key), MIN(module_slug), MIN(release_digest), MIN(registered_at) FROM rbac_artifact_permission_catalog GROUP BY installation_id",
+                "CREATE TABLE rbac_artifact_permission_definitions_new (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (installation_id, scope_key, module_slug, release_digest) REFERENCES rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
                 "INSERT INTO rbac_artifact_permission_definitions_new (id, scope_key, installation_id, module_slug, release_digest, permission_key, registered_at) SELECT MIN(id), scope_key, installation_id, MIN(module_slug), MIN(release_digest), permission_key, MIN(registered_at) FROM rbac_artifact_permission_catalog GROUP BY scope_key, installation_id, permission_key",
                 "CREATE TABLE rbac_artifact_permission_translations_new (id TEXT PRIMARY KEY, artifact_permission_id TEXT NOT NULL REFERENCES rbac_artifact_permission_definitions_new (id) ON UPDATE RESTRICT ON DELETE CASCADE, locale VARCHAR(32) NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (artifact_permission_id, locale))",
             ],
@@ -121,10 +125,13 @@ where
         backend,
         match backend {
             DbBackend::Postgres => &[
+                "CREATE OR REPLACE FUNCTION rustok_reject_artifact_permission_installation_update() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'artifact permission installation identities are immutable'; END; $$",
+                "CREATE TRIGGER rbac_artifact_permission_installations_immutable BEFORE UPDATE ON rbac_artifact_permission_installations FOR EACH ROW EXECUTE FUNCTION rustok_reject_artifact_permission_installation_update()",
                 "CREATE OR REPLACE FUNCTION rustok_reject_artifact_permission_definition_update() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'artifact permission definitions are immutable'; END; $$",
                 "CREATE TRIGGER rbac_artifact_permission_definitions_immutable BEFORE UPDATE ON rbac_artifact_permission_definitions FOR EACH ROW EXECUTE FUNCTION rustok_reject_artifact_permission_definition_update()",
             ],
             DbBackend::Sqlite => &[
+                "CREATE TRIGGER rbac_artifact_permission_installations_immutable BEFORE UPDATE ON rbac_artifact_permission_installations BEGIN SELECT RAISE(ABORT, 'artifact permission installation identities are immutable'); END",
                 "CREATE TRIGGER rbac_artifact_permission_definitions_immutable BEFORE UPDATE ON rbac_artifact_permission_definitions BEGIN SELECT RAISE(ABORT, 'artifact permission definitions are immutable'); END",
             ],
             _ => unreachable!(),
@@ -252,16 +259,21 @@ where
         match backend {
             DbBackend::Postgres => &[
                 "DROP TRIGGER rbac_artifact_permission_definitions_immutable ON rbac_artifact_permission_definitions",
+                "DROP TRIGGER rbac_artifact_permission_installations_immutable ON rbac_artifact_permission_installations",
                 "DROP TABLE rbac_artifact_permission_translations",
                 "DROP INDEX rbac_artifact_permission_definitions_lookup_idx",
                 "DROP TABLE rbac_artifact_permission_definitions",
+                "DROP TABLE rbac_artifact_permission_installations",
                 "DROP FUNCTION rustok_reject_artifact_permission_definition_update()",
+                "DROP FUNCTION rustok_reject_artifact_permission_installation_update()",
             ],
             DbBackend::Sqlite => &[
                 "DROP TRIGGER rbac_artifact_permission_definitions_immutable",
+                "DROP TRIGGER rbac_artifact_permission_installations_immutable",
                 "DROP TABLE rbac_artifact_permission_translations",
                 "DROP INDEX rbac_artifact_permission_definitions_lookup_idx",
                 "DROP TABLE rbac_artifact_permission_definitions",
+                "DROP TABLE rbac_artifact_permission_installations",
             ],
             _ => unreachable!(),
         },
@@ -290,7 +302,11 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), DbErr> {
     }
 }
 
-async fn execute_all<C>(connection: &C, backend: DbBackend, statements: &[&str]) -> Result<(), DbErr>
+async fn execute_all<C>(
+    connection: &C,
+    backend: DbBackend,
+    statements: &[&str],
+) -> Result<(), DbErr>
 where
     C: ConnectionTrait + ?Sized,
 {
@@ -319,7 +335,9 @@ where
     if count == 0 {
         Ok(())
     } else {
-        Err(DbErr::Migration(format!("{message}: {count} invalid row set(s)")))
+        Err(DbErr::Migration(format!(
+            "{message}: {count} invalid row set(s)"
+        )))
     }
 }
 
@@ -329,7 +347,7 @@ where
 {
     let select = match backend {
         DbBackend::Postgres => {
-            "SELECT catalog.id AS translation_id, definition.id AS definition_id, catalog.locale, catalog.label, catalog.description, catalog.registered_at::text AS registered_at_text FROM rbac_artifact_permission_catalog catalog JOIN rbac_artifact_permission_definitions_new definition ON definition.scope_key = catalog.scope_key AND definition.installation_id = catalog.installation_id AND definition.permission_key = catalog.permission_key ORDER BY catalog.registered_at, catalog.id::text"
+            "SELECT catalog.id::text AS translation_id, definition.id::text AS definition_id, catalog.locale, catalog.label, catalog.description, catalog.registered_at::text AS registered_at_text FROM rbac_artifact_permission_catalog catalog JOIN rbac_artifact_permission_definitions_new definition ON definition.scope_key = catalog.scope_key AND definition.installation_id = catalog.installation_id AND definition.permission_key = catalog.permission_key ORDER BY catalog.registered_at, catalog.id::text"
         }
         DbBackend::Sqlite => {
             "SELECT catalog.id AS translation_id, definition.id AS definition_id, catalog.locale, catalog.label, catalog.description, catalog.registered_at AS registered_at_text FROM rbac_artifact_permission_catalog catalog JOIN rbac_artifact_permission_definitions_new definition ON definition.scope_key = catalog.scope_key AND definition.installation_id = catalog.installation_id AND definition.permission_key = catalog.permission_key ORDER BY catalog.registered_at, catalog.id"
@@ -341,8 +359,18 @@ where
         .await?;
     let mut normalized: HashMap<(Uuid, String), TranslationValue> = HashMap::new();
     for row in rows {
-        let translation_id: Uuid = row.try_get("", "translation_id")?;
-        let definition_id: Uuid = row.try_get("", "definition_id")?;
+        let translation_id_text: String = row.try_get("", "translation_id")?;
+        let translation_id = Uuid::parse_str(&translation_id_text).map_err(|error| {
+            DbErr::Migration(format!(
+                "artifact permission translation id `{translation_id_text}` is invalid: {error}"
+            ))
+        })?;
+        let definition_id_text: String = row.try_get("", "definition_id")?;
+        let definition_id = Uuid::parse_str(&definition_id_text).map_err(|error| {
+            DbErr::Migration(format!(
+                "artifact permission definition id `{definition_id_text}` is invalid: {error}"
+            ))
+        })?;
         let raw_locale: String = row.try_get("", "locale")?;
         let locale = normalize_locale_tag(&raw_locale).ok_or_else(|| {
             DbErr::Migration(format!(
@@ -372,13 +400,22 @@ where
             }
             _ => unreachable!(),
         };
+        let (translation_id_value, definition_id_value): (sea_orm::Value, sea_orm::Value) =
+            match backend {
+                DbBackend::Postgres => (translation_id.into(), definition_id.into()),
+                DbBackend::Sqlite => (
+                    translation_id.to_string().into(),
+                    definition_id.to_string().into(),
+                ),
+                _ => unreachable!(),
+            };
         connection
             .execute(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![
-                    translation_id.into(),
-                    definition_id.into(),
+                    translation_id_value,
+                    definition_id_value,
                     locale.into(),
                     value.label.clone().into(),
                     value.description.clone().into(),
@@ -455,9 +492,7 @@ where
             connection,
             backend,
             &sql,
-            &format!(
-                "cannot roll back artifact permission {label} with ambiguous legacy selector"
-            ),
+            &format!("cannot roll back artifact permission {label} with ambiguous legacy selector"),
         )
         .await?;
     }

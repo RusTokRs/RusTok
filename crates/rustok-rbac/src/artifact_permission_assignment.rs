@@ -120,7 +120,8 @@ impl RbacArtifactPermissionAssignmentService {
             return match_operation(existing, &artifact_permission, &command);
         }
 
-        let operation_id = match insert_operation(&transaction, &artifact_permission, &command).await?
+        let operation_id = match insert_operation(&transaction, &artifact_permission, &command)
+            .await?
         {
             Some(operation_id) => operation_id,
             None => {
@@ -198,9 +199,9 @@ impl SeaOrmArtifactPermissionAuthorizer {
                 backend,
                 sql,
                 vec![
-                    user_id.into(),
-                    tenant_id.into(),
-                    installation_id.into(),
+                    uuid_value(backend, user_id),
+                    uuid_value(backend, tenant_id),
+                    uuid_value(backend, installation_id),
                     permission_key.into(),
                     tenant_scope.into(),
                 ],
@@ -274,6 +275,32 @@ fn scope_key(scope: ArtifactPermissionAssignmentScope, tenant_id: Uuid) -> Strin
     }
 }
 
+fn uuid_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
+    match backend {
+        DbBackend::Postgres => value.into(),
+        DbBackend::Sqlite => value.to_string().into(),
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn uuid_from_row(
+    backend: DbBackend,
+    row: &sea_orm::QueryResult,
+    column: &str,
+) -> Result<Uuid, ArtifactPermissionAssignmentError> {
+    match backend {
+        DbBackend::Postgres => row.try_get("", column).map_err(database_error),
+        DbBackend::Sqlite => {
+            let value: String = row.try_get("", column).map_err(database_error)?;
+            Uuid::parse_str(&value).map_err(|error| {
+                ArtifactPermissionAssignmentError::Database(format!(
+                    "artifact permission UUID column `{column}` contains invalid value `{value}`: {error}"
+                ))
+            })
+        }
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermissionAssignmentError> {
     match backend {
         DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
@@ -297,7 +324,7 @@ async fn find_operation(
             backend,
             sql,
             vec![
-                command.tenant_id.into(),
+                uuid_value(backend, command.tenant_id),
                 command.idempotency_key.clone().into(),
             ],
         ))
@@ -305,14 +332,12 @@ async fn find_operation(
         .map_err(database_error)?
         .map(|row| {
             Ok(StoredOperation {
-                role_id: row.try_get("", "role_id").map_err(database_error)?,
-                artifact_permission_id: row
-                    .try_get("", "artifact_permission_id")
-                    .map_err(database_error)?,
+                role_id: uuid_from_row(backend, &row, "role_id")?,
+                artifact_permission_id: uuid_from_row(backend, &row, "artifact_permission_id")?,
                 permission_scope_key: row
                     .try_get("", "permission_scope_key")
                     .map_err(database_error)?,
-                actor_id: row.try_get("", "actor_id").map_err(database_error)?,
+                actor_id: uuid_from_row(backend, &row, "actor_id")?,
                 granted: row.try_get("", "granted").map_err(database_error)?,
             })
         })
@@ -351,13 +376,13 @@ async fn insert_operation(
             backend,
             sql,
             vec![
-                operation_id.into(),
-                command.tenant_id.into(),
+                uuid_value(backend, operation_id),
+                uuid_value(backend, command.tenant_id),
                 command.idempotency_key.clone().into(),
-                command.role_id.into(),
-                artifact_permission.id.into(),
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, artifact_permission.id),
                 artifact_permission.scope_key.clone().into(),
-                command.actor_id.into(),
+                uuid_value(backend, command.actor_id),
                 command.granted.into(),
             ],
         ))
@@ -379,7 +404,10 @@ async fn role_exists(
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
-            vec![command.role_id.into(), command.tenant_id.into()],
+            vec![
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, command.tenant_id),
+            ],
         ))
         .await
         .map_err(database_error)?
@@ -402,7 +430,7 @@ async fn resolve_artifact_permission_identity(
             sql,
             vec![
                 requested_scope_key.into(),
-                command.installation_id.into(),
+                uuid_value(backend, command.installation_id),
                 command.permission_key.clone().into(),
             ],
         ))
@@ -410,14 +438,10 @@ async fn resolve_artifact_permission_identity(
         .map_err(database_error)?
         .map(|row| {
             Ok(ArtifactPermissionIdentity {
-                id: row.try_get("", "id").map_err(database_error)?,
+                id: uuid_from_row(backend, &row, "id")?,
                 scope_key: row.try_get("", "scope_key").map_err(database_error)?,
-                installation_id: row
-                    .try_get("", "installation_id")
-                    .map_err(database_error)?,
-                permission_key: row
-                    .try_get("", "permission_key")
-                    .map_err(database_error)?,
+                installation_id: uuid_from_row(backend, &row, "installation_id")?,
+                permission_key: row.try_get("", "permission_key").map_err(database_error)?,
             })
         })
         .transpose()?
@@ -439,12 +463,12 @@ async fn grant_permission(
             backend,
             sql,
             vec![
-                rustok_core::generate_id().into(),
-                command.tenant_id.into(),
-                command.role_id.into(),
-                artifact_permission.id.into(),
+                uuid_value(backend, rustok_core::generate_id()),
+                uuid_value(backend, command.tenant_id),
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, artifact_permission.id),
                 artifact_permission.scope_key.clone().into(),
-                command.actor_id.into(),
+                uuid_value(backend, command.actor_id),
             ],
         ))
         .await
@@ -467,9 +491,9 @@ async fn revoke_permission(
             backend,
             sql,
             vec![
-                command.tenant_id.into(),
-                command.role_id.into(),
-                artifact_permission.id.into(),
+                uuid_value(backend, command.tenant_id),
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, artifact_permission.id),
                 artifact_permission.scope_key.clone().into(),
             ],
         ))
@@ -527,7 +551,9 @@ fn database_error(error: impl std::fmt::Display) -> ArtifactPermissionAssignment
 mod tests {
     use super::*;
 
-    fn command(scope: ArtifactPermissionAssignmentScope) -> ArtifactRolePermissionAssignmentCommand {
+    fn command(
+        scope: ArtifactPermissionAssignmentScope,
+    ) -> ArtifactRolePermissionAssignmentCommand {
         ArtifactRolePermissionAssignmentCommand {
             tenant_id: Uuid::new_v4(),
             role_id: Uuid::new_v4(),
