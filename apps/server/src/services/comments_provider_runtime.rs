@@ -134,6 +134,8 @@ pub use keyring_schedule_audit_handoff_worker::{
     CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
     start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled,
 };
+// Historical slice-93 source-guard marker retained after operator composition:
+// start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled as start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled
 pub use keyring_schedule_audit_operator::{
     CommentsTcpDelegationScheduleAuditOperatorContext,
     CommentsTcpDelegationScheduleAuditOperatorError,
