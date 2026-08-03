@@ -152,6 +152,248 @@ jobs:
           )
           PY
 
+      - name: Canonicalize SQLite assignment identities
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          assignment_path = Path(
+              "crates/rustok-rbac/src/artifact_permission_assignment.rs"
+          )
+          assignment = assignment_path.read_text()
+
+          helper_anchor = "fn ensure_supported_backend("
+          helpers = "\n".join([
+              "fn uuid_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {",
+              "    match backend {",
+              "        DbBackend::Postgres => value.into(),",
+              "        DbBackend::Sqlite => value.to_string().into(),",
+              "        _ => unreachable!(\"unsupported database backend was validated\"),",
+              "    }",
+              "}",
+              "",
+              "fn uuid_from_row(",
+              "    backend: DbBackend,",
+              "    row: &sea_orm::QueryResult,",
+              "    column: &str,",
+              ") -> Result<Uuid, ArtifactPermissionAssignmentError> {",
+              "    match backend {",
+              "        DbBackend::Postgres => row.try_get(\"\", column).map_err(database_error),",
+              "        DbBackend::Sqlite => {",
+              "            let value: String =",
+              "                row.try_get(\"\", column).map_err(database_error)?;",
+              "            Uuid::parse_str(&value).map_err(|error| {",
+              "                ArtifactPermissionAssignmentError::Database(format!(",
+              "                    \"artifact permission UUID column `{column}` contains invalid value `{value}`: {error}\"",
+              "                ))",
+              "            })",
+              "        }",
+              "        _ => unreachable!(\"unsupported database backend was validated\"),",
+              "    }",
+              "}",
+              "",
+          ])
+          assignment = replace_once(
+              assignment,
+              helper_anchor,
+              helpers + helper_anchor,
+              "assignment UUID helpers",
+          )
+
+          authorizer_values = "\n".join([
+              "                vec![",
+              "                    user_id.into(),",
+              "                    tenant_id.into(),",
+              "                    installation_id.into(),",
+              "                    permission_key.into(),",
+              "                    tenant_scope.into(),",
+              "                ],",
+          ])
+          authorizer_text_values = "\n".join([
+              "                vec![",
+              "                    uuid_value(backend, user_id),",
+              "                    uuid_value(backend, tenant_id),",
+              "                    uuid_value(backend, installation_id),",
+              "                    permission_key.into(),",
+              "                    tenant_scope.into(),",
+              "                ],",
+          ])
+          assignment = replace_once(
+              assignment,
+              authorizer_values,
+              authorizer_text_values,
+              "authorizer UUID values",
+          )
+
+          expression_replacements = [
+              ("operation_id.into(),", "uuid_value(backend, operation_id),", 1),
+              ("command.tenant_id.into(),", "uuid_value(backend, command.tenant_id),", 5),
+              ("command.role_id.into(),", "uuid_value(backend, command.role_id),", 4),
+              ("artifact_permission.id.into(),", "uuid_value(backend, artifact_permission.id),", 3),
+              ("command.actor_id.into(),", "uuid_value(backend, command.actor_id),", 2),
+              (
+                  "rustok_core::generate_id().into(),",
+                  "uuid_value(backend, rustok_core::generate_id()),",
+                  1,
+              ),
+              (
+                  "command.installation_id.into(),",
+                  "uuid_value(backend, command.installation_id),",
+                  1,
+              ),
+          ]
+          for old, new, expected in expression_replacements:
+              count = assignment.count(old)
+              if count != expected:
+                  raise SystemExit(
+                      f"assignment UUID expression `{old}`: expected {expected}, found {count}"
+                  )
+              assignment = assignment.replace(old, new)
+
+          assignment = replace_once(
+              assignment,
+              '                role_id: row.try_get("", "role_id").map_err(database_error)?,',
+              '                role_id: uuid_from_row(backend, &row, "role_id")?,',
+              "stored operation role decode",
+          )
+          assignment = replace_once(
+              assignment,
+              "\n".join([
+                  "                artifact_permission_id: row",
+                  "                    .try_get(\"\", \"artifact_permission_id\")",
+                  "                    .map_err(database_error)?,",
+              ]),
+              '                artifact_permission_id: uuid_from_row(backend, &row, "artifact_permission_id")?,',
+              "stored operation permission decode",
+          )
+          assignment = replace_once(
+              assignment,
+              '                actor_id: row.try_get("", "actor_id").map_err(database_error)?,',
+              '                actor_id: uuid_from_row(backend, &row, "actor_id")?,',
+              "stored operation actor decode",
+          )
+          assignment = replace_once(
+              assignment,
+              '                id: row.try_get("", "id").map_err(database_error)?,',
+              '                id: uuid_from_row(backend, &row, "id")?,',
+              "permission identity decode",
+          )
+          assignment = replace_once(
+              assignment,
+              "\n".join([
+                  "                installation_id: row",
+                  "                    .try_get(\"\", \"installation_id\")",
+                  "                    .map_err(database_error)?,",
+              ]),
+              '                installation_id: uuid_from_row(backend, &row, "installation_id")?,',
+              "installation identity decode",
+          )
+          assignment_path.write_text(assignment)
+
+          outbox_path = Path(
+              "crates/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs"
+          )
+          outbox = outbox_path.read_text()
+          outbox = replace_once(
+              outbox,
+              "vec![role_id.into(), tenant_id.into()]",
+              "vec![role_id.to_string().into(), tenant_id.to_string().into()]",
+              "outbox role TEXT seed",
+          )
+          outbox = replace_once(
+              outbox,
+              "vec![actor_id.into(), tenant_id.into()]",
+              "vec![actor_id.to_string().into(), tenant_id.to_string().into()]",
+              "outbox actor TEXT seed",
+          )
+
+          definition_start = outbox.index("async fn insert_definition(")
+          definition_end = outbox.index(
+              "async fn insert_corrupt_parallel_definition(",
+              definition_start,
+          )
+          definition = outbox[definition_start:definition_end]
+          for old, new, expected in [
+              (
+                  "artifact_permission_id.into(),",
+                  "artifact_permission_id.to_string().into(),",
+                  1,
+              ),
+              (
+                  "installation_id.into(),",
+                  "installation_id.to_string().into(),",
+                  2,
+              ),
+          ]:
+              if definition.count(old) != expected:
+                  raise SystemExit(
+                      f"outbox definition seed `{old}`: expected {expected}, found {definition.count(old)}"
+                  )
+              definition = definition.replace(old, new)
+          outbox = outbox[:definition_start] + definition + outbox[definition_end:]
+
+          corrupt_start = outbox.index(
+              "async fn insert_corrupt_parallel_definition("
+          )
+          corrupt_end = outbox.index(
+              "#[allow(clippy::too_many_arguments)]",
+              corrupt_start,
+          )
+          corrupt = outbox[corrupt_start:corrupt_end]
+          for old, new, expected in [
+              (
+                  "artifact_permission_id.into(),",
+                  "artifact_permission_id.to_string().into(),",
+                  1,
+              ),
+              (
+                  "installation_id.into(),",
+                  "installation_id.to_string().into(),",
+                  1,
+              ),
+          ]:
+              if corrupt.count(old) != expected:
+                  raise SystemExit(
+                      f"outbox corrupt seed `{old}`: expected {expected}, found {corrupt.count(old)}"
+                  )
+              corrupt = corrupt.replace(old, new)
+          outbox = outbox[:corrupt_start] + corrupt + outbox[corrupt_end:]
+
+          remaining_start = outbox.index("    let remaining_id: Uuid = db")
+          remaining_end = outbox.index(
+              "    assert_eq!(remaining_id, tenant_permission_id);",
+              remaining_start,
+          )
+          remaining_replacement = "\n".join([
+              "    let remaining_id_text: String = db",
+              "        .query_one(Statement::from_string(",
+              "            db.get_database_backend(),",
+              "            \"SELECT artifact_permission_id FROM rbac_artifact_role_permissions LIMIT 1\"",
+              "                .to_string(),",
+              "        ))",
+              "        .await",
+              "        .expect(\"query remaining grant\")",
+              "        .expect(\"remaining grant\")",
+              "        .try_get(\"\", \"artifact_permission_id\")",
+              "        .expect(\"decode remaining identity text\");",
+              "    let remaining_id = Uuid::parse_str(&remaining_id_text)",
+              "        .expect(\"parse remaining identity\");",
+              "",
+          ])
+          outbox = (
+              outbox[:remaining_start]
+              + remaining_replacement
+              + outbox[remaining_end:]
+          )
+          outbox_path.write_text(outbox)
+          PY
+
       - name: Format changed Rust sources
         env:
           RUSTUP_TOOLCHAIN: 1.96.0
@@ -182,6 +424,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add \
+            crates/rustok-rbac/src/artifact_permission_assignment.rs \
             crates/rustok-rbac/src/artifact_permission_catalog.rs \
             crates/rustok-rbac/src/m20260803_000001_canonicalize_artifact_permissions.rs \
             crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs \
