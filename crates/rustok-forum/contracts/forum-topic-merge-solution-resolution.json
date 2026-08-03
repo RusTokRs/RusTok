@@ -47,27 +47,50 @@
     "same_author_for_both_solutions": "one_exact_decrement_from_two_to_one"
   },
   "audit": {
-    "journal": "forum_domain_events",
-    "event_type": "forum.topic.merged",
-    "ordinary_schema_version": 1,
-    "resolved_schema_version": 2,
-    "event_id_equals_operation_id": true,
-    "aggregate_is_retained_target": true,
-    "resolution_payload_key": "solution_resolution",
+    "migration": "m20260803_000018_add_forum_topic_merge_solution_resolution",
+    "table": "forum_topic_merge_solution_resolutions",
+    "entity": "forum_topic_merge_solution_resolution",
+    "primary_key": [
+      "tenant_id",
+      "operation_id"
+    ],
+    "receipt_foreign_key": [
+      "tenant_id",
+      "operation_id"
+    ],
+    "append_only_on_postgresql_and_sqlite": true,
     "fields": [
       "source_solution_reply_id",
       "target_solution_reply_id",
       "selected_solution_reply_id",
       "rejected_solution_reply_id",
-      "rejected_solution_author_id"
+      "rejected_solution_author_id",
+      "resolved_at"
     ],
-    "actor_and_reason_are_existing_event_fields": true,
-    "shared_rustok_events_contract_changed": false
+    "all_reply_ids_are_tenant_composite_foreign_keys": true,
+    "rejected_author_is_optional_tenant_composite_foreign_key": true,
+    "selection_pair_consistency_is_database_checked": true,
+    "decision_actor_and_reason_are_owned_by_linked_receipt_and_event": true
+  },
+  "semantic_event_compatibility": {
+    "journal": "forum_domain_events",
+    "event_type": "forum.topic.merged",
+    "schema_version": 1,
+    "payload_changed": false,
+    "event_id_equals_operation_id": true,
+    "aggregate_is_retained_target": true,
+    "shared_rustok_events_contract_changed": false,
+    "subscription_reconciliation_remains_compatible": true,
+    "read_state_reconciliation_remains_compatible": true,
+    "tag_reconciliation_remains_compatible": true,
+    "vote_reconciliation_remains_compatible": true,
+    "audience_reconciliation_remains_compatible": true
   },
   "idempotency": {
     "receipt_table_changed": false,
     "operation_id_remains_receipt_identity": true,
-    "replay_validates_event_schema_and_exact_payload": true,
+    "replay_validates_exact_schema_one_event": true,
+    "replay_loads_optional_append_only_resolution_audit": true,
     "same_selection_returns_same_receipt": true,
     "selection_drift": "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
     "ordinary_vs_resolved_command_shape_drift": "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
@@ -88,9 +111,10 @@
     "ordinary_owner_method_changed": false,
     "ordinary_graphql_field_changed": false,
     "receipt_schema_changed": false,
-    "migration_added": false,
+    "audit_migration_added": true,
     "event_type_changed": false,
-    "ordinary_event_schema_changed": false,
+    "event_schema_or_payload_changed": false,
+    "post_merge_reconciliation_owner_changed": false,
     "rest_changed": false,
     "ui_added": false
   },
@@ -110,7 +134,7 @@
   ],
   "non_claims": [
     "no test verifier formatter Cargo SQLite PostgreSQL workflow or CI execution is claimed",
-    "no migration or merge receipt schema is added",
+    "no merge receipt schema or merge event contract is changed",
     "no REST native admin storefront CLI or UI resolution command is added",
     "no cross-category merge split fork or reply-range workflow is added",
     "mutation commands do not follow merged source identities",
