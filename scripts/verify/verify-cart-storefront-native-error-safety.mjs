@@ -306,13 +306,41 @@ if (countText(safe, "error = ?error") !== 0 || countText(safe, "error = %error")
 }
 
 const missingVariantBody = functionBody(safe, "missing_variant_error");
-for (const marker of [
+for (const [value, label] of [
+  ["let tenant_id_non_nil = !tenant_id.is_nil();", "missing-variant tenant shape"],
+  ["let cart_id_non_nil = !cart_id.is_nil();", "missing-variant cart shape"],
+  ["let line_item_id_non_nil = !line_item_id.is_nil();", "missing-variant line-item shape"],
+  ["tracing::error!(", "missing-variant error severity"],
+  ['owner = "rustok_cart"', "missing-variant owner"],
+  ['owner_operation = "decrement_line_item"', "missing-variant operation"],
+  ["consumer = CART_STOREFRONT_NATIVE_OWNER", "missing-variant consumer"],
+  ["tenant_id_non_nil", "missing-variant tenant diagnostic"],
+  ["cart_id_non_nil", "missing-variant cart diagnostic"],
+  ["line_item_id_non_nil", "missing-variant line-item diagnostic"],
+  ['code = "cart.storefront_line_item_variant_missing"', "missing-variant code"],
+  ["boundary = CART_STOREFRONT_NATIVE_BOUNDARY", "missing-variant boundary"],
+  ["cart storefront line item is missing variant identity", "missing-variant diagnostic message"],
+  ['ServerFnError::new("Cart line item could not be updated safely")', "missing-variant static public envelope"],
+]) requireText(missingVariantBody, value, label);
+for (const payload of [
   "tenant_id = %tenant_id",
+  "tenant_id = ?tenant_id",
   "cart_id = %cart_id",
+  "cart_id = ?cart_id",
   "line_item_id = %line_item_id",
-  'code = "cart.storefront_line_item_variant_missing"',
-  'ServerFnError::new("Cart line item could not be updated safely")',
-]) requireText(missingVariantBody, marker, "unchanged missing-variant diagnostic boundary");
+  "line_item_id = ?line_item_id",
+]) forbidText(missingVariantBody, payload, "raw missing-variant identifier diagnostic");
+if (countText(missingVariantBody, "tracing::error!(") !== 1) {
+  failures.push("expected exactly one missing-variant error diagnostic path");
+}
+if (
+  countText(
+    safe,
+    "missing_variant_error(tenant.id, parsed_cart_id, parsed_line_item_id)",
+  ) !== 1
+) {
+  failures.push("expected exactly one preserved missing-variant decrement call site");
+}
 
 for (const value of [
   ".map_err(ServerFnError::new)",
@@ -382,8 +410,12 @@ for (const [key, expected] of Object.entries({
   pricing_owner_metadata_preserved: true,
   pricing_severity_split_preserved: true,
   pricing_port_message_remains_domain_sanitized: true,
+  missing_variant_identity_shape_only: true,
+  raw_missing_variant_identifiers_logged: false,
+  missing_variant_error_severity_preserved: true,
+  missing_variant_public_mapping_preserved: true,
+  mounted_cart_ssr_mapper_cleanup_complete: true,
   owner_context_logging: true,
-  identifier_mapper_cleanup_out_of_scope: true,
   cart_dto_changed: false,
   transport_selection_changed: false,
   graphql_transport_changed: false,
@@ -438,8 +470,13 @@ requireText(
 );
 requireText(
   doc,
-  "Missing-variant identifiers remain a separate open cleanup slice",
-  "documentation remaining mapper boundary",
+  "Missing-variant failures record only non-nil identifier facts",
+  "documentation missing-variant diagnostic policy",
+);
+requireText(
+  doc,
+  "The mounted Cart SSR mapper cleanup is source-complete",
+  "documentation mounted mapper completion boundary",
 );
 
 if (failures.length > 0) {
@@ -449,5 +486,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ cart storefront framework, input, customer, Cart owner, and pricing diagnostics use bounded causes/context while missing-variant identifier cleanup remains open; source evidence remains unvalidated",
+  "✔ all mounted Cart SSR diagnostics use bounded causes, context, and identifier facts; source evidence remains unvalidated",
 );
