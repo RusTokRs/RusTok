@@ -132,13 +132,14 @@ pub use keyring_schedule_audit_handoff_worker::{
     CommentsTcpDelegationScheduleAuditHandoffWorkerConfig,
     CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
     CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
-    start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled as start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled,
+    start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled,
 };
 pub use keyring_schedule_audit_operator::{
     CommentsTcpDelegationScheduleAuditOperatorContext,
     CommentsTcpDelegationScheduleAuditOperatorError,
     CommentsTcpDelegationScheduleAuditOperatorRuntime,
     materialize_comments_tcp_delegation_schedule_audit_operator,
+    start_comments_tcp_delegation_schedule_audit_handoff_worker_with_operator_if_enabled as start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled,
 };
 pub use keyring_schedule_audit_publication::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_CANONICAL_AUDIT_EVENT_TYPE,
