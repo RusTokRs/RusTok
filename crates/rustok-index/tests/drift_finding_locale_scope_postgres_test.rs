@@ -93,11 +93,11 @@ async fn run_scenario(database_url: &str, schema_name: &str) -> TestResult<()> {
     let locale_created = writer.record_digest_mismatch(&locale_request).await?;
     let no_locale_created = writer.record_digest_mismatch(&no_locale_request).await?;
     assert!(matches!(
-        locale_created,
+        &locale_created,
         IndexDriftFindingWriteOutcome::Created { .. }
     ));
     assert!(matches!(
-        no_locale_created,
+        &no_locale_created,
         IndexDriftFindingWriteOutcome::Created { .. }
     ));
 
@@ -139,7 +139,7 @@ async fn run_scenario(database_url: &str, schema_name: &str) -> TestResult<()> {
         ))
         .await?;
     assert!(matches!(
-        refreshed,
+        &refreshed,
         IndexDriftFindingWriteOutcome::Refreshed { .. }
     ));
     assert_eq!(refreshed.finding_id(), no_locale_created.finding_id());
