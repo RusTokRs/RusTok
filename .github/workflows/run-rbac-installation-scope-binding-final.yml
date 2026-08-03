@@ -48,95 +48,102 @@ jobs:
           from pathlib import Path
 
           migration_path = Path(
-              'crates/rustok-rbac/src/'
-              'm20260803_000001_canonicalize_artifact_permissions.rs'
+              "crates/rustok-rbac/src/"
+              "m20260803_000001_canonicalize_artifact_permissions.rs"
           )
           migration = migration_path.read_text()
+
           rename_marker = (
-              '            "ALTER TABLE '
-              'rbac_artifact_permission_installations_new RENAME TO '
-              'rbac_artifact_permission_installations",\n'
+              "            \"ALTER TABLE "
+              "rbac_artifact_permission_installations_new RENAME TO "
+              "rbac_artifact_permission_installations\",\n"
           )
           if migration.count(rename_marker) != 1:
               raise SystemExit(
-                  'installation parent rename: expected one match, found '
+                  "installation parent rename: expected one match, found "
                   + str(migration.count(rename_marker))
               )
-          migration = migration.replace(rename_marker, '', 1)
-          staging = 'rbac_artifact_permission_installations_new'
+          migration = migration.replace(rename_marker, "", 1)
+
+          staging = "rbac_artifact_permission_installations_new"
           if migration.count(staging) != 6:
               raise SystemExit(
-                  'installation staging references: expected six matches, found '
+                  "installation staging references: expected six matches, found "
                   + str(migration.count(staging))
               )
           migration = migration.replace(
               staging,
-              'rbac_artifact_permission_installations',
+              "rbac_artifact_permission_installations",
           )
 
-          insert_anchor = '''        connection
-            .execute(Statement::from_sql_and_values(
-                backend,
-                sql,'''
-          identity_binding = '''        let (translation_id_value, definition_id_value):
-            (sea_orm::Value, sea_orm::Value) = match backend {
-                DbBackend::Postgres => (translation_id.into(), definition_id.into()),
-                DbBackend::Sqlite => (
-                    translation_id.to_string().into(),
-                    definition_id.to_string().into(),
-                ),
-                _ => unreachable!(),
-            };
-        connection
-            .execute(Statement::from_sql_and_values(
-                backend,
-                sql,'''
+          insert_anchor = "\n".join([
+              "        connection",
+              "            .execute(Statement::from_sql_and_values(",
+              "                backend,",
+              "                sql,",
+          ])
+          identity_binding = "\n".join([
+              "        let (translation_id_value, definition_id_value):",
+              "            (sea_orm::Value, sea_orm::Value) = match backend {",
+              "                DbBackend::Postgres => (translation_id.into(), definition_id.into()),",
+              "                DbBackend::Sqlite => (",
+              "                    translation_id.to_string().into(),",
+              "                    definition_id.to_string().into(),",
+              "                ),",
+              "                _ => unreachable!(),",
+              "            };",
+              "        connection",
+              "            .execute(Statement::from_sql_and_values(",
+              "                backend,",
+              "                sql,",
+          ])
           if migration.count(insert_anchor) != 1:
               raise SystemExit(
-                  'translation insert anchor: expected one match, found '
+                  "translation insert anchor: expected one match, found "
                   + str(migration.count(insert_anchor))
               )
           migration = migration.replace(insert_anchor, identity_binding, 1)
+
           for old, new, label in [
-              ('translation_id.into(),', 'translation_id_value,', 'translation id bind'),
-              ('definition_id.into(),', 'definition_id_value,', 'definition id bind'),
+              ("translation_id.into(),", "translation_id_value,", "translation id bind"),
+              ("definition_id.into(),", "definition_id_value,", "definition id bind"),
           ]:
               if migration.count(old) != 1:
                   raise SystemExit(
-                      f'{label}: expected one match, found {migration.count(old)}'
+                      f"{label}: expected one match, found {migration.count(old)}"
                   )
               migration = migration.replace(old, new, 1)
           migration_path.write_text(migration)
 
           upgrade_path = Path(
-              'crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs'
+              "crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs"
           )
           upgrade = upgrade_path.read_text()
           if upgrade.count(staging) != 1:
               raise SystemExit(
-                  'upgrade installation rollback assertion: expected one match, found '
+                  "upgrade installation rollback assertion: expected one match, found "
                   + str(upgrade.count(staging))
               )
           upgrade_path.write_text(
               upgrade.replace(
                   staging,
-                  'rbac_artifact_permission_installations',
+                  "rbac_artifact_permission_installations",
               )
           )
 
           verifier_path = Path(
-              'scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs'
+              "scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs"
           )
           verifier = verifier_path.read_text()
           if verifier.count(staging) != 2:
               raise SystemExit(
-                  'verifier installation table markers: expected two matches, found '
+                  "verifier installation table markers: expected two matches, found "
                   + str(verifier.count(staging))
               )
           verifier_path.write_text(
               verifier.replace(
                   staging,
-                  'rbac_artifact_permission_installations',
+                  "rbac_artifact_permission_installations",
               )
           )
           PY
