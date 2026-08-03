@@ -236,8 +236,8 @@ for (const [pattern, expected, label] of [
   [/"collect_checkout_fulfillment_set"/g, 1, 'set collection operation count'],
   [/"require_complete_checkout_fulfillment_set"/g, 2, 'set completeness operation count'],
   [/"find_checkout_fulfillment_by_key"/g, 1, 'identity lookup operation count'],
-  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 6, 'owner diagnostic count'],
-  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 6, 'boundary diagnostic count'],
+  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 11, 'owner diagnostic count'],
+  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 11, 'boundary diagnostic count'],
 ]) {
   const count = source.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
