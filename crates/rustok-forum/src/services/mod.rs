@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod bounded_compat;
 mod category {
     include!("category.rs");
@@ -103,11 +101,13 @@ mod topic_audience {
     include!("topic_audience_owner.rs");
 }
 mod topic_audience_list;
+mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_merge;
+mod topic_merge_audience_reconciliation;
 mod topic_merge_read_state_reconciliation;
 mod topic_merge_subscription_reconciliation;
 mod topic_merge_tag_reconciliation;
@@ -231,6 +231,11 @@ pub use topic_facade::TopicService;
 pub use topic_merge::{
     ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
+};
+pub use topic_merge_audience_reconciliation::{
+    ForumTopicMergeAudienceReconciliationResult,
+    ForumTopicMergeAudienceReconciliationService, MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN,
+    ReconcileForumTopicMergeAudienceInput,
 };
 pub use topic_merge_read_state_reconciliation::{
     ForumTopicMergeReadStateReconciliationResult,
