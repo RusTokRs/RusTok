@@ -6,12 +6,17 @@ import { readFileSync } from "node:fs";
 const paths = {
   contract: "crates/rustok-forum/contracts/forum-topic-merge-admin-ui.json",
   docs: "crates/rustok-forum/docs/forum-21n-topic-merge-admin-ui.md",
+  nativeContract:
+    "crates/rustok-forum/contracts/forum-topic-merge-native-admin.json",
+  nativeDocs: "crates/rustok-forum/docs/forum-21o-topic-merge-native-admin.md",
   plan: "crates/rustok-forum/docs/implementation-plan.md",
   backend: "crates/rustok-forum/src/graphql/topic_merge_mutation.rs",
   manifest: "crates/rustok-forum/rustok-module.toml",
   leptosReadme: "crates/rustok-forum/admin/README.md",
   leptosModel: "crates/rustok-forum/admin/src/topic_merge_model.rs",
   leptosFacade: "crates/rustok-forum/admin/src/transport.rs",
+  leptosNative:
+    "crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs",
   leptosGraphql:
     "crates/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
   leptosRoot: "crates/rustok-forum/admin/src/ui/root.rs",
@@ -37,12 +42,15 @@ const includesAll = (text, markers, label) => {
 
 const contract = JSON.parse(read(paths.contract));
 const docs = read(paths.docs);
+const nativeContract = JSON.parse(read(paths.nativeContract));
+const nativeDocs = read(paths.nativeDocs);
 const plan = read(paths.plan);
 const backend = read(paths.backend);
 const manifest = read(paths.manifest);
 const leptosReadme = read(paths.leptosReadme);
 const leptosModel = read(paths.leptosModel);
 const leptosFacade = read(paths.leptosFacade);
+const leptosNative = read(paths.leptosNative);
 const leptosGraphql = read(paths.leptosGraphql);
 const leptosRoot = read(paths.leptosRoot);
 const leptosUi = read(paths.leptosUi);
@@ -86,6 +94,16 @@ assert.equal(contract.compatibility.backend_owner_changed, false);
 assert.equal(contract.compatibility.graphql_schema_changed, false);
 assert.equal(contract.compatibility.migration_added, false);
 
+assert.equal(nativeContract.contract, "forum_topic_merge_native_admin_v1");
+assert.equal(nativeContract.task, "FORUM-21O");
+assert.deepEqual(nativeContract.extends, ["FORUM-21N"]);
+assert.equal(nativeContract.transport_selection.ssr, "native_server");
+assert.equal(nativeContract.transport_selection.hydrate, "native_server");
+assert.equal(nativeContract.transport_selection.csr, "graphql");
+assert.equal(nativeContract.transport_selection.fallback, false);
+assert.equal(nativeContract.request_dto_policy.access_token, false);
+assert.equal(nativeContract.request_dto_policy.tenant_id, false);
+
 includesAll(
   backend,
   [
@@ -128,22 +146,37 @@ includesAll(
     "limit: 100",
     "execute_graphql",
   ],
-  "Leptos GraphQL adapter",
+  "Leptos GraphQL parity adapter",
 );
 assert.ok(!leptosGraphql.includes("reqwest"));
 assert.ok(!leptosGraphql.includes("rest_adapter"));
 assert.ok(!leptosGraphql.includes("#[server"));
 includesAll(
+  leptosNative,
+  [
+    "fetch_topic_merge_candidates_native",
+    "merge_topic_native",
+    "ForumTopicMergeService::new",
+    "TopicService::new",
+    "shared_get::<rustok_outbox::TransactionalEventBus>()",
+  ],
+  "Leptos native owner adapter",
+);
+assert.ok(!leptosNative.includes("token: Option<String>"));
+includesAll(
   leptosFacade,
   [
     "fetch_topic_merge_candidates",
-    "topic_merge_graphql_adapter::fetch_candidates",
     "pub async fn merge_topic(",
+    "execute_selected_transport",
+    "topic_merge_native_server_adapter::fetch_topic_merge_candidates_native",
+    "topic_merge_native_server_adapter::merge_topic_native",
+    "topic_merge_graphql_adapter::fetch_candidates",
     "topic_merge_graphql_adapter::merge_topic",
   ],
   "Leptos transport facade",
 );
-assert.ok(!leptosFacade.includes("native_server_adapter"));
+assert.ok(!leptosFacade.includes("fallback_failed"));
 includesAll(
   leptosRoot,
   ["subpath_matches(\"merge\")", "ForumTopicMergeAdmin", "super::leptos::ForumAdmin"],
@@ -161,14 +194,17 @@ includesAll(
   "Leptos merge UI",
 );
 assert.ok(!leptosUi.includes("graphql_adapter"));
+assert.ok(!leptosUi.includes("native_server_adapter"));
 assert.ok(!leptosUi.includes("ForumTopicMergeService"));
 assert.equal(leptosEn["forum.merge.title"], "Merge topics");
 assert.equal(leptosRu["forum.merge.title"], "Объединение тем");
 includesAll(
   leptosReadme,
   [
-    "single-adapter GraphQL state",
-    "does not pretend that a GraphQL call wrapped by a server function is a native owner path",
+    "FORUM-21O",
+    "ssr` and `hydrate` use native server functions",
+    "csr` and headless/default builds use GraphQL",
+    "never triggers cross-path fallback",
     "one operation ID stable across an exact retry",
   ],
   "Leptos package handoff",
@@ -249,14 +285,26 @@ includesAll(
     "never serializes that token into the client component",
     "No command above was run by the implementation agent",
   ],
-  "FORUM-21N handoff",
+  "historical FORUM-21N handoff",
 );
-assert.ok(plan.includes("### Delivered through `FORUM-21N`"));
+includesAll(
+  nativeDocs,
+  [
+    "# FORUM-21O native Leptos admin topic-merge transport",
+    paths.nativeContract,
+    "direct authenticated native server-function path",
+    "No command above was run by the implementation agent",
+  ],
+  "FORUM-21O extension handoff",
+);
+assert.ok(
+  plan.includes("### Delivered through `FORUM-21N`") ||
+    plan.includes("### Delivered through `FORUM-21O`"),
+);
 assert.ok(plan.includes("admin topic merge workflow"));
-assert.ok(plan.includes("direct authenticated Leptos native server-function owner composition"));
 assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
 assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
 
 console.log(
-  "FORUM-21N admin topic merge workflow source is ready; native owner parity and FORUM-21 completion remain pending.",
+  "FORUM-21N admin topic merge UI remains source-ready and is extended by FORUM-21O native Leptos transport selection; FORUM-21 completion remains pending.",
 );
