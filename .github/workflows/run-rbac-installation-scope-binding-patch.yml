@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: run-rbac-installation-scope-binding-patch
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   patch-and-verify:
