@@ -55,6 +55,16 @@
     "shared_rustok_events_contract_changed": false,
     "post_merge_reconciliation_owners_changed": false
   },
+  "redirect_edge_migration": {
+    "migration": "m20260803_000019_allow_cross_category_topic_merge_redirect_edges",
+    "replaces_existing_trigger_function": "forum_validate_topic_merge_redirect_edge",
+    "source_must_remain_archived_locked_non_deleted_zero_reply_tombstone": true,
+    "source_category_may_differ_from_receipt_category": true,
+    "target_category_must_equal_receipt_category": true,
+    "unique_source_edge_is_unchanged": true,
+    "postgresql_and_sqlite_supported": true,
+    "down_restores_same_category_guard": true
+  },
   "projection_invalidation": {
     "same_category_targets": [
       "source_topic",
@@ -84,7 +94,7 @@
     "target_counter_overflow": "FORUM_VALIDATION_FAILED_and_full_rollback",
     "partial_cross_category_merge_is_possible": false
   },
-  "migration_added": false,
+  "migration_added": true,
   "runtime_test": "crates/rustok-forum/tests/topic_merge_cross_category_sqlite.rs",
   "cumulative_contract": "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
   "documentation": "crates/rustok-forum/docs/forum-21m-topic-merge-cross-category.md",
@@ -99,7 +109,7 @@
   ],
   "non_claims": [
     "no verifier test formatter Cargo SQLite PostgreSQL workflow or CI execution is claimed",
-    "no migration receipt event schema GraphQL field REST route or canonical alias is added",
+    "no receipt event schema GraphQL field REST route or parallel canonical alias store is added",
     "no native admin storefront CLI or merge UI composition is added",
     "no split fork or reply-range workflow is added",
     "no PostgreSQL concurrency evidence is claimed",
