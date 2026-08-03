@@ -51,7 +51,7 @@ function gitBlobSha(relativePath) {
 const preserved = {
   [storePath]: '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
   'apps/server/Cargo.toml':
-    'd6a77ff30fd67c3d4fee16afbadc584c2bcce9e7',
+    '5037a166d35e32be327941f6ba480546d1cef0bb',
   'apps/server/tests/blog_comments_schedule_audit_postgres.rs':
     '4ebe3a285495a8cbeb69729a9ca7f3452456785d',
   'crates/rustok-blog/docs/implementation-plan-slice-85.md':
