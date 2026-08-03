@@ -1,15 +1,19 @@
 {
   "contract": "forum_topic_merge_owner_v1",
   "task": "FORUM-21B",
+  "latest_policy_slice": "FORUM-21H",
   "parent_task": "FORUM-21",
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
-  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution",
+  "canonical_plan_promotion_requires": "maintainer_verifier_and_sqlite_execution_plus_remaining_workflows",
   "scope": "bounded_same_category_source_into_retained_target",
   "owner_service": "ForumTopicMergeService",
   "input": "MergeForumTopicInput",
   "result": "ForumTopicMergeResult",
-  "migration": "m20260801_000010_add_forum_topic_merge_operations",
+  "migrations": [
+    "m20260801_000010_add_forum_topic_merge_operations",
+    "m20260803_000016_add_forum_topic_merge_solution_policy"
+  ],
   "receipt_table": "forum_topic_merge_operations",
   "semantic_event": {
     "journal": "forum_domain_events",
@@ -27,7 +31,17 @@
     "source_reply_rows_max": 500,
     "one_source_topic_per_operation": true,
     "one_target_topic_per_operation": true,
-    "same_category_only": true
+    "same_category_only": true,
+    "accepted_solutions_per_topic_max": 1
+  },
+  "solution_policy": {
+    "neither_topic_has_solution": "merge_without_solution_mutation",
+    "target_only": "preserve_target_solution_and_marker_metadata",
+    "source_only": "move_solution_to_target_after_reply_move_preserving_reply_id_marked_by_user_id_and_marked_at",
+    "source_and_target": "fail_before_mutation_with_FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
+    "source_solution_reply_must_be_approved": true,
+    "target_solution_reply_must_be_approved": true,
+    "solution_count_delta_during_merge": 0
   },
   "transactional_invariants": [
     "the operation requires non-nil tenant operation source target and human actor identities",
@@ -36,16 +50,20 @@
     "the exact existing receipt is resolved before current topic state so a valid retry returns the original result",
     "reusing an operation identifier with a different source target actor or normalized reason fails with FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
     "source and target topics must exist in the tenant remain non-deleted non-archived and belong to the same active category",
+    "sorted source and target solution scopes are acquired after topic row locks and ordinary solution writes use the same database-enforced scope",
+    "any stored source or target solution must reference an approved non-deleted reply owned by that exact topic",
+    "two accepted solutions fail with FORUM_TOPIC_MERGE_SOLUTION_CONFLICT before solution deletion reply movement topic archival event receipt counter or invalidation mutation",
+    "a source-only accepted solution is deleted before its reply moves and is inserted on the target after the reply move with unchanged reply_id marked_by_user_id and marked_at",
+    "a target-only accepted solution remains unchanged and a merge never adjusts forum user solution_count",
     "the source contains at most 500 reply rows and its approved reply count equals its owner counter",
-    "the target approved reply count equals its owner counter and any target solution remains an approved reply owned by the target",
-    "a source accepted solution is rejected until an explicit competing-solution policy exists",
+    "the target approved reply count equals its owner counter",
     "all source reply identities move to the target in one bounded statement and positions shift after the target maximum without renumbering existing target replies",
-    "reply-owned bodies revisions votes mentions quotes attachments and parent identities remain attached through unchanged reply identifiers",
+    "reply-owned bodies revisions votes mentions quotes attachments parent identities and a transferred accepted-solution identity remain attached through unchanged reply identifiers",
     "the target published reply counter becomes the checked sum and the source becomes archived locked with zero replies",
     "category retained topic_count and published reply_count remain unchanged because the archived source tombstone is not soft-deleted",
     "source target and category projection invalidations are published in that order",
-    "semantic event receipt owner state reply remap counters and invalidations commit in one transaction",
-    "exact replay creates no additional event receipt invalidation reply movement or counter change"
+    "semantic event receipt owner state reply remap solution policy counters and invalidations commit in one transaction",
+    "exact replay creates no additional event receipt invalidation reply movement solution mutation or counter change"
   ],
   "database_guards": [
     "tenant-composite foreign keys bind the receipt to source topic target topic category and human actor",
@@ -53,12 +71,16 @@
     "source and target topics differ",
     "event_id equals operation_id",
     "reason counts and position offset are bounded",
-    "receipt updates and deletes are rejected for PostgreSQL and SQLite"
+    "receipt updates and deletes are rejected for PostgreSQL and SQLite",
+    "forum solution insert update and delete serialize through deterministic topic rows and solution scope 31",
+    "forum solution insert or owner-key update requires an active non-deleted topic and an approved non-deleted reply owned by that topic"
   ],
   "retained_identity": {
     "target_topic_id": "unchanged",
     "source_topic_id": "archived_locked_redirect_ready",
     "reply_ids": "unchanged",
+    "accepted_solution_reply_id": "unchanged_when_source_only_transfers",
+    "accepted_solution_marker_metadata": "unchanged_when_transferred_or_target_only",
     "existing_target_reply_positions": "unchanged",
     "source_reply_parent_ids": "unchanged",
     "category_topic_count": "unchanged_until_source_soft_delete"
@@ -66,18 +88,21 @@
   "test": "crates/rustok-forum/tests/topic_merge_sqlite.rs",
   "verifier": "scripts/verify/verify-forum-topic-merge-owner.mjs",
   "documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  "solution_policy_contract": "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
+  "solution_policy_documentation": "crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-owner.mjs",
+    "node scripts/verify/verify-forum-topic-merge-solution-policy.mjs",
     "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture"
   ],
   "non_claims": [
-    "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
-    "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution",
+    "this source-ready slice does not claim that verifiers SQLite tests Cargo checks formatting workflows or CI ran",
+    "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution and remaining workflows",
     "this slice does not add public REST GraphQL native admin or storefront merge transport",
     "this slice does not add canonical URL aliases redirects or route tombstones",
     "this slice does not support cross-category merge split fork or reply-range operations",
-    "this slice does not remap or deduplicate topic subscriptions read state tags topic votes or topic-level audience relations",
-    "this slice does not resolve a source accepted solution or competing source and target solutions",
+    "dedicated bounded slices own subscriptions read state tags topic votes and topic-local audience reconciliation",
+    "this slice does not choose a winner when source and target both have accepted solutions",
     "this slice does not provide PostgreSQL concurrency runtime evidence",
     "this slice is not sufficient to mark FORUM-21 done"
   ]

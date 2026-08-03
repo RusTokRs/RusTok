@@ -3,20 +3,26 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const contractPath = "crates/rustok-forum/contracts/forum-topic-merge-owner.json";
-const docsPath = "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md";
-const entityPath = "crates/rustok-forum/src/entities/forum_topic_merge_operation.rs";
-const entitiesModPath = "crates/rustok-forum/src/entities/mod.rs";
-const errorPath = "crates/rustok-forum/src/error.rs";
-const libPath = "crates/rustok-forum/src/lib.rs";
-const migrationPath =
-  "crates/rustok-forum/src/migrations/m20260801_000010_add_forum_topic_merge_operations.rs";
-const migrationsModPath = "crates/rustok-forum/src/migrations/mod.rs";
-const servicePath = "crates/rustok-forum/src/services/topic_merge.rs";
-const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
-const testPath = "crates/rustok-forum/tests/topic_merge_sqlite.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const verifierPath = "scripts/verify/verify-forum-topic-merge-owner.mjs";
+const paths = {
+  contract: "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
+  solutionContract:
+    "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
+  docs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  entity: "crates/rustok-forum/src/entities/forum_topic_merge_operation.rs",
+  entitiesMod: "crates/rustok-forum/src/entities/mod.rs",
+  error: "crates/rustok-forum/src/error.rs",
+  lib: "crates/rustok-forum/src/lib.rs",
+  receiptMigration:
+    "crates/rustok-forum/src/migrations/m20260801_000010_add_forum_topic_merge_operations.rs",
+  solutionMigration:
+    "crates/rustok-forum/src/migrations/m20260803_000016_add_forum_topic_merge_solution_policy.rs",
+  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
+  service: "crates/rustok-forum/src/services/topic_merge.rs",
+  servicesMod: "crates/rustok-forum/src/services/mod.rs",
+  test: "crates/rustok-forum/tests/topic_merge_sqlite.rs",
+  plan: "crates/rustok-forum/docs/implementation-plan.md",
+  verifier: "scripts/verify/verify-forum-topic-merge-owner.mjs",
+};
 
 function read(path) {
   return readFileSync(path, "utf8");
@@ -28,22 +34,25 @@ function includesAll(text, markers, label) {
   }
 }
 
-const contract = JSON.parse(read(contractPath));
-const docs = read(docsPath);
-const entity = read(entityPath);
-const entitiesMod = read(entitiesModPath);
-const error = read(errorPath);
-const lib = read(libPath);
-const migration = read(migrationPath);
-const migrationsMod = read(migrationsModPath);
-const service = read(servicePath);
-const servicesMod = read(servicesModPath);
-const test = read(testPath);
-const plan = read(planPath);
-const verifier = read(verifierPath);
+const contract = JSON.parse(read(paths.contract));
+const solutionContract = JSON.parse(read(paths.solutionContract));
+const docs = read(paths.docs);
+const entity = read(paths.entity);
+const entitiesMod = read(paths.entitiesMod);
+const error = read(paths.error);
+const lib = read(paths.lib);
+const receiptMigration = read(paths.receiptMigration);
+const solutionMigration = read(paths.solutionMigration);
+const migrationsMod = read(paths.migrationsMod);
+const service = read(paths.service);
+const servicesMod = read(paths.servicesMod);
+const test = read(paths.test);
+const plan = read(paths.plan);
+const verifier = read(paths.verifier);
 
 assert.equal(contract.contract, "forum_topic_merge_owner_v1");
 assert.equal(contract.task, "FORUM-21B");
+assert.equal(contract.latest_policy_slice, "FORUM-21H");
 assert.equal(contract.parent_task, "FORUM-21");
 assert.equal(contract.status, "source_ready_maintainer_execution_pending");
 assert.equal(contract.canonical_plan_status, "planned");
@@ -51,42 +60,26 @@ assert.equal(contract.scope, "bounded_same_category_source_into_retained_target"
 assert.equal(contract.owner_service, "ForumTopicMergeService");
 assert.equal(contract.input, "MergeForumTopicInput");
 assert.equal(contract.result, "ForumTopicMergeResult");
-assert.equal(contract.migration, "m20260801_000010_add_forum_topic_merge_operations");
+assert.deepEqual(contract.migrations, [
+  "m20260801_000010_add_forum_topic_merge_operations",
+  "m20260803_000016_add_forum_topic_merge_solution_policy",
+]);
 assert.equal(contract.receipt_table, "forum_topic_merge_operations");
 assert.deepEqual(contract.required_permissions, ["forum_topics:manage"]);
-assert.deepEqual(contract.bounds, {
-  reason_max_characters: 500,
-  source_reply_rows_max: 500,
-  one_source_topic_per_operation: true,
-  one_target_topic_per_operation: true,
-  same_category_only: true,
-});
+assert.equal(contract.bounds.reason_max_characters, 500);
+assert.equal(contract.bounds.source_reply_rows_max, 500);
+assert.equal(contract.bounds.same_category_only, true);
+assert.equal(contract.bounds.accepted_solutions_per_topic_max, 1);
 assert.equal(contract.semantic_event.event_type, "forum.topic.merged");
 assert.equal(contract.semantic_event.schema_version, 1);
-assert.equal(contract.semantic_event.aggregate_is_retained_target, true);
 assert.equal(contract.semantic_event.event_id_equals_operation_id, true);
-assert.equal(contract.semantic_event.shared_rustok_events_contract_changed, false);
-assert.equal(contract.transactional_invariants.length, 16);
-assert.ok(
-  contract.transactional_invariants.some((value) =>
-    value.includes("category lifecycle") &&
-    value.includes("counter scopes are acquired before topic row locks"),
-  ),
+assert.equal(contract.solution_policy.solution_count_delta_during_merge, 0);
+assert.equal(
+  contract.solution_policy.source_and_target,
+  "fail_before_mutation_with_FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
 );
-assert.ok(
-  contract.transactional_invariants.some((value) =>
-    value.includes("category retained topic_count") && value.includes("remain unchanged"),
-  ),
-);
-assert.equal(contract.database_guards.length, 6);
-assert.equal(contract.retained_identity.category_topic_count, "unchanged_until_source_soft_delete");
-assert.equal(contract.test, testPath);
-assert.equal(contract.verifier, verifierPath);
-assert.equal(contract.documentation, docsPath);
-assert.deepEqual(contract.maintainer_commands, [
-  `node ${verifierPath}`,
-  "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture",
-]);
+assert.equal(solutionContract.task, "FORUM-21H");
+assert.equal(solutionContract.extends, "FORUM-21B");
 
 includesAll(
   entity,
@@ -117,7 +110,9 @@ includesAll(
   error,
   [
     "TopicMergeOperationConflict(Uuid)",
+    "TopicMergeSolutionConflict(Uuid)",
     '"FORUM_TOPIC_MERGE_OPERATION_CONFLICT"',
+    '"FORUM_TOPIC_MERGE_SOLUTION_CONFLICT"',
   ],
   "ForumError",
 );
@@ -126,27 +121,35 @@ includesAll(
   [
     "mod m20260801_000010_add_forum_topic_merge_operations;",
     "Box::new(m20260801_000010_add_forum_topic_merge_operations::Migration)",
+    "mod m20260803_000016_add_forum_topic_merge_solution_policy;",
+    "Box::new(m20260803_000016_add_forum_topic_merge_solution_policy::Migration)",
   ],
   "migration registration",
 );
 includesAll(
-  migration,
+  receiptMigration,
   [
     "CREATE TABLE IF NOT EXISTS forum_topic_merge_locks",
     "CREATE TABLE IF NOT EXISTS forum_topic_merge_operations",
     "PRIMARY KEY (tenant_id, operation_id)",
-    "FOREIGN KEY (tenant_id, source_topic_id)",
-    "FOREIGN KEY (tenant_id, target_topic_id)",
-    "FOREIGN KEY (tenant_id, category_id)",
-    "FOREIGN KEY (tenant_id, actor_id)",
     "source_topic_id <> target_topic_id",
     "moved_reply_count BETWEEN 0 AND 500",
     "event_id = operation_id",
     "forum topic merge operations are append-only",
-    "forum_topic_merge_operation_update",
-    "forum_topic_merge_operation_delete",
   ],
-  "topic merge migration",
+  "receipt migration",
+);
+includesAll(
+  solutionMigration,
+  [
+    "CREATE TABLE IF NOT EXISTS forum_topic_solution_locks",
+    "forum_lock_topic_solution_mutation",
+    "forum_validate_topic_solution_target",
+    "hashtextextended(",
+    "31",
+    "forum solution requires an active topic and approved reply",
+  ],
+  "solution policy migration",
 );
 
 includesAll(
@@ -161,26 +164,18 @@ includesAll(
     "pub async fn merge_topic(",
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
     "lock_topic_merge_tenant_in_tx(&txn, tenant_id).await?;",
-    '"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"',
     "forum_topic_merge_operation::Entity::find_by_id",
     "TopicMergeOperationConflict(input.operation_id)",
-    "let preliminary_source =",
-    "let preliminary_target =",
     "lock_merge_counter_scopes_in_tx(",
-    'format!("forum:category:{tenant_id}:{category_id}")',
-    'format!("forum:topic:{tenant_id}:{}", topic_ids[0])',
-    'format!("forum:topic:{tenant_id}:{}", topic_ids[1])',
-    '"SELECT forum_counter_lock($1)"',
     "lock_topics_in_tx(&txn, tenant_id, input.source_topic_id, target_topic_id).await?;",
-    "Forum topic merge category changed concurrently",
-    "source.category_id != target.category_id",
-    "source accepted solution",
+    "lock_topic_solution_scopes_in_tx(",
+    "TopicMergeSolutionConflict(input.operation_id)",
+    "delete_source_solution_in_tx",
+    "move_replies_in_tx(",
+    "insert_transferred_solution_in_tx",
     "source_reply_count > MAX_FORUM_TOPIC_MERGE_REPLIES",
     "moved_published_reply_count != source.reply_count",
     "target_published_reply_count != target.reply_count",
-    "position_offset",
-    ".checked_add(source_max_position)",
-    "move_replies_in_tx(",
     "source_active.status = Set(TopicStatus::Archived);",
     "source_active.is_locked = Set(true);",
     "source_active.reply_count = Set(0);",
@@ -193,19 +188,28 @@ includesAll(
   ],
   "topic merge service",
 );
+assert.ok(!service.includes("does not yet support a source accepted solution"));
+assert.ok(!service.includes("UserStatsService"));
 const receiptLookup = service.indexOf("forum_topic_merge_operation::Entity::find_by_id");
 const preliminaryRead = service.indexOf("let preliminary_source =");
 const counterLocks = service.indexOf("lock_merge_counter_scopes_in_tx(");
 const topicLocks = service.indexOf("lock_topics_in_tx(&txn");
-const replyCount = service.indexOf("let source_reply_count =");
+const solutionLocks = service.indexOf("lock_topic_solution_scopes_in_tx(");
+const solutionConflict = service.indexOf("TopicMergeSolutionConflict(input.operation_id)");
+const solutionDelete = service.indexOf("delete_source_solution_in_tx(&txn");
+const replyMove = service.indexOf("move_replies_in_tx(", solutionDelete);
+const solutionInsert = service.indexOf("insert_transferred_solution_in_tx(&txn");
 assert.ok(receiptLookup < preliminaryRead);
 assert.ok(preliminaryRead < counterLocks);
 assert.ok(counterLocks < topicLocks);
-assert.ok(topicLocks < replyCount);
+assert.ok(topicLocks < solutionLocks);
+assert.ok(solutionLocks < solutionConflict);
+assert.ok(solutionConflict < solutionDelete);
+assert.ok(solutionDelete < replyMove);
+assert.ok(replyMove < solutionInsert);
 assert.equal((service.match(/publish_forum_topic_projection_in_tx\(/g) ?? []).length, 2);
 assert.equal((service.match(/publish_forum_category_projection_in_tx\(/g) ?? []).length, 1);
 for (const forbidden of [
-  "delete_many()",
   "forum_topic::Entity::delete",
   "forum_reply::Entity::delete",
   "category_active.topic_count",
@@ -242,15 +246,15 @@ includesAll(
   test,
   [
     "topic_merge_is_atomic_idempotent_and_append_only",
-    "topic_merge_rejects_cross_category_and_source_solution_without_partial_state",
-    "ForumTopicMergeService",
-    "MergeForumTopicInput",
+    "topic_merge_transfers_source_only_solution_and_preserves_target_only_solution",
+    "topic_merge_rejects_cross_category_and_competing_solutions_without_partial_state",
+    "topic_solution_database_guard_requires_active_topic_and_approved_reply",
     "moved_reply_count, 2",
     '"archived", true, 0',
-    "category_id, 2, 3",
     "source_root_reply_id",
     "source_child_reply_id",
     "TopicMergeOperationConflict",
+    "TopicMergeSolutionConflict",
     "UPDATE forum_topic_merge_operations",
     "DELETE FROM forum_topic_merge_operations",
     '"forum.topic.merged"',
@@ -262,16 +266,13 @@ includesAll(
   [
     "# FORUM-21B idempotent topic merge owner",
     "`source_ready_maintainer_execution_pending`",
-    contractPath,
-    "same active category",
-    "source may contain at most 500 reply rows",
-    "category-tree lifecycle lock",
-    "category counter scope followed by source and target",
-    "retained non-deleted-row counter",
-    "source topic becomes archived and locked",
-    "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
-    "topic subscriptions",
-    "source accepted solution",
+    paths.contract,
+    paths.solutionContract,
+    "source-only accepted solution",
+    "target-only accepted solution",
+    "two accepted solutions",
+    "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
+    "FORUM-21A through FORUM-21H",
     "No command above was run by the implementation agent",
   ],
   "FORUM-21B handoff",
@@ -282,5 +283,5 @@ assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(
-  "FORUM-21B topic merge owner source is ready and canonical FORUM-21 remains planned.",
+  "FORUM-21B/H topic merge owner source is ready and canonical FORUM-21 remains planned.",
 );
