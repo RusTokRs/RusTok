@@ -52,6 +52,14 @@
   one exact solution-count decrement, and an append-only
   `forum_topic_merge_solution_resolutions` row records the decision through the
   immutable merge receipt.
+- Both merge commands support same-category and checked cross-category ownership.
+  A cross-category merge keeps both topic identities in their original categories,
+  archives the source as a canonical tombstone, and transfers only the exact
+  published-reply aggregate from source category to target category with checked,
+  fail-closed arithmetic.
+- `m20260803_000019_allow_cross_category_topic_merge_redirect_edges` permits the
+  archived source tombstone to differ from the receipt target category while
+  retaining all target-category, active-target and unique-source-edge guards.
 - Resolved and ordinary merges retain the exact `forum.topic.merged` schema-1
   event contract so subscription, read-state, tag, vote and audience
   reconciliation owners remain unchanged.
@@ -128,6 +136,7 @@ into README files, issues, or additional planning documents.
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
 - [Merge owner](./docs/forum-21b-topic-merge-owner.md)
+- [Checked cross-category merge](./docs/forum-21m-topic-merge-cross-category.md)
 - [Accepted-solution policy](./docs/forum-21h-topic-merge-solution-policy.md)
 - [Competing solution resolution](./docs/forum-21l-topic-merge-solution-resolution.md)
 - [Canonical merged-topic resolution and HTTP redirect](./docs/forum-21i-topic-canonical-resolution.md)
