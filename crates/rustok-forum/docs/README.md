@@ -35,7 +35,8 @@ notifications module, and cross-module release gates.
 - uses `rustok-channel` for visibility and SEO gating;
 - selected merge reads resolve through the immutable receipt, while mutation commands keep exact identity semantics;
 - `mergeForumTopic` and `mergeForumTopicResolvingSolution` remain the only admin merge command contracts;
-- FORUM-21N composes those commands in Leptos and Next-admin without changing the owner, receipt or event schema.
+- FORUM-21N composes those commands in Leptos and Next-admin without changing the owner, receipt or event schema;
+- FORUM-21O selects direct authenticated native owner composition for Leptos SSR/hydrate while retaining GraphQL for CSR/headless with no fallback.
 
 ## Verification
 
@@ -54,6 +55,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21L competing solution resolution](./forum-21l-topic-merge-solution-resolution.md)
 - [FORUM-21M checked cross-category merge](./forum-21m-topic-merge-cross-category.md)
 - [FORUM-21N admin merge workflow](./forum-21n-topic-merge-admin-ui.md)
+- [FORUM-21O native Leptos merge transport](./forum-21o-topic-merge-native-admin.md)
 - [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [Admin UI package](../admin/README.md)
