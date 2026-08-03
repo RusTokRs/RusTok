@@ -1,6 +1,6 @@
 # M6 reconciliation dead-letter inspection
 
-Status: `source_complete_transport_and_recovery_pending`.
+Status: `source_complete_transport_pending`.
 
 ## Purpose
 
@@ -36,11 +36,11 @@ The query selects only attempt count, `last_error_code`, and `last_error_details
 - entity, relation, inbox, or mutation payloads;
 - SQL, database causes, transport context, or stack text.
 
-Database failures map to one stable `Storage` error with no embedded database detail. The production implementation performs no insert, update, delete, retry, requeue, reset, scheduling, polling, sleep, or task creation.
+Database failures map to one stable `Storage` error with no embedded database detail. The inspector performs no insert, update, delete, retry, requeue, reset, scheduling, polling, sleep, or task creation.
 
 ## Authorized server composition
 
-The server-owned `IndexReconciliationOperatorRuntime` now composes this inspector beside the canonical reconciliation runner.
+The server-owned `IndexReconciliationOperatorRuntime` composes this inspector beside the canonical reconciliation runner and audited recovery store.
 
 Inspection accepts only:
 
@@ -51,26 +51,27 @@ The delegated tenant is derived exclusively from the context. There is no caller
 
 Before adapter validation or database access, the server boundary reads the exact request-scoped tenant/actor permission snapshot and requires effective `modules:manage`. Missing request authority and insufficient permission fail before delegation. The server returns only the bounded inspection object or typed bounded errors; it does not expose the database adapter or raw diagnostic JSON.
 
-GraphQL, HTTP, CLI, MCP, and admin transports remain open. This slice publishes an internal guarded capability only.
+The same guarded runtime also exposes manual audited requeue. That write operation is owned by `PostgresIndexReconciliationRecoveryStore`, not by the inspector, and requires the same request-bound context plus an explicit bounded reason. Tenant and actor are derived only from the authorized context.
+
+GraphQL, HTTP, CLI, MCP, and admin transports remain open. This slice publishes internal guarded capabilities only.
 
 ## Compatibility
 
-This inspection slice adds no migration and changes no reconciliation state transition, failed-scope admission, retry policy, lease fence, cursor, source, mutation, schema, cancellation, or success behavior.
+Inspection remains read-only and changes no reconciliation query, failed-scope admission, retry policy, lease fence, cursor, source, mutation, schema, cancellation, or success behavior.
 
-It composes additively with the replay retry store, replay dead-letter admission, reconciliation dead-letter admission, guarded reconciliation runtime, and engine-level reconciliation recovery store already present on `main`.
+The authorized recovery composition is additive: it delegates to the separately merged scope-locked same-job reset and immutable actor/reason audit contract without modifying inspector SQL or returned data.
 
 ## Explicitly open
 
-- inspection transport mapping;
-- server-owned authorization and transport for manual requeue or retry-epoch reset;
+- inspection and recovery transport mapping;
 - automatic retry, backoff, exhaustion, scheduling, and graceful shutdown;
 - source/index digest comparison and orphan diagnosis;
 - targeted, full, or shadow repair admission;
 - locale or partition checkpoint dimensions;
-- retained PostgreSQL inspection, authorization, and recovery evidence;
+- retained PostgreSQL inspection, authorization, concurrency, and recovery evidence;
 - complete drift repair.
 
-The canonical M6 drift-diagnosis and targeted-repair roadmap item remains open.
+The canonical bounded retry/global scheduling and drift-diagnosis/targeted-repair roadmap items remain open.
 
 ## Validation ownership
 

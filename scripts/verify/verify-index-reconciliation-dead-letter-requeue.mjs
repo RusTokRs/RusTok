@@ -27,6 +27,7 @@ const postgresPath = 'crates/rustok-index/src/infrastructure/postgres/mod.rs';
 const runnerPath =
   'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
 const serverPath = 'apps/server/src/services/index_reconciliation_operator.rs';
+const serverDocsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
 const docsPath = 'crates/rustok-index/docs/m6-reconciliation-dead-letter-requeue.md';
 const docsIndexPath = 'crates/rustok-index/docs/README.md';
 const planPath = 'crates/rustok-index/docs/implementation-plan.md';
@@ -43,9 +44,6 @@ const migration = requireMarkers(migrationPath, [
   'ALTER TABLE index_jobs',
   'ADD COLUMN retry_epoch INTEGER NOT NULL DEFAULT 0',
   'CREATE TABLE index_reconciliation_recovery_audits',
-  'tenant_id UUID NOT NULL',
-  'audit_id UUID NOT NULL',
-  'job_id UUID NOT NULL',
   'actor_id UUID NOT NULL',
   "CHECK (action = 'requeue')",
   'reason VARCHAR(512) NOT NULL',
@@ -56,15 +54,10 @@ const migration = requireMarkers(migrationPath, [
   'index_reconciliation_recovery_audits_immutable_delete',
   "RAISE EXCEPTION 'Index reconciliation recovery audits are append-only'",
   "SELECT RAISE(ABORT, 'Index reconciliation recovery audits are append-only')",
-  'ALTER TABLE index_jobs DROP COLUMN retry_epoch',
 ]);
-for (const forbidden of [
-  'ON UPDATE CASCADE',
-  'ON DELETE CASCADE',
-  '.if_not_exists()',
-]) {
+for (const forbidden of ['ON UPDATE CASCADE', 'ON DELETE CASCADE', '.if_not_exists()']) {
   if (migration.includes(forbidden)) {
-    fail(`${migrationPath} contains forbidden drift/mutability marker ${forbidden}`);
+    fail(`${migrationPath} contains forbidden mutability/drift marker ${forbidden}`);
   }
 }
 
@@ -192,34 +185,67 @@ requireMarkers(postgresPath, [
 ]);
 
 const server = requireMarkers(serverPath, [
-  'pub async fn run(',
-  'pub async fn request_cancel(',
-  'pub async fn inspect_dead_letter(',
-  'Permission::MODULES_MANAGE',
+  'recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,',
+  'Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),',
+  'pub async fn requeue_dead_letter(',
+  'context.authorize_for(context.tenant_id())?;',
+  'IndexReconciliationRequeueRequest::new(',
+  'context.tenant_id(),',
+  'context.actor_id(),',
+  '.requeue_failed(request)',
+  'PostgresIndexReconciliationRecoveryStore::new(',
+  'dead_letter_requeue_authorizes_before_request_validation',
 ]);
-const serverProduction = server.split('\n#[cfg(test)]')[0];
-for (const forbidden of [
-  'PostgresIndexReconciliationRecoveryStore',
-  'IndexReconciliationRequeueRequest',
-  'requeue_dead_letter',
-  'pub async fn requeue',
-]) {
-  if (serverProduction.includes(forbidden)) {
-    fail(`${serverPath} prematurely exposes recovery through ${forbidden}`);
+const requeueStart = server.indexOf('    pub async fn requeue_dead_letter(');
+const requeueEnd = server.indexOf('\n}\n\nimpl fmt::Debug', requeueStart);
+if (requeueStart < 0 || requeueEnd <= requeueStart) {
+  fail(`${serverPath} guarded requeue method is malformed`);
+}
+const requeue = server.slice(requeueStart, requeueEnd);
+for (const forbidden of ['tenant_id: Uuid', 'actor_id: Uuid']) {
+  if (requeue.includes(forbidden)) {
+    fail(`${serverPath} guarded requeue accepts caller-selected ${forbidden}`);
+  }
+}
+const authorization = requeue.indexOf('context.authorize_for(context.tenant_id())?;');
+const request = requeue.indexOf('IndexReconciliationRequeueRequest::new(');
+const tenant = requeue.indexOf('context.tenant_id(),', request);
+const actor = requeue.indexOf('context.actor_id(),', tenant);
+const delegation = requeue.indexOf('.requeue_failed(request)');
+if (
+  authorization < 0
+  || request <= authorization
+  || tenant <= request
+  || actor <= tenant
+  || delegation <= actor
+) {
+  fail(`${serverPath} must authorize, bind context tenant/actor, then delegate`);
+}
+for (const forbidden of ['SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', "state = 'pending'"]) {
+  if (requeue.includes(forbidden)) {
+    fail(`${serverPath} guarded requeue duplicates engine detail ${forbidden}`);
   }
 }
 
 requireMarkers(docsPath, [
-  'Status: `source_complete_authorized_server_composition_pending`.',
+  'Status: `source_complete_authorized_server_composition_transport_pending`.',
   'same PostgreSQL transaction-scoped advisory lock used by normal reconciliation admission',
   'preserves the existing job UUID',
   'increments `retry_epoch`',
   'appends an immutable actor/reason audit record',
   'The audit insert and job reset commit or roll back together.',
-  'database-level `BEFORE UPDATE` and `BEFORE DELETE` rejection triggers',
-  'The existing server operator does not expose requeue.',
+  '## Authorized server composition',
+  'accepts no tenant or actor argument',
+  'Authorization occurs before job/reason validation',
+  'GraphQL, HTTP, CLI, MCP, native admin',
   'automatic retry, backoff, exhaustion, scheduling, and graceful shutdown',
   'maintainer-run',
+]);
+requireMarkers(serverDocsPath, [
+  'Status: `source_complete_transport_and_scheduling_pending`.',
+  'tenant/actor-bound `requeue_dead_letter(context, job_id, reason)`',
+  'caller-selected tenant or actor identity for recovery',
+  'The same-job failed-to-pending reset',
 ]);
 requireMarkers(docsIndexPath, [
   '[M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)',

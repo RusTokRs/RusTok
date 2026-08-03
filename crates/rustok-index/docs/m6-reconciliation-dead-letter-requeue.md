@@ -1,12 +1,14 @@
 # M6 reconciliation dead-letter requeue
 
-Status: `source_complete_authorized_server_composition_pending`.
+Status: `source_complete_authorized_server_composition_transport_pending`.
 
 ## Purpose
 
 `PostgresIndexReconciliationRecoveryStore` provides one explicit engine-level recovery operation for an exact terminal failed reconciliation job.
 
 The operation preserves the existing job UUID. It does not create a replacement job. Instead, it moves the same failed row back to `pending`, resets its bounded execution state, increments a durable retry epoch, and appends an immutable actor/reason audit record in the same database transaction.
+
+The server publishes this operation only through the request-bound `IndexReconciliationOperatorRuntime`; no transport is added by this slice.
 
 ## Request contract
 
@@ -55,23 +57,32 @@ The migration installs database-level `BEFORE UPDATE` and `BEFORE DELETE` reject
 
 The audit ledger does not contain raw failure diagnostics, request or cursor JSON, worker or lease fields, SQL, database causes, or transport context.
 
-## Ownership boundary
+## Authorized server composition
 
-This slice publishes only the engine-level PostgreSQL recovery store.
+`IndexReconciliationOperatorRuntime::requeue_dead_letter(context, job_id, reason)` accepts no tenant or actor argument.
 
-The existing server operator does not expose requeue. A later server-owned wrapper must:
+The method performs these steps in order:
 
-1. bind the exact request tenant and actor;
-2. require effective request-scoped `modules:manage`;
-3. pass the actor only from the authorized context;
-4. require an explicit bounded reason;
-5. delegate without accepting a separate caller-selected tenant.
+1. authorizes the exact request-bound context through `permissions_for(context.tenant_id(), context.actor_id())`;
+2. requires effective `Permission::MODULES_MANAGE`;
+3. constructs the crate request with `context.tenant_id()` and `context.actor_id()`;
+4. delegates to `PostgresIndexReconciliationRecoveryStore::requeue_failed`.
 
-GraphQL, HTTP, CLI, MCP, and admin transports remain open.
+Authorization occurs before job/reason validation and before database access. Missing request authority and insufficient permission therefore fail before recovery DTO validation.
+
+The server returns only the bounded crate outcome and typed errors. It does not expose the database connection, recovery store, direct SQL, raw failure diagnostics, request/cursor payload, or audit-row mutation capability.
+
+Composition constructs the recovery store beside the canonical reconciliation runner and read-only dead-letter inspector after the immutable source/schema registries have been frozen. Missing sources publish no false capability, incomplete registry composition fails closed, and duplicate materialization remains rejected.
+
+## Transport boundary
+
+GraphQL, HTTP, CLI, MCP, native admin, and other command transports remain open.
+
+A future transport must obtain the existing request-bound operator context, accept only job UUID plus explicit reason, and preserve the stable typed error mapping. It must not accept an independent tenant or actor identity.
 
 ## Explicitly open
 
-- authorized server composition and transport mapping;
+- command transport mapping;
 - automatic retry, backoff, exhaustion, scheduling, and graceful shutdown;
 - retained PostgreSQL concurrency, authorization, and recovery execution evidence;
 - source/index digest comparison and orphan diagnosis;
