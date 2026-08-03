@@ -1,0 +1,97 @@
+{
+  "contract": "forum_topic_merge_admin_ui_v1",
+  "task": "FORUM-21N",
+  "parent_task": "FORUM-21",
+  "extends": ["FORUM-21K", "FORUM-21L", "FORUM-21M"],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "backend_owner": "ForumTopicMergeService",
+  "backend_graphql_fields": [
+    "mergeForumTopic",
+    "mergeForumTopicResolvingSolution"
+  ],
+  "authorization": {
+    "required_permission": "forum_topics:manage",
+    "tenant_authority": "routed_context",
+    "optional_tenant_id_is_assertion_only": true,
+    "owner_revalidates_authorization": true
+  },
+  "leptos_admin": {
+    "route": "/modules/forum/merge",
+    "manifest_child_page": "merge",
+    "root_dispatcher": "admin/src/ui/root.rs",
+    "framework_neutral_policy": "admin/src/topic_merge_model.rs",
+    "ui_adapter": "admin/src/ui/topic_merge.rs",
+    "transport_facade": "admin/src/transport.rs",
+    "graphql_adapter": "admin/src/transport/topic_merge_graphql_adapter.rs",
+    "candidate_limit": 100,
+    "transport_state": "single_adapter_graphql",
+    "native_server_path_claimed": false,
+    "access_token_in_server_function_dto": false,
+    "rest_fallback": false
+  },
+  "next_admin": {
+    "route": "/dashboard/forum/merge",
+    "package_api": "apps/next-admin/packages/forum/src/api/forum.ts",
+    "framework_neutral_policy": "apps/next-admin/packages/forum/src/core/topic-merge.ts",
+    "ui_adapter": "apps/next-admin/packages/forum/src/components/forum-topic-merge.tsx",
+    "host_page_is_composition_only": true,
+    "candidate_limit": 100,
+    "package_owned_locales": ["en", "ru"],
+    "navigation_permission": "forum_topics:manage"
+  },
+  "command_policy": {
+    "source_and_target_must_differ": true,
+    "reason_required": true,
+    "reason_max_characters": 500,
+    "reason_control_characters_rejected": true,
+    "operation_id_is_uuid": true,
+    "exact_retry_reuses_operation_id": true,
+    "source_target_reason_or_solution_change_rotates_operation_id": true,
+    "both_solved_require_explicit_source_or_target_winner": true,
+    "ordinary_merge_never_selects_an_implicit_winner": true,
+    "selected_reply_is_derived_from_current_candidate_solution": true
+  },
+  "result_policy": {
+    "returns_immutable_owner_receipt": true,
+    "does_not_hydrate_target_topic": true,
+    "shows_operation_and_event_identity": true,
+    "refreshes_candidate_projection_after_success": true
+  },
+  "compatibility": {
+    "backend_owner_changed": false,
+    "graphql_schema_changed": false,
+    "receipt_changed": false,
+    "semantic_event_changed": false,
+    "migration_added": false,
+    "same_and_cross_category_owner_policy_inherited": true,
+    "canonical_source_alias_followed_by_command": false
+  },
+  "verification": {
+    "verifier": "scripts/verify/verify-forum-topic-merge-admin-ui.mjs",
+    "rust_unit_target": "rustok-forum-admin topic_merge_model tests",
+    "next_typecheck_scope": "apps/next-admin",
+    "maintainer_commands": [
+      "node scripts/verify/verify-forum-topic-merge-admin-ui.mjs",
+      "npm run verify:forum:admin-boundary",
+      "npm run verify:blog:forum-ui-ownership",
+      "cargo test -p rustok-forum-admin topic_merge_model -- --nocapture",
+      "cargo check -p rustok-forum-admin --all-targets",
+      "npm --prefix apps/next-admin run typecheck"
+    ]
+  },
+  "remaining_scope": [
+    "direct authenticated native server-function owner composition for Leptos while retaining GraphQL",
+    "maintainer browser and transport execution evidence",
+    "split selected replies",
+    "fork reply branches",
+    "move bounded reply ranges"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo npm workflow browser or CI execution is claimed",
+    "no native server-function owner path is claimed",
+    "no backend GraphQL REST receipt event migration or canonical resolution change is added",
+    "no storefront merge command is exposed",
+    "FORUM-21 remains planned"
+  ]
+}
