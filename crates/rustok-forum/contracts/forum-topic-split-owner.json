@@ -1,0 +1,124 @@
+{
+  "contract": "forum_topic_split_owner_v1",
+  "task": "FORUM-21P",
+  "parent_task": "FORUM-21",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner": "ForumTopicSplitService",
+  "command": "split_selected_replies",
+  "authorization": {
+    "required_permission": "forum_topics:manage",
+    "human_actor_required": true,
+    "tenant_from_owner_argument": true
+  },
+  "command_shape": {
+    "operation_id": "uuid",
+    "source_topic_id": "owner_argument_uuid",
+    "target_topic_id": "uuid",
+    "reply_ids": "unique_sorted_uuid_set",
+    "locale": "normalized_locale",
+    "title": "bounded_nonempty_text",
+    "slug": "optional_normalized_slug",
+    "reason": "bounded_nonempty_text",
+    "maximum_selected_replies": 500,
+    "maximum_reason_characters": 500,
+    "maximum_title_characters": 500
+  },
+  "scope": {
+    "target_category": "source_category",
+    "cross_category_split": false,
+    "cross_category_composition": "split_then_existing_topic_move_owner",
+    "source_must_remain_nonempty": true,
+    "source_and_category_must_be_active": true
+  },
+  "reply_identity": {
+    "reply_ids_preserved": true,
+    "authors_preserved": true,
+    "bodies_preserved_by_identity": true,
+    "revisions_preserved_by_identity": true,
+    "mentions_preserved_by_identity": true,
+    "quotes_preserved_by_identity": true,
+    "selected_target_positions": "deterministic_source_position_order_1_to_n",
+    "source_position_compaction": false
+  },
+  "parent_policy": {
+    "selected_child_requires_selected_parent": true,
+    "selected_parent_requires_all_children_selected": true,
+    "cross_topic_parent_edges": false,
+    "partial_movement_on_violation": false
+  },
+  "target_access": {
+    "channel_access_copied_exactly": true,
+    "topic_visibility_layer_copied_exactly": true,
+    "reply_create_layer_copied_exactly": true,
+    "inherited_category_layers_unchanged": true,
+    "target_cannot_broaden_source_access": true
+  },
+  "solution_policy": {
+    "selected_solution_moves_with_reply": true,
+    "unselected_solution_stays_with_source": true,
+    "reply_identity_preserved": true,
+    "marker_metadata_preserved": true,
+    "solution_author_statistic_changed": false
+  },
+  "counter_policy": {
+    "category_topic_count_delta": 1,
+    "category_reply_count_delta": 0,
+    "source_published_replies_recounted": true,
+    "target_published_replies_recounted": true,
+    "actor_topic_count_delta": 1
+  },
+  "idempotency": {
+    "command_fingerprint": "sha256_canonical_json",
+    "exact_replay_returns_original_receipt": true,
+    "actor_drift_fails_closed": true,
+    "command_shape_drift_fails_closed": true,
+    "target_topic_id_unique_per_split": true
+  },
+  "audit": {
+    "receipt_table": "forum_topic_split_operations",
+    "reply_item_table": "forum_topic_split_reply_items",
+    "semantic_event": "forum.topic.split",
+    "semantic_event_schema": 1,
+    "event_id_equals_operation_id": true,
+    "receipt_append_only": true,
+    "reply_items_append_only": true,
+    "reply_item_fields": [
+      "reply_id",
+      "source_position",
+      "target_position",
+      "was_published"
+    ]
+  },
+  "projection_invalidation": [
+    "source_topic",
+    "target_topic",
+    "category"
+  ],
+  "migration": "m20260803_000020_add_forum_topic_split_operations",
+  "verification": {
+    "sqlite_contract": "crates/rustok-forum/tests/topic_split_sqlite.rs",
+    "static_verifier": "scripts/verify/verify-forum-topic-split-owner.mjs",
+    "commands_run_by_implementation_agent": false
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_routes_changed": false,
+    "admin_ui_changed": false,
+    "existing_move_merge_receipts_changed": false,
+    "existing_semantic_events_changed": false
+  },
+  "remaining_scope": [
+    "maintainer SQLite and PostgreSQL execution evidence",
+    "public manager transport and admin composition",
+    "idempotent reply-branch fork workflow",
+    "bounded reply-range movement",
+    "final localized canonical aliases and route tombstones under FORUM-24"
+  ],
+  "non_claims": [
+    "no verifier Cargo formatter workflow browser or CI execution is claimed",
+    "no cross-category split is claimed",
+    "no reply copy or fork semantics are claimed",
+    "FORUM-21 remains planned"
+  ]
+}

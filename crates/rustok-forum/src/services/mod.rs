@@ -123,6 +123,7 @@ mod topic_owner {
 mod topic_read_state_lock;
 mod topic_reply_create_audience;
 mod topic_solution_lock;
+mod topic_split;
 mod topic_subscription_lock;
 mod topic_tag_lock;
 mod topic_vote_lock;
@@ -272,6 +273,11 @@ pub use topic_move::{
 pub use topic_reply_create_audience::{
     ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
     SetForumTopicReplyCreateAudiencePolicyInput,
+};
+pub use topic_split::{
+    ForumTopicSplitResult, ForumTopicSplitService, MAX_FORUM_TOPIC_SPLIT_REASON_LEN,
+    MAX_FORUM_TOPIC_SPLIT_REPLIES, MAX_FORUM_TOPIC_SPLIT_TITLE_LEN,
+    SplitForumTopicRepliesInput,
 };
 pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
