@@ -163,7 +163,7 @@ includesAll(
 );
 const canonicalResolve = facade.indexOf("resolve_canonical_topic_for_security(");
 const selectedHydration = facade.indexOf(
-  "self.inner\n            .get_with_locale_fallback(",
+  ".inner\n            .get_with_locale_fallback(",
   canonicalResolve,
 );
 assert.ok(canonicalResolve >= 0 && canonicalResolve < selectedHydration);
