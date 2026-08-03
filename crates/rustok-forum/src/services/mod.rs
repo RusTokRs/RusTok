@@ -106,6 +106,7 @@ mod topic_audience_list;
 mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
+mod topic_canonical_resolution;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_merge;
@@ -226,6 +227,9 @@ pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudienceP
 pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
+};
+pub use topic_canonical_resolution::{
+    ForumTopicCanonicalResolution, MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS,
 };
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,

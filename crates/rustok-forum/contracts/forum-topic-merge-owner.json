@@ -1,7 +1,7 @@
 {
   "contract": "forum_topic_merge_owner_v1",
   "task": "FORUM-21B",
-  "latest_policy_slice": "FORUM-21H",
+  "latest_policy_slice": "FORUM-21I",
   "parent_task": "FORUM-21",
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
@@ -12,7 +12,8 @@
   "result": "ForumTopicMergeResult",
   "migrations": [
     "m20260801_000010_add_forum_topic_merge_operations",
-    "m20260803_000016_add_forum_topic_merge_solution_policy"
+    "m20260803_000016_add_forum_topic_merge_solution_policy",
+    "m20260803_000017_add_forum_topic_canonical_resolution"
   ],
   "receipt_table": "forum_topic_merge_operations",
   "semantic_event": {
@@ -32,7 +33,8 @@
     "one_source_topic_per_operation": true,
     "one_target_topic_per_operation": true,
     "same_category_only": true,
-    "accepted_solutions_per_topic_max": 1
+    "accepted_solutions_per_topic_max": 1,
+    "canonical_resolution_hops_max": 32
   },
   "solution_policy": {
     "neither_topic_has_solution": "merge_without_solution_mutation",
@@ -42,6 +44,18 @@
     "source_solution_reply_must_be_approved": true,
     "target_solution_reply_must_be_approved": true,
     "solution_count_delta_during_merge": 0
+  },
+  "canonical_resolution": {
+    "source_of_truth": "forum_topic_merge_operations",
+    "one_edge_per_source_topic": true,
+    "parallel_alias_store": false,
+    "each_hop_topic_and_edges_share_one_statement_snapshot": true,
+    "terminal_target_must_be_non_deleted": true,
+    "duplicate_edge_or_cycle": "fail_with_FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
+    "selected_topic_reads_return_terminal_target": true,
+    "storefront_visibility_uses_terminal_target": true,
+    "graphql_and_seo_inherit_TopicService_resolution": true,
+    "rest_returns_target_representation_without_HTTP_3xx": true
   },
   "transactional_invariants": [
     "the operation requires non-nil tenant operation source target and human actor identities",
@@ -61,9 +75,12 @@
     "reply-owned bodies revisions votes mentions quotes attachments parent identities and a transferred accepted-solution identity remain attached through unchanged reply identifiers",
     "the target published reply counter becomes the checked sum and the source becomes archived locked with zero replies",
     "category retained topic_count and published reply_count remain unchanged because the archived source tombstone is not soft-deleted",
+    "the immutable receipt is also the only canonical source-to-target resolution edge",
+    "one tenant source topic can own only one immutable canonical edge while a retained target may later become the source of the next edge",
+    "each canonical hop reads topic existence and up to two outgoing edges under one statement snapshot",
     "source target and category projection invalidations are published in that order",
     "semantic event receipt owner state reply remap solution policy counters and invalidations commit in one transaction",
-    "exact replay creates no additional event receipt invalidation reply movement solution mutation or counter change"
+    "exact replay creates no additional event receipt invalidation reply movement solution mutation counter change or canonical edge"
   ],
   "database_guards": [
     "tenant-composite foreign keys bind the receipt to source topic target topic category and human actor",
@@ -72,12 +89,14 @@
     "event_id equals operation_id",
     "reason counts and position offset are bounded",
     "receipt updates and deletes are rejected for PostgreSQL and SQLite",
+    "one unique receipt edge exists per tenant source topic",
+    "a new canonical edge requires an archived locked non-deleted zero-reply source tombstone and a non-deleted non-archived target in the receipt category",
     "forum solution insert update and delete serialize through deterministic topic rows and solution scope 31",
     "forum solution insert or owner-key update requires an active non-deleted topic and an approved non-deleted reply owned by that topic"
   ],
   "retained_identity": {
-    "target_topic_id": "unchanged",
-    "source_topic_id": "archived_locked_redirect_ready",
+    "target_topic_id": "unchanged_and_canonical_for_selected_reads",
+    "source_topic_id": "archived_locked_tombstone_resolving_through_receipt_edge",
     "reply_ids": "unchanged",
     "accepted_solution_reply_id": "unchanged_when_source_only_transfers",
     "accepted_solution_marker_metadata": "unchanged_when_transferred_or_target_only",
@@ -86,20 +105,27 @@
     "category_topic_count": "unchanged_until_source_soft_delete"
   },
   "test": "crates/rustok-forum/tests/topic_merge_sqlite.rs",
+  "canonical_resolution_test": "crates/rustok-forum/tests/topic_canonical_resolution_sqlite.rs",
   "verifier": "scripts/verify/verify-forum-topic-merge-owner.mjs",
+  "canonical_resolution_verifier": "scripts/verify/verify-forum-topic-canonical-resolution.mjs",
   "documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   "solution_policy_contract": "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
   "solution_policy_documentation": "crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
+  "canonical_resolution_contract": "crates/rustok-forum/contracts/forum-topic-canonical-resolution.json",
+  "canonical_resolution_documentation": "crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-owner.mjs",
     "node scripts/verify/verify-forum-topic-merge-solution-policy.mjs",
-    "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture"
+    "node scripts/verify/verify-forum-topic-canonical-resolution.mjs",
+    "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture",
+    "cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture"
   ],
   "non_claims": [
     "this source-ready slice does not claim that verifiers SQLite tests Cargo checks formatting workflows or CI ran",
     "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution and remaining workflows",
     "this slice does not add public REST GraphQL native admin or storefront merge transport",
-    "this slice does not add canonical URL aliases redirects or route tombstones",
+    "this slice does not add an HTTP 3xx Location redirect slug alias or slug route tombstone",
+    "this slice does not make mutation commands follow merged source identities",
     "this slice does not support cross-category merge split fork or reply-range operations",
     "dedicated bounded slices own subscriptions read state tags topic votes and topic-local audience reconciliation",
     "this slice does not choose a winner when source and target both have accepted solutions",
