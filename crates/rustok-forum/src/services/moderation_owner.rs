@@ -20,6 +20,7 @@ use crate::services::moderation_audience_authorization::ForumModerationAudienceA
 use crate::services::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
+use crate::services::topic_solution_lock::lock_topic_solution_scopes_in_tx;
 use crate::services::user_stats::UserStatsService;
 use crate::services::{CategoryService, ReplyService, TopicService};
 use crate::state_machine::ReplyStatus;
@@ -342,14 +343,16 @@ impl ModerationService {
         context: Option<PortContext>,
     ) -> ForumResult<()> {
         let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
-        let reply_service = ReplyService::new(self.db.clone(), self.event_bus.clone());
         let topic = topic_service.find_topic(tenant_id, topic_id).await?;
         if !is_exact_topic_author(&security, topic.author_id) {
             self.audience
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
         }
-        let reply = reply_service.find_reply(tenant_id, reply_id).await?;
+
+        let txn = self.db.begin().await?;
+        lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
+        let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
             return Err(ForumError::Validation(
                 "Reply belongs to another topic".to_string(),
@@ -361,7 +364,6 @@ impl ModerationService {
             ));
         }
 
-        let txn = self.db.begin().await?;
         let previous_solution_reply_id = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(topic_id))
@@ -429,6 +431,7 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
+        lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let solution_author_id = if let Some(solution) = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(topic_id))
