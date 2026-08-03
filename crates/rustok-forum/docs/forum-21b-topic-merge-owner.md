@@ -94,11 +94,12 @@ Slug aliases and localized routes remain FORUM-24.
 `operation_id` is the immutable receipt identity and Forum-local semantic event
 identity. The owner acquires the tenant merge lock before receipt lookup.
 
-The exact receipt and its semantic event are validated before reading current
-topic state. A retry therefore succeeds after the source has been archived and
-its replies have moved. Source, target, actor, normalized reason, selected
-solution or ordinary-versus-resolved command-shape drift under the same
-operation ID fails with `FORUM_TOPIC_MERGE_OPERATION_CONFLICT`.
+The exact receipt, its schema-version-1 event and any optional append-only
+solution-resolution audit are validated before reading current topic state. A
+retry therefore succeeds after the source has been archived and its replies have
+moved. Source, target, actor, normalized reason, selected solution or
+ordinary-versus-resolved command-shape drift under the same operation ID fails
+with `FORUM_TOPIC_MERGE_OPERATION_CONFLICT`.
 
 `forum_topic_merge_operations` remains append-only and is also the only
 source-to-target canonical edge. Selected reads follow the bounded receipt chain
@@ -110,7 +111,8 @@ semantics and do not follow merged source aliases.
 A first execution performs one transaction:
 
 1. acquire tenant merge and category lifecycle serialization;
-2. resolve and validate any immutable replay receipt/event;
+2. resolve and validate any immutable replay receipt, schema-version-1 event and
+   optional resolution audit;
 3. read source/target categories and require one category;
 4. acquire category and sorted topic counter scopes;
 5. lock source and target topic rows in deterministic UUID order;
@@ -126,12 +128,15 @@ A first execution performs one transaction:
 14. reinsert and validate a selected source marker when required;
 15. update target reply count and archive/lock the source;
 16. validate retained target audience composition;
-17. append one `forum.topic.merged` journal event and one immutable receipt;
-18. publish source-topic, target-topic and category projection invalidations;
-19. commit once.
+17. append one unchanged schema-version-1 `forum.topic.merged` journal event;
+18. append one immutable merge receipt;
+19. append one receipt-linked solution-resolution audit when an explicit winner
+   was selected;
+20. publish source-topic, target-topic and category projection invalidations;
+21. commit once.
 
 Any error rolls back solution state, statistics, reply ownership, positions,
-counters, topic lifecycle, event, receipt and invalidations.
+counters, topic lifecycle, event, receipt, audit and invalidations.
 
 ## Accepted-solution policy
 
@@ -174,32 +179,41 @@ exact topic is active/non-deleted and the exact reply is approved, non-deleted
 and owned by that tenant/topic pair. DELETE remains available for clear and
 merge resolution.
 
-## Semantic events and receipt
+## Resolution audit ledger
 
-Ordinary merges preserve:
+`m20260803_000018_add_forum_topic_merge_solution_resolution` creates the
+append-only `forum_topic_merge_solution_resolutions` table.
+
+Its `(tenant_id, operation_id)` primary key is also a tenant-composite foreign
+key to the immutable merge receipt. The row stores source/target candidate
+reply IDs, selected and rejected reply IDs, optional rejected author and
+`resolved_at`. All reply IDs and the optional author use tenant-composite foreign
+keys. A database check requires selected/rejected IDs to be one exact orientation
+of the source/target candidate pair. PostgreSQL and SQLite reject UPDATE and
+DELETE.
+
+The linked receipt and event already own actor, reason, source, target and merge
+time, so the audit row does not duplicate them.
+
+## Semantic event compatibility
+
+Every merge, including explicit solution resolution, preserves the exact
+contract:
 
 ```text
 forum.topic.merged / schema version 1
 ```
 
-Explicit competing-solution resolution uses schema version 2 of the same
-Forum-local event type. The ordinary payload is extended with:
+The payload remains the original operation/source/target/category/count/offset/
+reason object. It contains no solution-resolution extension. This keeps the
+existing subscription, read-state, tag, vote and audience reconciliation owners
+compatible because each validates the exact schema-version-1 event before
+repairing state.
 
-```text
-solution_resolution.source_solution_reply_id
-solution_resolution.target_solution_reply_id
-solution_resolution.selected_solution_reply_id
-solution_resolution.rejected_solution_reply_id
-solution_resolution.rejected_solution_author_id
-```
-
-The existing actor and reason fields record who made the decision and why. The
-shared `rustok-events` catalog is unchanged. The append-only receipt row and its
-schema are unchanged.
-
-Replay validates the complete schema-1 or schema-2 payload. Selection drift or
-replaying a resolved operation through the ordinary command fails with the
-operation conflict and adds no solution/statistic/event/receipt/invalidation.
+The shared `rustok-events` catalog and projection invalidation target list are
+unchanged. Replay validates the event and optional audit separately. Selection
+or command-shape drift fails with the operation conflict and adds no
+solution/statistic/event/receipt/audit/invalidation.
 
 ## Canonical reads and REST redirect
 
@@ -244,7 +258,8 @@ mergeForumTopicResolvingSolution(
 Both require the `forum` module, authenticated routed tenant context and
 `forum_topics:manage`. Optional `tenantId` is assertion-only. Both call the same
 owner service, return the immutable merge receipt, do not hydrate topic content
-and do not follow canonical mutation aliases.
+and do not follow canonical mutation aliases. Resolution persistence remains
+inside the owner; the GraphQL adapter does not read audit or solution tables.
 
 ## Source-ready coverage
 
@@ -253,13 +268,15 @@ target-only preservation, strict competing conflict, replay, append-only receipt
 and database solution guards.
 
 `topic_merge_solution_resolution_sqlite` covers source and target winners,
-marker metadata, exact losing-author statistics, schema-2 audit, exact replay,
+marker metadata, exact losing-author statistics, exact schema-version-1 merge
+event payload, append-only audit contents/update-delete rejection, exact replay,
 selection drift, command-shape drift and invalid-selection rollback.
 
 `topic_merge_solution_resolution_graphql_contract` builds the merged schema and
-checks the additive typed mutation plus one shared private transaction owner.
-Canonical-resolution and Axum controller tests retain chain and redirect
-coverage; FORUM-21K tests retain ordinary GraphQL composition.
+checks the additive typed mutation, one shared private transaction owner, audit
+entity/migration and unchanged merge-event schema. Canonical-resolution and
+Axum controller tests retain chain and redirect coverage; FORUM-21K tests retain
+ordinary GraphQL composition.
 
 ## Remaining FORUM-21 work
 
