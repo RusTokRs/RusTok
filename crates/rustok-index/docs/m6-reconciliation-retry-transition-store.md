@@ -1,12 +1,12 @@
 # M6 reconciliation retry transition store
 
-Status: `source_complete_runner_and_scheduler_wiring_pending`.
+Status: `runner_complete_scheduler_wiring_pending`.
 
 ## Purpose
 
-`PostgresIndexReconciliationRetryStore` provides one Index-owned durable transition boundary for bounded reconciliation retry, backoff, and terminal exhaustion.
+`PostgresIndexReconciliationRetryStore` provides the Index-owned durable transition boundary for bounded reconciliation retry, backoff, and terminal exhaustion.
 
-This slice does not change `PostgresIndexReconciliationRunner`, start a scheduler, poll `index_jobs`, or publish a transport. It creates the exact lease-fenced state transition that later runner wiring and host scheduling can call without duplicating policy or SQL.
+`PostgresIndexReconciliationRunner` now classifies page failures and delegates their state transition to this store. The remaining open ownership boundary is host scheduling: neither component starts a task, polls `index_jobs`, sleeps until `available_at`, or claims fleet-wide scheduler leadership.
 
 ## Retry lease
 
@@ -17,7 +17,7 @@ This slice does not change `PostgresIndexReconciliationRunner`, start a schedule
 - one bounded, trimmed, control-character-free worker identity;
 - one positive durable attempt count.
 
-The lease is not acquired by this store. A caller must construct it only from a currently owned reconciliation attempt. The transition SQL independently verifies the same tenant, job, worker, and attempt together with an unexpired running lease and `cancel_requested = false`.
+The runner constructs this lease only from its currently acquired reconciliation attempt. The transition SQL independently verifies the same tenant, job, worker, and attempt together with an unexpired running lease and `cancel_requested = false`.
 
 ## Failure contract
 
@@ -26,11 +26,13 @@ The lease is not acquired by this store. A caller must construct it only from a 
 - `Retryable`;
 - `Permanent`.
 
-Codes are limited to 128 ASCII bytes containing lowercase letters, digits, `.`, `_`, or `-`. The API accepts no raw source, database, SQL, request, transport, payload, tenant, worker, stack, or arbitrary owner detail.
+The runner maps source and mutation failure kinds directly. Source contract failures use the permanent code `source_contract_invalid`; other page-contract failures use `reconciliation_contract_invalid`.
+
+Codes are limited to 128 ASCII bytes containing lowercase letters, digits, `.`, `_`, or `-`. The retry boundary accepts no raw source, database, SQL, request, transport, payload, tenant, worker, stack, or arbitrary owner detail.
 
 ## Bounded policy
 
-The default policy is fixed:
+The runner uses the fixed default policy:
 
 - maximum attempts: `5`;
 - base backoff: `5 seconds`;
@@ -39,7 +41,7 @@ The default policy is fixed:
 - permanent failures terminalize immediately;
 - a retryable failure at attempt 5 terminalizes as exhausted.
 
-Custom policies remain bounded to 1-100 attempts and whole-second delays from 1 through 86,400 seconds. The base delay cannot exceed the maximum delay.
+Custom store policies remain bounded to 1-100 attempts and whole-second delays from 1 through 86,400 seconds, but per-source or dynamic runner policy selection remains open. The base delay cannot exceed the maximum delay.
 
 ## Durable transitions
 
@@ -68,6 +70,18 @@ Both paths are fenced by exact tenant, job, worker, attempt, active lease, runni
 
 The store inserts no job row, changes no job UUID, sleeps for no delay, polls no table, and starts no task.
 
+## Runner outcomes
+
+The runner returns typed outcomes after a successful durable transition:
+
+- `RetryScheduled` with bounded `retry_after` and `next_attempt`;
+- `FailedPermanent` without retry metadata;
+- `FailedExhausted` without retry metadata.
+
+The outcome keeps the exact job UUID, current attempt, and counters already accumulated during the invocation. It does not return the dependency code or raw failure.
+
+Cancellation still wins if it commits before the retry transition. A stale or expired lease maps back to the runner's existing `LeaseLost` error. Other transition failures are wrapped in the detail-free `RetryTransition` error.
+
 ## Diagnostic compatibility
 
 Both scheduled and terminal transitions preserve the existing strict `index_reconciliation_run_failure_v1` object:
@@ -88,12 +102,10 @@ Keeping the exact three-field contract means the merged dead-letter inspector re
 
 Automatic retry remains within the existing retry epoch and preserves the attempt count until a later claim increments it.
 
-The merged audited manual requeue contract is different: it operates only on terminal failed rows, increments `retry_epoch`, resets `attempt_count` to zero, installs the initial cursor, and appends an immutable actor/reason audit. This retry store does not create recovery audits or perform manual reset semantics.
+The merged audited manual requeue contract is different: it operates only on terminal failed rows, increments `retry_epoch`, resets `attempt_count` to zero, installs the initial cursor, and appends an immutable actor/reason audit. Automatic retry does not create recovery audits or perform manual reset semantics.
 
 ## Explicitly open
 
-- classification and wiring from `PostgresIndexReconciliationRunner::finish_page_error`;
-- truthful runner reporting of scheduled versus terminal disposition;
 - host-owned due-job discovery and bounded invocation;
 - fleet-wide scheduling ownership, takeover, and graceful shutdown;
 - per-source policy, jitter, and dynamic configuration;
@@ -101,7 +113,7 @@ The merged audited manual requeue contract is different: it operates only on ter
 - GraphQL, HTTP, CLI, MCP, or admin transport;
 - source/index digest comparison, orphan diagnosis, and targeted/full/shadow repair.
 
-The canonical implementation-plan item `Add bounded retry/backoff, dead-letter state, and global scheduling ownership` remains open because runner wiring and global scheduling ownership are not part of this slice.
+The canonical implementation-plan item `Add bounded retry/backoff, dead-letter state, and global scheduling ownership` remains open because global scheduling ownership is not part of this slice.
 
 ## Validation ownership
 

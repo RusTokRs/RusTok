@@ -12,11 +12,11 @@ use async_trait::async_trait;
 use rustok_core::MigrationSource;
 use rustok_index::{
     EntityName, FieldCardinality, FieldName, IndexField, IndexModule,
-    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexSchema,
-    IndexSchemaSourceCatalog, IndexSource, IndexSourceCatalog, IndexSourceError,
-    IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
-    IndexSourcePage, IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName,
-    PostgresIndexReconciliationRunner, SchemaRef, SchemaRegistry, SchemaVersion,
+    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
+    IndexSchema, IndexSchemaSourceCatalog, IndexSource, IndexSourceCatalog, IndexSourceFailure,
+    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
+    IndexValueType, LocaleMode, ModuleName, PostgresIndexReconciliationRunner, SchemaRef,
+    SchemaRegistry, SchemaVersion,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, QueryResult,
@@ -146,25 +146,23 @@ async fn failed_reconciliation_scope_blocks_new_jobs_without_exposing_details() 
     let calls = Arc::new(AtomicUsize::new(0));
     let first_runner = runner(database.connection().await?, calls.clone());
 
-    let first_error = first_runner
+    let first_outcome = first_runner
         .run(request(database.tenant_id, "dead-letter-worker-a"))
         .await
-        .expect_err("fixture source failure must terminalize the first job");
-    match first_error {
-        IndexReconciliationRunError::Source(IndexSourceError::SourceFailure {
-            source_name,
-            failure,
-        }) => {
-            assert_eq!(source_name, SOURCE_NAME);
-            assert_eq!(failure.code(), DEPENDENCY_CODE);
-            assert_eq!(failure.kind(), IndexSourceFailureKind::Permanent);
-        }
-        other => panic!("unexpected first reconciliation error: {other:?}"),
-    }
+        .expect("permanent source failure must terminalize through a typed outcome");
+    assert_eq!(
+        first_outcome.status(),
+        IndexReconciliationRunStatus::FailedPermanent
+    );
+    assert_eq!(first_outcome.attempt_count(), Some(1));
+    assert_eq!(first_outcome.retry_after(), None);
+    assert_eq!(first_outcome.next_attempt(), None);
+    assert_eq!(first_outcome.pages_processed(), 0);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 
     let evidence_db = database.connection().await?;
     let failed = read_failed_job(&evidence_db, database.tenant_id).await?;
+    assert_eq!(first_outcome.job_id(), Some(failed.job_id));
     assert_eq!(failed.state, "failed");
     assert_eq!(failed.attempt_count, 1);
     assert_eq!(failed.completed_passes, 0);

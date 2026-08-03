@@ -33,7 +33,12 @@ const runner = requireMarkers(runnerPath, [
   'const MAX_PASSES: u32 = 8;',
   'pub struct IndexReconciliationRunRequest',
   'pub enum IndexReconciliationRunStatus',
+  'RetryScheduled,',
+  'FailedPermanent,',
+  'FailedExhausted,',
   'pub struct IndexReconciliationRunOutcome',
+  'pub fn retry_after(&self) -> Option<Duration>',
+  'pub fn next_attempt(&self) -> Option<u32>',
   'pub struct PostgresIndexReconciliationRunner',
   '.source_for_schema(request.schema())',
   'IndexSourceScanRequest::new(',
@@ -45,6 +50,8 @@ const runner = requireMarkers(runnerPath, [
   'finish_success(&self.db, &lease, &state).await?',
   'yield_for_resume(&self.db, &lease).await?',
   'cancel_if_requested(&self.db, &lease).await?',
+  'PostgresIndexReconciliationRetryStore::new(db.clone())',
+  'retry_store.record_failure(&retry_lease, &failure).await',
   "kind = 'reconcile'",
   "scope_kind = 'schema'",
   'cursor = {prefix}5',
@@ -64,6 +71,8 @@ forbidMarkers(runnerPath, runner, [
   'INSERT INTO index_entities',
   'UPDATE index_entities',
   'DELETE FROM index_entities',
+  'async fn finish_failure(',
+  'fn finish_failure_sql(',
   'tokio::spawn',
   'tokio::time::sleep',
   'loop {',
@@ -85,8 +94,13 @@ requireMarkers(
   [
     'two_pass_reconciliation_catches_insert_behind_first_cursor',
     'bounded_reconciliation_yields_and_resumes_durable_pass_state',
+    'retryable_failure_schedules_due_attempts_and_terminally_exhausts',
+    'permanent_failure_terminalizes_without_retry_metadata',
     'reconciliation_request_bounds_pages_passes_and_heartbeat_cadence',
     'IndexReconciliationRunStatus::AlreadyComplete',
+    'IndexReconciliationRunStatus::RetryScheduled',
+    'IndexReconciliationRunStatus::FailedExhausted',
+    'IndexReconciliationRunStatus::FailedPermanent',
     "json_extract(cursor, '$.completed_passes')",
     "json_extract(cursor, '$.pages_processed')",
     'assert_eq!(outcome.applied_count(), 3);',
@@ -95,14 +109,18 @@ requireMarkers(
 );
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+  'mod source_reconciliation_retry;',
   'mod source_reconciliation_runner;',
   'mod source_reconciliation_runner_tests;',
+  'IndexReconciliationRetryDisposition',
+  'PostgresIndexReconciliationRetryStore',
   'IndexReconciliationRunRequest',
   'IndexReconciliationRunOutcome',
   'PostgresIndexReconciliationRunner',
 ]);
 requireMarkers('crates/rustok-index/src/lib.rs', [
   'bounded multi-pass source reconciliation with durable pass/cursor progression',
+  'bounded reconciliation retry transitions',
   'IndexReconciliationRunRequest',
   'IndexReconciliationRunStatus',
   'PostgresIndexReconciliationRunner',
@@ -133,6 +151,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-reconciliation.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-reconciliation.mjs'",
+  "'verify-index-reconciliation-runner-retry.mjs'",
 ]);
 
 console.log('[verify-index-source-reconciliation] OK');

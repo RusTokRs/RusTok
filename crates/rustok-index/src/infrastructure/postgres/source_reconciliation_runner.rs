@@ -9,7 +9,7 @@ use sea_orm::{
     TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -19,12 +19,14 @@ use crate::{
     IndexSourceScanRequest, SchemaRef, SchemaRegistry, SharedIndexSourceRegistry,
 };
 
-use super::PostgresMutationStore;
+use super::{
+    IndexReconciliationRetryDisposition, IndexReconciliationRetryError,
+    IndexReconciliationRetryFailure, IndexReconciliationRetryLease,
+    PostgresIndexReconciliationRetryStore, PostgresMutationStore,
+};
 
 const RECONCILIATION_JOB_REQUEST_CONTRACT: &str = "index_reconciliation_job_v1";
 const RECONCILIATION_JOB_CURSOR_CONTRACT: &str = "index_reconciliation_cursor_v1";
-const RECONCILIATION_FAILURE_CONTRACT: &str = "index_reconciliation_run_failure_v1";
-const RECONCILIATION_PAGE_FAILURE_CODE: &str = "index.reconciliation_page_failed";
 const MAX_PAGES_PER_RUN: usize = 1_024;
 const MAX_PASSES: u32 = 8;
 const MAX_SOURCE_NAME_BYTES: usize = 128;
@@ -132,6 +134,9 @@ pub enum IndexReconciliationRunStatus {
     Complete,
     Cancelled,
     Yielded,
+    RetryScheduled,
+    FailedPermanent,
+    FailedExhausted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +144,8 @@ pub struct IndexReconciliationRunOutcome {
     status: IndexReconciliationRunStatus,
     job_id: Option<Uuid>,
     attempt_count: Option<u32>,
+    retry_after: Option<Duration>,
+    next_attempt: Option<u32>,
     pages_processed: usize,
     passes_completed: u32,
     heartbeat_count: usize,
@@ -159,6 +166,14 @@ impl IndexReconciliationRunOutcome {
 
     pub fn attempt_count(&self) -> Option<u32> {
         self.attempt_count
+    }
+
+    pub fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+
+    pub fn next_attempt(&self) -> Option<u32> {
+        self.next_attempt
     }
 
     pub fn pages_processed(&self) -> usize {
@@ -294,6 +309,8 @@ impl PostgresIndexReconciliationRunner {
             status: IndexReconciliationRunStatus::Yielded,
             job_id: Some(lease.job_id),
             attempt_count: Some(lease.attempt_count),
+            retry_after: None,
+            next_attempt: None,
             pages_processed: 0,
             passes_completed: state.completed_passes,
             heartbeat_count: 0,
@@ -328,7 +345,7 @@ impl PostgresIndexReconciliationRunner {
                 Ok(page) => page,
                 Err(error) => {
                     let run_error = IndexReconciliationRunError::Source(error);
-                    return finish_page_error(&self.db, &lease, run_error).await;
+                    return finish_page_error(&self.db, &lease, outcome, run_error).await;
                 }
             };
 
@@ -337,12 +354,12 @@ impl PostgresIndexReconciliationRunner {
                 let event_id = mutation.event_id();
                 if event_id.is_nil() {
                     let run_error = IndexReconciliationRunError::NilEventId { position };
-                    return finish_page_error(&self.db, &lease, run_error).await;
+                    return finish_page_error(&self.db, &lease, outcome, run_error).await;
                 }
                 if !event_ids.insert(event_id) {
                     let run_error =
                         IndexReconciliationRunError::DuplicateEventId { position, event_id };
-                    return finish_page_error(&self.db, &lease, run_error).await;
+                    return finish_page_error(&self.db, &lease, outcome, run_error).await;
                 }
             }
 
@@ -364,7 +381,7 @@ impl PostgresIndexReconciliationRunner {
                     Err(failure) => {
                         let run_error =
                             IndexReconciliationRunError::MutationFailed { position, failure };
-                        return finish_page_error(&self.db, &lease, run_error).await;
+                        return finish_page_error(&self.db, &lease, outcome, run_error).await;
                     }
                 }
             }
@@ -872,39 +889,48 @@ async fn finish_success(
 async fn finish_page_error(
     db: &DatabaseConnection,
     lease: &ReconciliationLease,
+    mut outcome: IndexReconciliationRunOutcome,
     error: IndexReconciliationRunError,
 ) -> Result<IndexReconciliationRunOutcome, IndexReconciliationRunError> {
-    let details = failure_details(&error);
-    match finish_failure(db, lease, details).await? {
-        LeaseWriteOutcome::Written => Err(error),
-        LeaseWriteOutcome::Cancelled => Ok(empty_outcome(
-            IndexReconciliationRunStatus::Cancelled,
-            Some(lease.job_id),
-            Some(lease.attempt_count),
-            0,
-        )),
+    let failure = retry_failure(&error)?;
+    let retry_lease = IndexReconciliationRetryLease::new(
+        lease.tenant_id,
+        lease.job_id,
+        lease.worker_id.clone(),
+        lease.attempt_count,
+    )
+    .map_err(IndexReconciliationRunError::RetryTransition)?;
+    let retry_store = PostgresIndexReconciliationRetryStore::new(db.clone());
+    match retry_store.record_failure(&retry_lease, &failure).await {
+        Ok(IndexReconciliationRetryDisposition::RetryScheduled {
+            retry_after,
+            next_attempt,
+        }) => {
+            outcome.status = IndexReconciliationRunStatus::RetryScheduled;
+            outcome.retry_after = Some(retry_after);
+            outcome.next_attempt = Some(next_attempt);
+            Ok(outcome)
+        }
+        Ok(IndexReconciliationRetryDisposition::TerminalPermanent { .. }) => {
+            outcome.status = IndexReconciliationRunStatus::FailedPermanent;
+            Ok(outcome)
+        }
+        Ok(IndexReconciliationRetryDisposition::TerminalExhausted { .. }) => {
+            outcome.status = IndexReconciliationRunStatus::FailedExhausted;
+            Ok(outcome)
+        }
+        Err(IndexReconciliationRetryError::LeaseLost) => {
+            if cancel_if_requested(db, lease).await? {
+                outcome.status = IndexReconciliationRunStatus::Cancelled;
+                return Ok(outcome);
+            }
+            Err(IndexReconciliationRunError::LeaseLost {
+                job_id: lease.job_id,
+                attempt_count: lease.attempt_count,
+            })
+        }
+        Err(error) => Err(IndexReconciliationRunError::RetryTransition(error)),
     }
-}
-
-async fn finish_failure(
-    db: &DatabaseConnection,
-    lease: &ReconciliationLease,
-    details: JsonValue,
-) -> Result<LeaseWriteOutcome, IndexReconciliationRunError> {
-    let backend = db.get_database_backend();
-    ensure_supported_backend(backend)?;
-    let mut values = lease_values(lease, backend);
-    values.push(RECONCILIATION_PAGE_FAILURE_CODE.to_owned().into());
-    values.push(SqlValue::Json(Some(Box::new(details))));
-    let updated = db
-        .execute(Statement::from_sql_and_values(
-            backend,
-            finish_failure_sql(backend),
-            values,
-        ))
-        .await
-        .map_err(storage_error)?;
-    lease_write_outcome(db, lease, updated.rows_affected()).await
 }
 
 async fn yield_for_resume(
@@ -1021,24 +1047,34 @@ async fn lease_write_outcome(
     })
 }
 
-fn failure_details(error: &IndexReconciliationRunError) -> JsonValue {
-    let (dependency_code, retryable) = match error {
-        IndexReconciliationRunError::Source(IndexSourceError::SourceFailure { failure, .. }) => (
-            failure.code(),
-            failure.kind() == IndexSourceFailureKind::Retryable,
-        ),
-        IndexReconciliationRunError::MutationFailed { failure, .. } => (
-            failure.code(),
-            failure.kind() == IndexReplayFailureKind::Retryable,
-        ),
-        IndexReconciliationRunError::Source(_) => ("source_contract_invalid", false),
-        _ => ("reconciliation_contract_invalid", false),
+fn retry_failure(
+    error: &IndexReconciliationRunError,
+) -> Result<IndexReconciliationRetryFailure, IndexReconciliationRunError> {
+    let failure = match error {
+        IndexReconciliationRunError::Source(IndexSourceError::SourceFailure { failure, .. }) => {
+            match failure.kind() {
+                IndexSourceFailureKind::Retryable => {
+                    IndexReconciliationRetryFailure::retryable(failure.code())
+                }
+                IndexSourceFailureKind::Permanent => {
+                    IndexReconciliationRetryFailure::permanent(failure.code())
+                }
+            }
+        }
+        IndexReconciliationRunError::MutationFailed { failure, .. } => match failure.kind() {
+            IndexReplayFailureKind::Retryable => {
+                IndexReconciliationRetryFailure::retryable(failure.code())
+            }
+            IndexReplayFailureKind::Permanent => {
+                IndexReconciliationRetryFailure::permanent(failure.code())
+            }
+        },
+        IndexReconciliationRunError::Source(_) => {
+            IndexReconciliationRetryFailure::permanent("source_contract_invalid")
+        }
+        _ => IndexReconciliationRetryFailure::permanent("reconciliation_contract_invalid"),
     };
-    json!({
-        "contract": RECONCILIATION_FAILURE_CONTRACT,
-        "dependency_code": dependency_code,
-        "retryable": retryable,
-    })
+    failure.map_err(IndexReconciliationRunError::RetryTransition)
 }
 
 fn empty_outcome(
@@ -1051,6 +1087,8 @@ fn empty_outcome(
         status,
         job_id,
         attempt_count,
+        retry_after: None,
+        next_attempt: None,
         pages_processed: 0,
         passes_completed,
         heartbeat_count: 0,
@@ -1240,13 +1278,6 @@ fn finish_success_sql(backend: DbBackend) -> String {
     )
 }
 
-fn finish_failure_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    format!(
-        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6 WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
-    )
-}
-
 fn yield_job_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
@@ -1352,6 +1383,8 @@ pub enum IndexReconciliationRunError {
         #[source]
         failure: IndexReplayFailure,
     },
+    #[error("Index reconciliation retry transition failed")]
+    RetryTransition(#[source] IndexReconciliationRetryError),
     #[error("Index reconciliation durable counter overflowed")]
     CounterOverflow,
     #[error("Index reconciliation job {job_id} lost attempt {attempt_count} ownership")]
