@@ -89,7 +89,22 @@ jobs:
           count = verifier.count(forbidden_anchor)
           if count != 1:
               raise SystemExit(f'Forum verifier forbidden transport scope: expected one match, found {count}')
-          verifier_path.write_text(verifier.replace(forbidden_anchor, forbidden_replacement, 1))
+          verifier = verifier.replace(forbidden_anchor, forbidden_replacement, 1)
+
+          machine_anchor = '''assert.equal(adminContract.compatibility.migration_added, false);'''
+          machine_replacement = '''assert.equal(adminContract.compatibility.migration_added, false);
+          assert.equal(adminContract.leptos_admin.transport_state, "single_adapter_graphql");'''
+          count = verifier.count(machine_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum verifier admin transport contract: expected one match, found {count}')
+          verifier = verifier.replace(machine_anchor, machine_replacement, 1)
+
+          docs_anchor = '''    "single-adapter GraphQL state",'''
+          docs_replacement = '''    "explicit GraphQL-only adapter state",'''
+          count = verifier.count(docs_anchor)
+          if count != 1:
+              raise SystemExit(f'Forum verifier admin handoff wording: expected one match, found {count}')
+          verifier_path.write_text(verifier.replace(docs_anchor, docs_replacement, 1))
           PY
 
       - name: Ensure Index lock edges
