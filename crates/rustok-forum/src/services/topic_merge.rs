@@ -16,8 +16,8 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{
-    forum_category_lifecycle, forum_domain_event, forum_reply, forum_solution, forum_topic,
-    forum_topic_merge_operation, forum_topic_merge_solution_resolution,
+    forum_category, forum_category_lifecycle, forum_domain_event, forum_reply, forum_solution,
+    forum_topic, forum_topic_merge_operation, forum_topic_merge_solution_resolution,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -83,17 +83,20 @@ struct ForumTopicMergeSolutionPlan {
     audit: Option<ForumTopicMergeSolutionResolutionAudit>,
 }
 
-/// Idempotent same-category merge of one active source topic into one retained target topic.
+/// Idempotent merge of one active source topic into one retained active target topic.
 ///
-/// The target identity and topic-owned policy remain authoritative. Reply identities and all
-/// reply-owned relations are retained while reply positions are shifted after the target's
-/// current maximum. A source-only accepted solution follows its unchanged reply identity and
-/// preserves its marker metadata. Competing accepted solutions require the explicit manager
-/// command, which selects one reply, stores both candidates in an append-only audit row linked to
-/// the immutable merge receipt, and decrements the losing reply author's solution statistic
-/// exactly once. The source topic becomes an archived, locked redirect-ready identity. Topic
-/// subscriptions, tags and topic-level audience relations are reconciled by their dedicated
-/// bounded policies against the unchanged schema-version-1 merge event.
+/// Source and target may belong to the same active category or to two different active
+/// categories. The target identity and topic-owned policy remain authoritative. Reply identities
+/// and all reply-owned relations are retained while reply positions are shifted after the
+/// target's current maximum. For a cross-category merge, the archived source tombstone stays in
+/// its original category, both category topic counters remain unchanged, and only the source
+/// published-reply contribution moves to the target category with checked arithmetic. A
+/// source-only accepted solution follows its unchanged reply identity and preserves its marker
+/// metadata. Competing accepted solutions require the explicit manager command, which selects one
+/// reply, stores both candidates in an append-only audit row linked to the immutable merge receipt,
+/// and decrements the losing reply author's solution statistic exactly once. Subscriptions, tags
+/// and topic-level audience relations are reconciled by their dedicated bounded policies against
+/// the unchanged schema-version-1 merge event.
 pub struct ForumTopicMergeService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -192,16 +195,10 @@ impl ForumTopicMergeService {
         let preliminary_source =
             find_topic_in_tx(&txn, tenant_id, input.source_topic_id).await?;
         let preliminary_target = find_topic_in_tx(&txn, tenant_id, target_topic_id).await?;
-        if preliminary_source.category_id != preliminary_target.category_id {
-            return Err(ForumError::Validation(
-                "Forum topic merge requires source and target topics in the same category"
-                    .to_string(),
-            ));
-        }
         lock_merge_counter_scopes_in_tx(
             &txn,
             tenant_id,
-            preliminary_target.category_id,
+            &[preliminary_source.category_id, preliminary_target.category_id],
             input.source_topic_id,
             target_topic_id,
         )
@@ -223,13 +220,14 @@ impl ForumTopicMergeService {
             ));
         }
         source.status.validate_transition(&TopicStatus::Archived)?;
-        if source.category_id != target.category_id {
-            return Err(ForumError::Validation(
-                "Forum topic merge requires source and target topics in the same category"
-                    .to_string(),
-            ));
-        }
-        ensure_category_active_in_tx(&txn, tenant_id, target.category_id).await?;
+        let source_category_id = source.category_id;
+        let target_category_id = target.category_id;
+        ensure_categories_active_in_tx(
+            &txn,
+            tenant_id,
+            &[source_category_id, target_category_id],
+        )
+        .await?;
 
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[source.id, target.id]).await?;
         let source_solution =
@@ -285,6 +283,15 @@ impl ForumTopicMergeService {
             .ok_or_else(|| {
                 ForumError::Validation("Forum merged reply position overflow".to_string())
             })?;
+
+        transfer_cross_category_reply_counters_in_tx(
+            &txn,
+            tenant_id,
+            source_category_id,
+            target_category_id,
+            moved_published_reply_count,
+        )
+        .await?;
 
         if solution_plan.delete_source_solution {
             delete_solution_in_tx(&txn, tenant_id, source.id, "source").await?;
@@ -426,9 +433,19 @@ impl ForumTopicMergeService {
             &txn,
             tenant_id,
             Some(actor_id),
-            target.category_id,
+            source_category_id,
         )
         .await?;
+        if target_category_id != source_category_id {
+            publish_forum_category_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                Some(actor_id),
+                target_category_id,
+            )
+            .await?;
+        }
 
         txn.commit().await?;
         Ok(operation_to_result(operation))
@@ -595,19 +612,25 @@ async fn lock_topic_merge_tenant_in_tx(
 async fn lock_merge_counter_scopes_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    category_id: Uuid,
+    category_ids: &[Uuid],
     source_topic_id: Uuid,
     target_topic_id: Uuid,
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
+            let mut categories = category_ids.to_vec();
+            categories.sort();
+            categories.dedup();
             let mut topic_ids = [source_topic_id, target_topic_id];
             topic_ids.sort();
-            let scopes = [
-                format!("forum:category:{tenant_id}:{category_id}"),
+            let mut scopes = categories
+                .into_iter()
+                .map(|category_id| format!("forum:category:{tenant_id}:{category_id}"))
+                .collect::<Vec<_>>();
+            scopes.extend([
                 format!("forum:topic:{tenant_id}:{}", topic_ids[0]),
                 format!("forum:topic:{tenant_id}:{}", topic_ids[1]),
-            ];
+            ]);
             for scope in scopes {
                 txn.execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -715,6 +738,20 @@ async fn find_topic_in_tx(
         .ok_or(ForumError::TopicNotFound(topic_id))
 }
 
+async fn ensure_categories_active_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_ids: &[Uuid],
+) -> ForumResult<()> {
+    let mut ids = category_ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    for category_id in ids {
+        ensure_category_active_in_tx(txn, tenant_id, category_id).await?;
+    }
+    Ok(())
+}
+
 async fn ensure_category_active_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -728,9 +765,82 @@ async fn ensure_category_active_in_tx(
         .is_some()
     {
         return Err(ForumError::Validation(
-            "Forum topic merge requires an active category".to_string(),
+            "Forum topic merge requires active source and target categories".to_string(),
         ));
     }
+    Ok(())
+}
+
+async fn transfer_cross_category_reply_counters_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    source_category_id: Uuid,
+    target_category_id: Uuid,
+    moved_published_reply_count: i32,
+) -> ForumResult<()> {
+    if source_category_id == target_category_id {
+        return Ok(());
+    }
+    if moved_published_reply_count < 0 {
+        return Err(ForumError::Validation(
+            "Forum cross-category merge published reply count must not be negative".to_string(),
+        ));
+    }
+
+    let source = forum_category::Entity::find_by_id(source_category_id)
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .ok_or(ForumError::CategoryNotFound(source_category_id))?;
+    let target = forum_category::Entity::find_by_id(target_category_id)
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .ok_or(ForumError::CategoryNotFound(target_category_id))?;
+
+    if source.topic_count <= 0 || target.topic_count <= 0 {
+        return Err(ForumError::Validation(
+            "Forum cross-category merge category topic counters are inconsistent".to_string(),
+        ));
+    }
+    if source.reply_count < moved_published_reply_count {
+        return Err(ForumError::Validation(
+            "Forum source category published reply counter is inconsistent".to_string(),
+        ));
+    }
+    if target.reply_count < 0 {
+        return Err(ForumError::Validation(
+            "Forum target category published reply counter is inconsistent".to_string(),
+        ));
+    }
+
+    let source_reply_count = source
+        .reply_count
+        .checked_sub(moved_published_reply_count)
+        .ok_or_else(|| {
+            ForumError::Validation(
+                "Forum source category published reply counter is inconsistent".to_string(),
+            )
+        })?;
+    let target_reply_count = target
+        .reply_count
+        .checked_add(moved_published_reply_count)
+        .ok_or_else(|| {
+            ForumError::Validation(
+                "Forum target category published reply counter overflow".to_string(),
+            )
+        })?;
+    let now = Utc::now();
+
+    let mut source_active: forum_category::ActiveModel = source.into();
+    source_active.reply_count = Set(source_reply_count);
+    source_active.updated_at = Set(now.into());
+    source_active.update(txn).await?;
+
+    let mut target_active: forum_category::ActiveModel = target.into();
+    target_active.reply_count = Set(target_reply_count);
+    target_active.updated_at = Set(now.into());
+    target_active.update(txn).await?;
     Ok(())
 }
 
