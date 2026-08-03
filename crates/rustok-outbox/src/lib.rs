@@ -14,7 +14,7 @@ pub use migration::SysEventsMigration;
 pub use ports::*;
 pub use relay::{OutboxRelay, RelayConfig, RelayMetricsSnapshot};
 pub use transactional::TransactionalEventBus;
-pub use transport::OutboxTransport;
+pub use transport::{ContractEventWriteOnceError, OutboxTransport};
 
 /// Core outbox module — transactional event persistence and relay infrastructure.
 pub struct OutboxModule;

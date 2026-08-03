@@ -121,6 +121,7 @@ mod topic_owner {
 }
 mod topic_read_state_lock;
 mod topic_reply_create_audience;
+mod topic_solution_lock;
 mod topic_subscription_lock;
 mod topic_tag_lock;
 mod topic_vote_lock;

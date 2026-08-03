@@ -69,15 +69,19 @@ impl CommentsTcpDelegationScheduleAuditCanonicalPublication {
                     .to_string(),
             );
         }
-        if occurred_at_unix_ms == 0 {
+        if occurred_at_unix_ms == 0 || occurred_at_unix_ms > i64::MAX as u64 {
             return Err(
-                "Comments TCP delegation schedule canonical audit timestamp must be greater than zero"
+                "Comments TCP delegation schedule canonical audit timestamp must fit the positive signed 64-bit wire range"
                     .to_string(),
             );
         }
-        if previous_generation == 0 || candidate_generation <= previous_generation {
+        if previous_generation == 0
+            || candidate_generation <= previous_generation
+            || previous_generation > i64::MAX as u64
+            || candidate_generation > i64::MAX as u64
+        {
             return Err(
-                "Comments TCP delegation schedule canonical audit generations must be positive and strictly increasing"
+                "Comments TCP delegation schedule canonical audit generations must be positive, strictly increasing, and fit the signed 64-bit wire range"
                     .to_string(),
             );
         }
@@ -267,6 +271,39 @@ mod tests {
                 1,
                 2,
                 2,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_values_outside_the_signed_wire_range() {
+        let too_large = i64::MAX as u64 + 1;
+        assert!(
+            CommentsTcpDelegationScheduleAuditCanonicalPublication::new(
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                AuthPrincipalKind::Service,
+                trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile,
+                keyring::CommentsTcpDelegationKeyringSource::File,
+                too_large,
+                1,
+                2,
+            )
+            .is_err()
+        );
+        assert!(
+            CommentsTcpDelegationScheduleAuditCanonicalPublication::new(
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                AuthPrincipalKind::Service,
+                trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile,
+                keyring::CommentsTcpDelegationKeyringSource::File,
+                1,
+                i64::MAX as u64,
+                too_large,
             )
             .is_err()
         );

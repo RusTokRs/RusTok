@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
   "status": "commerce_admin_order_change_native_error_safety_source_reviewed_unvalidated",
-  "captured_at": "2026-07-31",
-  "base_main_sha": "b4889de03d881c08e39dd1f933291bfd87d44b3d",
+  "captured_at": "2026-08-03",
+  "base_main_sha": "5089a0221420c8001a34302f4fed5228e3140baf",
   "review": {
     "mounted_endpoint_names_preserved": true,
     "public_function_signatures_preserved": true,
@@ -19,6 +19,7 @@
       "Core"
     ],
     "framework_error_text_removed": true,
+    "framework_debug_bounds_removed": true,
     "runtime_identity_values_removed": true,
     "owner_error_text_removed": true,
     "owner_identity_values_removed": true,

@@ -286,7 +286,7 @@ fn promotion_correlation_id(operation: &'static str) -> String {
     transport_correlation_id("commerce-admin-cart-promotion", operation)
 }
 
-fn promotion_context_error<E: std::fmt::Debug>(
+fn promotion_context_error<E>(
     _error: E,
     operation: &'static str,
     context_kind: &'static str,
@@ -308,7 +308,7 @@ fn promotion_context_error<E: std::fmt::Debug>(
     ServerFnError::new(public_message)
 }
 
-fn promotion_auth_context_error<E: std::fmt::Debug>(
+fn promotion_auth_context_error<E>(
     error: E,
     operation: &'static str,
     correlation_id: &str,
@@ -323,7 +323,7 @@ fn promotion_auth_context_error<E: std::fmt::Debug>(
     )
 }
 
-fn promotion_tenant_context_error<E: std::fmt::Debug>(
+fn promotion_tenant_context_error<E>(
     error: E,
     operation: &'static str,
     correlation_id: &str,
@@ -754,7 +754,7 @@ fn order_change_correlation_id(operation: &'static str) -> String {
     transport_correlation_id("commerce-admin-order-change", operation)
 }
 
-fn order_change_context_error<E: std::fmt::Debug>(
+fn order_change_context_error<E>(
     _error: E,
     operation: &'static str,
     context_kind: &'static str,
@@ -776,7 +776,7 @@ fn order_change_context_error<E: std::fmt::Debug>(
     ServerFnError::new(public_message)
 }
 
-fn order_change_auth_context_error<E: std::fmt::Debug>(
+fn order_change_auth_context_error<E>(
     error: E,
     operation: &'static str,
     correlation_id: &str,
@@ -791,7 +791,7 @@ fn order_change_auth_context_error<E: std::fmt::Debug>(
     )
 }
 
-fn order_change_tenant_context_error<E: std::fmt::Debug>(
+fn order_change_tenant_context_error<E>(
     error: E,
     operation: &'static str,
     correlation_id: &str,
