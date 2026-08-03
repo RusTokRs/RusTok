@@ -49,8 +49,12 @@
 - `mergeForumTopicResolvingSolution` composes the same owner transaction for two
   valid competing accepted solutions. The manager selects one exact accepted
   reply ID; the winning marker metadata is preserved, the losing author receives
-  one exact solution-count decrement, and the immutable Forum-local merge event
-  records the decision.
+  one exact solution-count decrement, and an append-only
+  `forum_topic_merge_solution_resolutions` row records the decision through the
+  immutable merge receipt.
+- Resolved and ordinary merges retain the exact `forum.topic.merged` schema-1
+  event contract so subscription, read-state, tag, vote and audience
+  reconciliation owners remain unchanged.
 - Negative solution-count transitions fail closed unless one existing positive
   contribution can be decremented atomically; they no longer silently saturate
   inconsistent state at zero.
