@@ -243,19 +243,50 @@ fn cart_error(
         },
     };
 
+    let error_type = std::any::type_name_of_val(&error);
+    let correlation_id = request_context.map(|context| context.correlation_id);
+    let request_context_present = request_context.is_some();
+    let request_tenant_id_non_nil = request_context.map(|context| !context.tenant_id.is_nil());
+    let tenant_id_non_nil = !tenant_id.is_nil();
+    let cart_id_present = cart_id.is_some();
+    let cart_id_non_nil = cart_id.map(|value| !value.is_nil());
+    let line_item_id_present = line_item_id.is_some();
+    let line_item_id_non_nil = line_item_id.map(|value| !value.is_nil());
+    let channel_id_present = request_context.and_then(|context| context.channel_id).is_some();
+    let channel_id_non_nil = request_context
+        .and_then(|context| context.channel_id)
+        .map(|value| !value.is_nil());
+    let channel_slug_present = request_context
+        .and_then(|context| context.channel_slug.as_ref())
+        .is_some();
+    let channel_slug_length = request_context
+        .and_then(|context| context.channel_slug.as_ref())
+        .map(|value| value.chars().count());
+    let locale_present = request_context
+        .map(|context| !context.locale.trim().is_empty())
+        .unwrap_or(false);
+    let locale_length = request_context.map(|context| context.locale.chars().count());
+
     if technical {
         tracing::error!(
-            error = ?error,
+            error_type,
             owner = "rustok_cart",
             owner_operation,
             consumer = CART_STOREFRONT_NATIVE_OWNER,
-            request_tenant_id = ?request_context.map(|context| context.tenant_id),
-            tenant_id = %tenant_id,
-            cart_id = ?cart_id,
-            line_item_id = ?line_item_id,
-            channel_id = ?request_context.and_then(|context| context.channel_id),
-            channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
-            locale = ?request_context.map(|context| context.locale.as_str()),
+            correlation_id = ?correlation_id,
+            request_context_present,
+            request_tenant_id_non_nil = ?request_tenant_id_non_nil,
+            tenant_id_non_nil,
+            cart_id_present,
+            cart_id_non_nil = ?cart_id_non_nil,
+            line_item_id_present,
+            line_item_id_non_nil = ?line_item_id_non_nil,
+            channel_id_present,
+            channel_id_non_nil = ?channel_id_non_nil,
+            channel_slug_present,
+            channel_slug_length = ?channel_slug_length,
+            locale_present,
+            locale_length = ?locale_length,
             public_code,
             public_retryable = retryable,
             boundary = CART_STOREFRONT_NATIVE_BOUNDARY,
@@ -263,17 +294,24 @@ fn cart_error(
         );
     } else {
         tracing::warn!(
-            error = ?error,
+            error_type,
             owner = "rustok_cart",
             owner_operation,
             consumer = CART_STOREFRONT_NATIVE_OWNER,
-            request_tenant_id = ?request_context.map(|context| context.tenant_id),
-            tenant_id = %tenant_id,
-            cart_id = ?cart_id,
-            line_item_id = ?line_item_id,
-            channel_id = ?request_context.and_then(|context| context.channel_id),
-            channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
-            locale = ?request_context.map(|context| context.locale.as_str()),
+            correlation_id = ?correlation_id,
+            request_context_present,
+            request_tenant_id_non_nil = ?request_tenant_id_non_nil,
+            tenant_id_non_nil,
+            cart_id_present,
+            cart_id_non_nil = ?cart_id_non_nil,
+            line_item_id_present,
+            line_item_id_non_nil = ?line_item_id_non_nil,
+            channel_id_present,
+            channel_id_non_nil = ?channel_id_non_nil,
+            channel_slug_present,
+            channel_slug_length = ?channel_slug_length,
+            locale_present,
+            locale_length = ?locale_length,
             public_code,
             public_retryable = retryable,
             boundary = CART_STOREFRONT_NATIVE_BOUNDARY,
