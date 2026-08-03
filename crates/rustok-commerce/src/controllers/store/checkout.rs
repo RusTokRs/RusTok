@@ -19,74 +19,109 @@ const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STOREFRONT_CHECKOUT_OWNER: &str = "rustok_commerce.storefront_staged_checkout_runtime";
 const STOREFRONT_CHECKOUT_BOUNDARY: &str = "commerce_storefront_checkout_http";
 const STOREFRONT_PAYMENT_COLLECTION_OWNER: &str = "rustok_payment.storefront_payment_collections";
-const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str = "commerce_storefront_payment_collection_http";
+const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str =
+    "commerce_storefront_payment_collection_http";
 
 type StorefrontCheckoutHttpPolicy = (StatusCode, &'static str);
-type StorefrontPaymentCollectionHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
+type StorefrontPaymentCollectionHttpPolicy =
+    (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
-struct StorefrontCheckoutErrorContext<'a> {
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    cart_id: Uuid,
-    channel_id: Option<Uuid>,
-    channel_slug: Option<&'a str>,
-    locale: &'a str,
+struct StorefrontCheckoutErrorContext {
+    tenant_id_non_nil: bool,
+    actor_id_non_nil: bool,
+    cart_id_non_nil: bool,
+    channel_id_present: bool,
+    channel_id_non_nil: Option<bool>,
+    channel_slug_present: bool,
+    channel_slug_length: Option<usize>,
+    locale_length: usize,
     operation: &'static str,
 }
 
-impl<'a> StorefrontCheckoutErrorContext<'a> {
+impl StorefrontCheckoutErrorContext {
     fn new(
         tenant_id: Uuid,
         actor_id: Uuid,
         cart_id: Uuid,
-        request_context: &'a RequestContext,
+        request_context: &RequestContext,
         operation: &'static str,
     ) -> Self {
         Self {
-            tenant_id,
-            actor_id,
-            cart_id,
-            channel_id: request_context.channel_id,
-            channel_slug: request_context.channel_slug.as_deref(),
-            locale: request_context.locale.as_str(),
+            tenant_id_non_nil: !tenant_id.is_nil(),
+            actor_id_non_nil: !actor_id.is_nil(),
+            cart_id_non_nil: !cart_id.is_nil(),
+            channel_id_present: request_context.channel_id.is_some(),
+            channel_id_non_nil: request_context.channel_id.map(|value| !value.is_nil()),
+            channel_slug_present: request_context.channel_slug.is_some(),
+            channel_slug_length: request_context
+                .channel_slug
+                .as_ref()
+                .map(|value| value.chars().count()),
+            locale_length: request_context.locale.chars().count(),
             operation,
         }
     }
 }
 
 #[derive(Clone, Copy)]
-struct StorefrontPaymentCollectionErrorContext<'a> {
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    cart_id: Uuid,
-    customer_id: Option<Uuid>,
-    channel_id: Option<Uuid>,
-    channel_slug: Option<&'a str>,
-    locale: &'a str,
+struct StorefrontPaymentCollectionErrorContext {
+    tenant_id_non_nil: bool,
+    actor_id_non_nil: bool,
+    cart_id_non_nil: bool,
+    customer_id_present: bool,
+    customer_id_non_nil: Option<bool>,
+    channel_id_present: bool,
+    channel_id_non_nil: Option<bool>,
+    channel_slug_present: bool,
+    channel_slug_length: Option<usize>,
+    locale_length: usize,
     operation: &'static str,
 }
 
-impl<'a> StorefrontPaymentCollectionErrorContext<'a> {
+impl StorefrontPaymentCollectionErrorContext {
     fn new(
         tenant_id: Uuid,
         actor_id: Uuid,
         cart_id: Uuid,
         customer_id: Option<Uuid>,
-        request_context: &'a RequestContext,
+        request_context: &RequestContext,
         operation: &'static str,
     ) -> Self {
         Self {
-            tenant_id,
-            actor_id,
-            cart_id,
-            customer_id,
-            channel_id: request_context.channel_id,
-            channel_slug: request_context.channel_slug.as_deref(),
-            locale: request_context.locale.as_str(),
+            tenant_id_non_nil: !tenant_id.is_nil(),
+            actor_id_non_nil: !actor_id.is_nil(),
+            cart_id_non_nil: !cart_id.is_nil(),
+            customer_id_present: customer_id.is_some(),
+            customer_id_non_nil: customer_id.map(|value| !value.is_nil()),
+            channel_id_present: request_context.channel_id.is_some(),
+            channel_id_non_nil: request_context.channel_id.map(|value| !value.is_nil()),
+            channel_slug_present: request_context.channel_slug.is_some(),
+            channel_slug_length: request_context
+                .channel_slug
+                .as_ref()
+                .map(|value| value.chars().count()),
+            locale_length: request_context.locale.chars().count(),
             operation,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct StorefrontCheckoutRuntimeErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+}
+
+#[derive(Clone, Copy)]
+struct StorefrontPaymentCollectionErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
 }
 
 /// Create payment collection from storefront cart
@@ -336,29 +371,90 @@ fn storefront_checkout_error_policy(
     }
 }
 
+fn storefront_checkout_runtime_error_facts(
+    error: &crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
+) -> StorefrontCheckoutRuntimeErrorFacts {
+    use crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError;
+
+    match error {
+        StorefrontStagedCheckoutRuntimeError::Validation(message) => {
+            StorefrontCheckoutRuntimeErrorFacts {
+                error_variant: "validation",
+                text_field_count: 1,
+                text_total_length: message.chars().count(),
+            }
+        }
+        StorefrontStagedCheckoutRuntimeError::CartAccess => StorefrontCheckoutRuntimeErrorFacts {
+            error_variant: "cart_access",
+            text_field_count: 0,
+            text_total_length: 0,
+        },
+        StorefrontStagedCheckoutRuntimeError::AuthenticationRequired => {
+            StorefrontCheckoutRuntimeErrorFacts {
+                error_variant: "authentication_required",
+                text_field_count: 0,
+                text_total_length: 0,
+            }
+        }
+        StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => {
+            StorefrontCheckoutRuntimeErrorFacts {
+                error_variant: "temporarily_unavailable",
+                text_field_count: 0,
+                text_total_length: 0,
+            }
+        }
+        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => {
+            StorefrontCheckoutRuntimeErrorFacts {
+                error_variant: "checkout_failed",
+                text_field_count: 0,
+                text_total_length: 0,
+            }
+        }
+        StorefrontStagedCheckoutRuntimeError::CompensationPending => {
+            StorefrontCheckoutRuntimeErrorFacts {
+                error_variant: "compensation_pending",
+                text_field_count: 0,
+                text_total_length: 0,
+            }
+        }
+        StorefrontStagedCheckoutRuntimeError::ReconciliationRequired => {
+            StorefrontCheckoutRuntimeErrorFacts {
+                error_variant: "reconciliation_required",
+                text_field_count: 0,
+                text_total_length: 0,
+            }
+        }
+    }
+}
+
 fn storefront_checkout_http_error(
-    context: StorefrontCheckoutErrorContext<'_>,
+    context: StorefrontCheckoutErrorContext,
     error: crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
 ) -> HttpError {
     let (status, error_kind) = storefront_checkout_error_policy(&error);
+    let error_facts = storefront_checkout_runtime_error_facts(&error);
     let code = error.public_code();
     let message = error.public_message();
     tracing::error!(
-        error = ?error,
         owner = STOREFRONT_CHECKOUT_OWNER,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        cart_id = %context.cart_id,
-        channel_id = ?context.channel_id,
-        channel = ?context.channel_slug,
-        locale = %context.locale,
-        operation = %context.operation,
+        tenant_id_non_nil = context.tenant_id_non_nil,
+        actor_id_non_nil = context.actor_id_non_nil,
+        cart_id_non_nil = context.cart_id_non_nil,
+        channel_id_present = context.channel_id_present,
+        channel_id_non_nil = ?context.channel_id_non_nil,
+        channel_slug_present = context.channel_slug_present,
+        channel_slug_length = ?context.channel_slug_length,
+        locale_length = context.locale_length,
+        operation = context.operation,
+        error_variant = error_facts.error_variant,
+        error_text_field_count = error_facts.text_field_count,
+        error_text_total_length = error_facts.text_total_length,
         error_kind,
         public_code = code,
         retryable = error.retryable(),
-        status = %status,
+        status = status.as_u16(),
         boundary = STOREFRONT_CHECKOUT_BOUNDARY,
-        "storefront checkout request failed"
+        "storefront checkout request failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -424,27 +520,146 @@ fn payment_collection_error_policy(error: &PaymentError) -> StorefrontPaymentCol
     }
 }
 
+fn storefront_payment_collection_error_facts(
+    error: &PaymentError,
+) -> StorefrontPaymentCollectionErrorFacts {
+    let (
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    ) = match error {
+        PaymentError::Validation(value) => {
+            ("validation", 1, value.chars().count(), 0, 0, false)
+        }
+        PaymentError::PaymentCollectionNotFound(id) => (
+            "payment_collection_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::PaymentNotFound(id) => (
+            "payment_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::RefundNotFound(id) => (
+            "refund_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        PaymentError::InvalidTransition { from, to } => (
+            "invalid_transition",
+            2,
+            from.chars().count() + to.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderUnavailable {
+            provider_id,
+            operation,
+        } => (
+            "provider_unavailable",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderRejected {
+            provider_id,
+            operation,
+        } => (
+            "provider_rejected",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderInvalidResponse {
+            provider_id,
+            operation,
+        } => (
+            "provider_invalid_response",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderOutcomeUnknown {
+            provider_id,
+            operation,
+        } => (
+            "provider_outcome_unknown",
+            2,
+            provider_id.chars().count() + operation.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::ProviderConfiguration { provider_id } => (
+            "provider_configuration",
+            1,
+            provider_id.chars().count(),
+            0,
+            0,
+            false,
+        ),
+        PaymentError::Database(_) => ("database", 0, 0, 0, 0, true),
+    };
+    StorefrontPaymentCollectionErrorFacts {
+        error_variant,
+        text_field_count,
+        text_total_length,
+        uuid_field_count,
+        uuid_non_nil_count,
+        opaque_payload_present,
+    }
+}
+
 fn payment_collection_http_error(
-    context: StorefrontPaymentCollectionErrorContext<'_>,
+    context: StorefrontPaymentCollectionErrorContext,
     error: PaymentError,
 ) -> HttpError {
     let (status, code, message, error_kind) = payment_collection_error_policy(&error);
+    let error_facts = storefront_payment_collection_error_facts(&error);
     tracing::error!(
-        error = ?error,
         owner = STOREFRONT_PAYMENT_COLLECTION_OWNER,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        cart_id = %context.cart_id,
-        customer_id = ?context.customer_id,
-        channel_id = ?context.channel_id,
-        channel = ?context.channel_slug,
-        locale = %context.locale,
-        operation = %context.operation,
+        tenant_id_non_nil = context.tenant_id_non_nil,
+        actor_id_non_nil = context.actor_id_non_nil,
+        cart_id_non_nil = context.cart_id_non_nil,
+        customer_id_present = context.customer_id_present,
+        customer_id_non_nil = ?context.customer_id_non_nil,
+        channel_id_present = context.channel_id_present,
+        channel_id_non_nil = ?context.channel_id_non_nil,
+        channel_slug_present = context.channel_slug_present,
+        channel_slug_length = ?context.channel_slug_length,
+        locale_length = context.locale_length,
+        operation = context.operation,
+        error_variant = error_facts.error_variant,
+        error_text_field_count = error_facts.text_field_count,
+        error_text_total_length = error_facts.text_total_length,
+        error_uuid_field_count = error_facts.uuid_field_count,
+        error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        error_opaque_payload_present = error_facts.opaque_payload_present,
         error_kind,
         public_code = code,
-        status = %status,
+        status = status.as_u16(),
         boundary = STOREFRONT_PAYMENT_COLLECTION_BOUNDARY,
-        "storefront payment collection operation failed"
+        "storefront payment collection operation failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
