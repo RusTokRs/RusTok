@@ -149,6 +149,142 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION forum_validate_topic_merge_audience_compatibility()
+RETURNS trigger AS $$
+DECLARE
+    first_topic_id uuid;
+    second_topic_id uuid;
+BEGIN
+    IF NEW.source_topic_id <= NEW.target_topic_id THEN
+        first_topic_id := NEW.source_topic_id;
+        second_topic_id := NEW.target_topic_id;
+    ELSE
+        first_topic_id := NEW.target_topic_id;
+        second_topic_id := NEW.source_topic_id;
+    END IF;
+
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+        format('%s:%s', NEW.tenant_id, first_topic_id),
+        5
+    ));
+    IF second_topic_id <> first_topic_id THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+            format('%s:%s', NEW.tenant_id, second_topic_id),
+            5
+        ));
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM forum_topic_audience_policies source_policy
+        WHERE source_policy.tenant_id = NEW.tenant_id
+          AND source_policy.topic_id = NEW.source_topic_id
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM forum_topic_audience_policies source_policy
+        JOIN forum_topic_audience_policies target_policy
+          ON target_policy.tenant_id = source_policy.tenant_id
+         AND target_policy.topic_id = NEW.target_topic_id
+        WHERE source_policy.tenant_id = NEW.tenant_id
+          AND source_policy.topic_id = NEW.source_topic_id
+          AND source_policy.minimum_trust_level
+              IS NOT DISTINCT FROM target_policy.minimum_trust_level
+          AND NOT EXISTS (
+              SELECT role
+              FROM forum_topic_audience_roles
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+              EXCEPT
+              SELECT role
+              FROM forum_topic_audience_roles
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT role
+              FROM forum_topic_audience_roles
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+              EXCEPT
+              SELECT role
+              FROM forum_topic_audience_roles
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT channel_slug
+              FROM forum_topic_audience_channels
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+              EXCEPT
+              SELECT channel_slug
+              FROM forum_topic_audience_channels
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT channel_slug
+              FROM forum_topic_audience_channels
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+              EXCEPT
+              SELECT channel_slug
+              FROM forum_topic_audience_channels
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT group_id
+              FROM forum_topic_audience_groups
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+              EXCEPT
+              SELECT group_id
+              FROM forum_topic_audience_groups
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT group_id
+              FROM forum_topic_audience_groups
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+              EXCEPT
+              SELECT group_id
+              FROM forum_topic_audience_groups
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT user_id, effect
+              FROM forum_topic_audience_users
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+              EXCEPT
+              SELECT user_id, effect
+              FROM forum_topic_audience_users
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+          )
+          AND NOT EXISTS (
+              SELECT user_id, effect
+              FROM forum_topic_audience_users
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.target_topic_id
+              EXCEPT
+              SELECT user_id, effect
+              FROM forum_topic_audience_users
+              WHERE tenant_id = NEW.tenant_id
+                AND topic_id = NEW.source_topic_id
+          )
+    ) THEN
+        RAISE EXCEPTION 'forum topic merge audience policy conflict';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION forum_reject_archived_topic_audience_insert()
 RETURNS trigger AS $$
 DECLARE
@@ -193,6 +329,12 @@ DROP TRIGGER IF EXISTS forum_00_topic_audience_user_scope
 CREATE TRIGGER forum_00_topic_audience_user_scope
 BEFORE INSERT OR UPDATE OR DELETE ON forum_topic_audience_users
 FOR EACH ROW EXECUTE FUNCTION forum_lock_topic_audience_mutation();
+
+DROP TRIGGER IF EXISTS forum_05_topic_merge_audience_compatibility
+    ON forum_topic_merge_operations;
+CREATE TRIGGER forum_05_topic_merge_audience_compatibility
+BEFORE INSERT ON forum_topic_merge_operations
+FOR EACH ROW EXECUTE FUNCTION forum_validate_topic_merge_audience_compatibility();
 
 DROP TRIGGER IF EXISTS forum_10_topic_audience_policy_active_insert
     ON forum_topic_audience_policies;
@@ -250,6 +392,7 @@ DROP TRIGGER IF EXISTS forum_10_topic_audience_group_active_insert ON forum_topi
 DROP TRIGGER IF EXISTS forum_10_topic_audience_channel_active_insert ON forum_topic_audience_channels;
 DROP TRIGGER IF EXISTS forum_10_topic_audience_role_active_insert ON forum_topic_audience_roles;
 DROP TRIGGER IF EXISTS forum_10_topic_audience_policy_active_insert ON forum_topic_audience_policies;
+DROP TRIGGER IF EXISTS forum_05_topic_merge_audience_compatibility ON forum_topic_merge_operations;
 DROP TRIGGER IF EXISTS forum_00_topic_audience_user_scope ON forum_topic_audience_users;
 DROP TRIGGER IF EXISTS forum_00_topic_audience_group_scope ON forum_topic_audience_groups;
 DROP TRIGGER IF EXISTS forum_00_topic_audience_channel_scope ON forum_topic_audience_channels;
@@ -259,6 +402,7 @@ DROP TABLE IF EXISTS forum_topic_merge_audience_reconciliations;
 DROP TABLE IF EXISTS forum_topic_merge_audience_reconciliation_locks;
 DROP FUNCTION IF EXISTS forum_reject_topic_merge_audience_reconciliation_mutation();
 DROP FUNCTION IF EXISTS forum_reject_archived_topic_audience_insert();
+DROP FUNCTION IF EXISTS forum_validate_topic_merge_audience_compatibility();
 DROP FUNCTION IF EXISTS forum_lock_topic_audience_mutation();
 "#;
 
@@ -323,6 +467,116 @@ CREATE INDEX IF NOT EXISTS idx_forum_topic_merge_audience_reconciliation_history
     ON forum_topic_merge_audience_reconciliations (
         tenant_id, target_topic_id, reconciled_at DESC, operation_id
     );
+
+CREATE TRIGGER IF NOT EXISTS forum_05_topic_merge_audience_compatibility
+BEFORE INSERT ON forum_topic_merge_operations
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM forum_topic_audience_policies source_policy
+    WHERE source_policy.tenant_id = NEW.tenant_id
+      AND source_policy.topic_id = NEW.source_topic_id
+) AND NOT EXISTS (
+    SELECT 1
+    FROM forum_topic_audience_policies source_policy
+    JOIN forum_topic_audience_policies target_policy
+      ON target_policy.tenant_id = source_policy.tenant_id
+     AND target_policy.topic_id = NEW.target_topic_id
+    WHERE source_policy.tenant_id = NEW.tenant_id
+      AND source_policy.topic_id = NEW.source_topic_id
+      AND source_policy.minimum_trust_level IS target_policy.minimum_trust_level
+      AND NOT EXISTS (
+          SELECT role
+          FROM forum_topic_audience_roles
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+          EXCEPT
+          SELECT role
+          FROM forum_topic_audience_roles
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT role
+          FROM forum_topic_audience_roles
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+          EXCEPT
+          SELECT role
+          FROM forum_topic_audience_roles
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT channel_slug
+          FROM forum_topic_audience_channels
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+          EXCEPT
+          SELECT channel_slug
+          FROM forum_topic_audience_channels
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT channel_slug
+          FROM forum_topic_audience_channels
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+          EXCEPT
+          SELECT channel_slug
+          FROM forum_topic_audience_channels
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT group_id
+          FROM forum_topic_audience_groups
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+          EXCEPT
+          SELECT group_id
+          FROM forum_topic_audience_groups
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT group_id
+          FROM forum_topic_audience_groups
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+          EXCEPT
+          SELECT group_id
+          FROM forum_topic_audience_groups
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT user_id, effect
+          FROM forum_topic_audience_users
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+          EXCEPT
+          SELECT user_id, effect
+          FROM forum_topic_audience_users
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+      )
+      AND NOT EXISTS (
+          SELECT user_id, effect
+          FROM forum_topic_audience_users
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.target_topic_id
+          EXCEPT
+          SELECT user_id, effect
+          FROM forum_topic_audience_users
+          WHERE tenant_id = NEW.tenant_id
+            AND topic_id = NEW.source_topic_id
+      )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum topic merge audience policy conflict');
+END;
 
 CREATE TRIGGER IF NOT EXISTS forum_10_topic_audience_policy_active_insert
 BEFORE INSERT ON forum_topic_audience_policies
@@ -405,6 +659,7 @@ DROP TRIGGER IF EXISTS forum_10_topic_audience_group_active_insert;
 DROP TRIGGER IF EXISTS forum_10_topic_audience_channel_active_insert;
 DROP TRIGGER IF EXISTS forum_10_topic_audience_role_active_insert;
 DROP TRIGGER IF EXISTS forum_10_topic_audience_policy_active_insert;
+DROP TRIGGER IF EXISTS forum_05_topic_merge_audience_compatibility;
 DROP TABLE IF EXISTS forum_topic_merge_audience_reconciliations;
 DROP TABLE IF EXISTS forum_topic_merge_audience_reconciliation_locks;
 "#;
