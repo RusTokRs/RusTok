@@ -1,9 +1,9 @@
 name: Temporary Blog Comments event digests
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/blog-comments-audit-event-contract-20260803
+      - main
 
 permissions:
   contents: read
