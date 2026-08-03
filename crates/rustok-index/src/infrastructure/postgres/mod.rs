@@ -1,3 +1,4 @@
+mod drift_finding_inspector;
 mod mutation_store;
 mod partition_admission;
 mod query_port;
@@ -36,6 +37,10 @@ mod source_replay_job_tests;
 #[cfg(test)]
 mod source_replay_runner_tests;
 
+pub use drift_finding_inspector::{
+    IndexDriftFindingInspection, IndexDriftFindingInspectionError, IndexDriftFindingScope,
+    IndexDriftFindingSeverity, PostgresIndexDriftFindingInspector,
+};
 pub use mutation_store::{
     MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
 };
