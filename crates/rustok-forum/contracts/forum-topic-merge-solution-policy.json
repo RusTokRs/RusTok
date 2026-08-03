@@ -10,6 +10,7 @@
   "migration": "m20260803_000016_add_forum_topic_merge_solution_policy",
   "solution_table": "forum_solutions",
   "lock_table": "forum_topic_solution_locks",
+  "shared_lock_helper": "topic_solution_lock::lock_topic_solution_scopes_in_tx",
   "postgres_advisory_seed": 31,
   "conflict": {
     "error": "TopicMergeSolutionConflict",
@@ -59,6 +60,14 @@
     "competing_solution_conflict_precedes_projection_invalidation": true,
     "transfer_commits_with_existing_merge_transaction": true,
     "exact_merge_replay_adds_no_solution_mutation": true
+  },
+  "serialization": {
+    "merge_locks_sorted_topic_rows_before_sorted_solution_scopes": true,
+    "mark_solution_locks_scope_before_reply_and_current_marker_reads": true,
+    "clear_solution_locks_scope_before_current_marker_and_author_reads": true,
+    "stats_delta_is_computed_under_the_same_solution_scope": true,
+    "direct_writers_are_guarded_by_database_triggers": true,
+    "sqlite_serializes_all_solution_updates_including_marker_only_updates": true
   },
   "database_guards": {
     "postgres_and_sqlite": true,
