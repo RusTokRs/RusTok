@@ -9,29 +9,23 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
 use rustok_core::UserRole;
 
 use rustok_api::{Action, Permission, Resource};
 use rustok_rbac::{
     AuthorizationDecision, DeniedReasonKind, PermissionCache, PermissionCacheLookup,
-    RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
-    authorize_all_permissions, authorize_any_permission, authorize_permission,
-    invalidate_cached_permissions,
+    RelationPermissionStore, RuntimePermissionResolver, authorize_all_permissions,
+    authorize_any_permission, authorize_permission, invalidate_cached_permissions,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
 
-use super::rbac_persistence::{
-    assign_role_permissions_via_store, remove_tenant_role_assignments_via_store,
-    remove_user_role_assignment_via_store, replace_user_role_via_store,
-};
+#[cfg(test)]
+use super::rbac_persistence::assign_role_permissions_via_store;
 
-pub(crate) type ServerRuntimePermissionResolver = RuntimePermissionResolver<
-    SeaOrmRelationPermissionStore,
-    MokaPermissionCache,
-    ServerRoleAssignmentStore,
-    Error,
->;
+pub(crate) type ServerRuntimePermissionResolver =
+    RuntimePermissionResolver<SeaOrmRelationPermissionStore, MokaPermissionCache, Error>;
 
 #[derive(Clone, Copy)]
 pub(crate) enum AuthorizationCheck<'a> {
@@ -229,7 +223,6 @@ pub(crate) fn resolver(db: &DatabaseConnection) -> ServerRuntimePermissionResolv
     RuntimePermissionResolver::new(
         SeaOrmRelationPermissionStore { db: db.clone() },
         MokaPermissionCache,
-        ServerRoleAssignmentStore { db: db.clone() },
     )
 }
 
@@ -336,11 +329,6 @@ pub(crate) struct SeaOrmRelationPermissionStore {
 
 #[derive(Clone)]
 pub(crate) struct MokaPermissionCache;
-
-#[derive(Clone)]
-pub(crate) struct ServerRoleAssignmentStore {
-    db: DatabaseConnection,
-}
 
 #[async_trait]
 impl PermissionCache for MokaPermissionCache {
@@ -501,46 +489,6 @@ impl RelationPermissionStore for SeaOrmRelationPermissionStore {
         }
 
         Ok(result)
-    }
-}
-
-#[async_trait]
-impl RoleAssignmentStore for ServerRoleAssignmentStore {
-    type Error = Error;
-
-    async fn assign_role_permissions(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-        role: UserRole,
-    ) -> Result<()> {
-        assign_role_permissions_via_store(&self.db, user_id, tenant_id, role).await
-    }
-
-    async fn replace_user_role(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-        role: UserRole,
-    ) -> Result<()> {
-        replace_user_role_via_store(&self.db, user_id, tenant_id, role).await
-    }
-
-    async fn remove_tenant_role_assignments(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-    ) -> Result<()> {
-        remove_tenant_role_assignments_via_store(&self.db, user_id, tenant_id).await
-    }
-
-    async fn remove_user_role_assignment(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-        role: UserRole,
-    ) -> Result<()> {
-        remove_user_role_assignment_via_store(&self.db, user_id, tenant_id, role).await
     }
 }
 

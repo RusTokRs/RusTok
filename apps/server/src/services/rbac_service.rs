@@ -342,11 +342,10 @@ impl RbacService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        use super::rbac_persistence::assign_role_permissions_via_store;
+
         Self::record_authz_entrypoint_call("assign_role_permissions", "internal");
-        let resolver = Self::resolver(db);
-        resolver
-            .assign_role_permissions(tenant_id, user_id, role)
-            .await
+        assign_role_permissions_via_store(db, user_id, tenant_id, role).await
     }
 
     /// Transaction-only compatibility alias for legacy auth lifecycle composition.

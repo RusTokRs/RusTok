@@ -42,7 +42,7 @@ search = { crate = "rustok-search", source = "path", path = "crates/rustok-searc
 outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
 events = { crate = "rustok-events-module", source = "path", path = "crates/rustok-events-module", required = true, depends_on = ["outbox"] }
 tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
-rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
+rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true, depends_on = ["outbox"] }
 
 # Domain modules (optional)
 content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }

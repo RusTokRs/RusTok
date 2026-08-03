@@ -1,7 +1,6 @@
 use crate::{evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission};
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::UserRole;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionResolution {
@@ -9,6 +8,12 @@ pub struct PermissionResolution {
     pub cache_hit: bool,
 }
 
+/// Read-only owner contract for resolving effective tenant permissions.
+///
+/// Role and permission mutations intentionally do not belong to this trait.
+/// Existing-user writes must use transaction-owned or committed RBAC mutation
+/// entry points so continuity locks, durable invalidation generations and
+/// cross-replica cache recovery cannot be bypassed.
 #[async_trait]
 pub trait PermissionResolver {
     type Error;
@@ -48,33 +53,6 @@ pub trait PermissionResolver {
         let resolved = self.resolve_permissions(tenant_id, user_id).await?;
         Ok(evaluate_all_permissions(&resolved.permissions, required_permissions).allowed)
     }
-
-    async fn assign_role_permissions(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-        role: UserRole,
-    ) -> Result<(), Self::Error>;
-
-    async fn replace_user_role(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-        role: UserRole,
-    ) -> Result<(), Self::Error>;
-
-    async fn remove_tenant_role_assignments(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-    ) -> Result<(), Self::Error>;
-
-    async fn remove_user_role_assignment(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-        role: UserRole,
-    ) -> Result<(), Self::Error>;
 }
 
 #[cfg(test)]
@@ -82,7 +60,6 @@ mod tests {
     use super::{PermissionResolution, PermissionResolver};
     use async_trait::async_trait;
     use rustok_api::Permission;
-    use rustok_core::UserRole;
 
     struct StubResolver {
         permissions: Vec<Permission>,
@@ -101,41 +78,6 @@ mod tests {
                 permissions: self.permissions.clone(),
                 cache_hit: true,
             })
-        }
-
-        async fn assign_role_permissions(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-            _role: UserRole,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn replace_user_role(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-            _role: UserRole,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn remove_tenant_role_assignments(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn remove_user_role_assignment(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _user_id: &uuid::Uuid,
-            _role: UserRole,
-        ) -> Result<(), Self::Error> {
-            Ok(())
         }
     }
 

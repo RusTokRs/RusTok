@@ -8,7 +8,8 @@ use uuid::Uuid;
 use crate::{
     DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent,
     ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    RbacRoleMutationEvent, SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
+    RbacArtifactPermissionEvent, RbacRoleMutationEvent, SocialGraphRelationEvent,
+    TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -16,9 +17,6 @@ pub(crate) mod sealed {
 }
 
 /// Closed platform contract for typed events accepted by durable transports.
-///
-/// Implementations live in `rustok-events`; domain modules cannot publish
-/// arbitrary string event names or unregistered payloads.
 #[allow(private_bounds)]
 pub trait EventContract:
     sealed::Sealed + Clone + Serialize + DeserializeOwned + ValidateEvent + Send + Sync + 'static
@@ -28,10 +26,6 @@ pub trait EventContract:
     fn into_contract_payload(self) -> ContractEventPayload;
 }
 
-/// Typed family wrapper used by durable and streaming transports.
-///
-/// Adding a bounded family requires one platform variant, while lifecycle
-/// evolution remains inside the family's own enum.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(tag = "family", content = "event")]
 pub enum ContractEventPayload {
@@ -45,6 +39,8 @@ pub enum ContractEventPayload {
     MarketplaceListing(MarketplaceListingEvent),
     #[serde(rename = "marketplace_seller")]
     MarketplaceSeller(MarketplaceSellerEvent),
+    #[serde(rename = "rbac_artifact_permission")]
+    RbacArtifactPermission(RbacArtifactPermissionEvent),
     #[serde(rename = "rbac_role_mutation")]
     RbacRoleMutation(RbacRoleMutationEvent),
     #[serde(rename = "social_graph_relation")]
@@ -61,6 +57,7 @@ impl ContractEventPayload {
             Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
+            Self::RbacArtifactPermission(event) => event.event_type(),
             Self::RbacRoleMutation(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
             Self::TranslationWorkflow(event) => event.event_type(),
@@ -74,6 +71,7 @@ impl ContractEventPayload {
             Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
+            Self::RbacArtifactPermission(event) => event.schema_version(),
             Self::RbacRoleMutation(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
             Self::TranslationWorkflow(event) => event.schema_version(),
@@ -89,6 +87,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
+            Self::RbacArtifactPermission(event) => event.validate(),
             Self::RbacRoleMutation(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
             Self::TranslationWorkflow(event) => event.validate(),
@@ -112,7 +111,6 @@ impl EventContract for DomainEvent {
     }
 }
 
-/// Transport-neutral envelope for any sealed typed platform event contract.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct ContractEventEnvelope {
     id: Uuid,
@@ -142,12 +140,6 @@ impl ContractEventEnvelope {
         Self::new_with_causation(tenant_id, actor_id, None, event)
     }
 
-    /// Creates a typed envelope that is causally linked to one exact durable
-    /// predecessor envelope.
-    ///
-    /// The causation identity is transport metadata, not payload data. A nil
-    /// identity is rejected by the same registered-envelope validation used for
-    /// decoded and relayed events.
     pub fn new_caused_by<E>(
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
