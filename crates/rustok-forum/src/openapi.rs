@@ -21,7 +21,7 @@ use utoipa::OpenApi;
         crate::controllers::read_state::mark_all_topics_read,
         crate::controllers::read_state::get_topic_read_state,
         crate::controllers::read_state::mark_topic_read,
-        crate::controllers::topics::get_topic,
+        crate::controllers::topic_redirect::redirect_merged_topic,
         crate::controllers::content_commands::create_topic,
         crate::controllers::content_commands::update_topic,
         crate::controllers::topics::delete_topic,

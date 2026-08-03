@@ -36,10 +36,16 @@
 - Depends on `rustok-taxonomy` for the shared scope-aware term dictionary behind
   forum topic tags.
 - Category slugs are translation-local, while topic slugs remain stable thread
-  labels; current public forum lookup stays ID-based. A selected merged-source ID
-  resolves through the immutable `forum_topic_merge_operations` chain to the
-  terminal retained topic. HTTP 3xx responses and slug aliases are not part of
-  the current contract.
+  labels; current public Forum lookup stays ID-based. A selected merged-source
+  ID resolves through the immutable `forum_topic_merge_operations` chain to the
+  terminal retained topic. `GET /api/forum/topics/{id}` returns an
+  authorization-safe `308 Permanent Redirect` for a merged source and keeps the
+  existing `200 TopicResponse` for a direct target. Slug aliases and localized
+  public routes are not part of the current contract.
+- The manager-only GraphQL mutation `mergeForumTopic` composes the same
+  idempotent `ForumTopicMergeService` owner, derives tenant authority from the
+  routed request, requires `forum_topics:manage`, and returns the immutable merge
+  receipt instead of duplicating merge logic or hydrating a topic response.
 - Shares SEO target ownership with `rustok-seo`: the shared SEO runtime now resolves
   `forum_category` and `forum_topic`, while owner-side SEO authoring stays embedded
   in `rustok-forum-admin`; public SEO for channel-restricted topics is resolved only
@@ -89,6 +95,8 @@
 - `VoteService`
 - `graphql::ForumQuery`
 - `graphql::ForumMutation`
+- `graphql::MergeForumTopicGraphqlInput`
+- `graphql::GqlForumTopicMerge`
 - `controllers::axum_router`
 - `admin::ForumAdmin` (publishable Leptos package)
 - `storefront::ForumView` (publishable Leptos package)
@@ -103,5 +111,6 @@ into README files, issues, or additional planning documents.
 
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
-- [Canonical merged-topic resolution](./docs/forum-21i-topic-canonical-resolution.md)
+- [Canonical merged-topic resolution and HTTP redirect](./docs/forum-21i-topic-canonical-resolution.md)
+- [Topic merge GraphQL transport](./docs/forum-21k-topic-merge-graphql-transport.md)
 - [Platform docs index](../../docs/index.md)

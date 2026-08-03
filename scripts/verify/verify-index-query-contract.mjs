@@ -25,6 +25,7 @@ const scripts = [
   'verify-index-server-reconciliation-guard.mjs',
   'verify-index-reconciliation-dead-letter-admission.mjs',
   'verify-index-reconciliation-dead-letter-inspection.mjs',
+  'verify-index-reconciliation-dead-letter-requeue.mjs',
   'verify-index-replay-dry-run.mjs',
   'verify-index-replay-page-interruption.mjs',
   'verify-index-replay-retry-store.mjs',

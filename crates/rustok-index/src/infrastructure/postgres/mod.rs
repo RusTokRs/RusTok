@@ -8,6 +8,7 @@ mod schema_registration;
 mod secondary_index;
 mod source_factory;
 mod source_reconciliation_dead_letter_inspector;
+mod source_reconciliation_recovery;
 mod source_reconciliation_runner;
 mod source_replay;
 mod source_replay_job;
@@ -70,6 +71,10 @@ pub use source_factory::{
 pub use source_reconciliation_dead_letter_inspector::{
     IndexReconciliationDeadLetterInspection, IndexReconciliationDeadLetterInspectionError,
     PostgresIndexReconciliationDeadLetterInspector,
+};
+pub use source_reconciliation_recovery::{
+    IndexReconciliationRecoveryError, IndexReconciliationRequeueOutcome,
+    IndexReconciliationRequeueRequest, PostgresIndexReconciliationRecoveryStore,
 };
 pub use source_reconciliation_runner::{
     IndexReconciliationCancelOutcome, IndexReconciliationRunError,

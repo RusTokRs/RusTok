@@ -1,6 +1,7 @@
 mod m20260727_000001_create_index_records;
 mod m20260727_000002_create_index_delivery_state;
 mod m20260727_000003_create_index_operations;
+mod m20260803_000004_create_index_reconciliation_recovery;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::sea_orm::DbBackend;
@@ -32,6 +33,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260727_000001_create_index_records::Migration),
         Box::new(m20260727_000002_create_index_delivery_state::Migration),
         Box::new(m20260727_000003_create_index_operations::Migration),
+        Box::new(m20260803_000004_create_index_reconciliation_recovery::Migration),
     ]
 }
 
@@ -48,6 +50,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260727_000003_create_index_operations",
             vec!["m20260727_000001_create_index_records"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260803_000004_create_index_reconciliation_recovery",
+            vec!["m20260727_000003_create_index_operations"],
         ),
     ]
 }

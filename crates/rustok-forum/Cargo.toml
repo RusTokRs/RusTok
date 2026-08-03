@@ -42,3 +42,4 @@ url = "2.5"
 rustok-notifications.workspace = true
 tokio.workspace = true
 toml.workspace = true
+tower.workspace = true

@@ -16,7 +16,9 @@ documents describe stable contracts only and must not duplicate its backlog.
 - publish the canonical forum runtime contract for categories, topics, replies and moderation;
 - keep forum-owned transport surfaces, Q&A capabilities and UI packages inside the module;
 - keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a framework adapter;
-- resolve selected merged-source topic IDs through the immutable merge receipt ledger to one retained canonical target while keeping the public lookup contract ID-based;
+- resolve selected merged-source topic IDs through the immutable merge receipt ledger to one retained canonical target;
+- return an authorization-safe permanent redirect from the existing ID-based REST GET route when its path ID is a merged source, while direct targets retain the existing JSON response;
+- expose the idempotent same-category topic merge owner through one routed-tenant, `forum_topics:manage` GraphQL command that returns the immutable owner receipt;
 - evolve the forum as a taxonomy-aware and channel-aware domain with an explicit observability surface.
 
 ## Scope
@@ -51,8 +53,8 @@ documents describe stable contracts only and must not duplicate its backlog.
 - `cargo xtask module test forum`
 - `npm run verify:page-builder:consumer:forum` for fast FBA consumer guardrail without compilation, including Wave 1 smoke/SLO/trace anti-drift checks;
 - targeted tests for topic/reply lifecycle, moderation, votes, subscriptions,
-  visibility contracts, merged-topic canonical resolution, and request-scoped
-  profile author-summary filtering;
+  visibility contracts, merged-topic canonical resolution, HTTP redirects and
+  the manager-only merge GraphQL command;
 - `npm run verify:channel:proof-points` for no-compile capture of forum channel-aware read-path/SEO markers
 
 ## Related documents
@@ -60,7 +62,8 @@ documents describe stable contracts only and must not duplicate its backlog.
 - [README crate](../README.md)
 - [Canonical implementation plan](./implementation-plan.md)
 - [FORUM-21B merge owner](./forum-21b-topic-merge-owner.md)
-- [FORUM-21I canonical merged-topic resolution](./forum-21i-topic-canonical-resolution.md)
+- [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
+- [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

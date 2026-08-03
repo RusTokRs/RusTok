@@ -46,14 +46,15 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-fn context_extraction_error<E: std::fmt::Debug>(
+fn context_extraction_error<E>(
     owner_operation: &'static str,
     code: &'static str,
     public_message: &'static str,
-    error: E,
+    _error: E,
 ) -> ServerFnError {
+    let error_type = std::any::type_name::<E>();
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = CART_STOREFRONT_NATIVE_OWNER,
         owner_operation,
         code,
@@ -63,7 +64,7 @@ fn context_extraction_error<E: std::fmt::Debug>(
     ServerFnError::new(public_message)
 }
 
-fn tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+fn tenant_context_error<E>(error: E) -> ServerFnError {
     context_extraction_error(
         "extract_tenant_context",
         "cart.storefront_tenant_context_unavailable",
@@ -72,7 +73,7 @@ fn tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
     )
 }
 
-fn auth_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+fn auth_context_error<E>(error: E) -> ServerFnError {
     context_extraction_error(
         "extract_optional_auth_context",
         "cart.storefront_auth_context_unavailable",
@@ -124,17 +125,31 @@ fn customer_error(
     owner_operation: &'static str,
     request_context: Option<&rustok_api::RequestContext>,
 ) -> ServerFnError {
+    let error_type = std::any::type_name_of_val(&error);
     tracing::error!(
-        error = ?error,
+        error_type,
         owner = "rustok_customer",
         owner_operation,
         consumer = CART_STOREFRONT_NATIVE_OWNER,
-        request_tenant_id = ?request_context.map(|context| context.tenant_id),
-        tenant_id = %tenant_id,
-        user_id = %user_id,
-        channel_id = ?request_context.and_then(|context| context.channel_id),
-        channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
-        locale = ?request_context.map(|context| context.locale.as_str()),
+        correlation_id = ?request_context.map(|context| context.correlation_id),
+        request_context_present = request_context.is_some(),
+        request_tenant_id_non_nil = ?request_context.map(|context| !context.tenant_id.is_nil()),
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        user_id_non_nil = !user_id.is_nil(),
+        channel_id_present = request_context.and_then(|context| context.channel_id).is_some(),
+        channel_id_non_nil = ?request_context
+            .and_then(|context| context.channel_id)
+            .map(|value| !value.is_nil()),
+        channel_slug_present = request_context
+            .and_then(|context| context.channel_slug.as_ref())
+            .is_some(),
+        channel_slug_length = ?request_context
+            .and_then(|context| context.channel_slug.as_ref())
+            .map(|value| value.chars().count()),
+        locale_present = request_context
+            .map(|context| !context.locale.trim().is_empty())
+            .unwrap_or(false),
+        locale_length = ?request_context.map(|context| context.locale.chars().count()),
         code = "cart.storefront_customer_unavailable",
         boundary = CART_STOREFRONT_NATIVE_BOUNDARY,
         "cart storefront customer lookup failed"

@@ -15,6 +15,7 @@ mod runtime_data;
 mod storefront_audience_topic;
 mod storefront_audience_topics;
 mod storefront_read_state;
+mod topic_merge_mutation;
 mod types;
 
 use async_graphql::MergedObject;
@@ -41,6 +42,7 @@ pub use quote_commands::{
 pub use read_state::*;
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
+pub use topic_merge_mutation::{GqlForumTopicMerge, MergeForumTopicGraphqlInput};
 pub use types::*;
 
 #[derive(MergedObject, Default)]
@@ -65,4 +67,5 @@ pub struct ForumMutation(
     content_commands::ForumContentCommandMutation,
     read_state::ForumReadStateMutation,
     storefront_read_state::ForumStorefrontReadStateMutation,
+    topic_merge_mutation::ForumTopicMergeMutation,
 );

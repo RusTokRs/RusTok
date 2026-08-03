@@ -1,7 +1,7 @@
 {
   "contract": "forum_topic_merge_owner_v1",
   "task": "FORUM-21B",
-  "latest_policy_slice": "FORUM-21I",
+  "latest_policy_slice": "FORUM-21K",
   "parent_task": "FORUM-21",
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
@@ -55,7 +55,30 @@
     "selected_topic_reads_return_terminal_target": true,
     "storefront_visibility_uses_terminal_target": true,
     "graphql_and_seo_inherit_TopicService_resolution": true,
-    "rest_returns_target_representation_without_HTTP_3xx": true
+    "rest_direct_target_returns_200": true,
+    "rest_merged_source_returns_308": true,
+    "rest_location_is_tenant_relative": true,
+    "rest_location_uses_hydrated_target_identity": true,
+    "rest_runtime_topic_service_composition_is_reused": true,
+    "rest_redirect_cache_control": "private, no-store",
+    "rest_redirect_requires_read_authorization_and_target_hydration": true,
+    "rest_redirect_is_get_only": true
+  },
+  "graphql_transport": {
+    "task": "FORUM-21K",
+    "field": "mergeForumTopic",
+    "module_enablement_required": true,
+    "required_permission": "forum_topics:manage",
+    "tenant_is_routed_and_optional_argument_is_assertion_only": true,
+    "input_type": "MergeForumTopicGraphqlInput",
+    "result_type": "GqlForumTopicMerge",
+    "operation_id_is_idempotency_identity": true,
+    "returns_immutable_owner_receipt": true,
+    "exact_replay_returns_same_result": true,
+    "event_id_equals_operation_id": true,
+    "resolver_calls_owner_service": true,
+    "mutation_follows_canonical_source_alias": false,
+    "target_topic_hydration_after_command": false
   },
   "transactional_invariants": [
     "the operation requires non-nil tenant operation source target and human actor identities",
@@ -106,30 +129,43 @@
   },
   "test": "crates/rustok-forum/tests/topic_merge_sqlite.rs",
   "canonical_resolution_test": "crates/rustok-forum/tests/topic_canonical_resolution_sqlite.rs",
+  "http_redirect_test": "crates/rustok-forum/src/controllers/topic_redirect.rs",
+  "graphql_transport_runtime_test": "crates/rustok-forum/src/graphql/topic_merge_mutation.rs",
+  "graphql_transport_schema_test": "crates/rustok-forum/tests/topic_merge_graphql_contract.rs",
   "verifier": "scripts/verify/verify-forum-topic-merge-owner.mjs",
   "canonical_resolution_verifier": "scripts/verify/verify-forum-topic-canonical-resolution.mjs",
+  "http_redirect_verifier": "scripts/verify/verify-forum-topic-http-redirect.mjs",
+  "graphql_transport_verifier": "scripts/verify/verify-forum-topic-merge-graphql-transport.mjs",
   "documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   "solution_policy_contract": "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
   "solution_policy_documentation": "crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
   "canonical_resolution_contract": "crates/rustok-forum/contracts/forum-topic-canonical-resolution.json",
   "canonical_resolution_documentation": "crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md",
+  "graphql_transport_contract": "crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json",
+  "graphql_transport_documentation": "crates/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-owner.mjs",
     "node scripts/verify/verify-forum-topic-merge-solution-policy.mjs",
     "node scripts/verify/verify-forum-topic-canonical-resolution.mjs",
+    "node scripts/verify/verify-forum-topic-http-redirect.mjs",
+    "node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs",
     "cargo test -p rustok-forum --test topic_merge_sqlite -- --nocapture",
-    "cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture"
+    "cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture",
+    "cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture",
+    "cargo test -p rustok-forum graphql::topic_merge_mutation::tests -- --nocapture",
+    "cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture"
   ],
   "non_claims": [
     "this source-ready slice does not claim that verifiers SQLite tests Cargo checks formatting workflows or CI ran",
     "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution and remaining workflows",
-    "this slice does not add public REST GraphQL native admin or storefront merge transport",
-    "this slice does not add an HTTP 3xx Location redirect slug alias or slug route tombstone",
+    "this slice does not add REST native admin storefront or CLI merge command transport",
+    "this slice does not add a merge UI",
+    "this slice does not add a slug alias localized public route or slug route tombstone",
     "this slice does not make mutation commands follow merged source identities",
     "this slice does not support cross-category merge split fork or reply-range operations",
     "dedicated bounded slices own subscriptions read state tags topic votes and topic-local audience reconciliation",
     "this slice does not choose a winner when source and target both have accepted solutions",
     "this slice does not provide PostgreSQL concurrency runtime evidence",
-    "this slice is not sufficient to mark FORUM-21 done"
+    "FORUM-21 and FORUM-24 remain planned"
   ]
 }

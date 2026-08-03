@@ -65,21 +65,32 @@ pub enum IndexReconciliationOperatorError {
     Forbidden,
     #[error(transparent)]
     Reconciliation(#[from] rustok_index::IndexReconciliationRunError),
+    #[error(transparent)]
+    Inspection(#[from] rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError),
 }
 
-/// Server-owned guarded operator boundary over the canonical PostgreSQL Index reconciliation runner.
+/// Server-owned guarded operator boundary over the canonical PostgreSQL Index reconciliation
+/// runner and bounded dead-letter inspector.
 ///
 /// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
-/// accepts only `modules:manage`, rejects cross-tenant requests before database access, and exposes
-/// no connection, source registry, scheduler, task handle, or worker-spawn capability.
+/// accepts only `modules:manage`, rejects cross-tenant run requests before database access, derives
+/// inspection and cancellation tenant scope from the authorized context, and exposes no connection,
+/// source registry, scheduler, task handle, or worker-spawn capability.
 #[derive(Clone)]
 pub struct IndexReconciliationOperatorRuntime {
     inner: rustok_index::PostgresIndexReconciliationRunner,
+    dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
 }
 
 impl IndexReconciliationOperatorRuntime {
-    fn new(inner: rustok_index::PostgresIndexReconciliationRunner) -> Self {
-        Self { inner }
+    fn new(
+        inner: rustok_index::PostgresIndexReconciliationRunner,
+        dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
+    ) -> Self {
+        Self {
+            inner,
+            dead_letters,
+        }
     }
 
     pub async fn run(
@@ -105,6 +116,21 @@ impl IndexReconciliationOperatorRuntime {
         context.authorize_for(context.tenant_id())?;
         self.inner
             .request_cancel(context.tenant_id(), job_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn inspect_dead_letter(
+        &self,
+        context: IndexReconciliationOperatorContext,
+        job_id: Uuid,
+    ) -> std::result::Result<
+        Option<rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspection>,
+        IndexReconciliationOperatorError,
+    > {
+        context.authorize_for(context.tenant_id())?;
+        self.dead_letters
+            .inspect(context.tenant_id(), job_id)
             .await
             .map_err(Into::into)
     }
@@ -149,8 +175,13 @@ pub(super) fn materialize_index_reconciliation_operator(
             )
         })?;
 
+    let dead_letters =
+        rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector::new(db.clone());
+    let runner =
+        rustok_index::PostgresIndexReconciliationRunner::new(db, sources, schemas.shared());
     extensions.insert(IndexReconciliationOperatorRuntime::new(
-        rustok_index::PostgresIndexReconciliationRunner::new(db, sources, schemas.shared()),
+        runner,
+        dead_letters,
     ));
     Ok(())
 }
@@ -400,6 +431,66 @@ mod tests {
         assert!(matches!(
             error,
             IndexReconciliationOperatorError::TenantMismatch
+        ));
+    }
+
+    #[tokio::test]
+    async fn dead_letter_inspection_authorizes_before_adapter_validation() {
+        let mut extensions = complete_registries();
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database without Index migrations");
+        materialize_index_reconciliation_operator(&mut extensions, db)
+            .expect("runtime materialization");
+        let runtime = extensions
+            .get::<IndexReconciliationOperatorRuntime>()
+            .cloned()
+            .expect("guarded runtime");
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+
+        let missing = runtime
+            .inspect_dead_letter(context, Uuid::nil())
+            .await
+            .expect_err("missing request authority must fail before adapter validation");
+        assert!(matches!(
+            missing,
+            IndexReconciliationOperatorError::MissingRequestAuthority
+        ));
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            runtime.inspect_dead_letter(context, Uuid::nil()),
+        )
+        .await
+        .expect_err("modules:read must not inspect dead letters");
+        assert!(matches!(
+            forbidden,
+            IndexReconciliationOperatorError::Forbidden
+        ));
+
+        let delegated = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.inspect_dead_letter(context, Uuid::nil()),
+        )
+        .await
+        .expect_err("authorized nil job must reach bounded adapter validation");
+        assert!(matches!(
+            delegated,
+            IndexReconciliationOperatorError::Inspection(
+                rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError::NilJobId
+            )
         ));
     }
 

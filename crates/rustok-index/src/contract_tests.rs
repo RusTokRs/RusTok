@@ -56,11 +56,12 @@ fn index_module_registers_canonical_storage_migrations() {
             "m20260727_000001_create_index_records",
             "m20260727_000002_create_index_delivery_state",
             "m20260727_000003_create_index_operations",
+            "m20260803_000004_create_index_reconciliation_recovery",
         ]
     );
 
     let dependencies = IndexModule.migration_dependencies();
-    assert_eq!(dependencies.len(), 3);
+    assert_eq!(dependencies.len(), 4);
 }
 
 #[tokio::test]
@@ -118,6 +119,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
             "index_inbox".to_owned(),
             "index_jobs".to_owned(),
             "index_links".to_owned(),
+            "index_reconciliation_recovery_audits".to_owned(),
             "index_schemas".to_owned(),
         ])
     );
@@ -205,6 +207,25 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
         .await
         .is_err(),
         "running jobs require a complete lease"
+    );
+    db.execute_unprepared(
+        "INSERT INTO index_reconciliation_recovery_audits (tenant_id, audit_id, job_id, actor_id, action, reason, prior_attempt_count, retry_epoch) VALUES ('11111111-1111-1111-1111-111111111111', '12121212-1212-1212-1212-121212121212', '77777777-7777-7777-7777-777777777777', '13131313-1313-1313-1313-131313131313', 'requeue', 'operator approved retry', 1, 1)",
+    )
+    .await
+    .expect("bounded recovery audit should be accepted");
+    assert!(
+        db.execute_unprepared(
+            "UPDATE index_reconciliation_recovery_audits SET reason = 'changed'"
+        )
+        .await
+        .is_err(),
+        "recovery audit rows must reject updates"
+    );
+    assert!(
+        db.execute_unprepared("DELETE FROM index_reconciliation_recovery_audits")
+            .await
+            .is_err(),
+        "recovery audit rows must reject deletes"
     );
     db.execute_unprepared(
         "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, scope_kind, details) VALUES ('11111111-1111-1111-1111-111111111111', '99999999-9999-9999-9999-999999999999', 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'entity_digest', 'error', 'global', '{}')",
