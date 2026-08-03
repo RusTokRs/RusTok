@@ -97,7 +97,6 @@ requireAll("legacy compatibility surfaces", legacyWorker, [
   "pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled",
   "CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation",
   "CommentsTcpDelegationScheduleAuditHandoffWorkerHandle",
-  "pub async fn publish_next",
 ]);
 requireAll("legacy handoff compatibility", legacyHandoff, [
   "pub async fn claim_next",
