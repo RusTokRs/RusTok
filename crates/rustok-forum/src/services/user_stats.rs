@@ -78,6 +78,9 @@ impl UserStatsService {
         user_id: Option<Uuid>,
         delta: i32,
     ) -> ForumResult<()> {
+        if delta == -1 {
+            return Self::decrement_solution_count_exact_in_tx(txn, tenant_id, user_id).await;
+        }
         Self::adjust_counts_in_tx(txn, tenant_id, user_id, 0, 0, delta).await
     }
 
