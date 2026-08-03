@@ -95,6 +95,10 @@ assert.equal(solutionContract.task, "FORUM-21H");
 assert.equal(solutionContract.extends, "FORUM-21B");
 assert.equal(canonicalContract.task, "FORUM-21I");
 assert.equal(canonicalContract.extends, "FORUM-21B");
+assert.equal(
+  canonicalContract.resolution.each_hop_topic_and_edges_share_one_statement_snapshot,
+  true,
+);
 
 includesAll(
   entity,
@@ -259,11 +263,16 @@ includesAll(
     "pub const MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS: usize = 32;",
     "pub struct ForumTopicCanonicalResolution",
     "pub(crate) async fn resolve_unchecked(",
-    ".limit(2)",
-    "match edges.as_slice()",
+    "load_resolution_step(",
+    "match step.edges.as_slice()",
     "!visited.insert(edge.target_topic_id)",
     "TopicCanonicalResolutionConflict(requested_topic_id)",
-    "deleted_at IS NULL",
+    "EXISTS (",
+    "AS topic_exists",
+    "FROM forum_topic_merge_operations",
+    "LEFT JOIN (",
+    "LIMIT 2",
+    "topic.deleted_at IS NULL",
   ],
   "canonical resolution service",
 );
@@ -302,6 +311,7 @@ includesAll(
     "MAX_FORUM_TOPIC_MERGE_REPLIES",
     "ForumTopicCanonicalResolution",
     "MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS",
+    "mod contract_tests;",
   ],
   "crate exports",
 );
