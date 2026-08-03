@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rustok_api::normalize_locale_tag;
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
@@ -9,7 +9,7 @@ use uuid::Uuid;
 /// definitions, owner translations, and exact tenant-safe authorization identity.
 ///
 /// Existing grants and operation receipts are migrated only when their legacy
-/// `(tenant, installation, permission_key)` selector resolves to exactly one admitted
+/// `(tenant, installation_id, permission_key)` selector resolves to exactly one admitted
 /// platform-or-tenant definition. Ambiguous or orphan state fails closed instead of
 /// inventing an authorization identity.
 #[derive(DeriveMigrationName)]
@@ -27,24 +27,40 @@ impl MigrationTrait for Migration {
         let backend = manager.get_database_backend();
         ensure_supported_backend(backend)?;
         let connection = manager.get_connection();
-        let sqlite_transaction = backend == DbBackend::Sqlite;
-        if sqlite_transaction {
-            execute_all(connection, backend, &["BEGIN IMMEDIATE"]).await?;
+        if backend != DbBackend::Sqlite {
+            return apply_up(connection, backend).await;
         }
-        let result = apply_up(connection, backend).await;
-        finish_sqlite_transaction(connection, backend, sqlite_transaction, result).await
+
+        let transaction = connection.begin().await?;
+        match apply_up(&transaction, backend).await {
+            Ok(()) => transaction.commit().await,
+            Err(error) => match transaction.rollback().await {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(DbErr::Migration(format!(
+                    "artifact permission migration failed: {error}; SQLite rollback failed: {rollback_error}"
+                ))),
+            },
+        }
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let backend = manager.get_database_backend();
         ensure_supported_backend(backend)?;
         let connection = manager.get_connection();
-        let sqlite_transaction = backend == DbBackend::Sqlite;
-        if sqlite_transaction {
-            execute_all(connection, backend, &["BEGIN IMMEDIATE"]).await?;
+        if backend != DbBackend::Sqlite {
+            return apply_down(connection, backend).await;
         }
-        let result = apply_down(connection, backend).await;
-        finish_sqlite_transaction(connection, backend, sqlite_transaction, result).await
+
+        let transaction = connection.begin().await?;
+        match apply_down(&transaction, backend).await {
+            Ok(()) => transaction.commit().await,
+            Err(error) => match transaction.rollback().await {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(DbErr::Migration(format!(
+                    "artifact permission rollback failed: {error}; SQLite rollback failed: {rollback_error}"
+                ))),
+            },
+        }
     }
 }
 
@@ -271,32 +287,6 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), DbErr> {
         backend => Err(DbErr::Migration(format!(
             "artifact permission canonicalization does not support {backend:?}"
         ))),
-    }
-}
-
-async fn finish_sqlite_transaction<C>(
-    connection: &C,
-    backend: DbBackend,
-    enabled: bool,
-    result: Result<(), DbErr>,
-) -> Result<(), DbErr>
-where
-    C: ConnectionTrait + ?Sized,
-{
-    if !enabled {
-        return result;
-    }
-    match result {
-        Ok(()) => {
-            execute_all(connection, backend, &["COMMIT"]).await?;
-            Ok(())
-        }
-        Err(error) => match execute_all(connection, backend, &["ROLLBACK"]).await {
-            Ok(()) => Err(error),
-            Err(rollback_error) => Err(DbErr::Migration(format!(
-                "artifact permission migration failed: {error}; SQLite rollback failed: {rollback_error}"
-            ))),
-        },
     }
 }
 
