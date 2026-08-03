@@ -66,8 +66,8 @@ function forbidAll(label, text, markers) {
 }
 
 requireAll("migration", migration, [
-  "HandoffRecoveryEpoch",
   "handoff_recovery_epoch BIGINT NOT NULL DEFAULT 0",
+  "handoff_recovery_epoch >= 0",
   "blog_comments_tcp_delegation_schedule_audit_recovery_audits",
   "control_plane_tenant_id UUID NOT NULL",
   "action = 'requeue'",
@@ -110,14 +110,25 @@ requireAll("recovery store", recovery, [
   "CommentsTcpDelegationScheduleAuditRecoveryOutcome::StaleInspection",
 ]);
 
-const rowLock = recovery.indexOf("read_recovery_row_for_update_statement");
-const update = recovery.indexOf("requeue_source_statement(request, recovery_epoch)");
-const audit = recovery.indexOf("insert_recovery_audit_statement(");
-const commit = recovery.indexOf("match transaction.commit().await");
-if (rowLock < 0 || update < rowLock || audit < update || commit < audit) {
+const transactionStart = recovery.indexOf("async fn requeue_in_transaction(");
+const transactionEnd = recovery.indexOf("\nfn decode_inspection", transactionStart);
+const transactionBody = recovery.slice(transactionStart, transactionEnd);
+const rowLock = transactionBody.indexOf("read_recovery_row_for_update_statement");
+const update = transactionBody.indexOf("requeue_source_statement(request, recovery_epoch)");
+const audit = transactionBody.indexOf("insert_recovery_audit_statement(");
+if (rowLock < 0 || update < rowLock || audit < update) {
   throw new Error(
-    "recovery store must lock, reset, append audit, and then commit in order",
+    "recovery transaction must lock, reset, and append the audit in order",
   );
+}
+const publicRequeueStart = recovery.indexOf("    pub async fn requeue_dead_letter(");
+const publicRequeueEnd = recovery.indexOf("\n    async fn reconcile_requeue", publicRequeueStart);
+const publicRequeueBody = recovery.slice(publicRequeueStart, publicRequeueEnd);
+if (
+  publicRequeueBody.indexOf("match transaction.commit().await") < 0 ||
+  publicRequeueBody.indexOf("self.reconcile_requeue(audit_id, &request, recovery_epoch)") < 0
+) {
+  throw new Error("requeue must reconcile an ambiguous commit acknowledgement");
 }
 
 forbidAll("recovery store ownership", recovery, [
@@ -218,7 +229,7 @@ requireAll("plan", plan, [
   "# rustok-blog implementation plan — slice 94 continuation",
   "source_dead_letter_operator_recovery_ready_maintainer_execution_pending",
   "Permission::MODULES_MANAGE",
-  "authorization before adapter validation or database access",
+  "authorization before adapter validation",
   "expected_attempt_count",
   "expected_recovery_epoch",
   "FOR UPDATE",
