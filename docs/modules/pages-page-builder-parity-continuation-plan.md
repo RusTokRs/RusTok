@@ -14,52 +14,65 @@ This continuation plan reconciles the current source with:
 - the Pages admin composition, rollback control and metadata owner port;
 - the Page Builder consumer-property runtime and Leptos panel.
 
-The audit is source-only. No verifier, formatter, Cargo command, browser scenario,
-database scenario, workflow or CI run is claimed by this update.
+The audit remains source-only. No verifier, formatter, Cargo command, browser
+scenario, database scenario, workflow or CI run is claimed by this update.
 
 ## Corrected parity snapshot
 
 ### Rollback control: source-connected
 
-The Pages admin already mounts `PagesRollbackControl`. It loads the selected page,
-shows only for published pages, requires a prepare/confirm interaction, delegates to
-the typed `rollback_page` transport, consumes the returned typed result version and
-refreshes the workspace after a successful receipt. The older Pages plan item saying
-the rollback action still needs to be added is stale.
+The Pages admin mounts `PagesRollbackControl`. It loads the selected page, shows only
+for published pages, requires a prepare/confirm interaction, delegates to the typed
+`rollback_page` transport, consumes the returned typed result version and refreshes
+the workspace after a successful receipt. The older Pages plan item saying the
+rollback action still needs to be added is stale.
 
-This source connection does not promote execution evidence. Accepted rollback,
-outbox, cache-generation and storefront refill packets remain open.
+Accepted rollback, outbox, cache-generation and storefront refill packets remain
+open.
 
 ### Typed metadata contribution: source-connected
 
-Pages already registers `rustok.pages.metadata`, provides six typed fields, supplies
-a `ConsumerPropertyEditorRuntime`, loads through `fetch_page`, saves through
+Pages registers `rustok.pages.metadata`, provides six typed fields, supplies a
+`ConsumerPropertyEditorRuntime`, loads through `fetch_page`, saves through
 `patch_page_metadata`, binds optimistic concurrency to
 `pages:{page_id}:metadata:v{version}` and never writes the Fly document. The older
 Pages plan statement that a typed metadata-only contribution still needs to be added
 is stale.
 
-The current source still contains the bespoke `PageMetadataEditor`, so the overall
-metadata UI cutover is not complete.
+### Draft registered metadata surface: source-connected
 
-### Standalone consumer-property surface: source-ready
+Draft workspaces already render the canonical `ConsumerPropertiesPanel` inside the
+Fly properties column. The panel verifies the exact contribution identity and schema
+before loading and saving through the Pages-owned runtime and port.
 
-The canonical `ConsumerPropertiesPanel` is now a public Page Builder admin component.
-It accepts only the framework-neutral `ConsumerPropertyEditorRuntime` and the exact
-`ContributionAssemblyResult`, verifies contribution/schema identity before loading,
-and delegates load/save through the consumer-owned port.
+Draft document mutation remains owned by the Pages builder facade. Metadata saves use
+the independent page metadata version and cannot write the Fly project.
 
-The component no longer requires callers to mount the Fly canvas. This removes the
-provider-side blocker for rendering the same registered metadata property surface in
-a Pages-owned published-document workspace while keeping the published Fly document
-unmounted and immutable.
+### Published registered metadata surface: source-connected
 
-### Legacy PageMetadataEditor: pending removal
+`PagesPublishedMetadataSurface` now composes the same exported
+`ConsumerPropertiesPanel` in the Pages shell for the selected published page. It:
+
+- reuses the already-provided `ConsumerPropertyEditorRuntime`;
+- builds the exact Pages contribution assembly from
+  `pages_admin_contribution_policy`;
+- loads the current selected page and renders only when its status is `published`;
+- shares the existing workspace refresh generation after a successful typed save;
+- does not construct a second owner port or call metadata persistence directly;
+- does not mount `PageBuilderAdmin`, `PagesBuilderFacade` or an editable Fly canvas.
+
+The published artifact therefore remains immutable while its independent metadata
+surface uses the same registered property contract as the draft editor.
+
+### Legacy PageMetadataEditor: pending duplicate removal
 
 `PageMetadataEditor` remains mounted in `crates/rustok-pages/admin/src/composition.rs`.
-It duplicates the same metadata fields and owner transport already represented by the
-registered consumer-property contract. It must remain explicitly open until Pages
-replaces it for both draft and published metadata views.
+It now duplicates registered metadata surfaces that are source-connected for both
+draft and published states. Removal remains explicit because the current GitHub
+contents write path cannot safely apply a small structural deletion to that large
+workspace file without replacing the complete file.
+
+No final cutover or absence claim is made in this slice.
 
 ## Parity matrix
 
@@ -68,28 +81,31 @@ replaces it for both draft and published metadata views.
 | Metadata schema and values | Pages | Contract/runtime validation | Connected | Pending execution |
 | Metadata optimistic revision | Pages | Typed save envelope | Connected | Pending conflict packet |
 | Draft metadata panel inside Fly | Pages runtime/port | Leptos consumer panel | Connected | Pending execution |
-| Published metadata without Fly canvas | Pages host composition | Standalone consumer panel | Provider seam ready; Pages cutover pending | Pending |
+| Published metadata without Fly canvas | Pages shell composition | Standalone consumer panel | Connected | Pending execution |
+| Legacy metadata form | Pages composition | None | Duplicate; removal pending | Not applicable |
 | Immutable artifact rollback action | Pages | No lifecycle ownership | Connected | Pending rollback/cache packet |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Pending observed packet |
 | Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Pending bundle/runtime proof |
 
 ## Changes in this slice
 
-1. Export `ConsumerPropertiesPanel` from the Page Builder admin crate as a reusable
-   standalone Leptos surface.
-2. Preserve exact contribution-schema verification, optimistic snapshot/save receipt
-   behavior and consumer-owned persistence.
-3. Actualize the machine-readable consumer-property contract with the standalone
-   host surface and explicit legacy-form dependency.
-4. Strengthen the Pages metadata source guard to require both public exports and this
-   parity plan while keeping the legacy form explicitly pending.
+1. Add `PagesPublishedMetadataSurface` as a Pages-owned published-only composition.
+2. Reuse the canonical exported `ConsumerPropertiesPanel`, existing metadata runtime
+   and Pages contribution assembly without a second persistence path.
+3. Mount the published registered surface beside the existing rollback/workspace
+   shell and bind it to the shared refresh generation.
+4. Actualize the machine-readable contract with separate draft and published surface
+   states while retaining the legacy duplicate as open.
+5. Strengthen the source guard to require published-only selection, no Fly host,
+   exact runtime/assembly reuse and no direct metadata write.
 
 ## Boundaries
 
 This slice does not:
 
-- remove or replace `PageMetadataEditor`;
+- remove or edit `PageMetadataEditor`;
 - change Pages metadata persistence, DTOs, GraphQL, HTTP or browser transport;
+- add a second metadata runtime or owner port;
 - mount an editable Fly document for published pages;
 - change Page Builder capability authorization, rollout policy or contribution
   assembly semantics;
@@ -99,14 +115,17 @@ This slice does not:
 
 ## Next cursor
 
-1. Replace the bespoke Pages metadata form with the exported registered
-   `ConsumerPropertiesPanel` for both draft and published metadata workspaces.
-2. Build the Pages-owned contribution assembly for the standalone host path and pass
-   the already-provided metadata runtime without introducing a second owner port.
-3. Keep the Fly canvas absent for published pages and preserve the immutable published
-   artifact boundary.
-4. Update the machine contract and verifier from `legacy_form_pending` to the final
-   cutover state only after `PageMetadataEditor` is absent from source.
+1. Remove the now-duplicated bespoke `PageMetadataEditor` call and component from
+   `crates/rustok-pages/admin/src/composition.rs` through a checkout-capable patch
+   path rather than a full-file contents replacement.
+2. Preserve draft metadata through the existing Fly properties panel and published
+   metadata through `PagesPublishedMetadataSurface`.
+3. Update the machine contract and verifier from
+   `published_surface_connected_legacy_form_pending` to the final cutover state only
+   after both `fn PageMetadataEditor` and `<PageMetadataEditor` are absent.
+4. Update the canonical Pages and Page Builder implementation plans to mark rollback,
+   typed metadata contribution and registered draft/published metadata surfaces as
+   completed while keeping execution evidence open.
 5. Retain an accepted metadata packet proving exact revision-conflict behavior and
    that metadata save cannot mutate or replace a dirty Fly document.
 6. Retain accepted publish/rollback cache packets correlating receipts, outbox events,
