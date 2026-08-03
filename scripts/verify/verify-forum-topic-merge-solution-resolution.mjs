@@ -140,7 +140,7 @@ includesAll(
   ],
   "merge solution-resolution owner",
 );
-assert.equal(owner.match(/self\.db\.begin\(\)\.await\?/g)?.length, 1);
+assert.equal((owner.match(/self\.db\.begin\(\)\.await\?/g) ?? []).length, 1);
 const replayLookup = owner.indexOf("forum_topic_merge_operation::Entity::find_by_id");
 const preliminaryRead = owner.indexOf("let preliminary_source =");
 const solutionPlan = owner.indexOf("let solution_plan = plan_solution_merge");
@@ -221,7 +221,7 @@ includesAll(
     "ordinary merge must keep competing solutions fail-closed",
     "assert_resolution_event",
     "schema_version",
-    "assert_eq!(first, replay)".replace("first", "replay"),
+    "assert_eq!(replay, merged);",
     "TopicMergeOperationConflict",
     "FORUM_VALIDATION_FAILED",
   ],
