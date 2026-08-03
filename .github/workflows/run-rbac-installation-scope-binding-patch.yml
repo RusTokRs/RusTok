@@ -42,14 +42,42 @@ jobs:
           if workflow.count(start_marker) != 1 or workflow.count(end_marker) != 1:
               raise SystemExit('embedded exact patch boundaries are not unique')
           body = workflow.split(start_marker, 1)[1].split(end_marker, 1)[0]
-          lines = body.splitlines()
-          if not lines:
+          body_lines = body.splitlines()
+          if not body_lines:
               raise SystemExit('embedded exact patch is empty')
           script = '\n'.join(
               line[10:] if line.startswith('          ') else line
-              for line in lines
+              for line in body_lines
           ) + '\n'
-          Path('/tmp/apply-rbac-installation-binding.sh').write_text(script)
+
+          lines = script.splitlines()
+          label = '    "upgrade binding count assertion",'
+          if lines.count(label) != 1:
+              raise SystemExit(
+                  'upgrade binding count label: expected one match, found '
+                  + str(lines.count(label))
+              )
+          label_index = lines.index(label)
+          if label_index < 4 or lines[label_index + 1] != ')':
+              raise SystemExit('upgrade binding count block shape changed')
+          replacement = [
+              'binding_definition_count = \'    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);\'',
+              'binding_definition_count_with_installation = \'    assert_eq!(count(&db, "rbac_artifact_permission_installations").await, 1);\\n    assert_eq!(count(&db, "rbac_artifact_permission_definitions").await, 1);\'',
+              'binding_definition_count_matches = upgrade.count(binding_definition_count)',
+              'if binding_definition_count_matches != 2:',
+              '    raise SystemExit(',
+              '        "upgrade binding count assertion: expected two matches, found "',
+              '        + str(binding_definition_count_matches)',
+              '    )',
+              'upgrade = upgrade.replace(',
+              '    binding_definition_count,',
+              '    binding_definition_count_with_installation,',
+              ')',
+          ]
+          lines[label_index - 4 : label_index + 2] = replacement
+          Path('/tmp/apply-rbac-installation-binding.sh').write_text(
+              '\n'.join(lines) + '\n'
+          )
           PY
           bash /tmp/apply-rbac-installation-binding.sh
 
