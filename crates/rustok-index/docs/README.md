@@ -36,6 +36,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Replay Job Leases](./m6-replay-job-leases.md)
 - [M6 Bounded Multi-page Replay Runner](./m6-bounded-multipage-runner.md)
 - [M6 Replay Runtime Host Composition](./m6-replay-runtime-composition.md)
+- [M6 Reconciliation Retry Transition Store](./m6-reconciliation-retry-transition-store.md)
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
 - [M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)
 - [M6 Reconciliation Dead-letter Requeue](./m6-reconciliation-dead-letter-requeue.md)
