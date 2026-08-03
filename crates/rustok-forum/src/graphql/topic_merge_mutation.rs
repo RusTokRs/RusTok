@@ -1,0 +1,395 @@
+use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
+use rustok_api::{
+    AuthContext, Permission, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
+    has_any_effective_permission,
+};
+use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
+use uuid::Uuid;
+
+use crate::{ForumTopicMergeResult, ForumTopicMergeService, MergeForumTopicInput};
+
+const MODULE_SLUG: &str = "forum";
+
+#[derive(Default)]
+pub(crate) struct ForumTopicMergeMutation;
+
+#[Object]
+impl ForumTopicMergeMutation {
+    async fn merge_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        target_topic_id: Uuid,
+        input: MergeForumTopicGraphqlInput,
+    ) -> Result<GqlForumTopicMerge> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+            .clone();
+        let tenant = ctx.data::<TenantContext>()?;
+
+        execute_merge_forum_topic(
+            db,
+            event_bus,
+            tenant,
+            &auth,
+            tenant_id,
+            target_topic_id,
+            input,
+        )
+        .await
+    }
+}
+
+async fn execute_merge_forum_topic(
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    requested_tenant_id: Option<Uuid>,
+    target_topic_id: Uuid,
+    input: MergeForumTopicGraphqlInput,
+) -> Result<GqlForumTopicMerge> {
+    require_topic_manage_permission(auth)?;
+    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
+
+    let result = ForumTopicMergeService::new(db.clone(), event_bus.clone())
+        .merge_topic(
+            tenant_id,
+            target_topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            MergeForumTopicInput {
+                operation_id: input.operation_id,
+                source_topic_id: input.source_topic_id,
+                reason: input.reason,
+            },
+        )
+        .await?;
+
+    Ok(result.into())
+}
+
+fn require_topic_manage_permission(auth: &AuthContext) -> Result<()> {
+    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: forum_topics:manage required",
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
+    match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
+            Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: tenant scope mismatch",
+            ))
+        }
+        Some(requested_tenant_id) => Ok(requested_tenant_id),
+        None => Ok(tenant.id),
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, InputObject)]
+pub struct MergeForumTopicGraphqlInput {
+    pub operation_id: Uuid,
+    pub source_topic_id: Uuid,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
+pub struct GqlForumTopicMerge {
+    pub operation_id: Uuid,
+    pub event_id: Uuid,
+    pub source_topic_id: Uuid,
+    pub target_topic_id: Uuid,
+    pub category_id: Uuid,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub moved_reply_count: i32,
+    pub moved_published_reply_count: i32,
+    pub resulting_published_reply_count: i32,
+    pub position_offset: i64,
+    pub merged_at: String,
+}
+
+impl From<ForumTopicMergeResult> for GqlForumTopicMerge {
+    fn from(value: ForumTopicMergeResult) -> Self {
+        Self {
+            operation_id: value.operation_id,
+            event_id: value.event_id,
+            source_topic_id: value.source_topic_id,
+            target_topic_id: value.target_topic_id,
+            category_id: value.category_id,
+            actor_id: value.actor_id,
+            reason: value.reason,
+            moved_reply_count: value.moved_reply_count,
+            moved_published_reply_count: value.moved_published_reply_count,
+            resulting_published_reply_count: value.resulting_published_reply_count,
+            position_offset: value.position_offset,
+            merged_at: value.merged_at.to_rfc3339(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_graphql::Value;
+    use rustok_api::{AuthContext, Permission, TenantContext};
+    use rustok_core::{MigrationSource, SecurityContext, UserRole};
+    use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
+    use rustok_taxonomy::TaxonomyModule;
+    use sea_orm::{
+        ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    };
+    use sea_orm_migration::SchemaManager;
+    use uuid::Uuid;
+
+    use crate::{
+        CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, TopicService,
+    };
+
+    use super::{MergeForumTopicGraphqlInput, execute_merge_forum_topic};
+
+    type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
+        let db_url = format!(
+            "sqlite:file:forum_topic_merge_graphql_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let mut options = ConnectOptions::new(db_url);
+        options
+            .max_connections(5)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options).await?;
+        db.execute_unprepared(
+            "CREATE TABLE users (\
+                id TEXT NOT NULL PRIMARY KEY, \
+                tenant_id TEXT NOT NULL, \
+                UNIQUE (tenant_id, id)\
+            )",
+        )
+        .await?;
+        let schema = SchemaManager::new(&db);
+        for migration in OutboxModule.migrations() {
+            migration.up(&schema).await?;
+        }
+        for migration in TaxonomyModule.migrations() {
+            migration.up(&schema).await?;
+        }
+        for migration in ForumModule.migrations() {
+            migration.up(&schema).await?;
+        }
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        Ok((db, event_bus))
+    }
+
+    async fn insert_user(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> TestResult<()> {
+        db.execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
+            vec![user_id.into(), tenant_id.into()],
+        ))
+        .await?;
+        Ok(())
+    }
+
+    fn tenant_context(tenant_id: Uuid) -> TenantContext {
+        TenantContext {
+            id: tenant_id,
+            name: "Topic merge GraphQL tenant".to_string(),
+            slug: "topic-merge-graphql".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn auth_context(tenant_id: Uuid, user_id: Uuid, permissions: Vec<Permission>) -> AuthContext {
+        AuthContext {
+            user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    async fn create_topics(
+        db: &DatabaseConnection,
+        event_bus: &TransactionalEventBus,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+    ) -> TestResult<(Uuid, Uuid)> {
+        let security = SecurityContext::new(UserRole::Admin, Some(actor_id));
+        let category_id = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "GraphQL merge".to_string(),
+                    slug: "graphql-merge".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await?
+            .id;
+        let service = TopicService::new(db.clone(), event_bus.clone());
+        let source_topic_id = service
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id,
+                    title: "GraphQL source".to_string(),
+                    slug: Some("graphql-source".to_string()),
+                    body: rustok_api::RichTextDocument::single_paragraph("Source"),
+                    metadata: serde_json::json!({}),
+                    tags: Vec::new(),
+                    channel_slugs: None,
+                },
+            )
+            .await?
+            .id;
+        let target_topic_id = service
+            .create(
+                tenant_id,
+                security,
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id,
+                    title: "GraphQL target".to_string(),
+                    slug: Some("graphql-target".to_string()),
+                    body: rustok_api::RichTextDocument::single_paragraph("Target"),
+                    metadata: serde_json::json!({}),
+                    tags: Vec::new(),
+                    channel_slugs: None,
+                },
+            )
+            .await?
+            .id;
+        Ok((source_topic_id, target_topic_id))
+    }
+
+    fn error_code(error: &async_graphql::Error) -> Option<String> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
+    #[tokio::test]
+    async fn merge_transport_enforces_scope_and_replays_one_receipt() -> TestResult<()> {
+        let (db, event_bus) = setup().await?;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        insert_user(&db, tenant_id, actor_id).await?;
+        let (source_topic_id, target_topic_id) =
+            create_topics(&db, &event_bus, tenant_id, actor_id).await?;
+        let tenant = tenant_context(tenant_id);
+        let operation_id = Uuid::new_v4();
+        let input = MergeForumTopicGraphqlInput {
+            operation_id,
+            source_topic_id,
+            reason: "Consolidate duplicate discussion".to_string(),
+        };
+
+        let denied = execute_merge_forum_topic(
+            &db,
+            &event_bus,
+            &tenant,
+            &auth_context(
+                tenant_id,
+                actor_id,
+                vec![Permission::FORUM_TOPICS_READ],
+            ),
+            None,
+            target_topic_id,
+            input.clone(),
+        )
+        .await
+        .expect_err("read-only actor must not merge topics");
+        assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
+
+        let manage_auth = auth_context(
+            tenant_id,
+            actor_id,
+            vec![Permission::FORUM_TOPICS_MANAGE],
+        );
+        let mismatch = execute_merge_forum_topic(
+            &db,
+            &event_bus,
+            &tenant,
+            &manage_auth,
+            Some(Uuid::new_v4()),
+            target_topic_id,
+            input.clone(),
+        )
+        .await
+        .expect_err("tenant override must fail closed");
+        assert_eq!(error_code(&mismatch).as_deref(), Some("PERMISSION_DENIED"));
+
+        let first = execute_merge_forum_topic(
+            &db,
+            &event_bus,
+            &tenant,
+            &manage_auth,
+            None,
+            target_topic_id,
+            input.clone(),
+        )
+        .await?;
+        let replay = execute_merge_forum_topic(
+            &db,
+            &event_bus,
+            &tenant,
+            &manage_auth,
+            Some(tenant_id),
+            target_topic_id,
+            input,
+        )
+        .await?;
+
+        assert_eq!(first, replay);
+        assert_eq!(first.operation_id, operation_id);
+        assert_eq!(first.event_id, operation_id);
+        assert_eq!(first.source_topic_id, source_topic_id);
+        assert_eq!(first.target_topic_id, target_topic_id);
+        assert_eq!(first.actor_id, actor_id);
+        assert_eq!(first.moved_reply_count, 0);
+        assert_eq!(first.position_offset, 0);
+        assert!(!first.merged_at.is_empty());
+
+        let _ = Value::Null;
+        Ok(())
+    }
+}
