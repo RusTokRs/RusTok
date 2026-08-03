@@ -70,6 +70,9 @@ pub enum ForumError {
     #[error("Forum topic merge operation conflicts with an existing command: {0}")]
     TopicMergeOperationConflict(Uuid),
 
+    #[error("Forum topic fork operation conflicts with an existing command: {0}")]
+    TopicForkOperationConflict(Uuid),
+
     #[error("Forum topic merge accepted solutions require explicit resolution: {0}")]
     TopicMergeSolutionConflict(Uuid),
 
@@ -164,6 +167,7 @@ impl ForumError {
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
+            Self::TopicForkOperationConflict(_) => "FORUM_TOPIC_FORK_OPERATION_CONFLICT",
             Self::TopicMergeSolutionConflict(_) => "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
             Self::TopicCanonicalResolutionConflict(_) => {
                 "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT"

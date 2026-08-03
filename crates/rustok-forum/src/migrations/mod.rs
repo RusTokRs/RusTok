@@ -50,6 +50,7 @@ mod m20260803_000017_add_forum_topic_canonical_resolution;
 mod m20260803_000018_add_forum_topic_merge_solution_resolution;
 mod m20260803_000019_allow_cross_category_topic_merge_redirect_edges;
 mod m20260803_000020_add_forum_topic_split_operations;
+mod m20260804_000021_add_forum_topic_fork_operations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -114,6 +115,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
             m20260803_000019_allow_cross_category_topic_merge_redirect_edges::Migration,
         ),
         Box::new(m20260803_000020_add_forum_topic_split_operations::Migration),
+        Box::new(m20260804_000021_add_forum_topic_fork_operations::Migration),
     ]
 }
 
