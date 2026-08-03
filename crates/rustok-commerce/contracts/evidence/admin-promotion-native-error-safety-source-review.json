@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
   "status": "commerce_admin_promotion_native_error_safety_source_reviewed_unvalidated",
-  "captured_at": "2026-07-31",
-  "base_main_sha": "c4149652fa9c5835336daa29156b1d3e7ba68ac9",
+  "captured_at": "2026-08-03",
+  "base_main_sha": "da09970d6a8f504b24dcf60dbc942b117e4d77fd",
   "review": {
     "mounted_endpoint_names_preserved": true,
     "public_function_signatures_preserved": true,
@@ -12,6 +12,7 @@
     "cart_promotion_owner_guard_reviewed": true,
     "port_error_public_sanitization_reviewed": true,
     "framework_error_text_removed": true,
+    "framework_debug_bounds_removed": true,
     "owner_port_error_text_removed": true,
     "identity_values_removed": true,
     "safe_shape_diagnostics_reviewed": true,
@@ -20,7 +21,8 @@
     "write_idempotency_preserved": true,
     "client_hydrate_contract_remains_on_canonical_adapter": true,
     "ssr_routes_to_safe_adapter": true,
-    "order_change_source_explicitly_not_claimed_safe": true
+    "order_change_type_only_contract_preserved": true,
+    "feature_diff_is_commerce_only": true
   },
   "execution": {
     "commands_run": [],
@@ -34,6 +36,6 @@
     "Compiler evidence is not retained.",
     "Runtime request and owner-failure traces are not retained.",
     "The focused source guard is updated but not executed.",
-    "Commerce admin order-change failures remain a separate mapper-cleanup slice."
+    "Other ecommerce mapper cleanup and non-PortError public envelopes remain open."
   ]
 }
