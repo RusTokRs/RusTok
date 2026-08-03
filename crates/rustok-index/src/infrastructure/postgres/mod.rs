@@ -1,3 +1,4 @@
+mod drift_digest_recorder;
 mod drift_finding_inspector;
 mod drift_finding_writer;
 mod mutation_store;
@@ -50,10 +51,10 @@ pub use mutation_store::{
     MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
 };
 pub use partition_admission::{
-    evaluate_partition_admission, PartitionAdmissionError, PartitionAdmissionOutcome,
-    PartitionAdmissionPolicy, PartitionAdmissionReason, PartitionBaselineEvidence,
-    PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
-    PartitionShadowEvidence, PartitionShadowPlan, PartitionStrategy,
+    PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
+    PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
+    PartitionMeasurementCoverage, PartitionRelationPlan, PartitionShadowEvidence,
+    PartitionShadowPlan, PartitionStrategy, evaluate_partition_admission,
 };
 pub use query_port::PostgresIndexQueryPort;
 pub use query_runtime::{
