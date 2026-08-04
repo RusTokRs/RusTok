@@ -10,7 +10,7 @@ This directory contains the detailed technical architecture documentation for `r
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Traditional SQL JOINs** | Low | Slow (Multi-table JOIN bottlenecks) | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
 | **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **External Search Sync (Elasticsearch / Algolia)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No (N+1 HTTP calls across microservices) | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
+| **External Search Sync (Elasticsearch / Algolia)** | High (Outbox / Event Relay) | Fast | Yes | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
 | **`rustok-index` (JSONB + Keyset Engine)** | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)** | **Immediate (Transactional Outbox)** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
 
 ---
