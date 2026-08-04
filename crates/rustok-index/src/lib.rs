@@ -94,9 +94,6 @@ impl RusToKModule for IndexModule {
     ) -> rustok_core::Result<()> {
         extensions.get_or_insert_with::<IndexSchemaSourceCatalog, _>(IndexSchemaSourceCatalog::new);
         extensions.get_or_insert_with::<IndexSourceCatalog, _>(IndexSourceCatalog::new);
-        extensions.get_or_insert_with::<IndexDriftSnapshotReaderCatalog, _>(
-            IndexDriftSnapshotReaderCatalog::new,
-        );
         extensions.get_or_insert_with::<PostgresIndexSourceFactoryCatalog, _>(
             PostgresIndexSourceFactoryCatalog::new,
         );
