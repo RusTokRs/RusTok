@@ -14,13 +14,15 @@ mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
 mod m20260714_900002_create_rbac_invalidation_state;
 mod m20260716_000001_artifact_permission_catalog;
 mod m20260717_000001_artifact_role_permissions;
+mod m20260803_000001_canonicalize_artifact_permissions;
 pub mod ports;
 mod repair;
 mod role_mutation;
 pub mod services;
 
 pub use artifact_permission_assignment::{
-    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
+    ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
+    ArtifactPermissionEventPublisher, ArtifactRolePermissionAssignmentCommand,
     ArtifactRolePermissionAssignmentResult, RbacArtifactPermissionAssignmentService,
     SeaOrmArtifactPermissionAuthorizer,
 };
@@ -75,9 +77,8 @@ pub use services::relation_permission_resolver::{
     PermissionCache, PermissionCacheLookup, RelationPermissionStore, invalidate_cached_permissions,
     resolve_permissions_from_relations, resolve_permissions_with_cache,
 };
-pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
+pub use services::runtime_permission_resolver::RuntimePermissionResolver;
 
-/// Build a read-only canonical system-role repair plan.
 pub async fn plan_system_role_repair(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Option<uuid::Uuid>,
@@ -92,10 +93,6 @@ pub async fn plan_system_role_repair(
     .await
 }
 
-/// Apply canonical system-role repair inside a caller-owned database
-/// transaction. Restricting this public boundary to `DatabaseTransaction`
-/// prevents external callers from mutating role definitions without an atomic
-/// commit boundary for the accompanying invalidation generation.
 pub async fn apply_system_role_repair_in_transaction(
     db: &sea_orm::DatabaseTransaction,
     tenant_id: Option<uuid::Uuid>,
@@ -127,6 +124,7 @@ impl MigrationSource for RbacModule {
             Box::new(m20260714_900002_create_rbac_invalidation_state::Migration),
             Box::new(m20260716_000001_artifact_permission_catalog::Migration),
             Box::new(m20260717_000001_artifact_role_permissions::Migration),
+            Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
         ]
     }
 }
@@ -147,6 +145,10 @@ impl RusToKModule for RbacModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["outbox"]
     }
 
     fn kind(&self) -> ModuleKind {

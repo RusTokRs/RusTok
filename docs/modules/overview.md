@@ -62,7 +62,7 @@ It is important to distinguish:
 | `outbox` | `rustok-outbox` | — |
 | `events` | `rustok-events-module` | `outbox` |
 | `tenant` | `rustok-tenant` | — |
-| `rbac` | `rustok-rbac` | — |
+| `rbac` | `rustok-rbac` | `outbox` |
 
 ### Optional
 
@@ -81,7 +81,7 @@ It is important to distinguish:
 | `order` | `rustok-order` | — |
 | `payment` | `rustok-payment` | — |
 | `fulfillment` | `rustok-fulfillment` | — |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `tenant` |
 | `marketplace_seller` | `rustok-marketplace-seller` | — |
 | `marketplace_listing` | `rustok-marketplace-listing` | `marketplace_seller`, `product` |
 | `marketplace_allocation` | `rustok-marketplace-allocation` | `order`, `marketplace_seller`, `marketplace_listing` |

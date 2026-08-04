@@ -2,465 +2,267 @@
 
 ## Source of truth
 
-This file is the canonical live implementation plan for RBAC. It owns the
-current implementation state, completed source phases, remaining priorities and
-targeted verification.
+This file is the canonical live implementation plan for RBAC. It records the current
+source state, open priorities, required evidence, and the periodic verification handoff.
 
-- `[x]` means the capability is present in `main` and protected by source-level
-  tests or architecture guards.
-- `[ ]` means implementation or verification is still required.
-- A source-complete item is not considered compiled or operationally verified
-  until the corresponding Rust and live-service checks have passed.
-- `docs/modules/implementation-plans-registry.md` contains only the current
-  status and nearest priority; it must not duplicate this backlog.
-- `docs/verification/rbac-server-modules-verification-plan.md` remains the
-  cross-platform verification checklist, not a second RBAC implementation plan.
+- `[x]` means the source contract is present on `main` or the active verification branch.
+- `[ ]` means landing or execution evidence remains required.
+- Source-ready is not compiled, migrated, transport-verified, or operationally verified.
 
-Last reconciled with `main`: 2026-08-01.
+Last reconciled with `main`: 2026-08-04 (`c6ae3db0caf64c4578cb76073e9b719e483fb953`).
+
+## Ownership boundary
+
+`rustok-rbac` owns permission decisions, role and permission relation semantics,
+canonical built-in role mutation policy, artifact permission admission and assignment,
+relation integrity, repair, durable authorization-generation storage, and RBAC
+integration contracts.
+
+`apps/server` owns authenticated adapters, caller transaction orchestration, cache
+adapters, best-effort invalidation delivery, worker supervision, and process telemetry.
+`rustok-events` owns sealed payloads and schema digests. `rustok-outbox` owns durable
+transactional transport. `rustok-migrations` owns the immutable global migration prefix
+and explicit append-only release tail.
+
+Claims, presentation roles, caches, projections, and event consumers are never
+permission or role-assignment authority.
 
 ## Current state
 
-`rustok-rbac` is the single tenant-policy owner for permission decisions,
-role/permission relations, canonical built-in role repair and authorization
-policy. The relation store is the assignment source of truth. No shadow policy
-engine or presentation-only role inference may participate in live
-authorization.
+The active cycle remains `cycle-001/core-rbac` and stays `in_progress`.
 
-The ownership boundary is:
+This source slice was reconstructed from the useful product changes in superseded draft
+PR #2870 onto current `main`. The temporary workflow used by that branch to diagnose a
+stale lock and migration prefix was deliberately excluded because repository policy does
+not permit task-specific workflow edits and the workflow encoded an obsolete migration
+tail.
 
-- `rustok-rbac` owns permission evaluation, relation persistence primitives,
-  transaction-typed repair APIs, relation-integrity and durable invalidation
-  generation migrations, and integration contracts;
-- `apps/server` owns authenticated host adapters, transaction orchestration,
-  request/process cache adapters, distributed invalidation delivery, runtime
-  supervision and process-level invalidation telemetry;
-- `rustok-api` owns the host-neutral `AuthPrincipalKind` contract and the
-  server-only typed request carrier; it does not own RBAC admission policy;
-- `rustok-telemetry` owns the bounded Prometheus collectors registered in the
-  canonical process registry; it does not own RBAC recovery decisions;
-- `RbacRoleAssignmentDbWriter` is an idempotent bootstrap/test persistence
-  primitive, while existing-user mutations use explicit transaction-owned or
-  committed entry points;
-- Redis/local PubSub is a best-effort fast path; the database-backed monotonic
-  generation is the recovery source of truth;
-- the admin overview remains an intentional native-only module-owned surface.
-  A GraphQL/REST management path requires an approved remote or headless
-  operator contract.
+The clean source slice provides:
 
-PR #2747 merged as `75b67f877eb405abe4e6761a16d6b7ece98bc103` and
-made principal admission one owner-defined contract across GraphQL, REST and
-native RBAC Admin. The host-neutral `RbacControlPlanePrincipal` keeps the owner
-crate independent of Axum and `rustok-api/server`.
+1. read-only `PermissionResolver` and `RuntimePermissionResolver` contracts, with the
+   server direct role-assignment store removed;
+2. exact role and status replay as no user update, durable generation reservation,
+   session revocation, relation mutation, or event;
+3. sealed `rbac.artifact_role_permission.assignment_changed` v1 publication in the
+   same owner transaction as relation and idempotency receipt;
+4. immutable language-neutral artifact permission definitions plus canonical localized
+   translations;
+5. exact definition identity and admitted scope on grants, receipts, authorization
+   reads, and events;
+6. tenant-composite role and actor foreign keys, exact-scope definition foreign keys,
+   and fail-closed parent behavior;
+7. explicit operator scope selection (`platform` or trusted routed `tenant`) without
+   preferred-scope fallback or a caller-supplied second tenant identity;
+8. one shared assignable permission-key contract across registration, assignment, and
+   event publication;
+9. an append-only fifth RBAC migration that upgrades legacy catalog, grant, and receipt
+   state and fails closed on ambiguous or orphan authority;
+10. downgrade validation that refuses to erase exact scope identity when canonical
+    state cannot be represented by the legacy selector;
+11. explicit SQLite upgrade and downgrade transactions that restore the pre-migration
+    schema after validation or destructive DDL failure;
+12. SQLite upgrade, rollback, failure-atomicity, scope-shadowing, cross-tenant,
+    parent-integrity, localization, immutability, and transactional event regressions;
+13. a global migration tail that preserves every entry already published by current
+    `main` and appends only `m20260803_000001_canonicalize_artifact_permissions`;
+14. fail-closed source guards for owner boundaries, exact scope, migration history,
+    release order, event identity, locale normalization, rollback identity, migration
+    atomicity, and removed execution paths.
 
-The current cycle-001 source slice replaces transport-metadata inference inside
-that owner policy with one explicit `AuthPrincipalKind`. The access-token resolver
-classifies validated claims once and stores the typed result on `CurrentUser`.
-HTTP/native middleware and GraphQL HTTP/WebSocket composition only propagate that
-result into `AuthPrincipalContext`; repeated grant/client/session interpretation is
-forbidden. RBAC transports have no compatibility fallback.
+## Findings
 
-The cycle-001 invalidation observability slice adds dedicated bounded metrics to
-the canonical telemetry registry and instruments the existing database watchdog.
-It does not add a second generation counter, cache authority or recovery path.
+- `P0=0`
+- `P1=11`
+  1. localized copy participated in authorization identity;
+  2. locale keys were not canonical and semantic duplicates were possible;
+  3. trigger-only parent checks admitted a concurrent parent update or delete race;
+  4. grants could bind tenant authority to an incorrect permission scope;
+  5. admitted authorization identity remained mutable;
+  6. preferred platform-versus-tenant lookup could shadow or fail to revoke an existing
+     grant;
+  7. an exact generated UUID transport was unusable because no owner read contract
+     exposed that identity;
+  8. registration admitted permission keys that assignment and event contracts rejected;
+  9. rewriting registered migration IDs would leave upgraded databases on legacy schema;
+  10. downgrade could erase canonical grant or receipt scope identity;
+  11. SQLite cutover failure could leave a partially renamed authorization schema.
+- `P2=1`: nil tenant registration scope.
+- `P3=2`: compatibility wording and obsolete broad lint handling.
+
+All listed findings are source-fixed in the active slice. None is execution-verified.
 
 ## FFA/FBA boundary
 
-- FFA status: `in_progress`
-- FBA status: `boundary_ready`
-- Structural shape: `core_transport_ui`
-- FBA provider contract: `RbacPermissionDecisionPort` /
-  `rbac.permission_decision.v1` in
-  `crates/rustok-rbac/contracts/rbac-fba-registry.json`.
-- Static and runtime-order evidence:
-  `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json`
-  and `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
-- `scripts/verify/verify-rbac-admin-boundary.mjs` and `npm run verify:rbac:fba`
-  lock the native-only boundary, provider metadata and authorization order.
-- The in-process provider is `RbacPermissionDecisionProvider`: it resolves the
-  UUID tenant and authenticated user actor from `PortContext`, then delegates
-  to the authoritative `PermissionResolver`. Request claims are not a second
-  authorization source.
-- Do not promote FBA to `transport_verified` until composed live-host and
-  degraded-path evidence is recorded.
+- FFA: `in_progress`
+- FBA: `boundary_ready`
+- Provider: `RbacPermissionDecisionPort` / `rbac.permission_decision.v1`
+- Promotion remains blocked on composed live-host, degraded-path, native operator, and
+  same-revision runtime evidence.
 
-## Consolidated implementation phases
+## Implementation phases
 
-### Phase 1. Principal classification and control-plane boundary — source complete
+### Principal and tenant trust — source complete, execution pending
 
-- [x] Distinguish direct sessions, OAuth authorization-code users and OAuth
-  client-credentials principals.
-- [x] Fail closed for malformed or ambiguous subject/grant combinations.
-- [x] Intersect OAuth-granted permissions with token scopes before deriving the
-  effective role used by hierarchy checks.
-- [x] Prevent service principals and OAuth delegated users from entering direct
-  role-assignment or role-metadata control-plane operations.
-- [x] Require a direct grant, a valid session and matching tenant context for
-  GraphQL, REST and native RBAC control-plane access.
-- [x] Keep authorization decisions on typed permissions rather than inferred
-  presentation roles.
+- [x] Use one typed principal classifier and fail closed for malformed facts.
+- [x] Require direct, session-bound, tenant-matching principals for control-plane writes.
+- [x] Keep authoritative and cached relation reads tenant-safe.
+- [x] Enforce cross-tenant base role and permission relation integrity.
+- [ ] Execute focused API/server checks and live negative transport gates.
 
-### Phase 2. Tenant isolation and persistence integrity — source complete
+### Canonical user-role mutation — source-ready
 
-- [x] Require authoritative permission resolution to confirm that the user
-  belongs to the requested tenant.
-- [x] Filter cached relation loading through the user's actual tenant before
-  resolving requested-tenant roles.
-- [x] Enforce cross-tenant `user_roles` and `role_permissions` integrity at the
-  database boundary.
-- [x] Keep authoritative and cached resolvers fail-closed when foreign or
-  malformed relations are encountered.
-- [x] Align regression fixtures with database-level rejection of cross-tenant
-  relation corruption.
+- [x] Keep canonical role policy in `rustok-rbac`.
+- [x] Lock target and continuity facts in the caller transaction.
+- [x] Distinguish exact no-op, malformed relation repair, and role replacement.
+- [x] Publish relation, generation, and typed event atomically.
+- [x] Preserve exact role/status replay as a complete side-effect no-op.
+- [x] Confine initial role assignment to caller-owned user creation.
+- [ ] Execute owner policy, server adapter, Outbox, status, and architecture tests.
 
-### Phase 3. Transactional role and user mutation safety — source complete
+### Resolver ownership — source-ready
 
-- [x] Separate transaction-owned role replacement from the committed public
-  mutation entry point.
-- [x] Keep the legacy low-level role alias crate-private and confined to new-user
-  creation inside a caller-owned transaction.
-- [x] Lock the target user before committed role replacement and serialize
-  concurrent changes for the same identity.
-- [x] Lock/check the built-in super-admin role and reject demotion, disabling or
-  deletion of the last active super administrator.
-- [x] Treat an exact single-system-role replacement as a no-op without advancing
-  the global invalidation generation.
-- [x] Repair multiple or malformed assignments even when one assignment already
-  matches the requested role.
-- [x] Revoke active sessions when a user is disabled, banned, deleted or has a
-  password change that requires revocation.
-- [x] Reserve invalidation generations only for mutations that can change an
-  existing authorization snapshot.
+- [x] Make resolver contracts read-only.
+- [x] Remove `RoleAssignmentStore` and the server direct persistence adapter.
+- [x] Retain no deprecated mutation alias, compatibility wrapper, or local-only bypass.
+- [ ] Compile and execute the focused resolver architecture guard.
 
-### Phase 4. Durable cache invalidation and replica recovery — source complete
+### Artifact permission identity, mutation, and events — source-ready
 
-- [x] Add the singleton `rbac_invalidation_state` migration with an idempotent
-  seed that preserves an already advanced generation.
-- [x] Reserve the next permission invalidation generation inside the same
-  database transaction as the authorization mutation.
-- [x] Publish the committed database generation directly through the local and
-  Redis invalidation fast paths; do not maintain a separate Redis counter.
-- [x] Treat post-commit PubSub/Redis delivery failures as recoverable and never
-  return a false mutation failure after a successful database commit.
-- [x] Share durable generation storage through transaction-typed
-  `rustok-rbac` APIs so server and operational tools use one implementation.
-- [x] Reconcile missed, unverified, duplicate, stale and gapped invalidation
-  events through a shared applied-generation checkpoint.
-- [x] Clear all permission snapshots when durable recovery proves a missed
-  generation or listener lag.
-- [x] Supervise the database watchdog and local/Redis/reconciliation workers;
-  replace terminal runtimes and restart workers after panic or unexpected exit.
-- [x] Allow pre-install startup before the generation table exists and activate
-  reconciliation after migrations become visible.
+- [x] Add sealed artifact role-permission assignment event v1.
+- [x] Include exact immutable definition identity in durable state and events.
+- [x] Keep validation, idempotency, mutation, and publication in owner code and one
+  transaction.
+- [x] Emit no event for exact retry or durable state no-op.
+- [x] Roll back mutation and receipt when required publication fails.
+- [x] Store language-neutral definitions separately from localized translations.
+- [x] Normalize locale tags, use `VARCHAR(32)`, and reject semantic duplicates.
+- [x] Reject nil tenant registration scope before opening a transaction.
+- [x] Make scope, installation, module, release, and permission key immutable.
+- [x] Use explicit platform/tenant selection derived from trusted routing context.
+- [x] Enforce one 256-byte, trimmed, control-free permission-key contract.
+- [x] Enforce tenant-composite role/actor and exact definition/scope parents.
+- [x] Preserve account deactivation/redaction and fail closed on unsupported hard delete.
+- [x] Add SQLite integrity, upgrade, rollback, explicit-scope, and Outbox regressions.
+- [x] Add fail-closed source verifiers.
+- [ ] Generate and review the exact-head event digest.
+- [ ] Execute contract, transaction, SQLite, PostgreSQL, adapter, verifier, migration,
+  rollback, and module gates.
 
-### Phase 5. Canonical role repair and operational tooling — source complete
+### Append-only schema upgrade — source-ready, execution pending
 
-- [x] Split the public repair surface into a read-only plan API and a
-  `DatabaseTransaction`-typed apply API.
-- [x] Apply system-role repair and durable generation reservation in one
-  transaction in the server host.
-- [x] Make `rbac repair-system-roles --apply` commit repair plus generation
-  atomically and roll back explicitly on failure.
-- [x] Report the committed durable generation from the CLI and remove the old
-  restart-required result for successfully applied repairs.
-- [x] Invalidate all affected local snapshots after committed repair and use the
-  database generation to recover other replicas.
+- [x] Preserve historical RBAC migration bodies.
+- [x] Register `m20260803_000001_canonicalize_artifact_permissions` as a fifth RBAC
+  migration instead of changing an existing migration ID.
+- [x] Backfill one immutable definition per exact legacy identity and canonical
+  translations without fabricating authority.
+- [x] Fail closed when legacy grants or receipts are orphaned or ambiguous.
+- [x] Prevent lossy rollback when distinct scoped state collapses to one legacy key.
+- [x] Require every grant and operation receipt to retain one representable legacy
+  selector before downgrade.
+- [x] Wrap SQLite upgrade and downgrade in explicit transactions.
+- [x] Register a PostgreSQL backfill fixture in
+  `docs/migrations/backfill-contracts.json`.
+- [x] Preserve the current `main` migration tail and append only the RBAC cutover.
+- [ ] Execute Migration Compatibility preflight, clean PostgreSQL apply, N-1 upgrade,
+  fixture assertion, rollback, and schema-contract checks on one exact head.
 
-### Phase 6. Source guardrails and regression coverage — source complete, execution pending
+### Durable invalidation and recovery — source complete, execution pending
 
-- [x] Add unit/regression coverage for generation commit/rollback, idempotent
-  migration replay, exact role no-op, malformed multiple assignments and
-  last-super-admin rejection.
-- [x] Add architecture guards for control-plane ownership, tenant integrity,
-  transaction-only mutation APIs, split repair APIs, atomic CLI repair and
-  unified invalidation generation.
-- [x] Add worker lifecycle guards and panic/restart regression fixtures for the
-  durable watchdog and invalidation listeners.
-- [x] Keep the FFA/FBA provider registry and native-only admin boundary guarded
-  by existing static verification scripts.
-- [x] Guard artifact-role permission REST admission so the owner direct-session
-  policy precedes `modules:manage`, tenant equality is mandatory and the audit
-  actor comes from the authenticated context.
-- [x] Guard native RBAC Admin metadata bootstrap with the same owner principal
-  policy before `settings:read`; remove the obsolete tenant-only helper.
-- [x] Add bounded invalidation metric registration tests, signed lag regression
-  coverage and `verify-rbac-invalidation-observability.mjs` to lock the canonical
-  registry, watchdog transitions, operator policy and active cursor.
-- [x] Add `verify-rbac-explicit-principal-kind.mjs` and update the Rust/source
-  architecture guards so the token resolver is the single classifier, every RBAC
-  transport requires typed principal context and the owner cannot reintroduce
-  grant/client/session inference.
-- [ ] Execute the added Rust tests and architecture guards in a toolchain-enabled
-  environment and fix any compile, formatting or lint failures.
+- [x] Reserve monotonic database generation in authorization mutation transactions.
+- [x] Use local/Redis publication only as best-effort fast paths.
+- [x] Recover missed, stale, duplicate, and gapped generations from one checkpoint.
+- [x] Export bounded lag, generation, worker, and recovery telemetry.
+- [x] Retain source packets for PostgreSQL concurrency (#2849), watchdog recovery
+  (#2853), Redis restart/outage (#2856), and CLI repair propagation (#2862).
+- [ ] Execute and retain all four packets on one reconciled revision.
+- [ ] Execute and retain the incident packet from #2846.
 
-## Remaining work, in priority order
+## Remaining work
 
-### P0. Compile and targeted verification
+### P0. Exact-head verification
 
-- [ ] Run formatting, compilation, Clippy and targeted API/RBAC/server/CLI tests
-  on the reconciled `main` revision.
-- [ ] Record successful module validate/test evidence for `rbac`.
-- [ ] Execute the existing FFA/FBA, invalidation-observability and explicit-
-  principal-kind verification scripts against the same revision.
-- [ ] Resolve every failure before claiming the source-complete phases are
-  compiled verified.
+- [ ] Generate and review the artifact event contract digest.
+- [ ] Run formatting, Events/RBAC/Admin/server compilation, Clippy, focused Rust/Node
+  tests, and module validate/test on the final exact head.
+- [ ] Run canonical SQLite proofs and real PostgreSQL clean apply, N-1 upgrade,
+  integrity, canonical-locale, explicit-scope, parent-delete concurrency, and rollback.
+- [ ] Resolve every product failure before claiming verification.
 
-### P0. Database concurrency and multi-replica recovery evidence
+### P0. Runtime evidence
 
-- [ ] Add PostgreSQL integration evidence for concurrent role replacement,
-  last-active-super-admin serialization and unique monotonic generation
-  allocation.
-- [ ] Exercise at least two server replicas with Redis available, unavailable,
-  restarted and with intentionally missed PubSub events.
-- [ ] Prove that the mutating replica invalidates immediately and that another
-  replica catches up through the durable database generation without serving a
-  stale authorization snapshot beyond the documented reconciliation bound.
-- [ ] Exercise CLI system-role repair while live replicas are running and prove
-  they recover from the committed generation without a restart.
+- [ ] Execute #2849 PostgreSQL concurrency.
+- [ ] Execute #2853 independent-process watchdog recovery.
+- [ ] Execute #2856 real Redis available/outage/restart recovery.
+- [ ] Execute #2862 registered-CLI repair propagation.
+- [ ] Retain one same-revision result set within documented bounds.
 
-### P1. Invalidation observability and incident operations
+### P1. Operator parity and lifecycle
 
-- [x] Export metrics for database generation, locally applied generation,
-  generation lag, worker running/restart state and recovery/full-clear counts.
-- [x] Define alert thresholds for non-zero sustained lag, repeated worker
-  restarts, generation regression and failed database reads.
-- [x] Add an operator runbook covering Redis outage, missed event, generation
-  regression, repair execution and verification of effective permissions.
-- [ ] Make one policy incident traceable to the evaluator decision, relation
-  state, cache snapshot, durable generation and recovery action.
+- [ ] Decide whether remote/headless role management is required.
+- [ ] Define custom-role and arbitrary permission mutation ownership.
+- [ ] Route native operator management through owner policy without parallel relation
+  writes.
+- [ ] Identify idempotent, non-authoritative event consumers.
+- [ ] Complete incident and live negative transport evidence.
 
-### P1. Explicit actor-kind contract
+### P2. Deferred hard-delete workflow and promotion evidence
 
-- [x] Add an explicit actor/principal kind to the shared authorization context
-  and relevant ports instead of permanently inferring control-plane eligibility
-  from `client_id`, `grant_type` and `session_id` combinations.
-- [x] Preserve fail-closed compatibility during migration for direct users,
-  authorization-code users and client-credentials principals.
-- [x] Add boundary tests proving that only the explicit direct-user actor kind
-  can execute control-plane mutations.
-
-### P1. Module-owned operator role and permission flows
-
-- [ ] Define the approved role/permission mutation contract in the owner package,
-  including validation, hierarchy, tenant scope, continuity and integration
-  event requirements.
-- [ ] Route native admin management actions through the module facade without
-  adding host-owned relation writes or a parallel `/roles` implementation.
-- [ ] Publish and verify the expected integration events for committed role and
-  permission changes.
-- [ ] Decide whether a remote/headless GraphQL or REST management contract is a
-  real product requirement; do not add one speculatively.
-
-### P2. Live FBA evidence and promotion
-
-- [ ] Exercise `RbacPermissionDecisionPort` in a composed host with tenant scope,
-  representative claims, deadlines, cache hits/misses and degraded behavior.
-- [ ] Prove that the module evaluator remains the only decision engine for both
-  allowed and denied requests.
-- [ ] Record provider/consumer/fallback evidence and promote FBA only when the
-  `transport_verified` gate is satisfied.
-- [ ] Complete native operator parity evidence before considering FFA
-  `parity_verified`.
-
-## Explicit principal-kind correction (2026-08-01)
-
-- Status: `source_ready_unvalidated`.
-- Severity: `P1` because control-plane authority was reconstructed independently
-  from string grant metadata in the owner policy after authentication had already
-  validated the principal shape.
-- Root cause: `RbacControlPlanePrincipal` carried `client_id`, `grant_type` and
-  `session_id`; every adapter copied those fields and the owner repeated the
-  classification instead of consuming one typed trusted fact.
-- [x] Add host-neutral `AuthPrincipalKind::{DirectUser, DelegatedUser, Service}`
-  outside the `rustok-api/server` feature.
-- [x] Add server-only `AuthPrincipalContext` and an Axum extractor while leaving
-  existing `AuthContext` transport metadata unchanged for unrelated consumers.
-- [x] Classify validated claims once in the access-token resolver, store the typed
-  result on `CurrentUser`, and reject unknown or inconsistent combinations before
-  any request context or module policy is constructed.
-- [x] Propagate `CurrentUser.principal_kind` through HTTP/native middleware and
-  GraphQL HTTP/WebSocket composition without reinterpreting grant/client/session
-  metadata.
-- [x] Reduce `RbacControlPlanePrincipal` to tenant id plus typed kind and remove
-  all owner references to client, grant and session metadata.
-- [x] Require typed context in GraphQL role reads/writes, REST artifact-role
-  permission writes and native RBAC Admin before effective permission admission.
-- [x] Deny delegated users and services even when their effective permission set
-  contains the required management permission; admit only typed direct users with
-  authenticated/routed tenant equality.
-- [x] Update owner/unit/REST/native architecture guards and add
-  `scripts/verify/verify-rbac-explicit-principal-kind.mjs`.
-- [x] Document the contract in
-  `crates/rustok-rbac/docs/explicit-principal-kind.md`.
-- [ ] Execute API/RBAC/Admin/server compilation, focused tests, source verifiers
-  and live negative transport requests on the same revision.
-
-## Durable invalidation observability correction (2026-08-01)
-
-- Status: `source_ready_unvalidated`.
-- Severity: `P1` because stale authorization recovery lacked dedicated lag,
-  worker-health and full-clear telemetry plus a bounded incident response policy.
-- Root cause: the canonical watchdog emitted logs and generic event-error counters,
-  but operators could not directly compare the database generation with the
-  process checkpoint, distinguish lag from regression, or alert on worker/read
-  failures without reconstructing state from logs.
-- [x] Add one `rustok-telemetry` metric module registered in the existing process
-  registry; do not create a second registry or generation authority.
-- [x] Export durable generation, applied generation, signed lag and watchdog
-  running state without tenant, user, role, permission, session, client or cache-key
-  labels.
-- [x] Count bounded watchdog restart reasons, database read failures, recovery
-  reasons and process-wide permission snapshot clears.
-- [x] Instrument the existing database watchdog before and after recovery so
-  positive lag is visible during catch-up, zero after successful application and
-  negative during database regression.
-- [x] Retain the monotonic local checkpoint on database regression while clearing
-  permission snapshots; telemetry must not normalize the unsafe state to zero.
-- [x] Add unit coverage for signed lag and metric registration plus the focused
-  source verifier `scripts/verify/verify-rbac-invalidation-observability.mjs`.
-- [x] Document alert thresholds and recovery procedures for Redis outage/restart,
-  missed PubSub, generation regression and canonical role repair.
-- [ ] Execute telemetry/server tests and the source verifier on the same revision.
-- [ ] Retain one real or dedicated integration incident packet connecting evaluator
-  decision, relation state, cache snapshot, durable generation and recovery action.
-
-## Tenant trust boundary correction (2026-07-31)
-
-- Status: `source_ready_unvalidated`.
-- Severity: `P0` for authenticated/resolved tenant mismatch; `P1` for raw native
-  context-error serialization.
-- [x] RBAC Admin bootstrap now requires authenticated and middleware-resolved
-  tenant equality before `SETTINGS_READ` permission admission or tenant data use.
-- [x] Mismatches fail closed with a static public response and structured tenant
-  diagnostics.
-- [x] Auth and tenant extractor failures return fixed public messages; typed
-  causes stay in server diagnostics.
-- [x] `scripts/verify/verify-rbac-admin-tenant-scope.mjs` locks ordering, public
-  error safety, direct tracing dependency and exactly one routed bootstrap guard.
-- [x] Focused unit coverage retains matching and mismatched tenant cases.
-- [ ] Same-SHA `rustfmt`, `cargo check -p rustok-rbac-admin --features ssr`,
-  focused unit execution and composed native parity remain required.
-- This correction was delivered during the `core/tenant` cross-module work unit
-  and is carried evidence for the now-active `core/rbac` verification item.
-
-## Artifact permission and role-metadata control-plane correction (2026-07-31)
-
-- Status: `merged_partially_compiled`.
-- Merge: PR #2747, commit
-  `75b67f877eb405abe4e6761a16d6b7ece98bc103`.
-- Severity: `P0` invalid authorization grant for REST mutation; `P1` cross-surface
-  admission inconsistency for native role/permission metadata.
-- Root cause: the REST PUT/DELETE artifact-role permission adapter admitted any
-  authenticated principal with effective `modules:manage`, while native RBAC
-  Admin bootstrap admitted any principal with `settings:read`. GraphQL correctly
-  required a direct session-bound user. Tenant OAuth authorization-code and
-  client-credentials principals could therefore mutate artifact grants or read
-  control-plane role metadata when their narrowed authority retained those
-  permissions.
-- [x] Add one host-neutral owner policy over
-  `RbacControlPlanePrincipal`; `rustok-rbac` remains independent of the
-  `rustok-api/server` feature and Axum context types.
-- [x] Reuse that owner policy from GraphQL, REST and native RBAC Admin rather than
-  maintaining transport-specific principal classifiers.
-- [x] Require typed `DirectUser` principal context and authenticated/routed tenant
-  equality before `modules:manage` or `settings:read` admission.
-- [x] Bind the durable REST operation actor only from trusted
-  `AuthContext.user_id`; request payloads cannot supply or replace it.
-- [x] Remove the obsolete native generic tenant-only helper and retain static
-  public denials plus structured, non-secret diagnostics.
-- [x] Add owner unit tests, REST helper tests,
-  `rbac_artifact_permission_control_plane_guard` and the updated source verifiers
-  for delegated/service denial, tenant mismatch, permission denial, typed-policy
-  composition and admission order.
-- [x] The default `rustok-rbac` crate compiled on exact PR head
-  `3cf4b3a44980ca257f7f53849e905673141db289` inside Rust-host workflow run
-  `30650883159` before that workflow hit issue #2740.
-- [ ] Same-SHA formatting, all-feature RBAC compile, RBAC Admin SSR compile,
-  server compile, focused unit/architecture/verifier execution and transport-
-  level negative requests are still required.
+- [ ] If hard deletion enters product scope, implement one owner transaction that removes
+  receipts, grants, definitions/translations, and parent rows in documented order.
+- [ ] Exercise provider, consumer, and degraded paths in a composed host.
+- [ ] Prove the RBAC evaluator remains the only decision engine.
+- [ ] Complete native operator parity before FFA promotion.
 
 ## Verification commands
 
-- Contract tests cover every public use case.
-
 ```bash
 cargo fmt --all -- --check
+cargo run -p rustok-events --example event_contract_digests -- --write
 cargo check -p rustok-api
 cargo check -p rustok-api --features server
-cargo check -p rustok-telemetry
-cargo check -p rustok-rbac
+cargo check -p rustok-events --all-targets
 cargo check -p rustok-rbac --all-features
 cargo check -p rustok-rbac-admin --features ssr
-cargo check -p rustok-rbac-cli
 cargo check -p rustok-server --lib
-cargo test -p rustok-api authenticated_facts_classify_fail_closed
-cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds
-cargo test -p rustok-telemetry rbac_invalidation_metrics
-cargo test -p rustok-rbac --all-features
-cargo test -p rustok-rbac-admin --features ssr
-cargo test -p rustok-migrations --lib rbac_system_role_repair_tests
-cargo test -p rustok-rbac-cli
-cargo test -p rustok-server --lib rbac_invalidation_generation
-cargo test -p rustok-server --lib rbac
-cargo test -p rustok-server \
-  --test rbac_artifact_permission_control_plane_guard \
-  --test rbac_cache_invalidation_architecture_guard \
-  --test rbac_mutation_api_architecture_guard \
-  --test rbac_migration_registration_guard \
-  --test rbac_startup_invalidation_architecture_guard
-cargo clippy -p rustok-rbac --all-features -- -D warnings
-cargo clippy -p rustok-rbac-cli -- -D warnings
-cargo clippy -p rustok-server --lib -- -D warnings
-cargo xtask module validate rbac
-cargo xtask module test rbac
+cargo test -p rustok-events --test rbac_artifact_permission_contracts
+cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite
+cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite
+cargo test -p rustok-rbac --test artifact_permission_upgrade_sqlite
+cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail
+cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard
+cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard
+cargo test -p rustok-server --test rbac_mutation_api_architecture_guard
+node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs
+node scripts/verify/verify-rbac-artifact-permission-outbox.mjs
+node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
 node scripts/verify/verify-rbac-explicit-principal-kind.mjs
 node scripts/verify/verify-rbac-invalidation-observability.mjs
-node scripts/verify/verify-rbac-admin-tenant-scope.mjs
-npm run verify:rbac:admin-boundary
-npm run verify:rbac:fba
+cargo xtask module validate rbac
+cargo xtask module test rbac
 ```
 
-PostgreSQL concurrency and multi-replica Redis failure/recovery scenarios remain
-manual or dedicated integration-environment gates until an approved automated
-harness owns them.
+No command above is claimed as passed until its exact-head workflow or retained execution
+packet completes successfully.
 
 ## Completion gates
 
-- Source-complete phases become **compiled verified** only after the targeted
-  commands pass on the same revision.
-- Durable invalidation becomes **operationally verified** only after PostgreSQL
-  concurrency and multi-replica failure/recovery evidence passes.
-- FBA remains `boundary_ready` until composed provider/consumer/fallback
-  evidence passes.
-- FFA remains `in_progress` until approved module-owned management flows and
-  native parity evidence are complete.
-
-## Change rules
-
-1. Keep permission evaluation, relation semantics, repair and durable generation
-   storage in `rustok-rbac`.
-2. Keep authenticated host orchestration, request/process cache adapters and
-   runtime worker supervision in `apps/server`; do not duplicate relation writes
-   there.
-3. Require a caller-owned transaction for low-level authorization mutations and
-   invalidate only after successful commit.
-4. Treat Redis/local PubSub as a fast path and the database generation as the
-   recovery source of truth.
-5. Update this plan with every RBAC contract or phase-status change; keep the
-   central implementation-plan registry limited to status and nearest priority.
-6. Update `rustok-module.toml`, local runtime docs and
-   `docs/modules/registry.md` when ownership or FFA/FBA boundary status changes.
-7. Do not mark source, compiled, live-service or transport verification complete
-   without the corresponding evidence.
+- Source-ready becomes verified only after exact-head commands pass.
+- Artifact event review requires generator-produced digest output.
+- Artifact relation integrity requires retained SQLite and PostgreSQL execution.
+- Migration integrity requires immutable-prefix, clean-apply, N-1 upgrade, fixture,
+  downgrade selector identity, failure atomicity, and rollback evidence.
+- Durable invalidation requires retained PostgreSQL/watchdog/Redis/CLI evidence.
+- FBA remains `boundary_ready`; FFA and `core/rbac` remain `in_progress`.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-08-01`
-- Scope inspected: `access-token claim validation and single-source typed principal classification; explicit principal propagation through HTTP/native middleware and GraphQL HTTP/WebSocket composition; GraphQL role reads/writes, REST artifact-role permission writes and native RBAC Admin admission; tenant-filtered relation resolution; generation-aware cache fill; committed role replacement; canonical repair; invalidation worker/gap-tracker composition and bounded recovery observability`
-- Findings: `P0=0, P1=1, P2=0, P3=0`
-- Fixed in this pass: `added host-neutral AuthPrincipalKind and server-only AuthPrincipalContext; made the access-token resolver the only classifier and stored the result on CurrentUser; made HTTP/native and GraphQL composition propagation-only; reduced RbacControlPlanePrincipal to typed kind plus tenant id; removed owner and adapter fallback to client_id/grant_type/session_id; required typed context before GraphQL, REST and native permission admission; added resolver/unit, Rust architecture and source regression guards plus an owner contract document`
-- Remaining risks or blockers: `the explicit-kind and observability corrections are source-ready but unexecuted. Same-SHA formatting, rustok-api default/server, RBAC all-feature, RBAC Admin SSR and server compilation, focused Rust/source verifiers, module gates and live negative transport requests remain absent. PostgreSQL mutation concurrency, unique durable generation allocation, multi-replica Redis outage/restart/missed-publication recovery, canonical repair propagation, one complete incident trace, module-owned management flow and FFA/FBA evidence remain open. Issue #2740 still blocks the known Rust-host path before the server build.`
-- Evidence: `source review confirms AuthPrincipalKind is available without rustok-api/server; classify_access_token_claims delegates to the shared fail-closed classifier and CurrentUser carries the typed result; middleware and GraphQL HTTP/WebSocket only propagate it; AuthPrincipalContext is mandatory in each RBAC transport; the owner policy contains no client_id, grant_type or session_id fields; delegated and service kinds are denied before effective management permission checks. Updated Rust/source guards lock the single-source typed contract and active cursor. No formatting, compilation, test, verifier, workflow, CI, PostgreSQL or Redis command is claimed as executed in this pass.`
-- Next action: `run the targeted API/auth-resolver/RBAC/Admin/server checks and focused principal/tenant source verifiers on one revision; resolve failures, then retain PostgreSQL concurrency and two-replica Redis recovery evidence before continuing module-owned role/permission management and incident-trace P1 work`
-- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-api authenticated_facts_classify_fail_closed && cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`
+- Last verified at (UTC): `2026-08-04`
+- Scope inspected: `resolver ownership; canonical user-role mutation; effective status replay; artifact permission identity, locale normalization, explicit scope, database integrity, transactional event publication, append-only schema upgrade, downgrade scope preservation, SQLite failure atomicity, current-main migration release order, and clean reconstruction from superseded draft PR #2870`
+- Findings: `P0=0, P1=11, P2=1, P3=2`
+- Fixed in this pass: `reconstructed the RBAC product source on current main without the temporary workflow; removed server-owned role mutation paths; preserved exact role/status no-op behavior; introduced immutable language-neutral artifact permission definitions and owner translations; bound grants, receipts, reads, and events to exact scope identity; aligned permission-key contracts; added same-transaction Outbox publication; added a fail-closed append-only cutover migration with SQLite upgrade/rollback coverage; and preserved the complete current-main global migration tail before appending the RBAC cutover`
+- Remaining risks or blockers: `formatting, compilation, focused tests, source/module gates, generated event digest, Migration Compatibility, PostgreSQL clean apply and N-1 upgrade, concurrency and rollback evidence, live negative transports, watchdog/Redis/CLI/incident packets, native operator parity, and FFA/FBA evidence remain absent. Issue #2740 remains an infrastructure blocker for the known Rust-host path unless a current run proves otherwise.`
+- Evidence: `source inspection and committed regression files only. The clean source tree is based on main c6ae3db0caf64c4578cb76073e9b719e483fb953; the task-specific workflow is absent; the global migration registry differs by one append-only RBAC tail entry. No formatting, compiler, test, verifier, database, Redis, workflow, CI, or production pass is claimed.`
+- Next action: `run the exact-head targeted commands, generate the event digest, resolve product failures, then execute PostgreSQL integrity and runtime recovery packets before considering core/rbac complete`
+- Resume command: `cargo fmt --all -- --check && cargo run -p rustok-events --example event_contract_digests -- --write && cargo check -p rustok-events --all-targets && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-events --test rbac_artifact_permission_contracts && cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite && cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite && cargo test -p rustok-rbac --test artifact_permission_upgrade_sqlite && cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail && cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard && cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard && cargo test -p rustok-server --test rbac_mutation_api_architecture_guard && node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs && cargo xtask module validate rbac && cargo xtask module test rbac`

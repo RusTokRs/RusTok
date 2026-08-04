@@ -76,6 +76,7 @@ const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
     "m20260803_000007_add_translation_target_support",
     "m20260803_000016_add_blog_category_translation_target_support",
     "m20260803_000017_add_translation_target_support",
+    "m20260803_000001_canonicalize_artifact_permissions",
 ];
 
 struct ModuleMigrationSource {
@@ -897,7 +898,6 @@ mod tests {
             "server migrator must include search typo-tolerance indexes migration"
         );
     }
-
     #[test]
     fn migrator_includes_iggy_connector_settings() {
         let names: Vec<String> = Migrator::migrations()
