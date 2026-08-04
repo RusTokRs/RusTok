@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -1584,7 +1584,7 @@ Preserve revisions, attachments, mentions and audit. Remap reply positions
 safely, deduplicate subscriptions, revalidate solutions and ACL, update
 category counters and create canonical URL aliases.
 
-### Delivered through `FORUM-21N`
+### Delivered through `FORUM-21R`
 
 - FORUM-21A adds the bounded idempotent topic-move owner with checked category
   counters, immutable operation receipt and unchanged topic identity;
@@ -1609,6 +1609,21 @@ category counters and create canonical URL aliases.
   one UUID operation identity across an exact retry, rotate it when the command
   shape changes, require an explicit source/target solution winner only when
   both topics are solved, and display the immutable owner receipt;
+- FORUM-21O selects direct authenticated native owner composition for Leptos
+  SSR/hydrate while retaining the existing GraphQL mutations for CSR/headless
+  parity, with no cross-path fallback and no owner identity in request DTOs;
+- FORUM-21P adds the idempotent selected-reply split owner with an immutable
+  receipt and `forum.topic.split` event, parent-closed movement, preserved reply
+  identity and relations, exact topic-local access cloning and checked counter
+  reconciliation;
+- FORUM-21Q adds the idempotent reply-branch fork owner with deterministic copied
+  reply identities, bounded revision/mention/quote provenance, exact access and
+  tag cloning, source immutability and an explicit votes/subscriptions/read-state/
+  solution non-copy policy;
+- FORUM-21R adds the routed-tenant, manager-only GraphQL split transport. The
+  additive `splitForumTopicReplies` field delegates the complete command to
+  `ForumTopicSplitService::split_selected_replies` and returns the immutable
+  owner receipt without reading split audit tables or duplicating owner policy;
 - every ordinary, resolved, same-category and cross-category merge retains the
   exact `forum.topic.merged` schema-version-1 payload so existing post-merge
   reconciliation owners remain compatible.
@@ -1622,31 +1637,32 @@ lane or reconciliation owner. Existing same-category receipts and merges keep
 their previous behavior. The source category remains discoverable from the
 archived source topic and is not copied into the semantic event or receipt.
 
-The Leptos package remains in an explicit single-adapter GraphQL state. It does
-not wrap GraphQL in a server function, does not place an access token inside a
-server-function DTO and does not claim a direct native owner path. A later
-native cutover must compose authenticated owner state directly while retaining
-GraphQL for CSR/headless parity.
+FORUM-21O changes only the Leptos admin transport selection and host composition:
+SSR/hydrate use direct authenticated native owner state, CSR/headless retain
+GraphQL, and no fallback is introduced. FORUM-21P and FORUM-21Q add append-only
+PostgreSQL/SQLite owner receipt and mapping migrations without changing existing
+move or merge receipts and events. FORUM-21R adds one GraphQL field and no
+migration, REST route, admin UI, owner method, receipt shape or semantic-event
+change. Direct owner callers remain source-compatible.
 
-Forum move and merge commands remain independent from Notifications, Search,
-Page Builder and other optional integrations. Owner state, the Forum semantic
-event, receipt, optional solution-resolution audit and projection invalidations
-commit atomically; optional consumers reconcile after commit. A disabled
-optional capability cannot turn a valid Forum owner command into a synchronous
-outage.
+Forum move, merge, split and fork commands remain independent from Notifications,
+Search, Page Builder and other optional integrations. Owner state, the Forum
+semantic event, receipt, mapping/audit rows and projection invalidations commit
+atomically; optional consumers reconcile after commit. A disabled optional
+capability cannot turn a valid Forum owner command into a synchronous outage.
 
 ### Remaining scope
 
 `FORUM-21` remains `planned` until all of the following are delivered and
 maintainer-executed:
 
-- retained SQLite and PostgreSQL execution evidence for the complete move/merge
-  owner and migration chain, including cross-category concurrency and rollback;
-- direct authenticated Leptos native server-function owner composition while
-  retaining GraphQL parity, plus mounted-browser evidence for both admin hosts;
-- idempotent split-selected-replies workflow with immutable receipt, event,
-  relation preservation and counter reconciliation;
-- idempotent reply-branch fork workflow with explicit copy/identity policy;
+- retained SQLite and PostgreSQL execution evidence for the complete move,
+  merge, split and fork owner/migration chain, including cross-category
+  concurrency, replay and rollback;
+- mounted-browser and runtime transport evidence for the native/GraphQL merge
+  paths and the new split GraphQL field;
+- public admin composition for split and fork workflows, plus an additive
+  manager transport for the fork owner without transport-local copy policy;
 - bounded reply-range movement with deterministic positions, parent/reference
   policy and partial-move prevention;
 - final canonical localized URL aliases and route tombstones under FORUM-24,
@@ -1670,6 +1686,10 @@ node scripts/verify/verify-forum-topic-canonical-resolution.mjs
 node scripts/verify/verify-forum-topic-http-redirect.mjs
 node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs
 node scripts/verify/verify-forum-topic-merge-admin-ui.mjs
+node scripts/verify/verify-forum-topic-merge-native-admin.mjs
+node scripts/verify/verify-forum-topic-split-owner.mjs
+node scripts/verify/verify-forum-topic-fork-owner.mjs
+node scripts/verify/verify-forum-topic-split-graphql-transport.mjs
 npm run verify:forum:admin-boundary
 npm run verify:blog:forum-ui-ownership
 cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture
@@ -1679,12 +1699,16 @@ cargo test -p rustok-forum --test topic_merge_solution_resolution_sqlite -- --no
 cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture
 cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture
 cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
+cargo test -p rustok-forum graphql::topic_split_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test topic_split_graphql_contract -- --nocapture
+cargo test -p rustok-forum --test topic_split_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_fork_sqlite -- --nocapture
 cargo test -p rustok-forum-admin topic_merge_model -- --nocapture
 cargo check -p rustok-forum-admin --all-targets
 npm --prefix apps/next-admin run typecheck
 ```
 
-The FORUM-21A through FORUM-21N source and contract records do not claim
+The FORUM-21A through FORUM-21R source and contract records do not claim
 successful verifier, SQLite, PostgreSQL, Cargo, formatting, npm, browser,
 workflow or CI execution. The canonical task remains `planned` until the
 remaining workflows and maintainer evidence are complete.
