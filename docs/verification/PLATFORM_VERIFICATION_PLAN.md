@@ -8,99 +8,108 @@ status: verified
 ---
 # RusToK Main Platform Verification Plan
 
-- **Structure update date:** 2026-07-20
+- **Structure update date:** 2026-08-04
 - **Status:** Cycle active
 - **Mode:** Cyclic, resumable pre-release defect-removal sweep
 - **Goal:** Repeatedly inspect and repair the platform before release, prioritizing critical defects and cross-module contract failures
 
-## Scope and Terminology
+## Scope and terminology
 
 This document is the durable cursor and reset-friendly checklist for the current
-verification cycle. Detailed checks remain in the specialized plans in this folder,
-while the actual state, findings, fixes, evidence, and next action for a component are
-written to that component's local `docs/implementation-plan.md`.
+verification cycle. Detailed checks remain in the specialized plans in this folder.
+The actual state, findings, fixes, evidence, and next action for a component belong in
+that component's local `docs/implementation-plan.md`.
 
-The following terms must not be conflated:
+- **Core modules** are modules declared with `required = true` in `modules.toml`.
+- **`rustok-core`** is a foundation crate and is checked in the foundation wave.
+- **`apps/server`** is the composition root and runtime host, not a module.
+- The module manifest is the queue source of truth. Update this plan when the manifest
+  changes module identity or dependency order.
 
-- **Core modules** are the platform modules declared with `required = true` in the
-  `[modules]` section of `modules.toml`. They are always active and participate in the
-  module/runtime contract.
-- **`rustok-core`** is a platform foundation crate. It is not a Core module and is
-  checked in the separate foundation-crate wave.
-- **`apps/server`** is the composition root and runtime host. It is not a module.
-
-The module manifest is the source of truth. When `modules.toml` adds, removes, renames,
-or changes dependencies of a module, update the queue in this plan in the same change.
-
-## Current Cycle Cursor
-
-This block is the first place an agent reads after `docs/index.md`.
+## Current cycle cursor
 
 - Cycle: `cycle-001`
 - Cycle status: `active`
 - Current item: `core/rbac`
 - Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-08-03`
-- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued; core/email P1: settings:read exposed runtime smtp.password and native admin returned raw email settings, with secret-safe fixes staged only in draft PR #2490; core/email P1: delivery lacks a durable receipt/outbox, auth uses a detached server-owned bypass, saved tenant settings do not drive runtime SMTP, and historical secret-bearing rows lack an owned scrub migration; core/index P1: one retained admitted real PostgreSQL partition packet and live PostgreSQL/reference query equivalence are absent, and no retained per-tenant freshness, outage/restart, backlog catch-up or replay-repair evidence authorizes consumer or partition cutover; core/search P1: public GraphQL/native storefront Search trust caller channel_id while PgSearchEngine does not enforce canonical product channel visibility on the base result set; core/search P1: Content/Product/Blog and shared Search projection events lack the durable inbox, retry/DLQ and automatic replay/rebuild contract currently implemented only for Forum; core/outbox P1: sys_events dispatched state proves transport acceptance only, while terminal local handler failure or broadcast lag lacks a durable consumer receipt, consumer DLQ, or automatic replay/rebuild contract and can leave Search or other projections stale; core/tenant cross-owner P1 release blocker: PR #2735 merged host-owned operator credential admission for Events native, Iggy native, System GraphQL and Settings GraphQL as 1ce83819b077ef6e0df009fd5675f556315ef63a, but same-SHA source/unit/server compile and live HTTP/native denial, read/manage admission, audit identity, Iggy tenant-secret equality, rotation/revocation, WebSocket denial and multi-replica parity evidence remain absent for issue #2680; core/rbac P1 verification blocker: draft PR #2870 carries eleven fixed P1 findings covering resolver ownership, exact role/status no-op behavior, transactional artifact-permission events, immutable language-neutral permission identity, canonical locale storage, tenant-composite and exact-scope foreign keys, explicit platform-or-tenant mutation selection, shared permission-key admission, append-only schema upgrade, fail-closed downgrade scope preservation, and explicit SQLite migration failure atomicity, but generator-produced event digest, exact-head format/compile/tests/verifiers/module gates, Migration Compatibility, PostgreSQL clean apply/N-1 upgrade/integrity/concurrency/rollback, Redis/watchdog/CLI/incident packets and native operator parity remain absent; execution infrastructure blocker #2740: Rust-host browser smoke reports successful bounded-role creation but the service PostgreSQL instance has no rustok_browser role, so the migration step fails before the server build on both the original run and rerun`
+- Last handoff at (UTC): `2026-08-04`
 - Release readiness: `not_assessed`
-- Environment notes: `Tenant owner and directly related P0/P1/P2 source corrections merged through PR #2665 at b4889de03d881c08e39dd1f933291bfd87d44b3d; later Channel, Index, Search, Email and Outbox Admin tenant-scope fixes are recorded in crates/rustok-tenant/docs/cycle-001-core-trust-supplement-20260731.md. Historical provisioning and locale-policy PostgreSQL races passed on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 but must rerun on the final reconciled revision. PR #2720 merged typed HostAuthorityContext fail-closed guards as 35afdd3a5d4ae74e735a2963e7246e21a3031e5d. PR #2735 merged the replacement host-owned operator path as 1ce83819b077ef6e0df009fd5675f556315ef63a after rejecting an unsafe tenant-OAuth-client allowlist. Exact PR head a95cb0a768bddde9df985a8538501f8dfea63865 was exercised by Rust-host workflow run 30644588800 and rerun job 91207769592. Both attempts failed before the server build because the PostgreSQL service logged Role "rustok_browser" does not exist even though the role-creation step reported success; issue #2740 records the deterministic wrong-container fixture. The cold migration dependency build compiled rustok-events, rustok-tenant and rustok-iggy-connector but did not compile rustok-server and is not sufficient authority evidence. PR #2747 merged one host-neutral RBAC principal policy across GraphQL, REST and native admin as 75b67f877eb405abe4e6761a16d6b7ece98bc103. Connector-only work cannot execute local Rust, Node, PostgreSQL or Redis commands. AGENTS.md forbids automated workflow edits without an explicit request. Draft PR #2870 is now the only active RBAC verification line, supersedes closed #2866, and has been reconciled with current main through technical PRs #2879, #2891 and #2909 without force-push or writes to main. Its current source state records P0=0, P1=11, P2=1, P3=2 and remains in_progress; source inspection and committed regressions are supporting evidence only.`
+- Current RBAC revision: merged PR #2980 at
+  `f4d89c26f1a30079918660280150016930c837a4`
+- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed but
+  execution-unverified, so `core/rbac` remains `in_progress`.
+- RBAC evidence still required: generated event digest; exact-head format, compile,
+  tests, verifiers, module gates, and Migration Compatibility; PostgreSQL clean apply,
+  N-1 upgrade, integrity, concurrency and rollback; Redis/watchdog/CLI/incident packets;
+  live negative transports; native operator parity; FFA/FBA promotion evidence.
+- Environment classification: connector-only work did not execute local Rust, Node,
+  PostgreSQL, Redis, workflows, or CI. Issue #2740 remains a known Rust-host fixture
+  blocker unless a current exact-head run proves otherwise.
 
-Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
-`in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may
-be `in_progress` at a time.
+## Carried release blockers
 
-## Agent Start and Resume Protocol
+Wave 0 and the closing gate must revisit every item below with its local reproduction
+command and owner plan.
 
-1. Read `docs/index.md`, this cursor, the target component's `README.md`, local
-   `docs/README.md`, and local `docs/implementation-plan.md`. Read the relevant
-   architecture and module-owner documents before changing code.
-2. If the cycle is `ready`, change it to `active`, set `Current item` to
-   `core/modules`, and keep `Next item` at the first unfinished queue entry.
-3. If the cycle is already `active`, resume `Current item`. If the cursor and queue
-   disagree, use the first unchecked item, but first reconcile its local handoff block.
-4. A local `completed` result counts only when its `Cycle` equals the current cycle.
-   A result from an earlier cycle is evidence, not completion for the current cycle.
-5. Before inspecting or editing a component, set its local handoff to `in_progress`.
-   After verification, update the component's actual implementation plan and the
-   handoff, then update this cursor and queue in the same work unit.
-6. Never skip an item silently. Mark it `blocked` locally with the exact blocker,
-   reproduction command, observed output summary, and next action. Mark its master
-   checkbox as visited and append `— blocked` to the queue row so the cursor can advance.
-   Every blocked item must be revisited in the closing gate.
-7. Do not begin with a full-workspace build that prevents targeted progress. Run the
-   quick manifest/architecture preflight, then use targeted component checks. Run the
-   expensive workspace, migration, and end-to-end gates when the queue closes or when
-   a changed contract requires them earlier.
+- `core/auth`: implicit refresh-token authority for auto-created OAuth applications
+  whose persisted grant types omit it.
+- `core/cache`: failed Redis invalidations can become untracked when the bounded
+  tombstone tracker is saturated.
+- `core/channel`: tenant-visible human copy remains in language-neutral rows and the
+  staged tenant/concurrency fixes still lack same-revision evidence.
+- `core/email`: secret exposure fixes and durable delivery/runtime-setting ownership
+  remain incomplete.
+- `core/index`: retained PostgreSQL partition, freshness, outage/restart, catch-up and
+  replay-repair evidence remains incomplete.
+- `core/search`: caller-trusted channel selection and incomplete durable consumer
+  receipt/replay ownership remain open.
+- `core/outbox`: transport acceptance is not terminal consumer success; durable
+  consumer receipt, DLQ and replay ownership remain incomplete.
+- `core/tenant`: merged host authority corrections still lack same-SHA source/runtime,
+  rotation/revocation, WebSocket, Iggy and multi-replica evidence.
+- `core/rbac`: PR #2980 merged the source corrections, but every execution gate listed
+  in the cursor remains open.
+- Infrastructure issue #2740: the Rust-host PostgreSQL fixture can report a missing
+  `rustok_browser` role after a nominally successful setup step.
 
-## Defect Policy
+## Agent start and resume protocol
 
-Use these severities consistently:
+1. Read `AGENTS.md`, `docs/index.md`, this cursor, the target component README,
+   component docs index, and local implementation plan.
+2. When the cycle is `active`, resume `Current item`. If the cursor and queue disagree,
+   reconcile the local handoff, then use the first unfinished queue item.
+3. Before inspection or editing, set the local handoff to `in_progress`.
+4. Use targeted checks before broad workspace gates.
+5. Record environment OOM, lock, unavailable service, or fixture failures separately
+   from product defects.
+6. Fix reproducible P0/P1 defects in the current owner scope and add regression evidence.
+7. Do not mark an item complete while P0/P1 remains or required evidence is absent.
+8. Record deferred P2/P3 work as the nearest local priorities.
+9. Update the local handoff and this cursor/checklist in the same work unit.
+10. Never skip an item silently. A blocked item needs the exact blocker, reproduction,
+    observed result, next action, and closing-gate revisit.
 
-- `P0` — exploitable security/tenant-isolation failure, data loss/corruption, invalid
-  authorization grant, or platform-wide inability to start or serve critical traffic.
-- `P1` — serious cross-module inconsistency, broken transaction/outbox/replay path,
-  stale authorization/cache/index state, migration failure, or major release path
-  failure without a safe operational workaround.
-- `P2` — functional defect with bounded impact or a safe workaround.
-- `P3` — minor correctness, resilience, diagnostics, or maintainability defect.
+Allowed cycle statuses are `ready`, `active`, and `closing`. Queue items use `pending`,
+`in_progress`, `completed`, or `blocked`. Only one item may be `in_progress`.
 
-Fix reproducible `P0` and `P1` defects immediately when the correction is within the
-current component or its directly involved owners. Add regression evidence before
-marking the item complete. If a safe fix requires broader authority or a separate
-architectural decision, mark the item `blocked`, record the owners and exact next
-action, and continue the sweep so that other critical defects can still be found.
+## Defect policy
 
-An item is not `completed` merely because it compiles. Completion requires inspection
-of its applicable cross-module matrix, targeted tests, documentation truthfulness, and
-no unresolved `P0`/`P1` finding in that item's scope. `P2`/`P3` findings that are not
-fixed in the pass must become explicit nearest priorities in the local implementation
-plan; they must not exist only in chat or terminal output.
+- `P0`: exploitable authorization or tenant-isolation failure, data loss/corruption,
+  invalid grant, or platform-wide inability to start or serve critical traffic.
+- `P1`: serious cross-module inconsistency, broken transaction/outbox/replay path,
+  stale authorization/cache/index state, migration failure, or major release-path
+  failure without a safe workaround.
+- `P2`: bounded functional defect with a safe workaround.
+- `P3`: minor correctness, resilience, diagnostics, or maintainability defect.
 
-## Local Implementation-Plan Handoff
+Compilation alone is not completion. Completion requires applicable cross-module
+inspection, targeted tests, truthful documentation, mandatory runtime evidence, and no
+unresolved P0/P1 in the item scope.
 
-Every visited module, foundation crate, and application must contain one current block
-with this exact heading in its existing `docs/implementation-plan.md`:
+## Local implementation-plan handoff
+
+Every visited component must maintain this block in its existing implementation plan:
 
 ```md
 ## Periodic release verification handoff
@@ -117,64 +126,43 @@ with this exact heading in its existing `docs/implementation-plan.md`:
 - Resume command:
 ```
 
-The block is overwritten for the current visit; it is not an append-only execution
-log. Durable open work belongs in the local plan's current priorities. Durable
-contract changes belong in the component docs and, when cross-cutting, central docs or
-an ADR. Git history preserves previous handoffs.
+Overwrite the current-cycle handoff instead of appending execution logs. Durable open
+work belongs in local priorities; Git history preserves old handoffs.
 
-At the start of a new cycle, do not mass-edit every local plan. The new cycle identifier
-invalidates old completion marks automatically. When the component is visited again,
-replace its handoff with the new cycle and current evidence. This keeps local plans
-useful without reset-only churn.
-
-## Mandatory Cross-Module Inspection Matrix
-
-Apply every relevant row to every component. Record `not applicable` with a reason;
-never omit a row because the integration is indirect.
+## Mandatory cross-module inspection matrix
 
 | Circuit | Required questions and failure probes |
 | --- | --- |
-| Ownership and boundaries | Does the owner module expose a typed public port/transport contract? Are callers avoiding owner DB entities, private services, host-local facades, compatibility paths, and dependency cycles? Do `modules.toml`, `rustok-module.toml`, runtime wiring, migrations, and docs agree? |
-| RBAC and trust | Are permission identifiers owner-defined and deny-by-default? Are tenant, actor, principal, and channel facts derived from trusted runtime context? Do REST, GraphQL, native `#[server]`, jobs, CLI, event consumers, and admin paths enforce equivalent authorization? Are role/permission writes tenant-composite and do they invalidate durable permission state across replicas? |
-| Cache coherence | Do keys include every isolation and selection dimension required by the contract, including tenant, locale, channel, principal/auth generation, policy revision, or module state? Do writes, enable/disable, permission changes, and translation changes invalidate correctly? Probe TTL expiry, missed publication, Redis loss/restart, stale negative entries, and multi-replica recovery. A cache must never become authorization or write-side authority. |
-| Events and outbox | When atomicity is required, do the domain write and outbox insert share one transaction? Is event ownership and versioning typed and documented? Are retry/backoff/DLQ observable, consumers durably idempotent and replay-safe, and duplicate/out-of-order delivery tested? Confirm the server is not a hidden publisher or consumer owner. |
-| Indexes and search | Is write-side storage still authoritative? Do create/update/delete/translation and module lifecycle events update projections? Are tenant, locale, and channel scopes preserved? Probe replay, reindex, deletion, stale rows, out-of-order events, partial failure, and rebuild from source of truth. |
-| Multilingual DB contract | Are base rows language-neutral, localized short fields in `*_translations`, heavy localized content in `*_bodies` where applicable, and locale columns safely `VARCHAR(32)`? Are locale normalization and `requested -> tenant default -> first available` selection shared rather than package-local? Check tenant-composite uniqueness/FKs, default-locale integrity, backfill, irreversible narrowing, delete/update behavior, and parity across DB, cache, index, REST, GraphQL, native server functions, and UI. |
-| Transactions and concurrency | Are cross-owner calls outside inappropriate open DB transactions? Are revision/idempotency keys and unique constraints sufficient under retry and concurrent requests? Probe rollback, timeout, cancellation, partial failure, and process restart. |
-| Tenant and module lifecycle | Are all reads/writes tenant-scoped and RLS/composite integrity preserved? Do Core/Optional semantics, enable/disable, hooks, cache/index cleanup, workers, and event listeners behave consistently without host bypasses? |
-| Failure contract and operations | Are timeouts, typed errors, fallback/degraded modes, metrics, traces, correlation IDs, health, and operator recovery actions present and free of secret/PII leakage? Do fallbacks fail closed for authorization and data integrity? |
+| Ownership and boundaries | Is there one typed owner port/transport? Are callers avoiding owner DB entities, private services, host-local facades, compatibility paths, and dependency cycles? Do manifests, runtime wiring, migrations, and docs agree? |
+| RBAC and trust | Are identifiers owner-defined and deny-by-default? Are tenant, actor, principal, and channel facts trusted? Do REST, GraphQL, native functions, jobs, CLI, event consumers, and admin paths enforce equivalent authorization? Are writes tenant-composite and durably invalidated? |
+| Cache coherence | Do keys include tenant, locale, channel, principal/generation, policy revision, and module state where required? Probe mutation, lifecycle, Redis loss/restart, missed publication, stale negatives, and multi-replica recovery. Caches are never authority. |
+| Events and outbox | Do authoritative writes and required outbox inserts share one transaction? Are events typed/versioned, consumers durably idempotent and replay-safe, and retry/backoff/DLQ observable? |
+| Indexes and search | Is write storage authoritative? Are tenant, locale and channel preserved through create/update/delete/translation and lifecycle events? Probe replay, rebuild, stale rows, deletion, partial failure and out-of-order delivery. |
+| Multilingual DB contract | Are base rows language-neutral, localized short fields in translation tables, heavy bodies separated where needed, locale columns safe, and locale normalization/fallback shared? Check composite integrity, backfill, cache/index/API/UI parity and delete/update behavior. |
+| Transactions and concurrency | Are cross-owner calls outside inappropriate open transactions? Are revisions, idempotency and uniqueness correct under retry and concurrency? Probe rollback, timeout, cancellation, partial failure and restart. |
+| Tenant and module lifecycle | Are reads/writes tenant-scoped and lifecycle hooks, cleanup, workers, listeners and required/optional semantics consistent without host bypasses? |
+| Failure contract and operations | Are typed errors, timeouts, degraded modes, metrics, traces, correlation, health and recovery actions present without secret or PII leakage? Do safety-critical fallbacks fail closed? |
 
-For any publisher/consumer or caller/provider relationship, inspect and test both ends
-in the same pass. Update both local plans when the fix changes both owners. Do not mark
-the current item complete while the other end is known to violate the revised contract.
+Inspect both ends of every publisher/consumer and caller/provider relationship. Update
+both owner plans when a correction changes both contracts.
 
-## Current Cycle Queue
+## Current cycle queue
 
-The order is deliberate: Core modules first, then the server composition root, then
-non-module foundation crates, optional/domain modules in dependency-first order, host
-surfaces, and finally platform-wide gates.
+Queue semantics:
 
-Queue marks have durable semantics:
+- `[ ]` not yet visited;
+- `[ ] ... — in_progress` active cursor;
+- `[x]` visited and completed;
+- `[x] ... — blocked` visited but incomplete and mandatory at closing.
 
-- `[ ]` means not yet visited in this cycle;
-- `[ ] ... — in_progress` identifies the cursor item while work is underway;
-- `[x]` means visited with a local `completed` handoff;
-- `[x] ... — blocked` means visited but not completed and requires closing-gate review.
+### Wave 0 — Fast preflight
 
-On normal resume, the cursor item wins. If the cursor is missing or invalid, use the
-first unchecked item; never reinterpret a checked `— blocked` row as completed.
-
-### Wave 0 — Fast Preflight
-
-- [x] Reconcile carried `P0`/`P1` blockers and their exact reproduction commands.
+- [x] Reconcile carried P0/P1 blockers and exact reproduction commands.
 - [x] Run `cargo xtask validate-manifest`.
-- [x] Run the fast architecture/runtime invariant checks applicable on the current OS.
+- [x] Run applicable fast architecture/runtime invariant checks.
 - [x] Record environment failures separately from product defects.
 
-### Wave 1 — Core Modules
-
-These are Core modules because the current `modules.toml` declares them with
-`required = true`; `rustok-core` is intentionally absent from this list.
+### Wave 1 — Core modules
 
 - [x] `core/modules` — `crates/rustok-modules`
 - [x] `core/auth` — `crates/rustok-auth` — blocked
@@ -188,66 +176,7 @@ These are Core modules because the current `modules.toml` declares them with
 - [ ] `core/rbac` — `crates/rustok-rbac` — in_progress
 - [ ] Core interaction sweep — auth/tenant/RBAC generation and caches; channel/locale
   cache dimensions; transactional events/outbox; index/search replay and rebuild;
-  Core module lifecycle and migration ordering.
-
-`core/outbox` was visited ahead of the normal cursor to remove a confirmed P0 tenant
-isolation defect. Outbox, Index, and Search must be revisited at the closing gate for
-their consumer-durability, channel-visibility, freshness, replay, and retained-evidence
-blockers.
-
-`core/tenant` was visited and is blocked after three fixed P0, eleven fixed P1
-findings and one fixed P2 in the Tenant-owner scope. The source corrections bind
-Tenant Admin, Auth Admin user-list/detail reads and RBAC Admin bootstrap from
-`AuthContext.tenant_id` to the middleware-resolved `TenantContext.id` before
-permission admission; require mandatory owner-transaction lifecycle publication;
-preserve concurrent-idempotent tenant provisioning and locale-policy replay;
-backfill legacy locale policy; enforce explicit OAuth tenant selection; bind
-native storefront and commerce paths to typed tenant owner ports; resolve
-effective module policy through the control plane; return static native error
-envelopes; enforce one default locale on MySQL; and remove the public low-level
-module-state writer. Later Channel, Index, Search, Email and Outbox Admin
-tenant-scope corrections are recorded in the Tenant trust supplement. PR #2720
-merged the typed host authority boundary as
-`35afdd3a5d4ae74e735a2963e7246e21a3031e5d`; PR #2735 merged host-owned
-credential issuance and the standalone Iggy native `SETTINGS_*` P0 correction as
-`1ce83819b077ef6e0df009fd5675f556315ef63a`. Issue #2680 retains the missing
-same-SHA and live host-authority evidence. Exact-head Rust-host workflow run
-`30644588800` and rerun job `91207769592` both failed before `rustok-server`
-was built because the service PostgreSQL instance reported that role
-`rustok_browser` does not exist after a nominally successful role-creation step.
-Issue #2740 owns that deterministic CI fixture. AGENTS.md forbids changing the
-workflow without an explicit request. Final-SHA formatting, source guards,
-server compilation, targeted tests, both PostgreSQL races, PostgreSQL fixture,
-real MySQL, Redis recovery and deployed/native parity remain closing-gate
-requirements. Source inspection, dependency compilation and historical workflow
-runs are supporting evidence only.
-
-`core/rbac` remains in progress in draft PR #2870 with `P0=0, P1=11, P2=1,
-P3=2`. The source removes server-owned role mutation paths and preserves exact
-role/status replay as a complete side-effect no-op. Artifact permission grants now
-use one immutable language-neutral definition, canonical owner translations,
-trusted explicit platform-or-tenant selection, exact definition/scope durable
-identity, tenant-composite role and actor parents, and one owner transaction for
-relation, idempotency receipt and sealed Outbox event. The fifth append-only RBAC
-migration upgrades legacy catalog/grant/receipt state without rewriting historical
-migration IDs, refuses ambiguous or orphan authority, and is placed after the
-current-main Forum and Blog cutovers in the global release-order tail. Downgrade
-fails closed when a late sibling-scope definition would make one canonical grant
-or operation receipt ambiguous in the legacy `(tenant, installation, key)` shape.
-Because SeaORM does not automatically make SQLite migrations atomic, the cutover
-now opens one `DatabaseTransaction` for each SQLite direction and executes every
-DDL, data copy, validation, commit or rollback through that same transaction-bound
-connection. SQLite and source regressions cover upgrade, rollback, destructive
-failure atomicity, explicit scope, cross-tenant integrity, event atomicity and both
-durable rollback identities. Technical PR #2909 reconciled current main into the
-verification branch as merge commit
-`39ab7c4d9bae2953781511dc0eeec4dfb546ffb7` without modifying main or
-force-pushing. Generator-produced digest, exact-head formatting, compilation,
-focused tests, source/module gates, Migration Compatibility, real PostgreSQL
-clean apply/N-1 upgrade/integrity/concurrency/rollback, live negative transports,
-watchdog/Redis/CLI/incident packets, native operator parity and FFA/FBA evidence
-remain mandatory. Issue #2740 remains an infrastructure classification unless a
-current exact-head workflow proves otherwise; no execution pass is claimed.
+  lifecycle and migration ordering.
 
 For each manifest module, run at minimum:
 
@@ -256,31 +185,23 @@ cargo xtask module validate <slug>
 cargo xtask module test <slug>
 ```
 
-Add targeted Rust, PostgreSQL, Redis, and runtime tests according to the inspection
-matrix and the module's local plan. A compile-free source check is supporting evidence,
-not sufficient evidence for a release-critical runtime contract.
+Source-only checks are supporting evidence, not release evidence.
 
-### Wave 2 — Server Composition Root
+### Wave 2 — Server composition root
 
-- [ ] `apps/server` owner/runtime wiring, bootstrap, shutdown, middleware order, and
-  background-worker lifecycle.
-- [ ] Server composition of every Core module without duplicated owner services,
-  direct model access, hidden permission checks, or manual event-listener wiring.
-- [ ] Server migration aggregation: apply-from-zero and incremental plans, duplicate,
-  missing dependency, cycle, cross-module FK, and rollback-safety diagnostics.
-- [ ] Equivalent trust, RBAC, locale, error, and transaction behavior across REST,
-  GraphQL, native `#[server]`, jobs, event consumers, operational endpoints, and CLI
-  adapters where applicable.
-- [ ] Failure-injection checks for cache/Redis, event transport, outbox relay, indexer,
-  search, DB timeout, worker restart, and graceful shutdown.
+- [ ] `apps/server` wiring, bootstrap, shutdown, middleware order, and workers.
+- [ ] Compose every Core module without duplicated owner services, direct model access,
+  hidden permission checks, or manual event-listener ownership.
+- [ ] Verify migration aggregation, dependency diagnostics, apply-from-zero,
+  incremental apply, rollback safety, and cross-module foreign keys.
+- [ ] Prove equivalent trust, RBAC, locale, error, and transaction behavior across REST,
+  GraphQL, native functions, jobs, consumers, operational endpoints, and CLI adapters.
+- [ ] Inject cache, Redis, transport, outbox, index, search, DB timeout, worker restart,
+  and graceful-shutdown failures.
 
-Use [Core Integrity Verification](./platform-core-integrity-verification-plan.md) and
-[RBAC, Server and Runtime Module Verification](./rbac-server-modules-verification-plan.md)
-as mandatory companion plans for this wave.
+Use the Core Integrity and RBAC/Server companion plans.
 
-### Wave 3 — Non-Module Foundation and Shared Runtime
-
-The first entry is a foundation crate, not a Core module.
+### Wave 3 — Non-module foundation and shared runtime
 
 - [ ] `foundation/rustok-core` — `crates/rustok-core`
 - [ ] `foundation/rustok-api` — `crates/rustok-api`
@@ -290,13 +211,10 @@ The first entry is a foundation crate, not a Core module.
 - [ ] `foundation/rustok-storage` — `crates/rustok-storage`
 - [ ] `foundation/rustok-telemetry` — `crates/rustok-telemetry`
 - [ ] `foundation/rustok-test-utils` — `crates/rustok-test-utils`
-- [ ] Foundation interaction sweep — public contract ownership, dependency direction,
-  transaction/event primitives, typed context propagation, telemetry, and test fidelity.
+- [ ] Foundation interaction sweep — public ownership, dependency direction,
+  transaction/event primitives, typed context, telemetry, and test fidelity.
 
-### Wave 4 — Optional and Domain Modules
-
-This order is dependency-first according to the current manifest. A module is checked
-with all of its publishers/consumers even if the other owner appeared earlier.
+### Wave 4 — Optional and domain modules
 
 - [ ] `domain/content`
 - [ ] `domain/taxonomy`
@@ -325,41 +243,35 @@ with all of its publishers/consumers even if the other owner appeared earlier.
 - [ ] `domain/alloy`
 - [ ] `domain/flex`
 - [ ] `extension/ai`
-- [ ] Domain interaction sweep — commerce provider chain; content/taxonomy/product;
+- [ ] Domain interaction sweep — commerce chain; content/taxonomy/product;
   comments/blog/forum/pages/page-builder; media/SEO/storage; workflow/events/outbox;
   Flex donor ownership; AI owner ports and review/persistence boundaries.
 
-Use [Events, Domains and Integrations Verification](./platform-domain-events-integrations-verification-plan.md)
-as the mandatory companion plan. If a manifest dependency changes, topologically
-reorder this wave rather than preserving a stale hand-written order.
+Topologically reorder this wave when manifest dependencies change.
 
-### Wave 5 — Applications and Public Surfaces
+### Wave 5 — Applications and public surfaces
 
 - [ ] `apps/admin` and module-owned Leptos admin packages.
 - [ ] `apps/storefront` and module-owned Leptos storefront packages.
 - [ ] `apps/next-admin` and owner/runtime locale-provider parity.
 - [ ] `apps/next-frontend` and storefront contract parity.
-- [ ] GraphQL, REST, native `#[server]`, OpenAPI/reference artifacts, and headless paths.
-- [ ] Shared UI/GraphQL/routing/i18n libraries used by more than one host or module.
+- [ ] GraphQL, REST, native functions, OpenAPI/reference artifacts, and headless paths.
+- [ ] Shared UI, GraphQL, routing, and i18n libraries used by multiple hosts/modules.
 
-Before modifying a frontend, read its root `AI_AGENT_RULES.md`. Use the
-[API Surfaces Verification](./platform-api-surfaces-verification-plan.md),
-[Frontend Surfaces Verification](./platform-frontend-surfaces-verification-plan.md),
-and [Leptos Libraries Verification](./leptos-libraries-verification-plan.md) plans.
+Read the application `AI_AGENT_RULES.md` before frontend changes. Use the API,
+frontend, and Leptos-library companion plans.
 
-### Wave 6 — Closing and Release Gate
+### Wave 6 — Closing and release gate
 
-- [ ] Revisit every unchecked or locally `blocked` item.
-- [ ] Run workspace build/test/format gates appropriate to the release profile.
+- [ ] Revisit every unchecked or blocked item.
+- [ ] Run release-profile workspace build, test, and format gates.
 - [ ] Run PostgreSQL apply-from-zero and incremental migration smoke.
-- [ ] Run security/dependency, documentation, observability, and operational-readiness
-  gates from the quality plan.
-- [ ] Verify reference artifacts and required FFA/FBA evidence against actual runtime
-  behavior rather than source-only assertions.
-- [ ] Confirm every visited component has a current-cycle local handoff and truthful
-  nearest priority.
-- [ ] Confirm no unresolved product `P0` or `P1` exists before setting release readiness
-  to `candidate`; otherwise set it to `not_ready` and carry the blockers forward.
+- [ ] Run security/dependency, documentation, observability, and operational gates.
+- [ ] Verify reference artifacts and required FFA/FBA evidence against runtime behavior.
+- [ ] Confirm every visited component has a current-cycle handoff and truthful nearest
+  priority.
+- [ ] Set release readiness to `candidate` only when no unresolved product P0/P1 exists;
+  otherwise set `not_ready` and carry blockers forward.
 
 For `page_builder/pages`, also run:
 
@@ -367,36 +279,24 @@ For `page_builder/pages`, also run:
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
 ```
 
-Use [Quality and Operational Readiness Verification](./platform-quality-operations-verification-plan.md)
-for the complete closing gate.
+## Cycle completion and reset
 
-## Cycle Completion and Reset
+A cycle is traversed when every item has been visited and is completed or has a current,
+reproducible blocked handoff. Traversed does not mean release-ready.
 
-A cycle is **traversed** when every queue item has been visited and is either completed
-or has a current, reproducible blocked handoff. Traversed does not mean release-ready.
+1. Set cycle status to `closing` and reconcile local handoffs.
+2. Fill the current cycle summary row.
+3. Carry every unresolved P0/P1, owner, and reproduction command forward.
+4. Increment the cycle identifier.
+5. Add a blank summary row and reset every queue checkbox and suffix.
+6. Set status to `ready`, current item to `none`, and next item to `core/modules`.
+7. Clear timestamps and set release readiness to `not_assessed`.
+8. Start the next cycle at Wave 0 and the first Core module.
 
-When the closing gate finishes:
+Old handoffs remain evidence but never count for a new cycle.
 
-1. Set the cycle status to `closing` and reconcile all local handoffs.
-2. Fill the current cycle's compact row in the cycle summary below. Do not copy detailed
-   findings here.
-3. Carry every unresolved `P0`/`P1`, owner, and reproduction command into
-   `Carried release blockers`.
-4. Increment the identifier (`cycle-001` -> `cycle-002`).
-5. Append one blank summary row for the new cycle and reset every checkbox in the
-   current-cycle queue to `[ ]`, removing any `— in_progress` or `— blocked` suffix.
-6. Set `Cycle status` to `ready`, `Current item` to `none`, and `Next item` to
-   `core/modules`.
-7. Clear timestamps and set `Release readiness` to `not_assessed` for the new cycle.
-8. Start the next run from Wave 0 and the Core modules again. No earlier completion
-   exempts a component from the new cycle.
-
-If the previous cycle left release blockers, Wave 0 attempts them first, but the normal
-queue still begins with the Core modules. Old local handoffs remain as evidence and
-do not count because their cycle identifier differs.
-
-## Cycle Summary
+## Cycle summary
 
 | Cycle | Started (UTC) | Traversed (UTC) | Fixed P0/P1/P2/P3 | Remaining P0/P1 | Release result | Evidence reference |
 | --- | --- | --- | --- | --- | --- | --- |
-| `cycle-001` |  |  |  |  |  |  |
+| `cycle-001` | `2026-07-20` |  |  |  |  |  |
