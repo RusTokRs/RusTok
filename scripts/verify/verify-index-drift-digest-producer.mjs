@@ -54,7 +54,10 @@ requireMarkers(files.applicationMod, applicationMod, [
   "IndexDriftDigestProducer",
   "IndexDriftSnapshotReader",
 ]);
-requireMarkers(files.postgresMod, postgresMod, ["mod drift_digest_recorder;"]);
+requireMarkers(files.postgresMod, postgresMod, [
+  "mod drift_digest_recorder;",
+  "mod drift_snapshot_reader;",
+]);
 requireMarkers(files.doc, doc, [
   "producer_contract_and_locale_scope_source_complete_snapshot_reader_pending",
   "same bounded opaque `IndexDriftSnapshotBoundary`",
@@ -64,9 +67,9 @@ requireMarkers(files.doc, doc, [
 ]);
 requireMarkers(files.plan, plan, [
   "M6 snapshot-pair digest producer and mismatch-only recorder delegation",
-  "source_complete_snapshot_reader_pending",
-  "M6 locale-optional persisted entity finding scope",
-  "Add one production snapshot reader",
+  "M6 source-version-fenced PostgreSQL drift snapshot reader",
+  "source_complete_host_diagnosis_composition_owner_execution_pending",
+  "Compose the reader, digest producer, and finding writer",
 ]);
 
 const forbiddenProducerMarkers = [
@@ -97,7 +100,6 @@ for (const obsolete of [
 
 for (const claim of [
   "tests passed",
-  "snapshot reader is complete",
   "repair is complete",
   "retained evidence admitted",
 ]) {
