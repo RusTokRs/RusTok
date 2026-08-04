@@ -1,6 +1,6 @@
 # M6 PostgreSQL drift snapshot reader
 
-Status: `source_complete_host_diagnosis_composition_and_owner_execution_pending`.
+Status: `source_complete_owner_execution_pending`.
 
 ## Purpose
 
@@ -71,8 +71,11 @@ The existing producer validates both resulting states through `SchemaRegistry` b
 is missing or the backend is not PostgreSQL, and otherwise constructs the reader from immutable
 registries plus the host connection.
 
-The reader is exported through `rustok_index`, but this slice does not insert it into the server
-operator, call the digest producer, persist a finding, or expose a transport.
+The server now privately composes the same reader with `IndexDriftDigestProducer` and
+`PostgresIndexDriftFindingWriter` inside `IndexDriftDiagnosisOperatorRuntime`. That guarded sibling
+to the reconciliation operator accepts one exact request-bound authorized `EntityKey` and exposes
+no reader, writer, registry, connection, scan, lifecycle, or repair handle. No transport is added by
+this slice.
 
 ## Source-ready PostgreSQL harness
 
@@ -108,8 +111,11 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   --test drift_snapshot_reader_postgres_test \
   -- --nocapture --test-threads=1
 
+cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
+node scripts/verify/verify-index-server-reconciliation-guard.mjs
 cargo check -p rustok-index --all-targets
+cargo check -p rustok-server --all-targets
 git diff --check
 ```
 

@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay for `implementation-plan.md` audited through
-`main@5da25b28be5e1bf4f9cd9802337a3efa560179a4`.
+`main@c6ae3db0caf64c4578cb76073e9b719e483fb953`.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
 overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
@@ -9,12 +9,12 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - guarded exact-entity diagnosis composition and explicit absence watermarks`
+`M6 - explicit absence watermarks and bounded diagnosis transport`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
-and source-version-fenced PostgreSQL snapshot reader are source complete. Server-owned composition
-of reader, producer, and writer for one authorized exact `EntityKey`, truthful missing-source
-watermarks, lifecycle commands, repair, transports, and retained evidence remain open.
+source-version-fenced PostgreSQL snapshot reader, and guarded exact-entity diagnosis capability are
+source complete. Truthful missing-source watermarks, diagnosis transports, lifecycle commands,
+repair, and retained evidence remain open.
 
 ## Rechecked status
 
@@ -41,7 +41,9 @@ watermarks, lifecycle commands, repair, transports, and retained evidence remain
 - M6 locale-optional persisted entity finding scope:
   `source_complete_owner_execution_pending`
 - M6 source-version-fenced PostgreSQL drift snapshot reader:
-  `source_complete_host_diagnosis_composition_owner_execution_pending`
+  `source_complete_owner_execution_pending`
+- M6 guarded exact-entity drift diagnosis operator:
+  `source_complete_transport_and_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -90,10 +92,13 @@ watermarks, lifecycle commands, repair, transports, and retained evidence remain
 - [x] Add an environment-gated real-migration PostgreSQL harness for stable capture, source-change
       rejection, and missing-watermark rejection.
 - [ ] Run and admit `drift_snapshot_reader_postgres_test` evidence.
-- [ ] Compose the reader, digest producer, and finding writer inside the guarded server operator for
-      one authorized exact `EntityKey` without adding discovery or repair.
+- [x] Compose the snapshot reader, digest producer, and finding writer behind one request-bound
+      `modules:manage` exact-entity diagnosis capability using the frozen source/schema registries.
+- [x] Reject cross-tenant and unauthorized diagnosis before request validation, source access,
+      materialized reads, digest production, or finding persistence.
 - [ ] Add an explicit retained absence/tombstone watermark contract before empty targeted loads can
       produce authoritative source `Missing` state.
+- [ ] Expose the exact-entity diagnosis capability through one bounded operator transport.
 - [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
@@ -112,15 +117,18 @@ watermarks, lifecycle commands, repair, transports, and retained evidence remain
 
 ## Next implementation step
 
-Compose `PostgresIndexDriftSnapshotReader`, `IndexDriftDigestProducer`, and
-`PostgresIndexDriftFindingWriter` inside the existing guarded server reconciliation operator. Accept
-only one request-bound authorized exact `EntityKey`; keep scans, discovery, lifecycle commands, and
-repair forbidden. Preserve `index_drift_source_watermark_missing` until each owner source can return
-a retained delete or another explicit positive absence watermark.
+Extend the targeted owner-load contract with an explicit retained absence/tombstone watermark so an
+empty current-state row can become an authoritative positive-version source `Missing` state without
+weakening the existing source-version fence. Keep scan/discovery, automatic resolution, and repair
+outside that slice. After the watermark contract is admitted, expose the exact-entity diagnosis
+capability through one bounded request transport.
 
 ## Owner verification for this slice
 
 ```bash
+cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
+cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
+
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-index \
   --test drift_snapshot_reader_postgres_test \
@@ -138,10 +146,12 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   --test drift_finding_writer_postgres_test \
   -- --nocapture --test-threads=1
 
+node scripts/verify/verify-index-server-reconciliation-guard.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-drift-finding-locale-scope.mjs
 node scripts/verify/verify-index-drift-digest-producer.mjs
 node scripts/verify/verify-index-drift-finding-postgres-harness.mjs
+cargo check -p rustok-server --all-targets
 cargo check -p rustok-index --all-targets
 git diff --check
 ```

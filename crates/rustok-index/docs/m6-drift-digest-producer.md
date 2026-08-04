@@ -1,13 +1,13 @@
 # M6 bounded drift digest producer
 
-Status: `producer_reader_and_locale_scope_source_complete_host_diagnosis_pending`
+Status: `producer_reader_locale_scope_and_guarded_diagnosis_source_complete`
 
 ## Purpose
 
-The drift-finding writer accepts already-computed source and materialized digests. The
+The drift-finding writer accepts already-computed source and materialized digests.
 `IndexDriftDigestProducer` is the database-neutral boundary between an admitted snapshot reader and
 that persistence adapter. It does not invent a snapshot, open source tables, scan unbounded
-identifiers, or perform repair.
+identifiers, choose finding lifecycle policy, or perform repair.
 
 ## Snapshot contract
 
@@ -31,7 +31,7 @@ schema, tenant, entity, locale, field, link, value, or source-version state fail
 before persistence.
 
 The opaque boundary is evidence that the reader captured both views under one owner-defined
-consistency rule. The producer itself still does not define PostgreSQL snapshot export, owner
+consistency rule. The producer itself does not define PostgreSQL snapshot export, owner
 high-watermarks, or cross-database transaction semantics. A reader that cannot establish one
 truthful boundary must return a bounded dependency failure rather than fabricate a pair.
 
@@ -51,20 +51,20 @@ Equal digests return `Consistent` and never call the recorder. Unequal digests c
 - source digest;
 - materialized digest.
 
-Raw records, fields, links, source payloads, SQL, database errors, and transport context are not
-accepted by the recorder contract.
+Raw records, fields, links, source payloads, SQL, database errors, credentials, transaction handles,
+and transport context are not accepted by the recorder contract.
 
 ## PostgreSQL snapshot reader
 
-`PostgresIndexDriftSnapshotReader` is now source complete. It observes one positive-version owner
+`PostgresIndexDriftSnapshotReader` is source complete. It observes one exact positive-version owner
 state, reads materialized entity/link state inside one PostgreSQL `REPEATABLE READ READ ONLY`
 transaction, and accepts the pair only when the complete owner state is identical on a second
 observation while that transaction remains open.
 
-The reader returns bounded retryable failure when the owner changes and permanent failure when an
-empty targeted load has no retained tombstone or other absence watermark. It does not claim an
-exported snapshot across arbitrary owner adapters. Full details are retained in
-`m6-postgres-drift-snapshot-reader.md`.
+The reader returns bounded retryable failure when the owner changes. An empty targeted load remains
+permanent `index_drift_source_watermark_missing` until the owner can provide a retained tombstone or
+another explicit positive absence watermark. The reader does not claim an exported snapshot across
+arbitrary owner adapters. Full details are retained in `m6-postgres-drift-snapshot-reader.md`.
 
 ## PostgreSQL writer adapter
 
@@ -82,25 +82,41 @@ The locale-free variant persists `locale_key = NULL`; it is never collapsed into
 locale is invented. Locale-bearing finding-key bytes retain their original v1 component sequence.
 The locale-free scope uses a distinct impossible-for-`LocaleKey` NUL component.
 
+## Guarded server diagnosis
+
+The server privately composes the production reader, this producer, and the writer inside
+`IndexDriftDiagnosisOperatorRuntime`. The capability is published only after the immutable
+`SharedIndexSourceRegistry` and `SharedIndexSchemaRegistry` have been frozen by replay composition.
+
+The public surface accepts one exact `EntityKey` plus the existing request-bound
+`IndexReconciliationOperatorContext`. It requires effective `Permission::MODULES_MANAGE`, rejects a
+cross-tenant key, and performs authorization before `IndexDriftDigestRequest` validation, source
+access, materialized reads, hashing, or finding persistence.
+
+The result remains exactly `IndexDriftDigestOutcome`: either one consistent digest or bounded source
+and materialized digests plus the deterministic finding receipt. The operator exposes no database
+connection, source/schema registry, snapshot reader, finding writer, raw record, scan, lifecycle,
+repair, scheduler, worker, or transport handle.
+
 ## Deliberate limits
 
 This slice does not add or claim:
 
-- server-owned composition of reader, producer, and writer;
 - exported PostgreSQL snapshots shared with arbitrary owner adapters;
-- source absence admission without a retained tombstone or explicit positive watermark;
-- automatic entity discovery, full scans, or orphan-link diagnosis;
+- source `Missing` admission without a retained tombstone or explicit positive watermark;
+- automatic entity discovery, full scans, stale enumeration, or orphan-link diagnosis;
 - finding resolution when states converge;
-- resolve/ignore commands, actor/reason audit, or authorization;
+- resolve/ignore commands, actor/reason audit, or additional authorization policy;
 - targeted/full/shadow repair;
-- GraphQL, HTTP, CLI, admin, scheduler, or graceful-shutdown composition;
-- retained PostgreSQL or production-source execution evidence.
+- GraphQL, HTTP, CLI, admin, MCP, or another diagnosis transport;
+- retained PostgreSQL, authorization, lifecycle, or production-source execution evidence.
 
 ## Maintainer verification
 
 ```bash
 cargo test -p rustok-index drift_digest -- --nocapture
 cargo test -p rustok-index --test drift_finding_locale_key_contract
+cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
 
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-index \
@@ -108,8 +124,10 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   -- --nocapture --test-threads=1
 
 cargo check -p rustok-index --all-targets
+cargo check -p rustok-server --all-targets
 node scripts/verify/verify-index-drift-digest-producer.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
+node scripts/verify/verify-index-server-reconciliation-guard.mjs
 node scripts/verify/verify-index-drift-finding-locale-scope.mjs
 git diff --check
 ```
