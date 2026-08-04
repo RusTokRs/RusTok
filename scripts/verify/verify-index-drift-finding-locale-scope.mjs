@@ -97,7 +97,8 @@ requireMarkers(files.plan, contents.plan, [
   "M6 locale-optional persisted entity finding scope",
   "Extend persisted entity finding scope to locale-free",
   "drift_finding_locale_scope_postgres_test",
-  "authoritative production snapshot capture",
+  "M6 source-version-fenced PostgreSQL drift snapshot reader",
+  "drift_snapshot_reader_postgres_test",
 ]);
 requireMarkers(files.queryVerifier, contents.queryVerifier, [
   "'verify-index-drift-finding-locale-scope.mjs'",
@@ -120,7 +121,7 @@ for (const claim of [
   "repair is complete",
 ]) {
   if (contents.doc.toLowerCase().includes(claim.toLowerCase())) {
-    throw new Error(`documentation makes forbidden completion claim: ${claim}`);
+    throw new Error(`locale scope documentation makes forbidden completion claim: ${claim}`);
   }
 }
 
