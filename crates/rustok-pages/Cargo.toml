@@ -40,3 +40,4 @@ url = "2.5"
 rustok-test-utils.workspace = true
 tokio.workspace = true
 toml.workspace = true
+tower.workspace = true
