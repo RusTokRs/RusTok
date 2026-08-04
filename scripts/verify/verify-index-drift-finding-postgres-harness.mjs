@@ -38,9 +38,10 @@ const requiredPlanMarkers = [
   "M6 bounded drift-finding inspection and persistence",
   "M6 snapshot-pair digest producer and mismatch-only recorder delegation",
   "M6 locale-optional persisted entity finding scope",
+  "M6 source-version-fenced PostgreSQL drift snapshot reader",
   "Add bounded drift-finding inspection and persistence for already-computed digest mismatches.",
   "drift_finding_writer_postgres_test",
-  "Add one production snapshot reader",
+  "drift_snapshot_reader_postgres_test",
 ];
 
 function requireMarkers(label, content, markers) {
@@ -75,8 +76,8 @@ for (const claim of forbiddenClaims) {
   }
 }
 
-if (!plan.includes("- [ ] Add one production snapshot reader")) {
-  throw new Error("current plan overlay must keep authoritative snapshot capture open");
+if (!plan.includes("- [ ] Run and admit `drift_snapshot_reader_postgres_test` evidence.")) {
+  throw new Error("current plan overlay must keep snapshot-reader execution evidence open");
 }
 if (!plan.includes("- [ ] Add targeted repair with before/after admitted evidence.")) {
   throw new Error("current plan overlay must keep targeted repair and evidence open");

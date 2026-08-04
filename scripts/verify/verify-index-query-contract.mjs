@@ -29,6 +29,7 @@ const scripts = [
   'verify-index-drift-finding-inspection.mjs',
   'verify-index-drift-finding-writer.mjs',
   'verify-index-drift-digest-producer.mjs',
+  'verify-index-drift-snapshot-reader.mjs',
   'verify-index-drift-finding-locale-scope.mjs',
   'verify-index-drift-finding-postgres-harness.mjs',
   'verify-index-reconciliation-dead-letter-admission.mjs',
