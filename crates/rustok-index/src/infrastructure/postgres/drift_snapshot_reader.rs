@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend,
-    IsolationLevel, QueryResult, Statement, TransactionTrait, Value as SqlValue,
+    IsolationLevel, QueryResult, Statement, TransactionTrait,
 };
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
