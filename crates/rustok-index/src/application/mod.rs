@@ -1,7 +1,6 @@
 mod aggregate_ordering;
 mod cursor;
 mod drift_digest;
-mod drift_snapshot_registry;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
@@ -42,11 +41,6 @@ pub use drift_digest::{
     IndexDriftDigestRequest, IndexDriftEntityState, IndexDriftMismatchReceipt,
     IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder, IndexDriftSnapshotBoundary,
     IndexDriftSnapshotPair, IndexDriftSnapshotReader, IndexDriftSnapshotView,
-};
-pub use drift_snapshot_registry::{
-    IndexDriftSnapshotReaderCatalog, IndexDriftSnapshotReaderDescriptor,
-    IndexDriftSnapshotRegistryError, SharedIndexDriftSnapshotReaderRegistry,
-    materialize_index_drift_snapshot_reader_registry, register_index_drift_snapshot_reader,
 };
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
