@@ -16,6 +16,7 @@ mod storefront_audience_topic;
 mod storefront_audience_topics;
 mod storefront_read_state;
 mod topic_merge_mutation;
+mod topic_split_mutation;
 mod types;
 
 use async_graphql::MergedObject;
@@ -46,6 +47,7 @@ pub use topic_merge_mutation::{
     GqlForumTopicMerge, GqlForumTopicMergeSolutionResolution, MergeForumTopicGraphqlInput,
     ResolveForumTopicMergeSolutionGraphqlInput,
 };
+pub use topic_split_mutation::{GqlForumTopicSplit, SplitForumTopicRepliesGraphqlInput};
 pub use types::*;
 
 #[derive(MergedObject, Default)]
@@ -71,4 +73,5 @@ pub struct ForumMutation(
     read_state::ForumReadStateMutation,
     storefront_read_state::ForumStorefrontReadStateMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
+    topic_split_mutation::ForumTopicSplitMutation,
 );
