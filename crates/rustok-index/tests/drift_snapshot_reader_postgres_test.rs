@@ -14,7 +14,6 @@ use rustok_index::{
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
     IndexValue, IndexValueType, LocaleMode, ModuleName, MutationDelivery, PostgresMutationStore,
     PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion,
-    materialize_index_drift_snapshot_reader_registry as _,
     materialize_index_schema_registry, materialize_index_source_registry,
     materialize_postgres_index_drift_snapshot_reader, register_index_schema_source,
     register_index_source,
