@@ -355,16 +355,20 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
-        tracing::warn!(
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+        log_checkout_order_recovery_admission_rejection(
+            context,
             operation,
-            code = "order.checkout_operation_id_invalid",
-            expected_checkout_operation_id = %checkout_operation_id,
-            actual_causation_id = ?context.causation_id,
-            "checkout recovery received invalid causation identity"
+            "causation_id",
+            context.causation_id.is_some(),
+            context
+                .causation_id
+                .as_ref()
+                .map(|value| value.chars().count()),
+            context_operation.is_some(),
+            context_operation.map(|value| !value.is_nil()),
+            Some(!checkout_operation_id.is_nil()),
+            Some(false),
+            "order.checkout_operation_id_invalid",
         );
         return Err(PortError::validation(
             "order.checkout_operation_id_invalid",
@@ -375,18 +379,18 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        log_checkout_order_recovery_admission_rejection(
+            context,
             operation,
-            field = "tenant_id",
-            value_length = context.tenant_id.len(),
-            code = "order.tenant_id_invalid",
-            "order port received invalid request context"
+            "tenant_id",
+            true,
+            Some(context.tenant_id.chars().count()),
+            false,
+            None,
+            None,
+            None,
+            "order.tenant_id_invalid",
         );
         PortError::validation(
             "order.tenant_id_invalid",
@@ -396,18 +400,18 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
+        log_checkout_order_recovery_admission_rejection(
+            context,
             operation,
-            field = "actor_id",
-            value_length = context.actor.id.len(),
-            code = "order.actor_id_invalid",
-            "order port received invalid request context"
+            "actor_id",
+            true,
+            Some(context.actor.id.chars().count()),
+            false,
+            None,
+            None,
+            None,
+            "order.actor_id_invalid",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
@@ -588,6 +592,52 @@ fn checkout_order_recovery_context_facts(
             .map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn log_checkout_order_recovery_admission_rejection(
+    context: &PortContext,
+    operation: &'static str,
+    field: &'static str,
+    field_value_present: bool,
+    field_value_length: Option<usize>,
+    uuid_parseable: bool,
+    uuid_non_nil: Option<bool>,
+    expected_uuid_non_nil: Option<bool>,
+    matches_expected: Option<bool>,
+    code: &'static str,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::warn!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        field,
+        field_value_present,
+        field_value_length = ?field_value_length,
+        uuid_parseable,
+        uuid_non_nil = ?uuid_non_nil,
+        expected_uuid_non_nil = ?expected_uuid_non_nil,
+        matches_expected = ?matches_expected,
+        code,
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "order checkout recovery admission was rejected with bounded diagnostics"
+    );
 }
 
 fn checkout_order_recovery_owner_error_facts(
