@@ -73,6 +73,12 @@ pub enum ForumError {
     #[error("Forum topic fork operation conflicts with an existing command: {0}")]
     TopicForkOperationConflict(Uuid),
 
+    #[error("Forum reply range move operation conflicts with an existing command: {0}")]
+    TopicReplyRangeMoveOperationConflict(Uuid),
+
+    #[error("Forum reply range move accepted solutions conflict: {0}")]
+    TopicReplyRangeMoveSolutionConflict(Uuid),
+
     #[error("Forum topic merge accepted solutions require explicit resolution: {0}")]
     TopicMergeSolutionConflict(Uuid),
 
@@ -168,6 +174,12 @@ impl ForumError {
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
             Self::TopicForkOperationConflict(_) => "FORUM_TOPIC_FORK_OPERATION_CONFLICT",
+            Self::TopicReplyRangeMoveOperationConflict(_) => {
+                "FORUM_TOPIC_REPLY_RANGE_MOVE_OPERATION_CONFLICT"
+            }
+            Self::TopicReplyRangeMoveSolutionConflict(_) => {
+                "FORUM_TOPIC_REPLY_RANGE_MOVE_SOLUTION_CONFLICT"
+            }
             Self::TopicMergeSolutionConflict(_) => "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
             Self::TopicCanonicalResolutionConflict(_) => {
                 "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT"

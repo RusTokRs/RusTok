@@ -1,0 +1,137 @@
+{
+  "contract": "forum_reply_range_move_owner_v1",
+  "task": "FORUM-21S",
+  "parent_task": "FORUM-21",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner": "ForumReplyRangeMoveService",
+  "command": "move_reply_range",
+  "authorization": {
+    "required_permission": "forum_topics:manage",
+    "human_actor_required": true,
+    "tenant_from_owner_argument": true
+  },
+  "command_shape": {
+    "operation_id": "uuid",
+    "source_topic_id": "owner_argument_uuid",
+    "target_topic_id": "uuid",
+    "start_position": "positive_inclusive_i64",
+    "end_position": "positive_inclusive_i64",
+    "reason": "bounded_nonempty_text",
+    "maximum_range_replies": 500
+  },
+  "selection": {
+    "policy": "all_current_replies_between_occupied_inclusive_endpoints",
+    "empty_range_rejected": true,
+    "unoccupied_start_rejected": true,
+    "unoccupied_end_rejected": true,
+    "bounded_before_write": true,
+    "source_must_retain_reply": true
+  },
+  "identity_and_positions": {
+    "reply_ids_preserved": true,
+    "bodies_preserved_by_reply_id": true,
+    "reply_revisions_preserved_by_reply_id": true,
+    "relation_revisions_preserved_by_reply_id": true,
+    "mentions_preserved": true,
+    "quotes_preserved": true,
+    "reply_votes_preserved": true,
+    "authors_preserved": true,
+    "statuses_preserved": true,
+    "target_policy": "append_after_current_target_max",
+    "target_positions": "contiguous_in_source_position_order",
+    "target_next_reply_position": "monotonic_at_least_target_end_plus_one",
+    "source_next_reply_position": "monotonic_not_reduced",
+    "source_positions_compacted": false
+  },
+  "parent_policy": {
+    "incoming_external_parent": "detach_to_null",
+    "internal_parent": "preserve_unchanged_reply_id",
+    "outgoing_child_left_in_source": "reject",
+    "parent_before_child_source_positions_required": true
+  },
+  "access_policy": {
+    "source_target_effective_visibility": "exact_match_required",
+    "source_target_effective_reply_create": "exact_match_required",
+    "source_target_channel_access": "exact_match_required",
+    "same_category_required": false,
+    "cross_category_requires_exact_effective_match": true
+  },
+  "solution_policy": {
+    "unselected_source_solution": "remains_source",
+    "selected_source_solution_when_target_unsolved": "follows_reply_via_fk_cascade",
+    "selected_source_solution_when_target_solved": "fail_closed",
+    "target_solution_when_source_solution_not_selected": "remains_target",
+    "stable_conflict_code": "FORUM_TOPIC_REPLY_RANGE_MOVE_SOLUTION_CONFLICT"
+  },
+  "counter_policy": {
+    "source_topic_reply_count": "recompute_approved",
+    "target_topic_reply_count": "recompute_approved",
+    "source_target_last_reply_at": "recompute_approved_max_created_at",
+    "same_category_reply_count_delta": 0,
+    "cross_category_source_reply_count_delta": "negative_moved_approved_count",
+    "cross_category_target_reply_count_delta": "moved_approved_count",
+    "topic_count_delta": 0,
+    "user_reply_count_delta": 0,
+    "user_solution_count_delta": 0
+  },
+  "idempotency": {
+    "command_fingerprint": "sha256_canonical_json",
+    "exact_replay_returns_original_receipt": true,
+    "actor_drift_fails_closed": true,
+    "command_shape_drift_fails_closed": true,
+    "stable_conflict_code": "FORUM_TOPIC_REPLY_RANGE_MOVE_OPERATION_CONFLICT"
+  },
+  "audit": {
+    "receipt_table": "forum_reply_range_move_operations",
+    "reply_item_table": "forum_reply_range_move_items",
+    "receipt_append_only": true,
+    "reply_items_append_only": true,
+    "records_source_and_target_parent_ids": true,
+    "records_source_and_target_positions": true,
+    "semantic_event": "forum.topic.reply_range_moved",
+    "semantic_event_schema": 1,
+    "event_id_equals_operation_id": true
+  },
+  "projection_invalidation": [
+    "source_topic",
+    "target_topic",
+    "source_category",
+    "target_category_when_distinct"
+  ],
+  "atomicity": {
+    "partial_move_prevented": true,
+    "parent_conflict_rolls_back": true,
+    "solution_conflict_rolls_back": true,
+    "acl_conflict_rolls_back": true,
+    "receipt_event_and_state_commit_together": true
+  },
+  "migrations": [
+    "m20260804_000022_add_forum_reply_range_move_operations",
+    "m20260804_000023_advance_forum_reply_range_move_positions"
+  ],
+  "verification": {
+    "sqlite_contract": "crates/rustok-forum/tests/reply_range_move_sqlite.rs",
+    "static_verifier": "scripts/verify/verify-forum-reply-range-move-owner.mjs",
+    "commands_run_by_implementation_agent": false
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_routes_changed": false,
+    "admin_ui_changed": false,
+    "existing_move_merge_split_fork_receipts_changed": false,
+    "existing_semantic_events_changed": false
+  },
+  "remaining_scope": [
+    "maintainer SQLite and PostgreSQL execution evidence",
+    "public manager transport and admin composition",
+    "final localized canonical aliases and route tombstones under FORUM-24"
+  ],
+  "non_claims": [
+    "no verifier Cargo formatter workflow browser or CI execution is claimed",
+    "no source position compaction is claimed",
+    "no source position watermark reduction is claimed",
+    "no ACL reconciliation or broadening is claimed",
+    "FORUM-21 remains planned"
+  ]
+}
