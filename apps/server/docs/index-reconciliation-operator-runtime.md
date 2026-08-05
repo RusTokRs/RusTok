@@ -46,7 +46,8 @@ materialized reads, digest production, or finding persistence.
 
 `diagnose_source_page(context, schema, cursor, limit)` derives tenant from the operator context. It
 checks the same current request-local permission snapshot before validating the `1..=32` limit or
-constructing `IndexSourceScanRequest`. Every source-present candidate is then delegated to
+constructing `IndexSourceScanRequest`. The maximum page size of 32 is intentionally stricter than the
+generic source-scan contract. Every source-present candidate is then delegated to
 `diagnose_entity`, which repeats authorization before exact dependency access.
 
 ## Published operator surface
