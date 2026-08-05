@@ -2259,6 +2259,8 @@ move/rename redirects and hreflang. Private/pending targets are not published
 to SEO. Use schema.org DiscussionForumPosting or QAPage only when semantics
 match.
 
+ID routes remain internal compatibility paths, not the primary storefront UX.
+
 ### Delivered in FORUM-24A
 
 - `ForumTopicRouteService` owns `/{locale}/forum/t/{short_id}/{slug}` descriptors,
@@ -2285,7 +2287,6 @@ cargo check -p rustok-forum --all-targets
 
 No command above was run by the implementation agent, per maintainer request.
 
-ID routes remain internal compatibility paths, not the primary storefront UX.
 
 ## `FORUM-25` — full multilingual and RTL contract
 
