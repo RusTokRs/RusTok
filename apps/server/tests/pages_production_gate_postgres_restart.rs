@@ -187,12 +187,15 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
         publish_operation_id,
     )
     .await?;
-    assert_eq!(read_receipt_version(
-        &db,
-        "page_publish_operations",
-        publish_operation_id,
-    )
-    .await?, 2);
+    assert_eq!(
+        read_receipt_version(
+            &db,
+            "page_publish_operations",
+            publish_operation_id,
+        )
+        .await?,
+        2
+    );
 
     let cache = CacheService::from_url(None);
     let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
@@ -238,12 +241,15 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
         rollback_operation_id,
     )
     .await?;
-    assert_eq!(read_receipt_version(
-        &db,
-        "page_rollback_operations",
-        rollback_operation_id,
-    )
-    .await?, 3);
+    assert_eq!(
+        read_receipt_version(
+            &db,
+            "page_rollback_operations",
+            rollback_operation_id,
+        )
+        .await?,
+        3
+    );
     let rollback_envelope = read_envelope(&db, rollback_event_id, tenant_id, page_id).await?;
     let rollback_keys = seed_old_keys(
         &reads,
@@ -267,7 +273,10 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
     assert_eq!(downstream.delivered_ids(), vec![publish_event_id]);
 
     let after_failed_downstream = reads.generation_snapshot(tenant_id).await?;
-    assert_eq!(after_failed_downstream, PageCacheGenerationSnapshot::new(2, 2, 2));
+    assert_eq!(
+        after_failed_downstream,
+        PageCacheGenerationSnapshot::new(2, 2, 2)
+    );
     assert_new_keys_miss_and_old_keys_remain(&reads, &rollback_keys).await?;
     let first_metrics = first_rollback_relay.metrics();
     assert_eq!(first_metrics.failure_total, 1);
@@ -296,7 +305,10 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
         .envelope(rollback_event_id)
         .ok_or_else(|| std::io::Error::other("restarted relay did not deliver rollback envelope"))?;
     assert_eq!(delivered_rollback.id, rollback_envelope.id);
-    assert_eq!(delivered_rollback.correlation_id, rollback_envelope.correlation_id);
+    assert_eq!(
+        delivered_rollback.correlation_id,
+        rollback_envelope.correlation_id
+    );
     PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(Arc::new(
         ServerPagesCachePort::new(&cache),
     )))
@@ -411,10 +423,30 @@ async fn assert_old_and_new_values(
     reads: &PagesCacheReadRuntime,
     keys: &KeyCycle,
 ) -> TestResult<()> {
-    assert!(reads.get_json::<Value>(&keys.old_storefront_key).await?.is_some());
-    assert!(reads.get_json::<Value>(&keys.old_artifact_key).await?.is_some());
-    assert!(reads.get_json::<Value>(&keys.new_storefront_key).await?.is_some());
-    assert!(reads.get_json::<Value>(&keys.new_artifact_key).await?.is_some());
+    assert!(
+        reads
+            .get_json::<Value>(&keys.old_storefront_key)
+            .await?
+            .is_some()
+    );
+    assert!(
+        reads
+            .get_json::<Value>(&keys.old_artifact_key)
+            .await?
+            .is_some()
+    );
+    assert!(
+        reads
+            .get_json::<Value>(&keys.new_storefront_key)
+            .await?
+            .is_some()
+    );
+    assert!(
+        reads
+            .get_json::<Value>(&keys.new_artifact_key)
+            .await?
+            .is_some()
+    );
     Ok(())
 }
 
@@ -479,9 +511,14 @@ INSERT INTO page_publish_operations (
 )
 "#,
         vec![
-            operation_id.into(), tenant_id.into(), page_id.into(),
-            PUBLISH_IDEMPOTENCY_KEY.into(), digest('a').into(), digest('b').into(),
-            digest('c').into(), digest('d').into(),
+            operation_id.into(),
+            tenant_id.into(),
+            page_id.into(),
+            PUBLISH_IDEMPOTENCY_KEY.into(),
+            digest('a').into(),
+            digest('b').into(),
+            digest('c').into(),
+            digest('d').into(),
         ],
     ))
     .await?;
@@ -530,9 +567,14 @@ INSERT INTO page_rollback_operations (
 )
 "#,
         vec![
-            operation_id.into(), tenant_id.into(), page_id.into(),
-            ROLLBACK_IDEMPOTENCY_KEY.into(), digest('e').into(),
-            target_publish_operation_id.into(), digest('d').into(), digest('f').into(),
+            operation_id.into(),
+            tenant_id.into(),
+            page_id.into(),
+            ROLLBACK_IDEMPOTENCY_KEY.into(),
+            digest('e').into(),
+            target_publish_operation_id.into(),
+            digest('d').into(),
+            digest('f').into(),
         ],
     ))
     .await?;
@@ -605,10 +647,12 @@ async fn read_receipt_version(
     operation_id: Uuid,
 ) -> TestResult<i32> {
     let sql = match table {
-        "page_publish_operations" =>
-            "SELECT result_version FROM page_publish_operations WHERE id = $1",
-        "page_rollback_operations" =>
-            "SELECT result_version FROM page_rollback_operations WHERE id = $1",
+        "page_publish_operations" => {
+            "SELECT result_version FROM page_publish_operations WHERE id = $1"
+        }
+        "page_rollback_operations" => {
+            "SELECT result_version FROM page_rollback_operations WHERE id = $1"
+        }
         _ => return Err(std::io::Error::other("unsupported receipt table").into()),
     };
     let row = db
@@ -664,7 +708,7 @@ fn database_url() -> Option<String> {
 async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
     let mut options = ConnectOptions::new(database_url.to_owned());
     options
-        .max_connections(1)
+        .max_connections(4)
         .min_connections(1)
         .sqlx_logging(false);
     Ok(Database::connect(options).await?)
