@@ -15,6 +15,7 @@ mod runtime_data;
 mod storefront_audience_topic;
 mod storefront_audience_topics;
 mod storefront_read_state;
+mod topic_fork_mutation;
 mod topic_merge_mutation;
 mod topic_reply_range_move_mutation;
 mod topic_split_mutation;
@@ -44,6 +45,9 @@ pub use quote_commands::{
 pub use read_state::*;
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
+pub use topic_fork_mutation::{
+    ForkForumTopicReplyBranchGraphqlInput, GqlForumTopicFork,
+};
 pub use topic_merge_mutation::{
     GqlForumTopicMerge, GqlForumTopicMergeSolutionResolution, MergeForumTopicGraphqlInput,
     ResolveForumTopicMergeSolutionGraphqlInput,
@@ -76,6 +80,7 @@ pub struct ForumMutation(
     content_commands::ForumContentCommandMutation,
     read_state::ForumReadStateMutation,
     storefront_read_state::ForumStorefrontReadStateMutation,
+    topic_fork_mutation::ForumTopicForkMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
     topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation,
     topic_split_mutation::ForumTopicSplitMutation,

@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-05
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -234,7 +234,7 @@ at the end of this file remain authoritative.
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
 | `FORUM-20` | `in_progress` | FORUM-20A-AZ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation, exact topic/reply create authorization, topic-local reply narrowing, inherited moderation audiences, and existing solution-route transport composition. FORUM-20BA synchronizes the canonical ledger and owner notes after FORUM-20AV-AZ. Remaining read/search/index/SEO/deep-link migration, visibility-scoped bulk read commands, future moderation transport reuse, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
-| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
+| `FORUM-21` | `planned` | FORUM-21A-U provide move, merge, split, fork and reply-range owners plus manager GraphQL transports; admin composition, runtime evidence and FORUM-24 aliases remain. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 through FORUM-23B2F4 add exact Forum category, audience, result-eligibility, trusted-channel, author, tag, solved, locale, date and current-channel filtering; FORUM-23B2G1 adds durable Search ingest ordering; FORUM-23B2G2A/A1 add the Forum owner revision ledger and database hardening; FORUM-23B2G2B1/B2 add the bounded owner source, Search checkpoint and repair protocol; FORUM-23B2G2B3A-C add the caused sealed wire event, atomic dual publisher and default-off persistent one-inbox consumer; FORUM-23B2G2B3D0 freezes executable runtime evidence and FORUM-23B2G2B3D1 reconciles this canonical plan. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
 | `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
@@ -1584,7 +1584,7 @@ Preserve revisions, attachments, mentions and audit. Remap reply positions
 safely, deduplicate subscriptions, revalidate solutions and ACL, update
 category counters and create canonical URL aliases.
 
-### Delivered through `FORUM-21R`
+### Delivered through `FORUM-21U`
 
 - FORUM-21A adds the bounded idempotent topic-move owner with checked category
   counters, immutable operation receipt and unchanged topic identity;
@@ -1624,6 +1624,18 @@ category counters and create canonical URL aliases.
   additive `splitForumTopicReplies` field delegates the complete command to
   `ForumTopicSplitService::split_selected_replies` and returns the immutable
   owner receipt without reading split audit tables or duplicating owner policy;
+- FORUM-21S adds the idempotent bounded reply-range move owner with deterministic
+  append positions, explicit asymmetric parent policy, unchanged reply-owned
+  references, exact topic-local access equality and checked solution/counter
+  reconciliation;
+- FORUM-21T adds the routed-tenant, manager-only GraphQL reply-range transport.
+  The additive `moveForumTopicReplyRange` field delegates the complete command
+  to `ForumReplyRangeMoveService::move_reply_range` and returns the immutable
+  owner receipt without reading move audit tables or duplicating owner policy;
+- FORUM-21U adds the routed-tenant, manager-only GraphQL fork transport. The
+  additive `forkForumTopicReplyBranch` field delegates the complete command to
+  `ForumTopicForkService::fork_reply_branch` and returns the immutable owner
+  receipt without reading fork audit/mapping tables or duplicating copy policy;
 - every ordinary, resolved, same-category and cross-category merge retains the
   exact `forum.topic.merged` schema-version-1 payload so existing post-merge
   reconciliation owners remain compatible.
@@ -1641,9 +1653,11 @@ FORUM-21O changes only the Leptos admin transport selection and host composition
 SSR/hydrate use direct authenticated native owner state, CSR/headless retain
 GraphQL, and no fallback is introduced. FORUM-21P and FORUM-21Q add append-only
 PostgreSQL/SQLite owner receipt and mapping migrations without changing existing
-move or merge receipts and events. FORUM-21R adds one GraphQL field and no
-migration, REST route, admin UI, owner method, receipt shape or semantic-event
-change. Direct owner callers remain source-compatible.
+move or merge receipts and events. FORUM-21S adds append-only PostgreSQL/SQLite
+owner receipt and mapping state without changing earlier commands. FORUM-21R,
+FORUM-21T and FORUM-21U each add one additive GraphQL field and no REST route,
+admin UI, owner method, receipt shape or semantic-event change. Direct owner
+callers remain source-compatible.
 
 Forum move, merge, split and fork commands remain independent from Notifications,
 Search, Page Builder and other optional integrations. Owner state, the Forum
@@ -1660,11 +1674,9 @@ maintainer-executed:
   merge, split and fork owner/migration chain, including cross-category
   concurrency, replay and rollback;
 - mounted-browser and runtime transport evidence for the native/GraphQL merge
-  paths and the new split GraphQL field;
-- public admin composition for split and fork workflows, plus an additive
-  manager transport for the fork owner without transport-local copy policy;
-- bounded reply-range movement with deterministic positions, parent/reference
-  policy and partial-move prevention;
+  paths plus the split, fork and reply-range GraphQL fields;
+- public admin composition for split, fork and reply-range workflows without
+  transport-local movement or copy policy;
 - final canonical localized URL aliases and route tombstones under FORUM-24,
   rather than a parallel FORUM-21 slug authority.
 
@@ -1689,7 +1701,10 @@ node scripts/verify/verify-forum-topic-merge-admin-ui.mjs
 node scripts/verify/verify-forum-topic-merge-native-admin.mjs
 node scripts/verify/verify-forum-topic-split-owner.mjs
 node scripts/verify/verify-forum-topic-fork-owner.mjs
+node scripts/verify/verify-forum-reply-range-move-owner.mjs
 node scripts/verify/verify-forum-topic-split-graphql-transport.mjs
+node scripts/verify/verify-forum-reply-range-move-graphql-transport.mjs
+node scripts/verify/verify-forum-topic-fork-graphql-transport.mjs
 npm run verify:forum:admin-boundary
 npm run verify:blog:forum-ui-ownership
 cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture
@@ -1702,13 +1717,18 @@ cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
 cargo test -p rustok-forum graphql::topic_split_mutation::tests -- --nocapture
 cargo test -p rustok-forum --test topic_split_graphql_contract -- --nocapture
 cargo test -p rustok-forum --test topic_split_sqlite -- --nocapture
+cargo test -p rustok-forum graphql::topic_reply_range_move_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test reply_range_move_graphql_contract -- --nocapture
+cargo test -p rustok-forum --test reply_range_move_sqlite -- --nocapture
+cargo test -p rustok-forum graphql::topic_fork_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test topic_fork_graphql_contract -- --nocapture
 cargo test -p rustok-forum --test topic_fork_sqlite -- --nocapture
 cargo test -p rustok-forum-admin topic_merge_model -- --nocapture
 cargo check -p rustok-forum-admin --all-targets
 npm --prefix apps/next-admin run typecheck
 ```
 
-The FORUM-21A through FORUM-21R source and contract records do not claim
+The FORUM-21A through FORUM-21U source and contract records do not claim
 successful verifier, SQLite, PostgreSQL, Cargo, formatting, npm, browser,
 workflow or CI execution. The canonical task remains `planned` until the
 remaining workflows and maintainer evidence are complete.
