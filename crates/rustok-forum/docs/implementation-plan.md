@@ -237,7 +237,7 @@ at the end of this file remain authoritative.
 | `FORUM-21` | `planned` | FORUM-21A-X provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork/reply-range admin composition; retained owner/transport runtime evidence remains, while localized route identity proceeds under FORUM-24. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 through FORUM-23B2F4 add exact Forum category, audience, result-eligibility, trusted-channel, author, tag, solved, locale, date and current-channel filtering; FORUM-23B2G1 adds durable Search ingest ordering; FORUM-23B2G2A/A1 add the Forum owner revision ledger and database hardening; FORUM-23B2G2B1/B2 add the bounded owner source, Search checkpoint and repair protocol; FORUM-23B2G2B3A-C add the caused sealed wire event, atomic dual publisher and default-off persistent one-inbox consumer; FORUM-23B2G2B3D0 freezes executable runtime evidence and FORUM-23B2G2B3D1 reconciles this canonical plan. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
-| `FORUM-24` | `planned` | FORUM-24A adds deterministic exact-locale topic route identity and an immutable redirect/tombstone ledger; FORUM-24B composes new merge redirects in the owner transaction. Rename/delete composition, historical backfill, category routes, storefront mounts, hreflang/SEO policy and runtime evidence remain. |
+| `FORUM-24` | `planned` | FORUM-24A adds deterministic exact-locale topic route identity and an immutable redirect/tombstone ledger; FORUM-24B composes new merge redirects and FORUM-24C composes delete tombstones in their owner transactions. Rename composition, historical backfill, category routes, storefront mounts, hreflang/SEO policy and runtime evidence remain. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
@@ -2301,14 +2301,41 @@ No command above was run by the implementation agent, per maintainer request.
   source fails closed when the target has no canonical localized route;
 - exact merge replay returns the existing receipt and does not duplicate aliases.
 
-Topic rename aliases and deletion tombstones remain follow-up owner composition.
-Historical merge receipt backfill, storefront mounting and retained runtime
-proof also remain.
+Topic rename aliases remain follow-up owner composition. Historical merge receipt
+backfill, storefront mounting and retained runtime proof also remain.
 
 Verification sources:
 
 ```bash
 node scripts/verify/verify-forum-topic-merge-route-alias-owner.mjs
+cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture
+cargo check -p rustok-forum --all-targets
+```
+
+No command above was run by the implementation agent, per maintainer request.
+
+### Delivered in FORUM-24C
+
+- `TopicService::delete` delegates to
+  `ForumTopicRouteService::record_delete_tombstones_in_tx` before localized
+  cleanup and soft-delete mutation;
+- every topic translation with a non-empty slug receives one immutable `gone`
+  route with no target topic or locale and the stable reason `Topic deleted`;
+- the tombstones commit with the existing delete lifecycle, counters, events and
+  projection invalidation without changing public command or event schemas;
+- an existing redirect for the same topic and route is preserved, so deleting an
+  archived merge source cannot downgrade FORUM-24B canonical history;
+- exact existing `gone` rows are idempotent and ownership, target-field or reason
+  drift fails closed.
+
+Topic rename aliases, historical backfill, storefront mounting, category routes,
+hreflang/SEO policy and retained runtime proof remain.
+
+Verification sources:
+
+```bash
+node scripts/verify/verify-forum-topic-delete-route-tombstone-owner.mjs
+cargo test -p rustok-forum --test topic_delete_route_tombstone_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture
 cargo check -p rustok-forum --all-targets
 ```
