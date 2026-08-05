@@ -210,11 +210,18 @@ async fn create_reviewed_published_page(
             },
         )
         .await?;
-    let body = draft
+    let body_response = draft
         .body
         .as_ref()
         .ok_or_else(|| std::io::Error::other("reviewed draft is missing its body"))?;
-    let body_revision = body.updated_at.clone();
+    let body_revision = body_response.updated_at.clone();
+    let body = page_body::Entity::find()
+        .filter(page_body::Column::TenantId.eq(tenant_id))
+        .filter(page_body::Column::PageId.eq(draft.id))
+        .filter(page_body::Column::Locale.eq("en"))
+        .one(db)
+        .await?
+        .ok_or_else(|| std::io::Error::other("reviewed draft body is missing from owner storage"))?;
     let body_id = body.id;
     let reviewed = PageBuilderReviewedPublishRuntime::new(
         "selected-immutable-artifact",
