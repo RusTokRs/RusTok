@@ -10,6 +10,7 @@ use crate::entities::{page, page_body, page_channel_visibility, page_translation
 use crate::error::{PagesError, PagesResult};
 
 use super::helpers::{normalize_locale, normalize_slug};
+use super::route::ensure_route_alias_claim_available_in_tx;
 use super::{PageService, PreparedPageBody};
 
 impl PageService {
@@ -36,17 +37,19 @@ impl PageService {
         slug: &str,
         exclude_page_id: Option<Uuid>,
     ) -> PagesResult<()> {
+        let locale = normalize_locale(locale)?;
+        let slug = normalize_slug(slug)?;
         let mut select = page_translation::Entity::find()
             .filter(page_translation::Column::TenantId.eq(tenant_id))
-            .filter(page_translation::Column::Locale.eq(normalize_locale(locale)?))
-            .filter(page_translation::Column::Slug.eq(slug));
+            .filter(page_translation::Column::Locale.eq(&locale))
+            .filter(page_translation::Column::Slug.eq(&slug));
         if let Some(exclude_page_id) = exclude_page_id {
             select = select.filter(page_translation::Column::PageId.ne(exclude_page_id));
         }
         if select.one(txn).await?.is_some() {
-            return Err(PagesError::duplicate_slug(slug, locale));
+            return Err(PagesError::duplicate_slug(&slug, &locale));
         }
-        Ok(())
+        ensure_route_alias_claim_available_in_tx(txn, tenant_id, &locale, &slug).await
     }
 
     pub(super) async fn replace_translations_in_tx(
