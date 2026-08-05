@@ -5,7 +5,7 @@
   "execution": [],
   "validation": {
     "source_verifier_run": false,
-    "runtime_regression_run": false,
+    "source_regression_run": false,
     "cargo_metadata_run": false,
     "ssr_build_run": false,
     "artifact_inspector_run": false,
@@ -25,9 +25,9 @@
     "storefront_source_has_no_wasm_start_entrypoint": true,
     "storefront_source_has_no_mount_to_body_entrypoint": true,
     "storefront_source_has_no_hydrate_body_entrypoint": true,
-    "runtime_regression_added": true,
+    "source_regression_added": true,
     "artifact_inspector_added": true,
-    "artifact_inspector_requires_explicit_artifact_root": true,
+    "artifact_inspector_requires_explicit_artifact_paths": true,
     "artifact_inspector_records_sha256": true,
     "artifact_inspector_rejects_pages_admin": true,
     "artifact_inspector_rejects_page_builder_admin": true,
@@ -64,7 +64,7 @@
     "PageBuilderAdmin",
     "ConsumerPropertiesPanel"
   ],
-  "runtime_regression": "apps/storefront/tests/pages_anonymous_ssr_delivery.rs",
+  "source_regression": "apps/storefront/tests/pages_anonymous_ssr_delivery.rs",
   "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs",
   "artifact_inspector": "crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
   "packet": "docs/modules/pages-page-builder-anonymous-storefront-ssr-delivery-packet-2026-08-05.md"
