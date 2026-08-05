@@ -88,11 +88,17 @@ Hard-delete tombstones remain ordinary source `Delete` values and are not collap
 
 ## Evidence status
 
-The existing environment-gated `drift_snapshot_reader_postgres_test` still covers stable retained
-state, source change, and missing-watermark rejection. A real-migration Product locale-absence and
-concurrent-translation scenario remains to be added and run by the repository owner.
+The existing environment-gated `drift_snapshot_reader_postgres_test` covers stable retained state,
+source change, and missing-watermark rejection with a database-neutral sequenced source.
 
-No retained PostgreSQL execution evidence is claimed by this source change.
+The source-ready `product_locale_absence_postgres` harness now applies the real Product and Index
+migrations, materializes the production Product source and Product locale provider, captures stable
+source `Missing`, and uses a PostgreSQL table lock plus `pg_stat_activity` to insert a translation
+between the two real owner observations. The changed observation must return retryable
+`index_drift_source_changed_during_capture`.
+
+No retained PostgreSQL execution evidence is claimed until the repository owner runs and admits
+both harnesses.
 
 ## Deliberate limits
 
@@ -110,11 +116,17 @@ This slice does not add or claim:
 
 ```bash
 cargo test -p rustok-index source_absence -- --nocapture
-cargo test -p rustok-distribution product_index -- --nocapture
+cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-distribution \
+  --features mod-product \
+  --test product_locale_absence_postgres \
+  -- --nocapture --test-threads=1
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-index --test drift_snapshot_reader_postgres_test \
   -- --nocapture --test-threads=1
+node scripts/verify/verify-index-product-absence-postgres-harness.mjs
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
