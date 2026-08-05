@@ -52,17 +52,17 @@ const replay = composition.indexOf(
 const reconciliation = composition.indexOf(
   'reconciliation_operator::materialize_index_reconciliation_operator(extensions, db.clone())?;',
 );
-const diagnosis = composition.indexOf(
+const diagnosisComposition = composition.indexOf(
   'drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;',
 );
-const pageDiagnosis = composition.indexOf(
+const pageComposition = composition.indexOf(
   'drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(extensions)?;',
 );
 if (
   replay < 0 ||
   reconciliation <= replay ||
-  diagnosis <= reconciliation ||
-  pageDiagnosis <= diagnosis
+  diagnosisComposition <= reconciliation ||
+  pageComposition <= diagnosisComposition
 ) {
   fail(
     `${compositionPath} must freeze replay before reconciliation, exact diagnosis, and page diagnosis publication`,
@@ -79,7 +79,6 @@ const operator = requireMarkers(operatorPath, [
   'PostgresIndexReconciliationDeadLetterInspector,',
   'PostgresIndexDriftFindingInspector,',
   'PostgresIndexReconciliationRecoveryStore,',
-  'DriftInspection(#[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError)',
   'context.authorize_for(request.tenant_id())?;',
   'pub async fn request_cancel(',
   'pub async fn inspect_dead_letter(',
@@ -91,7 +90,7 @@ const operator = requireMarkers(operatorPath, [
   '.requeue_failed(request)',
   'drift_finding_inspection_authorizes_before_adapter_validation',
 ]);
-const production = operator.split('\n#[cfg(test)]')[0];
+const operatorProduction = operator.split('\n#[cfg(test)]')[0];
 for (const forbidden of [
   'tokio::spawn',
   'spawn_blocking',
@@ -108,15 +107,15 @@ for (const forbidden of [
   'PostgresIndexDriftFindingWriter',
   'SharedIndexSourceAbsenceRegistry',
 ]) {
-  if (production.includes(forbidden)) fail(`${operatorPath} contains ${forbidden}`);
+  if (operatorProduction.includes(forbidden)) fail(`${operatorPath} contains ${forbidden}`);
 }
 
-const runStart = production.indexOf('    pub async fn run(');
-const cancelStart = production.indexOf('    pub async fn request_cancel(', runStart);
-const deadLetterStart = production.indexOf('    pub async fn inspect_dead_letter(', cancelStart);
-const driftStart = production.indexOf('    pub async fn inspect_drift_finding(', deadLetterStart);
-const requeueStart = production.indexOf('    pub async fn requeue_dead_letter(', driftStart);
-const runtimeEnd = production.indexOf('\n}\n\nimpl fmt::Debug', requeueStart);
+const runStart = operatorProduction.indexOf('    pub async fn run(');
+const cancelStart = operatorProduction.indexOf('    pub async fn request_cancel(', runStart);
+const deadLetterStart = operatorProduction.indexOf('    pub async fn inspect_dead_letter(', cancelStart);
+const driftStart = operatorProduction.indexOf('    pub async fn inspect_drift_finding(', deadLetterStart);
+const requeueStart = operatorProduction.indexOf('    pub async fn requeue_dead_letter(', driftStart);
+const runtimeEnd = operatorProduction.indexOf('\n}\n\nimpl fmt::Debug', requeueStart);
 if (
   [runStart, cancelStart, deadLetterStart, driftStart, requeueStart, runtimeEnd].some(
     (value) => value < 0,
@@ -124,11 +123,11 @@ if (
 ) {
   fail(`${operatorPath} guarded method segments are incomplete`);
 }
-const run = production.slice(runStart, cancelStart);
-const cancel = production.slice(cancelStart, deadLetterStart);
-const deadLetter = production.slice(deadLetterStart, driftStart);
-const drift = production.slice(driftStart, requeueStart);
-const requeue = production.slice(requeueStart, runtimeEnd);
+const run = operatorProduction.slice(runStart, cancelStart);
+const cancel = operatorProduction.slice(cancelStart, deadLetterStart);
+const deadLetter = operatorProduction.slice(deadLetterStart, driftStart);
+const drift = operatorProduction.slice(driftStart, requeueStart);
+const requeue = operatorProduction.slice(requeueStart, runtimeEnd);
 if (
   run.indexOf('context.authorize_for(request.tenant_id())?;') < 0 ||
   run.indexOf('self.inner.run(request)') <=
@@ -162,39 +161,18 @@ if (
   fail(`${operatorPath} requeue must authorize, bind tenant/actor, then delegate`);
 }
 
-const driftComposition = production.indexOf('let drift_findings =');
-const driftConstructor = production.indexOf(
-  'PostgresIndexDriftFindingInspector::new(db.clone())',
-  driftComposition,
-);
-const runnerComposition = production.indexOf(
-  'PostgresIndexReconciliationRunner::new(db, sources, schemas.shared())',
-);
-const runtimeComposition = production.indexOf(
-  'IndexReconciliationOperatorRuntime::new(',
-  runnerComposition,
-);
-const driftArgument = production.indexOf('drift_findings,', runtimeComposition);
-if (
-  driftComposition < 0 ||
-  driftConstructor <= driftComposition ||
-  runnerComposition <= driftConstructor ||
-  runtimeComposition <= runnerComposition ||
-  driftArgument <= runtimeComposition
-) {
-  fail(`${operatorPath} must privately compose drift inspection before runtime publication`);
-}
-
-const diagnosisSource = requireMarkers(diagnosisPath, [
+const diagnosis = requireMarkers(diagnosisPath, [
   'type IndexDriftDiagnosisProducer = rustok_index::IndexDriftDigestProducer<',
   'rustok_index::PostgresIndexDriftSnapshotReader,',
   'PostgresIndexDriftFindingWriter,',
   'pub struct IndexDriftDiagnosisOperatorRuntime',
   'inner: Arc<IndexDriftDiagnosisProducer>,',
   'pub async fn diagnose_entity(',
+  'pub async fn diagnose_missing_entity_candidate(',
   'authorize_for(&context, key.tenant_id)?;',
   'IndexDriftDigestRequest::new(key)?;',
   'self.inner.produce(request).await',
+  '.produce_missing_entity_candidate(request)',
   'Permission::MODULES_MANAGE',
   'permissions_for(&context.tenant_id(), &context.actor_id())',
   'materialize_index_source_absence_registry(extensions)',
@@ -205,9 +183,10 @@ const diagnosisSource = requireMarkers(diagnosisPath, [
   'PostgresIndexDriftFindingWriter::new(db)',
   'IndexDriftDigestProducer::new(',
   'exact_entity_diagnosis_authorizes_before_request_validation',
+  'missing_candidate_diagnosis_authorizes_before_request_validation',
   'IndexDriftDigestError::NilEntityId',
 ]);
-const diagnosisProduction = diagnosisSource.split('\n#[cfg(test)]')[0];
+const diagnosisProduction = diagnosis.split('\n#[cfg(test)]')[0];
 for (const forbidden of [
   'tokio::spawn',
   'spawn_blocking',
@@ -225,22 +204,31 @@ for (const forbidden of [
 ]) {
   if (diagnosisProduction.includes(forbidden)) fail(`${diagnosisPath} contains ${forbidden}`);
 }
-const methodStart = diagnosisProduction.indexOf('    pub async fn diagnose_entity(');
-const methodEnd = diagnosisProduction.indexOf('\n    }\n}', methodStart);
-if (methodStart < 0 || methodEnd < 0) fail(`${diagnosisPath} diagnosis method is incomplete`);
-const method = diagnosisProduction.slice(methodStart, methodEnd);
-const diagnosisAuth = method.indexOf('authorize_for(&context, key.tenant_id)?;');
-const diagnosisRequest = method.indexOf('IndexDriftDigestRequest::new(key)?;');
-const diagnosisDelegate = method.indexOf('self.inner.produce(request).await');
-if (
-  diagnosisAuth < 0 ||
-  diagnosisRequest <= diagnosisAuth ||
-  diagnosisDelegate <= diagnosisRequest
-) {
-  fail(`${diagnosisPath} must authorize, validate one exact key, then delegate`);
+
+const exactStart = diagnosisProduction.indexOf('    pub async fn diagnose_entity(');
+const missingStart = diagnosisProduction.indexOf(
+  '    pub async fn diagnose_missing_entity_candidate(',
+  exactStart,
+);
+const diagnosisImplEnd = diagnosisProduction.indexOf('\n}\n\nimpl fmt::Debug', missingStart);
+if (exactStart < 0 || missingStart <= exactStart || diagnosisImplEnd <= missingStart) {
+  fail(`${diagnosisPath} exact and missing-only methods are incomplete`);
 }
-if (method.includes('tenant_id:') || method.includes('actor_id:') || method.includes('Vec<')) {
-  fail(`${diagnosisPath} must not accept caller-selected authority or batch scope`);
+const exact = diagnosisProduction.slice(exactStart, missingStart);
+const missing = diagnosisProduction.slice(missingStart, diagnosisImplEnd);
+for (const [name, body, delegate] of [
+  ['general exact', exact, 'self.inner.produce(request).await'],
+  ['missing-only', missing, '.produce_missing_entity_candidate(request)'],
+]) {
+  const auth = body.indexOf('authorize_for(&context, key.tenant_id)?;');
+  const request = body.indexOf('IndexDriftDigestRequest::new(key)?;');
+  const call = body.indexOf(delegate);
+  if (auth < 0 || request <= auth || call <= request) {
+    fail(`${diagnosisPath} ${name} diagnosis must authorize, validate one key, then delegate`);
+  }
+  if (body.includes('tenant_id:') || body.includes('actor_id:') || body.includes('Vec<')) {
+    fail(`${diagnosisPath} ${name} diagnosis must not accept caller authority or batch scope`);
+  }
 }
 
 const absenceMaterialization = diagnosisProduction.indexOf(
@@ -272,7 +260,7 @@ if (
   fail(`${diagnosisPath} must freeze optional absence evidence before producer publication`);
 }
 
-const pageSource = requireMarkers(pageDiagnosisPath, [
+const page = requireMarkers(pageDiagnosisPath, [
   'const MAX_SOURCE_PAGE_DIAGNOSIS_SIZE: usize = 32;',
   'pub struct IndexDriftSourcePageDiagnosisRuntime',
   'sources: rustok_index::SharedIndexSourceRegistry',
@@ -282,11 +270,15 @@ const pageSource = requireMarkers(pageDiagnosisPath, [
   'IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)',
   'let page = self.sources.scan(request).await?;',
   'matches!(&mutation, rustok_index::IndexMutation::Delete { .. })',
-  '.diagnose_entity(context, key)',
+  '.diagnose_missing_entity_candidate(context, key)',
+  'IndexDriftMissingEntityCandidateOutcome::NotCandidate',
+  'IndexDriftMissingEntityCandidateOutcome::MissingRecorded',
+  'non_missing_count',
+  'missing_recorded_count',
   'materialize_index_drift_source_page_diagnosis',
-  'one_page_skips_deletes_and_diagnoses_each_upsert_once',
+  'one_page_skips_deletes_and_classifies_each_upsert_once',
 ]);
-const pageProduction = pageSource.split('\n#[cfg(test)]')[0];
+const pageProduction = page.split('\n#[cfg(test)]')[0];
 const pageAuth = pageProduction.indexOf(
   'let permissions = permissions_for(&context.tenant_id(), &context.actor_id())',
 );
@@ -299,8 +291,20 @@ const pageRequest = pageProduction.indexOf(
   pageLimit,
 );
 const pageScan = pageProduction.indexOf('let page = self.sources.scan(request).await?;');
-if (pageAuth < 0 || pageLimit <= pageAuth || pageRequest <= pageLimit || pageScan <= pageRequest) {
-  fail(`${pageDiagnosisPath} must authorize, validate, and then scan one page`);
+const pageDelegate = pageProduction.indexOf(
+  '.diagnose_missing_entity_candidate(context, key)',
+);
+if (
+  pageAuth < 0 ||
+  pageLimit <= pageAuth ||
+  pageRequest <= pageLimit ||
+  pageScan <= pageRequest ||
+  pageDelegate < 0
+) {
+  fail(`${pageDiagnosisPath} must authorize, validate, scan one page, and use missing-only diagnosis`);
+}
+if (pageProduction.includes('.diagnose_entity(context, key)')) {
+  fail(`${pageDiagnosisPath} must not use the general mismatch recorder path`);
 }
 for (const forbidden of [
   'tokio::spawn',
@@ -320,7 +324,7 @@ for (const forbidden of [
   if (pageProduction.includes(forbidden)) fail(`${pageDiagnosisPath} contains ${forbidden}`);
 }
 
-const graphqlTransport = requireMarkers(graphqlTransportPath, [
+const graphql = requireMarkers(graphqlTransportPath, [
   'pub struct IndexDriftDiagnosisInput',
   'pub struct IndexDriftDiagnosisMutation',
   'async fn diagnose_index_entity(',
@@ -330,7 +334,7 @@ const graphqlTransport = requireMarkers(graphqlTransportPath, [
   '.diagnose_entity(operator_context, key)',
   'transport_authorizes_before_parsing_untrusted_input',
 ]);
-const graphqlProduction = graphqlTransport.split('\n#[cfg(test)]')[0];
+const graphqlProduction = graphql.split('\n#[cfg(test)]')[0];
 const graphqlPermission = graphqlProduction.indexOf(
   'let permissions = permissions_for(&tenant_id, &actor_id)',
 );
@@ -345,6 +349,7 @@ for (const forbidden of [
   '.scan(',
   'IndexDriftSourcePageDiagnosisRuntime',
   'IndexSourceCursor',
+  'diagnose_missing_entity_candidate',
   'repair_finding',
   'resolve_finding',
   'ignore_finding',
@@ -363,15 +368,15 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconcili
   'PostgresIndexReconciliationRunner',
 ]);
 requireMarkers(docsPath, [
-  'Status: `source_page_diagnosis_source_complete_transport_and_owner_execution_pending`.',
+  'Status: `missing_only_source_page_source_complete_transport_and_owner_execution_pending`.',
   'effective `Permission::MODULES_MANAGE`',
   '`inspect_drift_finding(context, finding_id)`',
-  '`IndexDriftDiagnosisOperatorRuntime`',
   '`diagnose_entity(context, key)`',
+  '`diagnose_missing_entity_candidate(context, key)`',
   '`IndexDriftSourcePageDiagnosisRuntime`',
   '`diagnose_source_page(context, schema, cursor, limit)`',
-  'maximum page size of',
-  'not claimed as missing-only diagnosis',
+  'maximum page size of 32',
+  'one-page internal missing-entity diagnosis are source complete',
   '`diagnoseIndexEntity(input: IndexDriftDiagnosisInput!)`',
   '`SharedIndexSourceAbsenceRegistry`',
   'positive `products.index_revision`',
@@ -387,32 +392,33 @@ requireMarkers(graphqlDocsPath, [
   'delegates once to `diagnose_entity(context, key)`',
 ]);
 requireMarkers(pageDocsPath, [
-  'Status: `source_complete_transport_and_owner_execution_pending`.',
+  'Status: `missing_only_source_complete_transport_and_owner_execution_pending`.',
   'one page limit in `1..=32`',
-  'skips retained source `Delete` mutations',
+  'source `Upsert` plus materialized `Missing`',
+  'non-missing candidate count',
   'The cursor is not attached to GraphQL',
-  'missing-only selector over captured typed states remains a separate open slice',
+  'server-owned continuation envelope',
 ]);
 requireMarkers(recheckPath, [
   'Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.',
+  '`main@1e31db0149618369d35cc0d2ae3494634bfee573`',
   '`product-locale-absence-postgres`',
   'absence version is domain-tagged into the opaque boundary only for source `Missing`',
   'index_drift_source_changed_during_capture',
   'index_drift_source_watermark_missing',
-  'Bounded GraphQL transport continuation',
+  'Missing-only outcome continuation',
   'did not run tests,',
 ]);
 requireMarkers(planPath, [
   'M6 guarded exact-entity drift diagnosis operator',
   'M6 bounded GraphQL exact-entity diagnosis transport',
-  'M6 bounded source-page drift candidate diagnosis',
+  'M6 missing-only entity candidate outcome',
+  'M6 bounded source-page missing-entity diagnosis',
   'source_complete_transport_and_owner_execution_pending',
   '[x] Register the Product locale absence provider',
-  '[x] Reload and compare the exact positive absence version',
-  '[x] Add the source-ready real-migration Product locale-absence scenario',
-  '[x] Expose exact-entity diagnosis through bounded GraphQL `diagnoseIndexEntity`',
-  '[x] Add one internal server-owned source-page candidate diagnosis runtime',
-  'M6 - add missing-only candidate classification without exposing snapshot state',
+  '[x] Add a database-neutral missing-only selector',
+  '[x] Add one internal server-owned source-page missing-entity diagnosis runtime',
+  'M6 - seal source-page continuation before transport',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',
