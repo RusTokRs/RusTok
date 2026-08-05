@@ -15,6 +15,7 @@ notifications module, and cross-module release gates.
 - keep Forum-owned transport surfaces, Q&A capabilities and UI packages inside the module;
 - keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles;
 - resolve selected merged-source topic IDs through the immutable merge receipt ledger;
+- own deterministic localized topic route identity plus immutable redirect/tombstone history;
 - expose manager-only move, merge, split, reply-branch fork and reply-range owners without duplicating policy;
 - evolve the Forum as a taxonomy-aware and channel-aware domain with explicit observability.
 
@@ -44,6 +45,7 @@ notifications module, and cross-module release gates.
 - FORUM-21T exposes `moveForumTopicReplyRange` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged reply-range owner and immutable receipt; FORUM-21X provides its Leptos and Next-admin composition without inferring canonical positions from visible row order;
 - FORUM-21U exposes `forkForumTopicReplyBranch` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged fork owner and immutable receipt; admin composition remains follow-up scope.
 - FORUM-21V composes `splitForumTopicReplies` in the module-owned Leptos and Next-admin surfaces with stable retry/target identities and no transport-local movement policy.
+- FORUM-24A adds `ForumTopicRouteService`, a twelve-hex topic identity, exact-locale canonical descriptors and an append-only redirect/tombstone ledger; host mounting and owner write composition remain follow-up scope.
 
 ## Verification
 
@@ -74,6 +76,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21X reply-range move admin composition](./forum-21x-reply-range-move-admin-ui.md)
 - [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
+- [FORUM-24A topic route identity owner](./forum-24a-topic-route-identity-owner.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
