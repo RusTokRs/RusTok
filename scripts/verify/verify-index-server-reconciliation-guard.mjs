@@ -21,9 +21,11 @@ const requireMarkers = (relative, markers) => {
 const compositionPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
 const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs';
 const diagnosisPath = 'apps/server/src/services/index_drift_diagnosis_operator.rs';
+const pageDiagnosisPath = 'apps/server/src/services/index_drift_source_page_diagnosis.rs';
 const graphqlTransportPath = 'apps/server/src/graphql/index_drift_diagnosis.rs';
 const docsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
 const graphqlDocsPath = 'apps/server/docs/index-drift-diagnosis-graphql-transport.md';
+const pageDocsPath = 'apps/server/docs/index-drift-source-page-diagnosis.md';
 const planPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md';
 const recheckPath =
   'crates/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md';
@@ -33,11 +35,16 @@ const composition = requireMarkers(compositionPath, [
   'mod reconciliation_operator;',
   '#[path = "index_drift_diagnosis_operator.rs"]',
   'mod drift_diagnosis_operator;',
+  '#[path = "index_drift_source_page_diagnosis.rs"]',
+  'mod drift_source_page_diagnosis;',
   'IndexDriftDiagnosisOperatorError, IndexDriftDiagnosisOperatorRuntime,',
+  'IndexDriftSourcePageDiagnosisRuntime,',
   'materialize_postgres_index_replay_runtime(extensions, db.clone())',
   'reconciliation_operator::materialize_index_reconciliation_operator(extensions, db.clone())?;',
   'drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;',
+  'drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(extensions)?;',
   'extensions.contains::<IndexDriftDiagnosisOperatorRuntime>()',
+  'extensions.contains::<IndexDriftSourcePageDiagnosisRuntime>()',
 ]);
 const replay = composition.indexOf(
   'materialize_postgres_index_replay_runtime(extensions, db.clone())',
@@ -48,8 +55,18 @@ const reconciliation = composition.indexOf(
 const diagnosis = composition.indexOf(
   'drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;',
 );
-if (replay < 0 || reconciliation <= replay || diagnosis <= reconciliation) {
-  fail(`${compositionPath} must freeze replay before reconciliation and diagnosis publication`);
+const pageDiagnosis = composition.indexOf(
+  'drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(extensions)?;',
+);
+if (
+  replay < 0 ||
+  reconciliation <= replay ||
+  diagnosis <= reconciliation ||
+  pageDiagnosis <= diagnosis
+) {
+  fail(
+    `${compositionPath} must freeze replay before reconciliation, exact diagnosis, and page diagnosis publication`,
+  );
 }
 
 const operator = requireMarkers(operatorPath, [
@@ -255,6 +272,54 @@ if (
   fail(`${diagnosisPath} must freeze optional absence evidence before producer publication`);
 }
 
+const pageSource = requireMarkers(pageDiagnosisPath, [
+  'const MAX_SOURCE_PAGE_DIAGNOSIS_SIZE: usize = 32;',
+  'pub struct IndexDriftSourcePageDiagnosisRuntime',
+  'sources: rustok_index::SharedIndexSourceRegistry',
+  'exact: IndexDriftDiagnosisOperatorRuntime',
+  'pub async fn diagnose_source_page(',
+  'permissions_for(&context.tenant_id(), &context.actor_id())',
+  'IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)',
+  'let page = self.sources.scan(request).await?;',
+  'matches!(&mutation, rustok_index::IndexMutation::Delete { .. })',
+  '.diagnose_entity(context, key)',
+  'materialize_index_drift_source_page_diagnosis',
+  'one_page_skips_deletes_and_diagnoses_each_upsert_once',
+]);
+const pageProduction = pageSource.split('\n#[cfg(test)]')[0];
+const pageAuth = pageProduction.indexOf(
+  'let permissions = permissions_for(&context.tenant_id(), &context.actor_id())',
+);
+const pageLimit = pageProduction.indexOf(
+  'if !(1..=MAX_SOURCE_PAGE_DIAGNOSIS_SIZE).contains(&limit)',
+  pageAuth,
+);
+const pageRequest = pageProduction.indexOf(
+  'IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)',
+  pageLimit,
+);
+const pageScan = pageProduction.indexOf('let page = self.sources.scan(request).await?;');
+if (pageAuth < 0 || pageLimit <= pageAuth || pageRequest <= pageLimit || pageScan <= pageRequest) {
+  fail(`${pageDiagnosisPath} must authorize, validate, and then scan one page`);
+}
+for (const forbidden of [
+  'tokio::spawn',
+  'spawn_blocking',
+  'DatabaseConnection',
+  'SELECT ',
+  'INSERT ',
+  'UPDATE ',
+  'DELETE FROM',
+  'while ',
+  'loop {',
+  'ModuleWorkScheduler',
+  'repair_finding',
+  'resolve_finding',
+  'ignore_finding',
+]) {
+  if (pageProduction.includes(forbidden)) fail(`${pageDiagnosisPath} contains ${forbidden}`);
+}
+
 const graphqlTransport = requireMarkers(graphqlTransportPath, [
   'pub struct IndexDriftDiagnosisInput',
   'pub struct IndexDriftDiagnosisMutation',
@@ -278,6 +343,8 @@ for (const forbidden of [
   'sea_orm',
   'tokio::spawn',
   '.scan(',
+  'IndexDriftSourcePageDiagnosisRuntime',
+  'IndexSourceCursor',
   'repair_finding',
   'resolve_finding',
   'ignore_finding',
@@ -296,20 +363,20 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconcili
   'PostgresIndexReconciliationRunner',
 ]);
 requireMarkers(docsPath, [
-  'Status: `diagnosis_graphql_transport_source_complete_owner_execution_pending`.',
+  'Status: `source_page_diagnosis_source_complete_transport_and_owner_execution_pending`.',
   'effective `Permission::MODULES_MANAGE`',
-  'no caller-selected tenant',
   '`inspect_drift_finding(context, finding_id)`',
   '`IndexDriftDiagnosisOperatorRuntime`',
   '`diagnose_entity(context, key)`',
-  'Authorization runs before `IndexDriftDigestRequest` validation',
+  '`IndexDriftSourcePageDiagnosisRuntime`',
+  '`diagnose_source_page(context, schema, cursor, limit)`',
+  'maximum page size of',
+  'not claimed as missing-only diagnosis',
   '`diagnoseIndexEntity(input: IndexDriftDiagnosisInput!)`',
-  'before parsing any untrusted',
   '`SharedIndexSourceAbsenceRegistry`',
   'positive `products.index_revision`',
   'index_drift_source_changed_during_capture',
   'index_drift_source_watermark_missing',
-  'bounded GraphQL diagnosis',
   'maintainer-run',
 ]);
 requireMarkers(graphqlDocsPath, [
@@ -318,6 +385,13 @@ requireMarkers(graphqlDocsPath, [
   'Tenant and actor identities are never accepted',
   'before parsing module/entity identifiers',
   'delegates once to `diagnose_entity(context, key)`',
+]);
+requireMarkers(pageDocsPath, [
+  'Status: `source_complete_transport_and_owner_execution_pending`.',
+  'one page limit in `1..=32`',
+  'skips retained source `Delete` mutations',
+  'The cursor is not attached to GraphQL',
+  'missing-only selector over captured typed states remains a separate open slice',
 ]);
 requireMarkers(recheckPath, [
   'Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.',
@@ -331,13 +405,14 @@ requireMarkers(recheckPath, [
 requireMarkers(planPath, [
   'M6 guarded exact-entity drift diagnosis operator',
   'M6 bounded GraphQL exact-entity diagnosis transport',
-  'M6 explicit source absence watermark registry, Product provider, and reader fence',
-  'source_complete_owner_execution_pending',
+  'M6 bounded source-page drift candidate diagnosis',
+  'source_complete_transport_and_owner_execution_pending',
   '[x] Register the Product locale absence provider',
   '[x] Reload and compare the exact positive absence version',
   '[x] Add the source-ready real-migration Product locale-absence scenario',
   '[x] Expose exact-entity diagnosis through bounded GraphQL `diagnoseIndexEntity`',
-  'M6 - add bounded missing-entity candidate diagnosis',
+  '[x] Add one internal server-owned source-page candidate diagnosis runtime',
+  'M6 - add missing-only candidate classification without exposing snapshot state',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',
@@ -346,6 +421,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-server-reconciliation-guard.mjs'",
   "'verify-index-drift-diagnosis-graphql-transport.mjs'",
+  "'verify-index-drift-source-page-diagnosis.mjs'",
   "'verify-index-reconciliation-host-scheduler.mjs'",
   "'verify-index-drift-finding-inspection.mjs'",
   "'verify-index-source-absence-watermark.mjs'",
