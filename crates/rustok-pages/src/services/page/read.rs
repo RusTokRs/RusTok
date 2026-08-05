@@ -152,8 +152,15 @@ impl PageService {
         if let Some(template) = filter.template {
             select = select.filter(page::Column::Template.eq(template));
         }
-        self.page_list_from_select(tenant_id, select, locale, filter.page, filter.per_page)
-            .await
+        self.page_list_from_select(
+            tenant_id,
+            select,
+            locale,
+            None,
+            filter.page,
+            filter.per_page,
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -163,10 +170,23 @@ impl PageService {
         filter: ListPagesFilter,
         channel_slug: Option<&str>,
     ) -> PagesResult<(Vec<PageListItem>, u64)> {
+        self.list_public_visible_with_locale_fallback(tenant_id, filter, None, channel_slug)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn list_public_visible_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        filter: ListPagesFilter,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> PagesResult<(Vec<PageListItem>, u64)> {
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let mut select = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)));
@@ -174,8 +194,15 @@ impl PageService {
             select = select.filter(page::Column::Template.eq(template));
         }
         select = apply_public_page_channel_filter(select, tenant_id, channel_slug);
-        self.page_list_from_select(tenant_id, select, locale, filter.page, filter.per_page)
-            .await
+        self.page_list_from_select(
+            tenant_id,
+            select,
+            locale,
+            fallback_locale,
+            filter.page,
+            filter.per_page,
+        )
+        .await
     }
 
     async fn page_list_from_select(
@@ -183,6 +210,7 @@ impl PageService {
         tenant_id: Uuid,
         select: sea_orm::Select<page::Entity>,
         locale: String,
+        fallback_locale: Option<String>,
         page_number: u64,
         per_page: u64,
     ) -> PagesResult<(Vec<PageListItem>, u64)> {
@@ -198,7 +226,11 @@ impl PageService {
         let mut items = Vec::with_capacity(pages.len());
         for page in pages {
             let translations = translations_map.get(&page.id).cloned().unwrap_or_default();
-            let resolved = resolve_translation_record(&translations, &locale, None);
+            let resolved = resolve_translation_record(
+                &translations,
+                &locale,
+                fallback_locale.as_deref(),
+            );
             items.push(PageListItem {
                 id: page.id,
                 status: storage_to_status(&page.status)?,
