@@ -9,6 +9,7 @@ mod m20260721_000004_enforce_language_agnostic_pages;
 mod m20260721_000006_add_static_landing_materialization_evidence;
 mod m20260721_000007_create_page_publish_operations;
 mod m20260722_000009_create_page_rollback_operations;
+mod m20260805_000010_create_page_route_aliases;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,6 +27,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260721_000006_add_static_landing_materialization_evidence::Migration),
         Box::new(m20260721_000007_create_page_publish_operations::Migration),
         Box::new(m20260722_000009_create_page_rollback_operations::Migration),
+        Box::new(m20260805_000010_create_page_route_aliases::Migration),
     ]
 }
 
