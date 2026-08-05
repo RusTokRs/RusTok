@@ -101,6 +101,7 @@ impl EventTransport for TenantGenerationDeliveryGate {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "mod-pages")]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
