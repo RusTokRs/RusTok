@@ -1,8 +1,9 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay for `implementation-plan.md` audited through
-`main@9cfc43cf72284e16261f788070a47367613bf2e2` and the rechecked guarded-diagnosis
-change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
+`main@2197ffaf4ca47f7cf56d8014deaaab69a1dfc51d` and the rechecked guarded-diagnosis
+change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`. The two main commits after
+`9cfc43cf72284e16261f788070a47367613bf2e2` do not touch `rustok-index` or its server composition.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
 overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
