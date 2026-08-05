@@ -242,7 +242,8 @@ for (const marker of [
 for (const marker of [
   "production gate PostgreSQL publish/rollback restart harness",
   "post-invalidation downstream failure",
-  "process-bounded dedupe prevents a second rotation"
+  "process-bounded dedupe prevents a",
+  "second rotation when a new relay instance retries"
 ]) need(localPlan, marker, "Pages local plan");
 
 if (failures.length) {
