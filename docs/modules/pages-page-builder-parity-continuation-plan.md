@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / native-storefront-channel-admission-source-ready / execution-evidence-pending
+Status: source-parity-current / native-storefront-reviewed-artifact-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact and cache boundaries
 
 ## Source-of-truth policy
@@ -19,6 +19,7 @@ The current source was rechecked against:
 - `docs/modules/page-builder-implementation-plan.md`;
 - the Pages admin draft/published metadata composition;
 - reviewed publish and immutable rollback owner services;
+- the Page Builder reviewed runtime, authoritative sanitizer and materialized artifact contracts;
 - the Pages outbox/cache invalidation and read contracts;
 - the native storefront adapter, server host registration and public artifact HTTP route;
 - the Channel owner module-binding contract;
@@ -35,9 +36,10 @@ Current `main` contains:
 - PR #2974 — source-ready durable relay failure/restart packet;
 - PR #2979 — source-ready SQLite/Axum public artifact HTTP cache packet;
 - PR #2985 — source-ready native storefront composite-cache contract and plan actualization;
-- PR #2988 — source-ready registered Leptos storefront route with real Pages owner data and cache behavior.
+- PR #2988 — source-ready registered Leptos storefront route with real Pages owner data and cache behavior;
+- PR #2990 — source-ready routed-channel admission before native generation/cache lookup.
 
-The current slice adds the routed-channel module-admission packet on that same registered route.
+The current slice replaces the retained non-builder route fixture at the next seam with a real reviewed Fly publication and a fully evidenced immutable Page Builder artifact.
 
 ## Corrected parity state
 
@@ -96,11 +98,11 @@ POST /api/fn/{*fn_name}
 
 It applies the real Outbox and Pages migrations, creates and publishes a localized owner page through `PageService`, attaches the typed cache runtime and trusted tenant context, and retains route-level miss/refill, same-generation hit, generation rotation and both fail-open paths.
 
-The fixture uses a published non-builder HTML body to isolate route, owner and composite-cache behavior. The registered route packet remains unexecuted.
+The first fixture uses a published non-builder HTML body to isolate route, owner and composite-cache behavior. The registered route packet remains unexecuted.
 
 ### Routed-channel admission before native lookup: source-ready
 
-A separate SQLite/Axum harness now adds trusted `ChannelContextExtension`, applies real Channel migrations and manages the routed channel plus Pages binding through `ChannelService`.
+A separate SQLite/Axum harness adds trusted `ChannelContextExtension`, applies real Channel migrations and manages the routed channel plus Pages binding through `ChannelService`.
 
 The retained sequence is:
 
@@ -112,7 +114,25 @@ The retained sequence is:
 
 Therefore a populated composite cache cannot bypass channel module admission. The production absent-binding compatibility policy remains unchanged: no binding defaults to enabled.
 
-The channel-admission harness and verifier remain unexecuted. The native Page Builder immutable-artifact branch is still the next source cursor.
+The channel-admission harness and verifier remain unexecuted.
+
+### Native reviewed immutable artifact selection: source-ready
+
+A new registered-route harness creates a real GrapesJS/Fly body through `PageService::create` and publishes it through `PageService::publish_reviewed` using the exact body revision, deterministic idempotency key and `PageBuilderReviewedPublishRuntime`.
+
+The owner transaction reaches the authoritative sanitizer, runtime materialization/compiler, immutable artifact staging/binding, published state, transactional lifecycle outbox and durable receipt. The retained record requires a non-null materialization hash, materialization identity and runtime snapshots: this is the full Page Builder materialization envelope rather than the legacy all-null compatibility shape.
+
+The admitted `web` channel returns:
+
+```text
+/api/pages/{page_id}/artifact?locale=en&channel=web
+```
+
+with body format `fly_artifact_url`. A second admitted `mobile` channel cannot select the page because the Pages owner visibility set contains only `web`; its composite cache key is distinct and its response contains no artifact URL.
+
+After the valid response fills the `web/en` key, the fixture corrupts the stored document without updating immutable hashes and requests a fresh `web/fr` variant. The production artifact service rejects the record while reconstructing/verifying the materialization envelope, and the recording cache retains no additional put or value. Cache fill therefore follows reviewed binding and artifact integrity.
+
+The reviewed-artifact harness, Cargo and verifier remain unexecuted.
 
 ## Parity matrix
 
@@ -129,52 +149,55 @@ The channel-admission harness and verifier remain unexecuted. The native Page Bu
 | Native storefront cache contract | Pages native storefront/cache owners | Published artifact contract | Source-ready | Contract harness execution pending |
 | Registered native storefront route | Pages server-function/owner/cache composition | Published rendering contract | Source-ready | SQLite/Axum server-function execution pending |
 | Routed-channel admission before native lookup | Pages/Channel owners | No admission ownership | Source-ready | SQLite/Axum route execution pending |
-| Native immutable artifact selection | Pages artifact binding owner | Verified immutable artifact contract | Production source-connected | Registered route fixture pending |
+| Native reviewed immutable artifact selection | Pages publish/binding/route/cache owners | Review/sanitization/materialization/integrity | Source-ready | SQLite/Axum reviewed route execution pending |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Browser/runtime evidence pending |
 | Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Bundle/runtime proof pending |
 
 ## Changes in this slice
 
-1. Recheck the cursor after merged PR #2988.
-2. Add a feature-gated registered-route harness with trusted tenant and channel extensions.
-3. Apply real Outbox, Channel and Pages migrations.
-4. Create the channel and explicit Pages module binding through `ChannelService`.
-5. Retain disabled-before-generation/cache ordering.
-6. Retain enabled miss/refill with the production storefront TTL.
-7. Retain a second denial while the prior cached value remains present and unreachable.
-8. Add machine evidence with an empty execution list and all validation flags false.
-9. Add a focused verifier and dated packet without changing production behavior.
+1. Recheck the cursor after merged PR #2990.
+2. Add the focused Page Builder dev dependency required by the storefront integration harness.
+3. Create a real channel-constrained Fly body through the Pages owner.
+4. Publish through the real reviewed command with exact revision and Page Builder review runtime.
+5. Require durable receipt identities and the complete immutable materialization evidence triplet.
+6. Mount the registered native route with real tenant/channel context and typed cache runtime.
+7. Retain visible-channel `fly_artifact_url` selection and hidden-channel exclusion under distinct cache keys.
+8. Corrupt the persisted artifact after one valid fill and retain rejection with no fresh-key fill.
+9. Add machine evidence with an empty execution list and all validation flags false.
+10. Add a focused verifier and dated packet without changing production behavior.
 
 ## Boundaries
 
 This slice does not:
 
 - change Pages, Page Builder, Channel or cache production behavior;
+- alter reviewed publish, sanitizer, materialization, binding, receipt or rollback contracts;
 - alter the Channel absent-binding compatibility policy;
 - alter cache namespaces, generations, key shape, TTL or failure policy;
 - add Redis ownership, wildcard scans, key deletion or another cache provider;
 - change production migrations, entities, DTOs, GraphQL, HTTP or server-function routes/codecs;
 - claim real SQLite, Axum, server-function, browser, workflow, CI or rollout execution;
-- execute a verified immutable Page Builder artifact through the registered native route;
+- connect durable event relay and generation rotation to the registered native request in one process;
 - promote FFA or FBA status.
 
 ## Next cursor
 
-1. Add a registered native-route fixture using a verified immutable Page Builder artifact and channel-constrained owner selection.
-2. Retain one exact-revision continuity packet from durable `NodePublished` relay delivery through generation rotation to an admitted native storefront miss/refill.
-3. Run and retain the registered native storefront SQLite/Axum packets, including channel admission.
+1. Retain one exact-revision continuity packet from reviewed publish and committed durable `NodePublished` through dispatcher delivery, event/correlation-bound Pages generation rotation and the next admitted registered native storefront miss/refill.
+2. Prove the old composite key remains physically retained but unreachable after generation rotation while the new response still points to the exact reviewed immutable artifact.
+3. Run and retain the registered native storefront SQLite/Axum packets, including channel admission and reviewed artifact selection.
 4. Run and retain the metadata conflict/dirty-Fly isolation packet.
 5. Run and retain the published metadata browser packet using the stable registered-surface DOM contract.
 6. Execute the existing artifact HTTP, PostgreSQL outbox/cache and relay-restart packets.
 7. Complete compile, workflow, anonymous-bundle and observed tenant rollout evidence before promotion.
 
-A durable `NodePublished` relay delivery is not yet connected to the registered native request in one process or retained revision.
+A durable `NodePublished` relay delivery is not yet connected to a registered native storefront miss/refill in one process or retained revision.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
@@ -183,11 +206,13 @@ node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
+cargo test -p rustok-pages-storefront --features ssr --test native_storefront_reviewed_artifact_sqlite -- --nocapture
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_channel_admission_sqlite -- --nocapture
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_server_fn_sqlite -- --nocapture
 cargo test -p rustok-pages --test native_storefront_cache_contract -- --nocapture
 cargo test -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture
 cargo check -p rustok-pages-storefront --features ssr --all-targets
+cargo check -p rustok-page-builder --all-targets
 cargo check -p rustok-channel --all-targets
 cargo check -p rustok-pages --all-targets
 ```

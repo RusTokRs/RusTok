@@ -48,6 +48,7 @@ rustok-tenant = { workspace = true, optional = true }
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
+rustok-page-builder.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tokio.workspace = true
