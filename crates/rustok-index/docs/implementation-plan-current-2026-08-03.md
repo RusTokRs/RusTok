@@ -1,7 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay for `implementation-plan.md` audited through
-`main@c6ae3db0caf64c4578cb76073e9b719e483fb953`.
+`main@9cfc43cf72284e16261f788070a47367613bf2e2` and the rechecked guarded-diagnosis
+change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
 overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
@@ -9,11 +10,12 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - explicit absence watermarks and bounded diagnosis transport`
+`M6 - wire explicit absence watermarks into drift snapshot capture`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
-source-version-fenced PostgreSQL snapshot reader, and guarded exact-entity diagnosis capability are
-source complete. Truthful missing-source watermarks, diagnosis transports, lifecycle commands,
+source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability, and
+explicit owner-retained absence watermark registry are source complete. Production owner absence
+providers, snapshot-reader admission of truthful `Missing`, diagnosis transport, lifecycle commands,
 repair, and retained evidence remain open.
 
 ## Rechecked status
@@ -44,6 +46,8 @@ repair, and retained evidence remain open.
   `source_complete_owner_execution_pending`
 - M6 guarded exact-entity drift diagnosis operator:
   `source_complete_transport_and_owner_execution_pending`
+- M6 explicit source absence watermark registry:
+  `source_complete_owner_registration_and_reader_wiring_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -96,8 +100,16 @@ repair, and retained evidence remain open.
       `modules:manage` exact-entity diagnosis capability using the frozen source/schema registries.
 - [x] Reject cross-tenant and unauthorized diagnosis before request validation, source access,
       materialized reads, digest production, or finding persistence.
-- [ ] Add an explicit retained absence/tombstone watermark contract before empty targeted loads can
-      produce authoritative source `Missing` state.
+- [x] Add the explicit retained absence/tombstone watermark contract as an optional owner-published
+      registry with exact `EntityKey`, positive source version, stable schema-identity ownership,
+      canonical replay-source owner parity, and fail-closed materialization.
+- [x] Keep existing `IndexSource::scan` and `IndexSource::load` contracts source-compatible and keep
+      `None` or an empty targeted load non-authoritative.
+- [ ] Register at least one production owner-retained absence provider.
+- [ ] Materialize and wire the frozen absence registry into the PostgreSQL drift snapshot reader so
+      it compares the exact positive absence version before and after materialized capture.
+- [ ] Bind an admitted absence version into the opaque snapshot boundary before producing source
+      `Missing`; retain `index_drift_source_watermark_missing` when proof is unavailable.
 - [ ] Expose the exact-entity diagnosis capability through one bounded operator transport.
 - [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
@@ -117,15 +129,18 @@ repair, and retained evidence remain open.
 
 ## Next implementation step
 
-Extend the targeted owner-load contract with an explicit retained absence/tombstone watermark so an
-empty current-state row can become an authoritative positive-version source `Missing` state without
-weakening the existing source-version fence. Keep scan/discovery, automatic resolution, and repair
-outside that slice. After the watermark contract is admitted, expose the exact-entity diagnosis
-capability through one bounded request transport.
+Register one production owner-retained absence provider and wire the frozen absence registry into the
+PostgreSQL drift snapshot reader. For an empty targeted owner load, admit source `Missing` only when
+that provider returns the exact requested key with a positive retained version. Reload and compare
+the same absence version around the `REPEATABLE READ READ ONLY` materialized snapshot, include the
+version in the opaque boundary, and preserve permanent `index_drift_source_watermark_missing` for
+`None`, missing provider registration, or any unproven absence. Keep scan/discovery, automatic
+resolution, transport, and repair outside that slice.
 
 ## Owner verification for this slice
 
 ```bash
+cargo test -p rustok-index source_absence -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
 
@@ -146,6 +161,7 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   --test drift_finding_writer_postgres_test \
   -- --nocapture --test-threads=1
 
+node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-drift-finding-locale-scope.mjs
