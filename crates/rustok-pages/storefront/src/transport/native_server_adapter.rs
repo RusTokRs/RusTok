@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(normalize_tenant_fallback_locale(" ru "), "ru");
         assert_eq!(
             normalize_tenant_fallback_locale("   "),
-            PLATFORM_FALLBACK_LOCALE
+            super::PLATFORM_FALLBACK_LOCALE
         );
     }
 
