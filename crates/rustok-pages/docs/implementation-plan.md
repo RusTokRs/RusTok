@@ -114,6 +114,11 @@ Pages persistence, cache scope or tenant policy.
   downstream event transport acceptance and uses stable-event process-bounded
   dedupe so relay retry plus the later module listener cannot rotate twice in one
   process.
+- [x] A retained server integration source connects real reviewed publish and
+  `OutboxRelay` through the production delivery gate to the registered native
+  storefront server function using one production `CacheService` for generations
+  and bytes. It retains old-key fill, `NodePublished` all-scope rotation, new-key
+  miss/refill and same-generation hit without changing production behavior.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
   causing misses and refills on storefront and artifact delivery paths through the
   production gate.
@@ -170,6 +175,9 @@ Pages persistence, cache scope or tenant policy.
 - [x] The same typed server adapter implements `PagesCacheReadPort`; storefront and
   artifact readers consume the shared generation snapshot and cache backend without
   owning Redis or generation policy.
+- [x] The retained production relay/native-route source uses the real Page Builder
+  reviewed artifact producer contract and confirms the immutable artifact URL stays
+  stable while Pages generations and composite keys rotate.
 - [ ] Accepted execution evidence must correlate publish/rollback receipts, outbox
   events, production-gate receipts, generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
@@ -178,14 +186,16 @@ Pages persistence, cache scope or tenant policy.
 
 - **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
   promoted-scenario selection, registered draft/published metadata surfaces,
-  generation-aware storefront/artifact readers and the production generation gate
-  are connected. Executed metadata conflict/isolation packets, inline edit mode and
-  anonymous bundle evidence remain open.
+  generation-aware storefront/artifact readers, the production generation gate and
+  a retained gate-to-native-route source harness are connected. Executed metadata
+  conflict/isolation packets, inline edit mode and anonymous bundle evidence remain
+  open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
-  invalidation/read boundaries are integrated at source level. Executed metadata,
-  rollback and cache proof, verification and observed rollout evidence remain open.
+  invalidation/read boundaries are integrated at source level. The server harness
+  now correlates the reviewed artifact with generation-key rotation, but execution,
+  rollback proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -239,7 +249,7 @@ GraphQL / HTTP / admin reviewed command
   -> event/correlation-bound generation receipt
   -> downstream transport acceptance
   -> asynchronous Pages module listener duplicate no-op
-  -> generation-aware storefront/artifact miss and refill
+  -> registered generation-aware storefront/artifact miss and refill
 
 Rollback command
   + expected page version
@@ -307,10 +317,12 @@ Invariants:
 21. Channel/module authorization runs before every cache lookup.
 22. Cache fill follows owner source validation; cache errors fail open to source
     reads and do not authorize or publish data.
-23. Missing providers fail visibly and never cause silent deletion.
-24. Dynamic widgets persist versioned configuration, not privileged snapshots.
-25. Anonymous storefront bundles contain no editor code.
-26. No block or shadow-editor fallback exists.
+23. A route request after generation rotation derives a new composite key; the old
+    key may remain physically stored but is unreachable from the current snapshot.
+24. Missing providers fail visibly and never cause silent deletion.
+25. Dynamic widgets persist versioned configuration, not privileged snapshots.
+26. Anonymous storefront bundles contain no editor code.
+27. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -399,8 +411,12 @@ Invariants:
   and made the later asynchronous Pages listener a same-event rotation no-op.
 - Kept memory, OutboxLocal and OutboxIggy downstream delivery and the module-owned
   listener registration.
-- Added focused server source tests, machine evidence, static verifier and a dated
-  production-gate packet.
+- Added the server integration source that crosses real `OutboxRelay`, production
+  gate and production `ServerPagesCachePort` into the registered native storefront
+  server function, retaining old-key fill, all-scope rotation, new-key refill and
+  hit behavior.
+- Added test-only SSR registration dependency, machine evidence, static verifier and
+  dated production relay/native-route packet.
 - Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
   workflows and CI were not executed in this slice.
 
@@ -443,6 +459,8 @@ Invariants:
 - [x] Insert the real Pages handler into the production delivery gate before
   downstream acceptance and deduplicate retry/listener replay by event UUID in one
   process.
+- [x] Retain source continuity for reviewed publish → real outbox relay → production
+  generation gate → registered native route old-key/new-key behavior.
 - [ ] Retain accepted execution evidence for publish/rollback outbox event →
   production gate receipt → generation rotation → cache miss/refill.
 - [ ] Correlate publish/rollback receipt, editor save, page/body revisions, runtime
@@ -495,6 +513,8 @@ Invariants:
 - `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`
+- `cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture`
 - `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`

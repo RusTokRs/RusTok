@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / production-relay-generation-gate-source-ready / execution-evidence-pending
+Status: source-parity-current / production-relay-native-route-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
 
 ## Source-of-truth policy
@@ -26,8 +26,9 @@ The current source was rechecked against:
 - `OutboxRelay` claim/delivery/acknowledgement ordering;
 - the server `EventRuntime` transport composition;
 - `TenantCacheGenerationTransport` and `TenantGenerationDeliveryGate`;
+- `ServerPagesCachePort` generation and byte-cache ownership;
 - the module `EventDispatcher` filtering and asynchronous handler execution;
-- the native storefront adapter, server host registration and public artifact HTTP route;
+- the native storefront adapter, registered Leptos server function and public artifact HTTP route;
 - the Channel owner module-binding contract;
 - recent merged Pages parity PRs and their dated packets.
 
@@ -46,11 +47,12 @@ Current `main` contains:
 - PR #2990 — source-ready routed-channel admission before native generation/cache lookup;
 - PR #2992 — source-ready reviewed Fly publication through channel-constrained immutable artifact selection and integrity-before-fill;
 - PR #2995 — source-ready owner/outbox/handler/native-route continuity through a synchronous test relay target;
-- PR #2997 — topology correction separating the synchronous test target from production asynchronous listener delivery.
+- PR #2997 — topology correction separating the synchronous test target from production asynchronous listener delivery;
+- PR #3001 — production synchronous Pages generation gate with process-bounded same-event dedupe.
 
-The current slice implements the recommended production gate without changing Page Builder ownership.
+The current slice retains the first server integration source that crosses PR #3001's production gate and reaches the registered native storefront route. It changes no production behavior.
 
-## Corrected parity state
+## Current parity state
 
 ### Registered metadata surfaces: source-complete
 
@@ -121,7 +123,7 @@ This proves owner, relay, handler and route contracts in one process. It remains
 
 ### Production relay-to-Pages generation gate: source-ready
 
-The production delivery chain now retains:
+The production delivery chain retains:
 
 ```text
 publisher or OutboxRelay
@@ -144,15 +146,51 @@ The asynchronous Pages module listener remains registered for memory, OutboxLoca
 
 A process restart intentionally loses this bounded optimization. Replaying an already-rotated event after restart can conservatively rotate another generation; it cannot expose stale data. Exact-once invalidation across process restarts is not claimed.
 
+### Production relay gate to registered native route: source-ready
+
+The new retained server integration source connects the production gate to the registered route:
+
+```text
+reviewed publish
+  → durable NodeCreated / NodeUpdated / NodePublished
+real OutboxRelay
+  → production TenantGenerationDeliveryGate
+  → production ServerPagesCachePort generation rotation
+  → downstream acceptance
+  → outbox acknowledgement
+registered /api/fn/pages/storefront-data
+  → production generation snapshot
+  → old-key fill before NodePublished
+  → new-key miss/refill/hit after NodePublished
+```
+
+One `CacheService` owns both generation state and stored bytes. The route consumes a recording wrapper that delegates every operation to the real `ServerPagesCachePort`; it does not replace the production cache provider.
+
+The source asserts `NodeUpdated` moves generations from `0/0/0` to `1/1/0`, the first native request fills the old composite key, and `NodePublished` moves generations to `2/2/1` before its outbox row is dispatched. A later normal Pages listener call with the same envelope is a duplicate no-op. The next route request uses a different key, misses, refills the same reviewed immutable artifact, and the following request hits without another put.
+
+The old composite key remains physically readable but unreachable through the new generation snapshot. No scan, wildcard deletion or physical eviction policy is introduced.
+
 Source evidence is retained in:
 
-- `apps/server/src/services/pages_cache_invalidation.rs`;
-- `apps/server/src/services/tenant_generation_delivery_gate.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-production-relay-generation-gate-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`;
-- `docs/modules/pages-page-builder-production-relay-generation-gate-packet-2026-08-05.md`.
+- `apps/server/tests/pages_production_relay_native_route_sqlite.rs`;
+- `apps/server/Cargo.toml` test-only `rustok-pages-storefront` SSR dependency;
+- `crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`;
+- `docs/modules/pages-page-builder-production-relay-native-route-packet-2026-08-05.md`.
 
-Production-gate tests, Cargo and runtime profiles remain unexecuted.
+The new-key miss/refill/hit sequence is source-ready; execution remains pending.
+
+## Retained source marker index
+
+This section keeps historical static guards stable while the canonical cursor advances.
+
+- native storefront cache source packet; execution evidence remains pending.
+- Native storefront registered server function: source-ready; the real registered Leptos endpoint is retained. Routed-channel module admission remains open for execution, and durable `NodePublished` relay delivery is now connected at source level.
+- `native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. Verification reconstructs the full Page Builder materialization envelope before a registered native storefront miss/refill.
+- `native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission, and successful reads retain a verified immutable Page Builder artifact.
+- Metadata revision/isolation source packet: ready, unvalidated. A stale metadata revision short-circuits before patch transport; the metadata-only transport request excludes document data; dirty Fly state is not accepted by the metadata owner port. Execution evidence remains pending. Verifier: `verify-pages-metadata-revision-isolation.mjs`.
+- `production-relay-generation-gate-source-ready`; synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe.
+- `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready.
 
 ## Parity matrix
 
@@ -163,26 +201,26 @@ Production-gate tests, Cargo and runtime profiles remain unexecuted.
 | Published registered metadata | Pages standalone host | Canonical panel | Complete | Browser execution pending |
 | Legacy metadata editor | None | None | Removed | Not applicable |
 | Reviewed publish | Pages lifecycle/artifacts/outbox | Review/sanitization/materialization contracts | Complete | Database/runtime evidence pending |
-| Immutable rollback | Pages lifecycle/artifacts/outbox | No lifecycle ownership | Complete | Database/runtime evidence pending |
+| Immutable rollback | Pages lifecycle/artifacts/outbox | No delivery ownership | Complete | Database/runtime evidence pending |
 | Artifact HTTP miss/refill/hit | Pages route/artifact owner | Immutable artifact verification | Source-ready | SQLite/Axum and PostgreSQL HTTP pending |
 | Native storefront route/cache/admission | Pages/Channel owners | Published artifact contract | Source-ready | SQLite/Axum route set pending |
 | Native reviewed immutable artifact selection | Pages publish/binding/route/cache owners | Review/sanitization/materialization/integrity | Source-ready | SQLite/Axum reviewed route pending |
 | Relay + handler + native refill via test target | Pages publish/outbox/handler/route/cache owners | Reviewed artifact producer contract | Source-ready, topology-corrected | SQLite test-target execution pending |
-| Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit/profile and relay-route execution pending |
+| Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit/profile execution pending |
+| Production relay to registered native route | Server gate / Pages route/cache owners | Reviewed artifact producer contract | Source-ready | Server SQLite/Axum execution pending |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Browser/runtime evidence pending |
 | Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Bundle/runtime proof pending |
 
 ## Changes in this slice
 
-1. Extend the production `TenantGenerationDeliveryGate` with the real Pages handler predicate and runtime under `mod-pages`.
-2. Run Pages invalidation after canonical local-listener readiness and before downstream transport acceptance.
-3. Add stable-event serialization and successful-event dedupe to `ServerPagesCachePort`.
-4. Commit dedupe only after generation rotation and receipt validation succeed.
-5. Preserve dedupe across separately constructed gate and module-listener providers in one process.
-6. Retain downstream retry without a second rotation after a post-invalidation transport failure.
-7. Keep the asynchronous Pages listener registered for every delivery profile.
-8. Add focused server source tests, machine evidence, verifier and dated packet.
-9. Leave Page Builder, event schemas, database schemas, cache namespaces and public routes unchanged.
+1. Add a server integration source harness using real reviewed publish, `OutboxRelay`, production `TenantGenerationDeliveryGate`, production `ServerPagesCachePort` and the registered native route.
+2. Use one process `CacheService` for gate generations and route cache bytes.
+3. Retain `NodeUpdated` old-key fill followed by `NodePublished` all-scope rotation.
+4. Prove the outbox row reaches `Dispatched` only after the gate has returned successfully.
+5. Invoke the ordinary Pages listener with the same `NodePublished` envelope and retain the process-bounded duplicate no-op.
+6. Retain old-key physical presence, new-key miss/refill and same-generation hit.
+7. Add test-only SSR registration dependency, machine evidence, verifier and dated packet.
+8. Leave production Pages, Page Builder, Outbox, Channel, cache and public-route behavior unchanged.
 
 ## Boundaries
 
@@ -195,15 +233,16 @@ This slice does not:
 - change outbox, Pages or Page Builder migrations or DTOs;
 - remove the asynchronous module listener;
 - provide durable exact-once invalidation across process restarts;
-- claim tests, Cargo, formatting, verifiers, databases, HTTP routes, server functions, workflows, CI or rollout execution;
+- mount full server bootstrap or external Iggy infrastructure;
+- claim tests, Cargo, formatting, verifiers, SQLite, Axum, Leptos, PostgreSQL, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA status.
 
 ## Next cursor
 
-1. Run the production relay generation-gate verifier and focused server tests.
-2. Execute the gate under memory and OutboxLocal profiles, then retain OutboxIggy evidence where infrastructure is available.
-3. Connect the production gate to the registered native route generation state in one execution packet: reviewed publish → relay gate → new-key miss/refill/hit.
-4. Rerun the topology-aware continuity verifier and native SQLite/Axum route set.
+1. Run the production relay-native-route verifier and focused server integration test.
+2. Run the production generation-gate verifier and focused gate/port unit tests.
+3. Execute the gate under Memory and OutboxLocal profiles, then retain OutboxIggy evidence where infrastructure is available.
+4. Rerun the topology-aware continuity verifier and the complete native SQLite/Axum route set.
 5. Execute PostgreSQL publish/rollback outbox-cache and relay-restart packets against the gate.
 6. Run metadata conflict/isolation and published metadata browser packets.
 7. Complete compile, workflow, anonymous-bundle and observed tenant rollout evidence before promotion.
@@ -215,6 +254,7 @@ Any failure or owner-model change must update this shared cursor first, then the
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
@@ -226,6 +266,7 @@ node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
+cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
 cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture
 cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_relay_continuity_sqlite -- --nocapture
