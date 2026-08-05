@@ -21,7 +21,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(PageRouteAliases::PageId).uuid().not_null())
                     .col(
                         ColumnDef::new(PageRouteAliases::Locale)
-                            .string_len(64)
+                            .string_len(32)
                             .not_null(),
                     )
                     .col(
@@ -37,7 +37,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(PageRouteAliases::TargetPageId).uuid())
                     .col(
                         ColumnDef::new(PageRouteAliases::TargetLocale)
-                            .string_len(64),
+                            .string_len(32),
                     )
                     .col(
                         ColumnDef::new(PageRouteAliases::Reason)
