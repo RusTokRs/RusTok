@@ -1,5 +1,6 @@
 mod category_tree_graphql_adapter;
 mod graphql_adapter;
+mod topic_fork_graphql_adapter;
 mod topic_merge_graphql_adapter;
 mod topic_merge_native_server_adapter;
 mod topic_split_graphql_adapter;
@@ -9,6 +10,10 @@ use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
+};
+use crate::topic_fork_model::{
+    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt,
+    ForumTopicForkReplyPage,
 };
 use crate::topic_merge_model::{
     ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,
@@ -204,6 +209,32 @@ pub async fn merge_topic(
     .map_err(|error| error.to_string())
 }
 
+
+pub async fn fetch_topic_fork_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<ForumTopicForkCandidate>, ApiError> {
+    topic_fork_graphql_adapter::fetch_candidates(token, tenant_slug, locale).await
+}
+
+pub async fn fetch_topic_fork_replies(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    source_topic_id: String,
+    locale: String,
+) -> Result<ForumTopicForkReplyPage, ApiError> {
+    topic_fork_graphql_adapter::fetch_replies(token, tenant_slug, source_topic_id, locale).await
+}
+
+pub async fn fork_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumTopicForkCommand,
+) -> Result<ForumTopicForkReceipt, ApiError> {
+    topic_fork_graphql_adapter::fork_topic(token, tenant_slug, command).await
+}
+
 pub async fn fetch_topic_split_candidates(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -292,6 +323,22 @@ mod tests {
         assert!(SOURCE.contains("cfg(any(feature = \"ssr\", feature = \"hydrate\"))"));
         assert!(SOURCE.contains("UiTransportPath::NativeServer"));
         assert!(SOURCE.contains("UiTransportPath::Graphql"));
+    }
+
+
+    #[test]
+    fn topic_fork_uses_the_manager_graphql_transport_without_fallback() {
+        for operation in [
+            "fetch_topic_fork_candidates",
+            "fetch_topic_fork_replies",
+            "fork_topic",
+        ] {
+            let source = function_source(operation);
+            assert!(source.contains("topic_fork_graphql_adapter::"));
+            assert!(!source.contains("native_server_adapter"));
+            assert!(!source.contains("execute_selected_transport"));
+            assert!(!source.contains("fallback"));
+        }
     }
 
     #[test]

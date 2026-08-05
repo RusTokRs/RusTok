@@ -60,3 +60,13 @@ The native adapter derives tenant and actor authority from `TenantContext` and `
 - See [FORUM-21N admin merge UI](../docs/forum-21n-topic-merge-admin-ui.md).
 - See [FORUM-21O native admin merge transport](../docs/forum-21o-topic-merge-native-admin.md).
 - See [FORUM-21V selected-reply split admin composition](../docs/forum-21v-topic-split-admin-ui.md).
+
+## Topic fork admin workflow
+
+`/modules/forum/fork` composes the manager-only
+`forkForumTopicReplyBranch` GraphQL command. The form retains operation and
+target-topic UUIDs across an exact retry, rotates both when the command shape
+changes, loads a bounded reply page for root selection, and displays the
+immutable owner receipt. Descendant discovery, copy identity, policy cloning and
+counter reconciliation remain in `ForumTopicForkService`.
+
