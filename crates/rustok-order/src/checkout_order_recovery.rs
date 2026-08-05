@@ -601,7 +601,7 @@ fn log_checkout_order_recovery_identity_not_found(
         role_count = context_facts.role_count,
         channel_present = context_facts.channel_present,
         channel_length = ?context_facts.channel_length,
-        locale_length = context_facts.locale_length,
+        context_locale_length = context_facts.locale_length,
         causation_id_present = context_facts.causation_id_present,
         causation_id_length = ?context_facts.causation_id_length,
         traceparent_present = context_facts.traceparent_present,
@@ -610,10 +610,10 @@ fn log_checkout_order_recovery_identity_not_found(
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
         checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
-        locale_present = request.locale.is_some(),
-        locale_length = ?request.locale.as_ref().map(|value| value.chars().count()),
-        fallback_locale_present = request.fallback_locale.is_some(),
-        fallback_locale_length = ?request
+        request_locale_present = request.locale.is_some(),
+        request_locale_length = ?request.locale.as_ref().map(|value| value.chars().count()),
+        request_fallback_locale_present = request.fallback_locale.is_some(),
+        request_fallback_locale_length = ?request
             .fallback_locale
             .as_ref()
             .map(|value| value.chars().count()),
