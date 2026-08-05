@@ -20,7 +20,8 @@ The guarded exact-entity diagnosis change remains internally consistent at sourc
 
 One guard defect was found during the recheck. The snapshot-reader verifier searched for the
 misspelled marker `PostgreSIndexDriftSnapshotReader`, while the implementation correctly defines
-`PostgresIndexDriftSnapshotReader`. This branch corrects that verifier marker.
+`PostgresIndexDriftSnapshotReader`. This branch corrects that verifier marker. A separate inherited
+reconciliation verifier typo was corrected without changing runner behavior.
 
 ## Explicit absence contract
 
@@ -37,36 +38,64 @@ The branch retains the database-neutral optional registry without weakening ordi
 
 ## Production continuation
 
-The selected Product bridge now registers `product-locale-absence-postgres` for Product schema
-versions 1 and 2. It returns positive `products.index_revision` only when the live Product exists,
-the exact translation locale is absent, and no exact Product tombstone owns that locale.
+The selected Product bridge registers `ProductLocaleAbsenceProvider` as
+`product-locale-absence-postgres` for Product schema versions 1 and 2. It returns positive
+`products.index_revision` only when the live Product exists, the exact translation locale is absent,
+and no exact Product tombstone owns that locale.
 
 This is a truthful source high-watermark because Product translation insert, delete, and reassignment
 advance the same revision. Hard deletes remain ordinary retained `Delete` mutations rather than
 being reclassified as `Missing`.
 
-Guarded diagnosis now materializes the optional absence registry after the canonical source registry
+Guarded diagnosis materializes the optional absence registry after the canonical source registry
 and attaches it privately to `PostgresIndexDriftSnapshotReader`. For an empty load the reader requires
 an exact watermark, opens the existing read-only repeatable-read materialized snapshot, and reloads
 both ordinary source state and the watermark before accepting the pair.
 
-The reader compares the typed `Missing` state plus positive absence version. A changed version or a
-newly appearing source mutation returns retryable `index_drift_source_changed_during_capture`. The
-absence version is domain-tagged into the opaque boundary only for source `Missing`; existing
-Upsert/Delete boundary derivation remains unchanged.
+The reader compares the typed `Missing` state plus positive absence version. A changed version, a
+newly appearing source mutation, or loss of proof after the first positive observation returns
+retryable `index_drift_source_changed_during_capture`. The absence version is domain-tagged into the
+opaque boundary only for source `Missing`; existing Upsert/Delete boundary derivation remains
+unchanged.
 
 Missing registration, provider `None`, key mismatch, zero version, and malformed evidence remain
 fail-closed. An empty targeted load alone still returns `index_drift_source_watermark_missing`.
 
+## Source-ready PostgreSQL continuation
+
+`crates/rustok-distribution/tests/product_locale_absence_postgres.rs` now retains the real-migration
+Product locale absence scenario without replacing either production adapter:
+
+- it applies the complete Product migration list and every Index migration inside one isolated
+  PostgreSQL schema;
+- it builds selected runtime extensions from the real `IndexModule` and `ProductModule`;
+- it materializes the production Product replay source, owner-bound absence registry, and
+  `PostgresIndexDriftSnapshotReader` through their public composition functions;
+- a stable French-locale absence must return exact source/materialized `Missing` states with a
+  bounded `pg:` boundary;
+- a second scenario blocks only the exact `index_entities` materialized read, waits through
+  `pg_stat_activity`, inserts the requested Product translation through a separate connection, and
+  requires retryable `index_drift_source_changed_during_capture` after the real second owner read.
+
+The harness uses separate one-connection pools for owner source reads, snapshot capture, locking,
+translation writing, and observation. It copies neither the Product provider SQL nor a fake
+`IndexSourceAbsenceProvider`, and it adds no test callback to production code.
+
+The harness is `source_ready_owner_execution_pending`. Its presence is not retained execution
+evidence; the repository owner must run and admit the PostgreSQL output.
+
 ## Open cursor
 
-The next implementation step is a real-migration PostgreSQL Product locale-absence scenario and a
-deterministic translation-change race between the two owner observations. Diagnosis transport,
-discovery, automatic finding resolution, resolve/ignore commands, repair, and retained execution
-evidence remain open.
+The next implementation step is one bounded server-owned transport over the existing guarded
+`diagnose_entity(context, key)` operation. It must accept exactly one typed key, derive authority
+only from request context, preserve authorization-before-validation ordering, and expose no batch,
+scan, registry, connection, lifecycle, or repair authority.
+
+Product locale PostgreSQL harness execution, discovery, automatic finding resolution,
+resolve/ignore commands, repair, and retained execution evidence remain open.
 
 ## Validation ownership
 
-Suggested commands are retained in the dated implementation plan and the explicit watermark
-document. Per maintainer instruction, this implementation agent did not run tests, JavaScript
-verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI.
+Suggested commands are retained in the dated implementation plan and the explicit watermark and
+harness documents. Per maintainer instruction, this implementation agent did not run tests,
+JavaScript verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI.
