@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod host_route_adapter;
 mod native_server_adapter;
 
 use leptos::prelude::ServerFnError;
@@ -7,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::StorefrontPagesData;
+
+pub use host_route_adapter::{
+    StorefrontPageRouteDecision, StorefrontPageRouteDisposition, resolve_storefront_page_route,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
