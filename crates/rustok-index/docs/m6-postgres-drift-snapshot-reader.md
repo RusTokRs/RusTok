@@ -31,6 +31,11 @@ A source change returns retryable `index_drift_source_changed_during_capture`. A
 returns no mutation has no admitted absence watermark and returns permanent
 `index_drift_source_watermark_missing`; unproven absence is never converted to `Missing`.
 
+The separate `IndexSourceAbsenceProvider` registry now defines the explicit positive-version proof
+needed to close this gap without changing ordinary targeted loads. It is not wired into this reader
+in the contract-only slice. Until that wiring and a production owner provider exist, the reader's
+empty-load behavior remains unchanged and fail-closed.
+
 This fence is truthful for retained positive-version owner states. It is not equivalent to an
 exported PostgreSQL snapshot spanning the owner adapter, and the boundary is not advertised as one.
 
@@ -95,8 +100,9 @@ The harness is retained execution evidence only after the repository owner runs 
 This slice does not add or claim:
 
 - exported PostgreSQL snapshots shared with arbitrary owner adapters;
-- an owner high-watermark protocol beyond an exact positive-version mutation;
-- missing-source admission without a retained delete/tombstone;
+- reader wiring for the explicit `IndexSourceAbsenceProvider` registry;
+- a production owner absence provider or retained tombstone evidence;
+- missing-source admission without a retained positive-version watermark;
 - entity discovery, full scans, stale enumeration, or orphan diagnosis;
 - automatic convergence resolution;
 - resolve/ignore commands, actor/reason audit, or public transport;
@@ -111,7 +117,9 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   --test drift_snapshot_reader_postgres_test \
   -- --nocapture --test-threads=1
 
+cargo test -p rustok-index source_absence -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
+node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
 cargo check -p rustok-index --all-targets
