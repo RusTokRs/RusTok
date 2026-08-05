@@ -56,7 +56,7 @@ The harness is gated by `RUSTOK_PAGES_TEST_DATABASE_URL`, with `DATABASE_URL` as
 
 ## Important distinction
 
-This packet deliberately models a **post-invalidation downstream failure**. The first failed rollback attempt has already rotated Pages generations before `OutboxRelay` persists retry state. A new relay instance retries the same durable envelope in the same process. The stable event UUID dedupe prevents a second rotation while allowing downstream delivery and outbox acknowledgement to complete.
+This packet deliberately models a **post-invalidation downstream failure**. The first failed rollback attempt has already rotated Pages generations before `OutboxRelay` persists retry state. A new relay instance retries the same durable envelope in the same process. The process-bounded dedupe prevents a second rotation while allowing downstream delivery and outbox acknowledgement to complete.
 
 A process restart is still conservative rather than exact-once: process-bounded dedupe is not durable, so a replay after process restart may rotate once more. This remains safe because old keys stay unreachable from the current generation snapshot.
 
