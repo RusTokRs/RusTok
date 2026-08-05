@@ -1,0 +1,37 @@
+name: FORUM-24A source sync
+
+on:
+  push:
+    branches:
+      - feat/forum-24a-topic-route-identity
+    paths:
+      - .github/forum24a_patch.py
+      - .github/workflows/forum24a-source-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forum-24a-topic-route-identity
+          fetch-depth: 1
+      - name: Apply FORUM-24A source composition
+        run: python .github/forum24a_patch.py
+      - name: Commit synchronized source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/forum24a_patch.py .github/workflows/forum24a-source-sync.yml
+          git add crates/rustok-forum/src/migrations/mod.rs \
+                  crates/rustok-forum/src/services/mod.rs \
+                  crates/rustok-forum/src/lib.rs \
+                  crates/rustok-forum/src/error.rs \
+                  crates/rustok-forum/src/controllers/mod.rs \
+                  crates/rustok-forum/docs/README.md \
+                  crates/rustok-forum/docs/implementation-plan.md
+          git commit -m "feat(forum): compose topic route identity owner"
+          git push origin HEAD:feat/forum-24a-topic-route-identity
