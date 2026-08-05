@@ -90,7 +90,7 @@ async fn memory_profile_rotates_before_synchronous_listener_delivery() -> TestRe
     assert_eq!(fixture.runtime.delivery_profile, EventDeliveryProfile::Memory);
     assert_eq!(
         fixture.runtime.transport.reliability_level(),
-        ReliabilityLevel::Memory
+        ReliabilityLevel::InMemory
     );
     assert!(fixture.runtime.relay_config.is_none());
 
