@@ -109,6 +109,8 @@ CREATE INDEX IF NOT EXISTS idx_forum_topic_route_alias_target
     ON forum_topic_route_aliases (
         tenant_id, target_topic_id, target_locale, created_at, alias_id
     );
+CREATE INDEX IF NOT EXISTS idx_forum_topic_merge_operations_route_backfill
+    ON forum_topic_merge_operations (tenant_id, merged_at, operation_id);
 
 CREATE OR REPLACE FUNCTION forum_reject_topic_route_alias_mutation()
 RETURNS trigger AS $$
@@ -136,6 +138,7 @@ DROP TRIGGER IF EXISTS forum_topic_route_alias_delete
     ON forum_topic_route_aliases;
 DROP TRIGGER IF EXISTS forum_topic_route_alias_update
     ON forum_topic_route_aliases;
+DROP INDEX IF EXISTS idx_forum_topic_merge_operations_route_backfill;
 DROP TABLE IF EXISTS forum_topic_route_aliases;
 DROP FUNCTION IF EXISTS forum_reject_topic_route_alias_mutation();
 "#;
@@ -215,6 +218,8 @@ CREATE INDEX IF NOT EXISTS idx_forum_topic_route_alias_target
     ON forum_topic_route_aliases (
         tenant_id, target_topic_id, target_locale, created_at, alias_id
     );
+CREATE INDEX IF NOT EXISTS idx_forum_topic_merge_operations_route_backfill
+    ON forum_topic_merge_operations (tenant_id, merged_at, operation_id);
 
 CREATE TRIGGER IF NOT EXISTS forum_topic_route_alias_update
 BEFORE UPDATE ON forum_topic_route_aliases
@@ -232,5 +237,6 @@ END;
 const SQLITE_DOWN: &str = r#"
 DROP TRIGGER IF EXISTS forum_topic_route_alias_delete;
 DROP TRIGGER IF EXISTS forum_topic_route_alias_update;
+DROP INDEX IF EXISTS idx_forum_topic_merge_operations_route_backfill;
 DROP TABLE IF EXISTS forum_topic_route_aliases;
 "#;

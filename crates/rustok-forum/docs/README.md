@@ -49,6 +49,7 @@ notifications module, and cross-module release gates.
 - FORUM-24B composes immutable localized source-route redirects into new topic merges in the same owner transaction without changing merge receipts or events.
 - FORUM-24C records immutable localized `gone` routes in the topic delete transaction while preserving existing merge redirects.
 - FORUM-24D adds an explicit owner command for localized topic slug changes with atomic old-route aliases and delete/merge lifecycle resolution.
+- FORUM-24E provides a bounded, cursor-resumable owner repair that ensures exact route aliases for immutable merge receipts created before FORUM-24B.
 
 ## Verification
 
@@ -83,6 +84,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24B topic merge route aliases](./forum-24b-topic-merge-route-aliases.md)
 - [FORUM-24C topic delete route tombstones](./forum-24c-topic-delete-route-tombstones.md)
 - [FORUM-24D topic slug rename owner](./forum-24d-topic-slug-rename-owner.md)
+- [FORUM-24E historical merge route backfill](./forum-24e-topic-merge-route-backfill.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

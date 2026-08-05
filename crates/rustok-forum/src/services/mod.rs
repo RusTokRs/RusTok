@@ -108,6 +108,7 @@ mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_canonical_resolution;
 mod topic_route;
+mod topic_route_backfill;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_fork;
@@ -241,6 +242,11 @@ pub use topic_route::{
     ForumTopicRouteService, ForumTopicSlugRenameResult, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
     MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN, MAX_FORUM_TOPIC_ROUTE_SLUG_LEN,
     RenameForumTopicSlugInput,
+};
+pub use topic_route_backfill::{
+    BackfillForumTopicMergeRouteAliasesInput, ForumTopicMergeRouteBackfillCursor,
+    ForumTopicMergeRouteBackfillResult, ForumTopicMergeRouteBackfillService,
+    MAX_FORUM_TOPIC_MERGE_ROUTE_BACKFILL_OPERATIONS,
 };
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,

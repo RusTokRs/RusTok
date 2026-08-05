@@ -140,9 +140,12 @@ pub use services::{
     SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use services::{
-    FORUM_TOPIC_RENAMED_ROUTE_REASON, FORUM_TOPIC_ROUTE_SHORT_ID_LEN,
+    BackfillForumTopicMergeRouteAliasesInput, FORUM_TOPIC_RENAMED_ROUTE_REASON,
+    FORUM_TOPIC_ROUTE_SHORT_ID_LEN, ForumTopicMergeRouteBackfillCursor,
+    ForumTopicMergeRouteBackfillResult, ForumTopicMergeRouteBackfillService,
     ForumTopicRouteDescriptor, ForumTopicRouteDisposition, ForumTopicRouteResolution,
-    ForumTopicRouteService, ForumTopicSlugRenameResult, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
+    ForumTopicRouteService, ForumTopicSlugRenameResult,
+    MAX_FORUM_TOPIC_MERGE_ROUTE_BACKFILL_OPERATIONS, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
     MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN, MAX_FORUM_TOPIC_ROUTE_SLUG_LEN,
     RenameForumTopicSlugInput,
 };
