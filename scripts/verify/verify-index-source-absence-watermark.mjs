@@ -139,7 +139,7 @@ requireMarkers("doc", [
   "An empty targeted owner load is not proof that an entity is absent.",
   "`product-locale-absence-postgres`",
   "positive `products.index_revision`",
-  "Product translation changes advance the same revision",
+  "Product storage increments `index_revision` when translations are inserted, deleted, or reassigned.",
   "reloads the ordinary source and the absence watermark",
   "explicit_source_absence_watermark_v1",
   "index_drift_source_watermark_missing",
