@@ -1,9 +1,9 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay for `implementation-plan.md` audited through
-`main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173` and the rechecked guarded-diagnosis
-change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`. The intervening main commits do
-not touch `rustok-index`, `rustok-distribution` Product Index composition, or the server diagnosis
+`main@368c79b78549e97a68120358021552b2552b800c` and the rechecked guarded-diagnosis
+change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`. The eight intervening main commits
+do not touch `rustok-index`, `rustok-distribution` Product Index composition, or the server diagnosis
 composition changed by this branch.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
