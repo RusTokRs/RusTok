@@ -3,9 +3,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_cache::CacheService;
-use rustok_core::events::{EventEnvelope, EventHandler, EventTransport, ReliabilityLevel};
+use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
 
+#[cfg(feature = "mod-pages")]
+use rustok_core::events::EventHandler;
 #[cfg(feature = "mod-pages")]
 use rustok_pages::{PageCacheInvalidationEventHandler, PagesCacheInvalidationRuntime};
 
@@ -106,8 +108,7 @@ mod tests {
     use rustok_events::DomainEvent;
     #[cfg(feature = "mod-pages")]
     use rustok_pages::{
-        PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PagesCacheInvalidationRuntime,
-        PagesCacheReadPort,
+        PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PagesCacheReadPort,
     };
     use uuid::Uuid;
 
