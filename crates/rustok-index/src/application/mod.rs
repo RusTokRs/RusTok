@@ -40,8 +40,9 @@ pub use drift_digest::{
     IndexDriftDependencyFailure, IndexDriftDependencyFailureKind, IndexDriftDigestError,
     IndexDriftDigestMismatch, IndexDriftDigestOutcome, IndexDriftDigestProducer,
     IndexDriftDigestRequest, IndexDriftEntityState, IndexDriftMismatchReceipt,
-    IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder, IndexDriftSnapshotBoundary,
-    IndexDriftSnapshotPair, IndexDriftSnapshotReader, IndexDriftSnapshotView,
+    IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder,
+    IndexDriftMissingEntityCandidateOutcome, IndexDriftSnapshotBoundary, IndexDriftSnapshotPair,
+    IndexDriftSnapshotReader, IndexDriftSnapshotView,
 };
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
