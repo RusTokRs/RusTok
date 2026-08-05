@@ -70,6 +70,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21T reply-range move GraphQL transport](./forum-21t-reply-range-move-graphql-transport.md)
 - [FORUM-21U topic fork GraphQL transport](./forum-21u-topic-fork-graphql-transport.md)
 - [FORUM-21V topic split admin composition](./forum-21v-topic-split-admin-ui.md)
+- [`forum-21w-topic-fork-admin-ui.md`](./forum-21w-topic-fork-admin-ui.md) — FORUM-21W manager fork workflow composition for Leptos and Next-admin.
 - [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [Admin UI package](../admin/README.md)

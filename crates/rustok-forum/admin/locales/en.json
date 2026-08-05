@@ -140,5 +140,22 @@
   "forum.split.operation": "Retry identity",
   "forum.split.targetId": "New topic identity",
   "forum.split.retryHint": "Exact retries keep both identities. Editing the source, selection or target fields rotates both.",
-  "forum.split.complete": "Split committed"
+  "forum.split.complete": "Split committed",
+  "forum.fork.title": "Fork reply branch",
+  "forum.fork.subtitle": "Copy one reply branch into a new topic while the Forum owner preserves the source.",
+  "forum.fork.source": "Source topic",
+  "forum.fork.choose": "Choose a topic",
+  "forum.fork.root": "Branch root reply",
+  "forum.fork.noReplies": "Choose a source topic with at least one reply.",
+  "forum.fork.locale": "Target locale",
+  "forum.fork.targetTitle": "Target title",
+  "forum.fork.slug": "Target slug (optional)",
+  "forum.fork.reason": "Reason",
+  "forum.fork.warning": "Fork copies the selected root and its descendants. The source topic, replies and solution remain unchanged.",
+  "forum.fork.submit": "Fork branch",
+  "forum.fork.pending": "Forking…",
+  "forum.fork.operation": "Retry identity",
+  "forum.fork.targetId": "New topic identity",
+  "forum.fork.retryHint": "Exact retries keep both identities. Editing the source, root or target fields rotates both.",
+  "forum.fork.complete": "Fork committed"
 }

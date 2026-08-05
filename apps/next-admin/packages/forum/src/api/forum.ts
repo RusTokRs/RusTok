@@ -1,6 +1,10 @@
 import { graphqlRequest } from '@/lib/graphql';
 import type { RichTextDocument } from '@rustok/richtext';
 import type {
+  ForumTopicForkCommand,
+  ForumTopicForkReceipt
+} from '../core/topic-fork';
+import type {
   ForumTopicMergeCandidate,
   ForumTopicMergeCommand,
   ForumTopicMergeReceipt
@@ -337,3 +341,76 @@ export async function splitForumTopicReplies(
 
   return data.splitForumTopicReplies;
 }
+
+export async function forkForumTopicReplyBranch(
+  command: ForumTopicForkCommand,
+  opts: GqlOpts = {}
+): Promise<ForumTopicForkReceipt> {
+  const mutation = `
+    mutation ForkForumTopicReplyBranch(
+      $tenantId: UUID
+      $sourceTopicId: UUID!
+      $input: ForkForumTopicReplyBranchGraphqlInput!
+    ) {
+      forkForumTopicReplyBranch(
+        tenantId: $tenantId
+        sourceTopicId: $sourceTopicId
+        input: $input
+      ) {
+        operationId
+        eventId
+        sourceTopicId
+        targetTopicId
+        rootReplyId
+        categoryId
+        actorId
+        reason
+        copiedReplyCount
+        copiedPublishedReplyCount
+        copiedBodyCount
+        copiedReplyRevisionCount
+        copiedRelationRevisionCount
+        copiedMentionCount
+        copiedQuoteCount
+        forkedAt
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    {
+      tenantId?: string | null;
+      sourceTopicId: string;
+      input: {
+        operationId: string;
+        targetTopicId: string;
+        rootReplyId: string;
+        locale: string;
+        title: string;
+        slug?: string;
+        reason: string;
+      };
+    },
+    { forkForumTopicReplyBranch: ForumTopicForkReceipt }
+  >(
+    mutation,
+    {
+      tenantId: opts.tenantId,
+      sourceTopicId: command.sourceTopicId,
+      input: {
+        operationId: command.operationId,
+        targetTopicId: command.targetTopicId,
+        rootReplyId: command.rootReplyId,
+        locale: command.locale,
+        title: command.title,
+        slug: command.slug,
+        reason: command.reason
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.forkForumTopicReplyBranch;
+}
+
