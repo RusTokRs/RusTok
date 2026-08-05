@@ -1,6 +1,6 @@
 # Index reconciliation operator runtime
 
-Status: `source_complete_transport_and_owner_execution_pending`.
+Status: `diagnosis_graphql_transport_source_complete_owner_execution_pending`.
 
 ## Purpose
 
@@ -37,7 +37,7 @@ no caller-selected tenant. Requeue accepts no caller-selected actor; its audit a
 tenant. Authorization runs before `IndexDriftDigestRequest` validation, owner-source access,
 materialized reads, digest production, or finding persistence.
 
-## Published surface
+## Published operator surface
 
 `IndexReconciliationOperatorRuntime` exposes only:
 
@@ -55,6 +55,31 @@ Diagnosis returns only the bounded digest outcome. It exposes no raw owner recor
 SQL, database cause, credential, transaction, source registry, absence registry, snapshot reader,
 finding writer, scheduler, or repair handle.
 
+## GraphQL diagnosis transport
+
+The root GraphQL mutation now includes one server-owned exact-entity operation:
+
+- `diagnoseIndexEntity(input: IndexDriftDiagnosisInput!): IndexDriftDiagnosisPayload!`.
+
+The input contains string forms of module, entity, schema version, entity UUID, and optional locale.
+It contains no tenant or actor field. The resolver derives both identities from authenticated request
+context and checks the task-local effective `modules:manage` snapshot before parsing any untrusted
+identifier, version, UUID, or locale.
+
+After bounded parsing, the mutation delegates exactly once to `diagnose_entity(context, key)`. The
+operator repeats authorization before source or database access. This defense-in-depth check uses the
+same request-local permission snapshot and creates no second authority cache or database permission
+lookup.
+
+The payload exposes only:
+
+- `CONSISTENT` plus one digest; or
+- `MISMATCH_RECORDED` plus source/materialized digests and bounded finding receipt metadata.
+
+Dependency errors expose fixed GraphQL codes, retryability, and the existing bounded dependency code.
+They expose no raw adapter or database cause. The mutation owns no batch, scan, discovery, finding
+lifecycle, scheduler, or repair operation.
+
 ## Composition
 
 The server replay composition remains the single source-freezing point:
@@ -68,11 +93,13 @@ The server replay composition remains the single source-freezing point:
    against the frozen replay registry;
 6. the diagnosis reader receives the same immutable source/schema registries and, when present, the
    private absence registry;
-7. both guarded operators are inserted before host-context publication.
+7. both guarded operators are inserted before host-context publication;
+8. GraphQL schema construction receives the frozen `ModuleRuntimeExtensions` and mounts the bounded
+   diagnosis mutation without reconstructing any adapter.
 
 Composition performs no reconciliation or diagnosis SQL and starts no task. The generic server
-module-work bootstrap owns polling and shared shutdown. Exact-entity diagnosis is explicit and is
-never scheduled by this slice.
+module-work bootstrap owns polling and shared shutdown. Exact-entity diagnosis remains explicit and
+is never scheduled by this slice.
 
 ## Explicit Product locale absence
 
@@ -91,8 +118,8 @@ deletes remain ordinary source `Delete` values.
 
 ## Explicitly open
 
-- GraphQL, HTTP, CLI, MCP, native admin, or other diagnosis transport;
-- retained PostgreSQL authorization, Product absence, diagnosis, finding-lifecycle, scheduler, and
+- reconciliation run/cancel/inspection/requeue transports;
+- retained GraphQL authorization, Product absence, diagnosis, finding-lifecycle, scheduler, and
   multi-host execution evidence;
 - bounded entity discovery, missing/stale enumeration, and orphan-link diagnosis;
 - finding resolution or ignore transitions with actor/reason audit;
@@ -101,10 +128,11 @@ deletes remain ordinary source `Delete` values.
 - per-source retry policy, jitter, and dynamic configuration;
 - locale or partition checkpoint dimensions.
 
-Exact-entity digest diagnosis and Product locale-absence fencing are source complete. Broader
-diagnosis, all repair, transport, and retained execution evidence remain open.
+Exact-entity digest diagnosis, Product locale-absence fencing, and the bounded GraphQL diagnosis
+transport are source complete. Broader diagnosis, all repair, reconciliation transports, and retained
+execution evidence remain open.
 
 ## Validation ownership
 
-Formatting, Cargo checks/tests, JavaScript verifiers, database scenarios, workflows, and CI are
-maintainer-run and were not executed by the implementation agent.
+Formatting, Cargo checks/tests, JavaScript verifiers, database or GraphQL scenarios, workflows, and
+CI are maintainer-run and were not executed by the implementation agent.
