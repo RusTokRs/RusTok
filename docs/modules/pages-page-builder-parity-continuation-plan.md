@@ -10,6 +10,8 @@ This is the canonical shared continuation cursor. Historical dated packets remai
 
 `source-ready` means that code, contracts or retained harness source exists. It does not mean that tests, Cargo, formatting, verifiers, databases, HTTP routes, server functions, production event topology, browsers, workflows, CI, built artifacts or tenant rollout were executed.
 
+Across every retained source packet, execution remains pending until a maintainer records reproducible command output and artifact evidence.
+
 Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, routing, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts.
 
 Optional external event infrastructure is outside the active Pages cursor.
@@ -122,7 +124,7 @@ anonymous request
   → no executable client bootstrap
 ```
 
-The source regression rejects module scripts, module preload, WASM URLs, hydration entrypoints and Pages/Page Builder/Fly authoring markers in the rendered public document.
+The source regression rejects module scripts, module preload, WASM URLs, hydration entrypoints and Pages/Page Builder/Fly authoring markers in the rendered public document source.
 
 The artifact inspector requires an explicit built SSR artifact, reruns the feature-resolved dependency-graph verifier, records SHA-256 and fails on authoring markers. Missing artifacts cannot pass.
 
@@ -153,7 +155,7 @@ Execution evidence remains pending.
 | PostgreSQL retry after post-invalidation failure | Source-ready | PostgreSQL execution pending |
 | Memory and OutboxLocal factory profiles | Source-ready | SQLite profile execution pending |
 | Anonymous dependency graph | Source-ready | `cargo metadata` execution pending |
-| Anonymous SSR document boundary | Source-ready | Runtime regression pending |
+| Anonymous SSR document boundary | Source-ready | Source regression pending |
 | Anonymous SSR built artifact | Inspector source-ready | Build and inspection pending |
 | Anonymous Pages client bundle | Not currently mounted by host | Gate reopens if introduced |
 | Authenticated real-DOM inline editing | Not implemented | Open |
@@ -172,7 +174,7 @@ This slice does not:
 ## Next cursor
 
 1. Run the anonymous dependency-graph verifier.
-2. Run the anonymous SSR delivery source verifier and focused runtime regression.
+2. Run the anonymous SSR delivery source verifier and focused source regression.
 3. Build the host SSR library in an isolated target directory and run the explicit artifact inspector.
 4. Run the selected immutable artifact and complete native SQLite/Axum route set.
 5. Run production generation-gate, native-route and PostgreSQL retry packets.
