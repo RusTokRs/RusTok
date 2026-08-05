@@ -28,7 +28,8 @@ pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMU
 pub(crate) use helpers::is_page_visible_for_channel;
 pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
 pub use route::{
-    PageRouteDescriptor, PageRouteDisposition, PageRouteResolution, PageRouteService,
+    PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT, PageRouteDescriptor,
+    PageRouteDisposition, PageRouteResolution, PageRouteService,
 };
 
 pub(super) const PAGE_KIND: &str = "page";
