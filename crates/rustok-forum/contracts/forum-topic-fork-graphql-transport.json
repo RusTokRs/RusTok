@@ -1,0 +1,99 @@
+{
+  "contract": "forum_topic_fork_graphql_transport_v1",
+  "task": "FORUM-21U",
+  "parent_task": "FORUM-21",
+  "extends": "FORUM-21Q",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "transport": "graphql",
+  "owner_service": "ForumTopicForkService",
+  "authorization": {
+    "module_must_be_enabled": "forum",
+    "required_permission": "forum_topics:manage",
+    "authenticated_human_actor_required_by_owner": true,
+    "tenant_is_derived_from_routed_TenantContext": true,
+    "optional_tenant_argument_must_equal_routed_tenant": true,
+    "tenant_mismatch_code": "PERMISSION_DENIED"
+  },
+  "command": {
+    "field": "forkForumTopicReplyBranch",
+    "input_type": "ForkForumTopicReplyBranchGraphqlInput",
+    "source_topic_id_is_separate_argument": true,
+    "input_fields": [
+      "operation_id",
+      "target_topic_id",
+      "root_reply_id",
+      "locale",
+      "title",
+      "slug",
+      "reason"
+    ],
+    "result_type": "GqlForumTopicFork",
+    "calls_owner_method": "fork_reply_branch"
+  },
+  "receipt_result": {
+    "type": "GqlForumTopicFork",
+    "fields": [
+      "operation_id",
+      "event_id",
+      "source_topic_id",
+      "target_topic_id",
+      "root_reply_id",
+      "category_id",
+      "actor_id",
+      "reason",
+      "copied_reply_count",
+      "copied_published_reply_count",
+      "copied_body_count",
+      "copied_reply_revision_count",
+      "copied_relation_revision_count",
+      "copied_mention_count",
+      "copied_quote_count",
+      "forked_at"
+    ],
+    "returns_immutable_owner_receipt": true,
+    "exact_replay_returns_same_result": true,
+    "event_id_equals_operation_id": true
+  },
+  "composition": {
+    "resolver_contains_no_fork_business_logic": true,
+    "database_and_transactional_event_bus_are_explicit_schema_data": true,
+    "security_context_uses_authenticated_permission_snapshot": true,
+    "domain_errors_preserve_ForumGraphqlErrorExtension_mapping": true,
+    "raw_fork_receipt_or_mapping_table_access_in_resolver": false,
+    "canonical_topic_alias_resolution_for_mutation": false,
+    "transport_local_copy_policy": false
+  },
+  "compatibility": {
+    "owner_command_changed": false,
+    "receipt_schema_changed": false,
+    "semantic_event_schema_changed": false,
+    "rest_contract_changed": false,
+    "admin_ui_added": false,
+    "storefront_ui_added": false,
+    "graphql_field_is_additive": true
+  },
+  "source_contract_test": "crates/rustok-forum/tests/topic_fork_graphql_contract.rs",
+  "authorization_unit_test": "crates/rustok-forum/src/graphql/topic_fork_mutation.rs",
+  "owner_runtime_test": "crates/rustok-forum/tests/topic_fork_sqlite.rs",
+  "documentation": "crates/rustok-forum/docs/forum-21u-topic-fork-graphql-transport.md",
+  "owner_contract": "crates/rustok-forum/contracts/forum-topic-fork-owner.json",
+  "owner_documentation": "crates/rustok-forum/docs/forum-21q-topic-fork-owner.md",
+  "verifier": "scripts/verify/verify-forum-topic-fork-graphql-transport.mjs",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-fork-owner.mjs",
+    "node scripts/verify/verify-forum-topic-fork-graphql-transport.mjs",
+    "cargo test -p rustok-forum graphql::topic_fork_mutation::tests -- --nocapture",
+    "cargo test -p rustok-forum --test topic_fork_graphql_contract -- --nocapture",
+    "cargo test -p rustok-forum --test topic_fork_sqlite -- --nocapture",
+    "cargo check -p rustok-forum --all-targets"
+  ],
+  "non_claims": [
+    "no verifier test formatter Cargo SQLite PostgreSQL workflow or CI execution is claimed",
+    "no REST native admin storefront or CLI fork command transport is added",
+    "no fork admin UI is added",
+    "no cross-category fork is added",
+    "no transport-local branch copy or relation policy is added",
+    "FORUM-21 remains planned"
+  ]
+}
