@@ -1,0 +1,80 @@
+{
+  "contract": "forum_topic_merge_route_alias_owner_v1",
+  "task": "FORUM-24B",
+  "status": "source_ready_maintainer_execution_pending",
+  "extends": [
+    "FORUM-21B",
+    "FORUM-21I",
+    "FORUM-24A"
+  ],
+  "owner": {
+    "command": "ForumTopicMergeService::merge_topic_internal",
+    "alias_composer": "ForumTopicRouteService::record_merge_redirect_aliases_in_tx",
+    "same_transaction": true,
+    "receipt_schema_changed": false,
+    "event_schema_changed": false
+  },
+  "source_routes": {
+    "selection": "all_source_topic_translations_with_non_empty_slug",
+    "identity": [
+      "tenant_id",
+      "source_topic_id",
+      "locale",
+      "short_id",
+      "slug"
+    ],
+    "empty_source_route_set": "merge_continues_without_alias_rows"
+  },
+  "target_locale_policy": {
+    "precedence": [
+      "exact_source_locale",
+      "platform_fallback_locale",
+      "lexicographically_first_available_target_locale"
+    ],
+    "target_slug_stored": false,
+    "target_slug_recomputed_on_resolution": true,
+    "source_routes_require_at_least_one_target_route": true
+  },
+  "persistence": {
+    "table": "forum_topic_route_aliases",
+    "disposition": "redirect",
+    "append_only": true,
+    "idempotent_route_key": [
+      "tenant_id",
+      "locale",
+      "short_id",
+      "slug"
+    ],
+    "conflicting_existing_alias_fails_closed": true,
+    "merge_rollback_on_alias_failure": true
+  },
+  "replay": {
+    "existing_merge_receipt_returned_unchanged": true,
+    "alias_rows_not_duplicated": true,
+    "historical_merge_backfill_included": false
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_schema_changed": false,
+    "admin_ui_changed": false,
+    "storefront_route_mounted": false,
+    "rename_alias_composition_included": false,
+    "delete_tombstone_composition_included": false
+  },
+  "remaining": [
+    "compose aliases into topic slug rename",
+    "compose tombstones into topic delete",
+    "backfill aliases for historical merge receipts if required",
+    "mount authorized localized topic routes in both storefront hosts",
+    "add localized category paths and SEO locale publication",
+    "retain SQLite and PostgreSQL runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "node scripts/verify/verify-forum-topic-merge-route-alias-owner.mjs",
+      "cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture",
+      "cargo check -p rustok-forum --all-targets"
+    ],
+    "executed_by_implementation_agent": false
+  }
+}
