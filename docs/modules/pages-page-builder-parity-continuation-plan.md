@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / anonymous-storefront-ssr-delivery-source-ready / execution-evidence-pending
+Status: source-parity-current / public-list-locale-fallback-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
 
 ## Source-of-truth policy
@@ -35,9 +35,10 @@ Current `main` contains:
 - PR #3006 — production-gate PostgreSQL retry source;
 - PR #3008 — Memory and OutboxLocal factory profile parity source;
 - PR #3010 — selected immutable artifact authority after draft mutation;
-- PR #3011 — anonymous storefront dependency-graph source boundary.
+- PR #3011 — anonymous storefront dependency-graph source boundary;
+- PR #3014 — anonymous SSR delivery boundary and explicit artifact inspector source.
 
-The current slice retains the actual public host mode: Pages is mounted in the host SSR profile, while the current host CSR/hydrate profiles do not enable Pages and no Pages client bootstrap exists.
+The current slice corrects a Pages public-read inconsistency: selected detail and list results now use the same requested-locale, tenant-default-locale and platform-fallback chain in both native and GraphQL public transports.
 
 ## Current parity state
 
@@ -66,6 +67,34 @@ The retained route packet covers generation-bound miss/refill/hit, conditional `
 The route set covers cache miss/refill/hit, registered `/api/fn/pages/storefront-data`, channel admission before cache, reviewed immutable selection, integrity-before-fill and old-key retention.
 
 Native storefront registered server function: source-ready; the real registered Leptos endpoint is retained. Routed-channel module admission remains open for execution, and durable `NodePublished` relay delivery is now connected at source level.
+
+### Public list tenant locale fallback: source-ready
+
+`public-list-locale-fallback-source-ready`; Public list tenant locale fallback: source-ready.
+
+Pages now exposes a fallback-aware public list owner method. It normalizes the requested and explicit tenant fallback locales and resolves each list translation through:
+
+```text
+requested locale
+  → tenant default locale
+  → platform fallback locale
+```
+
+The existing `list_public_visible` method remains as a platform-fallback wrapper for callers that do not supply tenant policy.
+
+The native and GraphQL public detail/list reads now pass the same tenant default locale to the owner. The native cache variant already binds the fallback locale, so this behavior correction does not change namespace, generation, concrete key shape, TTL or capacity. Published-only and channel-visibility filtering remain unchanged.
+
+Source evidence:
+
+- `crates/rustok-pages/src/services/page/read.rs`;
+- `crates/rustok-pages/src/graphql/query.rs`;
+- `crates/rustok-pages/storefront/src/transport/native_server_adapter.rs`;
+- `crates/rustok-pages/tests/page_locale_fallback.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs`;
+- `docs/modules/pages-page-builder-public-list-locale-fallback-packet-2026-08-05.md`.
+
+Execution evidence remains pending.
 
 ### Native reviewed immutable artifact selection: source-ready
 
@@ -148,6 +177,7 @@ Execution evidence remains pending.
 | Draft/published registered metadata | Complete | Browser execution pending |
 | Reviewed publish and immutable manifest | Complete | Database/runtime evidence pending |
 | Immutable rollback | Complete | Database/runtime evidence pending |
+| Public detail/list tenant locale fallback parity | Source-ready | Focused SQLite/native/GraphQL execution pending |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -162,30 +192,42 @@ Execution evidence remains pending.
 
 ## Boundaries
 
-This slice does not:
+This slice changes production Pages public-list translation selection in the owner service, registered native storefront and unauthenticated GraphQL list.
 
-- change Pages, Page Builder, Fly or storefront production behavior;
-- add hydration, client bootstrap or authoring code to the public host;
-- change dependencies, features, migrations, schemas, DTOs, routes, cache policy or event delivery;
-- touch optional Iggy infrastructure;
-- claim tests, Cargo, formatting, verifiers, databases, browsers, built artifacts, workflows, CI or rollout execution;
+It does not:
+
+- change Page Builder or Fly behavior;
+- change persistence, migrations, schemas, DTOs, GraphQL schema, artifacts or bindings;
+- change public routes, canonical URL policy, redirects or route aliases;
+- change channel visibility or module-admission policy;
+- change cache namespaces, generation scopes, concrete key shape, TTL or capacity;
+- change event delivery or optional external event infrastructure;
+- claim tests, Cargo, formatting, verifiers, SQLite, native server functions, GraphQL, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA.
 
 ## Next cursor
 
-1. Run the anonymous dependency-graph verifier.
-2. Run the anonymous SSR delivery source verifier and focused source regression.
-3. Build the host SSR library in an isolated target directory and run the explicit artifact inspector.
+1. Run the public list locale fallback verifier and focused Pages locale regression.
+2. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
+3. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
 4. Run the selected immutable artifact and complete native SQLite/Axum route set.
 5. Run production generation-gate, native-route and PostgreSQL retry packets.
 6. Run metadata conflict/isolation and published metadata browser packets.
-7. Complete workflow and observed tenant rollout evidence before promotion.
+7. Complete canonical URLs, redirects and route-collision policy as a separate Pages routing slice.
+8. Complete workflow and observed tenant rollout evidence before promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs
+cargo test -p rustok-pages --test page_locale_fallback -- --nocapture
+
+node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
+
 node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
 
