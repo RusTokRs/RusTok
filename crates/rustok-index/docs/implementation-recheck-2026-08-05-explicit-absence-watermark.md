@@ -1,8 +1,8 @@
 # `rustok-index` implementation recheck — explicit absence watermark
 
-Audited baseline: `main@2197ffaf4ca47f7cf56d8014deaaab69a1dfc51d`.
-The two commits after `9cfc43cf72284e16261f788070a47367613bf2e2` change only
-`rustok-order`, `rustok-pages`, and their documentation/verifiers; they do not overlap this slice.
+Audited baseline: `main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173`.
+The intervening Order and Pages commits do not overlap `rustok-index`, Product Index composition, or
+the server diagnosis paths changed by this branch.
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
@@ -14,44 +14,56 @@ The guarded exact-entity diagnosis change remains internally consistent at sourc
 - the accepted key is one typed `EntityKey` and must match the authorized tenant;
 - composition reuses the frozen source/schema registries and publishes no scan, scheduler, repair,
   reader, writer, registry, or connection handle;
-- empty owner loads remain permanent `index_drift_source_watermark_missing`;
 - no GraphQL, HTTP, CLI, admin, MCP, or other transport is claimed;
-- PR #2983 has no review threads, submitted reviews, or conversation comments;
+- PR #2983 had no review threads, submitted reviews, or conversation comments;
 - tests and retained execution evidence remain owner-owned and pending.
 
-One guard defect was found during this recheck. The snapshot-reader verifier searched for the
+One guard defect was found during the recheck. The snapshot-reader verifier searched for the
 misspelled marker `PostgreSIndexDriftSnapshotReader`, while the implementation correctly defines
-`PostgresIndexDriftSnapshotReader`. The replacement branch corrects the verifier marker without
-changing runtime behavior.
+`PostgresIndexDriftSnapshotReader`. This branch corrects that verifier marker.
 
-## Continued slice
+## Explicit absence contract
 
-The next canonical item was an explicit retained absence/tombstone watermark contract. This branch
-adds a database-neutral optional registry rather than weakening the existing targeted-load result:
+The branch retains the database-neutral optional registry without weakening ordinary targeted load:
 
 - `IndexSourceAbsenceWatermark` carries one exact typed key and one positive source version;
-- `IndexSourceAbsenceProvider` returns `Some(watermark)`, non-authoritative `None`, or the existing
+- `IndexSourceAbsenceProvider` returns `Some(watermark)`, non-authoritative `None`, or one existing
   bounded retryable/permanent `IndexSourceFailure`;
 - provider names, schema sets, and schema-identity ownership are bounded and deterministic;
 - materialization requires the frozen canonical replay source registry;
 - every provider owner must equal the replay source owner for every exact schema;
-- registry lookup performs one exact call and rejects a cross-scope result;
-- no scan, ID collection, SQL, scheduling, lifecycle transition, or repair is introduced.
+- registry lookup performs one exact call and rejects cross-scope evidence;
+- existing `IndexSource::scan` and `IndexSource::load` implementations remain source-compatible.
 
-Existing `IndexSource::scan`, `IndexSource::load`, and every current owner adapter remain
-source-compatible. The PostgreSQL drift reader is deliberately not wired in this contract-only
-slice, so an empty targeted load still cannot become source `Missing`.
+## Production continuation
+
+The selected Product bridge now registers `product-locale-absence-postgres` for Product schema
+versions 1 and 2. It returns positive `products.index_revision` only when the live Product exists,
+the exact translation locale is absent, and no exact Product tombstone owns that locale.
+
+This is a truthful source high-watermark because Product translation insert, delete, and reassignment
+advance the same revision. Hard deletes remain ordinary retained `Delete` mutations rather than
+being reclassified as `Missing`.
+
+Guarded diagnosis now materializes the optional absence registry after the canonical source registry
+and attaches it privately to `PostgresIndexDriftSnapshotReader`. For an empty load the reader requires
+an exact watermark, opens the existing read-only repeatable-read materialized snapshot, and reloads
+both ordinary source state and the watermark before accepting the pair.
+
+The reader compares the typed `Missing` state plus positive absence version. A changed version or a
+newly appearing source mutation returns retryable `index_drift_source_changed_during_capture`. The
+absence version is domain-tagged into the opaque boundary only for source `Missing`; existing
+Upsert/Delete boundary derivation remains unchanged.
+
+Missing registration, provider `None`, key mismatch, zero version, and malformed evidence remain
+fail-closed. An empty targeted load alone still returns `index_drift_source_watermark_missing`.
 
 ## Open cursor
 
-The next implementation step is to register one production owner-retained provider and wire the
-frozen absence registry into `PostgresIndexDriftSnapshotReader`. Snapshot capture must compare the
-same positive absence version on both sides of the materialized read and bind it into the opaque
-boundary. Missing registration, `None`, key mismatch, zero version, or a changed version must remain
-fail-closed.
-
-Diagnosis transport, discovery, automatic finding resolution, resolve/ignore commands, repair, and
-retained execution evidence remain open.
+The next implementation step is a real-migration PostgreSQL Product locale-absence scenario and a
+deterministic translation-change race between the two owner observations. Diagnosis transport,
+discovery, automatic finding resolution, resolve/ignore commands, repair, and retained execution
+evidence remain open.
 
 ## Validation ownership
 
