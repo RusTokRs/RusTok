@@ -19,6 +19,7 @@ mod schema_codegen {
 
 use super::dashboard_security::GraphqlDashboardSecurityPolicy;
 use super::forum_principal_security::ForumPrincipalPolicy;
+use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
 use super::module_security::GraphqlModuleSecurityPolicy;
@@ -82,6 +83,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    IndexDriftDiagnosisMutation,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
