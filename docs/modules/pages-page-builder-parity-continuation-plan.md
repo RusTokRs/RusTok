@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / production-gate-postgres-restart-source-ready / execution-evidence-pending
+Status: source-parity-current / event-delivery-profile-parity-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
 
 ## Source-of-truth policy
@@ -24,7 +24,7 @@ The current source was rechecked against:
 - the Page Builder reviewed runtime, authoritative sanitizer and materialized artifact contracts;
 - the Pages durable outbox/cache invalidation and read contracts;
 - `OutboxRelay` claim/delivery/acknowledgement ordering;
-- the server `EventRuntime` transport composition;
+- the server `EventRuntime` transport composition and `build_event_runtime` profile branches;
 - `TenantCacheGenerationTransport` and `TenantGenerationDeliveryGate`;
 - `ServerPagesCachePort` generation and byte-cache ownership;
 - the historical PostgreSQL owner-transaction and pre-handler relay-restart harnesses;
@@ -50,9 +50,10 @@ Current `main` contains:
 - PR #2995 — source-ready owner/outbox/handler/native-route continuity through a synchronous test relay target;
 - PR #2997 — topology correction separating the synchronous test target from production asynchronous listener delivery;
 - PR #3001 — production synchronous Pages generation gate with process-bounded same-event dedupe;
-- PR #3004 — production gate to registered native route continuity source.
+- PR #3004 — production gate to registered native route continuity source;
+- PR #3006 — production-gate PostgreSQL publish/rollback and restart-retry source.
 
-The current slice joins the historical PostgreSQL packets to the production gate. It changes no production behavior.
+The current slice retains factory-selected Memory and OutboxLocal profile parity through the production Pages gate. It changes no production behavior.
 
 ## Current parity state
 
@@ -184,7 +185,7 @@ The new-key miss/refill/hit sequence is source-ready; execution remains pending.
 
 ### Production gate PostgreSQL publish/rollback restart: source-ready
 
-The new server-level PostgreSQL source closes the topology gap left between the historical packets and the production gate:
+The PR #3006 server-level PostgreSQL source closes the topology gap left between the historical packets and the production gate:
 
 ```text
 PostgreSQL publish transaction
@@ -226,6 +227,50 @@ Source evidence is retained in:
 
 PostgreSQL execution remains pending.
 
+### Memory and OutboxLocal factory profile parity: source-ready
+
+The new server harness constructs both locally executable profiles through the real `build_event_runtime` factory.
+
+Memory retains:
+
+```text
+Memory application publish
+  → TenantGenerationDeliveryGate
+  → Pages generations 0/0/0 → 1/1/1
+  → Memory listener_bus delivery
+  → no sys_events row
+  → ordinary Pages listener same-event no-op
+```
+
+OutboxLocal retains:
+
+```text
+application publish
+  → OutboxTransport
+  → Pending sys_events row
+  → no Pages rotation and no listener delivery
+OutboxRelay
+  → ArtifactEventProjectionTransport
+  → TenantGenerationDeliveryGate
+  → Pages generations 0/0/0 → 1/1/1
+  → local listener delivery
+  → Dispatched acknowledgement
+  → ordinary Pages listener same-event no-op
+```
+
+This source proves that the same Pages owner policy crosses different durability boundaries without moving rotation into domain publication. Memory uses `ReliabilityLevel::InMemory` and has no relay. OutboxLocal uses `ReliabilityLevel::Outbox`; its application-facing transport only persists the event, while the relay target performs generation rotation before listener delivery and durable acknowledgement.
+
+The `OutboxIggy` factory branch remains source-wired through artifact projection, the production gate and local fan-out after primary Iggy acceptance. OutboxIggy execution remains open because no broker or external connector is started in this packet.
+
+Source evidence is retained in:
+
+- `apps/server/tests/pages_event_delivery_profiles_sqlite.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-event-delivery-profile-parity-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs`;
+- `docs/modules/pages-page-builder-event-delivery-profile-parity-packet-2026-08-05.md`.
+
+SQLite/profile execution remains pending.
+
 ## Retained source marker index
 
 This section keeps historical static guards stable while the canonical cursor advances.
@@ -238,6 +283,7 @@ This section keeps historical static guards stable while the canonical cursor ad
 - `production-relay-generation-gate-source-ready`; synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe.
 - `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready.
 - `production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready. The packet retains a post-invalidation downstream failure and keeps the historical owner-transaction and pre-handler restart packets separate.
+- `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready. OutboxIggy execution remains open.
 
 ## Parity matrix
 
@@ -253,22 +299,23 @@ This section keeps historical static guards stable while the canonical cursor ad
 | Native storefront route/cache/admission | Pages/Channel owners | Published artifact contract | Source-ready | SQLite/Axum route set pending |
 | Native reviewed immutable artifact selection | Pages publish/binding/route/cache owners | Review/sanitization/materialization/integrity | Source-ready | SQLite/Axum reviewed route pending |
 | Relay + handler + native refill via test target | Pages publish/outbox/handler/route/cache owners | Reviewed artifact producer contract | Source-ready, topology-corrected | SQLite test-target execution pending |
-| Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit/profile execution pending |
+| Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit execution pending |
 | Production relay to registered native route | Server gate / Pages route/cache owners | Reviewed artifact producer contract | Source-ready | Server SQLite/Axum execution pending |
 | Production PostgreSQL publish/rollback and relay retry | Server gate / Pages outbox/cache owners | No delivery ownership | Source-ready | PostgreSQL execution pending |
+| Memory and OutboxLocal factory profiles | Server factory / Pages invalidation owner | No delivery ownership | Source-ready | SQLite profile execution pending; Iggy open |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Browser/runtime evidence pending |
 | Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Bundle/runtime proof pending |
 
 ## Changes in this slice
 
-1. Add one environment-gated server PostgreSQL harness using real `OutboxRelay`, `TenantGenerationDeliveryGate` and `ServerPagesCachePort`.
-2. Retain publish receipt/event commit followed by production all-scope rotation, durable acknowledgement and new-key miss/refill.
-3. Retain rollback receipt/event commit followed by a post-invalidation downstream failure.
-4. Create a second relay instance with a distinct worker identity and prove same-event retry does not rotate generations twice.
-5. Retain durable pending/retry/dispatched state and event/correlation identity across retry.
-6. Invoke the ordinary Pages listener after successful retry and retain the same-event no-op.
-7. Preserve the historical owner-transaction and pre-handler restart harnesses as separate evidence.
-8. Add source evidence, fail-closed verifier and a dated packet; leave production behavior unchanged.
+1. Add one server integration harness that constructs `Memory` and `OutboxLocal` through `build_event_runtime` with full platform migrations.
+2. Retain Memory reliability, no-relay behavior, synchronous Pages rotation, listener delivery and absence of an outbox row.
+3. Retain OutboxLocal application publication as pending-row persistence with no pre-relay rotation or listener delivery.
+4. Run the real retained relay source through artifact projection, the production generation gate and local listener delivery before durable acknowledgement.
+5. Preserve same-event duplicate no-op for the ordinary Pages listener in both profiles.
+6. Keep the `OutboxIggy` factory branch source-wired while leaving external Iggy execution open.
+7. Add source evidence, a fail-closed verifier and a dated profile packet.
+8. Leave production Pages, Page Builder, event factory, Outbox, cache, dependencies and schemas unchanged.
 
 ## Boundaries
 
@@ -281,17 +328,17 @@ This slice does not:
 - change outbox, Pages or Page Builder migrations or DTOs;
 - remove the asynchronous module listener;
 - provide durable exact-once invalidation across process restarts;
-- mount full server bootstrap or external Iggy infrastructure;
-- claim tests, Cargo, formatting, verifiers, SQLite, Axum, Leptos, PostgreSQL, browsers, workflows, CI or rollout execution;
+- start the outbox relay supervisor loop or external Iggy infrastructure;
+- claim tests, Cargo, formatting, verifiers, SQLite, runtime profiles, Iggy, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA status.
 
 ## Next cursor
 
-1. Run the production-gate PostgreSQL restart verifier and focused server PostgreSQL harness.
-2. Rerun the historical PostgreSQL owner-transaction and pre-handler restart verifiers/tests alongside it.
-3. Run the production relay-native-route verifier and focused SQLite server integration test.
-4. Run the production generation-gate verifier and focused gate/port unit tests.
-5. Execute the gate under Memory and OutboxLocal profiles, then retain OutboxIggy evidence where infrastructure is available.
+1. Run the event-delivery profile parity verifier and focused server SQLite profile harness.
+2. Run the production-gate PostgreSQL restart verifier and focused server PostgreSQL harness.
+3. Rerun the historical PostgreSQL owner-transaction and pre-handler restart verifiers/tests alongside it.
+4. Run the production relay-native-route and generation-gate verifiers/tests.
+5. Retain OutboxIggy execution evidence only where a configured broker/connector is available.
 6. Rerun the topology-aware continuity verifier and the complete native SQLite/Axum route set.
 7. Run metadata conflict/isolation and published metadata browser packets.
 8. Complete compile, workflow, anonymous-bundle and observed tenant rollout evidence before promotion.
@@ -303,6 +350,7 @@ Any failure or owner-model change must update this shared cursor first, then the
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
@@ -316,6 +364,7 @@ node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
+cargo test -p rustok-server --features mod-pages --test pages_event_delivery_profiles_sqlite -- --nocapture
 cargo test -p rustok-server --features mod-pages --test pages_production_gate_postgres_restart -- --nocapture
 cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
 cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture
