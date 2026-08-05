@@ -9,12 +9,16 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use rustok_content::entities::node::ContentStatus;
+use rustok_core::error::{ErrorKind, RichError};
 
 use crate::dto::PageTranslationInput;
 use crate::entities::{page, page_route_alias, page_translation};
 use crate::error::{PagesError, PagesResult};
 
 use super::helpers::{normalize_locale, normalize_slug, status_to_storage, storage_to_status};
+
+pub const PAGE_ROUTE_NOT_FOUND: &str = "PAGE_ROUTE_NOT_FOUND";
+pub const PAGE_ROUTE_RESOLUTION_CONFLICT: &str = "PAGE_ROUTE_RESOLUTION_CONFLICT";
 
 const ROUTE_DISPOSITION_REDIRECT: &str = "redirect";
 const ROUTE_DISPOSITION_GONE: &str = "gone";
@@ -73,9 +77,9 @@ impl PageRouteService {
             .filter(page::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .ok_or(PagesError::PageRouteNotFound)?;
+            .ok_or_else(page_route_not_found)?;
         if storage_to_status(&page.status)? != ContentStatus::Published {
-            return Err(PagesError::PageRouteNotFound);
+            return Err(page_route_not_found());
         }
 
         let translations = page_translation::Entity::find()
@@ -86,8 +90,8 @@ impl PageRouteService {
             .await?;
         let translation = match translations.as_slice() {
             [translation] => translation,
-            [] => return Err(PagesError::PageRouteNotFound),
-            _ => return Err(PagesError::PageRouteResolutionConflict),
+            [] => return Err(page_route_not_found()),
+            _ => return Err(page_route_resolution_conflict()),
         };
         let slug = normalize_slug(&translation.slug)?;
 
@@ -122,7 +126,7 @@ impl PageRouteService {
                     .canonical_descriptor(tenant_id, route.page_id, &locale)
                     .await?;
                 if canonical.slug != route.slug {
-                    return Err(PagesError::PageRouteResolutionConflict);
+                    return Err(page_route_resolution_conflict());
                 }
                 Ok(PageRouteResolution {
                     requested_locale: locale,
@@ -149,11 +153,11 @@ impl PageRouteService {
                 ROUTE_DISPOSITION_REDIRECT => {
                     let target_page_id = alias
                         .target_page_id
-                        .ok_or(PagesError::PageRouteResolutionConflict)?;
+                        .ok_or_else(page_route_resolution_conflict)?;
                     let target_locale = alias
                         .target_locale
                         .as_deref()
-                        .ok_or(PagesError::PageRouteResolutionConflict)?;
+                        .ok_or_else(page_route_resolution_conflict)?;
                     let canonical = self
                         .canonical_descriptor(tenant_id, target_page_id, target_locale)
                         .await?;
@@ -166,10 +170,10 @@ impl PageRouteService {
                         alias_id: Some(alias.id),
                     })
                 }
-                _ => Err(PagesError::PageRouteResolutionConflict),
+                _ => Err(page_route_resolution_conflict()),
             },
-            ([], []) => Err(PagesError::PageRouteNotFound),
-            _ => Err(PagesError::PageRouteResolutionConflict),
+            ([], []) => Err(page_route_not_found()),
+            _ => Err(page_route_resolution_conflict()),
         }
     }
 }
@@ -296,7 +300,7 @@ async fn record_redirect_alias_in_tx(
         {
             Ok(alias.id)
         }
-        _ => Err(PagesError::PageRouteResolutionConflict),
+        _ => Err(page_route_resolution_conflict()),
     }
 }
 
@@ -344,4 +348,23 @@ fn normalize_alias_reason(reason: &str) -> PagesResult<String> {
         ));
     }
     Ok(reason.to_string())
+}
+
+fn page_route_not_found() -> PagesError {
+    PagesError::Rich(Box::new(
+        RichError::new(ErrorKind::NotFound, "Page route not found")
+            .with_user_message("The requested page route does not exist")
+            .with_error_code(PAGE_ROUTE_NOT_FOUND),
+    ))
+}
+
+fn page_route_resolution_conflict() -> PagesError {
+    PagesError::Rich(Box::new(
+        RichError::new(
+            ErrorKind::Conflict,
+            "Page route ownership or alias history is ambiguous",
+        )
+        .with_user_message("The requested page route cannot be resolved safely")
+        .with_error_code(PAGE_ROUTE_RESOLUTION_CONFLICT),
+    ))
 }
