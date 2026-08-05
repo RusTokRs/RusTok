@@ -3,7 +3,9 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
+  producer: "crates/rustok-index/src/application/drift_digest.rs",
   runtime: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
+  diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
   composition: "apps/server/src/services/index_replay_runtime_composition.rs",
   graphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
   graphqlSchema: "apps/server/src/graphql/schema.rs",
@@ -27,6 +29,18 @@ function requireMarkers(name, markers) {
   }
 }
 
+requireMarkers("producer", [
+  "pub enum IndexDriftMissingEntityCandidateOutcome",
+  "pub async fn produce_missing_entity_candidate(",
+  "pub async fn produce_missing_entity_candidate_from_pair(",
+  "matches!(pair.source(), IndexDriftEntityState::Upsert { .. })",
+  "matches!(pair.materialized(), IndexDriftEntityState::Missing { .. })",
+]);
+requireMarkers("diagnosis", [
+  "pub async fn diagnose_missing_entity_candidate(",
+  ".produce_missing_entity_candidate(request)",
+  "missing_candidate_diagnosis_authorizes_before_request_validation",
+]);
 requireMarkers("runtime", [
   "const MAX_SOURCE_PAGE_DIAGNOSIS_SIZE: usize = 32;",
   "pub enum IndexDriftSourcePageDiagnosisError",
@@ -37,16 +51,20 @@ requireMarkers("runtime", [
   "pub async fn diagnose_source_page(",
   "authorize_and_build_scan_request(context, schema, cursor, limit)?;",
   "let page = self.sources.scan(request).await?;",
-  ".diagnose_entity(context, key)",
+  ".diagnose_missing_entity_candidate(context, key)",
   "permissions_for(&context.tenant_id(), &context.actor_id())",
   "has_effective_permission(&permissions, &Permission::MODULES_MANAGE)",
   "if !(1..=MAX_SOURCE_PAGE_DIAGNOSIS_SIZE).contains(&limit)",
   "IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)",
   "matches!(&mutation, rustok_index::IndexMutation::Delete { .. })",
+  "IndexDriftMissingEntityCandidateOutcome::NotCandidate",
+  "IndexDriftMissingEntityCandidateOutcome::MissingRecorded",
+  "non_missing_count",
+  "missing_recorded_count",
   "receipts.push(receipt);",
   "materialize_index_drift_source_page_diagnosis",
   "authorization_precedes_page_limit_validation",
-  "one_page_skips_deletes_and_diagnoses_each_upsert_once",
+  "one_page_skips_deletes_and_classifies_each_upsert_once",
 ]);
 
 const production = content.runtime.split("\n#[cfg(test)]")[0];
@@ -73,11 +91,32 @@ const deleteSkip = production.indexOf(
   "matches!(&mutation, rustok_index::IndexMutation::Delete { .. })",
   pageLoop,
 );
-const exactDelegate = production.indexOf(".diagnose_entity(context, key)");
-if (pageLoop < 0 || deleteSkip <= pageLoop || exactDelegate < 0) {
-  throw new Error("source-page diagnosis must skip retained deletes and delegate exact candidates");
+const exactDelegate = production.indexOf(
+  ".diagnose_missing_entity_candidate(context, key)",
+);
+const nonCandidate = production.indexOf(
+  "IndexDriftMissingEntityCandidateOutcome::NotCandidate",
+  pageLoop,
+);
+const missingRecorded = production.indexOf(
+  "IndexDriftMissingEntityCandidateOutcome::MissingRecorded",
+  nonCandidate,
+);
+if (
+  pageLoop < 0 ||
+  deleteSkip <= pageLoop ||
+  exactDelegate < 0 ||
+  nonCandidate <= pageLoop ||
+  missingRecorded <= nonCandidate
+) {
+  throw new Error(
+    "source-page diagnosis must skip deletes and classify exact missing-only outcomes",
+  );
 }
 
+if (production.includes(".diagnose_entity(context, key)")) {
+  throw new Error("source-page diagnosis must not delegate to the general mismatch recorder path");
+}
 for (const forbidden of [
   "tokio::spawn",
   "spawn_blocking",
@@ -123,6 +162,7 @@ for (const forbidden of [
   "diagnose_index_source_page",
   "IndexDriftSourcePageDiagnosisRuntime",
   "IndexSourceCursor",
+  "diagnose_missing_entity_candidate",
 ]) {
   if (content.graphql.includes(forbidden) || content.graphqlSchema.includes(forbidden)) {
     throw new Error(`source-page capability leaked into GraphQL: ${forbidden}`);
@@ -130,17 +170,23 @@ for (const forbidden of [
 }
 
 requireMarkers("doc", [
-  "Status: `source_complete_transport_and_owner_execution_pending`.",
+  "Status: `missing_only_source_complete_transport_and_owner_execution_pending`.",
   "one page limit in `1..=32`",
   "skips retained source `Delete` mutations",
-  "source-present candidate",
+  "source `Upsert` plus materialized `Missing`",
+  "non-missing candidate count",
   "The cursor is not attached to GraphQL",
-  "missing-only selector over captured typed states remains a separate open slice",
+  "server-owned continuation envelope",
   "No tests, verifiers, formatting, Cargo checks",
 ]);
-requireMarkers("operatorDoc", ["IndexDriftSourcePageDiagnosisRuntime"]);
+requireMarkers("operatorDoc", [
+  "IndexDriftSourcePageDiagnosisRuntime",
+  "diagnose_missing_entity_candidate(context, key)",
+  "one-page internal missing-entity diagnosis are source complete",
+]);
 requireMarkers("plan", [
-  "M6 bounded source-page drift candidate diagnosis",
+  "M6 missing-only entity candidate outcome",
+  "M6 bounded source-page missing-entity diagnosis",
   "source_complete_transport_and_owner_execution_pending",
 ]);
 requireMarkers("aggregate", [
@@ -150,7 +196,6 @@ requireMarkers("aggregate", [
 for (const claim of [
   "tests passed",
   "source-page transport is complete",
-  "missing-only diagnosis is complete",
   "retained evidence admitted",
   "repair is complete",
 ]) {
@@ -163,4 +208,4 @@ for (const claim of [
   }
 }
 
-console.log("Index one-page source candidate diagnosis contract verified");
+console.log("Index one-page missing-entity diagnosis contract verified");
