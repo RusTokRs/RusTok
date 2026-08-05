@@ -227,7 +227,10 @@ if (method.includes('tenant_id:') || method.includes('actor_id:') || method.incl
 const absenceMaterialization = diagnosisProduction.indexOf(
   'materialize_index_source_absence_registry(extensions)',
 );
-const absenceInsert = diagnosisProduction.indexOf('extensions.insert(absence);', absenceMaterialization);
+const absenceInsert = diagnosisProduction.indexOf(
+  'extensions.insert(absence);',
+  absenceMaterialization,
+);
 const readerConstructor = diagnosisProduction.indexOf(
   'PostgresIndexDriftSnapshotReader::new(',
   absenceInsert,
@@ -260,7 +263,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconcili
 requireMarkers(docsPath, [
   'Status: `source_complete_transport_and_owner_execution_pending`.',
   'effective `Permission::MODULES_MANAGE`',
-  'accept no caller-selected tenant',
+  'no caller-selected tenant',
   '`inspect_drift_finding(context, finding_id)`',
   '`IndexDriftDiagnosisOperatorRuntime`',
   '`diagnose_entity(context, key)`',
@@ -275,7 +278,7 @@ requireMarkers(docsPath, [
 requireMarkers(recheckPath, [
   'Audited baseline: `main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173`.',
   '`product-locale-absence-postgres`',
-  'The absence version is domain-tagged into the opaque boundary only for source `Missing`',
+  'absence version is domain-tagged into the opaque boundary only for source `Missing`',
   'index_drift_source_changed_during_capture',
   'index_drift_source_watermark_missing',
   'did not run tests, JavaScript',
