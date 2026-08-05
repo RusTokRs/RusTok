@@ -85,6 +85,12 @@ pub enum ForumError {
     #[error("Forum topic canonical resolution is inconsistent: {0}")]
     TopicCanonicalResolutionConflict(Uuid),
 
+    #[error("Forum topic route was not found")]
+    TopicRouteNotFound,
+
+    #[error("Forum topic route resolution is inconsistent")]
+    TopicRouteResolutionConflict,
+
     #[error("Forum topic merge audience reconciliation conflicts with an existing command: {0}")]
     TopicMergeAudienceReconciliationConflict(Uuid),
 
@@ -183,6 +189,10 @@ impl ForumError {
             Self::TopicMergeSolutionConflict(_) => "FORUM_TOPIC_MERGE_SOLUTION_CONFLICT",
             Self::TopicCanonicalResolutionConflict(_) => {
                 "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT"
+            }
+            Self::TopicRouteNotFound => "FORUM_TOPIC_ROUTE_NOT_FOUND",
+            Self::TopicRouteResolutionConflict => {
+                "FORUM_TOPIC_ROUTE_RESOLUTION_CONFLICT"
             }
             Self::TopicMergeAudienceReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"

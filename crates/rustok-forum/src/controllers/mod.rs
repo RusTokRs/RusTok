@@ -93,7 +93,8 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         ForumError::CategoryNotFound(_)
         | ForumError::TopicNotFound(_)
         | ForumError::ReplyNotFound(_)
-        | ForumError::SolutionNotFound(_) => {
+        | ForumError::SolutionNotFound(_)
+        | ForumError::TopicRouteNotFound => {
             HttpError::not_found(code, "The requested forum resource was not found")
         }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
@@ -121,7 +122,8 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         ForumError::Database(_)
         | ForumError::Content(_)
         | ForumError::Internal(_)
-        | ForumError::TopicCanonicalResolutionConflict(_) => HttpError::new(
+        | ForumError::TopicCanonicalResolutionConflict(_)
+        | ForumError::TopicRouteResolutionConflict => HttpError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             code,
             "The forum operation could not be completed",

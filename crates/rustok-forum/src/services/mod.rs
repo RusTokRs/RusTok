@@ -107,6 +107,7 @@ mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_canonical_resolution;
+mod topic_route;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_fork;
@@ -233,6 +234,11 @@ pub use topic_audience_visibility::{
 };
 pub use topic_canonical_resolution::{
     ForumTopicCanonicalResolution, MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS,
+};
+pub use topic_route::{
+    FORUM_TOPIC_ROUTE_SHORT_ID_LEN, ForumTopicRouteDescriptor, ForumTopicRouteDisposition,
+    ForumTopicRouteResolution, ForumTopicRouteService, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
+    MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN, MAX_FORUM_TOPIC_ROUTE_SLUG_LEN,
 };
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,

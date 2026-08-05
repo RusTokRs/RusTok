@@ -234,10 +234,10 @@ at the end of this file remain authoritative.
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
 | `FORUM-20` | `in_progress` | FORUM-20A-AZ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation, exact topic/reply create authorization, topic-local reply narrowing, inherited moderation audiences, and existing solution-route transport composition. FORUM-20BA synchronizes the canonical ledger and owner notes after FORUM-20AV-AZ. Remaining read/search/index/SEO/deep-link migration, visibility-scoped bulk read commands, future moderation transport reuse, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
-| `FORUM-21` | `planned` | FORUM-21A-X provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork/reply-range admin composition; runtime evidence and FORUM-24 aliases remain. |
+| `FORUM-21` | `planned` | FORUM-21A-X provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork/reply-range admin composition; retained owner/transport runtime evidence remains, while localized route identity proceeds under FORUM-24. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 through FORUM-23B2F4 add exact Forum category, audience, result-eligibility, trusted-channel, author, tag, solved, locale, date and current-channel filtering; FORUM-23B2G1 adds durable Search ingest ordering; FORUM-23B2G2A/A1 add the Forum owner revision ledger and database hardening; FORUM-23B2G2B1/B2 add the bounded owner source, Search checkpoint and repair protocol; FORUM-23B2G2B3A-C add the caused sealed wire event, atomic dual publisher and default-off persistent one-inbox consumer; FORUM-23B2G2B3D0 freezes executable runtime evidence and FORUM-23B2G2B3D1 reconciles this canonical plan. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
-| `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
+| `FORUM-24` | `planned` | FORUM-24A adds deterministic exact-locale topic route identity and an immutable redirect/tombstone ledger; owner write composition, category routes, storefront mounts, hreflang/SEO policy and runtime evidence remain. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
@@ -2258,6 +2258,32 @@ Maintain locale-specific slugs, canonical locale routes, old slug aliases,
 move/rename redirects and hreflang. Private/pending targets are not published
 to SEO. Use schema.org DiscussionForumPosting or QAPage only when semantics
 match.
+
+### Delivered in FORUM-24A
+
+- `ForumTopicRouteService` owns `/{locale}/forum/t/{short_id}/{slug}` descriptors,
+  where `short_id` is the first 48 bits of the topic UUID in lowercase hex and
+  the readable slug is not identity;
+- current route lookup reads at most two candidates and fails closed on a
+  short-identity collision instead of choosing by slug;
+- existing bounded merge canonical resolution is reused so an archived merge
+  source redirects to the terminal retained topic;
+- PostgreSQL and SQLite `forum_topic_route_aliases` provide one append-only
+  redirect/gone ledger keyed by tenant, locale, short identity and slug;
+- redirects store target topic plus locale and recompute the latest target slug;
+- route identity is transport-neutral and does not bypass topic visibility,
+  channel, moderation or SEO publication authorization.
+
+Verification sources:
+
+```bash
+node scripts/verify/verify-forum-topic-route-identity-owner.mjs
+cargo test -p rustok-forum services::topic_route::tests -- --nocapture
+cargo test -p rustok-forum --test topic_route_identity_sqlite -- --nocapture
+cargo check -p rustok-forum --all-targets
+```
+
+No command above was run by the implementation agent, per maintainer request.
 
 ID routes remain internal compatibility paths, not the primary storefront UX.
 
