@@ -1,8 +1,8 @@
 # `rustok-index` implementation recheck — explicit absence watermark
 
-Audited baseline: `main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173`.
-The intervening Order and Pages commits do not overlap `rustok-index`, Product Index composition, or
-the server diagnosis paths changed by this branch.
+Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.
+The eight intervening Order and Pages commits do not overlap `rustok-index`, Product Index
+composition, or the server diagnosis paths changed by this branch.
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
@@ -63,7 +63,7 @@ fail-closed. An empty targeted load alone still returns `index_drift_source_wate
 
 ## Source-ready PostgreSQL continuation
 
-`crates/rustok-distribution/tests/product_locale_absence_postgres.rs` now retains the real-migration
+`crates/rustok-distribution/tests/product_locale_absence_postgres.rs` retains the real-migration
 Product locale absence scenario without replacing either production adapter:
 
 - it applies the complete Product migration list and every Index migration inside one isolated
