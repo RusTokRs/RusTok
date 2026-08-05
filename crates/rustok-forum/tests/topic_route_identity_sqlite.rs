@@ -170,7 +170,7 @@ async fn current_alias_and_tombstone_routes_resolve_without_slug_identity() -> T
         &event_bus,
         tenant_id,
         category_id,
-        admin,
+        admin.clone(),
         "target-route",
     )
     .await?;
@@ -190,12 +190,9 @@ async fn current_alias_and_tombstone_routes_resolve_without_slug_identity() -> T
     assert_eq!(wrong_slug.canonical.as_ref(), Some(&target));
     assert_eq!(wrong_slug.alias_id, None);
 
-    db.execute(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "UPDATE forum_topics SET deleted_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND id = ?",
-        vec![tenant_id.into(), source_topic_id.into()],
-    ))
-    .await?;
+    TopicService::new(db.clone(), event_bus.clone())
+        .delete(tenant_id, source_topic_id, admin)
+        .await?;
 
     let redirect_alias_id = Uuid::new_v4();
     insert_alias(
