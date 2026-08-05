@@ -132,6 +132,10 @@ Pages persistence, cache scope or tenant policy.
   exact/fallback owner reads and a persisted draft body mutation. The binding,
   artifact hash and document HTML remain unchanged and the draft-only marker never
   becomes public output.
+- [x] An anonymous storefront dependency graph verifier defines six feature-resolved
+  `cargo metadata` profiles for Pages default/hydrate/SSR and host CSR/hydrate/SSR.
+  It excludes dev-dependencies and fails if any non-dev edge reaches Pages admin,
+  Page Builder admin, the admin host, or Fly browser/editor crates.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
   causing misses and refills on storefront and artifact delivery paths through the
   production gate.
@@ -139,7 +143,7 @@ Pages persistence, cache scope or tenant policy.
   content is not public render authority and can become public only through a later
   reviewed publish or rollback binding replacement.
 - [ ] Authenticated real-DOM inline editing is not implemented.
-- [ ] Anonymous bundle exclusion evidence is not complete.
+- [ ] Compiled SSR/CSR/hydrate bundle artifact evidence remains open.
 
 ### Page Builder/FBA
 
@@ -202,6 +206,10 @@ Pages persistence, cache scope or tenant policy.
 - [x] The selected immutable published artifact regression proves Page Builder owns
   artifact production while Pages body identity and published binding own public
   selection; a persisted draft body mutation cannot replace the selected output.
+- [x] The anonymous dependency-graph source keeps the read-only
+  `rustok-page-builder-storefront → rustok-page-builder → fly` chain while
+  forbidding `rustok-page-builder-admin`, `fly-browser`, `fly-ui` and `fly-leptos`
+  in every retained non-dev graph.
 - [ ] Accepted execution evidence must correlate publish/rollback receipts, outbox
   events, production-gate receipts, generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
@@ -211,16 +219,18 @@ Pages persistence, cache scope or tenant policy.
 - **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
   promoted-scenario selection, registered draft/published metadata surfaces,
   generation-aware storefront/artifact readers, production generation gating,
-  gate-to-native-route, PostgreSQL retry, local profile and selected immutable
-  artifact source packets are connected. Executed metadata conflict/isolation,
-  inline edit mode and anonymous bundle evidence remain open.
+  gate-to-native-route, PostgreSQL retry, local profile, selected immutable
+  artifact and anonymous dependency-graph source packets are connected. Executed
+  metadata conflict/isolation, inline edit mode and compiled bundle evidence remain
+  open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
   invalidation/read boundaries are integrated at source level. Server and owner
   harnesses retain native-route key rotation, PostgreSQL retry semantics,
-  Memory/OutboxLocal composition and draft-vs-published artifact isolation, but
-  execution, rollback proof, verification and observed rollout evidence remain open.
+  Memory/OutboxLocal composition, draft-vs-published artifact isolation and
+  storefront graph exclusion, but execution, bundle artifacts, rollback proof,
+  verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -357,7 +367,9 @@ Invariants:
     published binding, not the mutable body content.
 26. Missing providers fail visibly and never cause silent deletion.
 27. Dynamic widgets persist versioned configuration, not privileged snapshots.
-28. Anonymous storefront bundles contain no editor code.
+28. Feature-resolved anonymous storefront graphs exclude admin and Fly authoring
+    packages through non-dev dependencies; compiled bundle artifact proof remains
+    required.
 29. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
@@ -459,6 +471,8 @@ Invariants:
   before relay-gated rotation, listener delivery and durable acknowledgement.
 - Added the selected immutable published artifact regression: exact and fallback
   reads retain the same binding/hash/HTML across a persisted draft body mutation.
+- Added the anonymous storefront dependency graph verifier for six feature-resolved
+  profiles, excluding dev-dependencies and forbidding admin/Fly authoring packages.
 - Added source evidence, static verifiers and dated production/owner packets.
 - Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
   workflows and CI were not executed in this slice.
@@ -533,7 +547,10 @@ Invariants:
 - [ ] Compose Navigation-owned menus, SEO and channel visibility with
   generation-aware deterministic cache keys.
 - [ ] Implement authenticated real-DOM inline editing behind permissions/flags.
-- [ ] Prove anonymous SSR/CSR/hydrate bundles exclude authoring code.
+- [x] Retain the anonymous storefront dependency graph verifier across Pages
+  default/hydrate/SSR and host CSR/hydrate/SSR profiles.
+- [ ] Retain compiled SSR/CSR/hydrate bundle artifact evidence proving authoring
+  code and packages remain absent.
 - [ ] Prove admin preview, published output and inline edit parity.
 
 ### P2 — operations and rollout
@@ -562,6 +579,7 @@ Invariants:
 - `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`
 - `node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`
 - `cargo test -p rustok-pages --test selected_immutable_published_artifact_sqlite -- --nocapture`
+- `node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`
