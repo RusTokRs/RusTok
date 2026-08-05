@@ -164,7 +164,7 @@ async fn storefront_page_route_native(
                     "Pages canonical or redirect route decision is missing its canonical target",
                 )
             })?;
-            let page = PageService::new(runtime_ctx.db_clone(), event_bus.clone())
+            let page = match PageService::new(runtime_ctx.db_clone(), event_bus.clone())
                 .get_with_locale_fallback(
                     tenant_id,
                     SecurityContext::public_read(),
@@ -173,7 +173,15 @@ async fn storefront_page_route_native(
                     None,
                 )
                 .await
-                .map_err(ServerFnError::new)?;
+            {
+                Ok(page) => page,
+                Err(PagesError::PageNotFound(_)) | Err(PagesError::Forbidden(_)) => {
+                    return Ok(StorefrontPageRouteDecision::terminal(
+                        StorefrontPageRouteDisposition::NotFound,
+                    ));
+                }
+                Err(error) => return Err(ServerFnError::new(error.to_string())),
+            };
             if page.status != ContentStatus::Published
                 || !is_visible_for_public_channel(
                     page.channel_slugs.as_slice(),
