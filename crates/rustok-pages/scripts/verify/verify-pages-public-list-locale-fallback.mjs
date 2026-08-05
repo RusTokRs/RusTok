@@ -82,6 +82,9 @@ for (const key of [
   "legacy_public_list_method_preserved",
   "authenticated_list_behavior_preserved",
   "native_selected_detail_and_list_share_tenant_fallback",
+  "native_tenant_context_uses_tenant_default_locale",
+  "native_tenant_slug_lookup_uses_loaded_tenant_default_locale",
+  "blank_tenant_default_uses_platform_fallback",
   "graphql_public_detail_and_list_share_tenant_fallback",
   "channel_visibility_filter_preserved",
   "native_cache_variant_already_binds_fallback_locale",
@@ -175,6 +178,15 @@ const nativeBody = between(
   '#[cfg(not(feature = "ssr"))]',
   "native storefront body",
 );
+const tenantFallbackUses =
+  nativeBody.match(
+    /normalize_tenant_fallback_locale\(tenant\.default_locale\.as_str\(\)\)/g,
+  )?.length ?? 0;
+if (tenantFallbackUses !== 2) {
+  failures.push(
+    `native tenant fallback must cover TenantContext and tenant_slug lookup; found ${tenantFallbackUses}`,
+  );
+}
 ordered(
   nativeBody,
   [
@@ -190,6 +202,15 @@ ordered(
   ],
   "native detail list fallback parity",
 );
+for (const marker of [
+  "fn normalize_tenant_fallback_locale(value: &str) -> String",
+  "PLATFORM_FALLBACK_LOCALE.to_string()",
+  "fn tenant_fallback_locale_uses_platform_only_when_owner_value_is_blank()",
+  'assert_eq!(normalize_tenant_fallback_locale(" ru "), "ru")',
+  'normalize_tenant_fallback_locale("   ")'
+]) {
+  need(nativeAdapter, marker, "native tenant fallback normalization");
+}
 
 const graphqlPublicList = between(
   graphql,
