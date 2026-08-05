@@ -89,6 +89,17 @@ The absence version is domain-tagged and hashed into the opaque `pg:` boundary o
 `None`, cross-scope evidence, zero version, or malformed provider state remains fail-closed;
 `index_drift_source_watermark_missing` is preserved when no authoritative proof exists.
 
+## Source-ready PostgreSQL harness
+
+`product_locale_absence_postgres` now applies the real Product and Index migrations in an isolated
+PostgreSQL schema, builds the selected production distribution adapters, admits one stable missing
+locale, and deterministically inserts another locale while the real materialized read is blocked.
+The race must return retryable `index_drift_source_changed_during_capture`.
+
+The harness copies neither the Product provider SQL nor the source adapter. It remains
+`source_ready_owner_execution_pending`; no PostgreSQL result is admitted until the repository owner
+runs and retains it.
+
 ## Deliberate limits
 
 This slice does not add or claim:
@@ -103,20 +114,26 @@ This slice does not add or claim:
 
 ## Next step
 
-Retain a real-migration PostgreSQL diagnosis scenario for a live Product whose requested locale is
-absent, then race a translation change between the two owner observations and admit the resulting
-stable-versus-changed evidence. After owner execution evidence, expose exact-entity diagnosis through
-one bounded transport without adding discovery or repair authority.
+Expose the existing exact-entity diagnosis operator through one bounded server-owned transport that
+accepts one typed key, derives authority from request context, and returns only the existing bounded
+outcome. Keep discovery, batch scope, lifecycle transitions, and repair outside that transport.
+Owner execution and admission of `product_locale_absence_postgres` remain pending.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index source_absence -- --nocapture
-cargo test -p rustok-distribution product_index -- --nocapture
+cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-distribution \
+  --features mod-product \
+  --test product_locale_absence_postgres \
+  -- --nocapture --test-threads=1
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-index --test drift_snapshot_reader_postgres_test \
   -- --nocapture --test-threads=1
+node scripts/verify/verify-index-product-absence-postgres-harness.mjs
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
 cargo check -p rustok-index --all-targets
