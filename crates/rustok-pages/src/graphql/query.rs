@@ -232,7 +232,7 @@ async fn list_public_visible_pages(
     let locale = resolve_graphql_locale_fallback(filter.locale.as_deref(), default_locale);
     let service = PageService::new(db.clone(), event_bus.clone());
     let (items, total) = service
-        .list_public_visible(
+        .list_public_visible_with_locale_fallback(
             tenant_id,
             crate::ListPagesFilter {
                 status: Some(rustok_content::entities::node::ContentStatus::Published),
@@ -241,6 +241,7 @@ async fn list_public_visible_pages(
                 page: filter.page.unwrap_or(1).max(1),
                 per_page: filter.per_page.unwrap_or(20).clamp(1, 100),
             },
+            Some(default_locale),
             public_channel_slug,
         )
         .await
