@@ -498,16 +498,11 @@ fn checkout_request_hashes(
         "adjustments": request.adjustments,
         "tax_lines": request.tax_lines,
     });
-    let full_request = serde_json::to_value(request).map_err(|error| {
-        tracing::error!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
-            operation = RECOVER_OPERATION,
-            code = "order.checkout_request_encoding_failed",
-            "failed to encode checkout recovery request"
+    let full_request = serde_json::to_value(request).map_err(|_| {
+        log_checkout_order_recovery_encoding_failure(
+            context,
+            RECOVER_OPERATION,
+            "checkout_completion_request",
         );
         PortError::invariant_violation(
             "order.checkout_request_encoding_failed",
@@ -526,16 +521,11 @@ fn hash_json(
     value: Value,
 ) -> Result<String, PortError> {
     let canonical = canonicalize_json(value);
-    let bytes = serde_json::to_vec(&canonical).map_err(|error| {
-        tracing::error!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    let bytes = serde_json::to_vec(&canonical).map_err(|_| {
+        log_checkout_order_recovery_encoding_failure(
+            context,
             operation,
-            code = "order.checkout_request_encoding_failed",
-            "failed to encode canonical checkout recovery request"
+            "canonical_checkout_json",
         );
         PortError::invariant_violation(
             "order.checkout_request_encoding_failed",
@@ -569,22 +559,19 @@ fn normalize_hash(
     max_len: usize,
 ) -> Result<String, PortError> {
     let value = value.trim().to_ascii_lowercase();
-    if value.len() < min_len
-        || value.len() > max_len
-        || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        tracing::warn!(
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    let value_length = value.len();
+    let length_within_bounds = (min_len..=max_len).contains(&value_length);
+    let ascii_hex = value.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if !length_within_bounds || !ascii_hex {
+        log_checkout_order_recovery_hash_rejection(
+            context,
             operation,
             field,
-            value_length = value.len(),
+            value_length,
             min_len,
             max_len,
-            code = "order.checkout_hash_invalid",
-            "checkout recovery rejected invalid hash evidence"
+            length_within_bounds,
+            ascii_hex,
         );
         return Err(PortError::validation(
             "order.checkout_hash_invalid",
@@ -657,6 +644,81 @@ fn checkout_order_recovery_context_facts(
             .map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
     }
+}
+
+fn log_checkout_order_recovery_encoding_failure(
+    context: &PortContext,
+    operation: &'static str,
+    serialization_target: &'static str,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::error!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        serialization_target,
+        code = "order.checkout_request_encoding_failed",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout recovery request encoding failed with bounded diagnostics"
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn log_checkout_order_recovery_hash_rejection(
+    context: &PortContext,
+    operation: &'static str,
+    field: &'static str,
+    value_length: usize,
+    min_len: usize,
+    max_len: usize,
+    length_within_bounds: bool,
+    ascii_hex: bool,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::warn!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        field,
+        value_length,
+        min_len,
+        max_len,
+        length_within_bounds,
+        ascii_hex,
+        code = "order.checkout_hash_invalid",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout recovery rejected invalid hash evidence with bounded diagnostics"
+    );
 }
 
 fn log_checkout_order_recovery_identity_not_found(
