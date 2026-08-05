@@ -48,7 +48,7 @@ This confirms that the gate is not a permanent fixture shortcut: the same route,
 
 The binding is changed back to `pages=false` while the successful response remains stored under the current composite key. A third request is rejected before any additional generation read, cache get or cache put.
 
-Therefore an already-populated cache value cannot bypass routed-channel admission.
+Therefore an already-populated cache value cannot bypass routed-channel admission. A cached value cannot bypass routed-channel admission.
 
 ## Production ordering retained
 
