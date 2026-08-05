@@ -8,23 +8,27 @@ const files = {
   recorder: "crates/rustok-index/src/infrastructure/postgres/drift_digest_recorder.rs",
   reader: "crates/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
+  pageDiagnosis: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
   postgresMod: "crates/rustok-index/src/infrastructure/postgres/mod.rs",
   doc: "crates/rustok-index/docs/m6-drift-digest-producer.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
 };
 
-const [producer, applicationMod, recorder, reader, diagnosis, postgresMod, doc, plan] =
-  await Promise.all(Object.values(files).map((path) => readFile(path, "utf8")));
+const content = Object.fromEntries(
+  await Promise.all(
+    Object.entries(files).map(async ([name, path]) => [name, await readFile(path, "utf8")]),
+  ),
+);
 
-function requireMarkers(label, content, markers) {
+function requireMarkers(name, markers) {
   for (const marker of markers) {
-    if (!content.includes(marker)) {
-      throw new Error(`${label} is missing required marker: ${marker}`);
+    if (!content[name].includes(marker)) {
+      throw new Error(`${files[name]} missing required marker: ${marker}`);
     }
   }
 }
 
-requireMarkers(files.producer, producer, [
+requireMarkers("producer", [
   'b"index_drift_entity_state_digest_v1"',
   "pub trait IndexDriftSnapshotReader",
   "pub trait IndexDriftMismatchRecorder",
@@ -38,9 +42,67 @@ requireMarkers(files.producer, producer, [
   "IndexDriftEntityState::Missing",
   "IndexDriftEntityState::Delete",
   "IndexDriftEntityState::Upsert",
+  "pub enum IndexDriftMissingEntityCandidateOutcome",
+  "NotCandidate",
+  "MissingRecorded",
+  "pub async fn produce_missing_entity_candidate(",
+  "pub async fn produce_missing_entity_candidate_from_pair(",
+  "self.validate_pair(&request, &pair)?;",
+  "matches!(pair.source(), IndexDriftEntityState::Upsert { .. })",
+  "matches!(pair.materialized(), IndexDriftEntityState::Missing { .. })",
+  "missing_candidate_records_only_source_upsert_materialized_missing",
+  "missing_candidate_skips_every_other_typed_state_combination",
 ]);
 
-requireMarkers(files.recorder, recorder, [
+const candidateStart = content.producer.indexOf(
+  "    pub async fn produce_missing_entity_candidate_from_pair(",
+);
+const candidateEnd = content.producer.indexOf("\n    async fn capture_pair(", candidateStart);
+if (candidateStart < 0 || candidateEnd < 0) {
+  throw new Error("missing-only candidate producer segment is incomplete");
+}
+const candidate = content.producer.slice(candidateStart, candidateEnd);
+const validation = candidate.indexOf("self.validate_pair(&request, &pair)?;");
+const sourceUpsert = candidate.indexOf(
+  "matches!(pair.source(), IndexDriftEntityState::Upsert { .. })",
+);
+const materializedMissing = candidate.indexOf(
+  "matches!(pair.materialized(), IndexDriftEntityState::Missing { .. })",
+);
+const notCandidate = candidate.indexOf(
+  "return Ok(IndexDriftMissingEntityCandidateOutcome::NotCandidate);",
+);
+const recorder = candidate.indexOf(".record_mismatch(");
+if (
+  validation < 0 ||
+  sourceUpsert <= validation ||
+  materializedMissing <= sourceUpsert ||
+  notCandidate <= materializedMissing ||
+  recorder <= notCandidate
+) {
+  throw new Error(
+    "missing-only producer must validate, classify Upsert/Missing, skip non-candidates, then record",
+  );
+}
+
+const outcomeStart = content.producer.indexOf(
+  "pub enum IndexDriftMissingEntityCandidateOutcome",
+);
+const outcomeEnd = content.producer.indexOf("\n}\n\npub struct IndexDriftDigestProducer", outcomeStart);
+const outcome = content.producer.slice(outcomeStart, outcomeEnd);
+for (const forbidden of [
+  "EntityKey",
+  "IndexRecord",
+  "IndexDriftEntityState",
+  "IndexDriftSnapshotPair",
+  "boundary",
+]) {
+  if (outcome.includes(forbidden)) {
+    throw new Error(`missing-only public outcome exposes forbidden state detail: ${forbidden}`);
+  }
+}
+
+requireMarkers("recorder", [
   "impl IndexDriftMismatchRecorder for PostgresIndexDriftFindingWriter",
   'const CHECK_NAME: &str = "source_index_digest_mismatch";',
   "match key.locale.clone()",
@@ -50,7 +112,7 @@ requireMarkers(files.recorder, recorder, [
   "IndexDriftMismatchRecordStatus::Suppressed",
 ]);
 
-requireMarkers(files.reader, reader, [
+requireMarkers("reader", [
   "impl IndexDriftSnapshotReader for PostgresIndexDriftSnapshotReader",
   "IsolationLevel::RepeatableRead",
   "AccessMode::ReadOnly",
@@ -58,43 +120,55 @@ requireMarkers(files.reader, reader, [
   "index_drift_source_changed_during_capture",
 ]);
 
-requireMarkers(files.diagnosis, diagnosis, [
+requireMarkers("diagnosis", [
   "type IndexDriftDiagnosisProducer = rustok_index::IndexDriftDigestProducer<",
   "rustok_index::PostgresIndexDriftSnapshotReader",
   "PostgresIndexDriftFindingWriter",
   "pub async fn diagnose_entity(",
+  "pub async fn diagnose_missing_entity_candidate(",
   "authorize_for(&context, key.tenant_id)?;",
   "IndexDriftDigestRequest::new(key)?;",
   "self.inner.produce(request).await",
+  ".produce_missing_entity_candidate(request)",
+  "missing_candidate_diagnosis_authorizes_before_request_validation",
+]);
+requireMarkers("pageDiagnosis", [
+  ".diagnose_missing_entity_candidate(context, key)",
+  "IndexDriftMissingEntityCandidateOutcome::NotCandidate",
+  "IndexDriftMissingEntityCandidateOutcome::MissingRecorded",
 ]);
 
-requireMarkers(files.applicationMod, applicationMod, [
+requireMarkers("applicationMod", [
   "mod drift_digest;",
   "IndexDriftDigestProducer",
+  "IndexDriftMissingEntityCandidateOutcome",
   "IndexDriftSnapshotReader",
 ]);
-requireMarkers(files.postgresMod, postgresMod, [
+requireMarkers("postgresMod", [
   "mod drift_digest_recorder;",
   "mod drift_snapshot_reader;",
 ]);
-requireMarkers(files.doc, doc, [
-  "producer_reader_locale_scope_and_guarded_diagnosis_source_complete",
+requireMarkers("doc", [
+  "producer_missing_candidate_and_guarded_source_page_source_complete",
   "same bounded opaque `IndexDriftSnapshotBoundary`",
   "Equal digests return `Consistent` and never call the recorder.",
+  "`IndexDriftMissingEntityCandidateOutcome`",
+  "source state is authoritative `Upsert`",
+  "materialized state is exact `Missing`",
   "`locale: None` maps to `IndexDriftFindingScope::EntityWithoutLocale`",
-  "IndexDriftDiagnosisOperatorRuntime",
+  "diagnose_missing_entity_candidate",
   "does not define PostgreSQL snapshot export",
 ]);
-requireMarkers(files.plan, plan, [
+requireMarkers("plan", [
   "M6 snapshot-pair digest producer and mismatch-only recorder delegation",
-  "M6 locale-optional persisted entity finding scope",
+  "M6 missing-only entity candidate outcome",
+  "M6 bounded source-page missing-entity diagnosis",
   "M6 source-version-fenced PostgreSQL drift snapshot reader",
   "M6 guarded exact-entity drift diagnosis operator",
-  "source_complete_transport_and_owner_execution_pending",
-  "explicit retained absence/tombstone watermark contract",
+  "source_complete_owner_execution_pending",
 ]);
 
-const forbiddenProducerMarkers = [
+for (const marker of [
   "sea_orm",
   "DatabaseConnection",
   "SELECT ",
@@ -104,9 +178,8 @@ const forbiddenProducerMarkers = [
   "IndexSource::scan",
   "index_entities",
   "index_links",
-];
-for (const marker of forbiddenProducerMarkers) {
-  if (producer.includes(marker)) {
+]) {
+  if (content.producer.includes(marker)) {
     throw new Error(`database-neutral producer contains forbidden dependency marker: ${marker}`);
   }
 }
@@ -115,12 +188,12 @@ for (const obsolete of [
   "index_drift_locale_free_scope_unsupported",
   "let Some(locale) = key.locale.clone() else",
 ]) {
-  if (recorder.includes(obsolete) || doc.includes(obsolete)) {
+  if (content.recorder.includes(obsolete) || content.doc.includes(obsolete)) {
     throw new Error(`producer adapter retains obsolete locale limitation: ${obsolete}`);
   }
 }
 
-const diagnosisProduction = diagnosis.split("\n#[cfg(test)]")[0];
+const diagnosisProduction = content.diagnosis.split("\n#[cfg(test)]")[0];
 for (const forbidden of [
   "tokio::spawn",
   "spawn_blocking",
@@ -138,13 +211,12 @@ for (const forbidden of [
 
 for (const claim of [
   "tests passed",
-  "diagnosis transport is complete",
-  "repair is complete",
   "retained evidence admitted",
+  "repair is complete",
 ]) {
-  if (doc.toLowerCase().includes(claim.toLowerCase())) {
+  if (content.doc.toLowerCase().includes(claim.toLowerCase())) {
     throw new Error(`documentation makes forbidden completion claim: ${claim}`);
   }
 }
 
-console.log("Index drift digest producer contract verified");
+console.log("Index drift digest and missing-only candidate contracts verified");
