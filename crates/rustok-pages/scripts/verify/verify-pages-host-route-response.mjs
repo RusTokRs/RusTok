@@ -14,6 +14,7 @@ const evidence = JSON.parse(read(
 const historicalEvidence = JSON.parse(read(
   "crates/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json",
 ));
+const pagesLib = read("crates/rustok-pages/src/lib.rs");
 const adapter = read(
   "crates/rustok-pages/storefront/src/transport/host_route_adapter.rs",
 );
@@ -140,6 +141,9 @@ if (
 if (historicalEvidence.source_contract?.host_redirect_response_added !== false) {
   failures.push("historical published-slug evidence must retain host_redirect_response_added=false");
 }
+for (const marker of ["PAGE_ROUTE_NOT_FOUND", "PAGE_ROUTE_RESOLUTION_CONFLICT"]) {
+  need(pagesLib, marker, "rustok-pages root route error export");
+}
 
 for (const marker of [
   "pub enum StorefrontPageRouteDisposition",
@@ -258,12 +262,12 @@ for (const marker of [
   "host-route-response-source-ready",
   "Pages host route response: source-ready",
   "route decision precedes SEO and SSR rendering",
-  "delete tombstones and historical backfill remain open",
+  "Delete tombstones and historical backfill remain open",
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "registered Pages host route decision server function",
-  "exact localized canonical routes continue SSR",
-  "delete tombstones and historical backfill remain open",
+  "Exact localized canonical routes continue SSR",
+  "Delete tombstones and historical backfill remain open",
 ]) need(localPlan, marker, "Pages local plan");
 for (const marker of [
   "source-ready / execution-pending",
