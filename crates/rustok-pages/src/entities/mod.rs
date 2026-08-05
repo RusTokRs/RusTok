@@ -8,6 +8,7 @@ pub mod page_publish_operation;
 pub mod page_publish_operation_artifact;
 pub mod page_published_landing_artifact;
 pub mod page_rollback_operation;
+pub mod page_route_alias;
 pub mod page_static_landing_artifact;
 pub mod page_translation;
 
@@ -18,4 +19,5 @@ pub use page_publish_operation::Entity as PagePublishOperation;
 pub use page_publish_operation_artifact::Entity as PagePublishOperationArtifact;
 pub use page_published_landing_artifact::Entity as PagePublishedLandingArtifact;
 pub use page_rollback_operation::Entity as PageRollbackOperation;
+pub use page_route_alias::Entity as PageRouteAlias;
 pub use page_static_landing_artifact::Entity as PageStaticLandingArtifact;

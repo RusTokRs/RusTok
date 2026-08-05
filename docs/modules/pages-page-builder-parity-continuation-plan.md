@@ -1,8 +1,8 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / public-list-locale-fallback-source-ready / execution-evidence-pending
-Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
+Status: source-parity-current / published-slug-route-alias-source-ready / execution-evidence-pending
+Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event, routing and cache boundaries
 
 ## Source-of-truth policy
 
@@ -12,7 +12,7 @@ This is the canonical shared continuation cursor. Historical dated packets remai
 
 Across every retained source packet, execution remains pending until a maintainer records reproducible command output and artifact evidence.
 
-Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, routing, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts.
+Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts.
 
 Optional external event infrastructure is outside the active Pages cursor.
 
@@ -36,9 +36,10 @@ Current `main` contains:
 - PR #3008 — Memory and OutboxLocal factory profile parity source;
 - PR #3010 — selected immutable artifact authority after draft mutation;
 - PR #3011 — anonymous storefront dependency-graph source boundary;
-- PR #3014 — anonymous SSR delivery boundary and explicit artifact inspector source.
+- PR #3014 — anonymous SSR delivery boundary and explicit artifact inspector source;
+- PR #3016 — public detail/list tenant locale fallback parity.
 
-The current slice corrects a Pages public-read inconsistency: selected detail and list results now use the same requested-locale, tenant-default-locale and platform-fallback chain in both native and GraphQL public transports.
+The current slice adds the Pages-owned immutable route ledger and localized canonical URL contract for published slug renames. It does not mount redirect or gone responses in the host.
 
 ## Current parity state
 
@@ -72,7 +73,7 @@ Native storefront registered server function: source-ready; the real registered 
 
 `public-list-locale-fallback-source-ready`; Public list tenant locale fallback: source-ready.
 
-Pages now exposes a fallback-aware public list owner method. It normalizes the requested and explicit tenant fallback locales and resolves each list translation through:
+Pages exposes a fallback-aware public list owner method. It normalizes the requested and explicit tenant fallback locales and resolves each list translation through:
 
 ```text
 requested locale
@@ -82,7 +83,7 @@ requested locale
 
 The existing `list_public_visible` method remains as a platform-fallback wrapper for callers that do not supply tenant policy.
 
-The native and GraphQL public detail/list reads now pass the same tenant default locale to the owner. The native cache variant already binds the fallback locale, so this behavior correction does not change namespace, generation, concrete key shape, TTL or capacity. Published-only and channel-visibility filtering remain unchanged.
+The native and GraphQL public detail/list reads pass the same tenant default locale to the owner. The native cache variant already binds the fallback locale, so this behavior correction does not change namespace, generation, concrete key shape, TTL or capacity. Published-only and channel-visibility filtering remain unchanged.
 
 Source evidence:
 
@@ -93,6 +94,39 @@ Source evidence:
 - `crates/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json`;
 - `crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs`;
 - `docs/modules/pages-page-builder-public-list-locale-fallback-packet-2026-08-05.md`.
+
+Execution evidence remains pending.
+
+### Published slug route aliases: source-ready
+
+`published-slug-route-alias-source-ready`; Published slug route aliases: source-ready.
+
+Pages now owns an append-only `page_route_aliases` ledger and a transport-neutral resolver for canonical, redirect and gone dispositions. A rename of a currently published localized slug appends a redirect in the same metadata transaction before the current translation is replaced. Draft-only rename does not create public route history.
+
+The route claim is unique by tenant, locale and slug across current translations and immutable alias history. An old published slug claim cannot be reused by another page. A redirect stores target page plus target locale, not the target slug, so every resolution recomputes the current canonical descriptor and multiple renames do not form redirect chains.
+
+Localized canonical Pages routes and SEO alternates now use:
+
+```text
+/{locale}/modules/pages?slug={slug}
+```
+
+The legacy unprefixed module path remains parseable, but is not emitted as canonical. Current-vs-alias overlap and alias payload drift fail closed with `PAGE_ROUTE_RESOLUTION_CONFLICT`; missing route identity uses `PAGE_ROUTE_NOT_FOUND`.
+
+Host redirect/gone response remains open. Delete tombstones, historical backfill/import policy and observed runtime evidence remain open.
+
+Source evidence:
+
+- `crates/rustok-pages/src/migrations/m20260805_000010_create_page_route_aliases.rs`;
+- `crates/rustok-pages/src/entities/page_route_alias.rs`;
+- `crates/rustok-pages/src/services/page/route.rs`;
+- `crates/rustok-pages/src/services/page/metadata.rs`;
+- `crates/rustok-pages/src/services/page/persistence.rs`;
+- `crates/rustok-pages/src/seo_targets.rs`;
+- `crates/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs`;
+- `docs/modules/pages-page-builder-published-slug-route-alias-packet-2026-08-05.md`.
 
 Execution evidence remains pending.
 
@@ -178,6 +212,8 @@ Execution evidence remains pending.
 | Reviewed publish and immutable manifest | Complete | Database/runtime evidence pending |
 | Immutable rollback | Complete | Database/runtime evidence pending |
 | Public detail/list tenant locale fallback parity | Source-ready | Focused SQLite/native/GraphQL execution pending |
+| Published slug alias ledger and localized canonical URLs | Source-ready | SQLite/PostgreSQL/SEO execution pending |
+| Host redirect/gone response and delete tombstones | Open | Not implemented |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -192,35 +228,44 @@ Execution evidence remains pending.
 
 ## Boundaries
 
-This slice changes production Pages public-list translation selection in the owner service, registered native storefront and unauthenticated GraphQL list.
+This slice changes production Pages metadata writes for published slug renames, adds a Pages route-alias table/resolver, and localizes emitted SEO canonical/alternate routes.
 
 It does not:
 
 - change Page Builder or Fly behavior;
-- change persistence, migrations, schemas, DTOs, GraphQL schema, artifacts or bindings;
-- change public routes, canonical URL policy, redirects or route aliases;
+- change page bodies, artifacts, immutable bindings, publish or rollback receipts;
+- add GraphQL, HTTP or server-function schema fields;
+- mount redirect or gone responses in a storefront host;
+- create deletion tombstones or historical route backfill;
 - change channel visibility or module-admission policy;
 - change cache namespaces, generation scopes, concrete key shape, TTL or capacity;
-- change event delivery or optional external event infrastructure;
-- claim tests, Cargo, formatting, verifiers, SQLite, native server functions, GraphQL, browsers, workflows, CI or rollout execution;
+- change event schemas or optional external event infrastructure;
+- claim tests, Cargo, formatting, verifiers, SQLite, PostgreSQL, SEO runtime, hosts, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA.
 
 ## Next cursor
 
-1. Run the public list locale fallback verifier and focused Pages locale regression.
-2. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
-3. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
-4. Run the selected immutable artifact and complete native SQLite/Axum route set.
-5. Run production generation-gate, native-route and PostgreSQL retry packets.
-6. Run metadata conflict/isolation and published metadata browser packets.
-7. Complete canonical URLs, redirects and route-collision policy as a separate Pages routing slice.
-8. Complete workflow and observed tenant rollout evidence before promotion.
+1. Run the published slug route alias verifier and focused SQLite regression.
+2. Run the public list locale fallback verifier and focused Pages locale regression.
+3. Mount `PageRouteService::resolve` after channel/module admission in the public host and return canonical, redirect or gone behavior without bypassing cache/auth policy.
+4. Add deletion tombstones while preserving redirect history; define historical backfill/import policy separately.
+5. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
+6. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
+7. Run the selected immutable artifact and complete native SQLite/Axum route set.
+8. Run production generation-gate, native-route and PostgreSQL retry packets.
+9. Run metadata conflict/isolation and published metadata browser packets.
+10. Complete workflow and observed tenant rollout evidence before promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs
+cargo test -p rustok-pages \
+  --test page_published_slug_route_alias_sqlite -- --nocapture
+cargo check -p rustok-pages --all-targets
+
 node crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs
 cargo test -p rustok-pages --test page_locale_fallback -- --nocapture
 

@@ -11,7 +11,8 @@
 //! Pages module for RusToK platform.
 //!
 //! The module owns pages, localized bodies, deterministic Page Builder artifacts,
-//! atomic publish/rollback receipts, cache policy, and Page Builder release baselines.
+//! atomic publish/rollback receipts, public route aliases, cache policy, and Page Builder release
+//! baselines.
 //!
 //! # Example
 //!
@@ -66,7 +67,8 @@ pub use cache_invalidation::{
 pub use dto::*;
 pub use entities::{
     Page, PageBuilderScenarioBaseline, PagePublishOperation, PagePublishOperationArtifact,
-    PagePublishedLandingArtifact, PageRollbackOperation, PageStaticLandingArtifact,
+    PagePublishedLandingArtifact, PageRollbackOperation, PageRouteAlias,
+    PageStaticLandingArtifact,
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
@@ -78,7 +80,8 @@ pub use services::{
     PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
     PAGE_ROLLBACK_OPERATION_INTEGRITY, PAGE_ROLLBACK_REQUIRES_PUBLISHED,
     PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBuilderArtifactService,
-    PageBuilderScenarioBaselineService, PageService, PublishedLandingArtifact,
+    PageBuilderScenarioBaselineService, PageRouteDescriptor, PageRouteDisposition,
+    PageRouteResolution, PageRouteService, PageService, PublishedLandingArtifact,
     SaveIfCurrentScenarioBaselineRequest,
 };
 
