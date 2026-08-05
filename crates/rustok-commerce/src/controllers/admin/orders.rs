@@ -109,6 +109,34 @@ impl std::fmt::Debug for AdminOrderReadPortDiagnosticError<'_> {
     }
 }
 
+struct AdminOrderMutationDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    order_id: &'static str,
+    customer_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminOrderErrorContext> for AdminOrderMutationDiagnosticContext {
+    fn from(context: &AdminOrderErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            order_id: optional_uuid_shape(context.order_id),
+            customer_id: optional_uuid_shape(context.customer_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminOrderMutationDiagnosticError;
+
+impl std::fmt::Debug for AdminOrderMutationDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
 fn uuid_shape(value: Uuid) -> &'static str {
     if value.is_nil() { "nil" } else { "non_nil" }
 }
@@ -275,6 +303,8 @@ fn map_admin_order_error(mut context: AdminOrderErrorContext, error: OrderError)
         context.order_id = Some(*id);
     }
     let (status, code, message, error_kind) = admin_order_error_policy(&error);
+    let context = AdminOrderMutationDiagnosticContext::from(&context);
+    let error = AdminOrderMutationDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_ORDER_OWNER,

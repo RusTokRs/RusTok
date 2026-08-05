@@ -1,0 +1,45 @@
+{
+  "status": "commerce_admin_order_mutation_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/controllers/admin/orders.rs",
+    "crates/rustok-commerce/docs/admin-order-mutation-diagnostic-safety.md",
+    "scripts/verify/verify-commerce-admin-order-mutation-diagnostic-safety.mjs",
+    "scripts/verify/verify-commerce-admin-order-route-error-context.mjs",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "raw_order_error_logged": false,
+    "raw_tenant_uuid_logged": false,
+    "raw_actor_uuid_logged": false,
+    "raw_order_uuid_logged": false,
+    "raw_customer_uuid_logged": false,
+    "redacted_error_debug_logged": true,
+    "required_uuid_shapes_logged": true,
+    "optional_uuid_shapes_logged": true,
+    "operation_preserved": true,
+    "order_not_found_identity_adoption_preserved": true,
+    "typed_policy_selection_precedes_shadowing": true,
+    "order_error_policy_preserved": true,
+    "http_envelopes_preserved": true,
+    "four_mutation_callsites_preserved": true,
+    "orders_update_permission_preserved": true,
+    "read_mapper_unchanged": true,
+    "detail_payment_mapper_unchanged": true,
+    "detail_fulfillment_mapper_unchanged": true,
+    "existing_broad_verifier_markers_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
