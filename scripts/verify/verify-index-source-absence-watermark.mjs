@@ -117,7 +117,10 @@ requireMarkers("reader", [
   "absence.provider_for_schema(&request.key().schema)",
   ".load(request.key().clone())",
   "IndexDriftSourceObservation::missing(",
-  "let observed_again = self.load_source_observation(request).await?;",
+  "let observed_again = match self.load_source_observation(request).await {",
+  "source.absence_source_version.is_some()",
+  "error.code() == SOURCE_WATERMARK_MISSING",
+  "return Err(retryable_failure(SOURCE_CHANGED));",
   "if &observed_again != source",
   'b"explicit_source_absence_watermark_v1"',
   "source.absence_source_version",
@@ -145,7 +148,7 @@ requireMarkers("readerDoc", [
   "SharedIndexSourceAbsenceRegistry",
   "reload the exact absence watermark",
   "Product locale provider",
-  "existing\nUpsert/Delete boundary derivation is unchanged",
+  "Existing\nUpsert/Delete boundary derivation is unchanged",
 ]);
 requireMarkers("plan", [
   "M6 explicit source absence watermark registry, Product provider, and reader fence",
