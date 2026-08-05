@@ -19,7 +19,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 1. **Schema-Agnostic PostgreSQL JSONB Storage**: Envelopes entity state into benchmarked `JSONB` structures while maintaining independent relational graphs (`index_links`).
 2. **Derived Secondary Indexes**: Automatically creates typed PostgreSQL partial B-Tree expression indexes for scalar fields and GIN containment indexes for arrays.
-3. **Checksummed Keyset Cursors**: Fast, deterministic keyset pagination (`CursorCodec`) and exact-count execution in single `REPEATABLE READ` snapshot transactions.
+3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; source-page diagnosis keeps owner cursors server-side until a confidential tenant/schema-bound envelope is admitted.
 4. **Durable Rebuilds & Outbox Inbox**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, and logs consistency findings (`index_consistency_findings`).
 
 ---
@@ -31,6 +31,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
 - [M6 Product Locale Absence PostgreSQL Harness](./m6-product-locale-absence-postgres-harness.md)
 - [M6 GraphQL Exact-entity Diagnosis Transport](../../../apps/server/docs/index-drift-diagnosis-graphql-transport.md)
+- [M6 One-page Missing-entity Diagnosis](../../../apps/server/docs/index-drift-source-page-diagnosis.md)
 - [M6 Bounded Source-call Timeout](./m6-source-call-timeout.md)
 - [M6 Bounded Replay Dry-run](./m6-bounded-replay-dry-run.md)
 - [M6 Cooperative Replay-page Interruption](./m6-cooperative-page-interruption.md)
