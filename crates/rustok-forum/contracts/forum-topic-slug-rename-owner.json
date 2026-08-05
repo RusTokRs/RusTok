@@ -1,0 +1,67 @@
+{
+  "task": "FORUM-24D",
+  "owner": "rustok-forum",
+  "command": "TopicService::rename_slug",
+  "input": {
+    "type": "RenameForumTopicSlugInput",
+    "fields": ["locale", "slug"],
+    "existing_translation_required": true,
+    "existing_non_empty_slug_required": true,
+    "empty_slug_is_validation_error": true
+  },
+  "authorization": {
+    "resource": "forum_topics",
+    "action": "update",
+    "ownership_semantics": "same_as_topic_update"
+  },
+  "transaction": {
+    "locks_localized_route": true,
+    "records_old_route_before_update": true,
+    "updates_translation_slug": true,
+    "touches_topic_updated_at": true,
+    "publishes_topic_projection_invalidation": true,
+    "single_commit": true
+  },
+  "alias": {
+    "disposition": "redirect",
+    "topic_id": "unchanged",
+    "target_topic_id": "same_topic",
+    "target_locale": "same_locale",
+    "reason": "Topic slug changed",
+    "append_only": true,
+    "exact_replay_idempotent": true,
+    "payload_drift_fails_closed": true
+  },
+  "resolution": {
+    "active_old_slug": "redirect_to_current_canonical_route",
+    "merged_topic": "follow_bounded_merge_canonicalization_with_locale_fallback",
+    "deleted_topic": "gone",
+    "short_identity": "unchanged"
+  },
+  "output": {
+    "type": "ForumTopicSlugRenameResult",
+    "fields": [
+      "topic_id",
+      "locale",
+      "previous_slug",
+      "slug",
+      "previous_path",
+      "canonical",
+      "alias_id",
+      "changed"
+    ]
+  },
+  "out_of_scope": [
+    "REST transport",
+    "GraphQL transport",
+    "admin UI",
+    "new locale creation",
+    "slug removal",
+    "historical backfill",
+    "category routes",
+    "storefront mounting",
+    "hreflang and SEO publication policy",
+    "runtime evidence"
+  ],
+  "validation_status": "source_ready_maintainer_execution_pending"
+}
