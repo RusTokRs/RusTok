@@ -9,6 +9,7 @@ mod postgres_query_sql;
 mod query_port;
 mod query_runtime;
 mod registry;
+mod source_absence;
 mod source_event_id;
 mod source_registry;
 mod source_replay;
@@ -68,6 +69,11 @@ pub use query_port::{
 pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
+};
+pub use source_absence::{
+    IndexSourceAbsenceCatalog, IndexSourceAbsenceDescriptor, IndexSourceAbsenceError,
+    IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark, SharedIndexSourceAbsenceRegistry,
+    materialize_index_source_absence_registry, register_index_source_absence_provider,
 };
 pub use source_event_id::{IndexSourceEventIdError, derive_index_source_event_id};
 pub use source_registry::{
