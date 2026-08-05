@@ -2,11 +2,11 @@
 
 Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.
 Latest default-branch delta checked through
-`main@4fe2643c0d3f3e7e3c0e5e2ccf9347184f347395`.
-The fifteen main commits after this branch merge base touch Commerce diagnostics, Forum module-owned
-GraphQL transports, Inventory/Order diagnostics, and Pages/Page Builder evidence. They do not
-overlap `rustok-index`, Product Index composition, the server Index GraphQL root, diagnosis
-composition, or Index guards changed by this branch.
+`main@1e31db0149618369d35cc0d2ae3494634bfee573`.
+The seventeen main commits after this branch merge base touch Commerce diagnostics, Forum
+module-owned GraphQL transports, Inventory/Order diagnostics, and Pages/Page Builder delivery and
+evidence. They do not overlap `rustok-index`, Product Index composition, the server Index GraphQL
+root, diagnosis composition, or Index guards changed by this branch.
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
@@ -112,7 +112,27 @@ registry, batch, scan, scheduler, finding lifecycle, or repair capability. A sou
 schema mount, authorization-before-parsing order, exact-key construction, bounded output, and open
 execution status.
 
-## One-page source candidate continuation
+## Missing-only outcome continuation
+
+`IndexDriftDigestProducer` preserves its existing general `produce(request)` behavior and adds a
+separate missing-only path:
+
+- `produce_missing_entity_candidate(request)` captures one exact pair through the existing reader;
+- `produce_missing_entity_candidate_from_pair(request, pair)` accepts one already-captured pair;
+- both source and materialized states are scope-checked and validated through the frozen
+  `SchemaRegistry` before classification;
+- only source `Upsert` plus materialized `Missing` computes and persists a mismatch;
+- source `Missing`/`Delete` and materialized `Upsert`/`Delete` return bounded `NotCandidate` without
+  recorder access;
+- stale fields, stale links, and source-version-only differences are therefore not recorded through
+  the missing-only path;
+- `IndexDriftMissingEntityCandidateOutcome` contains no raw key, record, state, or snapshot boundary.
+
+`IndexDriftDiagnosisOperatorRuntime::diagnose_missing_entity_candidate` preserves the same
+request-bound authorization-before-validation order as general exact diagnosis. It is internal and is
+not mounted into GraphQL.
+
+## One-page missing-entity continuation
 
 `IndexDriftSourcePageDiagnosisRuntime` is composed only after the frozen
 `SharedIndexSourceRegistry` and guarded exact diagnosis runtime exist.
@@ -124,22 +144,21 @@ Its one method:
 - allows one `SchemaRef`, one optional server-held `IndexSourceCursor`, and a limit in `1..=32`;
 - performs exactly one validated `IndexSource::scan` call;
 - skips retained source `Delete` mutations;
-- sequentially delegates every source `Upsert` candidate to exact diagnosis;
-- stops on the first source or exact-diagnosis failure;
-- returns only page counts, bounded finding receipts, and the server-held next cursor;
+- sequentially delegates every source `Upsert` to missing-only exact diagnosis;
+- records findings only for materialized `Missing`;
+- returns aggregate non-missing and missing-recorded counts, bounded receipts, and the server-held
+  next cursor;
 - owns no loop, checkpoint store, job, scheduler, task, transport, lifecycle, or repair handle.
 
-The current exact digest outcome intentionally hides mismatch state shape. The page runtime can
-therefore identify and persist general exact mismatches for source-present candidates, but it cannot
-truthfully claim missing-only classification. It is not mounted into GraphQL, HTTP, CLI, MCP, or
-native admin, and it copies no source entity identifier or payload into its outcome.
+It is not mounted into GraphQL, HTTP, CLI, MCP, or native admin, and it copies no source entity
+identifier, owner payload, or captured typed state into its outcome.
 
 ## Open cursor
 
-The next implementation step is a database-neutral missing-only outcome over one already-captured
-`IndexDriftSnapshotPair`. It must preserve the general exact producer behavior while recording only
-source `Upsert` plus materialized `Missing`, returning bounded non-candidate outcomes for all other
-state combinations without exposing raw states.
+The next implementation step is a server-owned continuation codec that keeps raw
+`IndexSourceCursor` JSON confidential and binds the public token to tenant, exact schema, canonical
+source identity, version, issue time, and bounded expiry. Tampering, scope mismatch, expiry,
+oversized tokens, and unavailable or rotated key material must fail before source scan.
 
 Product locale PostgreSQL harness execution, GraphQL execution evidence, source-page transport,
 cursor persistence, multi-page lifecycle, stale Index-only discovery, orphan-link diagnosis,
@@ -148,6 +167,6 @@ automatic finding resolution, resolve/ignore commands, and repair remain open.
 ## Validation ownership
 
 Suggested commands are retained in the dated implementation plan and the explicit watermark,
-harness, GraphQL transport, and source-page diagnosis documents. Per maintainer instruction, this
-implementation agent did not run tests, JavaScript verifiers, formatting, Cargo checks, PostgreSQL or
-GraphQL scenarios, workflows, or CI.
+harness, GraphQL transport, digest producer, and source-page diagnosis documents. Per maintainer
+instruction, this implementation agent did not run tests, JavaScript verifiers, formatting, Cargo
+checks, PostgreSQL or GraphQL scenarios, workflows, or CI.
