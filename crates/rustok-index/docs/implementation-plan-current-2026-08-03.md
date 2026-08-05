@@ -12,13 +12,14 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - retain Product locale-absence diagnosis evidence`
+`M6 - expose one bounded exact-entity diagnosis transport`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
 source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability,
-explicit owner-retained absence registry, Product locale high-watermark provider, and double-read
-absence-version fence are source complete. Product PostgreSQL execution evidence, diagnosis
-transport, lifecycle commands, repair, and broader discovery remain open.
+explicit owner-retained absence registry, Product locale high-watermark provider, double-read
+absence-version fence, and Product locale absence PostgreSQL harness are source complete. Product
+PostgreSQL execution evidence, diagnosis transport, lifecycle commands, repair, and broader
+discovery remain open.
 
 ## Rechecked status
 
@@ -50,6 +51,8 @@ transport, lifecycle commands, repair, and broader discovery remain open.
   `source_complete_transport_and_owner_execution_pending`
 - M6 explicit source absence watermark registry, Product provider, and reader fence:
   `source_complete_owner_execution_pending`
+- M6 Product locale absence PostgreSQL harness:
+  `source_ready_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -115,8 +118,9 @@ transport, lifecycle commands, repair, and broader discovery remain open.
       bind the version into the opaque boundary only for source `Missing`.
 - [x] Preserve permanent `index_drift_source_watermark_missing` when provider registration or
       authoritative evidence is unavailable.
-- [ ] Add and run a real-migration Product locale-absence scenario plus a deterministic concurrent
-      translation-change rejection scenario.
+- [x] Add the source-ready real-migration Product locale-absence scenario and deterministic
+      concurrent translation-change rejection scenario in `product_locale_absence_postgres`.
+- [ ] Run and admit `product_locale_absence_postgres` evidence.
 - [ ] Expose the exact-entity diagnosis capability through one bounded operator transport.
 - [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
@@ -136,20 +140,27 @@ transport, lifecycle commands, repair, and broader discovery remain open.
 
 ## Next implementation step
 
-Add a real-migration PostgreSQL scenario for one live Product whose requested locale is absent while
-another locale remains present. Require ordinary targeted load to be empty, the Product provider to
-return the exact positive revision, and diagnosis to compare source `Missing` against materialized
-state. Add a deterministic barrier that inserts or moves the requested translation between the two
-owner observations and require retryable `index_drift_source_changed_during_capture`. Keep transport,
-discovery, automatic resolution, and repair outside that evidence slice.
+Expose the existing guarded `diagnose_entity(context, key)` capability through one bounded
+server-owned transport adapter. The adapter must derive tenant and actor only from the request-bound
+server context, accept exactly one typed entity key, preserve the operator's authorization-before-
+validation ordering, and return only the existing bounded digest outcome or public failure envelope.
+It must not expose database connections, source/schema/absence registries, batch scope, source scan,
+finding resolution, scheduling, or repair. Keep Product PostgreSQL harness execution and evidence
+admission owner-owned and pending.
 
 ## Owner verification for this slice
 
 ```bash
 cargo test -p rustok-index source_absence -- --nocapture
-cargo test -p rustok-distribution product_index -- --nocapture
+cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
+
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-distribution \
+  --features mod-product \
+  --test product_locale_absence_postgres \
+  -- --nocapture --test-threads=1
 
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-index \
@@ -168,6 +179,7 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   --test drift_finding_writer_postgres_test \
   -- --nocapture --test-threads=1
 
+node scripts/verify/verify-index-product-absence-postgres-harness.mjs
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
