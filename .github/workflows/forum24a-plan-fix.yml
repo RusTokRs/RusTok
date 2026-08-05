@@ -1,0 +1,31 @@
+name: FORUM-24A plan ordering fix
+
+on:
+  push:
+    branches:
+      - feat/forum-24a-topic-route-identity
+    paths:
+      - .github/forum24a_plan_fix.py
+      - .github/workflows/forum24a-plan-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forum-24a-topic-route-identity
+          fetch-depth: 1
+      - name: Fix FORUM-24 scope order
+        run: python .github/forum24a_plan_fix.py
+      - name: Commit plan correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/forum24a_plan_fix.py .github/workflows/forum24a-plan-fix.yml
+          git add crates/rustok-forum/docs/implementation-plan.md
+          git commit -m "docs(forum): keep FORUM-24 scope ordering"
+          git push origin HEAD:feat/forum-24a-topic-route-identity
