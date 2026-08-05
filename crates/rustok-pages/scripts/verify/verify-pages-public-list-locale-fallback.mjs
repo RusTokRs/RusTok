@@ -265,7 +265,7 @@ for (const marker of [
 for (const marker of [
   "Native and unauthenticated GraphQL public detail and list reads use the same",
   "tenant fallback chain: requested locale",
-  "Host redirect responses, delete tombstones and historical backfill remain open"
+  "Delete tombstones and historical backfill remain open"
 ]) {
   need(localPlan, marker, "Pages local plan");
 }

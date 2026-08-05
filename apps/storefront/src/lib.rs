@@ -18,6 +18,11 @@ pub mod shared;
 pub mod widgets;
 
 #[cfg(feature = "ssr")]
+use axum::http::{
+    StatusCode,
+    header::{CACHE_CONTROL, LOCATION},
+};
+#[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
 #[cfg(feature = "ssr")]
 use axum::{Extension, Router, extract::Path, routing::get};
@@ -39,6 +44,10 @@ use crate::shared::context::seo_page_context::{ResolvedSeoPageContext, fetch_seo
 
 #[cfg(feature = "ssr")]
 const DEFAULT_STOREFRONT_LOCALE: &str = "en";
+#[cfg(feature = "ssr")]
+const PAGES_ROUTE_SEGMENT: &str = "pages";
+#[cfg(feature = "ssr")]
+const PRIVATE_NO_STORE: &str = "private, no-store";
 
 #[cfg(feature = "ssr")]
 fn render_document(locale: &str, title: &str, extra_head: &str, app_html: String) -> String {
@@ -157,6 +166,121 @@ async fn render_module_page_with_nonce(
 }
 
 #[cfg(feature = "ssr")]
+async fn resolve_pages_route_response(
+    locale: &str,
+    route_segment: &str,
+    query_params: &std::collections::HashMap<String, String>,
+    locale_path_prefix: Option<&str>,
+) -> Option<Response> {
+    if route_segment != PAGES_ROUTE_SEGMENT {
+        return None;
+    }
+    let page_slug = query_params
+        .get("slug")
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())?;
+
+    let decision = match rustok_pages_storefront::resolve_storefront_page_route(
+        page_slug.to_string(),
+        Some(locale.to_string()),
+    )
+    .await
+    {
+        Ok(decision) => decision,
+        Err(error) => {
+            eprintln!("failed to resolve Pages host route: {error}");
+            return Some(private_status_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Page route resolution is temporarily unavailable",
+            ));
+        }
+    };
+
+    pages_route_response_from_decision(locale, locale_path_prefix, page_slug, &decision)
+}
+
+#[cfg(feature = "ssr")]
+fn pages_route_response_from_decision(
+    locale: &str,
+    locale_path_prefix: Option<&str>,
+    requested_slug: &str,
+    decision: &rustok_pages_storefront::StorefrontPageRouteDecision,
+) -> Option<Response> {
+    use rustok_pages_storefront::StorefrontPageRouteDisposition;
+
+    match decision.disposition {
+        StorefrontPageRouteDisposition::Canonical => {
+            let canonical_path = match decision.canonical_path.as_deref() {
+                Some(path) => path,
+                None => {
+                    return Some(private_status_response(
+                        StatusCode::CONFLICT,
+                        "Canonical page route is incomplete",
+                    ));
+                }
+            };
+            let canonical_slug = match decision.canonical_slug.as_deref() {
+                Some(slug) => slug,
+                None => {
+                    return Some(private_status_response(
+                        StatusCode::CONFLICT,
+                        "Canonical page route is incomplete",
+                    ));
+                }
+            };
+            let locale_is_canonical = locale_path_prefix == Some(locale);
+            let slug_is_canonical = requested_slug == canonical_slug;
+            if locale_is_canonical && slug_is_canonical {
+                None
+            } else {
+                Some(private_permanent_redirect(canonical_path))
+            }
+        }
+        StorefrontPageRouteDisposition::Redirect => decision
+            .canonical_path
+            .as_deref()
+            .map(private_permanent_redirect)
+            .or_else(|| {
+                Some(private_status_response(
+                    StatusCode::CONFLICT,
+                    "Redirect page route is missing its canonical target",
+                ))
+            }),
+        StorefrontPageRouteDisposition::Gone => Some(private_status_response(
+            StatusCode::GONE,
+            "This page route is no longer available",
+        )),
+        StorefrontPageRouteDisposition::NotFound => Some(private_status_response(
+            StatusCode::NOT_FOUND,
+            "Page route not found",
+        )),
+        StorefrontPageRouteDisposition::Conflict => Some(private_status_response(
+            StatusCode::CONFLICT,
+            "Page route cannot be resolved safely",
+        )),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn private_permanent_redirect(location: &str) -> Response {
+    (
+        StatusCode::PERMANENT_REDIRECT,
+        [
+            (LOCATION, location.to_string()),
+            (CACHE_CONTROL, PRIVATE_NO_STORE.to_string()),
+        ],
+        "",
+    )
+        .into_response()
+}
+
+#[cfg(feature = "ssr")]
+fn private_status_response(status: StatusCode, message: &'static str) -> Response {
+    (status, [(CACHE_CONTROL, PRIVATE_NO_STORE)], message).into_response()
+}
+
+#[cfg(feature = "ssr")]
 async fn render_module_page_response(
     locale: &str,
     route_segment: &str,
@@ -164,6 +288,17 @@ async fn render_module_page_response(
     locale_path_prefix: Option<&str>,
     csp_nonce: Option<&CspNonce>,
 ) -> Response {
+    if let Some(response) = resolve_pages_route_response(
+        locale,
+        route_segment,
+        &query_params,
+        locale_path_prefix,
+    )
+    .await
+    {
+        return response;
+    }
+
     match fetch_seo_page_context(locale, route_segment, &query_params).await {
         Ok(Some(resolved)) if resolved.route.redirect.is_some() => {
             let redirect = resolved
@@ -330,10 +465,29 @@ pub fn router() -> Router {
 #[cfg(test)]
 mod tests {
     use super::{
-        nonce_structured_data_scripts, normalize_storefront_locale, resolve_storefront_locale,
+        nonce_structured_data_scripts, normalize_storefront_locale,
+        pages_route_response_from_decision, resolve_storefront_locale,
+    };
+    use axum::http::{
+        StatusCode,
+        header::{CACHE_CONTROL, LOCATION},
+    };
+    use rustok_pages_storefront::{
+        StorefrontPageRouteDecision, StorefrontPageRouteDisposition,
     };
     use rustok_web::CspNonce;
     use std::collections::HashMap;
+
+    fn route_decision(
+        disposition: StorefrontPageRouteDisposition,
+    ) -> StorefrontPageRouteDecision {
+        StorefrontPageRouteDecision {
+            disposition,
+            canonical_path: Some("/en/modules/pages?slug=about".to_string()),
+            canonical_slug: Some("about".to_string()),
+            canonical_page_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
+        }
+    }
 
     #[test]
     fn resolves_locale_from_path_before_legacy_lang_query() {
@@ -372,6 +526,61 @@ mod tests {
             normalize_storefront_locale("en_us").as_deref(),
             Some("en-US")
         );
+    }
+
+    #[test]
+    fn exact_localized_canonical_page_route_continues_ssr() {
+        let decision = route_decision(StorefrontPageRouteDisposition::Canonical);
+        assert!(
+            pages_route_response_from_decision("en", Some("en"), "about", &decision).is_none()
+        );
+    }
+
+    #[test]
+    fn legacy_or_noncanonical_page_route_redirects_privately() {
+        let decision = route_decision(StorefrontPageRouteDisposition::Canonical);
+        let response = pages_route_response_from_decision("en", None, "About", &decision)
+            .expect("legacy route must redirect");
+
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(
+            response.headers().get(LOCATION).and_then(|value| value.to_str().ok()),
+            Some("/en/modules/pages?slug=about")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("private, no-store")
+        );
+    }
+
+    #[test]
+    fn alias_gone_missing_and_conflict_stop_before_ssr() {
+        for (disposition, status) in [
+            (StorefrontPageRouteDisposition::Redirect, StatusCode::PERMANENT_REDIRECT),
+            (StorefrontPageRouteDisposition::Gone, StatusCode::GONE),
+            (StorefrontPageRouteDisposition::NotFound, StatusCode::NOT_FOUND),
+            (StorefrontPageRouteDisposition::Conflict, StatusCode::CONFLICT),
+        ] {
+            let decision = route_decision(disposition);
+            let response = pages_route_response_from_decision(
+                "en",
+                Some("en"),
+                "historical",
+                &decision,
+            )
+            .expect("terminal route decision must return a response");
+            assert_eq!(response.status(), status);
+            assert_eq!(
+                response
+                    .headers()
+                    .get(CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("private, no-store")
+            );
+        }
     }
 
     #[test]
