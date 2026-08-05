@@ -85,10 +85,7 @@ Optional external event infrastructure is outside the active Pages cursor.
   to validated owner reads.
 - [x] The production generation gate runs the Pages invalidation handler before
   downstream acceptance with process-bounded event UUID dedupe.
-- [x] A production gate PostgreSQL publish/rollback restart harness retains durable
-  receipts/events and a post-invalidation downstream failure; process-bounded
-  dedupe prevents a second rotation when a new relay instance retries the same
-  event UUID.
+- [x] A production gate PostgreSQL publish/rollback restart harness retains durable receipts/events and a post-invalidation downstream failure; process-bounded dedupe prevents a second rotation when a new relay instance retries the same event UUID.
 - [x] A factory-selected Memory and OutboxLocal profile harness retains the real
   topology. Memory rotates synchronously without a durable row; OutboxLocal writes
   a pending row first and rotates inside the relay target before acknowledgement.
