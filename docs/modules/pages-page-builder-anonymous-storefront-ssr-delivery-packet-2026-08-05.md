@@ -30,11 +30,11 @@ anonymous request
   → no Pages/Page Builder admin or Fly authoring surface
 ```
 
-The focused regression is:
+The focused source regression is:
 
 - `apps/storefront/tests/pages_anonymous_ssr_delivery.rs`.
 
-It renders the public shell through `rustok_storefront::render_shell` and rejects executable client and authoring markers in the returned document.
+It extracts the private `render_document` source through `include_str!`, retains the exact server-document markers and rejects executable client or authoring entrypoints without requiring database, tenant or Leptos host runtime context.
 
 ## Source verifier
 
@@ -44,7 +44,7 @@ It renders the public shell through `rustok_storefront::render_shell` and reject
 - `rlib` host shape;
 - SSR document output markers;
 - absence of client bootstrap entrypoints across `apps/storefront/src`;
-- the focused runtime regression source;
+- the focused source regression;
 - linkage to the existing feature-resolved anonymous dependency-graph evidence;
 - the explicit artifact inspector contract;
 - empty execution evidence and false validation flags.
@@ -110,7 +110,7 @@ This slice does not:
 - change Cargo dependencies or feature definitions;
 - alter migrations, schemas, DTOs, routes, cache keys, TTL or event delivery;
 - touch optional Iggy infrastructure;
-- claim source verifier, regression, Cargo metadata, build, artifact inspection, workflow or CI execution;
+- claim source verifier, source regression, Cargo metadata, build, artifact inspection, workflow or CI execution;
 - promote FFA or FBA.
 
 Execution evidence remains pending.
