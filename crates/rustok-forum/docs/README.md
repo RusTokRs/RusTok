@@ -47,6 +47,7 @@ notifications module, and cross-module release gates.
 - FORUM-21V composes `splitForumTopicReplies` in the module-owned Leptos and Next-admin surfaces with stable retry/target identities and no transport-local movement policy.
 - FORUM-24A adds `ForumTopicRouteService`, a twelve-hex topic identity, exact-locale canonical descriptors and an append-only redirect/tombstone ledger; host mounting and owner write composition remain follow-up scope.
 - FORUM-24B composes immutable localized source-route redirects into new topic merges in the same owner transaction without changing merge receipts or events.
+- FORUM-24C records immutable localized `gone` routes in the topic delete transaction while preserving existing merge redirects.
 
 ## Verification
 
@@ -79,6 +80,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [FORUM-24A topic route identity owner](./forum-24a-topic-route-identity-owner.md)
 - [FORUM-24B topic merge route aliases](./forum-24b-topic-merge-route-aliases.md)
+- [FORUM-24C topic delete route tombstones](./forum-24c-topic-delete-route-tombstones.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

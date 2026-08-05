@@ -275,6 +275,73 @@ impl ForumTopicRouteService {
         Ok(alias_count)
     }
 
+    /// Records immutable gone routes for every localized slug owned by a topic.
+    ///
+    /// Existing redirects are preserved so lifecycle cleanup of an archived merge source cannot
+    /// downgrade its canonical history. Exact gone rows are idempotent; any ownership or payload
+    /// drift fails closed.
+    pub(crate) async fn record_delete_tombstones_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        reason: &str,
+    ) -> ForumResult<u32> {
+        let reason = normalize_alias_reason(reason)?;
+        let routes = load_topic_translation_routes_in_tx(txn, tenant_id, topic_id).await?;
+        let short_id = Self::short_identity(topic_id);
+        let mut inserted = 0_u32;
+
+        for route in routes {
+            let aliases =
+                load_route_aliases(txn, tenant_id, &route.locale, &short_id, &route.slug).await?;
+            match aliases.as_slice() {
+                [] => {
+                    Self::record_gone_alias_in_tx(
+                        txn,
+                        tenant_id,
+                        topic_id,
+                        &route.locale,
+                        &route.slug,
+                        &reason,
+                    )
+                    .await?;
+                    inserted = inserted.checked_add(1).ok_or_else(|| {
+                        ForumError::Validation(
+                            "Forum topic delete route tombstone count overflow".to_string(),
+                        )
+                    })?;
+                }
+                [alias] if alias.topic_id == topic_id => {
+                    if alias.disposition == StoredRouteDisposition::Redirect {
+                        let target_topic_id = alias
+                            .target_topic_id
+                            .filter(|target_topic_id| !target_topic_id.is_nil())
+                            .ok_or(ForumError::TopicRouteResolutionConflict)?;
+                        let target_locale = alias
+                            .target_locale
+                            .as_deref()
+                            .ok_or(ForumError::TopicRouteResolutionConflict)?;
+                        let _ = target_topic_id;
+                        normalize_route_locale(target_locale)?;
+                    }
+                    match alias.disposition {
+                        StoredRouteDisposition::Redirect => {}
+                        StoredRouteDisposition::Gone
+                            if alias.target_topic_id.is_none()
+                                && alias.target_locale.is_none()
+                                && alias.reason == reason => {}
+                        StoredRouteDisposition::Gone => {
+                            return Err(ForumError::TopicRouteResolutionConflict);
+                        }
+                    }
+                }
+                _ => return Err(ForumError::TopicRouteResolutionConflict),
+            }
+        }
+
+        Ok(inserted)
+    }
+
     pub(crate) async fn record_redirect_alias_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

@@ -24,7 +24,10 @@ use super::projection_invalidation::{
 };
 use super::rbac::enforce_owned_scope;
 use super::topic;
+use super::topic_route::ForumTopicRouteService;
 use super::user_stats::UserStatsService;
+
+const FORUM_TOPIC_DELETED_ROUTE_REASON: &str = "Topic deleted";
 
 /// Public owner service for topic commands.
 ///
@@ -115,6 +118,14 @@ impl TopicService {
         } else {
             None
         };
+
+        ForumTopicRouteService::record_delete_tombstones_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+            FORUM_TOPIC_DELETED_ROUTE_REASON,
+        )
+        .await?;
 
         delete_attached_localized_values(&txn, tenant_id, "topic", topic_id)
             .await
