@@ -4,105 +4,102 @@ Status: `source_complete_owner_execution_pending`.
 
 ## Purpose
 
-`PostgresIndexDriftSnapshotReader` is the first production implementation of the database-neutral
-`IndexDriftSnapshotReader` contract. It captures one exact owner state and one exact materialized
-Index state for a requested `EntityKey` without scanning identifiers, writing Index data, changing a
+`PostgresIndexDriftSnapshotReader` captures one exact owner state and one exact materialized Index
+state for a requested `EntityKey` without scanning identifiers, writing Index data, changing a
 finding, or choosing repair policy.
 
 The reader is constructed only after the immutable `SharedIndexSourceRegistry` and
-`SharedIndexSchemaRegistry` exist. It therefore uses the same selected owner source and schema
-contracts as replay and reconciliation.
+`SharedIndexSchemaRegistry` exist. When an explicit `SharedIndexSourceAbsenceRegistry` was
+materialized from the same owner-bound composition, the reader attaches it as an optional private
+capability.
 
 ## Consistency boundary
 
-The generic `IndexSource` API does not expose a caller-owned database transaction. The reader does
-not pretend that two unrelated source and Index reads share one transaction. Instead it implements
-an explicit source-version fence:
+The generic owner adapter does not expose a caller-owned transaction, so the reader uses an explicit
+version fence rather than claiming a cross-database snapshot:
 
 1. targeted-load the exact key from the immutable owner source registry;
-2. require exactly one `Upsert` or `Delete` mutation with a positive source version;
+2. accept one positive-version `Upsert` or `Delete` mutation; otherwise require one exact positive
+   `IndexSourceAbsenceWatermark` and represent the owner state as typed `Missing`;
 3. open one PostgreSQL `REPEATABLE READ READ ONLY` transaction;
-4. capture `txid_current_snapshot()` and read the exact materialized entity and links through that
-   same `DatabaseTransaction`;
-5. targeted-load the owner source again while the PostgreSQL transaction remains open;
-6. accept the pair only when the complete typed owner state is identical to the first observation.
+4. capture `txid_current_snapshot()` and reconstruct the exact materialized entity and links through
+   that transaction;
+5. targeted-load the owner source again while the transaction remains open and, for `Missing`,
+   reload the exact absence watermark;
+6. accept only when the complete typed owner state and its evidence version are identical.
 
-A source change returns retryable `index_drift_source_changed_during_capture`. A source load that
-returns no mutation has no admitted absence watermark and returns permanent
-`index_drift_source_watermark_missing`; unproven absence is never converted to `Missing`.
+A changed mutation, a newly appearing row, a disappearing row, or a changed absence version returns
+retryable `index_drift_source_changed_during_capture`.
 
-The separate `IndexSourceAbsenceProvider` registry now defines the explicit positive-version proof
-needed to close this gap without changing ordinary targeted loads. It is not wired into this reader
-in the contract-only slice. Until that wiring and a production owner provider exist, the reader's
-empty-load behavior remains unchanged and fail-closed.
-
-This fence is truthful for retained positive-version owner states. It is not equivalent to an
-exported PostgreSQL snapshot spanning the owner adapter, and the boundary is not advertised as one.
+Missing provider registration, provider `None`, cross-scope evidence, zero versions, or malformed
+state remains permanent `index_drift_source_watermark_missing` or the bounded source-contract
+failure. An empty targeted load alone is never converted to `Missing`.
 
 ## Boundary token
 
-The accepted pair receives one opaque bounded token with prefix `pg:` and lowercase SHA-256 over
+Every accepted pair receives one opaque bounded `pg:` token with lowercase SHA-256 over
 length-prefixed components:
 
 - `index_drift_postgres_source_version_boundary_v1`;
-- the PostgreSQL `txid_current_snapshot()` text captured by the read-only transaction;
-- the complete postcard-encoded owner `IndexDriftEntityState` observed before and after the
-  materialized read.
+- PostgreSQL `txid_current_snapshot()` text;
+- the postcard-encoded typed owner state.
 
-The token is evidence of the exact accepted fence. It is not a database credential, replay cursor,
-SQL string, transaction handle, repair authorization, or owner payload.
+For source `Missing`, the hash additionally includes the domain tag
+`explicit_source_absence_watermark_v1` and the positive absence `source_version`. Existing
+Upsert/Delete boundary derivation is unchanged.
 
-## Materialized state reconstruction
+The token is not a credential, replay cursor, SQL string, transaction handle, repair authorization,
+or owner payload.
+
+## Materialized reconstruction
 
 The reader queries one exact `index_entities` key. A missing row becomes materialized `Missing`.
-Existing rows must satisfy all of these checks before they cross the reader boundary:
+Existing rows must retain:
 
 - positive stored source version;
 - exact registered schema fingerprint;
-- deleted rows have no payload and no links;
-- live rows contain a decodable `BTreeMap<FieldName, IndexValue>` payload;
-- link rows match the exact source key and source version;
-- link and target names, schema versions, UUIDs, and locales decode into typed domain values;
-- ordinals for each link are contiguous from zero;
-- stored link names are declared by the registered schema;
-- output link ordering follows registered schema order and each target vector follows ordinal order.
+- no payload or links for deleted rows;
+- decodable typed fields for live rows;
+- exact source-version-fenced link rows;
+- valid target schemas, UUIDs, locales, and contiguous ordinals;
+- registered schema link order.
 
-The existing producer validates both resulting states through `SchemaRegistry` before hashing.
+The digest producer independently validates both returned states through `SchemaRegistry` before
+hashing.
 
 ## Runtime composition
 
-`materialize_postgres_index_drift_snapshot_reader` performs no SQL and starts no task. It returns
-`None` when the selected distribution has no source registry, fails closed when the schema registry
-is missing or the backend is not PostgreSQL, and otherwise constructs the reader from immutable
-registries plus the host connection.
+`IndexDriftDiagnosisOperatorRuntime` freezes the optional absence registry after the canonical replay
+source registry, attaches it to the snapshot reader, and privately composes the reader with
+`IndexDriftDigestProducer` and `PostgresIndexDriftFindingWriter`.
 
-The server now privately composes the same reader with `IndexDriftDigestProducer` and
-`PostgresIndexDriftFindingWriter` inside `IndexDriftDiagnosisOperatorRuntime`. That guarded sibling
-to the reconciliation operator accepts one exact request-bound authorized `EntityKey` and exposes
-no reader, writer, registry, connection, scan, lifecycle, or repair handle. No transport is added by
-this slice.
+Composition performs no source or Index SQL and starts no task. The operator exposes only one
+authorized exact-entity diagnosis call and no registry, reader, writer, connection, scan, lifecycle,
+or repair handle.
 
-## Source-ready PostgreSQL harness
+## Production Product proof
 
-`drift_snapshot_reader_postgres_test` is environment-gated by
-`RUSTOK_INDEX_TEST_DATABASE_URL` with `DATABASE_URL` fallback. It creates an isolated schema,
-applies every real Index migration, persists a real schema and materialized entity through the
-canonical stores, and retains source code for three cases:
+The selected Product distribution publishes one locale-absence provider. It uses the positive
+`products.index_revision` only when the Product exists, the requested translation locale is absent,
+and no exact retained Product tombstone owns that locale. Product translation changes advance the
+same revision, so the reader's second observation detects concurrent locale appearance or movement.
 
-- stable owner version around a materialized mismatch produces one `pg:` snapshot pair;
-- owner state changing between the two observations is rejected as retryable;
-- source absence without a tombstone or other watermark is rejected as permanent.
+Hard-delete tombstones remain ordinary source `Delete` values and are not collapsed into `Missing`.
 
-The harness is retained execution evidence only after the repository owner runs and admits it.
+## Evidence status
+
+The existing environment-gated `drift_snapshot_reader_postgres_test` still covers stable retained
+state, source change, and missing-watermark rejection. A real-migration Product locale-absence and
+concurrent-translation scenario remains to be added and run by the repository owner.
+
+No retained PostgreSQL execution evidence is claimed by this source change.
 
 ## Deliberate limits
 
 This slice does not add or claim:
 
-- exported PostgreSQL snapshots shared with arbitrary owner adapters;
-- reader wiring for the explicit `IndexSourceAbsenceProvider` registry;
-- a production owner absence provider or retained tombstone evidence;
-- missing-source admission without a retained positive-version watermark;
+- exported snapshots shared with arbitrary owner adapters;
+- ProductVariant, SalesChannel, or arbitrary-module absence providers;
 - entity discovery, full scans, stale enumeration, or orphan diagnosis;
 - automatic convergence resolution;
 - resolve/ignore commands, actor/reason audit, or public transport;
@@ -112,18 +109,18 @@ This slice does not add or claim:
 ## Maintainer verification
 
 ```bash
-RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
-  cargo test -p rustok-index \
-  --test drift_snapshot_reader_postgres_test \
-  -- --nocapture --test-threads=1
-
 cargo test -p rustok-index source_absence -- --nocapture
+cargo test -p rustok-distribution product_index -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-index --test drift_snapshot_reader_postgres_test \
+  -- --nocapture --test-threads=1
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
 cargo check -p rustok-index --all-targets
-cargo check -p rustok-server --all-targets
+cargo check -p rustok-distribution --all-targets --features mod-product
+cargo check -p rustok-server --all-targets --features mod-product
 git diff --check
 ```
 
