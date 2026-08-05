@@ -264,8 +264,6 @@ fn storefront_cache_variant(
 }
 
 #[cfg(feature = "ssr")]
-#[cfg(feature = "ssr")]
-#[cfg(feature = "ssr")]
 fn published_artifact_page_body(
     page_id: impl std::fmt::Display,
     published: Option<rustok_pages::PublishedLandingArtifact>,
