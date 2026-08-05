@@ -1,8 +1,9 @@
+use rustok_content::entities::node::ContentStatus;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::PagesModule;
-use rustok_pages::dto::{CreatePageInput, PageTranslationInput};
+use rustok_pages::dto::{CreatePageInput, ListPagesFilter, PageTranslationInput};
 use rustok_pages::services::PageService;
+use rustok_pages::PagesModule;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use std::sync::Arc;
@@ -27,28 +28,17 @@ async fn setup() -> (PageService, Uuid) {
     (PageService::new(db, event_bus), Uuid::new_v4())
 }
 
-async fn create_translated_page(service: &PageService, tenant_id: Uuid) -> Uuid {
+async fn create_page(
+    service: &PageService,
+    tenant_id: Uuid,
+    translations: Vec<PageTranslationInput>,
+) -> Uuid {
     let draft = service
         .create(
             tenant_id,
             SecurityContext::system(),
             CreatePageInput {
-                translations: vec![
-                    PageTranslationInput {
-                        locale: "en".to_string(),
-                        title: "Home".to_string(),
-                        slug: Some("home".to_string()),
-                        meta_title: None,
-                        meta_description: None,
-                    },
-                    PageTranslationInput {
-                        locale: "ru".to_string(),
-                        title: "Дом".to_string(),
-                        slug: Some("dom".to_string()),
-                        meta_title: None,
-                        meta_description: None,
-                    },
-                ],
+                translations,
                 template: Some("default".to_string()),
                 body: None,
                 channel_slugs: None,
@@ -67,6 +57,30 @@ async fn create_translated_page(service: &PageService, tenant_id: Uuid) -> Uuid 
         .await
         .expect("page should be published")
         .id
+}
+
+async fn create_translated_page(service: &PageService, tenant_id: Uuid) -> Uuid {
+    create_page(
+        service,
+        tenant_id,
+        vec![
+            PageTranslationInput {
+                locale: "en".to_string(),
+                title: "Home".to_string(),
+                slug: Some("home".to_string()),
+                meta_title: None,
+                meta_description: None,
+            },
+            PageTranslationInput {
+                locale: "ru".to_string(),
+                title: "Дом".to_string(),
+                slug: Some("dom".to_string()),
+                meta_title: None,
+                meta_description: None,
+            },
+        ],
+    )
+    .await
 }
 
 #[tokio::test]
@@ -135,4 +149,43 @@ async fn get_with_locale_fallback_normalizes_requested_and_fallback_locale() {
         page.translation.and_then(|translation| translation.slug),
         Some("dom".to_string())
     );
+}
+
+#[tokio::test]
+async fn public_list_respects_explicit_tenant_fallback_locale() {
+    let (service, tenant_id) = setup().await;
+    let page_id = create_page(
+        &service,
+        tenant_id,
+        vec![PageTranslationInput {
+            locale: "ru".to_string(),
+            title: "Только русский".to_string(),
+            slug: Some("tolko-russkiy".to_string()),
+            meta_title: None,
+            meta_description: None,
+        }],
+    )
+    .await;
+
+    let (items, total) = service
+        .list_public_visible_with_locale_fallback(
+            tenant_id,
+            ListPagesFilter {
+                status: Some(ContentStatus::Published),
+                template: None,
+                locale: Some("FR".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+            Some("RU"),
+            None,
+        )
+        .await
+        .expect("public list should resolve tenant fallback");
+
+    assert_eq!(total, 1);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, page_id);
+    assert_eq!(items[0].title.as_deref(), Some("Только русский"));
+    assert_eq!(items[0].slug.as_deref(), Some("tolko-russkiy"));
 }
