@@ -16,6 +16,7 @@ mod storefront_audience_topic;
 mod storefront_audience_topics;
 mod storefront_read_state;
 mod topic_merge_mutation;
+mod topic_reply_range_move_mutation;
 mod topic_split_mutation;
 mod types;
 
@@ -47,6 +48,9 @@ pub use topic_merge_mutation::{
     GqlForumTopicMerge, GqlForumTopicMergeSolutionResolution, MergeForumTopicGraphqlInput,
     ResolveForumTopicMergeSolutionGraphqlInput,
 };
+pub use topic_reply_range_move_mutation::{
+    GqlForumReplyRangeMove, MoveForumTopicReplyRangeGraphqlInput,
+};
 pub use topic_split_mutation::{GqlForumTopicSplit, SplitForumTopicRepliesGraphqlInput};
 pub use types::*;
 
@@ -73,5 +77,6 @@ pub struct ForumMutation(
     read_state::ForumReadStateMutation,
     storefront_read_state::ForumStorefrontReadStateMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
+    topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation,
     topic_split_mutation::ForumTopicSplitMutation,
 );
