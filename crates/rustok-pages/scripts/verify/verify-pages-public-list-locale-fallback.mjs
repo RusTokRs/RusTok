@@ -242,8 +242,9 @@ for (const marker of [
   need(plan, marker, "canonical Pages/Page Builder plan");
 }
 for (const marker of [
-  "public detail and list reads use the same tenant fallback chain",
-  "canonical URLs, redirects and route-collision policy remain open"
+  "Native and unauthenticated GraphQL public detail and list reads use the same",
+  "tenant fallback chain: requested locale",
+  "redirects and route-collision policy remain open as a separate routing slice"
 ]) {
   need(localPlan, marker, "Pages local plan");
 }
