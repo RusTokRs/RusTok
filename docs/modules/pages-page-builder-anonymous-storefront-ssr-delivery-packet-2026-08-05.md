@@ -5,7 +5,7 @@ Status: source-ready / execution-pending
 
 ## Scope
 
-This packet actualizes the anonymous Pages delivery boundary after the six-profile dependency-graph packet.
+This packet actualizes the anonymous Pages delivery boundary after the six-profile dependency-graph packet. It is the retained SSR-only anonymous Pages delivery contract.
 
 The current public Pages host is SSR-only:
 
