@@ -46,6 +46,7 @@ notifications module, and cross-module release gates.
 - FORUM-21U exposes `forkForumTopicReplyBranch` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged fork owner and immutable receipt; admin composition remains follow-up scope.
 - FORUM-21V composes `splitForumTopicReplies` in the module-owned Leptos and Next-admin surfaces with stable retry/target identities and no transport-local movement policy.
 - FORUM-24A adds `ForumTopicRouteService`, a twelve-hex topic identity, exact-locale canonical descriptors and an append-only redirect/tombstone ledger; host mounting and owner write composition remain follow-up scope.
+- FORUM-24B composes immutable localized source-route redirects into new topic merges in the same owner transaction without changing merge receipts or events.
 
 ## Verification
 
@@ -77,6 +78,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [FORUM-24A topic route identity owner](./forum-24a-topic-route-identity-owner.md)
+- [FORUM-24B topic merge route aliases](./forum-24b-topic-merge-route-aliases.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
