@@ -117,6 +117,7 @@ async fn delete_records_gone_route_before_soft_delete() -> TestResult<()> {
     let canonical = route_service
         .canonical_descriptor(tenant_id, topic_id, "en")
         .await?;
+    let short_id = canonical.short_id.clone();
 
     TopicService::new(db.clone(), event_bus)
         .delete(tenant_id, topic_id, admin)
@@ -135,7 +136,7 @@ async fn delete_records_gone_route_before_soft_delete() -> TestResult<()> {
         .expect("delete route tombstone");
     let alias_id: Uuid = alias.try_get("", "alias_id")?;
     assert_eq!(alias.try_get::<String>("", "locale")?, "en");
-    assert_eq!(alias.try_get::<String>("", "short_id")?, canonical.short_id);
+    assert_eq!(alias.try_get::<String>("", "short_id")?, short_id);
     assert_eq!(alias.try_get::<String>("", "slug")?, "removed-route");
     assert_eq!(alias.try_get::<String>("", "disposition")?, "gone");
     assert_eq!(alias.try_get::<Option<Uuid>>("", "target_topic_id")?, None);
