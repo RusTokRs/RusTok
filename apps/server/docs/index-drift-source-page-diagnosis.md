@@ -1,6 +1,6 @@
 # Index drift source-page diagnosis
 
-Status: `source_complete_transport_and_owner_execution_pending`.
+Status: `missing_only_source_complete_transport_and_owner_execution_pending`.
 
 ## Purpose
 
@@ -27,7 +27,7 @@ The frozen source registry then performs exactly one `IndexSource::scan` call. I
 revalidates tenant/schema scope, maximum page length, unique entity keys, non-empty continuation,
 and cursor advancement.
 
-## Candidate semantics
+## Missing-only candidate semantics
 
 A source scan page contains current-state `Upsert` and retained `Delete` mutations.
 
@@ -35,18 +35,21 @@ This slice:
 
 1. skips retained source `Delete` mutations;
 2. treats each source `Upsert` as one source-present candidate;
-3. delegates candidates sequentially to the existing guarded
-   `IndexDriftDiagnosisOperatorRuntime::diagnose_entity`;
-4. stops on the first source or exact-diagnosis failure;
-5. returns only current-page counters, finding receipts, and the server-held next cursor.
+3. delegates candidates sequentially to
+   `IndexDriftDiagnosisOperatorRuntime::diagnose_missing_entity_candidate`;
+4. captures and validates one exact source/materialized pair per candidate;
+5. records a finding only for source `Upsert` plus materialized `Missing`;
+6. returns `NotCandidate` for materialized `Upsert` or `Delete`, including stale fields, stale links,
+   and version differences;
+7. stops on the first source or exact-diagnosis failure;
+8. returns only current-page counters, missing finding receipts, and the server-held next cursor.
 
-The exact diagnosis operator repeats request-bound authorization for every candidate before source
-load, materialized reads, digest calculation, or finding persistence.
+The diagnosis operator repeats request-bound authorization for every candidate before source load,
+materialized reads, typed-state classification, digest calculation, or finding persistence.
 
-The existing digest outcome intentionally does not expose whether a mismatch is materialized
-`Missing`, stale fields, stale links, or another typed state difference. Therefore this capability
-is accurately named source-page candidate diagnosis rather than missing-only diagnosis. A
-missing-only selector over captured typed states remains a separate open slice.
+The missing-only outcome intentionally exposes no captured state shape. A non-missing candidate is
+reported only through the aggregate `non_missing_count`; raw source and materialized states are not
+returned.
 
 ## Output boundary
 
@@ -55,9 +58,9 @@ missing-only selector over captured typed states remains a separate open slice.
 - scanned mutation count;
 - source-present candidate count;
 - skipped retained-delete count;
-- consistent count;
-- mismatch-recorded count;
-- bounded finding receipts for mismatches;
+- non-missing candidate count;
+- missing-recorded count;
+- bounded finding receipts only for missing entities;
 - one optional server-owned continuation cursor.
 
 It does not copy source entity IDs, source records, indexed records, fields, links, tenant IDs,
@@ -71,24 +74,32 @@ discovery surface is added by this slice.
 This slice does not add or claim:
 
 - a GraphQL or other public source-page transport;
-- cursor persistence, multi-page accumulation, background iteration, scheduling, or restart state;
-- missing-only mismatch classification;
+- caller-visible raw `IndexSourceCursor` JSON;
+- cursor sealing, persistence, multi-page accumulation, background iteration, scheduling, or restart
+  state;
 - Index-only stale enumeration or orphan-link discovery;
 - finding resolve/ignore lifecycle;
 - targeted, full, dry-run, or shadow repair;
 - retained authorization, PostgreSQL, GraphQL, workflow, or CI execution evidence.
 
+The next safe transport prerequisite is a bounded server-owned continuation envelope that seals the
+source cursor to tenant and schema without exposing or accepting arbitrary raw cursor JSON.
+
 ## Suggested maintainer validation
 
 ```bash
+cargo test -p rustok-index drift_digest -- --nocapture
+cargo test -p rustok-server index_drift_diagnosis -- --nocapture
 cargo test -p rustok-server index_drift_source_page_diagnosis -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
+node scripts/verify/verify-index-drift-digest-producer.mjs
 node scripts/verify/verify-index-drift-source-page-diagnosis.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
 node scripts/verify/verify-index-query-contract.mjs
+cargo check -p rustok-index --all-targets
 cargo check -p rustok-server --all-targets --features mod-product
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI were executed
-by the implementation agent.
+No tests, verifiers, formatting, Cargo checks, PostgreSQL or GraphQL scenarios, workflows, or CI were
+executed by the implementation agent.
