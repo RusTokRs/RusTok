@@ -409,7 +409,7 @@ jobs:
           NODE
 
       - name: Attest container provenance
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
         with:
           subject-name: ${{ steps.image-metadata.outputs.image }}
           subject-digest: ${{ steps.image-metadata.outputs.digest }}
@@ -473,12 +473,12 @@ jobs:
           --image-metadata release-artifacts/container-image.json
 
       - name: Attest every checksummed release asset
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
         with:
           subject-checksums: release-artifacts/SHA256SUMS
 
       - name: Attach SPDX SBOM attestation to server archive
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
         with:
           subject-path: release-artifacts/${{ needs.build.outputs.archive_name }}
           sbom-path: release-artifacts/${{ needs.build.outputs.sbom_name }}
