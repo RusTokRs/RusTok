@@ -14,7 +14,7 @@ The guarded exact-entity diagnosis change remains internally consistent at sourc
 - the accepted key is one typed `EntityKey` and must match the authorized tenant;
 - composition reuses the frozen source/schema registries and publishes no scan, scheduler, repair,
   reader, writer, registry, or connection handle;
-- no GraphQL, HTTP, CLI, admin, MCP, or other transport is claimed;
+- the predecessor itself claimed no GraphQL, HTTP, CLI, admin, MCP, or other transport;
 - PR #2983 had no review threads, submitted reviews, or conversation comments;
 - tests and retained execution evidence remain owner-owned and pending.
 
@@ -84,18 +84,44 @@ translation writing, and observation. It copies neither the Product provider SQL
 The harness is `source_ready_owner_execution_pending`. Its presence is not retained execution
 evidence; the repository owner must run and admit the PostgreSQL output.
 
+## Bounded GraphQL transport continuation
+
+`apps/server/src/graphql/index_drift_diagnosis.rs` mounts one root mutation over the existing
+guarded diagnosis operator:
+
+- `IndexDriftDiagnosisInput` contains only string module/entity/version/entity-id fields and an
+  optional locale; tenant and actor are absent;
+- tenant and actor are derived from authenticated GraphQL request context;
+- the task-local effective `modules:manage` snapshot is checked before parsing any untrusted
+  identifier, schema version, UUID, or locale;
+- every string is bounded before domain parsing;
+- the resulting key is exactly one tenant-bound `EntityKey`;
+- the resolver delegates once to `IndexDriftDiagnosisOperatorRuntime::diagnose_entity`, which
+  repeats the same request-bound authorization before dependency access;
+- the payload exposes only consistent/mismatch status, bounded SHA-256 digests, and finding receipt
+  metadata;
+- dependency failures expose only fixed public codes, retryability, and an existing bounded
+  dependency code.
+
+The transport performs no SeaORM query and owns no database connection, source/schema/absence
+registry, batch, scan, scheduler, finding lifecycle, or repair capability. A source guard retains the
+schema mount, authorization-before-parsing order, exact-key construction, bounded output, and open
+execution status.
+
 ## Open cursor
 
-The next implementation step is one bounded server-owned transport over the existing guarded
-`diagnose_entity(context, key)` operation. It must accept exactly one typed key, derive authority
-only from request context, preserve authorization-before-validation ordering, and expose no batch,
-scan, registry, connection, lifecycle, or repair authority.
+The next implementation step is one bounded missing-entity candidate diagnosis slice over a single
+owner `IndexSource::scan` page. It must retain a positive page limit and opaque cursor, process no
+more than that page, compare only source-live keys against exact materialized state, and avoid
+cross-page identifier accumulation.
 
-Product locale PostgreSQL harness execution, discovery, automatic finding resolution,
-resolve/ignore commands, repair, and retained execution evidence remain open.
+Product locale PostgreSQL harness execution, GraphQL execution evidence, stale Index-only discovery,
+orphan-link diagnosis, automatic finding resolution, resolve/ignore commands, and repair remain
+open.
 
 ## Validation ownership
 
-Suggested commands are retained in the dated implementation plan and the explicit watermark and
-harness documents. Per maintainer instruction, this implementation agent did not run tests,
-JavaScript verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI.
+Suggested commands are retained in the dated implementation plan and the explicit watermark,
+harness, and GraphQL transport documents. Per maintainer instruction, this implementation agent did
+not run tests, JavaScript verifiers, formatting, Cargo checks, PostgreSQL or GraphQL scenarios,
+workflows, or CI.
