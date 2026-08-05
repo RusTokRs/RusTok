@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / event-delivery-profile-parity-source-ready / execution-evidence-pending
+Status: source-parity-current / selected-immutable-artifact-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
 
 ## Source-of-truth policy
@@ -30,6 +30,7 @@ The current source was rechecked against:
 - the historical PostgreSQL owner-transaction and pre-handler relay-restart harnesses;
 - the module `EventDispatcher` filtering and asynchronous handler execution;
 - the native storefront adapter, registered Leptos server function and public artifact HTTP route;
+- `PageBuilderArtifactService::load_public_bound_artifact_with_fallback` and the locale-body published binding;
 - the Channel owner module-binding contract;
 - recent merged Pages parity PRs and their dated packets.
 
@@ -51,9 +52,10 @@ Current `main` contains:
 - PR #2997 — topology correction separating the synchronous test target from production asynchronous listener delivery;
 - PR #3001 — production synchronous Pages generation gate with process-bounded same-event dedupe;
 - PR #3004 — production gate to registered native route continuity source;
-- PR #3006 — production-gate PostgreSQL publish/rollback and restart-retry source.
+- PR #3006 — production-gate PostgreSQL publish/rollback and restart-retry source;
+- PR #3008 — factory-selected Memory and OutboxLocal delivery profile parity source.
 
-The current slice retains factory-selected Memory and OutboxLocal profile parity through the production Pages gate. It changes no production behavior.
+The current slice retains the Pages owner invariant that a persisted current Fly body can advance after publication without replacing the selected immutable published artifact. It changes no production behavior and does not extend optional event infrastructure.
 
 ## Current parity state
 
@@ -97,6 +99,38 @@ The retained native packets cover:
 - old-key physical retention after generation rotation.
 
 The route set remains unexecuted.
+
+### Selected immutable artifact after draft mutation: source-ready
+
+The focused Pages owner harness now retains the authoring/publication separation directly:
+
+```text
+PageService::create
+  → current Fly body contains published content
+PageService::publish_reviewed
+  → immutable artifact A + locale body binding
+exact public read (en)
+  → verified immutable artifact A
+fallback public read (fr → en)
+  → verified immutable artifact A
+persist page_bodies.content with a different draft-only marker
+  → current body content/revision advances
+  → published binding still points to artifact A
+exact and fallback public reads
+  → same artifact hash and document_html
+  → draft-only marker remains absent
+```
+
+`PageBuilderArtifactService::load_public_bound_artifact_with_fallback` remains the public authority. It requires published state and channel visibility, resolves locale candidates, reads the locale body identity, follows `page_published_landing_artifacts.artifact_id`, reconstructs and verifies the immutable Page Builder materialization envelope, and returns that artifact. The current Fly body is not public render authority.
+
+Source evidence is retained in:
+
+- `crates/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-selected-immutable-artifact-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`;
+- `docs/modules/pages-page-builder-selected-immutable-artifact-packet-2026-08-05.md`.
+
+SQLite execution remains pending.
 
 ### Reviewed publish to native refill through synchronous test target: source-ready
 
@@ -145,7 +179,7 @@ The synchronous Pages invalidation now precedes downstream transport acceptance.
 
 `ServerPagesCachePort` uses one process-bounded dedupe keyed by stable event UUID. Same-event work is serialized. A successful invalidation is recorded before downstream delivery, so downstream rejection allows delivery retry without a second generation rotation. An invalidation error returns before the UUID is recorded, allowing the relay or publisher to retry the invalidation.
 
-The asynchronous Pages module listener remains registered for memory, OutboxLocal and OutboxIggy profiles. A separately constructed provider resolves the same process-bounded dedupe and returns a valid current receipt without another bump.
+The asynchronous Pages module listener remains registered for supported delivery profiles. A separately constructed provider resolves the same process-bounded dedupe and returns a valid current receipt without another bump.
 
 A process restart intentionally loses this bounded optimization. Replaying an already-rotated event after restart can conservatively rotate another generation; it cannot expose stale data. Exact-once invalidation across process restarts is not claimed.
 
@@ -229,7 +263,7 @@ PostgreSQL execution remains pending.
 
 ### Memory and OutboxLocal factory profile parity: source-ready
 
-The new server harness constructs both locally executable profiles through the real `build_event_runtime` factory.
+The server harness constructs both locally executable profiles through the real `build_event_runtime` factory.
 
 Memory retains:
 
@@ -260,8 +294,6 @@ OutboxRelay
 
 This source proves that the same Pages owner policy crosses different durability boundaries without moving rotation into domain publication. Memory uses `ReliabilityLevel::InMemory` and has no relay. OutboxLocal uses `ReliabilityLevel::Outbox`; its application-facing transport only persists the event, while the relay target performs generation rotation before listener delivery and durable acknowledgement.
 
-The `OutboxIggy` factory branch remains source-wired through artifact projection, the production gate and local fan-out after primary Iggy acceptance. OutboxIggy execution remains open because no broker or external connector is started in this packet.
-
 Source evidence is retained in:
 
 - `apps/server/tests/pages_event_delivery_profiles_sqlite.rs`;
@@ -269,7 +301,7 @@ Source evidence is retained in:
 - `crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs`;
 - `docs/modules/pages-page-builder-event-delivery-profile-parity-packet-2026-08-05.md`.
 
-SQLite/profile execution remains pending.
+SQLite/profile execution remains pending. Optional external delivery infrastructure is outside the active Pages cursor.
 
 ## Retained source marker index
 
@@ -279,11 +311,12 @@ This section keeps historical static guards stable while the canonical cursor ad
 - Native storefront registered server function: source-ready; the real registered Leptos endpoint is retained. Routed-channel module admission remains open for execution, and durable `NodePublished` relay delivery is now connected at source level.
 - `native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. Verification reconstructs the full Page Builder materialization envelope before a registered native storefront miss/refill.
 - `native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission, and successful reads retain a verified immutable Page Builder artifact.
+- `selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority; exact and fallback reads remain bound to the verified immutable artifact until binding replacement.
 - Metadata revision/isolation source packet: ready, unvalidated. A stale metadata revision short-circuits before patch transport; the metadata-only transport request excludes document data; dirty Fly state is not accepted by the metadata owner port. Execution evidence remains pending. Verifier: `verify-pages-metadata-revision-isolation.mjs`.
 - `production-relay-generation-gate-source-ready`; synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe.
 - `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready.
 - `production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready. The packet retains a post-invalidation downstream failure and keeps the historical owner-transaction and pre-handler restart packets separate.
-- `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready. OutboxIggy execution remains open.
+- `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready. Optional external delivery execution is outside the active Pages cursor.
 
 ## Parity matrix
 
@@ -298,50 +331,48 @@ This section keeps historical static guards stable while the canonical cursor ad
 | Artifact HTTP miss/refill/hit | Pages route/artifact owner | Immutable artifact verification | Source-ready | SQLite/Axum and PostgreSQL HTTP pending |
 | Native storefront route/cache/admission | Pages/Channel owners | Published artifact contract | Source-ready | SQLite/Axum route set pending |
 | Native reviewed immutable artifact selection | Pages publish/binding/route/cache owners | Review/sanitization/materialization/integrity | Source-ready | SQLite/Axum reviewed route pending |
+| Selected immutable artifact vs current draft body | Pages body/binding/artifact owner | Immutable artifact producer contract | Source-ready | Focused SQLite execution pending |
 | Relay + handler + native refill via test target | Pages publish/outbox/handler/route/cache owners | Reviewed artifact producer contract | Source-ready, topology-corrected | SQLite test-target execution pending |
 | Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit execution pending |
 | Production relay to registered native route | Server gate / Pages route/cache owners | Reviewed artifact producer contract | Source-ready | Server SQLite/Axum execution pending |
 | Production PostgreSQL publish/rollback and relay retry | Server gate / Pages outbox/cache owners | No delivery ownership | Source-ready | PostgreSQL execution pending |
-| Memory and OutboxLocal factory profiles | Server factory / Pages invalidation owner | No delivery ownership | Source-ready | SQLite profile execution pending; Iggy open |
+| Memory and OutboxLocal factory profiles | Server factory / Pages invalidation owner | No delivery ownership | Source-ready | SQLite profile execution pending |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Browser/runtime evidence pending |
 | Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Bundle/runtime proof pending |
 
 ## Changes in this slice
 
-1. Add one server integration harness that constructs `Memory` and `OutboxLocal` through `build_event_runtime` with full platform migrations.
-2. Retain Memory reliability, no-relay behavior, synchronous Pages rotation, listener delivery and absence of an outbox row.
-3. Retain OutboxLocal application publication as pending-row persistence with no pre-relay rotation or listener delivery.
-4. Run the real retained relay source through artifact projection, the production generation gate and local listener delivery before durable acknowledgement.
-5. Preserve same-event duplicate no-op for the ordinary Pages listener in both profiles.
-6. Keep the `OutboxIggy` factory branch source-wired while leaving external Iggy execution open.
-7. Add source evidence, a fail-closed verifier and a dated profile packet.
-8. Leave production Pages, Page Builder, event factory, Outbox, cache, dependencies and schemas unchanged.
+1. Add one focused Pages SQLite regression using real reviewed publication, immutable artifact persistence and the locale binding.
+2. Retain exact-locale and fallback-locale public reads before a current body mutation.
+3. Persist a different draft Fly document in `page_bodies.content` after publication.
+4. Prove the locale binding remains unchanged and still points to the selected immutable artifact.
+5. Prove artifact hash and document HTML remain unchanged for exact and fallback reads and exclude the draft-only marker.
+6. Add machine evidence, a fail-closed verifier and a dated packet.
+7. Close the source checkbox that storefront serves only the selected immutable published artifact.
+8. Leave production Pages, Page Builder, storefront, cache, event delivery, dependencies and schemas unchanged.
 
 ## Boundaries
 
 This slice does not:
 
 - change Page Builder review, sanitizer, materialization or artifact behavior;
-- alter Pages lifecycle event order or invalidation scope policy;
+- alter Pages lifecycle event order, publication, rollback or binding replacement;
 - alter cache namespace names, composite key shape, TTL or capacity;
 - add cache scans or wildcard deletion;
 - change outbox, Pages or Page Builder migrations or DTOs;
-- remove the asynchronous module listener;
-- provide durable exact-once invalidation across process restarts;
-- start the outbox relay supervisor loop or external Iggy infrastructure;
-- claim tests, Cargo, formatting, verifiers, SQLite, runtime profiles, Iggy, browsers, workflows, CI or rollout execution;
+- change optional event infrastructure;
+- claim tests, Cargo, formatting, verifiers, SQLite, Axum, Leptos, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA status.
 
 ## Next cursor
 
-1. Run the event-delivery profile parity verifier and focused server SQLite profile harness.
-2. Run the production-gate PostgreSQL restart verifier and focused server PostgreSQL harness.
-3. Rerun the historical PostgreSQL owner-transaction and pre-handler restart verifiers/tests alongside it.
-4. Run the production relay-native-route and generation-gate verifiers/tests.
-5. Retain OutboxIggy execution evidence only where a configured broker/connector is available.
-6. Rerun the topology-aware continuity verifier and the complete native SQLite/Axum route set.
-7. Run metadata conflict/isolation and published metadata browser packets.
-8. Complete compile, workflow, anonymous-bundle and observed tenant rollout evidence before promotion.
+1. Run the selected immutable artifact verifier and focused Pages SQLite regression.
+2. Run the reviewed native storefront artifact verifier and route harness alongside it.
+3. Run the complete native SQLite/Axum route set, including channel admission and artifact HTTP cache.
+4. Run the production relay-native-route, generation-gate and PostgreSQL restart packets.
+5. Run metadata conflict/isolation and published metadata browser packets.
+6. Prove anonymous SSR/CSR/hydrate bundles exclude authoring code.
+7. Complete compile, workflow and observed tenant rollout evidence before promotion.
 
 Any failure or owner-model change must update this shared cursor first, then the owning local plan, so Pages and Page Builder cannot drift into different completion claims.
 
@@ -350,6 +381,8 @@ Any failure or owner-model change must update this shared cursor first, then the
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
@@ -357,13 +390,13 @@ node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgr
 node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
+cargo test -p rustok-pages --test selected_immutable_published_artifact_sqlite -- --nocapture
 cargo test -p rustok-server --features mod-pages --test pages_event_delivery_profiles_sqlite -- --nocapture
 cargo test -p rustok-server --features mod-pages --test pages_production_gate_postgres_restart -- --nocapture
 cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
