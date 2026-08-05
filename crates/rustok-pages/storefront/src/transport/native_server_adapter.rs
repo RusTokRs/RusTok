@@ -57,7 +57,10 @@ async fn storefront_pages_native(
             .ok();
 
         let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
-            (tenant.id, tenant.default_locale.clone())
+            (
+                tenant.id,
+                normalize_tenant_fallback_locale(tenant.default_locale.as_str()),
+            )
         } else {
             let slug = tenant_slug
                 .as_deref()
@@ -72,12 +75,10 @@ async fn storefront_pages_native(
                 .get_tenant_by_slug(slug)
                 .await
                 .map_err(ServerFnError::new)?;
-            let fallback = request_context
-                .as_ref()
-                .map(|ctx| ctx.locale.clone())
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-            (tenant.id, fallback)
+            (
+                tenant.id,
+                normalize_tenant_fallback_locale(tenant.default_locale.as_str()),
+            )
         };
 
         if let Some(request_context) = request_context.as_ref() {
@@ -210,7 +211,7 @@ async fn storefront_pages_native(
         };
 
         let (items, total) = service
-            .list_public_visible(
+            .list_public_visible_with_locale_fallback(
                 tenant_id,
                 RuntimeListPagesFilter {
                     status: Some(ContentStatus::Published),
@@ -219,6 +220,7 @@ async fn storefront_pages_native(
                     page: 1,
                     per_page: 6,
                 },
+                Some(fallback_locale.as_str()),
                 public_channel_slug.as_deref(),
             )
             .await
@@ -244,6 +246,16 @@ async fn storefront_pages_native(
         Err(ServerFnError::new(
             "pages/storefront-data requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn normalize_tenant_fallback_locale(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        PLATFORM_FALLBACK_LOCALE.to_string()
+    } else {
+        value.to_string()
     }
 }
 
@@ -351,13 +363,25 @@ fn map_page_list_item(page: rustok_pages::PageListItem) -> PageListItem {
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{artifact_url, published_artifact_page_body, storefront_cache_variant};
+    use super::{
+        artifact_url, normalize_tenant_fallback_locale, published_artifact_page_body,
+        storefront_cache_variant,
+    };
 
     const PAGE_ID: &str = "00000000-0000-0000-0000-000000000000";
 
     #[test]
     fn missing_published_artifact_fails_closed() {
         assert!(published_artifact_page_body(PAGE_ID, None, Some("web")).is_none());
+    }
+
+    #[test]
+    fn tenant_fallback_locale_uses_platform_only_when_owner_value_is_blank() {
+        assert_eq!(normalize_tenant_fallback_locale(" ru "), "ru");
+        assert_eq!(
+            normalize_tenant_fallback_locale("   "),
+            super::PLATFORM_FALLBACK_LOCALE
+        );
     }
 
     #[test]

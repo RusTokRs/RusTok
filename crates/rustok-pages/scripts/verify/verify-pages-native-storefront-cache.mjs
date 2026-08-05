@@ -152,7 +152,7 @@ requireOrder(
     ".get_by_slug_with_locale_fallback(",
     "PageBuilderArtifactService::new(runtime_ctx.db_clone())",
     ".load_public_bound_artifact_with_fallback(",
-    ".list_public_visible(",
+    ".list_public_visible_with_locale_fallback(",
     "let data = StorefrontPagesData {",
     "cache_runtime.put_json(cache_key, &data).await",
   ],

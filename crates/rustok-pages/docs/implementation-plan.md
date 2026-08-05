@@ -136,6 +136,14 @@ Pages persistence, cache scope or tenant policy.
   `cargo metadata` profiles for Pages default/hydrate/SSR and host CSR/hydrate/SSR.
   It excludes dev-dependencies and fails if any non-dev edge reaches Pages admin,
   Page Builder admin, the admin host, or Fly browser/editor crates.
+- [x] The current public host is SSR-only for Pages. A source regression rejects
+  executable client bootstrap markers, and an explicit artifact inspector requires
+  a concrete built SSR artifact instead of treating a missing client bundle as a
+  pass.
+- [x] Native and unauthenticated GraphQL public detail and list reads use the same
+  tenant fallback chain: requested locale, tenant default locale, then platform
+  fallback. The legacy owner list wrapper remains available for platform-only
+  callers.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
   causing misses and refills on storefront and artifact delivery paths through the
   production gate.
@@ -143,7 +151,8 @@ Pages persistence, cache scope or tenant policy.
   content is not public render authority and can become public only through a later
   reviewed publish or rollback binding replacement.
 - [ ] Authenticated real-DOM inline editing is not implemented.
-- [ ] Compiled SSR/CSR/hydrate bundle artifact evidence remains open.
+- [ ] Compiled SSR artifact evidence remains open; CSR/hydrate Pages bundle evidence
+  becomes mandatory if a Pages client bootstrap is introduced.
 
 ### Page Builder/FBA
 
@@ -220,16 +229,16 @@ Pages persistence, cache scope or tenant policy.
   promoted-scenario selection, registered draft/published metadata surfaces,
   generation-aware storefront/artifact readers, production generation gating,
   gate-to-native-route, PostgreSQL retry, local profile, selected immutable
-  artifact and anonymous dependency-graph source packets are connected. Executed
-  metadata conflict/isolation, inline edit mode and compiled bundle evidence remain
-  open.
+  artifact, tenant-fallback detail/list parity, anonymous dependency-graph and
+  SSR-only host source packets are connected. Executed metadata conflict/isolation,
+  inline edit mode and compiled SSR artifact evidence remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
   invalidation/read boundaries are integrated at source level. Server and owner
   harnesses retain native-route key rotation, PostgreSQL retry semantics,
   Memory/OutboxLocal composition, draft-vs-published artifact isolation and
-  storefront graph exclusion, but execution, bundle artifacts, rollback proof,
+  storefront graph exclusion, but execution, built artifacts, rollback proof,
   verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
@@ -290,6 +299,12 @@ Current document save after publication
   -> selected published artifact binding is unchanged
   -> exact/fallback public reads follow binding artifact_id
   -> current body content is not public render authority
+
+Public localized read
+  -> requested locale
+  -> tenant default locale when supplied by the public transport
+  -> platform fallback locale
+  -> selected detail and public list use the same owner resolver
 
 Rollback command
   + expected page version
@@ -365,12 +380,13 @@ Invariants:
     key may remain physically stored but is unreachable from the current snapshot.
 25. Exact and fallback public artifact reads follow the locale body's immutable
     published binding, not the mutable body content.
-26. Missing providers fail visibly and never cause silent deletion.
-27. Dynamic widgets persist versioned configuration, not privileged snapshots.
-28. Feature-resolved anonymous storefront graphs exclude admin and Fly authoring
-    packages through non-dev dependencies; compiled bundle artifact proof remains
-    required.
-29. No block or shadow-editor fallback exists.
+26. Public detail and list reads use the same tenant fallback chain when the host
+    supplies tenant locale policy.
+27. Missing providers fail visibly and never cause silent deletion.
+28. Dynamic widgets persist versioned configuration, not privileged snapshots.
+29. Feature-resolved anonymous storefront graphs exclude admin and Fly authoring
+    packages through non-dev dependencies; built SSR artifact proof remains required.
+30. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -473,9 +489,13 @@ Invariants:
   reads retain the same binding/hash/HTML across a persisted draft body mutation.
 - Added the anonymous storefront dependency graph verifier for six feature-resolved
   profiles, excluding dev-dependencies and forbidding admin/Fly authoring packages.
+- Retained the actual SSR-only Pages host boundary and explicit built-artifact
+  inspector without claiming a nonexistent client bundle.
+- Added fallback-aware public list resolution so native and GraphQL public detail
+  and list reads share the tenant default locale before platform fallback.
 - Added source evidence, static verifiers and dated production/owner packets.
 - Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
-  workflows and CI were not executed in this slice.
+  built artifacts, workflows and CI were not executed in this slice.
 
 ## Next implementation order
 
@@ -543,14 +563,20 @@ Invariants:
 ### P1 — storefront and routing
 
 - [x] Serve only the selected immutable published artifact.
-- [ ] Add locale fallback, canonical URLs, redirects and route-collision policy.
+- [x] Apply tenant default locale fallback consistently to public detail and list
+  reads in native and GraphQL transports.
+- [ ] Add canonical URLs, redirects and route-collision policy. The canonical URLs,
+  redirects and route-collision policy remain open as a separate routing slice.
 - [ ] Compose Navigation-owned menus, SEO and channel visibility with
   generation-aware deterministic cache keys.
 - [ ] Implement authenticated real-DOM inline editing behind permissions/flags.
 - [x] Retain the anonymous storefront dependency graph verifier across Pages
   default/hydrate/SSR and host CSR/hydrate/SSR profiles.
-- [ ] Retain compiled SSR/CSR/hydrate bundle artifact evidence proving authoring
-  code and packages remain absent.
+- [x] Retain the current SSR-only host source boundary and explicit artifact
+  inspector contract.
+- [ ] Retain compiled SSR artifact evidence proving authoring code and packages
+  remain absent. Reopen real CSR/hydrate bundle proof if Pages client delivery is
+  introduced.
 - [ ] Prove admin preview, published output and inline edit parity.
 
 ### P2 — operations and rollout
@@ -577,9 +603,13 @@ Invariants:
 - `node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`
 - `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`
 - `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`
+- `node crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs`
+- `cargo test -p rustok-pages --test page_locale_fallback -- --nocapture`
 - `node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`
 - `cargo test -p rustok-pages --test selected_immutable_published_artifact_sqlite -- --nocapture`
 - `node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs`
+- `node crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs --artifact <built-ssr-artifact> --output <packet.json>`
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`
