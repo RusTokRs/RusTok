@@ -331,8 +331,8 @@ for (const raw of evidence.profiles) {
 
 for (const marker of [
   "source-ready / execution-pending",
-  "six feature-resolved graphs",
-  "dev-dependencies are excluded",
+  "Six feature-resolved graphs",
+  "Dev-dependencies are excluded",
   "compiled bundle artifact evidence remains pending"
 ]) {
   need(packet, marker, "anonymous storefront graph packet");
@@ -347,7 +347,7 @@ for (const marker of [
 }
 for (const marker of [
   "anonymous storefront dependency graph verifier",
-  "compiled SSR/CSR/hydrate bundle artifact evidence remains open"
+  "Compiled SSR/CSR/hydrate bundle artifact evidence remains open"
 ]) {
   need(localPlan, marker, "Pages local plan");
 }
