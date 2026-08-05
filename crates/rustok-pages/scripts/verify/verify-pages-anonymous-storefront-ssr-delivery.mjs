@@ -10,7 +10,7 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(scriptDir, "..", "..", "..", "..");
 const failures = [];
 
-const paths = {
+const files = {
   evidence:
     "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-ssr-delivery-source.json",
   graphEvidence:
@@ -49,7 +49,7 @@ const between = (text, start, end, label) => {
   return text.slice(from, to);
 };
 
-for (const [label, relativePath] of Object.entries(paths)) {
+for (const [label, relativePath] of Object.entries(files)) {
   if (!existsSync(absolute(relativePath))) failures.push(`${label}: missing ${relativePath}`);
 }
 if (failures.length > 0) {
@@ -58,14 +58,14 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-const evidence = JSON.parse(read(paths.evidence));
-const graphEvidence = JSON.parse(read(paths.graphEvidence));
-const cargo = read(paths.cargo);
-const host = read(paths.host);
-const regression = read(paths.regression);
-const inspector = read(paths.inspector);
-const packet = read(paths.packet);
-const plan = read(paths.plan);
+const evidence = JSON.parse(read(files.evidence));
+const graphEvidence = JSON.parse(read(files.graphEvidence));
+const cargo = read(files.cargo);
+const host = read(files.host);
+const regression = read(files.regression);
+const inspector = read(files.inspector);
+const packet = read(files.packet);
+const plan = read(files.plan);
 
 if (evidence.format !== "pages_anonymous_storefront_ssr_delivery_source_v1") {
   failures.push(`evidence format mismatch: ${evidence.format}`);
@@ -91,9 +91,9 @@ for (const key of [
   "storefront_source_has_no_wasm_start_entrypoint",
   "storefront_source_has_no_mount_to_body_entrypoint",
   "storefront_source_has_no_hydrate_body_entrypoint",
-  "runtime_regression_added",
+  "source_regression_added",
   "artifact_inspector_added",
-  "artifact_inspector_requires_explicit_artifact_root",
+  "artifact_inspector_requires_explicit_artifact_paths",
   "artifact_inspector_records_sha256",
   "artifact_inspector_rejects_pages_admin",
   "artifact_inspector_rejects_page_builder_admin",
@@ -203,19 +203,19 @@ for (const file of rustFiles("apps/storefront/src")) {
 }
 
 for (const marker of [
-  "anonymous_pages_host_renders_without_executable_client_bootstrap",
-  'document.starts_with("<!DOCTYPE html>")',
-  'document.contains("<div id=\\\"app\\\">")',
+  "const HOST_SOURCE: &str = include_str!(\"../src/lib.rs\")",
+  "fn render_document_source()",
+  "anonymous_pages_host_source_has_no_executable_client_bootstrap",
+  'document.contains("<!DOCTYPE html>")',
+  'document.contains("<div id=\\\"app\\\">{app_html}</div>")',
   'document.contains("<link rel=\\\"stylesheet\\\" href=\\\"/assets/app.css\\\" />")',
-  '"<script src="',
-  '"<script type=\\\"module\\\""',
-  '"rel=\\\"modulepreload\\\""',
+  '"#[wasm_bindgen(start)]"',
   '"rustok-pages-admin"',
   '"rustok-page-builder-admin"',
   '"PagesFlyBuilder"',
   '"PageBuilderAdmin"'
 ]) {
-  need(regression, marker, "anonymous SSR runtime regression");
+  need(regression, marker, "anonymous SSR source regression");
 }
 
 for (const marker of [
