@@ -18,6 +18,7 @@ const scripts = [
   'verify-index-query-equivalence-admission.mjs',
   'verify-index-source-schema-registry.mjs',
   'verify-index-source-replay-contract.mjs',
+  'verify-index-source-absence-watermark.mjs',
   'verify-index-replay-job-leases.mjs',
   'verify-index-replay-multipage-runner.mjs',
   'verify-index-source-reconciliation.mjs',
