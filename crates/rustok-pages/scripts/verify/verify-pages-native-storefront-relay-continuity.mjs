@@ -150,7 +150,7 @@ for (const marker of [
 for (const marker of [
   "native-storefront-relay-continuity-source-ready",
   "Reviewed publish relay to native refill: source-ready",
-  "NodeCreated → NodeUpdated → native fill → NodePublished",
+  "The new continuity harness retains one real owner and dispatcher sequence:",
   "old composite key remains physically retained"
 ]) need(plan, marker, "plan");
 
