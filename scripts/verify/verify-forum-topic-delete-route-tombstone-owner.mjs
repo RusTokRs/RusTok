@@ -44,7 +44,7 @@ mustContain(
 );
 if (
   owner.indexOf("record_delete_tombstones_in_tx") >
-  owner.indexOf("delete_attached_localized_values")
+  owner.lastIndexOf("delete_attached_localized_values")
 ) {
   throw new Error("route tombstones must be recorded before localized cleanup");
 }
