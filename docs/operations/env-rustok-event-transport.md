@@ -14,7 +14,7 @@ status: deprecated
 ## Purpose
 
 This variable was removed. Use `RUSTOK_EVENT_DELIVERY_PROFILE` with exactly
-`memory`, `outbox_local`, or `outbox_iggy`. The canonical contract is in
+`outbox_local` or `outbox_iggy`. The canonical contract is in
 [`apps/server` event delivery documentation](../../apps/server/docs/event-transport.md).
 
 ## Contract

@@ -167,17 +167,17 @@ pub async fn bootstrap_app_runtime(
     }
 
     if settings.runtime.is_registry_only() {
-        use rustok_core::events::MemoryTransport;
+        use rustok_outbox::OutboxTransport;
 
-        // Registry-only mode does not bootstrap full event runtime, but
-        // GraphQL schema construction still expects an EventTransport in shared_store.
-        // Seed a local memory transport to keep shared initialization deterministic
-        // for tests and non-GraphQL surfaces.
+        // Registry-only mode does not start the event runtime or relay, but GraphQL
+        // schema construction still requires the canonical durable write transport.
         if runtime_ctx
             .shared_get::<std::sync::Arc<dyn rustok_core::events::EventTransport>>()
             .is_none()
         {
-            runtime_ctx.shared_insert(std::sync::Arc::new(MemoryTransport::new())
+            runtime_ctx.shared_insert(std::sync::Arc::new(OutboxTransport::new(
+                runtime_ctx.db_clone(),
+            ))
                 as std::sync::Arc<dyn rustok_core::events::EventTransport>);
         }
     }

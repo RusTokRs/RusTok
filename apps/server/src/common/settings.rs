@@ -244,26 +244,25 @@ impl Default for DlqSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum EventDeliveryProfile {
-    #[default]
-    Memory,
     OutboxLocal,
     OutboxIggy,
+}
+
+impl Default for EventDeliveryProfile {
+    fn default() -> Self {
+        Self::OutboxLocal
+    }
 }
 
 impl EventDeliveryProfile {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Memory => "memory",
             Self::OutboxLocal => "outbox_local",
             Self::OutboxIggy => "outbox_iggy",
         }
-    }
-
-    pub const fn uses_outbox(self) -> bool {
-        matches!(self, Self::OutboxLocal | Self::OutboxIggy)
     }
 
     pub const fn requires_iggy(self) -> bool {
@@ -272,7 +271,6 @@ impl EventDeliveryProfile {
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "memory" => Some(Self::Memory),
             "outbox_local" => Some(Self::OutboxLocal),
             "outbox_iggy" => Some(Self::OutboxIggy),
             _ => None,
@@ -1133,7 +1131,7 @@ fn parse_event_delivery_profile(value: &str) -> Result<EventDeliveryProfile, ser
         serde_json::Error::io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!(
-                "Invalid RUSTOK_EVENT_DELIVERY_PROFILE='{value}'. Expected one of: memory, outbox_local, outbox_iggy"
+                "Invalid RUSTOK_EVENT_DELIVERY_PROFILE='{value}'. Expected one of: outbox_local or outbox_iggy"
             ),
         ))
     })
@@ -1460,6 +1458,33 @@ mod tests {
             settings.events.delivery_profile,
             EventDeliveryProfile::OutboxLocal
         );
+    }
+
+    #[test]
+    fn defaults_delivery_profile_to_outbox_local() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_DELIVERY_PROFILE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let settings = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
+            .expect("settings parsed");
+        assert_eq!(
+            settings.events.delivery_profile,
+            EventDeliveryProfile::OutboxLocal
+        );
+    }
+
+    #[test]
+    fn rejects_removed_memory_delivery_profile() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::set(EVENT_DELIVERY_PROFILE_ENV, "memory");
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let error = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
+            .expect_err("removed delivery profile must fail");
+        assert!(error.to_string().contains("outbox_local or outbox_iggy"));
     }
 
     #[test]

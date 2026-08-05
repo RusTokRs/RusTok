@@ -53,7 +53,7 @@ settings:
       backend: memory
       trusted_auth_dimensions: false
     events:
-      delivery_profile: memory
+      delivery_profile: outbox_local
       channel_capacity: 128
       backpressure:
         enabled: true

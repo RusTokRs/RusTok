@@ -147,7 +147,6 @@ if (
   contract.server_observer?.iggy_source !== observerIggySourcePath ||
   contract.server_observer?.server_source !== observerServerSourcePath ||
   !sameValue(contract.server_observer?.delivery_profiles, [
-    "memory_not_applicable",
     "outbox_local_not_applicable",
     "outbox_iggy_bundled",
     "outbox_iggy_external",
@@ -251,12 +250,11 @@ for (const marker of [
 }
 for (const marker of [
   "pub struct IggyDlqDuplicateAlertObserver",
-  "IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?",
+  "IggyDlqDuplicateScanner::new(client, stream_name)?",
 ]) {
   requireText("Iggy observer composition", observerIggySource, marker);
 }
 for (const marker of [
-  "NotApplicableMemory",
   "NotApplicableOutboxLocal",
   "IggyBundled",
   "IggyExternal",
@@ -323,5 +321,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate alert runtime source verified: single-writer monotonic latest-value publication, initial/unavailable stale-clearing semantics, read-only independent subscribers, identifier-free stable errors, no broker/receipt/Profile mutation, and the explicit Memory/OutboxLocal/OutboxIggy server observer relationship are locked; server execution and telemetry/health projection remain pending.",
+  "Iggy DLQ duplicate alert runtime source verified: single-writer monotonic latest-value publication, initial/unavailable stale-clearing semantics, read-only independent subscribers, identifier-free stable errors, no broker/receipt/Profile mutation, and the explicit OutboxLocal/OutboxIggy server observer relationship are locked; server execution and telemetry/health projection remain pending.",
 );

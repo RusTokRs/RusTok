@@ -389,7 +389,7 @@ Detailed checkpoints:
    no-clobber packet; and repeat whenever a bound source, configuration, or input
    changes. A packet covers only that supplied model.
 
-10. **Execute and retain moving duplicate observer evidence.**
+10. **Execute moving duplicate observer evidence and retain it.**
     Run the locked external-Iggy cross-cycle capture, inspect and commit the
     no-clobber packet, and repeat whenever a bound source or reviewed input
     changes. Review initial offset and acceptable reset frequency per deployment.

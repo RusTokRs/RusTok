@@ -57,14 +57,14 @@ Publisher must not treat the event bus as its read-model API.
 ### Global delivery profiles
 
 The server selects one process-wide delivery profile, never a tenant-specific
-broker setting. `memory` is local development/test delivery; `outbox_local` is
-the durable single-node production path; and `outbox_iggy` is the durable
-high-throughput/multi-process path. Both outbox profiles write business state
-and the outbox record atomically. Only `outbox_iggy` depends on Iggy.
+broker setting. `outbox_local` is the durable single-node default; and
+`outbox_iggy` is the durable high-throughput/multi-process path. Both profiles
+write business state and the outbox record atomically. Only `outbox_iggy`
+depends on Iggy.
 
 The desired profile is persisted separately from tenant `platform_settings`
 and becomes active after a controlled restart. The runtime does not fall back
-from `outbox_iggy` to memory when Iggy is unavailable; it fails explicitly so
+from `outbox_iggy` when Iggy is unavailable; it fails explicitly so
 operators cannot mistake a degraded topology for a healthy one. Deployment
 secrets and Iggy endpoints stay outside the operator profile UI.
 

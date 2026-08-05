@@ -25,7 +25,7 @@ pub fn EventsAdmin() -> impl IntoView {
         move || (token.get(), tenant.get()),
         move |(token, tenant)| async move { transport::fetch_configuration(token, tenant).await },
     );
-    let (selected_profile, set_selected_profile) = signal(String::from("memory"));
+    let (selected_profile, set_selected_profile) = signal(String::from("outbox_local"));
     let (loaded, set_loaded) = signal(false);
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<String, String>>::None);
@@ -96,7 +96,7 @@ pub fn EventsAdmin() -> impl IntoView {
                     configuration.get().map(|result| match result {
                         Ok(current) => view! {
                             <div class="space-y-5 rounded-xl border border-border bg-card p-6 shadow-sm">
-                                <div class="grid gap-3 lg:grid-cols-3">
+                                <div class="grid gap-3 lg:grid-cols-2">
                                     {DELIVERY_PROFILES
                                         .into_iter()
                                         .map(|(value, label, description)| {

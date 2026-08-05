@@ -44,7 +44,6 @@ const STARTUP_RUNTIME_UNAVAILABLE: &str =
 pub enum EventDlqDuplicateAlertObserverMode {
     Disabled,
     Unavailable,
-    NotApplicableMemory,
     NotApplicableOutboxLocal,
     IggyBundled,
     IggyExternal,
@@ -131,8 +130,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext
     };
     if matches!(
         mode,
-        EventDlqDuplicateAlertObserverMode::NotApplicableMemory
-            | EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal
+        EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal
     ) {
         tracing::info!(
             delivery_profile = runtime.delivery_profile.as_str(),
@@ -416,7 +414,6 @@ fn observer_mode(
     iggy_mode: Option<&IggyMode>,
 ) -> Result<EventDlqDuplicateAlertObserverMode> {
     match profile {
-        EventDeliveryProfile::Memory => Ok(EventDlqDuplicateAlertObserverMode::NotApplicableMemory),
         EventDeliveryProfile::OutboxLocal => {
             Ok(EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal)
         }
@@ -491,10 +488,6 @@ mod tests {
 
     #[test]
     fn every_event_delivery_profile_has_an_explicit_observer_mode() {
-        assert_eq!(
-            observer_mode(EventDeliveryProfile::Memory, None).unwrap(),
-            EventDlqDuplicateAlertObserverMode::NotApplicableMemory
-        );
         assert_eq!(
             observer_mode(EventDeliveryProfile::OutboxLocal, None).unwrap(),
             EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal

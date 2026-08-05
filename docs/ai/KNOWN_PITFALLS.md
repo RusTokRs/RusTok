@@ -90,7 +90,8 @@ Short list of typical mistakes before making code changes.
 
 ## Docker / Deployment
 
-- Do not run production with `transport = "memory"` — use `transport = "outbox"`.
+- Event delivery always uses an outbox profile; do not add a process-local
+  delivery-profile fallback.
 - Do not forget the relay worker when deploying with outbox transport.
 - Do not use default credentials from `.env.dev.example` in production.
 - Do not expose `/swagger` and `/metrics` without auth in production.

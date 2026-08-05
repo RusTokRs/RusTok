@@ -4,7 +4,7 @@ Status: **identifier-free latest-value runtime and mode-aware server observer so
 
 ## What changed
 
-`rustok-iggy` owns an in-memory runtime composition for the count-only physical DLQ duplicate alert policy, and the server now owns a separate observer lifecycle that uses it only when the active event-delivery profile has an Iggy capability.
+`rustok-iggy` owns a latest-value runtime composition for the count-only physical DLQ duplicate alert policy, and the server now owns a separate observer lifecycle that uses it only when the active event-delivery profile has an Iggy capability.
 
 Reusable runtime source:
 
@@ -40,12 +40,11 @@ No Profiles API, storage, policy port, GraphQL field, storefront behavior, or au
 The server observer handles all event-delivery profiles explicitly:
 
 ```text
-memory        -> NotApplicableMemory
 outbox_local  -> NotApplicableOutboxLocal
 outbox_iggy   -> IggyBundled or IggyExternal
 ```
 
-`memory` and `outbox_local` do not request an Iggy transport, do not open a broker connection, and do not require alert threshold configuration. Their not-applicable state is valid platform operation, not a Profiles degradation.
+`outbox_local` does not request an Iggy transport, does not open a broker connection, and does not require alert threshold configuration. Its not-applicable state is valid platform operation, not a Profiles degradation.
 
 Only `outbox_iggy` resolves the shared `IggyTransport` already created by the event runtime. The observer never creates a second transport or bundled broker process.
 

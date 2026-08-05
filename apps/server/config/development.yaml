@@ -59,7 +59,7 @@ settings:
       oauth_requests_per_minute: 30
       oauth_burst: 5
     events:
-      delivery_profile: memory
+      delivery_profile: outbox_local
       relay_interval_ms: 1000
       channel_capacity: 256
     runtime:

@@ -27,7 +27,6 @@ const EVALUATION_FLAGS: [&str; 5] = [
 pub enum DlqDuplicateAlertDeployment {
     Disabled,
     Unavailable,
-    Memory,
     OutboxLocal,
     IggyBundled,
     IggyExternal,
@@ -38,7 +37,6 @@ impl DlqDuplicateAlertDeployment {
         match self {
             Self::Disabled => "disabled",
             Self::Unavailable => "unavailable",
-            Self::Memory => "memory",
             Self::OutboxLocal => "outbox_local",
             Self::IggyBundled => "iggy_bundled",
             Self::IggyExternal => "iggy_external",
@@ -95,6 +93,17 @@ pub enum DlqDuplicateAlertMetricLevel {
     Notice,
     Warning,
     Critical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DlqDuplicateAlertSnapshotMetrics {
+    pub available: bool,
+    pub level: DlqDuplicateAlertMetricLevel,
+    pub physical_duplicates: bool,
+    pub identity_conflict: bool,
+    pub duplicate_messages_threshold: bool,
+    pub duplicate_groups_threshold: bool,
+    pub max_copies_threshold: bool,
 }
 
 impl DlqDuplicateAlertMetricLevel {
@@ -162,33 +171,30 @@ pub fn record_state(
 }
 
 /// Record one identifier-free runtime snapshot and replace its bounded flag gauges.
-#[allow(clippy::too_many_arguments)]
 pub fn record_snapshot(
     deployment: DlqDuplicateAlertDeployment,
     scan_mode: DlqDuplicateAlertScanMode,
-    available: bool,
-    level: DlqDuplicateAlertMetricLevel,
-    physical_duplicates: bool,
-    identity_conflict: bool,
-    duplicate_messages_threshold: bool,
-    duplicate_groups_threshold: bool,
-    max_copies_threshold: bool,
+    snapshot: DlqDuplicateAlertSnapshotMetrics,
 ) {
     DLQ_DUPLICATE_ALERT_SNAPSHOTS_TOTAL
         .with_label_values(&[
             deployment.label(),
             scan_mode.label(),
-            if available { "available" } else { "unavailable" },
-            level.label(),
+            if snapshot.available {
+                "available"
+            } else {
+                "unavailable"
+            },
+            snapshot.level.label(),
         ])
         .inc();
 
     let values = [
-        physical_duplicates,
-        identity_conflict,
-        duplicate_messages_threshold,
-        duplicate_groups_threshold,
-        max_copies_threshold,
+        snapshot.physical_duplicates,
+        snapshot.identity_conflict,
+        snapshot.duplicate_messages_threshold,
+        snapshot.duplicate_groups_threshold,
+        snapshot.max_copies_threshold,
     ];
     for (flag, value) in EVALUATION_FLAGS.into_iter().zip(values) {
         DLQ_DUPLICATE_ALERT_EVALUATION_FLAGS
@@ -207,7 +213,10 @@ mod tests {
         assert_eq!(EVALUATION_FLAGS.len(), 5);
         assert!(!HEALTH_STATE_LABELS.contains(&"partition"));
         assert!(!EVALUATION_FLAGS.contains(&"offset"));
-        assert_eq!(DlqDuplicateAlertScanMode::MovingWindow.label(), "moving_window");
+        assert_eq!(
+            DlqDuplicateAlertScanMode::MovingWindow.label(),
+            "moving_window"
+        );
         assert_eq!(DlqDuplicateAlertMetricLevel::Critical.label(), "critical");
     }
 }

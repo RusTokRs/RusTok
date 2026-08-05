@@ -87,10 +87,7 @@ pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
 
 fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
     let Some(shared_transport) = ctx.shared_get::<Arc<dyn EventTransport>>() else {
-        tracing::warn!(
-            "Event transport is not initialized; event bus will operate in local in-memory mode"
-        );
-        return;
+        panic!("Event transport must be initialized before creating the event bus");
     };
 
     if let Some(existing) = ctx.shared_get::<EventForwarderHandle>() {

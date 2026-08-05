@@ -6,7 +6,7 @@ use rustok_iggy::{DlqDuplicateAlertLevel, DlqDuplicateAlertRuntimeSnapshot};
 use rustok_telemetry::dlq_duplicate_alert_metrics::{
     self, DlqDuplicateAlertDeployment as MetricDeployment,
     DlqDuplicateAlertHealthState as MetricHealthState, DlqDuplicateAlertMetricLevel as MetricLevel,
-    DlqDuplicateAlertScanMode as MetricScanMode,
+    DlqDuplicateAlertScanMode as MetricScanMode, DlqDuplicateAlertSnapshotMetrics,
 };
 use tokio::task::JoinHandle;
 
@@ -277,8 +277,7 @@ fn project_runtime(
             false,
             false,
         ),
-        EventDlqDuplicateAlertObserverMode::NotApplicableMemory
-        | EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal => (
+        EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal => (
             EventDlqDuplicateAlertHealthState::NotApplicable,
             None,
             None,
@@ -382,13 +381,18 @@ fn record_projection(current: Projection, previous: Option<Projection>) {
             MetricScanMode::None,
             EventDlqDuplicateAlertObservabilityScanMode::metric,
         ),
-        current.health.state == EventDlqDuplicateAlertHealthState::Available,
-        current.health.level.map_or(MetricLevel::None, metric_level),
-        evaluation.is_some_and(|value| value.has_physical_duplicates()),
-        evaluation.is_some_and(|value| value.has_identity_conflict()),
-        evaluation.is_some_and(|value| value.duplicate_messages_threshold_reached()),
-        evaluation.is_some_and(|value| value.duplicate_groups_threshold_reached()),
-        evaluation.is_some_and(|value| value.max_copies_threshold_reached()),
+        DlqDuplicateAlertSnapshotMetrics {
+            available: current.health.state == EventDlqDuplicateAlertHealthState::Available,
+            level: current.health.level.map_or(MetricLevel::None, metric_level),
+            physical_duplicates: evaluation.is_some_and(|value| value.has_physical_duplicates()),
+            identity_conflict: evaluation.is_some_and(|value| value.has_identity_conflict()),
+            duplicate_messages_threshold: evaluation
+                .is_some_and(|value| value.duplicate_messages_threshold_reached()),
+            duplicate_groups_threshold: evaluation
+                .is_some_and(|value| value.duplicate_groups_threshold_reached()),
+            max_copies_threshold: evaluation
+                .is_some_and(|value| value.max_copies_threshold_reached()),
+        },
     );
 }
 
@@ -396,7 +400,6 @@ const fn metric_deployment(mode: EventDlqDuplicateAlertObserverMode) -> MetricDe
     match mode {
         EventDlqDuplicateAlertObserverMode::Disabled => MetricDeployment::Disabled,
         EventDlqDuplicateAlertObserverMode::Unavailable => MetricDeployment::Unavailable,
-        EventDlqDuplicateAlertObserverMode::NotApplicableMemory => MetricDeployment::Memory,
         EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal => {
             MetricDeployment::OutboxLocal
         }
@@ -509,10 +512,6 @@ mod tests {
             (
                 EventDlqDuplicateAlertObserverMode::Disabled,
                 EventDlqDuplicateAlertHealthState::Disabled,
-            ),
-            (
-                EventDlqDuplicateAlertObserverMode::NotApplicableMemory,
-                EventDlqDuplicateAlertHealthState::NotApplicable,
             ),
             (
                 EventDlqDuplicateAlertObserverMode::Unavailable,

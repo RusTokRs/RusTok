@@ -55,9 +55,7 @@ impl SettingsMutation {
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let profile = crate::common::settings::EventDeliveryProfile::parse(&input.profile)
-            .ok_or_else(|| {
-                FieldError::new("profile must be one of: memory, outbox_local, outbox_iggy")
-            })?;
+            .ok_or_else(|| FieldError::new("profile must be one of: outbox_local, outbox_iggy"))?;
         crate::services::event_delivery_settings_service::EventDeliverySettingsService::save_profile(
             runtime_ctx,
             profile,

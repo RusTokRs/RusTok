@@ -14,12 +14,11 @@ The observer is global event-delivery infrastructure. It is not owned by Social 
 |---|---|---|
 | disabled | `Disabled` | no |
 | startup/config unavailable | `Unavailable` | no task |
-| `memory` | `NotApplicableMemory` | no |
 | `outbox_local` | `NotApplicableOutboxLocal` | no |
 | `outbox_iggy` + bundled | `IggyBundled` | yes |
 | `outbox_iggy` + external | `IggyExternal` | yes |
 
-`Memory` and `OutboxLocal` are intentional not-applicable modes. The server exits before asking for `Arc<IggyTransport>`. Only `OutboxIggy` resolves the shared transport created by the event runtime. A missing active Iggy mode fails closed rather than being guessed.
+`OutboxLocal` is an intentional not-applicable mode. The server exits before asking for `Arc<IggyTransport>`. Only `OutboxIggy` resolves the shared transport created by the event runtime. A missing active Iggy mode fails closed rather than being guessed.
 
 ## Activation and startup isolation
 

@@ -264,9 +264,7 @@ pub async fn ready(
             .await,
         );
         checks.push(check_runtime_guardrails(&ctx).await);
-        if settings.events.delivery_profile.uses_outbox() {
-            checks.push(check_outbox_pending_lag(&ctx, settings).await);
-        }
+        checks.push(check_outbox_pending_lag(&ctx, settings).await);
         checks.push(check_search_index_lag(&ctx, settings).await);
         checks.push(email_backend_check(settings));
         checks.extend(check_runtime_workers(&ctx, settings));
@@ -502,9 +500,7 @@ async fn check_required_database_schema(
 fn required_database_schema_tables(settings: &RustokSettings) -> Vec<&'static str> {
     let mut required_tables = vec!["tenants", "users"];
 
-    if settings.events.delivery_profile.uses_outbox() {
-        required_tables.push("sys_events");
-    }
+    required_tables.push("sys_events");
 
     if settings.features.search_indexing {
         required_tables.push("search_documents");
@@ -695,11 +691,10 @@ fn check_runtime_workers(
     ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> Vec<ReadinessCheck> {
-    let relay_required = settings.events.delivery_profile.uses_outbox()
-        && ctx
-            .shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
-            .and_then(|runtime| runtime.relay_config.clone())
-            .is_some();
+    let relay_required = ctx
+        .shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
+        .and_then(|runtime| runtime.relay_config.clone())
+        .is_some();
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
         .unwrap_or(false);

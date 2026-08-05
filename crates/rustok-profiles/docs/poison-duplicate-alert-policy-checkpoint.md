@@ -70,12 +70,11 @@ The channel retains only the latest state. It is not an audit log.
 The observer handles all active event delivery profiles explicitly:
 
 ```text
-memory        -> NotApplicableMemory
 outbox_local  -> NotApplicableOutboxLocal
 outbox_iggy   -> IggyBundled or IggyExternal
 ```
 
-For `memory` and `outbox_local`:
+For `outbox_local`:
 
 - no Iggy transport is requested;
 - no broker client is opened;

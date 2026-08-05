@@ -90,20 +90,6 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
     let runtime = match delivery_profile {
-        EventDeliveryProfile::Memory => {
-            let transport = MemoryTransport::with_capacity(channel_capacity);
-            let listener_bus = transport.event_bus();
-            let transport = tenant_generation_transport(ctx, &cache, Arc::new(transport));
-            EventRuntime {
-                delivery_profile,
-                iggy_mode: None,
-                transport,
-                listener_bus,
-                relay_config: None,
-                channel_capacity,
-                relay_fallback_active: false,
-            }
-        }
         EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy => {
             // Keep the application-facing transport concrete so TransactionalEventBus can
             // downcast to OutboxTransport and write into the caller's database transaction.
@@ -139,7 +125,6 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                         transport_with_local_delivery(transport, channel_capacity);
                     (transport, listener_bus, Some(iggy_config.mode))
                 }
-                EventDeliveryProfile::Memory => unreachable!("memory has no outbox relay"),
             };
             let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
                 .artifact_event_projector(ArtifactEventDeliveryConfig::default())

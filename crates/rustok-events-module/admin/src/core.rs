@@ -1,9 +1,4 @@
-pub const DELIVERY_PROFILES: [(&str, &str, &str); 3] = [
-    (
-        "memory",
-        "Memory",
-        "Process-local delivery for development, tests, blogs, and simple deployments.",
-    ),
+pub const DELIVERY_PROFILES: [(&str, &str, &str); 2] = [
     (
         "outbox_local",
         "Outbox",

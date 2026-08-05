@@ -105,11 +105,12 @@ If `transport = "outbox"` but the relay worker is not running — events will be
 
 ---
 
-### 2.3 FORBIDDEN: `transport = "memory"` in production
+### 2.3 FORBIDDEN: process-local event delivery profiles
 
 **SEVERITY: HIGH**
 
-Memory transport (`tokio::broadcast`) loses all events on server restart.
+The platform has no process-local event delivery profile. A process-local bus
+may only fan out an event after its durable relay target accepts it.
 
 **Consequences:** Event loss on deploy, restart, or OOM kill.
 

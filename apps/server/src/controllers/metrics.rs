@@ -389,11 +389,10 @@ rustok_outbox_relay_latency_samples {processed_total}\n",
 
 fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     let settings = ctx.settings();
-    let relay_required = settings.events.delivery_profile.uses_outbox()
-        && ctx
-            .shared_get::<Arc<EventRuntime>>()
-            .and_then(|runtime| runtime.relay_config.clone())
-            .is_some();
+    let relay_required = ctx
+        .shared_get::<Arc<EventRuntime>>()
+        .and_then(|runtime| runtime.relay_config.clone())
+        .is_some();
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
         .unwrap_or(false);
