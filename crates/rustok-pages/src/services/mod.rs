@@ -11,8 +11,8 @@ pub use page::{
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
     PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
     PAGE_ROLLBACK_OPERATION_INTEGRITY, PAGE_ROLLBACK_REQUIRES_PUBLISHED,
-    PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageRouteDescriptor, PageRouteDisposition,
-    PageRouteResolution, PageRouteService, PageService,
+    PAGE_ROLLBACK_TARGET_UNAVAILABLE, PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT,
+    PageRouteDescriptor, PageRouteDisposition, PageRouteResolution, PageRouteService, PageService,
 };
 pub use page_builder_artifact::{PageBuilderArtifactService, PublishedLandingArtifact};
 pub use scenario_baseline::{
