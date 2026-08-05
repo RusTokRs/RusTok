@@ -3,6 +3,7 @@ mod graphql_adapter;
 mod topic_fork_graphql_adapter;
 mod topic_merge_graphql_adapter;
 mod topic_merge_native_server_adapter;
+mod topic_reply_range_graphql_adapter;
 mod topic_split_graphql_adapter;
 
 use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
@@ -17,6 +18,9 @@ use crate::topic_fork_model::{
 };
 use crate::topic_merge_model::{
     ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,
+};
+use crate::topic_reply_range_model::{
+    ForumReplyRangeMoveCandidate, ForumReplyRangeMoveCommand, ForumReplyRangeMoveReceipt,
 };
 use crate::topic_split_model::{
     ForumTopicSplitCandidate, ForumTopicSplitCommand, ForumTopicSplitReceipt,
@@ -235,6 +239,22 @@ pub async fn fork_topic(
     topic_fork_graphql_adapter::fork_topic(token, tenant_slug, command).await
 }
 
+pub async fn fetch_reply_range_move_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<ForumReplyRangeMoveCandidate>, ApiError> {
+    topic_reply_range_graphql_adapter::fetch_candidates(token, tenant_slug, locale).await
+}
+
+pub async fn move_reply_range(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumReplyRangeMoveCommand,
+) -> Result<ForumReplyRangeMoveReceipt, ApiError> {
+    topic_reply_range_graphql_adapter::move_reply_range(token, tenant_slug, command).await
+}
+
 pub async fn fetch_topic_split_candidates(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -335,6 +355,17 @@ mod tests {
         ] {
             let source = function_source(operation);
             assert!(source.contains("topic_fork_graphql_adapter::"));
+            assert!(!source.contains("native_server_adapter"));
+            assert!(!source.contains("execute_selected_transport"));
+            assert!(!source.contains("fallback"));
+        }
+    }
+
+    #[test]
+    fn reply_range_move_uses_the_manager_graphql_transport_without_fallback() {
+        for operation in ["fetch_reply_range_move_candidates", "move_reply_range"] {
+            let source = function_source(operation);
+            assert!(source.contains("topic_reply_range_graphql_adapter::"));
             assert!(!source.contains("native_server_adapter"));
             assert!(!source.contains("execute_selected_transport"));
             assert!(!source.contains("fallback"));

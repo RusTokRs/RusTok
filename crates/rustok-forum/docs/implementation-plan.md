@@ -59,8 +59,8 @@ unit tests for the surviving path.
 
 The Next admin Forum surface is module-owned under
 `apps/next-admin/packages/forum/src`. It owns Forum navigation, topic/reply
-GraphQL helpers, a canonical document reply composer, and the FORUM-21N/V/W
-topic merge, split and fork workflows. The host only registers and mounts the package. React and
+GraphQL helpers, a canonical document reply composer, and the FORUM-21N/V/W/X
+topic merge, split, fork and reply-range workflows. The host only registers and mounts the package. React and
 Leptos use their shared framed richtext lifecycle adapters; Forum supplies only
 the `discussion` profile and host-effective locale.
 
@@ -234,7 +234,7 @@ at the end of this file remain authoritative.
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
 | `FORUM-20` | `in_progress` | FORUM-20A-AZ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation, exact topic/reply create authorization, topic-local reply narrowing, inherited moderation audiences, and existing solution-route transport composition. FORUM-20BA synchronizes the canonical ledger and owner notes after FORUM-20AV-AZ. Remaining read/search/index/SEO/deep-link migration, visibility-scoped bulk read commands, future moderation transport reuse, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
-| `FORUM-21` | `planned` | FORUM-21A-W provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork admin composition; reply-range admin composition, runtime evidence and FORUM-24 aliases remain. |
+| `FORUM-21` | `planned` | FORUM-21A-X provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork/reply-range admin composition; runtime evidence and FORUM-24 aliases remain. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 through FORUM-23B2F4 add exact Forum category, audience, result-eligibility, trusted-channel, author, tag, solved, locale, date and current-channel filtering; FORUM-23B2G1 adds durable Search ingest ordering; FORUM-23B2G2A/A1 add the Forum owner revision ledger and database hardening; FORUM-23B2G2B1/B2 add the bounded owner source, Search checkpoint and repair protocol; FORUM-23B2G2B3A-C add the caused sealed wire event, atomic dual publisher and default-off persistent one-inbox consumer; FORUM-23B2G2B3D0 freezes executable runtime evidence and FORUM-23B2G2B3D1 reconciles this canonical plan. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
 | `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
@@ -1584,7 +1584,7 @@ Preserve revisions, attachments, mentions and audit. Remap reply positions
 safely, deduplicate subscriptions, revalidate solutions and ACL, update
 category counters and create canonical URL aliases.
 
-### Delivered through `FORUM-21W`
+### Delivered through `FORUM-21X`
 
 - FORUM-21A adds the bounded idempotent topic-move owner with checked category
   counters, immutable operation receipt and unchanged topic identity;
@@ -1646,6 +1646,11 @@ category counters and create canonical URL aliases.
   exact retry, rotate both when the source, root or target shape changes, require
   the root to be present in the bounded visible reply page and display the
   immutable owner receipt without discovering descendants or adding copy policy;
+- FORUM-21X composes the bounded reply-range move command in the module-owned
+  Leptos and Next-admin surfaces. Both retain one operation UUID for an exact
+  retry, rotate it when source, target, endpoint or reason changes, accept exact
+  canonical owner positions instead of inferring positions from visible row
+  order, and display the immutable owner receipt without adding movement policy;
 - every ordinary, resolved, same-category and cross-category merge retains the
   exact `forum.topic.merged` schema-version-1 payload so existing post-merge
   reconciliation owners remain compatible.
@@ -1668,8 +1673,9 @@ owner receipt and mapping state without changing earlier commands. FORUM-21R,
 FORUM-21T and FORUM-21U each add one additive GraphQL field and no REST route,
 owner method, receipt shape or semantic-event change. FORUM-21V adds Leptos and
 Next-admin split composition only. FORUM-21W adds Leptos and Next-admin fork
-composition only: neither slice adds a migration, native split/fork transport,
-owner, GraphQL, receipt or semantic-event change. Direct owner callers remain
+composition only. FORUM-21X adds Leptos and Next-admin reply-range composition
+only: none of the three slices adds a migration, native split/fork/reply-range
+transport, owner, GraphQL, receipt or semantic-event change. Direct owner callers remain
 source-compatible.
 
 Forum move, merge, split and fork commands remain independent from Notifications,
@@ -1688,8 +1694,6 @@ maintainer-executed:
   concurrency, replay and rollback;
 - mounted-browser and runtime transport evidence for the native/GraphQL merge
   paths plus the split, fork and reply-range GraphQL fields;
-- public admin composition for the reply-range workflow without
-  transport-local movement policy;
 - final canonical localized URL aliases and route tombstones under FORUM-24,
   rather than a parallel FORUM-21 slug authority.
 
@@ -1720,6 +1724,7 @@ node scripts/verify/verify-forum-topic-split-admin-ui.mjs
 node scripts/verify/verify-forum-reply-range-move-graphql-transport.mjs
 node scripts/verify/verify-forum-topic-fork-graphql-transport.mjs
 node scripts/verify/verify-forum-topic-fork-admin-ui.mjs
+node scripts/verify/verify-forum-reply-range-move-admin-ui.mjs
 npm run verify:forum:admin-boundary
 npm run verify:blog:forum-ui-ownership
 cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture
@@ -1741,11 +1746,12 @@ cargo test -p rustok-forum --test topic_fork_sqlite -- --nocapture
 cargo test -p rustok-forum-admin topic_merge_model -- --nocapture
 cargo test -p rustok-forum-admin topic_split_model -- --nocapture
 cargo test -p rustok-forum-admin topic_fork_model -- --nocapture
+cargo test -p rustok-forum-admin topic_reply_range_model -- --nocapture
 cargo check -p rustok-forum-admin --all-targets
 npm --prefix apps/next-admin run typecheck
 ```
 
-The FORUM-21A through FORUM-21W source and contract records do not claim
+The FORUM-21A through FORUM-21X source and contract records do not claim
 successful verifier, SQLite, PostgreSQL, Cargo, formatting, npm, browser,
 workflow or CI execution. The canonical task remains `planned` until the
 remaining workflows and maintainer evidence are complete.
