@@ -1,0 +1,100 @@
+{
+  "contract": "forum_reply_range_move_admin_ui_v1",
+  "task": "FORUM-21X",
+  "status": "source_ready_maintainer_execution_pending",
+  "extends": [
+    "FORUM-21S",
+    "FORUM-21T"
+  ],
+  "surfaces": {
+    "leptos": {
+      "route": "/modules/forum/reply-range",
+      "component": "ForumTopicReplyRangeAdmin"
+    },
+    "next_admin": {
+      "route": "/dashboard/forum/reply-range",
+      "component": "ForumTopicReplyRange",
+      "permission": "forum_topics:manage"
+    }
+  },
+  "command": {
+    "graphql_field": "moveForumTopicReplyRange",
+    "input_type": "MoveForumTopicReplyRangeGraphqlInput",
+    "operation_id_is_retained_for_exact_retry": true,
+    "operation_id_rotates_when_command_shape_changes": true,
+    "shape_fields": [
+      "source_topic_id",
+      "target_topic_id",
+      "start_position",
+      "end_position",
+      "reason"
+    ]
+  },
+  "position_preflight": {
+    "operator_enters_owner_positions": true,
+    "positive_integer_validation": true,
+    "start_must_not_exceed_end": true,
+    "visible_reply_order_is_not_authoritative": true,
+    "transport_infers_positions_from_row_order": false,
+    "owner_validates_occupied_endpoints": true,
+    "owner_allows_sparse_positions": true,
+    "owner_enforces_selected_reply_bound": true
+  },
+  "receipt": {
+    "immutable_owner_result": true,
+    "fields": [
+      "operation_id",
+      "event_id",
+      "source_topic_id",
+      "target_topic_id",
+      "source_category_id",
+      "target_category_id",
+      "actor_id",
+      "reason",
+      "source_start_position",
+      "source_end_position",
+      "target_start_position",
+      "target_end_position",
+      "moved_reply_count",
+      "moved_published_reply_count",
+      "source_resulting_published_reply_count",
+      "target_resulting_published_reply_count",
+      "moved_solution_reply_id",
+      "source_resulting_solution_reply_id",
+      "target_resulting_solution_reply_id",
+      "moved_at"
+    ]
+  },
+  "composition": {
+    "owner_method_changed": false,
+    "graphql_schema_changed": false,
+    "transport_local_position_inference": false,
+    "transport_local_reply_movement": false,
+    "transport_local_parent_policy": false,
+    "transport_local_acl_policy": false,
+    "transport_local_solution_policy": false,
+    "transport_local_counter_reconciliation": false,
+    "transport_local_audit_read": false,
+    "transport_fallback": false
+  },
+  "compatibility": {
+    "migration": false,
+    "rest_route": false,
+    "native_reply_range_command": false,
+    "semantic_event_changed": false,
+    "direct_owner_callers_changed": false
+  },
+  "verification": {
+    "commands": [
+      "node scripts/verify/verify-forum-reply-range-move-owner.mjs",
+      "node scripts/verify/verify-forum-reply-range-move-graphql-transport.mjs",
+      "node scripts/verify/verify-forum-reply-range-move-admin-ui.mjs",
+      "cargo test -p rustok-forum-admin topic_reply_range_model -- --nocapture",
+      "cargo check -p rustok-forum-admin --all-targets",
+      "npm --prefix apps/next-admin run typecheck",
+      "npm run verify:forum:admin-boundary",
+      "npm run verify:blog:forum-ui-ownership"
+    ],
+    "executed_by_implementation_agent": false
+  }
+}

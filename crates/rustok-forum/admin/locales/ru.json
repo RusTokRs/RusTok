@@ -157,5 +157,19 @@
   "forum.fork.operation": "Идентификатор повтора",
   "forum.fork.targetId": "Идентификатор новой темы",
   "forum.fork.retryHint": "Точный повтор сохраняет оба идентификатора. Изменение источника, корня или полей новой темы меняет оба.",
-  "forum.fork.complete": "Ответвление зафиксировано"
+  "forum.fork.complete": "Ответвление зафиксировано",
+  "forum.replyRange.title": "Перенос диапазона ответов",
+  "forum.replyRange.subtitle": "Перенесите один включительный диапазон owner-позиций в существующую тему.",
+  "forum.replyRange.source": "Исходная тема",
+  "forum.replyRange.target": "Целевая тема",
+  "forum.replyRange.choose": "Выберите тему",
+  "forum.replyRange.start": "Начальная позиция включительно",
+  "forum.replyRange.end": "Конечная позиция включительно",
+  "forum.replyRange.reason": "Причина",
+  "forum.replyRange.warning": "Используйте канонические owner-позиции, а не номера строк. Owner проверяет занятость границ, лимиты, родительские связи, ACL, решения и счётчики.",
+  "forum.replyRange.operation": "Идентификатор повтора",
+  "forum.replyRange.retryHint": "Точный повтор сохраняет идентификатор. Изменение источника, цели, границы или причины создаёт новый.",
+  "forum.replyRange.submit": "Перенести диапазон",
+  "forum.replyRange.pending": "Перенос…",
+  "forum.replyRange.complete": "Перенос зафиксирован"
 }

@@ -157,5 +157,19 @@
   "forum.fork.operation": "Retry identity",
   "forum.fork.targetId": "New topic identity",
   "forum.fork.retryHint": "Exact retries keep both identities. Editing the source, root or target fields rotates both.",
-  "forum.fork.complete": "Fork committed"
+  "forum.fork.complete": "Fork committed",
+  "forum.replyRange.title": "Move reply range",
+  "forum.replyRange.subtitle": "Move one inclusive owner-position range into an existing topic.",
+  "forum.replyRange.source": "Source topic",
+  "forum.replyRange.target": "Target topic",
+  "forum.replyRange.choose": "Choose a topic",
+  "forum.replyRange.start": "Inclusive start position",
+  "forum.replyRange.end": "Inclusive end position",
+  "forum.replyRange.reason": "Reason",
+  "forum.replyRange.warning": "Use canonical owner positions, not row numbers. The owner validates occupied endpoints, bounds, parent edges, ACL, solutions and counters.",
+  "forum.replyRange.operation": "Retry identity",
+  "forum.replyRange.retryHint": "Exact retries keep this identity. Editing source, target, either endpoint or reason rotates it.",
+  "forum.replyRange.submit": "Move reply range",
+  "forum.replyRange.pending": "Moving…",
+  "forum.replyRange.complete": "Move committed"
 }

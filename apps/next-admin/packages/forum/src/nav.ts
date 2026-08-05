@@ -30,6 +30,13 @@ export const forumNav: NavItem = {
       access: { permission: 'forum_topics:manage' }
     },
     {
+      title: 'Move Reply Range',
+      url: '/dashboard/forum/reply-range',
+      icon: 'messageSquare',
+      moduleSlug: 'forum',
+      access: { permission: 'forum_topics:manage' }
+    },
+    {
       title: 'Split Topic',
       url: '/dashboard/forum/split',
       icon: 'messageSquare',
