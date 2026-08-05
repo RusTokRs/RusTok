@@ -148,7 +148,16 @@ impl PostgresIndexDriftSnapshotReader {
         let materialized = self
             .load_materialized_state(transaction, request.key())
             .await?;
-        let observed_again = self.load_source_observation(request).await?;
+        let observed_again = match self.load_source_observation(request).await {
+            Ok(observation) => observation,
+            Err(error)
+                if source.absence_source_version.is_some()
+                    && error.code() == SOURCE_WATERMARK_MISSING =>
+            {
+                return Err(retryable_failure(SOURCE_CHANGED));
+            }
+            Err(error) => return Err(error),
+        };
         if &observed_again != source {
             return Err(retryable_failure(SOURCE_CHANGED));
         }
