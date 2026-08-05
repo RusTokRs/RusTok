@@ -1,8 +1,10 @@
 # `rustok-index` implementation recheck — explicit absence watermark
 
-Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.
-The eight intervening Order and Pages commits do not overlap `rustok-index`, Product Index
-composition, or the server diagnosis paths changed by this branch.
+Audited baseline: `main@4fe2643c0d3f3e7e3c0e5e2ccf9347184f347395`.
+The fifteen main commits after this branch merge base touch Commerce diagnostics, Forum module-owned
+GraphQL transports, Inventory/Order diagnostics, and Pages/Page Builder evidence. They do not
+overlap `rustok-index`, Product Index composition, the server Index GraphQL root, diagnosis
+composition, or Index guards changed by this branch.
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
@@ -12,7 +14,7 @@ The guarded exact-entity diagnosis change remains internally consistent at sourc
 
 - authorization is request-bound and precedes digest request validation and dependency access;
 - the accepted key is one typed `EntityKey` and must match the authorized tenant;
-- composition reuses the frozen source/schema registries and publishes no scan, scheduler, repair,
+- composition reuses the frozen source/schema registries and publishes no scheduler, repair,
   reader, writer, registry, or connection handle;
 - the predecessor itself claimed no GraphQL, HTTP, CLI, admin, MCP, or other transport;
 - PR #2983 had no review threads, submitted reviews, or conversation comments;
@@ -108,20 +110,42 @@ registry, batch, scan, scheduler, finding lifecycle, or repair capability. A sou
 schema mount, authorization-before-parsing order, exact-key construction, bounded output, and open
 execution status.
 
+## One-page source candidate continuation
+
+`IndexDriftSourcePageDiagnosisRuntime` is composed only after the frozen
+`SharedIndexSourceRegistry` and guarded exact diagnosis runtime exist.
+
+Its one method:
+
+- derives tenant from `IndexReconciliationOperatorContext` and accepts no caller-selected tenant;
+- checks the current request-local effective `modules:manage` snapshot before page-limit validation;
+- allows one `SchemaRef`, one optional server-held `IndexSourceCursor`, and a limit in `1..=32`;
+- performs exactly one validated `IndexSource::scan` call;
+- skips retained source `Delete` mutations;
+- sequentially delegates every source `Upsert` candidate to exact diagnosis;
+- stops on the first source or exact-diagnosis failure;
+- returns only page counts, bounded finding receipts, and the server-held next cursor;
+- owns no loop, checkpoint store, job, scheduler, task, transport, lifecycle, or repair handle.
+
+The current exact digest outcome intentionally hides mismatch state shape. The page runtime can
+therefore identify and persist general exact mismatches for source-present candidates, but it cannot
+truthfully claim missing-only classification. It is not mounted into GraphQL, HTTP, CLI, MCP, or
+native admin, and it copies no source entity identifier or payload into its outcome.
+
 ## Open cursor
 
-The next implementation step is one bounded missing-entity candidate diagnosis slice over a single
-owner `IndexSource::scan` page. It must retain a positive page limit and opaque cursor, process no
-more than that page, compare only source-live keys against exact materialized state, and avoid
-cross-page identifier accumulation.
+The next implementation step is a database-neutral missing-only outcome over one already-captured
+`IndexDriftSnapshotPair`. It must preserve the general exact producer behavior while recording only
+source `Upsert` plus materialized `Missing`, returning bounded non-candidate outcomes for all other
+state combinations without exposing raw states.
 
-Product locale PostgreSQL harness execution, GraphQL execution evidence, stale Index-only discovery,
-orphan-link diagnosis, automatic finding resolution, resolve/ignore commands, and repair remain
-open.
+Product locale PostgreSQL harness execution, GraphQL execution evidence, source-page transport,
+cursor persistence, multi-page lifecycle, stale Index-only discovery, orphan-link diagnosis,
+automatic finding resolution, resolve/ignore commands, and repair remain open.
 
 ## Validation ownership
 
 Suggested commands are retained in the dated implementation plan and the explicit watermark,
-harness, and GraphQL transport documents. Per maintainer instruction, this implementation agent did
-not run tests, JavaScript verifiers, formatting, Cargo checks, PostgreSQL or GraphQL scenarios,
-workflows, or CI.
+harness, GraphQL transport, and source-page diagnosis documents. Per maintainer instruction, this
+implementation agent did not run tests, JavaScript verifiers, formatting, Cargo checks, PostgreSQL or
+GraphQL scenarios, workflows, or CI.
