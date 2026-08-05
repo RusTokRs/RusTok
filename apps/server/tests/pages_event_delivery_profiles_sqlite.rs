@@ -20,6 +20,7 @@ use rustok_server::services::pages_cache_invalidation::ServerPagesCachePort;
 use rustok_server::services::server_runtime_context::ServerRuntimeContext;
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm::EntityTrait;
+use tokio::sync::broadcast::error::TryRecvError;
 use uuid::Uuid;
 
 const LISTENER_TIMEOUT: Duration = Duration::from_millis(50);
@@ -157,9 +158,7 @@ async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay(
         fixture.generations(envelope.tenant_id).await?,
         PageCacheGenerationSnapshot::default()
     );
-    assert!(tokio::time::timeout(LISTENER_TIMEOUT, listener.recv())
-        .await
-        .is_err());
+    assert!(matches!(listener.try_recv(), Err(TryRecvError::Empty)));
 
     assert_eq!(relay.process_pending_once(Some(1)).await?, 1);
 
