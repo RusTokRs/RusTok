@@ -203,16 +203,12 @@ impl CheckoutOrderRecoveryAdapter {
             | OrderStatusKind::Shipped
             | OrderStatusKind::Delivered => Ok(order),
             OrderStatusKind::Cancelled => {
-                tracing::warn!(
-                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    channel = ?context.channel,
-                    operation = RECOVER_OPERATION,
-                    code = "order.checkout_order_cancelled",
-                    order_id = %order.id,
-                    order_state = ?OrderStatusKind::Cancelled,
-                    "checkout recovery found an already-cancelled order"
+                log_checkout_order_recovery_lifecycle_rejection(
+                    context,
+                    order.id,
+                    "cancelled",
+                    "order.checkout_order_cancelled",
+                    false,
                 );
                 Err(PortError::conflict(
                     "order.checkout_order_cancelled",
@@ -220,16 +216,12 @@ impl CheckoutOrderRecoveryAdapter {
                 ))
             }
             OrderStatusKind::Unknown => {
-                tracing::error!(
-                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    channel = ?context.channel,
-                    operation = RECOVER_OPERATION,
-                    code = "order.checkout_order_status_invalid",
-                    order_id = %order.id,
-                    order_state = ?OrderStatusKind::Unknown,
-                    "checkout recovery found an unsupported order lifecycle state"
+                log_checkout_order_recovery_lifecycle_rejection(
+                    context,
+                    order.id,
+                    "unknown",
+                    "order.checkout_order_status_invalid",
+                    true,
                 );
                 Err(PortError::invariant_violation(
                     "order.checkout_order_status_invalid",
@@ -643,6 +635,69 @@ fn checkout_order_recovery_context_facts(
             .as_ref()
             .map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
+    }
+}
+
+fn log_checkout_order_recovery_lifecycle_rejection(
+    context: &PortContext,
+    order_id: Uuid,
+    lifecycle_state: &'static str,
+    code: &'static str,
+    technical_failure: bool,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    if technical_failure {
+        tracing::error!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+            operation = RECOVER_OPERATION,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            order_id_non_nil = !order_id.is_nil(),
+            lifecycle_state,
+            code,
+            boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+            "checkout recovery found an unsupported order lifecycle state"
+        );
+    } else {
+        tracing::warn!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+            operation = RECOVER_OPERATION,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            order_id_non_nil = !order_id.is_nil(),
+            lifecycle_state,
+            code,
+            boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+            "checkout recovery found a terminal order lifecycle state"
+        );
     }
 }
 
