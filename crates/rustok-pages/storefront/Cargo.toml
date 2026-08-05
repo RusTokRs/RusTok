@@ -43,3 +43,13 @@ rustok-core = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+
+[dev-dependencies]
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tokio.workspace = true
+tower.workspace = true
+uuid.workspace = true
