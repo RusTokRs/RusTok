@@ -21,6 +21,13 @@ export const forumNav: NavItem = {
       icon: 'messageSquare',
       moduleSlug: 'forum',
       access: { permission: 'forum_topics:manage' }
+    },
+    {
+      title: 'Split Topic',
+      url: '/dashboard/forum/split',
+      icon: 'messageSquare',
+      moduleSlug: 'forum',
+      access: { permission: 'forum_topics:manage' }
     }
   ]
 };

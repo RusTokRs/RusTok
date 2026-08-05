@@ -124,5 +124,21 @@
   "forum.merge.notEnough": "At least two active topics are required.",
   "forum.merge.errorCandidates": "Topic candidates are not available.",
   "forum.merge.errorSource": "Choose the source topic to archive.",
-  "forum.merge.errorTarget": "Choose the retained target topic."
+  "forum.merge.errorTarget": "Choose the retained target topic.",
+  "forum.split.title": "Split topic replies",
+  "forum.split.subtitle": "Create a new topic from one parent-closed set of replies through the idempotent Forum owner.",
+  "forum.split.source": "Source topic",
+  "forum.split.choose": "Choose a topic",
+  "forum.split.replies": "Replies to move",
+  "forum.split.noReplies": "Choose a source topic with at least two replies.",
+  "forum.split.locale": "Target locale",
+  "forum.split.targetTitle": "Target title",
+  "forum.split.slug": "Target slug (optional)",
+  "forum.split.reason": "Reason",
+  "forum.split.submit": "Split topic",
+  "forum.split.pending": "Splitting…",
+  "forum.split.operation": "Retry identity",
+  "forum.split.targetId": "New topic identity",
+  "forum.split.retryHint": "Exact retries keep both identities. Editing the source, selection or target fields rotates both.",
+  "forum.split.complete": "Split committed"
 }

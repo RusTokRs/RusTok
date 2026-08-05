@@ -2,6 +2,7 @@ mod category_tree_graphql_adapter;
 mod graphql_adapter;
 mod topic_merge_graphql_adapter;
 mod topic_merge_native_server_adapter;
+mod topic_split_graphql_adapter;
 
 use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
 
@@ -11,6 +12,10 @@ use crate::model::{
 };
 use crate::topic_merge_model::{
     ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,
+};
+use crate::topic_split_model::{
+    ForumTopicSplitCandidate, ForumTopicSplitCommand, ForumTopicSplitReceipt,
+    ForumTopicSplitReplyPage,
 };
 
 pub type ApiError = String;
@@ -199,6 +204,31 @@ pub async fn merge_topic(
     .map_err(|error| error.to_string())
 }
 
+pub async fn fetch_topic_split_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<ForumTopicSplitCandidate>, ApiError> {
+    topic_split_graphql_adapter::fetch_candidates(token, tenant_slug, locale).await
+}
+
+pub async fn fetch_topic_split_replies(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    source_topic_id: String,
+    locale: String,
+) -> Result<ForumTopicSplitReplyPage, ApiError> {
+    topic_split_graphql_adapter::fetch_replies(token, tenant_slug, source_topic_id, locale).await
+}
+
+pub async fn split_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumTopicSplitCommand,
+) -> Result<ForumTopicSplitReceipt, ApiError> {
+    topic_split_graphql_adapter::split_topic(token, tenant_slug, command).await
+}
+
 fn placement_position(position: i32) -> Result<u32, ApiError> {
     u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
@@ -262,5 +292,20 @@ mod tests {
         assert!(SOURCE.contains("cfg(any(feature = \"ssr\", feature = \"hydrate\"))"));
         assert!(SOURCE.contains("UiTransportPath::NativeServer"));
         assert!(SOURCE.contains("UiTransportPath::Graphql"));
+    }
+
+    #[test]
+    fn topic_split_uses_the_manager_graphql_transport_without_fallback() {
+        for operation in [
+            "fetch_topic_split_candidates",
+            "fetch_topic_split_replies",
+            "split_topic",
+        ] {
+            let source = function_source(operation);
+            assert!(source.contains("topic_split_graphql_adapter::"));
+            assert!(!source.contains("native_server_adapter"));
+            assert!(!source.contains("execute_selected_transport"));
+            assert!(!source.contains("fallback"));
+        }
     }
 }
