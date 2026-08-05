@@ -237,7 +237,7 @@ at the end of this file remain authoritative.
 | `FORUM-21` | `planned` | FORUM-21A-X provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork/reply-range admin composition; retained owner/transport runtime evidence remains, while localized route identity proceeds under FORUM-24. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 through FORUM-23B2F4 add exact Forum category, audience, result-eligibility, trusted-channel, author, tag, solved, locale, date and current-channel filtering; FORUM-23B2G1 adds durable Search ingest ordering; FORUM-23B2G2A/A1 add the Forum owner revision ledger and database hardening; FORUM-23B2G2B1/B2 add the bounded owner source, Search checkpoint and repair protocol; FORUM-23B2G2B3A-C add the caused sealed wire event, atomic dual publisher and default-off persistent one-inbox consumer; FORUM-23B2G2B3D0 freezes executable runtime evidence and FORUM-23B2G2B3D1 reconciles this canonical plan. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
-| `FORUM-24` | `planned` | FORUM-24A adds deterministic exact-locale topic route identity and an immutable redirect/tombstone ledger; owner write composition, category routes, storefront mounts, hreflang/SEO policy and runtime evidence remain. |
+| `FORUM-24` | `planned` | FORUM-24A adds deterministic exact-locale topic route identity and an immutable redirect/tombstone ledger; FORUM-24B composes new merge redirects in the owner transaction. Rename/delete composition, historical backfill, category routes, storefront mounts, hreflang/SEO policy and runtime evidence remain. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
@@ -2287,6 +2287,33 @@ cargo check -p rustok-forum --all-targets
 
 No command above was run by the implementation agent, per maintainer request.
 
+### Delivered in FORUM-24B
+
+- `ForumTopicMergeService` delegates localized route history to
+  `ForumTopicRouteService::record_merge_redirect_aliases_in_tx` before commit;
+- every source translation with a non-empty slug receives one immutable redirect
+  keyed by its original locale, short identity and slug;
+- target locale selection is deterministic: exact source locale, platform
+  fallback locale, then the lexicographically first available target locale;
+- redirects store target topic plus locale and continue to recompute the latest
+  target slug without changing the merge receipt or `forum.topic.merged` event;
+- source topics without routes keep existing merge behavior, while a routed
+  source fails closed when the target has no canonical localized route;
+- exact merge replay returns the existing receipt and does not duplicate aliases.
+
+Topic rename aliases and deletion tombstones remain follow-up owner composition.
+Historical merge receipt backfill, storefront mounting and retained runtime
+proof also remain.
+
+Verification sources:
+
+```bash
+node scripts/verify/verify-forum-topic-merge-route-alias-owner.mjs
+cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture
+cargo check -p rustok-forum --all-targets
+```
+
+No command above was run by the implementation agent, per maintainer request.
 
 ## `FORUM-25` — full multilingual and RTL contract
 
