@@ -108,7 +108,7 @@ requireMarkers("doc", [
   "No retained PostgreSQL execution evidence is claimed",
 ]);
 requireMarkers("recheck", [
-  "Audited baseline: `main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173`",
+  "Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`",
   "`product-locale-absence-postgres`",
   "index_drift_source_changed_during_capture",
   "index_drift_source_watermark_missing",
