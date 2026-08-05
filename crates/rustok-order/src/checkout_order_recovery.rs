@@ -137,16 +137,7 @@ impl CheckoutOrderRecoveryAdapter {
             )
             .await?
             .ok_or_else(|| {
-                tracing::warn!(
-                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    channel = ?context.channel,
-                    operation = READ_OPERATION,
-                    code = "order.checkout_order_not_found",
-                    checkout_operation_id = %request.checkout_operation_id,
-                    "checkout order identity was not found for the requested operation"
-                );
+                log_checkout_order_recovery_identity_not_found(&context, &request);
                 PortError::not_found(
                     "order.checkout_order_not_found",
                     "checkout order was not found for the requested operation",
@@ -592,6 +583,44 @@ fn checkout_order_recovery_context_facts(
             .map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
     }
+}
+
+fn log_checkout_order_recovery_identity_not_found(
+    context: &PortContext,
+    request: &ReadCheckoutOrderProjectionRequest,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::warn!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation = READ_OPERATION,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+        locale_present = request.locale.is_some(),
+        locale_length = ?request.locale.as_ref().map(|value| value.chars().count()),
+        fallback_locale_present = request.fallback_locale.is_some(),
+        fallback_locale_length = ?request
+            .fallback_locale
+            .as_ref()
+            .map(|value| value.chars().count()),
+        code = "order.checkout_order_not_found",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout order identity was not found for the requested operation"
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
