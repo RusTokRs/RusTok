@@ -210,7 +210,7 @@ async fn storefront_pages_native(
         };
 
         let (items, total) = service
-            .list_public_visible(
+            .list_public_visible_with_locale_fallback(
                 tenant_id,
                 RuntimeListPagesFilter {
                     status: Some(ContentStatus::Published),
@@ -219,6 +219,7 @@ async fn storefront_pages_native(
                     page: 1,
                     per_page: 6,
                 },
+                Some(fallback_locale.as_str()),
                 public_channel_slug.as_deref(),
             )
             .await
