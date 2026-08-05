@@ -119,6 +119,11 @@ Pages persistence, cache scope or tenant policy.
   storefront server function using one production `CacheService` for generations
   and bytes. It retains old-key fill, `NodePublished` all-scope rotation, new-key
   miss/refill and same-generation hit without changing production behavior.
+- [x] A production gate PostgreSQL publish/rollback restart harness retains durable
+  publish and rollback receipts, real `OutboxRelay`, `TenantGenerationDeliveryGate`
+  and `ServerPagesCachePort`. Its post-invalidation downstream failure leaves the
+  rollback row pending after generation rotation; process-bounded dedupe prevents a
+  second rotation when a new relay instance retries the same event UUID.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
   causing misses and refills on storefront and artifact delivery paths through the
   production gate.
@@ -178,6 +183,9 @@ Pages persistence, cache scope or tenant policy.
 - [x] The retained production relay/native-route source uses the real Page Builder
   reviewed artifact producer contract and confirms the immutable artifact URL stays
   stable while Pages generations and composite keys rotate.
+- [x] The PostgreSQL production-gate source keeps Page Builder ownership unchanged:
+  it only correlates durable Pages publish/rollback lifecycle rows with the server
+  gate, cache generations, retry state and current-key refill behavior.
 - [ ] Accepted execution evidence must correlate publish/rollback receipts, outbox
   events, production-gate receipts, generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
@@ -186,16 +194,17 @@ Pages persistence, cache scope or tenant policy.
 
 - **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
   promoted-scenario selection, registered draft/published metadata surfaces,
-  generation-aware storefront/artifact readers, the production generation gate and
-  a retained gate-to-native-route source harness are connected. Executed metadata
-  conflict/isolation packets, inline edit mode and anonymous bundle evidence remain
-  open.
+  generation-aware storefront/artifact readers, the production generation gate,
+  the gate-to-native-route source and the PostgreSQL gate/restart source are
+  connected. Executed metadata conflict/isolation packets, inline edit mode and
+  anonymous bundle evidence remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
-  invalidation/read boundaries are integrated at source level. The server harness
-  now correlates the reviewed artifact with generation-key rotation, but execution,
-  rollback proof, verification and observed rollout evidence remain open.
+  invalidation/read boundaries are integrated at source level. Server harnesses now
+  retain native-route key rotation and PostgreSQL post-invalidation retry semantics,
+  but execution, rollback proof, verification and observed rollout evidence remain
+  open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -265,6 +274,7 @@ Rollback command
   -> durable rollback receipt
   -> commit
   -> same production generation gate and downstream delivery
+  -> downstream failure after rotation may retry without a second process-local bump
 
 Non-builder command
   -> page metadata version
@@ -415,8 +425,11 @@ Invariants:
   gate and production `ServerPagesCachePort` into the registered native storefront
   server function, retaining old-key fill, all-scope rotation, new-key refill and
   hit behavior.
-- Added test-only SSR registration dependency, machine evidence, static verifier and
-  dated production relay/native-route packet.
+- Added the production gate PostgreSQL publish/rollback restart harness. It retains
+  durable receipt/event commits, a post-invalidation downstream failure, pending
+  retry state, a second relay identity, no second process-local generation bump,
+  final acknowledgement and ordinary listener duplicate no-op.
+- Added source evidence, static verifiers and dated production packets.
 - Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
   workflows and CI were not executed in this slice.
 
@@ -461,6 +474,8 @@ Invariants:
   process.
 - [x] Retain source continuity for reviewed publish → real outbox relay → production
   generation gate → registered native route old-key/new-key behavior.
+- [x] Retain source continuity for PostgreSQL publish/rollback receipts → real relay
+  → production gate → post-invalidation retry without a second process-local bump.
 - [ ] Retain accepted execution evidence for publish/rollback outbox event →
   production gate receipt → generation rotation → cache miss/refill.
 - [ ] Correlate publish/rollback receipt, editor save, page/body revisions, runtime
@@ -514,9 +529,15 @@ Invariants:
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs`
 - `cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture`
+- `cargo test -p rustok-server --features mod-pages --test pages_production_gate_postgres_restart -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture`
+- `cargo test -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture`
+- `cargo test -p rustok-pages --test outbox_relay_restart_postgres -- --nocapture`
 - `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`
