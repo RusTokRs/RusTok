@@ -238,10 +238,11 @@ for (const [value, label] of [
 }
 
 for (const marker of [
-  "Publish/rollback cache correlation source packet: ready, unvalidated",
+  "production-relay-generation-gate-source-ready",
+  "Production gate PostgreSQL publish/rollback restart: source-ready",
   "event/correlation-bound receipt",
-  "old generation keys remain physically present but unreachable",
-  "Execution remains pending",
+  "retain old-generation values physically",
+  "execution remains pending",
 ]) {
   requireText(parityPlan, marker, "parity continuation plan");
 }
