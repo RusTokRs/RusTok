@@ -4,221 +4,70 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This work publishes a context-preserving owner adapter for the non-durable inventory reservation
-contract:
+The canonical `InProcessInventoryReservationPort` remains the admission and local-outcome wrapper for
+availability reads and deprecated quantity reserve/release mutations. This slice bounds its admission
+and tenant-validation diagnostics without changing accepted requests, owner delegation, or public
+contracts.
 
-- `InventoryReservationPort::check_availability`;
-- deprecated `InventoryReservationPort::reserve_inventory`;
-- deprecated `InventoryReservationPort::release_inventory_reservation`.
+## Canonical API and ordering
 
-The adapter closes source-level admission and tenant-validation context loss for callers that use the
-canonical factory. Every repository checkout composition now uses that factory:
+The crate continues to export `InProcessInventoryReservationPort` and
+`in_process_inventory_reservation_port`. Repository checkout compositions continue to use the
+canonical factory.
 
-- the compact `JournaledCheckoutService` compatibility path;
-- the mounted staged storefront runtime used by storefront transports;
-- the public legacy storefront checkout compatibility wrapper.
-
-No repository checkout composition constructs `InventoryService` directly as an
-`InventoryReservationPort` dependency after this cutover.
-
-## Canonical API
-
-The crate root and `rustok_inventory::ports` facade export:
-
-- `InProcessInventoryReservationPort`;
-- `in_process_inventory_reservation_port`.
-
-The factory accepts the same database connection and transactional event bus required by
-`InventoryService`, constructs the existing owner service internally, and returns
-`Arc<dyn InventoryReservationPort>`.
-
-Existing contracts remain unchanged:
-
-- `InventoryReservationPort`;
-- availability, reservation, and release request DTOs;
-- availability, reservation, and release snapshots;
-- the root `InventoryService` concrete service;
-- the durable identity reservation wrapper and factory added by the preceding inventory slice.
-
-## Ordering
-
-### Availability read
-
-`check_availability` flows through the canonical adapter as:
-
-1. require read policy;
-2. parse the trimmed tenant UUID;
-3. retain the accepted diagnostic context, variant id, and requested quantity;
-4. delegate the original `PortContext` and request to the existing `InventoryService` trait
-   implementation;
-5. allow the existing implementation to repeat its deterministic policy and tenant checks before
-   invoking availability policy;
-6. classify only covered stable local errors and return the same `PortError` unchanged.
-
-The adapter does not require write semantics for the read operation.
-
-### Deprecated quantity mutations
-
-`reserve_inventory` and `release_inventory_reservation` flow as:
-
-1. require write policy;
-2. require write semantics;
-3. parse the trimmed tenant UUID;
-4. retain the accepted diagnostic context, variant id, and quantity;
-5. delegate the original `PortContext` and request to the existing implementation;
-6. classify only covered stable local errors and return the same `PortError` unchanged.
-
-The repeated inner checks use the same policy, write-semantics, and tenant parsing rules, so accepted
-behavior is unchanged.
+Availability still requires read policy and trimmed tenant parsing before owner delegation. Reserve
+and release still require write policy, write semantics, and trimmed tenant parsing before delegation.
+The original context and request are delegated unchanged after adapter acceptance.
 
 ## Admission diagnostics
 
-Read-policy, write-policy, and write-semantics failures record:
-
-- truthful owner `rustok_inventory`;
-- exact owner operation;
-- admission phase `policy` or `write_semantics`;
-- boundary `inventory_reservation_port`;
-- correlation id and tenant id;
-- typed actor, channel, and locale;
-- causation id and traceparent when available;
-- idempotency key and deadline when available;
-- stable error code and message;
-- typed error kind and retryability;
-- the original `PortError`.
-
-Unavailable, timeout, and invariant failures use error severity. Ordinary caller rejection uses
+Policy and write-semantics rejection still return the exact original `PortError`. Technical
+unavailable, timeout, and invariant failures retain error severity; ordinary caller rejection retains
 warning severity.
 
-The exact admission `PortError` is returned unchanged.
+Admission events now retain only truthful owner/operation/phase/boundary, correlation ID, bounded
+context shape, stable code, error-message length, retryability, and technical-failure classification.
+They no longer record the full `PortError`, raw context values, message text, or debug error kind.
 
 ## Tenant validation
 
-The adapter preserves the existing tenant validation contract:
+The parser still trims `PortContext.tenant_id`, parses it as a UUID, and returns the unchanged
+validation envelope:
 
-- trim `PortContext.tenant_id`;
-- parse it as a UUID;
-- return code `inventory.context_invalid`;
-- return message `inventory request context is invalid`.
+- code `inventory.context_invalid`;
+- message `inventory request context is invalid`.
 
-A parse failure retains the UUID parse cause together with the complete delegated context, truthful
-owner, exact operation, validation phase `tenant_id`, stable public envelope, and boundary. The
-constructed validation `PortError` is returned unchanged.
+A parse rejection now records tenant original/trimmed lengths, a static parse-failed fact, bounded
+context shape, stable code, message length, retryability, correlation, and boundary. It no longer
+records the UUID parser cause, tenant text, complete mapped error, or other raw context values.
 
-No actor validation was added. The existing owner does not reject malformed actor identity, so adding
-that rule would alter request acceptance rather than retain diagnostics.
+No actor validation was added.
 
 ## Local owner outcomes
 
-After successful admission and tenant validation, the adapter retains the accepted context across the
-unchanged owner delegation. Exact stable validation, variant-not-found, insufficient-stock, storage,
-and invariant envelopes now receive operation-specific local diagnostics while returning the same
-`PortError`.
-
-The complete classification and pass-through contract is documented in
+Covered post-delegation outcomes retain exact code-and-message routing and same-error return. Their
+bounded diagnostic contract is documented in
 [`availability-quantity-local-context.md`](./availability-quantity-local-context.md).
 
-## Checkout composition cutover
+## Checkout composition
 
-### Journaled compatibility
+Journaled compatibility, mounted staged storefront, and legacy storefront compatibility continue to
+construct the adapter through `in_process_inventory_reservation_port`. Durable identity reservation
+composition and all other checkout owners are unchanged.
 
-`JournaledCheckoutService` previously constructed `InventoryService` directly for checkout-plan
-availability reads. It now calls `in_process_inventory_reservation_port` and passes the returned trait
-object to `CheckoutPlanBuilder`.
+## Evidence
 
-### Mounted staged storefront
+- `crates/rustok-inventory/contracts/evidence/availability-quantity-diagnostic-safety-source-review.json`
+- `scripts/verify/verify-inventory-availability-quantity-context.mjs`
+- `scripts/verify/verify-inventory-availability-quantity-local-context.mjs`
 
-`storefront_staged_checkout_runtime.rs` previously constructed `InventoryService` directly for the
-mounted checkout-plan availability owner. It now calls the same canonical factory with the existing
-runtime database connection and cloned transactional event bus.
+## Remaining boundary
 
-The staged runtime continues to use `in_process_inventory_reservation_identity_port` for durable
-reserve/release. Atomic cart, product, marketplace allocation, marketplace commission, marketplace
-ledger, payment, compensation, and recovery composition remain unchanged.
+The source-level raw diagnostics identified in `reservation_port_context.rs` are closed. The broader
+ecommerce correlation-safe mapper task remains open for other owner adapters and non-`PortError`
+public envelopes.
 
-### Legacy storefront compatibility
+## Validation disclosure
 
-The public `storefront_checkout_runtime::complete_storefront_checkout` wrapper remains available for
-compatibility and keeps its existing cart access check, storefront repricing, actor resolution, and
-`CheckoutService` delegation. Only the inventory dependency passed to `CheckoutService::new` changed:
-it now comes from `in_process_inventory_reservation_port` using the same runtime database connection
-and transactional event bus.
-
-The function remains marked `#[allow(dead_code)]`; this cutover does not remove or rename the public
-compatibility API.
-
-## Preserved owner behavior
-
-This work does not change:
-
-- channel-aware availability policy;
-- requested quantity handling;
-- deprecated quantity reserve semantics;
-- deprecated quantity release semantics;
-- backorder policy;
-- variant-not-found behavior;
-- insufficient inventory classification;
-- validation mapping;
-- database and invariant mapping;
-- request or response DTOs;
-- public codes, messages, kinds, or retryability;
-- durable identity reservation behavior from the preceding inventory slice;
-- staged checkout constructor contracts or public transport convergence;
-- legacy storefront cart access, repricing, actor resolution, checkout input, or public function
-  signature.
-
-The original context and request are delegated after adapter acceptance.
-
-## Static evidence
-
-`scripts/verify/verify-inventory-availability-quantity-context.mjs` guards:
-
-- crate-root and `ports` facade exports;
-- preserved durable identity exports;
-- canonical adapter constructor and factory;
-- exact availability, reserve, and release operations;
-- read admission without write semantics;
-- write-policy and write-semantics interception;
-- admission → tenant validation → owner delegation ordering;
-- full admission context and severity classification;
-- same admission error return;
-- trimmed tenant parsing, retained parse cause, stable envelope, and same error return;
-- unchanged legacy availability and quantity service calls and owner error mapping;
-- journaled compatibility cutover;
-- mounted staged storefront cutover with database/event-bus delegation;
-- preserved durable reservation factory and staged plan-builder composition;
-- legacy storefront public compatibility, cart access, repricing, actor resolution, region/cart/product
-  composition, and canonical inventory factory;
-- absence of direct `InventoryService` construction in every repository checkout composition.
-
-`scripts/verify/verify-inventory-availability-quantity-local-context.mjs` separately guards accepted
-context retention, post-delegation stable local-outcome classification, complete diagnostic fields,
-unknown-error pass-through, and same delegated error return.
-
-## Remaining gaps
-
-The ecommerce correlation-safe mapper task remains open for:
-
-- direct external callers that intentionally construct `InventoryService` as
-  `InventoryReservationPort` rather than using the canonical factory;
-- durable reservation local request, identity, not-found, stock, storage, and ledger outcomes;
-- remaining payment execution and compensation consumers;
-- GraphQL customer reads and shared storefront customer lookup;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No FBA or FFA status is promoted from source inspection alone.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
-
-```bash
-node scripts/verify/verify-inventory-availability-quantity-local-context.mjs
-node scripts/verify/verify-inventory-availability-quantity-context.mjs
-node scripts/verify/verify-inventory-reservation-owner-context.mjs
-node scripts/verify/verify-commerce-checkout-plan-inventory-context.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
-cargo check -p rustok-inventory --lib
-cargo check -p rustok-commerce --lib
-```
+No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed. No compile or
+runtime status is promoted.
