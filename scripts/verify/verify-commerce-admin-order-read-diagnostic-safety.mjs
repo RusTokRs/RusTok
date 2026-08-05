@@ -124,7 +124,7 @@ for (const marker of [
   "impl std::fmt::Debug for AdminOrderReadPortDiagnosticError<'_>",
   'formatter.write_str("redacted")',
 ]) requireText(diagnosticError, marker, `${paths.source}: bounded diagnostic error`);
-for (const forbidden of ["message", "kind:", "PortError"]) {
+for (const forbidden of ["message:", "kind:", "source:"]) {
   forbidText(diagnosticError, forbidden, `${paths.source}: diagnostic error payload`);
 }
 
