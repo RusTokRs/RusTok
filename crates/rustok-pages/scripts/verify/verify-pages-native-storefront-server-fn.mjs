@@ -245,7 +245,7 @@ requireOrder(
     "get_json::<StorefrontPagesData>(cache_key)",
     "let service = PageService::new",
     "get_by_slug_with_locale_fallback(",
-    "list_public_visible(",
+    "list_public_visible_with_locale_fallback(",
     "put_json(cache_key, &data).await",
   ],
   "production admission cache owner ordering",
