@@ -12,14 +12,14 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - expose one bounded exact-entity diagnosis transport`
+`M6 - add bounded missing-entity candidate diagnosis`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
 source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability,
 explicit owner-retained absence registry, Product locale high-watermark provider, double-read
-absence-version fence, and Product locale absence PostgreSQL harness are source complete. Product
-PostgreSQL execution evidence, diagnosis transport, lifecycle commands, repair, and broader
-discovery remain open.
+absence-version fence, Product locale absence PostgreSQL harness, and bounded GraphQL exact-entity
+diagnosis transport are source complete. Owner execution evidence, finding lifecycle commands,
+repair, and broader missing/stale/orphan discovery remain open.
 
 ## Rechecked status
 
@@ -48,7 +48,9 @@ discovery remain open.
 - M6 source-version-fenced PostgreSQL drift snapshot reader:
   `source_complete_owner_execution_pending`
 - M6 guarded exact-entity drift diagnosis operator:
-  `source_complete_transport_and_owner_execution_pending`
+  `source_complete_owner_execution_pending`
+- M6 bounded GraphQL exact-entity diagnosis transport:
+  `source_complete_owner_execution_pending`
 - M6 explicit source absence watermark registry, Product provider, and reader fence:
   `source_complete_owner_execution_pending`
 - M6 Product locale absence PostgreSQL harness:
@@ -121,7 +123,11 @@ discovery remain open.
 - [x] Add the source-ready real-migration Product locale-absence scenario and deterministic
       concurrent translation-change rejection scenario in `product_locale_absence_postgres`.
 - [ ] Run and admit `product_locale_absence_postgres` evidence.
-- [ ] Expose the exact-entity diagnosis capability through one bounded operator transport.
+- [x] Expose exact-entity diagnosis through bounded GraphQL `diagnoseIndexEntity` with tenant/actor
+      derived from request context, authorization-before-identity-parsing, one exact key, bounded
+      digest/receipt output, and no batch, scan, lifecycle, scheduler, or repair authority.
+- [ ] Retain GraphQL authorization, malformed-input ordering, consistent result, mismatch receipt,
+      and dependency-failure execution evidence.
 - [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
@@ -140,20 +146,21 @@ discovery remain open.
 
 ## Next implementation step
 
-Expose the existing guarded `diagnose_entity(context, key)` capability through one bounded
-server-owned transport adapter. The adapter must derive tenant and actor only from the request-bound
-server context, accept exactly one typed entity key, preserve the operator's authorization-before-
-validation ordering, and return only the existing bounded digest outcome or public failure envelope.
-It must not expose database connections, source/schema/absence registries, batch scope, source scan,
-finding resolution, scheduling, or repair. Keep Product PostgreSQL harness execution and evidence
-admission owner-owned and pending.
+Add one database-neutral bounded missing-entity candidate diagnosis slice over the existing owner
+`IndexSource::scan` contract. One request must select exactly one tenant, schema, optional locale,
+positive page limit, and opaque source cursor; process only that single bounded page; compare each
+returned owner key against exact materialized Index state; and retain findings only for source-live
+entities whose materialized entity is missing. Do not accumulate identifiers across pages, infer
+source absence from empty loads, enumerate stale Index-only rows, inspect orphan links, resolve
+findings, schedule scans, or repair state in this slice. GraphQL and PostgreSQL execution evidence
+remain owner-owned and pending.
 
 ## Owner verification for this slice
 
 ```bash
 cargo test -p rustok-index source_absence -- --nocapture
 cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
-cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
+cargo test -p rustok-server index_drift_diagnosis -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
 
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
@@ -179,6 +186,7 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   --test drift_finding_writer_postgres_test \
   -- --nocapture --test-threads=1
 
+node scripts/verify/verify-index-drift-diagnosis-graphql-transport.mjs
 node scripts/verify/verify-index-product-absence-postgres-harness.mjs
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
@@ -186,11 +194,12 @@ node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-drift-finding-locale-scope.mjs
 node scripts/verify/verify-index-drift-digest-producer.mjs
 node scripts/verify/verify-index-drift-finding-postgres-harness.mjs
+node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-server --all-targets --features mod-product
 cargo check -p rustok-distribution --all-targets --features mod-product
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, PostgreSQL runs, workflows, or CI were executed by
-the implementation agent.
+No tests, verifiers, formatting, Cargo checks, PostgreSQL or GraphQL runs, workflows, or CI were
+executed by the implementation agent.
