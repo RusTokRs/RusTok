@@ -248,11 +248,11 @@ for (const marker of [
 for (const marker of [
   "event-delivery-profile-parity-source-ready",
   "Memory and OutboxLocal factory profile parity: source-ready",
-  "OutboxIggy execution remains open"
+  "Optional external delivery infrastructure is outside the active Pages cursor"
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "factory-selected Memory and OutboxLocal profile harness",
-  "OutboxIggy execution remains open"
+  "OutboxLocal writes a pending row first"
 ]) need(localPlan, marker, "Pages local plan");
 
 forbid(packet, "OutboxIggy execution is complete", "profile parity packet");
