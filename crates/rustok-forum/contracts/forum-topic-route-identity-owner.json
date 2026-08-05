@@ -1,0 +1,74 @@
+{
+  "contract": "forum_topic_route_identity_owner_v1",
+  "task": "FORUM-24A",
+  "status": "source_ready_maintainer_execution_pending",
+  "extends": [
+    "FORUM-21I",
+    "FORUM-21J"
+  ],
+  "route": {
+    "canonical_shape": "/{locale}/forum/t/{short_id}/{slug}",
+    "short_id_source": "first_48_bits_of_topic_uuid",
+    "short_id_length": 12,
+    "short_id_encoding": "lowercase_hex",
+    "slug_is_identity": false,
+    "wrong_or_old_slug_redirects": true,
+    "id_routes_remain_compatibility_only": true
+  },
+  "resolution": {
+    "owner": "ForumTopicRouteService",
+    "canonical_merge_resolution_reused": true,
+    "maximum_short_id_candidates": 2,
+    "short_id_collision_fails_closed": true,
+    "exact_locale_only": true,
+    "locale_fallback": false,
+    "authorization_before_disclosure_required": true,
+    "dispositions": [
+      "canonical",
+      "redirect",
+      "gone"
+    ]
+  },
+  "aliases": {
+    "table": "forum_topic_route_aliases",
+    "append_only": true,
+    "unique_route_key": [
+      "tenant_id",
+      "locale",
+      "short_id",
+      "slug"
+    ],
+    "redirect_target": [
+      "target_topic_id",
+      "target_locale"
+    ],
+    "target_slug_is_recomputed": true,
+    "rename_write_composition_included": false,
+    "merge_write_composition_included": false,
+    "delete_write_composition_included": false
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_route_changed": false,
+    "storefront_route_mounted": false,
+    "category_route_changed": false,
+    "seo_or_hreflang_changed": false,
+    "existing_id_redirect_changed": false
+  },
+  "remaining": [
+    "compose alias writes into topic rename, merge and delete owners",
+    "mount authorized localized topic routes in both storefront hosts",
+    "add localized category paths",
+    "add hreflang and SEO publication policy",
+    "retain SQLite, PostgreSQL and mounted-browser runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "node scripts/verify/verify-forum-topic-route-identity-owner.mjs",
+      "cargo test -p rustok-forum services::topic_route::tests -- --nocapture",
+      "cargo test -p rustok-forum --test topic_route_identity_sqlite -- --nocapture",
+      "cargo check -p rustok-forum --all-targets"
+    ],
+    "executed_by_implementation_agent": false
+  }
+}
