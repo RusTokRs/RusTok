@@ -1,0 +1,48 @@
+{
+  "status": "commerce_checkout_compensation_public_envelope_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/services/checkout_compensation.rs",
+    "crates/rustok-commerce/docs/checkout-compensation-public-envelope-safety.md",
+    "scripts/verify/verify-commerce-checkout-compensation-public-envelope-safety.mjs",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "manual_reconciliation_state_site_count": 7,
+    "conflict_state_site_count": 10,
+    "total_state_envelope_site_count": 17,
+    "dynamic_uuid_in_state_envelopes": false,
+    "dynamic_status_in_state_envelopes": false,
+    "dynamic_lease_owner_in_state_envelopes": false,
+    "stable_branch_specific_messages": true,
+    "manual_reconciliation_variant_preserved": true,
+    "conflict_variant_preserved": true,
+    "compensation_error_codes_preserved": true,
+    "journal_error_code_preserved": true,
+    "journal_message_persistence_preserved": true,
+    "claim_behavior_preserved": true,
+    "stage_gate_preserved": true,
+    "payment_provider_safety_gate_preserved": true,
+    "payment_cancellation_behavior_preserved": true,
+    "order_cancellation_behavior_preserved": true,
+    "inventory_release_behavior_preserved": true,
+    "cart_release_behavior_preserved": true,
+    "identity_validation_preserved": true,
+    "transparent_owner_error_envelopes_closed": false,
+    "boundary_error_envelope_closed": false,
+    "compensation_and_journal_envelope_closed": false,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
