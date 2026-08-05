@@ -23,7 +23,7 @@ function requireMarkers(name, markers) {
 
 requireMarkers("reader", [
   "pub struct PostgresIndexDriftSnapshotReader",
-  "impl IndexDriftSnapshotReader for PostgreSIndexDriftSnapshotReader",
+  "impl IndexDriftSnapshotReader for PostgresIndexDriftSnapshotReader",
   "IndexSourceLoadRequest::new(vec![request.key().clone()])",
   "index_drift_source_watermark_missing",
   "index_drift_source_changed_during_capture",
