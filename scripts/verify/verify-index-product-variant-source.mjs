@@ -26,14 +26,16 @@ const forbidMarkers = (relative, source, markers) => {
 
 const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
+  'mod absence;',
   'pub(crate) mod graph;',
   'mod product;',
   '#[path = "../product_variant_index.rs"]',
   'mod variant;',
   'product::register(extensions)?;',
-  'variant::register(extensions)',
-  'selected_product_bridge_set_registers_four_schemas_and_two_stable_factories',
-  'assert_eq!(factories.len(), 2);',
+  'variant::register(extensions)?;',
+  'absence::register(extensions)',
+  'selected_product_bridge_set_registers_four_schemas_and_three_stable_factories',
+  'assert_eq!(factories.len(), 3);',
 ]);
 forbidMarkers(modulePath, moduleSource, ['tokio::spawn', 'tokio::time::sleep', 'loop {']);
 
@@ -49,9 +51,12 @@ const source = requireMarkers(sourcePath, [
   'PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary"',
   'PRODUCT_VARIANT_EVENT_DOMAIN_V1: &str = "rustok-product.product-variant-replay-v1"',
   'fn product_variant_v1_schema()',
+  'fn product_variant_v2_schema()',
   'reference: product_variant_schema_ref(1)?',
+  'reference: product_variant_schema_ref(2)?',
   'locale_mode: LocaleMode::None',
   'fields: product_variant_fields(false)?',
+  'fields: product_variant_fields(true)?',
   'scalar_field("product_id", IndexValueType::Uuid, false, true, true)?',
   'scalar_field("sku", IndexValueType::String, true, true, true)?',
   'product_variant_schema_ref(1).map_err(|error| error.to_string())?',
@@ -59,6 +64,7 @@ const source = requireMarkers(sourcePath, [
   'ProductVariantPostgresIndexSource { db }',
   'impl IndexSource for ProductVariantPostgresIndexSource',
   'FROM product_variants v',
+  'FROM product_variant_index_tombstones tombstone',
   'v.index_revision,',
   'row.variant_id > $2',
   'ORDER BY row.variant_id ASC',
@@ -93,12 +99,29 @@ requireMarkers(migrationPath, [
   'trg_product_variants_bump_index_revision',
   'BEFORE UPDATE ON product_variants',
 ]);
+const tombstoneMigration = requireMarkers(
+  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  [
+    'CREATE TABLE product_variant_index_tombstones',
+    'rustok_product_variant_capture_index_tombstone',
+    'trg_product_variants_capture_index_tombstone',
+    'rustok_product_variant_seed_index_revision_from_tombstone',
+    'rustok_product_variant_clear_superseded_index_tombstone',
+  ],
+);
+forbidMarkers(
+  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  tombstoneMigration,
+  ['index_entities', 'index_links', 'index_jobs'],
+);
 
 requireMarkers('crates/rustok-index/docs/m7-product-variant-source.md', [
   'Status: `source_complete_owner_execution_pending`',
-  '`rustok-product::product_variant@1`',
+  '`rustok-product::product_variant@1` and `@2`',
   'cursor scans ordered by stable `variant_id`',
-  'ProductVariant hard deletes do not yet emit durable Index tombstones.',
+  '`product_variant_index_tombstones`',
+  'Hard delete stores a tombstone',
+  'No ProductVariant locale-absence provider is required',
   'maintainer-run',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
