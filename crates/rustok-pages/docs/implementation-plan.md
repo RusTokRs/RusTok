@@ -124,6 +124,11 @@ Pages persistence, cache scope or tenant policy.
   and `ServerPagesCachePort`. Its post-invalidation downstream failure leaves the
   rollback row pending after generation rotation; process-bounded dedupe prevents a
   second rotation when a new relay instance retries the same event UUID.
+- [x] A factory-selected Memory and OutboxLocal profile harness constructs the real
+  `build_event_runtime` topology. Memory rotates before synchronous listener
+  delivery without writing `sys_events`; OutboxLocal writes a pending row first and
+  rotates only inside `OutboxRelay` before listener delivery and acknowledgement.
+  OutboxIggy execution remains open.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
   causing misses and refills on storefront and artifact delivery paths through the
   production gate.
@@ -186,6 +191,9 @@ Pages persistence, cache scope or tenant policy.
 - [x] The PostgreSQL production-gate source keeps Page Builder ownership unchanged:
   it only correlates durable Pages publish/rollback lifecycle rows with the server
   gate, cache generations, retry state and current-key refill behavior.
+- [x] Factory-selected Memory and OutboxLocal delivery retain the same Pages owner
+  invalidation policy without moving persistence, review, materialization or
+  artifact ownership into Page Builder.
 - [ ] Accepted execution evidence must correlate publish/rollback receipts, outbox
   events, production-gate receipts, generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
@@ -195,16 +203,16 @@ Pages persistence, cache scope or tenant policy.
 - **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
   promoted-scenario selection, registered draft/published metadata surfaces,
   generation-aware storefront/artifact readers, the production generation gate,
-  the gate-to-native-route source and the PostgreSQL gate/restart source are
-  connected. Executed metadata conflict/isolation packets, inline edit mode and
-  anonymous bundle evidence remain open.
+  the gate-to-native-route source, PostgreSQL gate/restart source and factory profile
+  source are connected. Executed metadata conflict/isolation packets, inline edit
+  mode, OutboxIggy and anonymous bundle evidence remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
   invalidation/read boundaries are integrated at source level. Server harnesses now
-  retain native-route key rotation and PostgreSQL post-invalidation retry semantics,
-  but execution, rollback proof, verification and observed rollout evidence remain
-  open.
+  retain native-route key rotation, PostgreSQL retry semantics and Memory/OutboxLocal
+  profile composition, but execution, Iggy, rollback proof, verification and
+  observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -252,9 +260,8 @@ GraphQL / HTTP / admin reviewed command
   -> transactional NodeUpdated/NodePublished outbox
   -> durable publish receipt + exact artifact manifest
   -> commit
-  -> publisher or OutboxRelay
-  -> tenant generation transport and canonical listener-readiness gate
-  -> synchronous Pages event predicate + invalidation runtime
+  -> Memory: synchronous production gate -> listener delivery
+  -> OutboxLocal/OutboxIggy: durable row -> relay -> production gate
   -> event/correlation-bound generation receipt
   -> downstream transport acceptance
   -> asynchronous Pages module listener duplicate no-op
@@ -324,15 +331,18 @@ Invariants:
     event/correlation identity. Same-event work is serialized and a successful
     process-local rotation is not repeated by relay retry or the asynchronous
     listener; replay after process restart may conservatively rotate again.
-21. Channel/module authorization runs before every cache lookup.
-22. Cache fill follows owner source validation; cache errors fail open to source
+21. Memory applies the gate before in-memory listener delivery and writes no durable
+    outbox row; OutboxLocal/OutboxIggy apply the same gate in the relay target before
+    durable acknowledgement.
+22. Channel/module authorization runs before every cache lookup.
+23. Cache fill follows owner source validation; cache errors fail open to source
     reads and do not authorize or publish data.
-23. A route request after generation rotation derives a new composite key; the old
+24. A route request after generation rotation derives a new composite key; the old
     key may remain physically stored but is unreachable from the current snapshot.
-24. Missing providers fail visibly and never cause silent deletion.
-25. Dynamic widgets persist versioned configuration, not privileged snapshots.
-26. Anonymous storefront bundles contain no editor code.
-27. No block or shadow-editor fallback exists.
+25. Missing providers fail visibly and never cause silent deletion.
+26. Dynamic widgets persist versioned configuration, not privileged snapshots.
+27. Anonymous storefront bundles contain no editor code.
+28. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -429,6 +439,10 @@ Invariants:
   durable receipt/event commits, a post-invalidation downstream failure, pending
   retry state, a second relay identity, no second process-local generation bump,
   final acknowledgement and ordinary listener duplicate no-op.
+- Added the factory-selected Memory/OutboxLocal profile harness. It retains Memory
+  synchronous rotation without an outbox row and OutboxLocal pending persistence
+  before relay-gated rotation, listener delivery and durable acknowledgement.
+- Kept OutboxIggy source topology unchanged and explicitly left its execution open.
 - Added source evidence, static verifiers and dated production packets.
 - Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
   workflows and CI were not executed in this slice.
@@ -476,8 +490,11 @@ Invariants:
   generation gate → registered native route old-key/new-key behavior.
 - [x] Retain source continuity for PostgreSQL publish/rollback receipts → real relay
   → production gate → post-invalidation retry without a second process-local bump.
+- [x] Retain factory-selected source continuity for Memory synchronous delivery and
+  OutboxLocal durable relay delivery through the same Pages generation gate.
 - [ ] Retain accepted execution evidence for publish/rollback outbox event →
   production gate receipt → generation rotation → cache miss/refill.
+- [ ] Retain OutboxIggy execution evidence with a configured broker/connector.
 - [ ] Correlate publish/rollback receipt, editor save, page/body revisions, runtime
   review, materialization, invalidation receipt, artifact and storefront read in
   telemetry.
@@ -530,8 +547,10 @@ Invariants:
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs`
+- `cargo test -p rustok-server --features mod-pages --test pages_event_delivery_profiles_sqlite -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages --test pages_production_gate_postgres_restart -- --nocapture`
 - `cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture`
