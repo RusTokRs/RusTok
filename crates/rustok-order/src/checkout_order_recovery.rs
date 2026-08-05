@@ -290,43 +290,40 @@ fn validate_identity(
     legacy_snapshot_hash: &str,
     legacy_request_hash: &str,
 ) -> Result<(), PortError> {
-    let base_matches = identity.tenant_id == tenant_id
-        && identity.checkout_operation_id == request.checkout_operation_id
-        && identity
-            .source_cart_id
-            .is_none_or(|id| id == request.completion.cart_id)
-        && identity
-            .payment_collection_id
-            .is_none_or(|id| Some(id) == request.completion.payment_collection_id)
-        && identity
-            .shipping_option_id
-            .is_none_or(|id| Some(id) == request.completion.shipping_option_id);
+    let tenant_matches = identity.tenant_id == tenant_id;
+    let checkout_operation_matches =
+        identity.checkout_operation_id == request.checkout_operation_id;
+    let source_cart_matches = identity
+        .source_cart_id
+        .is_none_or(|id| id == request.completion.cart_id);
+    let payment_collection_matches = identity
+        .payment_collection_id
+        .is_none_or(|id| Some(id) == request.completion.payment_collection_id);
+    let shipping_option_matches = identity
+        .shipping_option_id
+        .is_none_or(|id| Some(id) == request.completion.shipping_option_id);
+    let base_matches = tenant_matches
+        && checkout_operation_matches
+        && source_cart_matches
+        && payment_collection_matches
+        && shipping_option_matches;
     let owner_hashes_match = identity.snapshot_hash.as_deref() == Some(owner_hashes.0.as_str())
         && identity.request_hash.as_deref() == Some(owner_hashes.1.as_str());
     let legacy_hashes_match = identity.snapshot_hash.as_deref() == Some(legacy_snapshot_hash)
         && identity.request_hash.as_deref() == Some(legacy_request_hash);
     if !base_matches || !(owner_hashes_match || legacy_hashes_match) {
-        tracing::error!(
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
-            operation = RECOVER_OPERATION,
-            code = "order.checkout_request_conflict",
-            request_checkout_operation_id = %request.checkout_operation_id,
-            request_cart_id = %request.completion.cart_id,
-            request_payment_collection_id = ?request.completion.payment_collection_id,
-            request_shipping_option_id = ?request.completion.shipping_option_id,
-            identity_tenant_id = %identity.tenant_id,
-            identity_checkout_operation_id = %identity.checkout_operation_id,
-            identity_order_id = %identity.order_id,
-            identity_source_cart_id = ?identity.source_cart_id,
-            identity_payment_collection_id = ?identity.payment_collection_id,
-            identity_shipping_option_id = ?identity.shipping_option_id,
+        log_checkout_order_recovery_identity_conflict(
+            context,
+            identity,
+            request,
+            tenant_matches,
+            checkout_operation_matches,
+            source_cart_matches,
+            payment_collection_matches,
+            shipping_option_matches,
             base_matches,
             owner_hashes_match,
             legacy_hashes_match,
-            "checkout recovery identity conflicts with the completion request"
         );
         return Err(PortError::conflict(
             "order.checkout_request_conflict",
@@ -334,6 +331,83 @@ fn validate_identity(
         ));
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn log_checkout_order_recovery_identity_conflict(
+    context: &PortContext,
+    identity: &CheckoutOrderIdentitySnapshot,
+    request: &RecoverExistingCheckoutOrderRequest,
+    tenant_matches: bool,
+    checkout_operation_matches: bool,
+    source_cart_matches: bool,
+    payment_collection_matches: bool,
+    shipping_option_matches: bool,
+    base_matches: bool,
+    owner_hashes_match: bool,
+    legacy_hashes_match: bool,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::error!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation = RECOVER_OPERATION,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        request_checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+        request_cart_id_non_nil = !request.completion.cart_id.is_nil(),
+        request_payment_collection_id_present = request.completion.payment_collection_id.is_some(),
+        request_payment_collection_id_non_nil = ?request
+            .completion
+            .payment_collection_id
+            .map(|id| !id.is_nil()),
+        request_shipping_option_id_present = request.completion.shipping_option_id.is_some(),
+        request_shipping_option_id_non_nil = ?request
+            .completion
+            .shipping_option_id
+            .map(|id| !id.is_nil()),
+        identity_tenant_id_non_nil = !identity.tenant_id.is_nil(),
+        identity_checkout_operation_id_non_nil = !identity.checkout_operation_id.is_nil(),
+        identity_order_id_non_nil = !identity.order_id.is_nil(),
+        identity_source_cart_id_present = identity.source_cart_id.is_some(),
+        identity_source_cart_id_non_nil = ?identity.source_cart_id.map(|id| !id.is_nil()),
+        identity_payment_collection_id_present = identity.payment_collection_id.is_some(),
+        identity_payment_collection_id_non_nil = ?identity
+            .payment_collection_id
+            .map(|id| !id.is_nil()),
+        identity_shipping_option_id_present = identity.shipping_option_id.is_some(),
+        identity_shipping_option_id_non_nil = ?identity
+            .shipping_option_id
+            .map(|id| !id.is_nil()),
+        identity_snapshot_hash_present = identity.snapshot_hash.is_some(),
+        identity_snapshot_hash_length = ?identity.snapshot_hash.as_ref().map(String::len),
+        identity_request_hash_present = identity.request_hash.is_some(),
+        identity_request_hash_length = ?identity.request_hash.as_ref().map(String::len),
+        tenant_matches,
+        checkout_operation_matches,
+        source_cart_matches,
+        payment_collection_matches,
+        shipping_option_matches,
+        base_matches,
+        owner_hashes_match,
+        legacy_hashes_match,
+        code = "order.checkout_request_conflict",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout recovery identity conflicts with the completion request"
+    );
 }
 
 fn require_operation_context(
