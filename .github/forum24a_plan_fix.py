@@ -18,10 +18,10 @@ text = text.replace(old, new, 1)
 trailing = '''
 ID routes remain internal compatibility paths, not the primary storefront UX.
 
-### Definition of done
+## `FORUM-25`
 '''
 replacement = '''
-### Definition of done
+## `FORUM-25`
 '''
 if text.count(trailing) != 1:
     raise SystemExit('FORUM-24 trailing ID-route sentence changed')
