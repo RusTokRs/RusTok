@@ -31,7 +31,8 @@ pub enum IndexDriftDiagnosisOperatorError {
 /// The runtime composes the production snapshot reader, database-neutral digest producer, and
 /// PostgreSQL finding writer behind one request-bound `modules:manage` check. It accepts only one
 /// exact `EntityKey` and exposes no scan, discovery, lifecycle, repair, connection, source registry,
-/// snapshot reader, or writer handle.
+/// snapshot reader, or writer handle. The missing-only method returns only a bounded candidate
+/// outcome and never exposes the captured typed states.
 #[derive(Clone)]
 pub struct IndexDriftDiagnosisOperatorRuntime {
     inner: Arc<IndexDriftDiagnosisProducer>,
@@ -55,6 +56,22 @@ impl IndexDriftDiagnosisOperatorRuntime {
         authorize_for(&context, key.tenant_id)?;
         let request = rustok_index::IndexDriftDigestRequest::new(key)?;
         self.inner.produce(request).await.map_err(Into::into)
+    }
+
+    pub async fn diagnose_missing_entity_candidate(
+        &self,
+        context: IndexReconciliationOperatorContext,
+        key: rustok_index::EntityKey,
+    ) -> std::result::Result<
+        rustok_index::IndexDriftMissingEntityCandidateOutcome,
+        IndexDriftDiagnosisOperatorError,
+    > {
+        authorize_for(&context, key.tenant_id)?;
+        let request = rustok_index::IndexDriftDigestRequest::new(key)?;
+        self.inner
+            .produce_missing_entity_candidate(request)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -378,6 +395,67 @@ mod tests {
         assert!(matches!(
             cross_tenant,
             IndexDriftDiagnosisOperatorError::TenantMismatch
+        ));
+    }
+
+    #[tokio::test]
+    async fn missing_candidate_diagnosis_authorizes_before_request_validation() {
+        let mut extensions = complete_registries();
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database without Index migrations");
+        materialize_index_drift_diagnosis_operator(&mut extensions, db)
+            .expect("diagnosis composition");
+        let runtime = extensions
+            .get::<IndexDriftDiagnosisOperatorRuntime>()
+            .cloned()
+            .expect("diagnosis runtime");
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReconciliationOperatorContext::new(tenant_id, actor_id).unwrap();
+        let invalid = key(tenant_id, Uuid::nil());
+
+        let missing = runtime
+            .diagnose_missing_entity_candidate(context, invalid.clone())
+            .await
+            .expect_err("missing authority must fail before candidate validation");
+        assert!(matches!(
+            missing,
+            IndexDriftDiagnosisOperatorError::MissingRequestAuthority
+        ));
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            runtime.diagnose_missing_entity_candidate(context, invalid.clone()),
+        )
+        .await
+        .expect_err("modules:read must not diagnose missing candidates");
+        assert!(matches!(
+            forbidden,
+            IndexDriftDiagnosisOperatorError::Forbidden
+        ));
+
+        let delegated = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.diagnose_missing_entity_candidate(context, invalid),
+        )
+        .await
+        .expect_err("authorized invalid key must reach candidate request validation");
+        assert!(matches!(
+            delegated,
+            IndexDriftDiagnosisOperatorError::Diagnosis(
+                rustok_index::IndexDriftDigestError::NilEntityId
+            )
         ));
     }
 }
