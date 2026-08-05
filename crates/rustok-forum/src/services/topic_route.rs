@@ -15,6 +15,7 @@ pub const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
 pub const MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN: usize = 64;
 pub const MAX_FORUM_TOPIC_ROUTE_SLUG_LEN: usize = 255;
 pub const MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN: usize = 500;
+pub const FORUM_TOPIC_RENAMED_ROUTE_REASON: &str = "Topic slug changed";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +43,24 @@ pub struct ForumTopicRouteResolution {
     pub disposition: ForumTopicRouteDisposition,
     pub canonical: Option<ForumTopicRouteDescriptor>,
     pub alias_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RenameForumTopicSlugInput {
+    pub locale: String,
+    pub slug: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForumTopicSlugRenameResult {
+    pub topic_id: Uuid,
+    pub locale: String,
+    pub previous_slug: String,
+    pub slug: String,
+    pub previous_path: String,
+    pub canonical: ForumTopicRouteDescriptor,
+    pub alias_id: Option<Uuid>,
+    pub changed: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,6 +152,50 @@ impl ForumTopicRouteService {
         })
     }
 
+    async fn canonical_descriptor_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        requested_topic_id: Uuid,
+        preferred_locale: &str,
+    ) -> ForumResult<ForumTopicRouteDescriptor> {
+        let preferred_locale = normalize_route_locale(preferred_locale)?;
+        let canonical = ForumTopicCanonicalResolutionService::new(self.db.clone())
+            .resolve_unchecked(tenant_id, requested_topic_id)
+            .await?;
+        let routes = load_current_topic_translation_routes(
+            &self.db,
+            tenant_id,
+            canonical.canonical_topic_id,
+        )
+        .await?;
+        let route = routes
+            .iter()
+            .find(|route| route.locale == preferred_locale)
+            .or_else(|| {
+                routes
+                    .iter()
+                    .find(|route| route.locale == PLATFORM_FALLBACK_LOCALE)
+            })
+            .or_else(|| routes.first())
+            .ok_or(ForumError::TopicRouteNotFound)?;
+        let short_id = Self::short_identity(canonical.canonical_topic_id);
+        ensure_unambiguous_current_short_id(
+            &self.db,
+            tenant_id,
+            &route.locale,
+            &short_id,
+            canonical.canonical_topic_id,
+        )
+        .await?;
+        Ok(ForumTopicRouteDescriptor {
+            topic_id: canonical.canonical_topic_id,
+            locale: route.locale.clone(),
+            short_id: short_id.clone(),
+            slug: route.slug.clone(),
+            path: forum_topic_route_path(&route.locale, &short_id, &route.slug),
+        })
+    }
+
     pub async fn resolve(
         &self,
         tenant_id: Uuid,
@@ -148,7 +211,11 @@ impl ForumTopicRouteService {
         match current.as_slice() {
             [route] => {
                 let canonical = self
-                    .canonical_descriptor(tenant_id, route.topic_id, &locale)
+                    .canonical_descriptor_with_locale_fallback(
+                        tenant_id,
+                        route.topic_id,
+                        &locale,
+                    )
                     .await?;
                 let disposition = if route.topic_id == canonical.topic_id && slug == canonical.slug {
                     ForumTopicRouteDisposition::Canonical
@@ -194,9 +261,35 @@ impl ForumTopicRouteService {
                     .target_locale
                     .as_deref()
                     .ok_or(ForumError::TopicRouteResolutionConflict)?;
-                let canonical = self
-                    .canonical_descriptor(tenant_id, target_topic_id, target_locale)
-                    .await?;
+                let canonical = if target_topic_id == alias.topic_id {
+                    match self
+                        .canonical_descriptor_with_locale_fallback(
+                            tenant_id,
+                            target_topic_id,
+                            target_locale,
+                        )
+                        .await
+                    {
+                        Ok(canonical) => canonical,
+                        Err(ForumError::TopicNotFound(_))
+                        | Err(ForumError::TopicDeleted)
+                        | Err(ForumError::TopicRouteNotFound) => {
+                            return Ok(ForumTopicRouteResolution {
+                                requested_locale: locale,
+                                requested_short_id: short_id,
+                                requested_slug: slug,
+                                requested_topic_id: Some(alias.topic_id),
+                                disposition: ForumTopicRouteDisposition::Gone,
+                                canonical: None,
+                                alias_id: Some(alias.alias_id),
+                            });
+                        }
+                        Err(error) => return Err(error),
+                    }
+                } else {
+                    self.canonical_descriptor(tenant_id, target_topic_id, target_locale)
+                        .await?
+                };
                 Ok(ForumTopicRouteResolution {
                     requested_locale: locale,
                     requested_short_id: short_id,
@@ -208,6 +301,75 @@ impl ForumTopicRouteService {
                 })
             }
         }
+    }
+
+    /// Renames one existing localized route and records its previous path atomically.
+    pub(crate) async fn rename_topic_slug_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        input: &RenameForumTopicSlugInput,
+    ) -> ForumResult<ForumTopicSlugRenameResult> {
+        let locale = normalize_route_locale(&input.locale)?;
+        let slug = normalize_route_slug_for_write(&input.slug)?;
+        let current = lock_topic_route_for_rename_in_tx(txn, tenant_id, topic_id, &locale).await?;
+        if current.topic_id != topic_id {
+            return Err(ForumError::TopicRouteResolutionConflict);
+        }
+        let previous_slug = normalize_route_slug(&current.slug)?;
+        let short_id = Self::short_identity(topic_id);
+        ensure_unambiguous_current_short_id(
+            txn,
+            tenant_id,
+            &locale,
+            &short_id,
+            topic_id,
+        )
+        .await?;
+        let previous_path = forum_topic_route_path(&locale, &short_id, &previous_slug);
+        let canonical = ForumTopicRouteDescriptor {
+            topic_id,
+            locale: locale.clone(),
+            short_id: short_id.clone(),
+            slug: slug.clone(),
+            path: forum_topic_route_path(&locale, &short_id, &slug),
+        };
+        if previous_slug == slug {
+            return Ok(ForumTopicSlugRenameResult {
+                topic_id,
+                locale,
+                previous_slug,
+                slug,
+                previous_path,
+                canonical,
+                alias_id: None,
+                changed: false,
+            });
+        }
+
+        let alias_id = Self::record_redirect_alias_in_tx(
+            txn,
+            tenant_id,
+            topic_id,
+            &locale,
+            &previous_slug,
+            topic_id,
+            &locale,
+            FORUM_TOPIC_RENAMED_ROUTE_REASON,
+        )
+        .await?;
+        update_topic_route_slug_in_tx(txn, tenant_id, topic_id, &locale, &slug).await?;
+
+        Ok(ForumTopicSlugRenameResult {
+            topic_id,
+            locale,
+            previous_slug,
+            slug,
+            previous_path,
+            canonical,
+            alias_id: Some(alias_id),
+            changed: true,
+        })
     }
 
     /// Records redirects for all source topic translations with a non-empty slug.
@@ -433,6 +595,15 @@ fn normalize_route_slug(value: &str) -> ForumResult<String> {
     Ok(normalized)
 }
 
+fn normalize_route_slug_for_write(value: &str) -> ForumResult<String> {
+    normalize_route_slug(value).map_err(|error| match error {
+        ForumError::TopicRouteNotFound => ForumError::Validation(
+            "Forum topic route slug must contain a valid route segment".to_string(),
+        ),
+        other => other,
+    })
+}
+
 fn normalize_alias_reason(reason: &str) -> ForumResult<String> {
     let reason = reason.trim();
     if reason.is_empty()
@@ -496,12 +667,173 @@ fn topic_translation_route_from_row(row: QueryResult) -> ForumResult<TopicTransl
     })
 }
 
-async fn load_current_route_for_topic(
-    db: &DatabaseConnection,
+async fn load_current_topic_translation_routes<C>(
+    db: &C,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> ForumResult<Vec<TopicTranslationRoute>>
+where
+    C: ConnectionTrait,
+{
+    let statement = match db.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT translation.locale, translation.slug
+            FROM forum_topics topic
+            JOIN forum_topic_translations translation
+              ON translation.tenant_id = topic.tenant_id
+             AND translation.topic_id = topic.id
+            WHERE topic.tenant_id = $1
+              AND topic.id = $2
+              AND topic.deleted_at IS NULL
+              AND translation.slug IS NOT NULL
+              AND length(translation.slug) > 0
+            ORDER BY translation.locale, translation.id
+            "#,
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            SELECT translation.locale, translation.slug
+            FROM forum_topics topic
+            JOIN forum_topic_translations translation
+              ON translation.tenant_id = topic.tenant_id
+             AND translation.topic_id = topic.id
+            WHERE topic.tenant_id = ?
+              AND topic.id = ?
+              AND topic.deleted_at IS NULL
+              AND translation.slug IS NOT NULL
+              AND length(translation.slug) > 0
+            ORDER BY translation.locale, translation.id
+            "#,
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        backend => return Err(unsupported_backend(backend)),
+    };
+    db.query_all(statement)
+        .await?
+        .into_iter()
+        .map(topic_translation_route_from_row)
+        .collect()
+}
+
+async fn lock_topic_route_for_rename_in_tx(
+    txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic_id: Uuid,
     locale: &str,
-) -> ForumResult<Option<CurrentTopicRoute>> {
+) -> ForumResult<CurrentTopicRoute> {
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            let row = txn
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"
+                    SELECT topic.id AS topic_id, translation.slug
+                    FROM forum_topics topic
+                    JOIN forum_topic_translations translation
+                      ON translation.tenant_id = topic.tenant_id
+                     AND translation.topic_id = topic.id
+                    WHERE topic.tenant_id = $1
+                      AND topic.id = $2
+                      AND topic.deleted_at IS NULL
+                      AND translation.locale = $3
+                      AND translation.slug IS NOT NULL
+                      AND length(translation.slug) > 0
+                    FOR UPDATE OF translation
+                    "#,
+                    vec![tenant_id.into(), topic_id.into(), locale.into()],
+                ))
+                .await?;
+            row.map(current_route_from_row)
+                .transpose()?
+                .ok_or(ForumError::TopicRouteNotFound)
+        }
+        DatabaseBackend::Sqlite => {
+            let result = txn
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    r#"
+                    UPDATE forum_topic_translations
+                    SET updated_at = updated_at
+                    WHERE tenant_id = ?
+                      AND topic_id = ?
+                      AND locale = ?
+                      AND slug IS NOT NULL
+                      AND length(slug) > 0
+                      AND EXISTS (
+                          SELECT 1 FROM forum_topics topic
+                          WHERE topic.tenant_id = ?
+                            AND topic.id = ?
+                            AND topic.deleted_at IS NULL
+                      )
+                    "#,
+                    vec![
+                        tenant_id.into(),
+                        topic_id.into(),
+                        locale.into(),
+                        tenant_id.into(),
+                        topic_id.into(),
+                    ],
+                ))
+                .await?;
+            if result.rows_affected() != 1 {
+                return Err(ForumError::TopicRouteNotFound);
+            }
+            load_current_route_for_topic(txn, tenant_id, topic_id, locale)
+                .await?
+                .ok_or(ForumError::TopicRouteNotFound)
+        }
+        backend => Err(unsupported_backend(backend)),
+    }
+}
+
+async fn update_topic_route_slug_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    locale: &str,
+    slug: &str,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE forum_topic_translations
+            SET slug = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE tenant_id = $2 AND topic_id = $3 AND locale = $4
+            "#,
+            vec![slug.into(), tenant_id.into(), topic_id.into(), locale.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            UPDATE forum_topic_translations
+            SET slug = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE tenant_id = ? AND topic_id = ? AND locale = ?
+            "#,
+            vec![slug.into(), tenant_id.into(), topic_id.into(), locale.into()],
+        ),
+        backend => return Err(unsupported_backend(backend)),
+    };
+    let result = txn.execute(statement).await?;
+    if result.rows_affected() != 1 {
+        return Err(ForumError::TopicRouteResolutionConflict);
+    }
+    Ok(())
+}
+
+async fn load_current_route_for_topic<C>(
+    db: &C,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    locale: &str,
+) -> ForumResult<Option<CurrentTopicRoute>>
+where
+    C: ConnectionTrait,
+{
     let statement = match db.get_database_backend() {
         DatabaseBackend::Postgres => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -545,12 +877,15 @@ async fn load_current_route_for_topic(
     row.map(current_route_from_row).transpose()
 }
 
-async fn load_current_routes_by_short_id(
-    db: &DatabaseConnection,
+async fn load_current_routes_by_short_id<C>(
+    db: &C,
     tenant_id: Uuid,
     locale: &str,
     short_id: &str,
-) -> ForumResult<Vec<CurrentTopicRoute>> {
+) -> ForumResult<Vec<CurrentTopicRoute>>
+where
+    C: ConnectionTrait,
+{
     let statement = match db.get_database_backend() {
         DatabaseBackend::Postgres => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -599,13 +934,16 @@ async fn load_current_routes_by_short_id(
         .collect()
 }
 
-async fn ensure_unambiguous_current_short_id(
-    db: &DatabaseConnection,
+async fn ensure_unambiguous_current_short_id<C>(
+    db: &C,
     tenant_id: Uuid,
     locale: &str,
     short_id: &str,
     expected_topic_id: Uuid,
-) -> ForumResult<()> {
+) -> ForumResult<()>
+where
+    C: ConnectionTrait,
+{
     let routes = load_current_routes_by_short_id(db, tenant_id, locale, short_id).await?;
     match routes.as_slice() {
         [route] if route.topic_id == expected_topic_id => Ok(()),

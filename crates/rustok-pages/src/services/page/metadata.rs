@@ -17,6 +17,7 @@ use super::helpers::{
     build_page_metadata, enforce_expected_version, normalize_channel_slugs, normalize_slug,
     storage_to_status, validate_page_translations,
 };
+use super::route::record_published_slug_redirects_in_tx;
 use super::{PAGE_KIND, PageService};
 
 impl PageService {
@@ -69,6 +70,7 @@ impl PageService {
         let locked = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_expected_version(Some(input.expected_version), locked.version)?;
         enforce_owned_scope(&security, Resource::Pages, Action::Update, locked.author_id)?;
+        let locked_status = locked.status.clone();
 
         for translation in input.translations.as_deref().unwrap_or(&[]) {
             let slug = normalize_slug(
@@ -83,6 +85,16 @@ impl PageService {
                 &translation.locale,
                 &slug,
                 Some(page_id),
+            )
+            .await?;
+        }
+        if let Some(translations) = input.translations.as_deref() {
+            record_published_slug_redirects_in_tx(
+                &txn,
+                tenant_id,
+                page_id,
+                &locked_status,
+                translations,
             )
             .await?;
         }

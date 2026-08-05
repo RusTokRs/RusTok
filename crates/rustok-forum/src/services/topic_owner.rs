@@ -1,9 +1,10 @@
 use std::ops::Deref;
 
+use chrono::Utc;
 use flex::delete_attached_localized_values;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,7 +15,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{CreateTopicInput, TopicResponse, UpdateTopicInput};
-use crate::entities::{forum_reply, forum_solution};
+use crate::entities::{forum_reply, forum_solution, forum_topic};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
@@ -24,7 +25,9 @@ use super::projection_invalidation::{
 };
 use super::rbac::enforce_owned_scope;
 use super::topic;
-use super::topic_route::ForumTopicRouteService;
+use super::topic_route::{
+    ForumTopicRouteService, ForumTopicSlugRenameResult, RenameForumTopicSlugInput,
+};
 use super::user_stats::UserStatsService;
 
 const FORUM_TOPIC_DELETED_ROUTE_REASON: &str = "Topic deleted";
@@ -72,6 +75,48 @@ impl TopicService {
         self.inner
             .update_with_inline_relations(tenant_id, topic_id, security, input.into())
             .await
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn rename_slug(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        input: RenameForumTopicSlugInput,
+    ) -> ForumResult<ForumTopicSlugRenameResult> {
+        let existing = self.inner.find_topic(tenant_id, topic_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::ForumTopics,
+            Action::Update,
+            existing.author_id,
+        )?;
+
+        let txn = self.db.begin().await?;
+        let result = ForumTopicRouteService::rename_topic_slug_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+            &input,
+        )
+        .await?;
+        if result.changed {
+            let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+            let mut active: forum_topic::ActiveModel = topic.into();
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?;
+            publish_forum_topic_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic_id,
+            )
+            .await?;
+        }
+        txn.commit().await?;
+        Ok(result)
     }
 
     #[instrument(skip(self, security))]
