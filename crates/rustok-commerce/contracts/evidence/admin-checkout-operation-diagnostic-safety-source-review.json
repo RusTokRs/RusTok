@@ -1,0 +1,46 @@
+{
+  "status": "commerce_admin_checkout_operation_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/controllers/admin/checkout_operations.rs",
+    "crates/rustok-commerce/docs/admin-checkout-operation-diagnostic-safety.md",
+    "scripts/verify/verify-commerce-admin-checkout-operation-diagnostic-safety.mjs",
+    "scripts/verify/verify-commerce-admin-checkout-operation-error-context.mjs",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "raw_debug_error_logged": false,
+    "raw_tenant_uuid_logged": false,
+    "raw_actor_uuid_logged": false,
+    "raw_optional_domain_uuid_logged": false,
+    "error_redacted_marker_logged": true,
+    "required_uuid_shape_logged": true,
+    "optional_uuid_shape_logged": true,
+    "route_operation_logged": true,
+    "source_owner_logged": true,
+    "error_kind_logged": true,
+    "public_code_logged": true,
+    "http_status_logged": true,
+    "boundary_logged": true,
+    "existing_log_site_markers_preserved": true,
+    "operation_policy_preserved": true,
+    "compensation_policy_preserved": true,
+    "identity_adoption_preserved": true,
+    "permission_checks_preserved": true,
+    "service_calls_preserved": true,
+    "http_envelopes_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
