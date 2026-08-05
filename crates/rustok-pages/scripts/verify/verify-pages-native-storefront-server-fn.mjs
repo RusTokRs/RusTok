@@ -151,7 +151,6 @@ for (const dependency of [
   "async-trait.workspace = true",
   "axum.workspace = true",
   "chrono.workspace = true",
-  "rustok-test-utils.workspace = true",
   "sea-orm.workspace = true",
   "sea-orm-migration.workspace = true",
   "tokio.workspace = true",
