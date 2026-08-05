@@ -1,0 +1,347 @@
+use std::collections::BTreeMap;
+
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder,
+};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use rustok_content::entities::node::ContentStatus;
+
+use crate::dto::PageTranslationInput;
+use crate::entities::{page, page_route_alias, page_translation};
+use crate::error::{PagesError, PagesResult};
+
+use super::helpers::{normalize_locale, normalize_slug, status_to_storage, storage_to_status};
+
+const ROUTE_DISPOSITION_REDIRECT: &str = "redirect";
+const ROUTE_DISPOSITION_GONE: &str = "gone";
+const PUBLISHED_SLUG_CHANGE_REASON: &str = "Published page slug changed";
+const MAX_PAGE_ROUTE_ALIAS_REASON_LEN: usize = 500;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageRouteDisposition {
+    Canonical,
+    Redirect,
+    Gone,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PageRouteDescriptor {
+    pub page_id: Uuid,
+    pub locale: String,
+    pub slug: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PageRouteResolution {
+    pub requested_locale: String,
+    pub requested_slug: String,
+    pub requested_page_id: Option<Uuid>,
+    pub disposition: PageRouteDisposition,
+    pub canonical: Option<PageRouteDescriptor>,
+    pub alias_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CurrentPublishedRoute {
+    page_id: Uuid,
+    slug: String,
+}
+
+pub struct PageRouteService {
+    db: DatabaseConnection,
+}
+
+impl PageRouteService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    pub async fn canonical_descriptor(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        locale: &str,
+    ) -> PagesResult<PageRouteDescriptor> {
+        let locale = normalize_locale(locale)?;
+        let page = page::Entity::find_by_id(page_id)
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(PagesError::PageRouteNotFound)?;
+        if storage_to_status(&page.status)? != ContentStatus::Published {
+            return Err(PagesError::PageRouteNotFound);
+        }
+
+        let translations = page_translation::Entity::find()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
+            .filter(page_translation::Column::PageId.eq(page_id))
+            .filter(page_translation::Column::Locale.eq(&locale))
+            .all(&self.db)
+            .await?;
+        let translation = match translations.as_slice() {
+            [translation] => translation,
+            [] => return Err(PagesError::PageRouteNotFound),
+            _ => return Err(PagesError::PageRouteResolutionConflict),
+        };
+        let slug = normalize_slug(&translation.slug)?;
+
+        Ok(PageRouteDescriptor {
+            page_id,
+            path: page_route_path(&locale, &slug),
+            locale,
+            slug,
+        })
+    }
+
+    pub async fn resolve(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        slug: &str,
+    ) -> PagesResult<PageRouteResolution> {
+        let locale = normalize_locale(locale)?;
+        let slug = normalize_slug(slug)?;
+        let current = load_current_published_routes(&self.db, tenant_id, &locale, &slug).await?;
+        let aliases = page_route_alias::Entity::find()
+            .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+            .filter(page_route_alias::Column::Locale.eq(&locale))
+            .filter(page_route_alias::Column::Slug.eq(&slug))
+            .order_by_asc(page_route_alias::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        match (current.as_slice(), aliases.as_slice()) {
+            ([route], []) => {
+                let canonical = self
+                    .canonical_descriptor(tenant_id, route.page_id, &locale)
+                    .await?;
+                if canonical.slug != route.slug {
+                    return Err(PagesError::PageRouteResolutionConflict);
+                }
+                Ok(PageRouteResolution {
+                    requested_locale: locale,
+                    requested_slug: slug,
+                    requested_page_id: Some(route.page_id),
+                    disposition: PageRouteDisposition::Canonical,
+                    canonical: Some(canonical),
+                    alias_id: None,
+                })
+            }
+            ([], [alias]) => match alias.disposition.as_str() {
+                ROUTE_DISPOSITION_GONE
+                    if alias.target_page_id.is_none() && alias.target_locale.is_none() =>
+                {
+                    Ok(PageRouteResolution {
+                        requested_locale: locale,
+                        requested_slug: slug,
+                        requested_page_id: Some(alias.page_id),
+                        disposition: PageRouteDisposition::Gone,
+                        canonical: None,
+                        alias_id: Some(alias.id),
+                    })
+                }
+                ROUTE_DISPOSITION_REDIRECT => {
+                    let target_page_id = alias
+                        .target_page_id
+                        .ok_or(PagesError::PageRouteResolutionConflict)?;
+                    let target_locale = alias
+                        .target_locale
+                        .as_deref()
+                        .ok_or(PagesError::PageRouteResolutionConflict)?;
+                    let canonical = self
+                        .canonical_descriptor(tenant_id, target_page_id, target_locale)
+                        .await?;
+                    Ok(PageRouteResolution {
+                        requested_locale: locale,
+                        requested_slug: slug,
+                        requested_page_id: Some(alias.page_id),
+                        disposition: PageRouteDisposition::Redirect,
+                        canonical: Some(canonical),
+                        alias_id: Some(alias.id),
+                    })
+                }
+                _ => Err(PagesError::PageRouteResolutionConflict),
+            },
+            ([], []) => Err(PagesError::PageRouteNotFound),
+            _ => Err(PagesError::PageRouteResolutionConflict),
+        }
+    }
+}
+
+pub(super) async fn ensure_route_alias_claim_available_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    slug: &str,
+) -> PagesResult<()> {
+    let locale = normalize_locale(locale)?;
+    let slug = normalize_slug(slug)?;
+    if page_route_alias::Entity::find()
+        .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+        .filter(page_route_alias::Column::Locale.eq(&locale))
+        .filter(page_route_alias::Column::Slug.eq(&slug))
+        .one(txn)
+        .await?
+        .is_some()
+    {
+        return Err(PagesError::duplicate_slug(slug, locale));
+    }
+    Ok(())
+}
+
+pub(super) async fn record_published_slug_redirects_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    page_status: &str,
+    translations: &[PageTranslationInput],
+) -> PagesResult<()> {
+    if storage_to_status(page_status)? != ContentStatus::Published {
+        return Ok(());
+    }
+
+    let existing = page_translation::Entity::find()
+        .filter(page_translation::Column::TenantId.eq(tenant_id))
+        .filter(page_translation::Column::PageId.eq(page_id))
+        .all(txn)
+        .await?;
+    let mut existing_by_locale = BTreeMap::new();
+    for translation in existing {
+        existing_by_locale.insert(normalize_locale(&translation.locale)?, translation);
+    }
+
+    for translation in translations {
+        let locale = normalize_locale(&translation.locale)?;
+        let new_slug = normalize_slug(
+            translation
+                .slug
+                .as_deref()
+                .unwrap_or(translation.title.as_str()),
+        )?;
+        let Some(existing) = existing_by_locale.get(&locale) else {
+            continue;
+        };
+        let old_slug = normalize_slug(&existing.slug)?;
+        if old_slug == new_slug {
+            continue;
+        }
+        record_redirect_alias_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            &locale,
+            &old_slug,
+            page_id,
+            &locale,
+            PUBLISHED_SLUG_CHANGE_REASON,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn record_redirect_alias_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    slug: &str,
+    target_page_id: Uuid,
+    target_locale: &str,
+    reason: &str,
+) -> PagesResult<Uuid> {
+    let locale = normalize_locale(locale)?;
+    let slug = normalize_slug(slug)?;
+    let target_locale = normalize_locale(target_locale)?;
+    let reason = normalize_alias_reason(reason)?;
+    let aliases = page_route_alias::Entity::find()
+        .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+        .filter(page_route_alias::Column::Locale.eq(&locale))
+        .filter(page_route_alias::Column::Slug.eq(&slug))
+        .all(txn)
+        .await?;
+
+    match aliases.as_slice() {
+        [] => {
+            let alias_id = Uuid::new_v4();
+            page_route_alias::ActiveModel {
+                id: Set(alias_id),
+                tenant_id: Set(tenant_id),
+                page_id: Set(page_id),
+                locale: Set(locale),
+                slug: Set(slug),
+                disposition: Set(ROUTE_DISPOSITION_REDIRECT.to_string()),
+                target_page_id: Set(Some(target_page_id)),
+                target_locale: Set(Some(target_locale)),
+                reason: Set(reason),
+                created_at: Set(Utc::now().into()),
+            }
+            .insert(txn)
+            .await?;
+            Ok(alias_id)
+        }
+        [alias]
+            if alias.page_id == page_id
+                && alias.disposition == ROUTE_DISPOSITION_REDIRECT
+                && alias.target_page_id == Some(target_page_id)
+                && alias.target_locale.as_deref() == Some(target_locale.as_str())
+                && alias.reason == reason =>
+        {
+            Ok(alias.id)
+        }
+        _ => Err(PagesError::PageRouteResolutionConflict),
+    }
+}
+
+async fn load_current_published_routes(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    locale: &str,
+    slug: &str,
+) -> PagesResult<Vec<CurrentPublishedRoute>> {
+    let translations = page_translation::Entity::find()
+        .filter(page_translation::Column::TenantId.eq(tenant_id))
+        .filter(page_translation::Column::Locale.eq(locale))
+        .filter(page_translation::Column::Slug.eq(slug))
+        .all(db)
+        .await?;
+    let mut routes = Vec::new();
+    for translation in translations {
+        let page = page::Entity::find_by_id(translation.page_id)
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)))
+            .one(db)
+            .await?;
+        if page.is_some() {
+            routes.push(CurrentPublishedRoute {
+                page_id: translation.page_id,
+                slug: normalize_slug(&translation.slug)?,
+            });
+        }
+    }
+    Ok(routes)
+}
+
+fn page_route_path(locale: &str, slug: &str) -> String {
+    format!("/{locale}/modules/pages?slug={slug}")
+}
+
+fn normalize_alias_reason(reason: &str) -> PagesResult<String> {
+    let reason = reason.trim();
+    if reason.is_empty()
+        || reason.chars().count() > MAX_PAGE_ROUTE_ALIAS_REASON_LEN
+        || reason.chars().any(char::is_control)
+    {
+        return Err(PagesError::validation(
+            "Page route alias reason is invalid",
+        ));
+    }
+    Ok(reason.to_string())
+}
