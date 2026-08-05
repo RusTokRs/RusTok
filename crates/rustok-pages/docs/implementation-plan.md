@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
-Date: 2026-08-05  
-Status: `in_progress / published-slug-route-alias-source-ready / execution-pending`
+Date: 2026-08-06  
+Status: `in_progress / host-route-response-source-ready / execution-pending`
 
 ## Policy: current code only
 
@@ -104,7 +104,15 @@ Optional external event infrastructure is outside the active Pages cursor.
 - [x] Pages resolves current routes and immutable aliases as canonical, redirect or
   gone and fails closed on current/history ownership overlap.
 - [x] Old published slug claims cannot be reused by another page.
-- [ ] Host redirect responses, delete tombstones and historical backfill remain open.
+- [x] A registered Pages host route decision server function performs channel-module
+  admission before the Pages route owner and rechecks target publication/channel
+  visibility.
+- [x] Exact localized canonical routes continue SSR; legacy, noncanonical and alias
+  routes return `308`; gone returns `410`; missing returns `404`; ambiguous ownership
+  returns `409`; operational route failures return `503`.
+- [x] Terminal Pages host route responses use `private, no-store`, and canonical
+  redirect locations percent-encode the slug query value.
+- [ ] Delete tombstones and historical backfill remain open.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Compiled SSR/CSR/hydrate bundle artifact evidence remains open; client bundle
   proof becomes mandatory when a Pages client bootstrap is introduced.
@@ -122,8 +130,8 @@ Optional external event infrastructure is outside the active Pages cursor.
   health.
 - [x] GraphQL, HTTP and admin transports use typed publish/rollback receipts.
 - [x] Non-builder publication rejects every Fly/GrapesJS body.
-- [x] Page Builder ownership is unchanged by Pages route aliases; route identity is
-  derived from Pages translations and publication state only.
+- [x] Page Builder ownership is unchanged by Pages route aliases and host responses;
+  route identity is derived from Pages translations and publication state only.
 - [ ] Accepted execution evidence must correlate receipts, events, generation
   changes, cache misses/refills and public route behavior.
 - [ ] Observed Wave 0/Wave 1 tenant evidence remains open.
@@ -141,7 +149,8 @@ Optional external event infrastructure is outside the active Pages cursor.
    together.
 7. Create never publishes; Page Builder publication always crosses reviewed
    sanitization and runtime materialization.
-8. Channel/module authorization runs before every cache lookup.
+8. Channel/module authorization runs before every cache lookup and before public
+   Pages route resolution.
 9. Cache fill follows validated owner reads; cache failures do not authorize data.
 10. Current and historical route claims are unique by tenant, locale and slug.
 11. Immutable redirects store target page and locale, not target slug; resolution
@@ -151,9 +160,11 @@ Optional external event infrastructure is outside the active Pages cursor.
     `PAGE_ROUTE_RESOLUTION_CONFLICT`; missing routes use `PAGE_ROUTE_NOT_FOUND`.
 14. Localized canonical output is `/{locale}/modules/pages?slug={slug}`; the legacy
     unprefixed module route remains parseable but is not emitted as canonical.
-15. Feature-resolved anonymous storefront graphs exclude admin and Fly authoring
+15. Only an exact localized canonical Pages decision reaches SEO and SSR rendering;
+    every terminal route decision is `private, no-store`.
+16. Feature-resolved anonymous storefront graphs exclude admin and Fly authoring
     packages through non-dev dependencies.
-16. No block or shadow-editor fallback exists.
+17. No block or shadow-editor fallback exists.
 
 ## Current pipelines
 
@@ -184,26 +195,30 @@ published metadata slug rename
 ```
 
 ```text
-public route resolve
-  → normalize exact locale + slug
-  → current published translation lookup
-  → immutable alias lookup
-  → exactly one current and no alias: canonical
-  → no current and one redirect: recompute current target canonical
-  → no current and one gone: gone
-  → overlap, duplicates or payload drift: fail closed
+public Pages host request
+  → trusted tenant/request context
+  → Pages channel-module admission
+  → requested → tenant default → platform locale candidates
+  → PageRouteService::resolve
+  → target publication/channel visibility recheck
+  → exact canonical: SEO + SSR render
+  → alias/noncanonical: 308
+  → gone: 410
+  → missing: 404
+  → conflict: 409
+  → operational failure: 503
 ```
 
 ## FFA/FBA status
 
 - **FFA:** `in_progress` — metadata/document separation, reviewed publication,
-  rollback, immutable public reads, tenant locale fallback, localized canonical
-  route identity and published-slug redirects are source-connected. Browser
-  execution, inline edit and built artifact evidence remain open.
+  rollback, immutable public reads, tenant locale fallback, localized route identity,
+  published-slug redirects and explicit host route responses are source-connected.
+  Browser execution, inline edit and built artifact evidence remain open.
 - **FBA:** `in_progress` — sanitizer/materialization/artifact/receipt boundaries and
-  production-gated cache invalidation are source-connected. Route alias persistence
-  belongs to Pages and does not change Page Builder. Execution and rollout remain
-  open.
+  production-gated cache invalidation are source-connected. Route persistence and
+  response decisions belong to Pages and do not change Page Builder. Execution and
+  rollout remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Completed source slices
@@ -240,13 +255,23 @@ public route resolve
 - Added immutable redirects for published slug renames, route-claim reservation,
   transport-neutral canonical/redirect/gone resolution and localized SEO canonical
   routes.
-- Tests, verifiers, formatters, Cargo commands, databases, hosts, browsers,
-  workflows and CI were not executed by the implementation agent.
+
+### 2026-08-06
+
+- Added the registered Pages host route decision server function.
+- Composed route decisions before SEO and SSR rendering.
+- Added source responses for exact canonical, permanent redirect, gone, missing,
+  conflict and operational failure states.
+- Added percent-encoded canonical locations and private no-store terminal policy.
+- Added a registered SQLite/Axum source harness and fail-closed source contract.
+- Tests, verifiers, formatters, Cargo commands, databases, server functions, hosts,
+  browsers, workflows and CI were not executed by the implementation agent.
 
 ## Next implementation order
 
 ### P0 — execution evidence
 
+- [ ] Run the host route response verifier and registered SQLite/Axum harness.
 - [ ] Run metadata conflict and dirty-Fly isolation packets.
 - [ ] Run selected immutable artifact, native route/cache/admission and generation
   gate packets.
@@ -262,7 +287,7 @@ public route resolve
 - [x] Add localized canonical URLs and immutable redirects for published slug
   renames.
 - [x] Reserve historical published route claims and fail closed on collisions.
-- [ ] Mount `PageRouteService::resolve` in the public host after channel/module
+- [x] Mount `PageRouteService::resolve` in the public host after channel/module
   admission and return canonical, redirect or gone responses.
 - [ ] Add deletion tombstones while preserving existing redirect history.
 - [ ] Define historical route backfill/import policy.
@@ -283,7 +308,7 @@ public route resolve
 ### P2 — operations and rollout
 
 - [ ] Correlate metadata save, document save, publish, rollback, route alias,
-  invalidation and public read in telemetry.
+  host response, invalidation and public read in telemetry.
 - [ ] Add artifact/manifest integrity audit and repair/rebuild commands.
 - [ ] Audit delete/unpublish/rollback and route tombstone behavior.
 - [ ] Run observed internal-tenant Wave 0, then Wave 1 after all gates pass.
@@ -293,9 +318,15 @@ public route resolve
 Suggested commands; execution is intentionally maintainer-owned:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs
+cargo test -p rustok-pages-storefront --features ssr \
+  --test host_route_decision_sqlite -- --nocapture
+cargo test -p rustok-storefront --features ssr --lib -- --nocapture
+cargo check -p rustok-pages-storefront --features ssr --all-targets
+cargo check -p rustok-storefront --features ssr --all-targets
+
 node crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs
 cargo test -p rustok-pages --test page_published_slug_route_alias_sqlite -- --nocapture
-cargo check -p rustok-pages --all-targets
 
 node crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs
 cargo test -p rustok-pages --test page_locale_fallback -- --nocapture
