@@ -77,7 +77,7 @@ Composition performs no source or Index SQL and starts no task. The operator exp
 authorized exact-entity diagnosis call and no registry, reader, writer, connection, scan, lifecycle,
 or repair handle.
 
-## Production Product proof
+## Product locale provider proof
 
 The selected Product distribution publishes one locale-absence provider. It uses the positive
 `products.index_revision` only when the Product exists, the requested translation locale is absent,
