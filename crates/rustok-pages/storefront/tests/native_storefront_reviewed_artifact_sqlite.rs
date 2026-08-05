@@ -167,6 +167,7 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
     assert_eq!(visible.status, StatusCode::OK);
     assert!(visible.body.contains("fly_artifact_url"));
     assert!(visible.body.contains(&fixture.expected_artifact_url));
+    assert!(visible.body.contains(&fixture.page_id.to_string()));
     assert!(visible.body.contains("Reviewed native artifact"));
     let visible_cache = cache.snapshot();
     assert_eq!(visible_cache.generation_reads, 1);

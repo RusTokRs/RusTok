@@ -13177,14 +13177,20 @@ dependencies = [
  "leptos-auth",
  "leptos-ui",
  "leptos-ui-routing",
+ "leptos_axum",
  "rustok-api",
+ "rustok-core",
+ "rustok-forum",
  "rustok-graphql",
+ "rustok-outbox",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
+ "rustok-ui-transport",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -14386,6 +14392,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
+ "tower",
  "tracing",
  "url",
  "utoipa",
@@ -14419,6 +14426,9 @@ dependencies = [
 name = "rustok-pages-storefront"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
  "leptos 0.8.20",
  "leptos-ui-routing",
  "leptos_axum",
@@ -14426,17 +14436,24 @@ dependencies = [
  "rustok-channel",
  "rustok-content",
  "rustok-core",
+ "rustok-events",
  "rustok-graphql",
  "rustok-outbox",
+ "rustok-page-builder",
  "rustok-page-builder-storefront",
  "rustok-pages",
  "rustok-tenant",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",
+ "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
+ "tokio",
+ "tower",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -15239,6 +15256,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-page-builder",
  "rustok-pages",
+ "rustok-pages-storefront",
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",

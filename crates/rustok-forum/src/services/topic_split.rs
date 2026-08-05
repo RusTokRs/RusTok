@@ -1314,14 +1314,14 @@ async fn load_split_operation_in_tx(
             )));
         }
     };
-    txn.query_one(Statement::from_sql_and_values(
+    Ok(txn.query_one(Statement::from_sql_and_values(
         backend,
         sql,
         vec![tenant_id.into(), operation_id.into()],
     ))
     .await?
     .map(stored_operation_from_row)
-    .transpose()
+    .transpose()?)
 }
 
 fn stored_operation_from_row(row: QueryResult) -> Result<StoredSplitOperation, sea_orm::DbErr> {

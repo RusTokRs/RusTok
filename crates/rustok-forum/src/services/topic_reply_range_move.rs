@@ -728,7 +728,6 @@ async fn find_active_topic_in_tx(
 ) -> ForumResult<forum_topic::Model> {
     forum_topic::Entity::find_by_id(topic_id)
         .filter(forum_topic::Column::TenantId.eq(tenant_id))
-        .filter(forum_topic::Column::DeletedAt.is_null())
         .one(txn)
         .await?
         .ok_or(ForumError::TopicNotFound(topic_id))
@@ -1389,14 +1388,14 @@ async fn load_operation_in_tx(
             )));
         }
     };
-    txn.query_one(Statement::from_sql_and_values(
+    Ok(txn.query_one(Statement::from_sql_and_values(
         backend,
         sql,
         vec![tenant_id.into(), operation_id.into()],
     ))
     .await?
     .map(stored_operation_from_row)
-    .transpose()
+    .transpose()?)
 }
 
 fn stored_operation_from_row(row: QueryResult) -> Result<StoredRangeMoveOperation, sea_orm::DbErr> {

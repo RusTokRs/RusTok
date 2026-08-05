@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use rustok_sandbox::{
     ExecutionPhase as SandboxExecutionPhase, RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput,
-    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, RhaiWorkspace, SandboxContext,
+    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, SandboxContext,
     SandboxExecutorKind, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
 
@@ -461,7 +461,7 @@ mod tests {
     use async_trait::async_trait;
     use rustok_sandbox::{
         CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutorRegistry,
-        SandboxError, SandboxResult, SandboxRuntime,
+        RhaiWorkspace, SandboxError, SandboxResult, SandboxRuntime,
     };
 
     struct NoCapabilities;
