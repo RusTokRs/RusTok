@@ -57,6 +57,50 @@ impl AdminCheckoutOperationErrorContext {
     }
 }
 
+struct AdminCheckoutOperationDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    checkout_operation_id: &'static str,
+    reservation_id: &'static str,
+    payment_collection_id: &'static str,
+    payment_id: &'static str,
+    refund_id: &'static str,
+    order_id: &'static str,
+    order_return_id: &'static str,
+    order_change_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminCheckoutOperationErrorContext> for AdminCheckoutOperationDiagnosticContext {
+    fn from(context: &AdminCheckoutOperationErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            checkout_operation_id: optional_uuid_shape(context.checkout_operation_id),
+            reservation_id: optional_uuid_shape(context.reservation_id),
+            payment_collection_id: optional_uuid_shape(context.payment_collection_id),
+            payment_id: optional_uuid_shape(context.payment_id),
+            refund_id: optional_uuid_shape(context.refund_id),
+            order_id: optional_uuid_shape(context.order_id),
+            order_return_id: optional_uuid_shape(context.order_return_id),
+            order_change_id: optional_uuid_shape(context.order_change_id),
+            operation: context.operation,
+        }
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 #[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct AdminCheckoutOperationResponse {
     pub id: Uuid,
@@ -340,10 +384,10 @@ fn admin_checkout_operation_http_error<E>(
     source_owner: &'static str,
     policy: AdminCheckoutOperationHttpPolicy,
     log_message: &'static str,
-) -> HttpError
-where
-    E: std::fmt::Debug,
-{
+) -> HttpError {
+    let _ = error;
+    let context = AdminCheckoutOperationDiagnosticContext::from(context);
+    let error = "redacted";
     let (status, code, message, error_kind) = policy;
     tracing::error!(
         error = ?error,
