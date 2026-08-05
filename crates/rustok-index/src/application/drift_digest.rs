@@ -312,6 +312,20 @@ pub enum IndexDriftDigestOutcome {
     },
 }
 
+/// Missing-only diagnosis outcome over one validated exact snapshot pair.
+///
+/// Non-candidate state combinations remain intentionally opaque. Only authoritative source
+/// `Upsert` plus materialized `Missing` can produce a finding receipt through this boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexDriftMissingEntityCandidateOutcome {
+    NotCandidate,
+    MissingRecorded {
+        source_digest: String,
+        materialized_digest: String,
+        receipt: IndexDriftMismatchReceipt,
+    },
+}
+
 pub struct IndexDriftDigestProducer<R, W> {
     registry: Arc<SchemaRegistry>,
     snapshots: R,
@@ -343,20 +357,8 @@ where
         &self,
         request: IndexDriftDigestRequest,
     ) -> Result<IndexDriftDigestOutcome, IndexDriftDigestError> {
-        let pair = self
-            .snapshots
-            .capture_entity_snapshot(&request)
-            .await
-            .map_err(IndexDriftDigestError::SnapshotCaptureFailed)?;
-
-        if pair.source().key() != request.key() || pair.materialized().key() != request.key() {
-            return Err(IndexDriftDigestError::SnapshotScopeMismatch);
-        }
-
-        validate_state(self.registry.as_ref(), pair.source())
-            .map_err(IndexDriftDigestError::InvalidSourceState)?;
-        validate_state(self.registry.as_ref(), pair.materialized())
-            .map_err(IndexDriftDigestError::InvalidMaterializedState)?;
+        let pair = self.capture_pair(&request).await?;
+        self.validate_pair(&request, &pair)?;
 
         let source_digest = digest_state(pair.source())?;
         let materialized_digest = digest_state(pair.materialized())?;
@@ -366,22 +368,107 @@ where
             });
         }
 
-        let mismatch = IndexDriftDigestMismatch {
-            boundary: pair.boundary().clone(),
-            key: request.key,
-            source_digest: source_digest.clone(),
-            materialized_digest: materialized_digest.clone(),
-        };
         let receipt = self
-            .recorder
-            .record_digest_mismatch(&mismatch)
-            .await
-            .map_err(IndexDriftDigestError::MismatchRecordFailed)?;
+            .record_mismatch(
+                request.key,
+                &pair,
+                source_digest.clone(),
+                materialized_digest.clone(),
+            )
+            .await?;
         Ok(IndexDriftDigestOutcome::MismatchRecorded {
             source_digest,
             materialized_digest,
             receipt,
         })
+    }
+
+    /// Captures exactly one snapshot pair and applies the missing-only candidate contract.
+    pub async fn produce_missing_entity_candidate(
+        &self,
+        request: IndexDriftDigestRequest,
+    ) -> Result<IndexDriftMissingEntityCandidateOutcome, IndexDriftDigestError> {
+        let pair = self.capture_pair(&request).await?;
+        self.produce_missing_entity_candidate_from_pair(request, pair)
+            .await
+    }
+
+    /// Applies the missing-only candidate contract to one already-captured exact snapshot pair.
+    ///
+    /// Every state is validated against the frozen schema registry before classification. All
+    /// combinations except source `Upsert` plus materialized `Missing` return `NotCandidate`
+    /// without digest persistence or recorder access.
+    pub async fn produce_missing_entity_candidate_from_pair(
+        &self,
+        request: IndexDriftDigestRequest,
+        pair: IndexDriftSnapshotPair,
+    ) -> Result<IndexDriftMissingEntityCandidateOutcome, IndexDriftDigestError> {
+        self.validate_pair(&request, &pair)?;
+        if !matches!(pair.source(), IndexDriftEntityState::Upsert { .. })
+            || !matches!(pair.materialized(), IndexDriftEntityState::Missing { .. })
+        {
+            return Ok(IndexDriftMissingEntityCandidateOutcome::NotCandidate);
+        }
+
+        let source_digest = digest_state(pair.source())?;
+        let materialized_digest = digest_state(pair.materialized())?;
+        let receipt = self
+            .record_mismatch(
+                request.key,
+                &pair,
+                source_digest.clone(),
+                materialized_digest.clone(),
+            )
+            .await?;
+        Ok(IndexDriftMissingEntityCandidateOutcome::MissingRecorded {
+            source_digest,
+            materialized_digest,
+            receipt,
+        })
+    }
+
+    async fn capture_pair(
+        &self,
+        request: &IndexDriftDigestRequest,
+    ) -> Result<IndexDriftSnapshotPair, IndexDriftDigestError> {
+        self.snapshots
+            .capture_entity_snapshot(request)
+            .await
+            .map_err(IndexDriftDigestError::SnapshotCaptureFailed)
+    }
+
+    fn validate_pair(
+        &self,
+        request: &IndexDriftDigestRequest,
+        pair: &IndexDriftSnapshotPair,
+    ) -> Result<(), IndexDriftDigestError> {
+        if pair.source().key() != request.key() || pair.materialized().key() != request.key() {
+            return Err(IndexDriftDigestError::SnapshotScopeMismatch);
+        }
+        validate_state(self.registry.as_ref(), pair.source())
+            .map_err(IndexDriftDigestError::InvalidSourceState)?;
+        validate_state(self.registry.as_ref(), pair.materialized())
+            .map_err(IndexDriftDigestError::InvalidMaterializedState)?;
+        Ok(())
+    }
+
+    async fn record_mismatch(
+        &self,
+        key: EntityKey,
+        pair: &IndexDriftSnapshotPair,
+        source_digest: String,
+        materialized_digest: String,
+    ) -> Result<IndexDriftMismatchReceipt, IndexDriftDigestError> {
+        let mismatch = IndexDriftDigestMismatch {
+            boundary: pair.boundary().clone(),
+            key,
+            source_digest,
+            materialized_digest,
+        };
+        self.recorder
+            .record_digest_mismatch(&mismatch)
+            .await
+            .map_err(IndexDriftDigestError::MismatchRecordFailed)
     }
 }
 
@@ -641,6 +728,102 @@ mod tests {
         assert_eq!(retained[0].boundary().as_str(), "snapshot:42/0");
         assert_eq!(retained[0].source_digest(), source_digest);
         assert_eq!(retained[0].materialized_digest(), materialized_digest);
+    }
+
+    #[tokio::test]
+    async fn missing_candidate_records_only_source_upsert_materialized_missing() {
+        let pair = IndexDriftSnapshotPair::new(
+            view(IndexDriftEntityState::upsert(record("source", 8))),
+            view(IndexDriftEntityState::missing(key())),
+        )
+        .unwrap();
+        let recorder = RecorderFixture::default();
+        let producer = IndexDriftDigestProducer::new(
+            registry(),
+            SnapshotFixture { pair: pair.clone() },
+            recorder.clone(),
+        );
+
+        let outcome = producer
+            .produce_missing_entity_candidate_from_pair(
+                IndexDriftDigestRequest::new(key()).unwrap(),
+                pair,
+            )
+            .await
+            .unwrap();
+        let IndexDriftMissingEntityCandidateOutcome::MissingRecorded {
+            source_digest,
+            materialized_digest,
+            receipt,
+        } = outcome
+        else {
+            panic!("source Upsert plus materialized Missing must record");
+        };
+        assert_ne!(source_digest, materialized_digest);
+        assert!(valid_digest(&source_digest));
+        assert!(valid_digest(&materialized_digest));
+        assert_eq!(receipt.status(), IndexDriftMismatchRecordStatus::Created);
+        assert_eq!(recorder.mismatches.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn missing_candidate_skips_every_other_typed_state_combination() {
+        let pairs = vec![
+            (
+                IndexDriftEntityState::missing(key()),
+                IndexDriftEntityState::missing(key()),
+            ),
+            (
+                IndexDriftEntityState::missing(key()),
+                IndexDriftEntityState::upsert(record("index", 7)),
+            ),
+            (
+                IndexDriftEntityState::missing(key()),
+                IndexDriftEntityState::delete(key(), 7),
+            ),
+            (
+                IndexDriftEntityState::upsert(record("source", 8)),
+                IndexDriftEntityState::upsert(record("index", 7)),
+            ),
+            (
+                IndexDriftEntityState::upsert(record("source", 8)),
+                IndexDriftEntityState::delete(key(), 7),
+            ),
+            (
+                IndexDriftEntityState::delete(key(), 8),
+                IndexDriftEntityState::missing(key()),
+            ),
+            (
+                IndexDriftEntityState::delete(key(), 8),
+                IndexDriftEntityState::upsert(record("index", 7)),
+            ),
+            (
+                IndexDriftEntityState::delete(key(), 8),
+                IndexDriftEntityState::delete(key(), 7),
+            ),
+        ];
+        let recorder = RecorderFixture::default();
+
+        for (source, materialized) in pairs {
+            let pair = IndexDriftSnapshotPair::new(view(source), view(materialized)).unwrap();
+            let producer = IndexDriftDigestProducer::new(
+                registry(),
+                SnapshotFixture { pair: pair.clone() },
+                recorder.clone(),
+            );
+            let outcome = producer
+                .produce_missing_entity_candidate_from_pair(
+                    IndexDriftDigestRequest::new(key()).unwrap(),
+                    pair,
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                outcome,
+                IndexDriftMissingEntityCandidateOutcome::NotCandidate
+            );
+        }
+        assert!(recorder.mismatches.lock().unwrap().is_empty());
     }
 
     #[test]
