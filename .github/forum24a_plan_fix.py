@@ -15,14 +15,10 @@ ID routes remain internal compatibility paths, not the primary storefront UX.
 if text.count(old) != 1:
     raise SystemExit('FORUM-24 scope insertion point changed')
 text = text.replace(old, new, 1)
-trailing = '''
-ID routes remain internal compatibility paths, not the primary storefront UX.
-
-## `FORUM-25`
-'''
-replacement = '''
-## `FORUM-25`
-'''
-if text.count(trailing) != 1:
+sentence = 'ID routes remain internal compatibility paths, not the primary storefront UX.\n'
+delivered = text.index('### Delivered in FORUM-24A')
+trailing = text.find(sentence, delivered)
+if trailing < 0:
     raise SystemExit('FORUM-24 trailing ID-route sentence changed')
-path.write_text(text.replace(trailing, replacement, 1))
+text = text[:trailing] + text[trailing + len(sentence):]
+path.write_text(text)
