@@ -101,18 +101,20 @@ impl TopicService {
             &input,
         )
         .await?;
-        let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
-        let mut active: forum_topic::ActiveModel = topic.into();
-        active.updated_at = Set(Utc::now().into());
-        active.update(&txn).await?;
-        publish_forum_topic_projection_in_tx(
-            &self.event_bus,
-            &txn,
-            tenant_id,
-            security.user_id,
-            topic_id,
-        )
-        .await?;
+        if result.changed {
+            let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+            let mut active: forum_topic::ActiveModel = topic.into();
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?;
+            publish_forum_topic_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic_id,
+            )
+            .await?;
+        }
         txn.commit().await?;
         Ok(result)
     }
