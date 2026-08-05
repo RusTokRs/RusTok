@@ -1,6 +1,8 @@
 # `rustok-index` implementation recheck — explicit absence watermark
 
-Audited baseline: `main@4fe2643c0d3f3e7e3c0e5e2ccf9347184f347395`.
+Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.
+Latest default-branch delta checked through
+`main@4fe2643c0d3f3e7e3c0e5e2ccf9347184f347395`.
 The fifteen main commits after this branch merge base touch Commerce diagnostics, Forum module-owned
 GraphQL transports, Inventory/Order diagnostics, and Pages/Page Builder evidence. They do not
 overlap `rustok-index`, Product Index composition, the server Index GraphQL root, diagnosis
