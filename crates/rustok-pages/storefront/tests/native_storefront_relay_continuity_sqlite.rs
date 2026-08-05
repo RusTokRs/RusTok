@@ -22,8 +22,7 @@ use rustok_channel::{
 };
 use rustok_core::events::EventHandler;
 use rustok_core::{
-    CONTENT_FORMAT_GRAPESJS, Error as CoreError, EventTransport, MigrationSource, ReliabilityLevel,
-    SecurityContext,
+    CONTENT_FORMAT_GRAPESJS, EventTransport, MigrationSource, ReliabilityLevel, SecurityContext,
 };
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{Column as SysEventColumn, SysEventStatus};
@@ -35,12 +34,14 @@ use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     ReviewedPagePublishRuntimeInput,
 };
+use rustok_pages::entities::page_publish_operation;
 use rustok_pages::services::PageService;
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError,
-    PageCacheGenerationSnapshot, PageCacheInvalidationEventHandler, PageCacheInvalidationPort,
-    PageCacheInvalidationReceipt, PageCacheInvalidationRequest, PageCacheScope, PagesCacheReadPort,
-    PagesCacheReadRuntime, PagesCacheInvalidationRuntime, PagesModule,
+    PageCacheGenerationSnapshot, PageCacheInvalidationCause, PageCacheInvalidationEventHandler,
+    PageCacheInvalidationPort, PageCacheInvalidationReceipt, PageCacheInvalidationRequest,
+    PageCacheScope, PagesCacheInvalidationRuntime, PagesCacheReadPort, PagesCacheReadRuntime,
+    PagesModule,
 };
 use rustok_pages_storefront as _;
 use sea_orm::{
@@ -224,6 +225,7 @@ impl EventTransport for ContinuityTarget {
 
 #[derive(Clone, Copy)]
 struct PublicationEvents {
+    created_id: Uuid,
     updated_id: Uuid,
     published_id: Uuid,
 }
@@ -237,6 +239,12 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     let channel_service = ChannelService::new(db.clone());
     let web = create_enabled_channel(&channel_service, tenant_id, "web", "Web").await?;
     let fixture = create_reviewed_published_page(&db, event_bus.clone(), tenant_id).await?;
+    let receipt = page_publish_operation::Entity::find_by_id(fixture.publish_operation_id)
+        .one(&db)
+        .await?
+        .ok_or_else(|| std::io::Error::other("durable reviewed publish receipt is missing"))?;
+    assert_eq!(receipt.page_id, fixture.page_id);
+    assert_eq!(receipt.result_version, 2);
     let events = publication_events(&db, tenant_id, fixture.page_id).await?;
 
     let cache = Arc::new(ContinuityCachePort::new(
@@ -252,19 +260,37 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     let relay = OutboxRelay::new(db.clone(), target_transport).with_config(relay_config());
 
     assert_eq!(relay.process_pending_once(Some(1)).await?, 1);
-    assert_eq!(target.delivered_event_ids(), vec![events.updated_id]);
+    assert_eq!(target.delivered_event_ids(), vec![events.created_id]);
+    assert_outbox_status(&db, events.created_id, SysEventStatus::Dispatched).await?;
+    assert_outbox_status(&db, events.updated_id, SysEventStatus::Pending).await?;
+    assert_outbox_status(&db, events.published_id, SysEventStatus::Pending).await?;
+    let after_created = cache.snapshot();
+    assert_eq!(after_created.generations, PageCacheGenerationSnapshot::new(3, 5, 7));
+    assert!(after_created.requests.is_empty());
+    assert!(after_created.receipts.is_empty());
+
+    assert_eq!(relay.process_pending_once(Some(1)).await?, 1);
+    assert_eq!(
+        target.delivered_event_ids(),
+        vec![events.created_id, events.updated_id]
+    );
     assert_outbox_status(&db, events.updated_id, SysEventStatus::Dispatched).await?;
     assert_outbox_status(&db, events.published_id, SysEventStatus::Pending).await?;
     let after_updated = cache.snapshot();
-    assert_eq!(after_updated.generations, PageCacheGenerationSnapshot::new(4, 6, 8));
+    assert_eq!(after_updated.generations, PageCacheGenerationSnapshot::new(4, 6, 7));
     assert_eq!(after_updated.requests.len(), 1);
     assert_eq!(after_updated.receipts.len(), 1);
     assert_eq!(after_updated.requests[0].event_id, events.updated_id);
     assert_eq!(after_updated.requests[0].correlation_id, events.updated_id);
+    assert_eq!(after_updated.requests[0].cause, PageCacheInvalidationCause::Updated);
+    assert_eq!(
+        after_updated.requests[0].scopes(),
+        &[PageCacheScope::Route, PageCacheScope::Page]
+    );
     assert_eq!(after_updated.receipts[0].event_id, events.updated_id);
     assert_eq!(after_updated.receipts[0].route_generation, Some(4));
     assert_eq!(after_updated.receipts[0].page_generation, Some(6));
-    assert_eq!(after_updated.receipts[0].artifact_generation, Some(8));
+    assert_eq!(after_updated.receipts[0].artifact_generation, None);
 
     let host = HostRuntimeContext::new(db.clone())
         .with_shared_value(event_bus)
@@ -280,7 +306,7 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
         .contains(&fixture.expected_artifact_url));
     assert!(before_published_delivery.body.contains("fly_artifact_url"));
     let old_cache = cache.snapshot();
-    assert_eq!(old_cache.generations, PageCacheGenerationSnapshot::new(4, 6, 8));
+    assert_eq!(old_cache.generations, PageCacheGenerationSnapshot::new(4, 6, 7));
     assert_eq!(old_cache.generation_reads, 1);
     assert_eq!(old_cache.get_keys.len(), 1);
     assert_eq!(old_cache.put_keys.len(), 1);
@@ -295,17 +321,18 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_eq!(relay.process_pending_once(Some(1)).await?, 1);
     assert_eq!(
         target.delivered_event_ids(),
-        vec![events.updated_id, events.published_id]
+        vec![events.created_id, events.updated_id, events.published_id]
     );
     assert_outbox_status(&db, events.published_id, SysEventStatus::Dispatched).await?;
     let after_published = cache.snapshot();
-    assert_eq!(after_published.generations, PageCacheGenerationSnapshot::new(5, 7, 9));
+    assert_eq!(after_published.generations, PageCacheGenerationSnapshot::new(5, 7, 8));
     assert_eq!(after_published.requests.len(), 2);
     assert_eq!(after_published.receipts.len(), 2);
     assert_eq!(after_published.requests[1].tenant_id, tenant_id);
     assert_eq!(after_published.requests[1].page_id, fixture.page_id);
     assert_eq!(after_published.requests[1].event_id, events.published_id);
     assert_eq!(after_published.requests[1].correlation_id, events.published_id);
+    assert_eq!(after_published.requests[1].cause, PageCacheInvalidationCause::Published);
     assert_eq!(
         after_published.requests[1].scopes(),
         &[
@@ -318,7 +345,7 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_eq!(after_published.receipts[1].correlation_id, events.published_id);
     assert_eq!(after_published.receipts[1].route_generation, Some(5));
     assert_eq!(after_published.receipts[1].page_generation, Some(7));
-    assert_eq!(after_published.receipts[1].artifact_generation, Some(9));
+    assert_eq!(after_published.receipts[1].artifact_generation, Some(8));
     assert!(after_published.keys.contains(&old_key));
     assert_eq!(after_published.put_keys.len(), 1);
 
@@ -327,7 +354,7 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_eq!(after_rotation.body, before_published_delivery.body);
     assert!(after_rotation.body.contains(&fixture.expected_artifact_url));
     let refilled = cache.snapshot();
-    assert_eq!(refilled.generations, PageCacheGenerationSnapshot::new(5, 7, 9));
+    assert_eq!(refilled.generations, PageCacheGenerationSnapshot::new(5, 7, 8));
     assert_eq!(refilled.generation_reads, 2);
     assert_eq!(refilled.get_keys.len(), 2);
     assert_eq!(refilled.put_keys.len(), 2);
@@ -353,10 +380,10 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_eq!(final_cache.get_keys[2], new_key);
     assert_eq!(final_cache.put_keys.len(), 2);
     assert_eq!(final_cache.keys.len(), 2);
-    assert_eq!(relay.metrics().success_total, 2);
-    assert_eq!(relay.metrics().failure_total, 0);
-    assert_eq!(relay.metrics().processed_total, 2);
-    assert_eq!(fixture.publish_operation_id.to_string().len(), 36);
+    let metrics = relay.metrics();
+    assert_eq!(metrics.success_total, 3);
+    assert_eq!(metrics.failure_total, 0);
+    assert_eq!(metrics.processed_total, 3);
     Ok(())
 }
 
@@ -568,6 +595,8 @@ async fn publication_events(
         .order_by_asc(SysEventColumn::CreatedAt)
         .all(db)
         .await?;
+    assert_eq!(rows.len(), 3);
+    let mut created_id = None;
     let mut updated_id = None;
     let mut published_id = None;
     for row in rows {
@@ -578,6 +607,11 @@ async fn publication_events(
         assert_eq!(envelope.correlation_id, row.id);
         assert_eq!(envelope.tenant_id, tenant_id);
         match envelope.event {
+            DomainEvent::NodeCreated { node_id, kind, .. }
+                if node_id == page_id && kind == PAGES_CACHE_ENTITY_KIND =>
+            {
+                created_id = Some(row.id);
+            }
             DomainEvent::NodeUpdated { node_id, kind }
                 if node_id == page_id && kind == PAGES_CACHE_ENTITY_KIND =>
             {
@@ -592,6 +626,8 @@ async fn publication_events(
         }
     }
     Ok(PublicationEvents {
+        created_id: created_id
+            .ok_or_else(|| std::io::Error::other("durable NodeCreated event is missing"))?,
         updated_id: updated_id
             .ok_or_else(|| std::io::Error::other("durable NodeUpdated event is missing"))?,
         published_id: published_id
@@ -609,7 +645,7 @@ async fn assert_outbox_status(
         .await?
         .ok_or_else(|| std::io::Error::other("durable outbox event is missing"))?;
     assert_eq!(row.status, expected);
-    match expected {
+    match &expected {
         SysEventStatus::Pending => assert!(row.dispatched_at.is_none()),
         SysEventStatus::Dispatched => {
             assert!(row.dispatched_at.is_some());
@@ -688,9 +724,4 @@ fn channel_context(channel: &ChannelResponse) -> ChannelContext {
         resolution_source: ChannelResolutionSource::HeaderSlug,
         resolution_trace: Vec::new(),
     }
-}
-
-#[allow(dead_code)]
-fn relay_error_marker() -> CoreError {
-    CoreError::External("relay continuity source marker".to_string())
 }
