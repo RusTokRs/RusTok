@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / selected-immutable-artifact-source-ready / execution-evidence-pending
+Status: source-parity-current / anonymous-storefront-graph-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
 
 ## Source-of-truth policy
@@ -31,6 +31,8 @@ The current source was rechecked against:
 - the module `EventDispatcher` filtering and asynchronous handler execution;
 - the native storefront adapter, registered Leptos server function and public artifact HTTP route;
 - `PageBuilderArtifactService::load_public_bound_artifact_with_fallback` and the locale-body published binding;
+- the Pages storefront, Page Builder storefront and host storefront manifests;
+- the feature-resolved non-dev dependency graphs selected by `cargo metadata`;
 - the Channel owner module-binding contract;
 - recent merged Pages parity PRs and their dated packets.
 
@@ -53,9 +55,10 @@ Current `main` contains:
 - PR #3001 — production synchronous Pages generation gate with process-bounded same-event dedupe;
 - PR #3004 — production gate to registered native route continuity source;
 - PR #3006 — production-gate PostgreSQL publish/rollback and restart-retry source;
-- PR #3008 — factory-selected Memory and OutboxLocal delivery profile parity source.
+- PR #3008 — factory-selected Memory and OutboxLocal delivery profile parity source;
+- PR #3010 — selected immutable artifact authority across persisted draft mutation.
 
-The current slice retains the Pages owner invariant that a persisted current Fly body can advance after publication without replacing the selected immutable published artifact. It changes no production behavior and does not extend optional event infrastructure.
+The current slice retains a feature-resolved anonymous storefront dependency-graph guard. It changes no production behavior, Cargo dependency, feature or optional event infrastructure.
 
 ## Current parity state
 
@@ -102,7 +105,7 @@ The route set remains unexecuted.
 
 ### Selected immutable artifact after draft mutation: source-ready
 
-The focused Pages owner harness now retains the authoring/publication separation directly:
+The focused Pages owner harness retains the authoring/publication separation directly:
 
 ```text
 PageService::create
@@ -131,6 +134,50 @@ Source evidence is retained in:
 - `docs/modules/pages-page-builder-selected-immutable-artifact-packet-2026-08-05.md`.
 
 SQLite execution remains pending.
+
+### Anonymous storefront authoring exclusion: source-ready
+
+The new source packet defines six feature-resolved `cargo metadata` profiles:
+
+```text
+Pages storefront
+  → default
+  → hydrate / wasm32-unknown-unknown
+  → ssr
+
+host storefront
+  → csr / wasm32-unknown-unknown
+  → hydrate / wasm32-unknown-unknown
+  → ssr
+```
+
+The verifier starts from each selected root package and walks normal/build dependency edges only; dev-dependencies are excluded. Every graph fails closed if it reaches:
+
+- `rustok-pages-admin`;
+- `rustok-page-builder-admin`;
+- `rustok-admin`;
+- `fly-browser`;
+- `fly-ui`;
+- `fly-leptos`.
+
+The retained read-only Pages chain is:
+
+```text
+rustok-pages-storefront
+  → rustok-page-builder-storefront
+  → rustok-page-builder
+  → fly
+```
+
+The source trees of Pages storefront, Page Builder storefront and the host storefront are also scanned for admin/editor imports and composition markers. Current host CSR/hydrate profiles leave the optional Pages module disabled, so the Pages hydrate graph is checked separately rather than overstating host client composition.
+
+Source evidence is retained in:
+
+- `crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs`;
+- `docs/modules/pages-page-builder-anonymous-storefront-graph-packet-2026-08-05.md`.
+
+This is source-ready graph proof only. The verifier has not been executed, and compiled SSR/CSR/hydrate bundle artifact execution remains pending.
 
 ### Reviewed publish to native refill through synchronous test target: source-ready
 
@@ -312,6 +359,7 @@ This section keeps historical static guards stable while the canonical cursor ad
 - `native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. Verification reconstructs the full Page Builder materialization envelope before a registered native storefront miss/refill.
 - `native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission, and successful reads retain a verified immutable Page Builder artifact.
 - `selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority; exact and fallback reads remain bound to the verified immutable artifact until binding replacement.
+- `anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready. Six feature-resolved `cargo metadata` graphs forbid admin and Fly authoring packages through non-dev dependencies; bundle artifact execution remains pending.
 - Metadata revision/isolation source packet: ready, unvalidated. A stale metadata revision short-circuits before patch transport; the metadata-only transport request excludes document data; dirty Fly state is not accepted by the metadata owner port. Execution evidence remains pending. Verifier: `verify-pages-metadata-revision-isolation.mjs`.
 - `production-relay-generation-gate-source-ready`; synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe.
 - `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready.
@@ -332,24 +380,25 @@ This section keeps historical static guards stable while the canonical cursor ad
 | Native storefront route/cache/admission | Pages/Channel owners | Published artifact contract | Source-ready | SQLite/Axum route set pending |
 | Native reviewed immutable artifact selection | Pages publish/binding/route/cache owners | Review/sanitization/materialization/integrity | Source-ready | SQLite/Axum reviewed route pending |
 | Selected immutable artifact vs current draft body | Pages body/binding/artifact owner | Immutable artifact producer contract | Source-ready | Focused SQLite execution pending |
+| Anonymous storefront dependency graph | Pages/host storefront manifests | Read-only Page Builder storefront chain | Source-ready | Six-profile verifier and compiled bundle artifacts pending |
 | Relay + handler + native refill via test target | Pages publish/outbox/handler/route/cache owners | Reviewed artifact producer contract | Source-ready, topology-corrected | SQLite test-target execution pending |
 | Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit execution pending |
 | Production relay to registered native route | Server gate / Pages route/cache owners | Reviewed artifact producer contract | Source-ready | Server SQLite/Axum execution pending |
 | Production PostgreSQL publish/rollback and relay retry | Server gate / Pages outbox/cache owners | No delivery ownership | Source-ready | PostgreSQL execution pending |
 | Memory and OutboxLocal factory profiles | Server factory / Pages invalidation owner | No delivery ownership | Source-ready | SQLite profile execution pending |
 | Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Browser/runtime evidence pending |
-| Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Bundle/runtime proof pending |
+| Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Compiled bundle/runtime proof pending |
 
 ## Changes in this slice
 
-1. Add one focused Pages SQLite regression using real reviewed publication, immutable artifact persistence and the locale binding.
-2. Retain exact-locale and fallback-locale public reads before a current body mutation.
-3. Persist a different draft Fly document in `page_bodies.content` after publication.
-4. Prove the locale binding remains unchanged and still points to the selected immutable artifact.
-5. Prove artifact hash and document HTML remain unchanged for exact and fallback reads and exclude the draft-only marker.
-6. Add machine evidence, a fail-closed verifier and a dated packet.
-7. Close the source checkbox that storefront serves only the selected immutable published artifact.
-8. Leave production Pages, Page Builder, storefront, cache, event delivery, dependencies and schemas unchanged.
+1. Add one fail-closed anonymous storefront dependency-graph verifier.
+2. Resolve Pages storefront default, hydrate and SSR feature graphs through `cargo metadata`.
+3. Resolve host storefront CSR, hydrate and SSR feature graphs through `cargo metadata`.
+4. Exclude dev-dependencies while retaining normal and build dependency reachability.
+5. Forbid Pages admin, Page Builder admin, the admin host and Fly browser/editor packages at every depth.
+6. Scan Pages storefront, Page Builder storefront and host storefront Rust sources for authoring imports and composition markers.
+7. Add machine evidence, a dated packet and synchronized canonical/local plans.
+8. Leave production code, Cargo dependencies/features, routes, schemas and runtime behavior unchanged.
 
 ## Boundaries
 
@@ -360,19 +409,21 @@ This slice does not:
 - alter cache namespace names, composite key shape, TTL or capacity;
 - add cache scans or wildcard deletion;
 - change outbox, Pages or Page Builder migrations or DTOs;
+- change Cargo dependencies or feature definitions;
 - change optional event infrastructure;
-- claim tests, Cargo, formatting, verifiers, SQLite, Axum, Leptos, browsers, workflows, CI or rollout execution;
+- build or inspect actual SSR binaries, WASM modules, JavaScript chunks, source maps or bundle manifests;
+- claim tests, Cargo metadata, Cargo builds, formatting, verifiers, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA status.
 
 ## Next cursor
 
-1. Run the selected immutable artifact verifier and focused Pages SQLite regression.
-2. Run the reviewed native storefront artifact verifier and route harness alongside it.
-3. Run the complete native SQLite/Axum route set, including channel admission and artifact HTTP cache.
-4. Run the production relay-native-route, generation-gate and PostgreSQL restart packets.
-5. Run metadata conflict/isolation and published metadata browser packets.
-6. Prove anonymous SSR/CSR/hydrate bundles exclude authoring code.
-7. Complete compile, workflow and observed tenant rollout evidence before promotion.
+1. Run the anonymous storefront graph verifier across all six profiles.
+2. Build anonymous host CSR, hydrate and SSR outputs and retain package/chunk evidence that authoring code remains absent.
+3. Run the selected immutable artifact verifier and focused Pages SQLite regression.
+4. Run the reviewed native storefront artifact verifier and complete native SQLite/Axum route set.
+5. Run the production relay-native-route, generation-gate and PostgreSQL restart packets.
+6. Run metadata conflict/isolation and published metadata browser packets.
+7. Complete workflow and observed tenant rollout evidence before promotion.
 
 Any failure or owner-model change must update this shared cursor first, then the owning local plan, so Pages and Page Builder cannot drift into different completion claims.
 
@@ -381,6 +432,7 @@ Any failure or owner-model change must update this shared cursor first, then the
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
