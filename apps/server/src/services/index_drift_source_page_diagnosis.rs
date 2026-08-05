@@ -4,7 +4,7 @@ use rustok_api::{Permission, has_effective_permission};
 use rustok_core::ModuleRuntimeExtensions;
 use thiserror::Error;
 
-use super::index_replay_runtime_composition::{
+use super::{
     IndexDriftDiagnosisOperatorError, IndexDriftDiagnosisOperatorRuntime,
     IndexReconciliationOperatorContext,
 };
@@ -188,7 +188,7 @@ where
     let mut receipts = Vec::new();
 
     for (position, mutation) in mutations.into_iter().enumerate() {
-        if matches!(mutation, rustok_index::IndexMutation::Delete { .. }) {
+        if matches!(&mutation, rustok_index::IndexMutation::Delete { .. }) {
             skipped_delete_count += 1;
             continue;
         }
@@ -247,7 +247,10 @@ pub(super) fn materialize_index_drift_source_page_diagnosis(
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, sync::{Arc, Mutex}};
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
 
     use rustok_api::Permission;
     use rustok_core::UserRole;
