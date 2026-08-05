@@ -110,8 +110,13 @@ Pages persistence, cache scope or tenant policy.
   published binding and materialization evidence.
 - [x] Cache/generation/provider failures fail open to the owner source read rather
   than serving a stale key or failing the public request.
+- [x] The server delivery gate runs the real Pages invalidation handler before
+  downstream event transport acceptance and uses stable-event process-bounded
+  dedupe so relay retry plus the later module listener cannot rotate twice in one
+  process.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
-  causing misses and refills on storefront and artifact delivery paths.
+  causing misses and refills on storefront and artifact delivery paths through the
+  production gate.
 - [ ] Storefront should read only the selected immutable published artifact.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Anonymous bundle exclusion evidence is not complete.
@@ -158,26 +163,27 @@ Pages persistence, cache scope or tenant policy.
 - [x] Non-builder publication is isolated from Page Builder persistence and rejects
   every GrapesJS/Fly body with a stable typed code.
 - [x] A module-owned event listener consumes page `NodeUpdated`, `NodePublished`,
-  `NodeUnpublished` and `NodeDeleted` events. The neutral server adapter rotates
-  owner-declared generations through the process-wide `CacheService`; provider
-  failures return handler errors for dispatcher retry.
+  `NodeUnpublished` and `NodeDeleted` events. The neutral server delivery gate runs
+  the same handler synchronously before downstream acceptance; the separately
+  constructed asynchronous listener provider resolves the same process-bounded
+  successful-event set and becomes a no-op for an already handled event UUID.
 - [x] The same typed server adapter implements `PagesCacheReadPort`; storefront and
   artifact readers consume the shared generation snapshot and cache backend without
   owning Redis or generation policy.
 - [ ] Accepted execution evidence must correlate publish/rollback receipts, outbox
-  events, handler receipts, generation changes, cache misses and refills.
+  events, production-gate receipts, generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
 
 ## FFA/FBA status
 
 - **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
-  promoted-scenario selection, registered draft/published metadata surfaces and
-  generation-aware storefront/artifact readers are connected. Executed metadata
-  conflict/isolation packets, inline edit mode and anonymous bundle evidence remain
-  open.
+  promoted-scenario selection, registered draft/published metadata surfaces,
+  generation-aware storefront/artifact readers and the production generation gate
+  are connected. Executed metadata conflict/isolation packets, inline edit mode and
+  anonymous bundle evidence remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
-  GraphQL/HTTP/admin transports, default-runtime removal and cache
+  GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
   invalidation/read boundaries are integrated at source level. Executed metadata,
   rollback and cache proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
@@ -200,8 +206,9 @@ Pages persistence, cache scope or tenant policy.
   deterministic rendering and document hash.
 - **Page Builder backend FBA:** capability policy, validation/sanitization ports,
   health, feature flags and rollout mechanics.
-- **Cache/server host:** process-wide cache connection, byte storage and generation
-  primitive only; it does not define Pages scopes, variants or invalidation causes.
+- **Cache/server host:** process-wide cache connection, byte storage, generation
+  primitive and neutral synchronous delivery-gate composition. It does not define
+  Pages scopes, variants or invalidation causes.
 - **Hosts:** route, locale, auth and tenant context only.
 
 ## Current document/publication model
@@ -226,8 +233,12 @@ GraphQL / HTTP / admin reviewed command
   -> transactional NodeUpdated/NodePublished outbox
   -> durable publish receipt + exact artifact manifest
   -> commit
-  -> Pages module event listener
-  -> rotate tenant route/page/artifact cache generations
+  -> publisher or OutboxRelay
+  -> tenant generation transport and canonical listener-readiness gate
+  -> synchronous Pages event predicate + invalidation runtime
+  -> event/correlation-bound generation receipt
+  -> downstream transport acceptance
+  -> asynchronous Pages module listener duplicate no-op
   -> generation-aware storefront/artifact miss and refill
 
 Rollback command
@@ -243,7 +254,7 @@ Rollback command
   -> transactional NodeUpdated/NodePublished outbox
   -> durable rollback receipt
   -> commit
-  -> existing cache generation rotation
+  -> same production generation gate and downstream delivery
 
 Non-builder command
   -> page metadata version
@@ -283,13 +294,16 @@ Invariants:
     document.
 17. Cache invalidation is event-driven: publish and rollback do not call cache
     services inline.
-18. Pages owns invalidation causes and cache key shape; the server only supplies
-    `CacheNamespaceGenerationStore` and a byte cache capability.
+18. Pages owns invalidation causes and cache key shape; the server supplies
+    `CacheNamespaceGenerationStore`, byte cache capability and neutral delivery
+    composition.
 19. Tenant-wide per-scope generations keep trusted local snapshots bounded; page id
     and SHA-256 request variants remain part of concrete keys.
-20. A handler acknowledges success only after every owner-requested generation has
-    advanced and the receipt matches event/correlation identity. A retry may advance
-    a generation more than once, which is safe because old keys remain unreachable.
+20. The production delivery gate cannot accept a Pages lifecycle event downstream
+    until every owner-requested generation has advanced and the receipt matches
+    event/correlation identity. Same-event work is serialized and a successful
+    process-local rotation is not repeated by relay retry or the asynchronous
+    listener; replay after process restart may conservatively rotate again.
 21. Channel/module authorization runs before every cache lookup.
 22. Cache fill follows owner source validation; cache errors fail open to source
     reads and do not authorize or publish data.
@@ -370,6 +384,26 @@ Invariants:
 - Tests, verifiers, formatters, Cargo commands, browser scenarios, workflows and CI
   were not executed in this slice.
 
+## Completed slice — 2026-08-05
+
+- Retained the registered native storefront route, routed-channel admission,
+  reviewed immutable artifact selection and one-process relay/refill source packets.
+- Rechecked the production relay topology and corrected the synchronous test-target
+  evidence so it no longer claimed asynchronous listener completion before outbox
+  acknowledgement.
+- Extended `TenantGenerationDeliveryGate` to run the real Pages handler before
+  downstream transport acceptance under `mod-pages`.
+- Added process-bounded stable-event serialization and successful-invalidation
+  dedupe to `ServerPagesCachePort`.
+- Preserved relay retry after downstream rejection without another generation bump
+  and made the later asynchronous Pages listener a same-event rotation no-op.
+- Kept memory, OutboxLocal and OutboxIggy downstream delivery and the module-owned
+  listener registration.
+- Added focused server source tests, machine evidence, static verifier and a dated
+  production-gate packet.
+- Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
+  workflows and CI were not executed in this slice.
+
 ## Next implementation order
 
 ### P0 — separate metadata and document writes
@@ -406,8 +440,11 @@ Invariants:
 - [x] Add idempotent rollback to the previous distinct immutable artifact set with a
   separate receipt and transactional outbox semantics.
 - [x] Add the typed rollback action to the Pages workspace header.
-- [ ] Retain accepted evidence for publish/rollback outbox event → handler receipt →
-  generation rotation → cache miss/refill.
+- [x] Insert the real Pages handler into the production delivery gate before
+  downstream acceptance and deduplicate retry/listener replay by event UUID in one
+  process.
+- [ ] Retain accepted execution evidence for publish/rollback outbox event →
+  production gate receipt → generation rotation → cache miss/refill.
 - [ ] Correlate publish/rollback receipt, editor save, page/body revisions, runtime
   review, materialization, invalidation receipt, artifact and storefront read in
   telemetry.
@@ -457,6 +494,9 @@ Invariants:
 - `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`
 - `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
+- `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
+- `cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture`
+- `cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture`
 - `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`
