@@ -1,0 +1,34 @@
+name: FORUM-24C delete route tombstone sync
+
+on:
+  push:
+    branches:
+      - feat/forum-24c-delete-route-tombstones
+    paths:
+      - .github/forum24c_sync.py
+      - .github/workflows/forum24c-delete-route-tombstone-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/forum-24c-delete-route-tombstones
+          fetch-depth: 1
+      - name: Apply FORUM-24C owner composition
+        run: python .github/forum24c_sync.py
+      - name: Commit synchronized source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/forum24c_sync.py .github/workflows/forum24c-delete-route-tombstone-sync.yml
+          git add crates/rustok-forum/src/services/topic_route.rs \
+                  crates/rustok-forum/src/services/topic_owner.rs \
+                  crates/rustok-forum/docs/README.md \
+                  crates/rustok-forum/docs/implementation-plan.md
+          git commit -m "feat(forum): compose delete route tombstones"
+          git push origin HEAD:feat/forum-24c-delete-route-tombstones
