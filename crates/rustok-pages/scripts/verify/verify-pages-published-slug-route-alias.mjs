@@ -253,12 +253,12 @@ for (const marker of [
   "published-slug-route-alias-source-ready",
   "Published slug route aliases: source-ready",
   "Localized canonical Pages routes",
-  "Host redirect/gone response remains open",
+  "The public host response is now source-ready",
 ]) need(plan, marker, "canonical plan");
 for (const marker of [
   "immutable redirects for published slug renames",
   "Old published slug claims cannot be reused",
-  "Host redirect responses, delete tombstones and historical backfill remain open",
+  "Delete tombstones and historical backfill remain open",
 ]) need(localPlan, marker, "Pages local plan");
 for (const marker of [
   "source-ready / execution-pending",
