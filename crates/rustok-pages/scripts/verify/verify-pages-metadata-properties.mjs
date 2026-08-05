@@ -341,13 +341,12 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "Metadata UI cutover: source-complete",
-  "Metadata revision/isolation source packet: ready, unvalidated",
-  "Published metadata source packet: ready, unvalidated",
-  "Draft registered metadata surface: source-connected",
-  "Published registered metadata surface: source-connected",
-  "Legacy PageMetadataEditor: removed",
-  "Execution evidence remains pending",
+  "Registered metadata surfaces: source-complete",
+  "Focused stale-revision and dirty-Fly isolation regressions are source-ready",
+  "Published pages mount the same registered panel",
+  "without an editable Fly canvas",
+  "The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed",
+  "Their execution and the published browser packet remain open",
 ]) {
   requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
 }
