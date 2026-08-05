@@ -9,6 +9,7 @@ pub(crate) mod publish_manifest;
 mod read;
 mod reviewed_publish;
 mod rollback;
+mod route;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
@@ -26,6 +27,9 @@ pub use crate::error::{
 pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
 pub(crate) use helpers::is_page_visible_for_channel;
 pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
+pub use route::{
+    PageRouteDescriptor, PageRouteDisposition, PageRouteResolution, PageRouteService,
+};
 
 pub(super) const PAGE_KIND: &str = "page";
 
