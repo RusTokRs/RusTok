@@ -18,6 +18,7 @@ use super::rbac::enforce_scope;
 use super::topic_canonical_resolution::{
     ForumTopicCanonicalResolution, ForumTopicCanonicalResolutionService,
 };
+use super::topic_route::{ForumTopicSlugRenameResult, RenameForumTopicSlugInput};
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_owner;
 use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
@@ -284,6 +285,18 @@ impl TopicService {
             .update_command(tenant_id, topic_id, security, input)
             .await?;
         require_localized_topic_response(response)
+    }
+
+    pub async fn rename_slug(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        input: RenameForumTopicSlugInput,
+    ) -> ForumResult<ForumTopicSlugRenameResult> {
+        self.inner
+            .rename_slug(tenant_id, topic_id, security, input)
+            .await
     }
 
     pub async fn delete(
