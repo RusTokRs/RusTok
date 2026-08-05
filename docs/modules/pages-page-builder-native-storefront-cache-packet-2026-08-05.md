@@ -92,7 +92,7 @@ This slice does not:
 
 ## Remaining cursor
 
-Native server-function execution remains pending. The next packet should mount the real registered Leptos server-function route with `HostRuntimeContext`, trusted tenant/request context, a real Pages database fixture and the typed cache runtime, then retain miss/refill/hit and generation-rotation observations without bypassing module or channel admission.
+native server-function execution remains pending. The next packet should mount the real registered Leptos server-function route with `HostRuntimeContext`, trusted tenant/request context, a real Pages database fixture and the typed cache runtime, then retain miss/refill/hit and generation-rotation observations without bypassing module or channel admission.
 
 A later continuity packet should connect a real durable `NodePublished` relay delivery to that native storefront request on one exact revision. Executed database, HTTP/browser, workflow and rollout evidence still blocks promotion.
 
