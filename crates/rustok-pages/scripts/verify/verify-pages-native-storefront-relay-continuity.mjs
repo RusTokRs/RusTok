@@ -13,12 +13,19 @@ const reviewed = read("crates/rustok-pages/src/services/page/reviewed_publish.rs
 const cache = read("crates/rustok-pages/src/cache_invalidation.rs");
 const relay = read("crates/rustok-outbox/src/relay.rs");
 const adapter = read("crates/rustok-pages/storefront/src/transport/native_server_adapter.rs");
+const serverFactory = read("apps/server/src/services/event_transport_factory.rs");
+const moduleDispatcher = read("apps/server/src/services/module_event_dispatcher.rs");
+const coreDispatcher = read("crates/rustok-core/src/events/handler.rs");
 const packet = read("docs/modules/pages-page-builder-native-storefront-relay-continuity-packet-2026-08-05.md");
+const correction = read("docs/modules/pages-page-builder-native-storefront-relay-topology-correction-2026-08-05.md");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const failures = [];
 
 const need = (text, marker, label) => {
   if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
+};
+const forbid = (text, marker, label) => {
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 };
 const ordered = (text, markers, label) => {
   let at = -1;
@@ -31,7 +38,10 @@ const ordered = (text, markers, label) => {
   }
 };
 
-if (evidence.status !== "pages_native_storefront_relay_continuity_source_unvalidated") {
+if (evidence.format !== "pages_native_storefront_relay_continuity_source_v2") {
+  failures.push(`evidence format mismatch: ${evidence.format}`);
+}
+if (evidence.status !== "pages_native_storefront_relay_continuity_source_corrected_unvalidated") {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
@@ -44,6 +54,8 @@ for (const key of [
   "real_pages_reviewed_publish_used",
   "real_outbox_relay_used",
   "real_pages_cache_event_handler_used",
+  "custom_synchronous_relay_target_used",
+  "test_target_success_precedes_test_outbox_acknowledgement",
   "real_leptos_server_function_registry_used",
   "durable_node_created_dispatched_first",
   "node_created_does_not_rotate_pages_generations",
@@ -61,6 +73,9 @@ for (const key of [
   if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
 }
 for (const key of [
+  "production_server_relay_target_used",
+  "production_module_event_dispatcher_used",
+  "production_listener_acknowledgement_coupled_to_outbox_relay",
   "production_pages_behavior_changed",
   "production_page_builder_behavior_changed",
   "production_outbox_behavior_changed",
@@ -81,7 +96,9 @@ for (const marker of [
   "PageBuilderReviewedPublishRuntime",
   "OutboxModule",
   "OutboxRelay",
+  "struct ContinuityTarget",
   "PageCacheInvalidationEventHandler",
+  "self.handler.handle(&envelope).await?",
   "PagesCacheReadRuntime",
   "handle_server_fns_with_context",
   "TenantContextExtension(tenant.clone())",
@@ -91,7 +108,7 @@ for (const marker of [
   "DomainEvent::NodeUpdated",
   "DomainEvent::NodePublished",
   "PAGES_STOREFRONT_CACHE_TTL_SECS"
-]) need(harness, marker, "harness");
+]) need(harness, marker, "continuity harness");
 
 ordered(harness, [
   "create_reviewed_published_page",
@@ -130,7 +147,7 @@ ordered(relay, [
   "Ok(()) =>",
   "self.mark_dispatched(model).await?",
   "self.record_processed(elapsed_ms, true)"
-], "relay acknowledgement ordering");
+], "relay target acknowledgement ordering");
 ordered(adapter, [
   "is_module_enabled(channel_id, MODULE_SLUG)",
   "generation_snapshot(tenant_id).await",
@@ -140,23 +157,56 @@ ordered(adapter, [
   "put_json(cache_key, &data).await"
 ], "native route ordering");
 
+const artifactBodyGuard = '#[cfg(feature = "ssr")]\nfn published_artifact_page_body(';
+if (adapter.split(artifactBodyGuard).length - 1 !== 1) {
+  failures.push("native adapter must retain exactly one SSR guard on published_artifact_page_body");
+}
+forbid(
+  adapter,
+  '#[cfg(feature = "ssr")]\n#[cfg(feature = "ssr")]\n#[cfg(feature = "ssr")]\nfn published_artifact_page_body(',
+  "native adapter cfg normalization",
+);
+
 for (const marker of [
-  "Durable event sequence",
-  "Fill between NodeUpdated and NodePublished",
-  "NodePublished rotation",
-  "Old key retention and new-key refill",
+  "EventDeliveryProfile::OutboxLocal",
+  "MemoryTransport::with_capacity(channel_capacity)",
+  "let listener_bus = transport.event_bus()",
+  "OutboxRelay::new(ctx.db_clone(), relay_target)",
+]) need(serverFactory, marker, "production server relay topology");
+ordered(moduleDispatcher, [
+  ".listener_bus",
+  ".clone()",
+  "build_module_event_dispatcher(registry, bus, db, extensions.as_ref())",
+  "dispatcher.start()"
+], "production module listener topology");
+for (const marker of [
+  ".filter(|handler| handler.handles(&envelope.event))",
+  "tokio::spawn(",
+  "Self::handle_with_retry(handler, envelope, &config).await"
+]) need(coreDispatcher, marker, "production asynchronous dispatcher");
+
+for (const marker of [
+  "synchronous test relay target",
+  "does not mount the production server relay target",
+  "production module dispatcher remains a separate boundary",
   "execution list is empty"
-]) need(packet, marker, "packet");
+]) need(packet, marker, "corrected continuity packet");
 for (const marker of [
-  "native-storefront-relay-continuity-source-ready",
-  "Reviewed publish relay to native refill: source-ready",
-  "The new continuity harness retains one real owner and dispatcher sequence:",
-  "old composite key remains physically retained"
-]) need(plan, marker, "plan");
+  "Topology correction",
+  "test-target acknowledgement",
+  "production listener acknowledgement gap",
+  "no production behavior change"
+]) need(correction, marker, "topology correction packet");
+for (const marker of [
+  "native-storefront-relay-topology-corrected",
+  "Production relay-to-Pages-listener acknowledgement: open",
+  "custom synchronous relay target",
+  "Do not promote the continuity packet as production-topology evidence"
+]) need(plan, marker, "current parity plan");
 
 if (failures.length) {
   console.error("[verify-pages-native-storefront-relay-continuity] FAIL");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log("[verify-pages-native-storefront-relay-continuity] PASS source_ready=true execution=pending");
+console.log("[verify-pages-native-storefront-relay-continuity] PASS source_corrected=true production_topology_gap=open execution=pending");
