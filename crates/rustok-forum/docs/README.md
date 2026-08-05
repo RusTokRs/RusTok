@@ -39,10 +39,11 @@ notifications module, and cross-module release gates.
 - FORUM-21O selects direct authenticated native owner composition for Leptos SSR/hydrate while retaining GraphQL for CSR/headless with no fallback;
 - FORUM-21P adds the transport-neutral selected-reply split owner with immutable receipt/event, parent-closed movement, exact access-policy cloning and counter reconciliation;
 - FORUM-21Q adds the transport-neutral reply-branch fork owner with deterministic copied identities, complete bounded revision/relation provenance, source immutability and explicit non-copy policy; FORUM-21U provides its manager GraphQL transport;
-- FORUM-21R exposes `splitForumTopicReplies` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged split owner and immutable receipt; admin composition remains follow-up scope;
+- FORUM-21R exposes `splitForumTopicReplies` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged split owner and immutable receipt; FORUM-21V provides its Leptos and Next-admin composition;
 - FORUM-21S adds the transport-neutral bounded reply-range move owner with deterministic append positions, explicit asymmetric parent policy, unchanged reply-owned references and checked ACL/solution/counter reconciliation; FORUM-21T provides its manager GraphQL transport;
 - FORUM-21T exposes `moveForumTopicReplyRange` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged reply-range owner and immutable receipt; admin composition remains follow-up scope;
 - FORUM-21U exposes `forkForumTopicReplyBranch` as a routed-tenant, `forum_topics:manage` GraphQL adapter over the unchanged fork owner and immutable receipt; admin composition remains follow-up scope.
+- FORUM-21V composes `splitForumTopicReplies` in the module-owned Leptos and Next-admin surfaces with stable retry/target identities and no transport-local movement policy.
 
 ## Verification
 
@@ -68,6 +69,7 @@ notifications module, and cross-module release gates.
 - [FORUM-21S bounded reply-range move owner](./forum-21s-reply-range-move-owner.md)
 - [FORUM-21T reply-range move GraphQL transport](./forum-21t-reply-range-move-graphql-transport.md)
 - [FORUM-21U topic fork GraphQL transport](./forum-21u-topic-fork-graphql-transport.md)
+- [FORUM-21V topic split admin composition](./forum-21v-topic-split-admin-ui.md)
 - [FORUM-21I/J canonical resolution and HTTP redirect](./forum-21i-topic-canonical-resolution.md)
 - [FORUM-21K topic merge GraphQL transport](./forum-21k-topic-merge-graphql-transport.md)
 - [Admin UI package](../admin/README.md)

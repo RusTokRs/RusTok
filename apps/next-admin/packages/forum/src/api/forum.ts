@@ -5,6 +5,11 @@ import type {
   ForumTopicMergeCommand,
   ForumTopicMergeReceipt
 } from '../core/topic-merge';
+import type {
+  ForumTopicSplitCommand,
+  ForumTopicSplitReceipt,
+  ForumTopicSplitReplyPage
+} from '../core/topic-split';
 
 export interface GqlOpts {
   token?: string | null;
@@ -13,6 +18,7 @@ export interface GqlOpts {
 }
 
 export interface ForumTopicSummary extends ForumTopicMergeCandidate {
+  locale: string;
   slug: string;
 }
 
@@ -31,6 +37,7 @@ export async function listForumTopics(
       forumTopics(tenantId: $tenantId, locale: $locale, pagination: $pagination) {
         items {
           id
+          locale
           title
           slug
           categoryId
@@ -62,6 +69,59 @@ export async function listForumTopics(
   );
 
   return data.forumTopics.items;
+}
+
+export async function listForumTopicReplies(
+  topicId: string,
+  opts: GqlOpts = {},
+  input: { locale?: string; first?: number } = {}
+): Promise<ForumTopicSplitReplyPage> {
+  const query = `
+    query ForumTopicSplitReplies(
+      $tenantId: UUID!
+      $topicId: UUID!
+      $locale: String
+      $pagination: PaginationInput!
+    ) {
+      forumReplies(
+        tenantId: $tenantId
+        topicId: $topicId
+        locale: $locale
+        pagination: $pagination
+      ) {
+        total
+        items {
+          id
+          contentPreview: contentPlainText
+          status
+          parentReplyId
+          createdAt
+        }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    {
+      tenantId: string;
+      topicId: string;
+      locale?: string;
+      pagination: { first: number };
+    },
+    { forumReplies: ForumTopicSplitReplyPage }
+  >(
+    query,
+    {
+      tenantId: opts.tenantId!,
+      topicId,
+      locale: input.locale,
+      pagination: { first: input.first ?? 500 }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.forumReplies;
 }
 
 export async function createForumReply(
@@ -207,4 +267,73 @@ export async function mergeForumTopics(
     opts.tenantSlug
   );
   return data.mergeForumTopic;
+}
+
+export async function splitForumTopicReplies(
+  command: ForumTopicSplitCommand,
+  opts: GqlOpts = {}
+): Promise<ForumTopicSplitReceipt> {
+  const mutation = `
+    mutation SplitForumTopicReplies(
+      $tenantId: UUID
+      $sourceTopicId: UUID!
+      $input: SplitForumTopicRepliesGraphqlInput!
+    ) {
+      splitForumTopicReplies(
+        tenantId: $tenantId
+        sourceTopicId: $sourceTopicId
+        input: $input
+      ) {
+        operationId
+        eventId
+        sourceTopicId
+        targetTopicId
+        categoryId
+        actorId
+        reason
+        movedReplyCount
+        movedPublishedReplyCount
+        sourceResultingPublishedReplyCount
+        targetResultingPublishedReplyCount
+        solutionReplyId
+        splitAt
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    {
+      tenantId?: string | null;
+      sourceTopicId: string;
+      input: {
+        operationId: string;
+        targetTopicId: string;
+        replyIds: string[];
+        locale: string;
+        title: string;
+        slug?: string;
+        reason: string;
+      };
+    },
+    { splitForumTopicReplies: ForumTopicSplitReceipt }
+  >(
+    mutation,
+    {
+      tenantId: opts.tenantId,
+      sourceTopicId: command.sourceTopicId,
+      input: {
+        operationId: command.operationId,
+        targetTopicId: command.targetTopicId,
+        replyIds: command.replyIds,
+        locale: command.locale,
+        title: command.title,
+        slug: command.slug,
+        reason: command.reason
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.splitForumTopicReplies;
 }
