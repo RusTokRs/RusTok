@@ -84,8 +84,9 @@ fn authorize_for(
 /// Publishes exact-entity diagnosis after replay composition has frozen source/schema registries.
 ///
 /// Composition performs no SQL and starts no task. An absent source registry leaves the capability
-/// unpublished; a source registry without its shared schema registry fails closed. PostgreSQL
-/// backend enforcement remains inside the snapshot reader before source or database reads.
+/// unpublished; a source registry without its shared schema registry fails closed. An optional
+/// explicit absence registry is frozen from the same owner-bound source composition before the
+/// snapshot reader is constructed.
 pub(super) fn materialize_index_drift_diagnosis_operator(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -112,11 +113,28 @@ pub(super) fn materialize_index_drift_diagnosis_operator(
             )
         })?;
 
+    let absence = rustok_index::materialize_index_source_absence_registry(extensions)
+        .map_err(|error| {
+            ServerError::Message(format!(
+                "Index source absence registry materialization failed: {error}"
+            ))
+        })?;
+    if let Some(absence) = absence {
+        extensions.insert(absence);
+    }
+
     let reader = rustok_index::PostgresIndexDriftSnapshotReader::new(
         db.clone(),
         sources,
         schemas.clone(),
     );
+    let reader = match extensions
+        .get::<rustok_index::SharedIndexSourceAbsenceRegistry>()
+        .cloned()
+    {
+        Some(absence) => reader.with_absence_registry(absence),
+        None => reader,
+    };
     let writer =
         rustok_index::infrastructure::postgres::PostgresIndexDriftFindingWriter::new(db);
     let producer = rustok_index::IndexDriftDigestProducer::new(
