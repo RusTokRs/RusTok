@@ -1,9 +1,10 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay for `implementation-plan.md` audited through
-`main@2197ffaf4ca47f7cf56d8014deaaab69a1dfc51d` and the rechecked guarded-diagnosis
-change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`. The two main commits after
-`9cfc43cf72284e16261f788070a47367613bf2e2` do not touch `rustok-index` or its server composition.
+`main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173` and the rechecked guarded-diagnosis
+change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`. The intervening main commits do
+not touch `rustok-index`, `rustok-distribution` Product Index composition, or the server diagnosis
+composition changed by this branch.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
 overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
@@ -11,13 +12,13 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - wire explicit absence watermarks into drift snapshot capture`
+`M6 - retain Product locale-absence diagnosis evidence`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
-source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability, and
-explicit owner-retained absence watermark registry are source complete. Production owner absence
-providers, snapshot-reader admission of truthful `Missing`, diagnosis transport, lifecycle commands,
-repair, and retained evidence remain open.
+source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability,
+explicit owner-retained absence registry, Product locale high-watermark provider, and double-read
+absence-version fence are source complete. Product PostgreSQL execution evidence, diagnosis
+transport, lifecycle commands, repair, and broader discovery remain open.
 
 ## Rechecked status
 
@@ -47,8 +48,8 @@ repair, and retained evidence remain open.
   `source_complete_owner_execution_pending`
 - M6 guarded exact-entity drift diagnosis operator:
   `source_complete_transport_and_owner_execution_pending`
-- M6 explicit source absence watermark registry:
-  `source_complete_owner_registration_and_reader_wiring_pending`
+- M6 explicit source absence watermark registry, Product provider, and reader fence:
+  `source_complete_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -106,11 +107,16 @@ repair, and retained evidence remain open.
       canonical replay-source owner parity, and fail-closed materialization.
 - [x] Keep existing `IndexSource::scan` and `IndexSource::load` contracts source-compatible and keep
       `None` or an empty targeted load non-authoritative.
-- [ ] Register at least one production owner-retained absence provider.
-- [ ] Materialize and wire the frozen absence registry into the PostgreSQL drift snapshot reader so
-      it compares the exact positive absence version before and after materialized capture.
-- [ ] Bind an admitted absence version into the opaque snapshot boundary before producing source
-      `Missing`; retain `index_drift_source_watermark_missing` when proof is unavailable.
+- [x] Register the Product locale absence provider for `rustok-product::product@1` and `@2`, using
+      positive `products.index_revision` only when the exact translation and tombstone are absent.
+- [x] Materialize and privately attach the frozen absence registry to the PostgreSQL drift snapshot
+      reader from guarded server diagnosis composition.
+- [x] Reload and compare the exact positive absence version around the materialized snapshot and
+      bind the version into the opaque boundary only for source `Missing`.
+- [x] Preserve permanent `index_drift_source_watermark_missing` when provider registration or
+      authoritative evidence is unavailable.
+- [ ] Add and run a real-migration Product locale-absence scenario plus a deterministic concurrent
+      translation-change rejection scenario.
 - [ ] Expose the exact-entity diagnosis capability through one bounded operator transport.
 - [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
@@ -130,18 +136,18 @@ repair, and retained evidence remain open.
 
 ## Next implementation step
 
-Register one production owner-retained absence provider and wire the frozen absence registry into the
-PostgreSQL drift snapshot reader. For an empty targeted owner load, admit source `Missing` only when
-that provider returns the exact requested key with a positive retained version. Reload and compare
-the same absence version around the `REPEATABLE READ READ ONLY` materialized snapshot, include the
-version in the opaque boundary, and preserve permanent `index_drift_source_watermark_missing` for
-`None`, missing provider registration, or any unproven absence. Keep scan/discovery, automatic
-resolution, transport, and repair outside that slice.
+Add a real-migration PostgreSQL scenario for one live Product whose requested locale is absent while
+another locale remains present. Require ordinary targeted load to be empty, the Product provider to
+return the exact positive revision, and diagnosis to compare source `Missing` against materialized
+state. Add a deterministic barrier that inserts or moves the requested translation between the two
+owner observations and require retryable `index_drift_source_changed_during_capture`. Keep transport,
+discovery, automatic resolution, and repair outside that evidence slice.
 
 ## Owner verification for this slice
 
 ```bash
 cargo test -p rustok-index source_absence -- --nocapture
+cargo test -p rustok-distribution product_index -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis_operator -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
 
@@ -168,7 +174,8 @@ node scripts/verify/verify-index-drift-snapshot-reader.mjs
 node scripts/verify/verify-index-drift-finding-locale-scope.mjs
 node scripts/verify/verify-index-drift-digest-producer.mjs
 node scripts/verify/verify-index-drift-finding-postgres-harness.mjs
-cargo check -p rustok-server --all-targets
+cargo check -p rustok-server --all-targets --features mod-product
+cargo check -p rustok-distribution --all-targets --features mod-product
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
