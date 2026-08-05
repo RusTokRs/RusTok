@@ -26,6 +26,7 @@ const scripts = [
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-server-reconciliation-guard.mjs',
   'verify-index-drift-diagnosis-graphql-transport.mjs',
+  'verify-index-drift-source-page-diagnosis.mjs',
   'verify-index-reconciliation-retry-store.mjs',
   'verify-index-reconciliation-runner-retry.mjs',
   'verify-index-reconciliation-host-scheduler.mjs',
