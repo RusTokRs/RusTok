@@ -1,10 +1,11 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay for `implementation-plan.md` audited through
-`main@368c79b78549e97a68120358021552b2552b800c` and the rechecked guarded-diagnosis
-change from PR #2983 at `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`. The eight intervening main commits
-do not touch `rustok-index`, `rustok-distribution` Product Index composition, or the server diagnosis
-composition changed by this branch.
+Status overlay for `implementation-plan.md` rechecked through
+`main@4fe2643c0d3f3e7e3c0e5e2ccf9347184f347395` and the active draft PR #2986.
+The fifteen main commits after this branch merge base touch Commerce diagnostics, Forum module-owned
+GraphQL transports, Inventory/Order diagnostics, and Pages/Page Builder evidence. They do not touch
+`rustok-index`, Product Index composition, the server Index GraphQL root, diagnosis composition, or
+Index guards changed by this branch.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
 overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
@@ -12,14 +13,19 @@ details remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - add bounded missing-entity candidate diagnosis`
+`M6 - add missing-only candidate classification without exposing snapshot state`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
 source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability,
 explicit owner-retained absence registry, Product locale high-watermark provider, double-read
-absence-version fence, Product locale absence PostgreSQL harness, and bounded GraphQL exact-entity
-diagnosis transport are source complete. Owner execution evidence, finding lifecycle commands,
-repair, and broader missing/stale/orphan discovery remain open.
+absence-version fence, Product locale absence PostgreSQL harness, bounded GraphQL exact-entity
+transport, and internal one-page source-present candidate diagnosis runtime are source complete.
+
+The new source-page runtime intentionally delegates to the existing general exact diagnosis outcome.
+That outcome does not reveal whether a mismatch is materialized `Missing`, stale fields, stale links,
+or another typed state difference. Missing-only selection therefore remains open rather than being
+claimed from digest inequality alone. Owner execution evidence, source-page transport, finding
+lifecycle commands, repair, and broader Index-only/orphan discovery also remain open.
 
 ## Rechecked status
 
@@ -51,6 +57,8 @@ repair, and broader missing/stale/orphan discovery remain open.
   `source_complete_owner_execution_pending`
 - M6 bounded GraphQL exact-entity diagnosis transport:
   `source_complete_owner_execution_pending`
+- M6 bounded source-page drift candidate diagnosis:
+  `source_complete_transport_and_owner_execution_pending`
 - M6 explicit source absence watermark registry, Product provider, and reader fence:
   `source_complete_owner_execution_pending`
 - M6 Product locale absence PostgreSQL harness:
@@ -128,7 +136,18 @@ repair, and broader missing/stale/orphan discovery remain open.
       digest/receipt output, and no batch, scan, lifecycle, scheduler, or repair authority.
 - [ ] Retain GraphQL authorization, malformed-input ordering, consistent result, mismatch receipt,
       and dependency-failure execution evidence.
-- [ ] Add missing/stale entity and orphan-link diagnosis without unbounded ID collection.
+- [x] Add one internal server-owned source-page candidate diagnosis runtime over the frozen
+      `IndexSource::scan` registry with authorization-before-page-validation, a maximum page size of
+      32, sequential exact diagnosis of source `Upsert` candidates, retained-delete skipping, and no
+      loop, checkpoint store, scheduler, task, repair, or public transport.
+- [x] Keep source-page continuation server-owned and return no source entity identifiers or payloads
+      from the page outcome.
+- [ ] Add a database-neutral missing-only selector that records a candidate only when the captured
+      authoritative source state is `Upsert` and the captured materialized state is `Missing`,
+      without exposing either raw state through the operator or transport.
+- [ ] Add a bounded source-page transport only after cursor confidentiality and request-scope
+      semantics are explicitly admitted.
+- [ ] Add bounded stale Index-only entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
 
@@ -146,14 +165,15 @@ repair, and broader missing/stale/orphan discovery remain open.
 
 ## Next implementation step
 
-Add one database-neutral bounded missing-entity candidate diagnosis slice over the existing owner
-`IndexSource::scan` contract. One request must select exactly one tenant, schema, optional locale,
-positive page limit, and opaque source cursor; process only that single bounded page; compare each
-returned owner key against exact materialized Index state; and retain findings only for source-live
-entities whose materialized entity is missing. Do not accumulate identifiers across pages, infer
-source absence from empty loads, enumerate stale Index-only rows, inspect orphan links, resolve
-findings, schedule scans, or repair state in this slice. GraphQL and PostgreSQL execution evidence
-remain owner-owned and pending.
+Add a database-neutral missing-only candidate outcome over the existing exact snapshot capture. It
+must reuse one captured `IndexDriftSnapshotPair`, validate the same exact key and registered typed
+states, and record a finding only for authoritative source `Upsert` plus materialized `Missing`.
+Source `Delete`/`Missing`, materialized `Upsert`/`Delete`, and non-missing digest mismatches must
+return a bounded non-candidate outcome without persistence. Keep the existing general
+`produce(request)` behavior unchanged, expose no raw state through server or GraphQL boundaries, and
+then adapt the one-page runtime to use the missing-only path. Do not add a public source cursor,
+multi-page lifecycle, scheduling, stale Index-only enumeration, orphan diagnosis, or repair in that
+slice. PostgreSQL and GraphQL execution evidence remain owner-owned and pending.
 
 ## Owner verification for this slice
 
@@ -161,6 +181,7 @@ remain owner-owned and pending.
 cargo test -p rustok-index source_absence -- --nocapture
 cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis -- --nocapture
+cargo test -p rustok-server index_drift_source_page_diagnosis -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
 
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
@@ -187,6 +208,7 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   -- --nocapture --test-threads=1
 
 node scripts/verify/verify-index-drift-diagnosis-graphql-transport.mjs
+node scripts/verify/verify-index-drift-source-page-diagnosis.mjs
 node scripts/verify/verify-index-product-absence-postgres-harness.mjs
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
