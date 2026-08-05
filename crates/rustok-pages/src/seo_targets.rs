@@ -279,7 +279,7 @@ fn map_page_response(page: PageResponse, requested_locale: &str) -> SeoLoadedTar
         .or_else(|| translation.title.as_deref().and_then(summarize_text));
     let primary_image = page_primary_image_descriptor(&page, title.as_str());
     let open_graph_images = primary_image.clone().into_iter().collect::<Vec<_>>();
-    let canonical_route = page_route_for_slug(translation.slug.as_deref());
+    let canonical_route = page_route_for_slug(&effective_locale, translation.slug.as_deref());
     let structured_name = translation.title.clone().unwrap_or_else(|| title.clone());
     let mut template_fields = SeoTemplateFieldMap::default();
     template_fields.insert("title", title.clone());
@@ -306,7 +306,7 @@ fn map_page_response(page: PageResponse, requested_locale: &str) -> SeoLoadedTar
             .filter_map(|item| {
                 item.slug.as_ref().map(|slug| SeoTargetAlternateRoute {
                     locale: item.locale.clone(),
-                    route: page_route_for_slug(Some(slug.as_str())),
+                    route: page_route_for_slug(&item.locale, Some(slug.as_str())),
                 })
             })
             .collect(),
@@ -408,10 +408,10 @@ fn fallback_page_translation() -> PageTranslationResponse {
     }
 }
 
-fn page_route_for_slug(slug: Option<&str>) -> String {
+fn page_route_for_slug(locale: &str, slug: Option<&str>) -> String {
     match slug.filter(|value| !value.trim().is_empty()) {
-        Some(slug) => format!("/modules/pages?slug={slug}"),
-        None => "/modules/pages".to_string(),
+        Some(slug) => format!("/{locale}/modules/pages?slug={slug}"),
+        None => format!("/{locale}/modules/pages"),
     }
 }
 
