@@ -1,6 +1,8 @@
 # `rustok-index` implementation recheck — explicit absence watermark
 
-Audited baseline: `main@9cfc43cf72284e16261f788070a47367613bf2e2`.
+Audited baseline: `main@2197ffaf4ca47f7cf56d8014deaaab69a1dfc51d`.
+The two commits after `9cfc43cf72284e16261f788070a47367613bf2e2` change only
+`rustok-order`, `rustok-pages`, and their documentation/verifiers; they do not overlap this slice.
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
@@ -14,6 +16,7 @@ The guarded exact-entity diagnosis change remains internally consistent at sourc
   reader, writer, registry, or connection handle;
 - empty owner loads remain permanent `index_drift_source_watermark_missing`;
 - no GraphQL, HTTP, CLI, admin, MCP, or other transport is claimed;
+- PR #2983 has no review threads, submitted reviews, or conversation comments;
 - tests and retained execution evidence remain owner-owned and pending.
 
 One guard defect was found during this recheck. The snapshot-reader verifier searched for the
