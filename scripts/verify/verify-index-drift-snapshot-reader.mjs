@@ -106,7 +106,7 @@ requireMarkers("doc", [
 ]);
 requireMarkers("recheck", [
   "Audited baseline: `main@0007eae148fd75c60ca7f2eb05a35ac1e6b82173`",
-  "ProductLocaleAbsenceProvider",
+  "`product-locale-absence-postgres`",
   "index_drift_source_changed_during_capture",
   "index_drift_source_watermark_missing",
 ]);
