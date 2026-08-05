@@ -1,0 +1,107 @@
+{
+  "format": "pages_anonymous_storefront_graph_source_v1",
+  "status": "pages_anonymous_storefront_graph_source_unvalidated",
+  "date": "2026-08-05",
+  "scope": "Pages and Page Builder anonymous storefront dependency graph",
+  "execution": [],
+  "validation": {
+    "verifier_run": false,
+    "cargo_metadata_run": false,
+    "cargo_build_run": false,
+    "csr_bundle_run": false,
+    "hydrate_bundle_run": false,
+    "ssr_bundle_run": false,
+    "bundle_bytes_inspected": false,
+    "browser_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  },
+  "source_contract": {
+    "pages_storefront_manifest_checked": true,
+    "page_builder_storefront_manifest_checked": true,
+    "host_storefront_manifest_checked": true,
+    "pages_storefront_default_profile_defined": true,
+    "pages_storefront_hydrate_profile_defined": true,
+    "pages_storefront_ssr_profile_defined": true,
+    "host_storefront_csr_profile_defined": true,
+    "host_storefront_hydrate_profile_defined": true,
+    "host_storefront_ssr_profile_defined": true,
+    "feature_resolved_cargo_metadata_required": true,
+    "dev_dependencies_excluded_from_reachability": true,
+    "storefront_source_trees_scanned": true,
+    "pages_admin_forbidden": true,
+    "page_builder_admin_forbidden": true,
+    "admin_host_forbidden": true,
+    "fly_browser_forbidden": true,
+    "fly_ui_forbidden": true,
+    "fly_leptos_forbidden": true,
+    "page_builder_storefront_required_for_pages_profiles": true,
+    "pages_storefront_required_for_host_ssr": true,
+    "host_client_profiles_keep_optional_pages_module_disabled": true,
+    "actual_bundle_artifact_proof_complete": false,
+    "production_pages_behavior_changed": false,
+    "production_page_builder_behavior_changed": false,
+    "production_storefront_behavior_changed": false,
+    "dependencies_changed": false,
+    "features_changed": false,
+    "database_schema_changed": false,
+    "public_route_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "profiles": [
+    {
+      "id": "pages-storefront-default",
+      "manifest": "crates/rustok-pages/storefront/Cargo.toml",
+      "features": [],
+      "target": null
+    },
+    {
+      "id": "pages-storefront-hydrate",
+      "manifest": "crates/rustok-pages/storefront/Cargo.toml",
+      "features": ["hydrate"],
+      "target": "wasm32-unknown-unknown"
+    },
+    {
+      "id": "pages-storefront-ssr",
+      "manifest": "crates/rustok-pages/storefront/Cargo.toml",
+      "features": ["ssr"],
+      "target": null
+    },
+    {
+      "id": "host-storefront-csr",
+      "manifest": "apps/storefront/Cargo.toml",
+      "features": ["csr"],
+      "target": "wasm32-unknown-unknown"
+    },
+    {
+      "id": "host-storefront-hydrate",
+      "manifest": "apps/storefront/Cargo.toml",
+      "features": ["hydrate"],
+      "target": "wasm32-unknown-unknown"
+    },
+    {
+      "id": "host-storefront-ssr",
+      "manifest": "apps/storefront/Cargo.toml",
+      "features": ["ssr"],
+      "target": null
+    }
+  ],
+  "forbidden_packages": [
+    "rustok-pages-admin",
+    "rustok-page-builder-admin",
+    "rustok-admin",
+    "fly-browser",
+    "fly-ui",
+    "fly-leptos"
+  ],
+  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
+  "packet": "docs/modules/pages-page-builder-anonymous-storefront-graph-packet-2026-08-05.md",
+  "notes": [
+    "The verifier is source-ready but has not been executed.",
+    "cargo metadata reachability is a dependency-graph proof, not compiled bundle-byte evidence.",
+    "CSR and hydrate host profiles currently leave the optional Pages module disabled; the Pages storefront hydrate profile is checked separately.",
+    "Accepted SSR/CSR/hydrate build and bundle artifact evidence remains pending."
+  ]
+}
