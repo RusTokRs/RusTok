@@ -1,42 +1,20 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-05
-Status: source-parity-current / anonymous-storefront-graph-source-ready / execution-evidence-pending
+Status: source-parity-current / anonymous-storefront-ssr-delivery-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event and cache boundaries
 
 ## Source-of-truth policy
 
 This is the canonical shared continuation cursor. Historical dated packets remain evidence of the source slices that produced the present state, but they do not override this plan.
 
-`source-ready` means that code, contracts or retained harness source exists. It does not mean that tests, Cargo, formatting, verifiers, databases, HTTP routes, server functions, production event topology, browsers, workflows, CI or tenant rollout were executed.
+`source-ready` means that code, contracts or retained harness source exists. It does not mean that tests, Cargo, formatting, verifiers, databases, HTTP routes, server functions, production event topology, browsers, workflows, CI, built artifacts or tenant rollout were executed.
 
-Pages and Page Builder continue as one vertical pipeline with explicit owners. Local module plans describe owner-local work; this shared plan decides whether the producer/consumer seam is closed and prevents either module from declaring the combined scenario complete while the other side still has a tail.
+Across every retained source packet, execution remains pending until a maintainer records reproducible command output and artifact evidence.
 
-## Audit basis
+Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, routing, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts.
 
-The current source was rechecked against:
-
-- `crates/rustok-pages/docs/implementation-plan.md`;
-- `crates/rustok-page-builder/docs/implementation-plan.md`;
-- `docs/modules/page-builder-implementation-plan.md`;
-- the Pages admin draft/published metadata composition;
-- reviewed publish and immutable rollback owner services;
-- the Page Builder reviewed runtime, authoritative sanitizer and materialized artifact contracts;
-- the Pages durable outbox/cache invalidation and read contracts;
-- `OutboxRelay` claim/delivery/acknowledgement ordering;
-- the server `EventRuntime` transport composition and `build_event_runtime` profile branches;
-- `TenantCacheGenerationTransport` and `TenantGenerationDeliveryGate`;
-- `ServerPagesCachePort` generation and byte-cache ownership;
-- the historical PostgreSQL owner-transaction and pre-handler relay-restart harnesses;
-- the module `EventDispatcher` filtering and asynchronous handler execution;
-- the native storefront adapter, registered Leptos server function and public artifact HTTP route;
-- `PageBuilderArtifactService::load_public_bound_artifact_with_fallback` and the locale-body published binding;
-- the Pages storefront, Page Builder storefront and host storefront manifests;
-- the feature-resolved non-dev dependency graphs selected by `cargo metadata`;
-- the Channel owner module-binding contract;
-- recent merged Pages parity PRs and their dated packets.
-
-The audit remains source-only. Execution evidence remains pending.
+Optional external event infrastructure is outside the active Pages cursor.
 
 ## Rechecked merged cursor
 
@@ -46,386 +24,162 @@ Current `main` contains:
 - PR #2971 — source-ready PostgreSQL publish/rollback outbox-to-cache packet;
 - PR #2974 — source-ready durable relay failure/restart packet;
 - PR #2979 — source-ready SQLite/Axum public artifact HTTP cache packet;
-- PR #2985 — source-ready native storefront composite-cache contract and plan actualization;
-- PR #2988 — source-ready registered Leptos storefront route with real Pages owner data and cache behavior;
-- PR #2990 — source-ready routed-channel admission before native generation/cache lookup;
-- PR #2992 — source-ready reviewed Fly publication through channel-constrained immutable artifact selection and integrity-before-fill;
-- PR #2995 — source-ready owner/outbox/handler/native-route continuity through a synchronous test relay target;
-- PR #2997 — topology correction separating the synchronous test target from production asynchronous listener delivery;
-- PR #3001 — production synchronous Pages generation gate with process-bounded same-event dedupe;
-- PR #3004 — production gate to registered native route continuity source;
-- PR #3006 — production-gate PostgreSQL publish/rollback and restart-retry source;
-- PR #3008 — factory-selected Memory and OutboxLocal delivery profile parity source;
-- PR #3010 — selected immutable artifact authority across persisted draft mutation.
+- PR #2985 — native storefront cache source packet; execution evidence remains pending;
+- PR #2988 — source-ready registered Leptos storefront route;
+- PR #2990 — source-ready routed-channel admission before cache lookup;
+- PR #2992 — source-ready reviewed immutable artifact selection;
+- PR #2995 — source-ready synchronous test-target relay continuity;
+- PR #2997 — production-listener topology correction;
+- PR #3001 — production synchronous Pages generation gate and process-bounded dedupe;
+- PR #3004 — production gate to registered native route source;
+- PR #3006 — production-gate PostgreSQL retry source;
+- PR #3008 — Memory and OutboxLocal factory profile parity source;
+- PR #3010 — selected immutable artifact authority after draft mutation;
+- PR #3011 — anonymous storefront dependency-graph source boundary.
 
-The current slice retains a feature-resolved anonymous storefront dependency-graph guard. It changes no production behavior, Cargo dependency, feature or optional event infrastructure.
+The current slice retains the actual public host mode: Pages is mounted in the host SSR profile, while the current host CSR/hydrate profiles do not enable Pages and no Pages client bootstrap exists.
 
 ## Current parity state
 
 ### Registered metadata surfaces: source-complete
 
-Pages owns one registered six-field `rustok.pages.metadata` contribution. Draft workspaces mount the canonical Page Builder consumer-properties panel inside Fly. Published pages mount the same registered panel in a Pages-owned standalone host without an editable Fly canvas.
-
-The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed. Persistence remains owned by `PagesMetadataPropertyPort`, with a metadata revision independent from the Fly document revision.
+Published pages mount the same registered panel without an editable Fly canvas. The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed.
 
 Focused stale-revision and dirty-Fly isolation regressions are source-ready. Their execution and the published browser packet remain open.
+
+Metadata revision/isolation source packet: ready, unvalidated. A stale metadata revision short-circuits before patch transport; the metadata-only transport request excludes document data; dirty Fly state is not accepted by the metadata owner port. Execution evidence remains pending. Verifier: `verify-pages-metadata-revision-isolation.mjs`.
 
 ### Reviewed publication: source-complete
 
 Pages owns the reviewed publish transaction from exact metadata/body revisions and promoted scenario review through authoritative sanitization, runtime materialization, immutable artifact persistence/binding, published state, transactional `NodeUpdated`/`NodePublished` events and the durable publish receipt plus exact artifact manifest.
 
-Create-time/default-runtime Page Builder publication is removed. Non-builder publication rejects every Fly/GrapesJS body.
-
 ### Immutable rollback: source-complete
 
-Pages owns a separate idempotent rollback command and receipt. Rollback selects a prior exact publish manifest, verifies immutable artifacts, replaces locale bindings, advances the published page version and writes lifecycle events plus its receipt in one transaction.
-
-Rollback does not sanitize, materialize or compile the current Fly document. GraphQL, HTTP, OpenAPI and the typed admin prepare/confirm control are connected.
+Pages owns the idempotent rollback command and receipt. Rollback verifies and selects a prior immutable publish manifest, replaces locale bindings and commits lifecycle events plus its receipt without compiling the current draft.
 
 ### Public artifact HTTP cache: source-ready
 
-The public artifact route has a retained SQLite/Axum harness using real Pages migrations, a valid deterministic Page Builder artifact, `HostRuntimeContext`, the typed cache runtime and the public router.
-
-The source packet retains generation-7 miss/refill/hit, generation-8 key rotation, old-value physical retention, conditional `304`, empty conditional bodies and the production security/header contract.
-
-SQLite/Axum execution remains pending.
+The retained route packet covers generation-bound miss/refill/hit, conditional `304`, immutable verification before fill and old-generation physical retention. Execution remains pending.
 
 ### Native storefront registered route set: source-ready
 
-The retained native packets cover:
+The route set covers cache miss/refill/hit, registered `/api/fn/pages/storefront-data`, channel admission before cache, reviewed immutable selection, integrity-before-fill and old-key retention.
 
-- composite cache miss/refill/hit, rotation and fail-open behavior;
-- the real registered `/api/fn/pages/storefront-data` Leptos server function;
-- routed-channel module admission before generation/cache lookup;
-- reviewed Fly publication and immutable artifact selection;
-- integrity-before-cache-fill behavior;
-- old-key physical retention after generation rotation.
+Native storefront registered server function: source-ready; the real registered Leptos endpoint is retained. Routed-channel module admission remains open for execution, and durable `NodePublished` relay delivery is now connected at source level.
 
-The route set remains unexecuted.
+### Native reviewed immutable artifact selection: source-ready
+
+`native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. Verification reconstructs the full Page Builder materialization envelope before a registered native storefront miss/refill. Durable `NodePublished` delivery remains connected at source level.
+
+### Routed-channel admission before native lookup: source-ready
+
+`native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission, and successful reads retain a verified immutable Page Builder artifact.
 
 ### Selected immutable artifact after draft mutation: source-ready
 
-The focused Pages owner harness retains the authoring/publication separation directly:
-
-```text
-PageService::create
-  → current Fly body contains published content
-PageService::publish_reviewed
-  → immutable artifact A + locale body binding
-exact public read (en)
-  → verified immutable artifact A
-fallback public read (fr → en)
-  → verified immutable artifact A
-persist page_bodies.content with a different draft-only marker
-  → current body content/revision advances
-  → published binding still points to artifact A
-exact and fallback public reads
-  → same artifact hash and document_html
-  → draft-only marker remains absent
-```
-
-`PageBuilderArtifactService::load_public_bound_artifact_with_fallback` remains the public authority. It requires published state and channel visibility, resolves locale candidates, reads the locale body identity, follows `page_published_landing_artifacts.artifact_id`, reconstructs and verifies the immutable Page Builder materialization envelope, and returns that artifact. The current Fly body is not public render authority.
-
-Source evidence is retained in:
-
-- `crates/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-selected-immutable-artifact-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`;
-- `docs/modules/pages-page-builder-selected-immutable-artifact-packet-2026-08-05.md`.
-
-SQLite execution remains pending.
-
-### Anonymous storefront authoring exclusion: source-ready
-
-The new source packet defines six feature-resolved `cargo metadata` profiles:
-
-```text
-Pages storefront
-  → default
-  → hydrate / wasm32-unknown-unknown
-  → ssr
-
-host storefront
-  → csr / wasm32-unknown-unknown
-  → hydrate / wasm32-unknown-unknown
-  → ssr
-```
-
-The verifier starts from each selected root package and walks normal/build dependency edges only; dev-dependencies are excluded. Every graph fails closed if it reaches:
-
-- `rustok-pages-admin`;
-- `rustok-page-builder-admin`;
-- `rustok-admin`;
-- `fly-browser`;
-- `fly-ui`;
-- `fly-leptos`.
-
-The retained read-only Pages chain is:
-
-```text
-rustok-pages-storefront
-  → rustok-page-builder-storefront
-  → rustok-page-builder
-  → fly
-```
-
-The source trees of Pages storefront, Page Builder storefront and the host storefront are also scanned for admin/editor imports and composition markers. Current host CSR/hydrate profiles leave the optional Pages module disabled, so the Pages hydrate graph is checked separately rather than overstating host client composition.
-
-Source evidence is retained in:
-
-- `crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs`;
-- `docs/modules/pages-page-builder-anonymous-storefront-graph-packet-2026-08-05.md`.
-
-This is source-ready graph proof only. The verifier has not been executed, and compiled SSR/CSR/hydrate bundle artifact execution remains pending.
+`selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority. Exact and fallback public reads remain bound to the selected immutable published artifact until reviewed publish or rollback replaces the binding.
 
 ### Reviewed publish to native refill through synchronous test target: source-ready
 
-The PR #2995 harness retains this source sequence:
-
-```text
-PageService::create
-  → durable NodeCreated
-PageService::publish_reviewed
-  → reviewed immutable artifact + durable receipt
-  → durable NodeUpdated
-  → durable NodePublished
-OutboxRelay(batch=1, concurrency=1)
-  → custom synchronous relay target
-  → real PageCacheInvalidationEventHandler
-registered native web request
-  → miss/refill under generations 4/6/7
-OutboxRelay + synchronous target
-  → NodePublished route/page/artifact rotation to 5/7/8
-registered native web request
-  → different-key miss/refill
-registered native web request
-  → hit without another put
-```
-
-This proves owner, relay, handler and route contracts in one process. It remains a test-target packet and does not replace production-gate execution evidence.
+The retained PR #2995 harness uses a custom synchronous relay target and proves owner/outbox/handler/registered-route continuity. It is a test-target packet and does not replace production-gate execution evidence.
 
 ### Production relay-to-Pages generation gate: source-ready
 
-The production delivery chain retains:
+`production-relay-generation-gate-source-ready`; Production relay-to-Pages generation gate: source-ready. Synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe. The asynchronous module listener remains registered and becomes a same-event rotation no-op.
 
-```text
-publisher or OutboxRelay
-  → TenantCacheGenerationTransport
-  → TenantGenerationDeliveryGate
-      → canonical local-listener readiness when Redis is absent
-      → PageCacheInvalidationEventHandler::handles
-      → PageCacheInvalidationEventHandler::handle
-      → downstream EventTransport::publish
-  → listener_bus
-  → asynchronous module EventDispatcher
-  → Pages listener duplicate no-op for the same event UUID
-```
-
-The synchronous Pages invalidation now precedes downstream transport acceptance. `OutboxRelay` therefore cannot mark a Pages lifecycle row dispatched unless the real Pages invalidation runtime has returned a valid event/correlation-bound receipt.
-
-`ServerPagesCachePort` uses one process-bounded dedupe keyed by stable event UUID. Same-event work is serialized. A successful invalidation is recorded before downstream delivery, so downstream rejection allows delivery retry without a second generation rotation. An invalidation error returns before the UUID is recorded, allowing the relay or publisher to retry the invalidation.
-
-The asynchronous Pages module listener remains registered for supported delivery profiles. A separately constructed provider resolves the same process-bounded dedupe and returns a valid current receipt without another bump.
-
-A process restart intentionally loses this bounded optimization. Replaying an already-rotated event after restart can conservatively rotate another generation; it cannot expose stale data. Exact-once invalidation across process restarts is not claimed.
+The handler request and receipt retain event/correlation-bound receipt identity. Cache rotations retain old-generation values physically while current generation keys move to miss/refill.
 
 ### Production relay gate to registered native route: source-ready
 
-The PR #3004 server integration source connects the production gate to the registered route:
-
-```text
-reviewed publish
-  → durable NodeCreated / NodeUpdated / NodePublished
-real OutboxRelay
-  → production TenantGenerationDeliveryGate
-  → production ServerPagesCachePort generation rotation
-  → downstream acceptance
-  → outbox acknowledgement
-registered /api/fn/pages/storefront-data
-  → production generation snapshot
-  → old-key fill before NodePublished
-  → new-key miss/refill/hit after NodePublished
-```
-
-One `CacheService` owns both generation state and stored bytes. The route consumes a recording wrapper that delegates every operation to the real `ServerPagesCachePort`; it does not replace the production cache provider.
-
-The source asserts `NodeUpdated` moves generations from `0/0/0` to `1/1/0`, the first native request fills the old composite key, and `NodePublished` moves generations to `2/2/1` before its outbox row is dispatched. A later normal Pages listener call with the same envelope is a duplicate no-op. The next route request uses a different key, misses, refills the same reviewed immutable artifact, and the following request hits without another put.
-
-The old composite key remains physically readable but unreachable through the new generation snapshot. No scan, wildcard deletion or physical eviction policy is introduced.
-
-Source evidence is retained in:
-
-- `apps/server/tests/pages_production_relay_native_route_sqlite.rs`;
-- `apps/server/Cargo.toml` test-only `rustok-pages-storefront` SSR dependency;
-- `crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`;
-- `docs/modules/pages-page-builder-production-relay-native-route-packet-2026-08-05.md`.
-
-The new-key miss/refill/hit sequence is source-ready; execution remains pending.
+`production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready. The source retains new-key miss/refill/hit after `NodePublished`, with one production `CacheService` owning generations and bytes. Execution remains pending.
 
 ### Production gate PostgreSQL publish/rollback restart: source-ready
 
-The PR #3006 server-level PostgreSQL source closes the topology gap left between the historical packets and the production gate:
-
-```text
-PostgreSQL publish transaction
-  → durable NodePublished + publish receipt
-  → commit
-OutboxRelay
-  → production TenantGenerationDeliveryGate
-  → production ServerPagesCachePort
-  → generations 0/0/0 → 1/1/1
-  → downstream acceptance
-  → durable acknowledgement
-
-PostgreSQL rollback transaction
-  → durable NodePublished + rollback receipt
-  → commit
-first relay worker
-  → production gate rotates 1/1/1 → 2/2/2
-  → post-invalidation downstream failure
-  → durable row stays Pending with retry_count=1
-second relay instance
-  → same stable event UUID
-  → process-bounded dedupe returns the current receipt without a second rotation
-  → downstream acceptance
-  → durable row becomes Dispatched
-ordinary Pages listener
-  → same-event rotation no-op
-```
-
-The historical owner-transaction and pre-handler restart packets remain separate. PR #2971 still proves receipt/outbox transaction ordering and receipt-conflict rollback. PR #2974 still proves durable retry state when the custom target fails before the Pages handler. The new harness proves the production semantics that matter after PR #3001: generation rotation can succeed before downstream failure, and retry must deliver without another bump in the same process.
-
-Both publish and rollback derive new storefront and artifact keys from the production generation snapshot, observe misses, refill the new keys, and retain old-generation values physically. The harness uses an isolated PostgreSQL schema with real `OutboxModule` and `PagesModule` migrations.
-
-Source evidence is retained in:
-
-- `apps/server/tests/pages_production_gate_postgres_restart.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs`;
-- `docs/modules/pages-page-builder-production-gate-postgres-restart-packet-2026-08-05.md`.
-
-PostgreSQL execution remains pending.
+`production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready. A post-invalidation downstream failure leaves the durable row pending. Process-bounded dedupe prevents a second rotation when a new relay instance retries the same event in one process. The historical owner-transaction and pre-handler restart packets remain separate.
 
 ### Memory and OutboxLocal factory profile parity: source-ready
 
-The server harness constructs both locally executable profiles through the real `build_event_runtime` factory.
+`event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready. Memory rotates before listener delivery without a durable row. OutboxLocal writes a pending row first and rotates inside the real relay target before acknowledgement. Optional external delivery infrastructure is outside the active Pages cursor.
 
-Memory retains:
+### Anonymous storefront authoring exclusion: source-ready
+
+`anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready.
+
+The retained verifier resolves six feature-resolved `cargo metadata` graphs and follows only normal/build edges; dev-dependencies are excluded. It forbids `rustok-pages-admin`, `rustok-page-builder-admin`, `rustok-admin`, `fly-browser`, `fly-ui` and `fly-leptos` at every reachable depth.
+
+The current host client profiles keep the optional Pages module disabled. The direct Pages hydrate graph remains a library capability check. Compiled bundle artifact execution remains pending.
+
+### Anonymous storefront SSR delivery: source-ready
+
+`anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready.
+
+The current public Pages host is SSR-only:
 
 ```text
-Memory application publish
-  → TenantGenerationDeliveryGate
-  → Pages generations 0/0/0 → 1/1/1
-  → Memory listener_bus delivery
-  → no sys_events row
-  → ordinary Pages listener same-event no-op
+anonymous request
+  → apps/storefront SSR router
+  → Leptos render-to-HTML
+  → Pages read-only storefront composition
+  → document + /assets/app.css
+  → no executable client bootstrap
 ```
 
-OutboxLocal retains:
+The source regression rejects module scripts, module preload, WASM URLs, hydration entrypoints and Pages/Page Builder/Fly authoring markers in the rendered public document source.
 
-```text
-application publish
-  → OutboxTransport
-  → Pending sys_events row
-  → no Pages rotation and no listener delivery
-OutboxRelay
-  → ArtifactEventProjectionTransport
-  → TenantGenerationDeliveryGate
-  → Pages generations 0/0/0 → 1/1/1
-  → local listener delivery
-  → Dispatched acknowledgement
-  → ordinary Pages listener same-event no-op
-```
+The artifact inspector requires an explicit built SSR artifact, reruns the feature-resolved dependency-graph verifier, records SHA-256 and fails on authoring markers. Missing artifacts cannot pass.
 
-This source proves that the same Pages owner policy crosses different durability boundaries without moving rotation into domain publication. Memory uses `ReliabilityLevel::InMemory` and has no relay. OutboxLocal uses `ReliabilityLevel::Outbox`; its application-facing transport only persists the event, while the relay target performs generation rotation before listener delivery and durable acknowledgement.
+The client bundle gate is conditional: it reopens immediately when host CSR/hydrate enables Pages, a client bootstrap is introduced, or deployable Pages WASM/JS artifacts begin shipping. No client bundle proof is claimed for a bundle that does not currently exist.
 
-Source evidence is retained in:
+Source evidence:
 
-- `apps/server/tests/pages_event_delivery_profiles_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-event-delivery-profile-parity-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs`;
-- `docs/modules/pages-page-builder-event-delivery-profile-parity-packet-2026-08-05.md`.
+- `apps/storefront/tests/pages_anonymous_ssr_delivery.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-ssr-delivery-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs`;
+- `crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs`;
+- `docs/modules/pages-page-builder-anonymous-storefront-ssr-delivery-packet-2026-08-05.md`.
 
-SQLite/profile execution remains pending. Optional external delivery infrastructure is outside the active Pages cursor.
-
-## Retained source marker index
-
-This section keeps historical static guards stable while the canonical cursor advances.
-
-- native storefront cache source packet; execution evidence remains pending.
-- Native storefront registered server function: source-ready; the real registered Leptos endpoint is retained. Routed-channel module admission remains open for execution, and durable `NodePublished` relay delivery is now connected at source level.
-- `native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. Verification reconstructs the full Page Builder materialization envelope before a registered native storefront miss/refill.
-- `native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission, and successful reads retain a verified immutable Page Builder artifact.
-- `selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority; exact and fallback reads remain bound to the verified immutable artifact until binding replacement.
-- `anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready. Six feature-resolved `cargo metadata` graphs forbid admin and Fly authoring packages through non-dev dependencies; bundle artifact execution remains pending.
-- Metadata revision/isolation source packet: ready, unvalidated. A stale metadata revision short-circuits before patch transport; the metadata-only transport request excludes document data; dirty Fly state is not accepted by the metadata owner port. Execution evidence remains pending. Verifier: `verify-pages-metadata-revision-isolation.mjs`.
-- `production-relay-generation-gate-source-ready`; synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe.
-- `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready.
-- `production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready. The packet retains a post-invalidation downstream failure and keeps the historical owner-transaction and pre-handler restart packets separate.
-- `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready. Optional external delivery execution is outside the active Pages cursor.
+Execution evidence remains pending.
 
 ## Parity matrix
 
-| Capability | Pages owner | Page Builder owner | Source state | Execution state |
-| --- | --- | --- | --- | --- |
-| Metadata schema/values | Pages | Contract/runtime validation | Complete | Conflict/isolation and browser packets pending |
-| Draft registered metadata | Pages host/runtime | Canonical panel | Complete | Browser execution pending |
-| Published registered metadata | Pages standalone host | Canonical panel | Complete | Browser execution pending |
-| Legacy metadata editor | None | None | Removed | Not applicable |
-| Reviewed publish | Pages lifecycle/artifacts/outbox | Review/sanitization/materialization contracts | Complete | Database/runtime evidence pending |
-| Immutable rollback | Pages lifecycle/artifacts/outbox | No delivery ownership | Complete | Database/runtime evidence pending |
-| Artifact HTTP miss/refill/hit | Pages route/artifact owner | Immutable artifact verification | Source-ready | SQLite/Axum and PostgreSQL HTTP pending |
-| Native storefront route/cache/admission | Pages/Channel owners | Published artifact contract | Source-ready | SQLite/Axum route set pending |
-| Native reviewed immutable artifact selection | Pages publish/binding/route/cache owners | Review/sanitization/materialization/integrity | Source-ready | SQLite/Axum reviewed route pending |
-| Selected immutable artifact vs current draft body | Pages body/binding/artifact owner | Immutable artifact producer contract | Source-ready | Focused SQLite execution pending |
-| Anonymous storefront dependency graph | Pages/host storefront manifests | Read-only Page Builder storefront chain | Source-ready | Six-profile verifier and compiled bundle artifacts pending |
-| Relay + handler + native refill via test target | Pages publish/outbox/handler/route/cache owners | Reviewed artifact producer contract | Source-ready, topology-corrected | SQLite test-target execution pending |
-| Production relay acknowledgement after Pages invalidation | Server delivery gate / Pages invalidation owner | No delivery ownership | Source-ready | Server unit execution pending |
-| Production relay to registered native route | Server gate / Pages route/cache owners | Reviewed artifact producer contract | Source-ready | Server SQLite/Axum execution pending |
-| Production PostgreSQL publish/rollback and relay retry | Server gate / Pages outbox/cache owners | No delivery ownership | Source-ready | PostgreSQL execution pending |
-| Memory and OutboxLocal factory profiles | Server factory / Pages invalidation owner | No delivery ownership | Source-ready | SQLite profile execution pending |
-| Fly document mutation | Pages builder facade | Fly/Page Builder | Draft-only | Browser/runtime evidence pending |
-| Published Fly authoring | Not allowed | Not mounted | Correctly blocked | Compiled bundle/runtime proof pending |
-
-## Changes in this slice
-
-1. Add one fail-closed anonymous storefront dependency-graph verifier.
-2. Resolve Pages storefront default, hydrate and SSR feature graphs through `cargo metadata`.
-3. Resolve host storefront CSR, hydrate and SSR feature graphs through `cargo metadata`.
-4. Exclude dev-dependencies while retaining normal and build dependency reachability.
-5. Forbid Pages admin, Page Builder admin, the admin host and Fly browser/editor packages at every depth.
-6. Scan Pages storefront, Page Builder storefront and host storefront Rust sources for authoring imports and composition markers.
-7. Add machine evidence, a dated packet and synchronized canonical/local plans.
-8. Leave production code, Cargo dependencies/features, routes, schemas and runtime behavior unchanged.
+| Capability | Source state | Execution state |
+| --- | --- | --- |
+| Metadata schema and owner port | Complete | Conflict/isolation and browser packets pending |
+| Draft/published registered metadata | Complete | Browser execution pending |
+| Reviewed publish and immutable manifest | Complete | Database/runtime evidence pending |
+| Immutable rollback | Complete | Database/runtime evidence pending |
+| Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
+| Native storefront route/cache/admission | Source-ready | Route-set execution pending |
+| Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
+| Production generation gate and native route | Source-ready | Server execution pending |
+| PostgreSQL retry after post-invalidation failure | Source-ready | PostgreSQL execution pending |
+| Memory and OutboxLocal factory profiles | Source-ready | SQLite profile execution pending |
+| Anonymous dependency graph | Source-ready | `cargo metadata` execution pending |
+| Anonymous SSR document boundary | Source-ready | Source regression pending |
+| Anonymous SSR built artifact | Inspector source-ready | Build and inspection pending |
+| Anonymous Pages client bundle | Not currently mounted by host | Gate reopens if introduced |
+| Authenticated real-DOM inline editing | Not implemented | Open |
 
 ## Boundaries
 
 This slice does not:
 
-- change Page Builder review, sanitizer, materialization or artifact behavior;
-- alter Pages lifecycle event order, publication, rollback or binding replacement;
-- alter cache namespace names, composite key shape, TTL or capacity;
-- add cache scans or wildcard deletion;
-- change outbox, Pages or Page Builder migrations or DTOs;
-- change Cargo dependencies or feature definitions;
-- change optional event infrastructure;
-- build or inspect actual SSR binaries, WASM modules, JavaScript chunks, source maps or bundle manifests;
-- claim tests, Cargo metadata, Cargo builds, formatting, verifiers, browsers, workflows, CI or rollout execution;
-- promote FFA or FBA status.
+- change Pages, Page Builder, Fly or storefront production behavior;
+- add hydration, client bootstrap or authoring code to the public host;
+- change dependencies, features, migrations, schemas, DTOs, routes, cache policy or event delivery;
+- touch optional Iggy infrastructure;
+- claim tests, Cargo, formatting, verifiers, databases, browsers, built artifacts, workflows, CI or rollout execution;
+- promote FFA or FBA.
 
 ## Next cursor
 
-1. Run the anonymous storefront graph verifier across all six profiles.
-2. Build anonymous host CSR, hydrate and SSR outputs and retain package/chunk evidence that authoring code remains absent.
-3. Run the selected immutable artifact verifier and focused Pages SQLite regression.
-4. Run the reviewed native storefront artifact verifier and complete native SQLite/Axum route set.
-5. Run the production relay-native-route, generation-gate and PostgreSQL restart packets.
+1. Run the anonymous dependency-graph verifier.
+2. Run the anonymous SSR delivery source verifier and focused source regression.
+3. Build the host SSR library in an isolated target directory and run the explicit artifact inspector.
+4. Run the selected immutable artifact and complete native SQLite/Axum route set.
+5. Run production generation-gate, native-route and PostgreSQL retry packets.
 6. Run metadata conflict/isolation and published metadata browser packets.
 7. Complete workflow and observed tenant rollout evidence before promotion.
-
-Any failure or owner-model change must update this shared cursor first, then the owning local plan, so Pages and Page Builder cannot drift into different completion claims.
 
 ## Maintainer validation
 
@@ -433,39 +187,27 @@ Suggested commands, intentionally not run in this slice:
 
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
+
+cargo test -p rustok-storefront --no-default-features --features ssr \
+  --test pages_anonymous_ssr_delivery -- --nocapture
+
+CARGO_TARGET_DIR=target/pages-anonymous-storefront-ssr \
+  cargo build -p rustok-storefront --no-default-features --features ssr --lib
+
+node crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs \
+  --profile host-storefront-ssr \
+  --artifact target/pages-anonymous-storefront-ssr/debug/deps/librustok_storefront-<hash>.rlib \
+  --output /tmp/pages-anonymous-storefront-ssr-artifact.json
+
 node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
-cargo test -p rustok-pages --test selected_immutable_published_artifact_sqlite -- --nocapture
-cargo test -p rustok-server --features mod-pages --test pages_event_delivery_profiles_sqlite -- --nocapture
-cargo test -p rustok-server --features mod-pages --test pages_production_gate_postgres_restart -- --nocapture
-cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
-cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture
-cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture
-cargo test -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture
-cargo test -p rustok-pages --test outbox_relay_restart_postgres -- --nocapture
-cargo test -p rustok-pages-storefront --features ssr --test native_storefront_relay_continuity_sqlite -- --nocapture
-cargo test -p rustok-pages-storefront --features ssr --test native_storefront_reviewed_artifact_sqlite -- --nocapture
-cargo test -p rustok-pages-storefront --features ssr --test native_storefront_channel_admission_sqlite -- --nocapture
-cargo test -p rustok-pages-storefront --features ssr --test native_storefront_server_fn_sqlite -- --nocapture
-cargo test -p rustok-pages --test native_storefront_cache_contract -- --nocapture
-cargo test -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture
-cargo check -p rustok-server --features mod-pages --all-targets
-cargo check -p rustok-pages-storefront --features ssr --all-targets
-cargo check -p rustok-pages --all-targets
-cargo check -p rustok-page-builder --all-targets
-cargo check -p rustok-outbox --all-targets
-cargo check -p rustok-channel --all-targets
 ```
+
+Any failure or owner-model change must update this shared cursor before FFA/FBA promotion.
