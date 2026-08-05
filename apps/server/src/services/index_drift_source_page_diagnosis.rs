@@ -36,16 +36,16 @@ pub enum IndexDriftSourcePageDiagnosisError {
 /// Result for exactly one owner-source page.
 ///
 /// The continuation cursor remains server-owned and is not attached to GraphQL. Finding receipts
-/// are the only per-candidate values retained; source entity identifiers and payloads are not
-/// copied into the outcome.
+/// are retained only for authoritative source `Upsert` plus materialized `Missing`; source entity
+/// identifiers and payloads are not copied into the outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexDriftSourcePageDiagnosisOutcome {
     next_cursor: Option<rustok_index::IndexSourceCursor>,
     scanned_mutation_count: usize,
     candidate_count: usize,
     skipped_delete_count: usize,
-    consistent_count: usize,
-    mismatch_recorded_count: usize,
+    non_missing_count: usize,
+    missing_recorded_count: usize,
     receipts: Vec<rustok_index::IndexDriftMismatchReceipt>,
 }
 
@@ -70,12 +70,12 @@ impl IndexDriftSourcePageDiagnosisOutcome {
         self.skipped_delete_count
     }
 
-    pub fn consistent_count(&self) -> usize {
-        self.consistent_count
+    pub fn non_missing_count(&self) -> usize {
+        self.non_missing_count
     }
 
-    pub fn mismatch_recorded_count(&self) -> usize {
-        self.mismatch_recorded_count
+    pub fn missing_recorded_count(&self) -> usize {
+        self.missing_recorded_count
     }
 
     pub fn receipts(&self) -> &[rustok_index::IndexDriftMismatchReceipt] {
@@ -87,11 +87,12 @@ impl IndexDriftSourcePageDiagnosisOutcome {
     }
 }
 
-/// Server-owned one-page candidate diagnosis boundary.
+/// Server-owned one-page missing-entity candidate diagnosis boundary.
 ///
 /// The runtime scans exactly one already-frozen owner source page, skips retained source deletes,
-/// and delegates each source-present candidate sequentially to the existing exact-entity operator.
-/// It owns no loop, checkpoint, scheduler, task, repair handle, or transport registration.
+/// and delegates each source-present candidate sequentially to the guarded missing-only exact
+/// operator method. It owns no loop, checkpoint, scheduler, task, repair handle, or transport
+/// registration.
 #[derive(Clone)]
 pub struct IndexDriftSourcePageDiagnosisRuntime {
     sources: rustok_index::SharedIndexSourceRegistry,
@@ -122,7 +123,7 @@ impl IndexDriftSourcePageDiagnosisRuntime {
             let exact = self.exact.clone();
             async move {
                 exact
-                    .diagnose_entity(context, key)
+                    .diagnose_missing_entity_candidate(context, key)
                     .await
                     .map_err(|source| IndexDriftSourcePageDiagnosisError::Diagnosis {
                         position,
@@ -174,7 +175,7 @@ where
     Diagnose: FnMut(usize, rustok_index::EntityKey) -> DiagnoseFuture,
     DiagnoseFuture: Future<
         Output = std::result::Result<
-            rustok_index::IndexDriftDigestOutcome,
+            rustok_index::IndexDriftMissingEntityCandidateOutcome,
             IndexDriftSourcePageDiagnosisError,
         >,
     >,
@@ -183,8 +184,8 @@ where
     let scanned_mutation_count = mutations.len();
     let mut candidate_count = 0;
     let mut skipped_delete_count = 0;
-    let mut consistent_count = 0;
-    let mut mismatch_recorded_count = 0;
+    let mut non_missing_count = 0;
+    let mut missing_recorded_count = 0;
     let mut receipts = Vec::new();
 
     for (position, mutation) in mutations.into_iter().enumerate() {
@@ -195,11 +196,14 @@ where
 
         candidate_count += 1;
         match diagnose(position, mutation.key().clone()).await? {
-            rustok_index::IndexDriftDigestOutcome::Consistent { .. } => {
-                consistent_count += 1;
+            rustok_index::IndexDriftMissingEntityCandidateOutcome::NotCandidate => {
+                non_missing_count += 1;
             }
-            rustok_index::IndexDriftDigestOutcome::MismatchRecorded { receipt, .. } => {
-                mismatch_recorded_count += 1;
+            rustok_index::IndexDriftMissingEntityCandidateOutcome::MissingRecorded {
+                receipt,
+                ..
+            } => {
+                missing_recorded_count += 1;
                 receipts.push(receipt);
             }
         }
@@ -210,8 +214,8 @@ where
         scanned_mutation_count,
         candidate_count,
         skipped_delete_count,
-        consistent_count,
-        mismatch_recorded_count,
+        non_missing_count,
+        missing_recorded_count,
         receipts,
     })
 }
@@ -255,7 +259,7 @@ mod tests {
     use rustok_api::Permission;
     use rustok_core::UserRole;
     use rustok_index::{
-        EntityKey, EntityName, IndexDriftDigestOutcome, IndexMutation, IndexRecord,
+        EntityKey, EntityName, IndexDriftMissingEntityCandidateOutcome, IndexMutation, IndexRecord,
         IndexSourceCursor, IndexSourcePage, IndexSourceScanRequest, LocaleKey, ModuleName,
         SchemaRef, SchemaVersion,
     };
@@ -335,7 +339,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn one_page_skips_deletes_and_diagnoses_each_upsert_once() {
+    async fn one_page_skips_deletes_and_classifies_each_upsert_once() {
         let tenant_id = Uuid::new_v4();
         let first = key(tenant_id, Uuid::new_v4());
         let deleted = key(tenant_id, Uuid::new_v4());
@@ -369,9 +373,7 @@ mod tests {
             let captured = captured.clone();
             async move {
                 captured.lock().unwrap().push(candidate);
-                Ok(IndexDriftDigestOutcome::Consistent {
-                    digest: "a".repeat(64),
-                })
+                Ok(IndexDriftMissingEntityCandidateOutcome::NotCandidate)
             }
         })
         .await
@@ -381,8 +383,8 @@ mod tests {
         assert_eq!(outcome.scanned_mutation_count(), 2);
         assert_eq!(outcome.candidate_count(), 1);
         assert_eq!(outcome.skipped_delete_count(), 1);
-        assert_eq!(outcome.consistent_count(), 1);
-        assert_eq!(outcome.mismatch_recorded_count(), 0);
+        assert_eq!(outcome.non_missing_count(), 1);
+        assert_eq!(outcome.missing_recorded_count(), 0);
         assert_eq!(outcome.next_cursor(), Some(&next_cursor));
         assert!(!outcome.is_complete());
         assert!(outcome.receipts().is_empty());
