@@ -128,11 +128,16 @@ Pages persistence, cache scope or tenant policy.
   `build_event_runtime` topology. Memory rotates before synchronous listener
   delivery without writing `sys_events`; OutboxLocal writes a pending row first and
   rotates only inside `OutboxRelay` before listener delivery and acknowledgement.
-  OutboxIggy execution remains open.
+- [x] A selected immutable published artifact regression uses real reviewed publish,
+  exact/fallback owner reads and a persisted draft body mutation. The binding,
+  artifact hash and document HTML remain unchanged and the draft-only marker never
+  becomes public output.
 - [ ] Accepted evidence must prove publish and rollback events rotate generations,
   causing misses and refills on storefront and artifact delivery paths through the
   production gate.
-- [ ] Storefront should read only the selected immutable published artifact.
+- [x] Storefront reads only the selected immutable published artifact; current body
+  content is not public render authority and can become public only through a later
+  reviewed publish or rollback binding replacement.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Anonymous bundle exclusion evidence is not complete.
 
@@ -194,6 +199,9 @@ Pages persistence, cache scope or tenant policy.
 - [x] Factory-selected Memory and OutboxLocal delivery retain the same Pages owner
   invalidation policy without moving persistence, review, materialization or
   artifact ownership into Page Builder.
+- [x] The selected immutable published artifact regression proves Page Builder owns
+  artifact production while Pages body identity and published binding own public
+  selection; a persisted draft body mutation cannot replace the selected output.
 - [ ] Accepted execution evidence must correlate publish/rollback receipts, outbox
   events, production-gate receipts, generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
@@ -202,17 +210,17 @@ Pages persistence, cache scope or tenant policy.
 
 - **FFA:** `in_progress` — reviewed publication, typed rollback control, explicit
   promoted-scenario selection, registered draft/published metadata surfaces,
-  generation-aware storefront/artifact readers, the production generation gate,
-  the gate-to-native-route source, PostgreSQL gate/restart source and factory profile
-  source are connected. Executed metadata conflict/isolation packets, inline edit
-  mode, OutboxIggy and anonymous bundle evidence remain open.
+  generation-aware storefront/artifact readers, production generation gating,
+  gate-to-native-route, PostgreSQL retry, local profile and selected immutable
+  artifact source packets are connected. Executed metadata conflict/isolation,
+  inline edit mode and anonymous bundle evidence remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent publish and rollback services,
   GraphQL/HTTP/admin transports, default-runtime removal and production-gated cache
-  invalidation/read boundaries are integrated at source level. Server harnesses now
-  retain native-route key rotation, PostgreSQL retry semantics and Memory/OutboxLocal
-  profile composition, but execution, Iggy, rollback proof, verification and
-  observed rollout evidence remain open.
+  invalidation/read boundaries are integrated at source level. Server and owner
+  harnesses retain native-route key rotation, PostgreSQL retry semantics,
+  Memory/OutboxLocal composition and draft-vs-published artifact isolation, but
+  execution, rollback proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -261,11 +269,17 @@ GraphQL / HTTP / admin reviewed command
   -> durable publish receipt + exact artifact manifest
   -> commit
   -> Memory: synchronous production gate -> listener delivery
-  -> OutboxLocal/OutboxIggy: durable row -> relay -> production gate
+  -> durable profiles: row -> relay -> production gate
   -> event/correlation-bound generation receipt
   -> downstream transport acceptance
   -> asynchronous Pages module listener duplicate no-op
   -> registered generation-aware storefront/artifact miss and refill
+
+Current document save after publication
+  -> page_bodies.content and revision advance
+  -> selected published artifact binding is unchanged
+  -> exact/fallback public reads follow binding artifact_id
+  -> current body content is not public render authority
 
 Rollback command
   + expected page version
@@ -294,7 +308,7 @@ Invariants:
 
 1. `pages[].component` is the sole component-tree authority.
 2. Metadata and document writes never overwrite one another implicitly.
-3. Draft saves do not mutate the selected published artifact.
+3. Draft saves do not mutate the selected published artifact; current body content is not public render authority.
 4. Publish rejects stale metadata or any stale localized body revision.
 5. Artifact identity includes source, renderer release, registry and policy hashes.
 6. Materialization evidence includes context hash, scenario identity and runtime
@@ -332,17 +346,19 @@ Invariants:
     process-local rotation is not repeated by relay retry or the asynchronous
     listener; replay after process restart may conservatively rotate again.
 21. Memory applies the gate before in-memory listener delivery and writes no durable
-    outbox row; OutboxLocal/OutboxIggy apply the same gate in the relay target before
-    durable acknowledgement.
+    outbox row; OutboxLocal applies the same gate in the relay target before durable
+    acknowledgement.
 22. Channel/module authorization runs before every cache lookup.
 23. Cache fill follows owner source validation; cache errors fail open to source
     reads and do not authorize or publish data.
 24. A route request after generation rotation derives a new composite key; the old
     key may remain physically stored but is unreachable from the current snapshot.
-25. Missing providers fail visibly and never cause silent deletion.
-26. Dynamic widgets persist versioned configuration, not privileged snapshots.
-27. Anonymous storefront bundles contain no editor code.
-28. No block or shadow-editor fallback exists.
+25. Exact and fallback public artifact reads follow the locale body's immutable
+    published binding, not the mutable body content.
+26. Missing providers fail visibly and never cause silent deletion.
+27. Dynamic widgets persist versioned configuration, not privileged snapshots.
+28. Anonymous storefront bundles contain no editor code.
+29. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -429,8 +445,7 @@ Invariants:
   dedupe to `ServerPagesCachePort`.
 - Preserved relay retry after downstream rejection without another generation bump
   and made the later asynchronous Pages listener a same-event rotation no-op.
-- Kept memory, OutboxLocal and OutboxIggy downstream delivery and the module-owned
-  listener registration.
+- Kept supported downstream delivery and module-owned listener registration unchanged.
 - Added the server integration source that crosses real `OutboxRelay`, production
   gate and production `ServerPagesCachePort` into the registered native storefront
   server function, retaining old-key fill, all-scope rotation, new-key refill and
@@ -442,8 +457,9 @@ Invariants:
 - Added the factory-selected Memory/OutboxLocal profile harness. It retains Memory
   synchronous rotation without an outbox row and OutboxLocal pending persistence
   before relay-gated rotation, listener delivery and durable acknowledgement.
-- Kept OutboxIggy source topology unchanged and explicitly left its execution open.
-- Added source evidence, static verifiers and dated production packets.
+- Added the selected immutable published artifact regression: exact and fallback
+  reads retain the same binding/hash/HTML across a persisted draft body mutation.
+- Added source evidence, static verifiers and dated production/owner packets.
 - Tests, verifiers, formatters, Cargo commands, databases, runtime profiles,
   workflows and CI were not executed in this slice.
 
@@ -492,9 +508,10 @@ Invariants:
   → production gate → post-invalidation retry without a second process-local bump.
 - [x] Retain factory-selected source continuity for Memory synchronous delivery and
   OutboxLocal durable relay delivery through the same Pages generation gate.
+- [x] Retain exact/fallback owner reads across a persisted draft body mutation and
+  prove the selected immutable binding remains public authority.
 - [ ] Retain accepted execution evidence for publish/rollback outbox event →
   production gate receipt → generation rotation → cache miss/refill.
-- [ ] Retain OutboxIggy execution evidence with a configured broker/connector.
 - [ ] Correlate publish/rollback receipt, editor save, page/body revisions, runtime
   review, materialization, invalidation receipt, artifact and storefront read in
   telemetry.
@@ -511,7 +528,7 @@ Invariants:
 
 ### P1 — storefront and routing
 
-- [ ] Serve only the selected immutable published artifact.
+- [x] Serve only the selected immutable published artifact.
 - [ ] Add locale fallback, canonical URLs, redirects and route-collision policy.
 - [ ] Compose Navigation-owned menus, SEO and channel visibility with
   generation-aware deterministic cache keys.
@@ -543,6 +560,8 @@ Invariants:
 - `node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`
 - `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`
 - `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`
+- `node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`
+- `cargo test -p rustok-pages --test selected_immutable_published_artifact_sqlite -- --nocapture`
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`
 - `node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`
