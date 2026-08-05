@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-05
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -59,8 +59,8 @@ unit tests for the surviving path.
 
 The Next admin Forum surface is module-owned under
 `apps/next-admin/packages/forum/src`. It owns Forum navigation, topic/reply
-GraphQL helpers, a canonical document reply composer, and the FORUM-21N topic
-merge workflow. The host only registers and mounts the package. React and
+GraphQL helpers, a canonical document reply composer, and the FORUM-21N/V/W/X
+topic merge, split, fork and reply-range workflows. The host only registers and mounts the package. React and
 Leptos use their shared framed richtext lifecycle adapters; Forum supplies only
 the `discussion` profile and host-effective locale.
 
@@ -234,10 +234,10 @@ at the end of this file remain authoritative.
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
 | `FORUM-20` | `in_progress` | FORUM-20A-AZ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation, exact topic/reply create authorization, topic-local reply narrowing, inherited moderation audiences, and existing solution-route transport composition. FORUM-20BA synchronizes the canonical ledger and owner notes after FORUM-20AV-AZ. Remaining read/search/index/SEO/deep-link migration, visibility-scoped bulk read commands, future moderation transport reuse, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
-| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
+| `FORUM-21` | `planned` | FORUM-21A-X provide move, merge, split, fork and reply-range owners, manager GraphQL transports, and split/fork/reply-range admin composition; retained owner/transport runtime evidence remains, while localized route identity proceeds under FORUM-24. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 through FORUM-23B2F4 add exact Forum category, audience, result-eligibility, trusted-channel, author, tag, solved, locale, date and current-channel filtering; FORUM-23B2G1 adds durable Search ingest ordering; FORUM-23B2G2A/A1 add the Forum owner revision ledger and database hardening; FORUM-23B2G2B1/B2 add the bounded owner source, Search checkpoint and repair protocol; FORUM-23B2G2B3A-C add the caused sealed wire event, atomic dual publisher and default-off persistent one-inbox consumer; FORUM-23B2G2B3D0 freezes executable runtime evidence and FORUM-23B2G2B3D1 reconciles this canonical plan. Arbitrary channel/group filtering remains owner-contract blocked, kind waits on FORUM-22, attachment presence waits on FORUM-14, and maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
-| `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
+| `FORUM-24` | `planned` | FORUM-24A adds deterministic exact-locale topic route identity and an immutable redirect/tombstone ledger; FORUM-24B composes new merge redirects and FORUM-24C composes delete tombstones in their owner transactions. Rename composition, historical backfill, category routes, storefront mounts, hreflang/SEO policy and runtime evidence remain. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
 | `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
@@ -1584,7 +1584,7 @@ Preserve revisions, attachments, mentions and audit. Remap reply positions
 safely, deduplicate subscriptions, revalidate solutions and ACL, update
 category counters and create canonical URL aliases.
 
-### Delivered through `FORUM-21N`
+### Delivered through `FORUM-21X`
 
 - FORUM-21A adds the bounded idempotent topic-move owner with checked category
   counters, immutable operation receipt and unchanged topic identity;
@@ -1609,6 +1609,48 @@ category counters and create canonical URL aliases.
   one UUID operation identity across an exact retry, rotate it when the command
   shape changes, require an explicit source/target solution winner only when
   both topics are solved, and display the immutable owner receipt;
+- FORUM-21O selects direct authenticated native owner composition for Leptos
+  SSR/hydrate while retaining the existing GraphQL mutations for CSR/headless
+  parity, with no cross-path fallback and no owner identity in request DTOs;
+- FORUM-21P adds the idempotent selected-reply split owner with an immutable
+  receipt and `forum.topic.split` event, parent-closed movement, preserved reply
+  identity and relations, exact topic-local access cloning and checked counter
+  reconciliation;
+- FORUM-21Q adds the idempotent reply-branch fork owner with deterministic copied
+  reply identities, bounded revision/mention/quote provenance, exact access and
+  tag cloning, source immutability and an explicit votes/subscriptions/read-state/
+  solution non-copy policy;
+- FORUM-21R adds the routed-tenant, manager-only GraphQL split transport. The
+  additive `splitForumTopicReplies` field delegates the complete command to
+  `ForumTopicSplitService::split_selected_replies` and returns the immutable
+  owner receipt without reading split audit tables or duplicating owner policy;
+- FORUM-21S adds the idempotent bounded reply-range move owner with deterministic
+  append positions, explicit asymmetric parent policy, unchanged reply-owned
+  references, exact topic-local access equality and checked solution/counter
+  reconciliation;
+- FORUM-21T adds the routed-tenant, manager-only GraphQL reply-range transport.
+  The additive `moveForumTopicReplyRange` field delegates the complete command
+  to `ForumReplyRangeMoveService::move_reply_range` and returns the immutable
+  owner receipt without reading move audit tables or duplicating owner policy;
+- FORUM-21U adds the routed-tenant, manager-only GraphQL fork transport. The
+  additive `forkForumTopicReplyBranch` field delegates the complete command to
+  `ForumTopicForkService::fork_reply_branch` and returns the immutable owner
+  receipt without reading fork audit/mapping tables or duplicating copy policy;
+- FORUM-21V composes the selected-reply split command in the module-owned Leptos
+  and Next-admin surfaces. Both retain operation and target-topic UUIDs for an
+  exact retry, rotate both when the command shape changes, preflight the visible
+  parent-closed selection and display the immutable owner receipt without adding
+  movement, access, solution or counter policy;
+- FORUM-21W composes the reply-branch fork command in the module-owned Leptos
+  and Next-admin surfaces. Both retain operation and target-topic UUIDs for an
+  exact retry, rotate both when the source, root or target shape changes, require
+  the root to be present in the bounded visible reply page and display the
+  immutable owner receipt without discovering descendants or adding copy policy;
+- FORUM-21X composes the bounded reply-range move command in the module-owned
+  Leptos and Next-admin surfaces. Both retain one operation UUID for an exact
+  retry, rotate it when source, target, endpoint or reason changes, accept exact
+  canonical owner positions instead of inferring positions from visible row
+  order, and display the immutable owner receipt without adding movement policy;
 - every ordinary, resolved, same-category and cross-category merge retains the
   exact `forum.topic.merged` schema-version-1 payload so existing post-merge
   reconciliation owners remain compatible.
@@ -1622,33 +1664,36 @@ lane or reconciliation owner. Existing same-category receipts and merges keep
 their previous behavior. The source category remains discoverable from the
 archived source topic and is not copied into the semantic event or receipt.
 
-The Leptos package remains in an explicit single-adapter GraphQL state. It does
-not wrap GraphQL in a server function, does not place an access token inside a
-server-function DTO and does not claim a direct native owner path. A later
-native cutover must compose authenticated owner state directly while retaining
-GraphQL for CSR/headless parity.
+FORUM-21O changes only the Leptos admin transport selection and host composition:
+SSR/hydrate use direct authenticated native owner state, CSR/headless retain
+GraphQL, and no fallback is introduced. FORUM-21P and FORUM-21Q add append-only
+PostgreSQL/SQLite owner receipt and mapping migrations without changing existing
+move or merge receipts and events. FORUM-21S adds append-only PostgreSQL/SQLite
+owner receipt and mapping state without changing earlier commands. FORUM-21R,
+FORUM-21T and FORUM-21U each add one additive GraphQL field and no REST route,
+owner method, receipt shape or semantic-event change. FORUM-21V adds Leptos and
+Next-admin split composition only. FORUM-21W adds Leptos and Next-admin fork
+composition only. FORUM-21X adds Leptos and Next-admin reply-range composition
+only: none of the three slices adds a migration, native split/fork/reply-range
+transport, owner, GraphQL, receipt or semantic-event change. Direct owner callers remain
+source-compatible.
 
-Forum move and merge commands remain independent from Notifications, Search,
-Page Builder and other optional integrations. Owner state, the Forum semantic
-event, receipt, optional solution-resolution audit and projection invalidations
-commit atomically; optional consumers reconcile after commit. A disabled
-optional capability cannot turn a valid Forum owner command into a synchronous
-outage.
+Forum move, merge, split and fork commands remain independent from Notifications,
+Search, Page Builder and other optional integrations. Owner state, the Forum
+semantic event, receipt, mapping/audit rows and projection invalidations commit
+atomically; optional consumers reconcile after commit. A disabled optional
+capability cannot turn a valid Forum owner command into a synchronous outage.
 
 ### Remaining scope
 
 `FORUM-21` remains `planned` until all of the following are delivered and
 maintainer-executed:
 
-- retained SQLite and PostgreSQL execution evidence for the complete move/merge
-  owner and migration chain, including cross-category concurrency and rollback;
-- direct authenticated Leptos native server-function owner composition while
-  retaining GraphQL parity, plus mounted-browser evidence for both admin hosts;
-- idempotent split-selected-replies workflow with immutable receipt, event,
-  relation preservation and counter reconciliation;
-- idempotent reply-branch fork workflow with explicit copy/identity policy;
-- bounded reply-range movement with deterministic positions, parent/reference
-  policy and partial-move prevention;
+- retained SQLite and PostgreSQL execution evidence for the complete move,
+  merge, split and fork owner/migration chain, including cross-category
+  concurrency, replay and rollback;
+- mounted-browser and runtime transport evidence for the native/GraphQL merge
+  paths plus the split, fork and reply-range GraphQL fields;
 - final canonical localized URL aliases and route tombstones under FORUM-24,
   rather than a parallel FORUM-21 slug authority.
 
@@ -1670,6 +1715,16 @@ node scripts/verify/verify-forum-topic-canonical-resolution.mjs
 node scripts/verify/verify-forum-topic-http-redirect.mjs
 node scripts/verify/verify-forum-topic-merge-graphql-transport.mjs
 node scripts/verify/verify-forum-topic-merge-admin-ui.mjs
+node scripts/verify/verify-forum-topic-merge-native-admin.mjs
+node scripts/verify/verify-forum-topic-split-owner.mjs
+node scripts/verify/verify-forum-topic-fork-owner.mjs
+node scripts/verify/verify-forum-reply-range-move-owner.mjs
+node scripts/verify/verify-forum-topic-split-graphql-transport.mjs
+node scripts/verify/verify-forum-topic-split-admin-ui.mjs
+node scripts/verify/verify-forum-reply-range-move-graphql-transport.mjs
+node scripts/verify/verify-forum-topic-fork-graphql-transport.mjs
+node scripts/verify/verify-forum-topic-fork-admin-ui.mjs
+node scripts/verify/verify-forum-reply-range-move-admin-ui.mjs
 npm run verify:forum:admin-boundary
 npm run verify:blog:forum-ui-ownership
 cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture
@@ -1679,12 +1734,24 @@ cargo test -p rustok-forum --test topic_merge_solution_resolution_sqlite -- --no
 cargo test -p rustok-forum --test topic_canonical_resolution_sqlite -- --nocapture
 cargo test -p rustok-forum controllers::topic_redirect::tests -- --nocapture
 cargo test -p rustok-forum --test topic_merge_graphql_contract -- --nocapture
+cargo test -p rustok-forum graphql::topic_split_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test topic_split_graphql_contract -- --nocapture
+cargo test -p rustok-forum --test topic_split_sqlite -- --nocapture
+cargo test -p rustok-forum graphql::topic_reply_range_move_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test reply_range_move_graphql_contract -- --nocapture
+cargo test -p rustok-forum --test reply_range_move_sqlite -- --nocapture
+cargo test -p rustok-forum graphql::topic_fork_mutation::tests -- --nocapture
+cargo test -p rustok-forum --test topic_fork_graphql_contract -- --nocapture
+cargo test -p rustok-forum --test topic_fork_sqlite -- --nocapture
 cargo test -p rustok-forum-admin topic_merge_model -- --nocapture
+cargo test -p rustok-forum-admin topic_split_model -- --nocapture
+cargo test -p rustok-forum-admin topic_fork_model -- --nocapture
+cargo test -p rustok-forum-admin topic_reply_range_model -- --nocapture
 cargo check -p rustok-forum-admin --all-targets
 npm --prefix apps/next-admin run typecheck
 ```
 
-The FORUM-21A through FORUM-21N source and contract records do not claim
+The FORUM-21A through FORUM-21X source and contract records do not claim
 successful verifier, SQLite, PostgreSQL, Cargo, formatting, npm, browser,
 workflow or CI execution. The canonical task remains `planned` until the
 remaining workflows and maintainer evidence are complete.
@@ -2193,6 +2260,87 @@ to SEO. Use schema.org DiscussionForumPosting or QAPage only when semantics
 match.
 
 ID routes remain internal compatibility paths, not the primary storefront UX.
+
+### Delivered in FORUM-24A
+
+- `ForumTopicRouteService` owns `/{locale}/forum/t/{short_id}/{slug}` descriptors,
+  where `short_id` is the first 48 bits of the topic UUID in lowercase hex and
+  the readable slug is not identity;
+- current route lookup reads at most two candidates and fails closed on a
+  short-identity collision instead of choosing by slug;
+- existing bounded merge canonical resolution is reused so an archived merge
+  source redirects to the terminal retained topic;
+- PostgreSQL and SQLite `forum_topic_route_aliases` provide one append-only
+  redirect/gone ledger keyed by tenant, locale, short identity and slug;
+- redirects store target topic plus locale and recompute the latest target slug;
+- route identity is transport-neutral and does not bypass topic visibility,
+  channel, moderation or SEO publication authorization.
+
+Verification sources:
+
+```bash
+node scripts/verify/verify-forum-topic-route-identity-owner.mjs
+cargo test -p rustok-forum services::topic_route::tests -- --nocapture
+cargo test -p rustok-forum --test topic_route_identity_sqlite -- --nocapture
+cargo check -p rustok-forum --all-targets
+```
+
+No command above was run by the implementation agent, per maintainer request.
+
+### Delivered in FORUM-24B
+
+- `ForumTopicMergeService` delegates localized route history to
+  `ForumTopicRouteService::record_merge_redirect_aliases_in_tx` before commit;
+- every source translation with a non-empty slug receives one immutable redirect
+  keyed by its original locale, short identity and slug;
+- target locale selection is deterministic: exact source locale, platform
+  fallback locale, then the lexicographically first available target locale;
+- redirects store target topic plus locale and continue to recompute the latest
+  target slug without changing the merge receipt or `forum.topic.merged` event;
+- source topics without routes keep existing merge behavior, while a routed
+  source fails closed when the target has no canonical localized route;
+- exact merge replay returns the existing receipt and does not duplicate aliases.
+
+Topic rename aliases remain follow-up owner composition. Historical merge receipt
+backfill, storefront mounting and retained runtime proof also remain.
+
+Verification sources:
+
+```bash
+node scripts/verify/verify-forum-topic-merge-route-alias-owner.mjs
+cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture
+cargo check -p rustok-forum --all-targets
+```
+
+No command above was run by the implementation agent, per maintainer request.
+
+### Delivered in FORUM-24C
+
+- `TopicService::delete` delegates to
+  `ForumTopicRouteService::record_delete_tombstones_in_tx` before localized
+  cleanup and soft-delete mutation;
+- every topic translation with a non-empty slug receives one immutable `gone`
+  route with no target topic or locale and the stable reason `Topic deleted`;
+- the tombstones commit with the existing delete lifecycle, counters, events and
+  projection invalidation without changing public command or event schemas;
+- an existing redirect for the same topic and route is preserved, so deleting an
+  archived merge source cannot downgrade FORUM-24B canonical history;
+- exact existing `gone` rows are idempotent and ownership, target-field or reason
+  drift fails closed.
+
+Topic rename aliases, historical backfill, storefront mounting, category routes,
+hreflang/SEO policy and retained runtime proof remain.
+
+Verification sources:
+
+```bash
+node scripts/verify/verify-forum-topic-delete-route-tombstone-owner.mjs
+cargo test -p rustok-forum --test topic_delete_route_tombstone_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture
+cargo check -p rustok-forum --all-targets
+```
+
+No command above was run by the implementation agent, per maintainer request.
 
 ## `FORUM-25` — full multilingual and RTL contract
 

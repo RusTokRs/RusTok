@@ -150,12 +150,9 @@ impl CheckoutCompensationService {
             if current.status == CheckoutOperationStatus::Compensated.as_str() {
                 return Ok(current);
             }
-            return Err(CheckoutCompensationError::Conflict(format!(
-                "checkout operation {} cannot be claimed for compensation; status={}, lease_owner={}",
-                current.id,
-                current.status,
-                current.lease_owner.as_deref().unwrap_or("none")
-            )));
+            return Err(compensation_conflict(
+                "checkout operation cannot be claimed for compensation",
+            ));
         };
 
         let result = self
@@ -200,10 +197,9 @@ impl CheckoutCompensationService {
         if stage_rank(operation.stage.as_str())?
             >= stage_rank(CheckoutOperationStage::PaymentCaptured.as_str())?
         {
-            return Err(CheckoutCompensationError::ManualReconciliation(format!(
-                "checkout operation {} reached `{}`; captured funds must be reconciled through refund policy",
-                operation.id, operation.stage
-            )));
+            return Err(manual_reconciliation(
+                "captured checkout state requires refund reconciliation",
+            ));
         }
 
         self.compensate_payment(tenant_id, operation).await?;
@@ -260,11 +256,7 @@ impl CheckoutCompensationService {
                 Ok(Some(identity.order_id))
             }
             None if operation.order_id.is_none() => Ok(None),
-            None => Err(CheckoutCompensationError::ManualReconciliation(format!(
-                "checkout operation {} records order {} but has no order-owner identity",
-                operation.id,
-                operation.order_id.expect("checked as present")
-            ))),
+            None => Err(manual_reconciliation("checkout order identity is missing")),
         }
     }
 
@@ -284,7 +276,7 @@ impl CheckoutCompensationService {
             .payment_operation_journal
             .list_by_collection(tenant_id, collection_id)
             .await?;
-        if let Some(unsafe_operation) = provider_operations.iter().find(|provider_operation| {
+        if provider_operations.iter().any(|provider_operation| {
             matches!(
                 provider_operation.status.as_str(),
                 PROVIDER_OPERATION_EXECUTING
@@ -292,10 +284,9 @@ impl CheckoutCompensationService {
                     | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         }) {
-            return Err(CheckoutCompensationError::ManualReconciliation(format!(
-                "payment provider operation {} is `{}` for collection {}",
-                unsafe_operation.id, unsafe_operation.status, collection_id
-            )));
+            return Err(manual_reconciliation(
+                "payment provider operation requires reconciliation",
+            ));
         }
 
         match collection.status.as_str() {
@@ -318,14 +309,14 @@ impl CheckoutCompensationService {
             }
             "cancelled" => {}
             "captured" => {
-                return Err(CheckoutCompensationError::ManualReconciliation(format!(
-                    "payment collection {collection_id} is captured"
-                )));
+                return Err(manual_reconciliation(
+                    "captured payment collection requires reconciliation",
+                ));
             }
-            status => {
-                return Err(CheckoutCompensationError::Conflict(format!(
-                    "payment collection {collection_id} cannot compensate from `{status}`"
-                )));
+            _ => {
+                return Err(compensation_conflict(
+                    "payment collection state does not allow compensation",
+                ));
             }
         }
         Ok(())
@@ -343,10 +334,9 @@ impl CheckoutCompensationService {
             .get_order_with_locale_fallback(tenant_id, order_id, PLATFORM_FALLBACK_LOCALE, None)
             .await?;
         if operation.order_id.is_some() && operation.order_id != Some(order.id) {
-            return Err(CheckoutCompensationError::Conflict(format!(
-                "order {} does not match checkout operation {} checkpoint",
-                order.id, operation.id
-            )));
+            return Err(compensation_conflict(
+                "order checkpoint does not match checkout operation",
+            ));
         }
 
         match order.status.as_str() {
@@ -362,15 +352,14 @@ impl CheckoutCompensationService {
             }
             "cancelled" => {}
             "paid" | "shipped" | "delivered" => {
-                return Err(CheckoutCompensationError::ManualReconciliation(format!(
-                    "order {order_id} is `{}` and cannot be automatically cancelled",
-                    order.status
-                )));
+                return Err(manual_reconciliation(
+                    "order state requires manual cancellation reconciliation",
+                ));
             }
-            status => {
-                return Err(CheckoutCompensationError::Conflict(format!(
-                    "order {order_id} cannot compensate from `{status}`"
-                )));
+            _ => {
+                return Err(compensation_conflict(
+                    "order state does not allow compensation",
+                ));
             }
         }
         Ok(())
@@ -410,26 +399,23 @@ impl CheckoutCompensationService {
                         || released.external_id != reservation.external_id
                         || released.variant_id != reservation.variant_id
                     {
-                        return Err(CheckoutCompensationError::Conflict(format!(
-                            "inventory release response does not match checkout reservation {}",
-                            reservation.reservation_id
-                        )));
+                        return Err(compensation_conflict(
+                            "inventory release result does not match reservation",
+                        ));
                     }
                     self.reservation_journal
                         .mark_released(tenant_id, reservation.reservation_id)
                         .await?;
                 }
                 status if status == CheckoutInventoryReservationStatus::Consumed.as_str() => {
-                    return Err(CheckoutCompensationError::ManualReconciliation(format!(
-                        "inventory reservation {} is already consumed",
-                        reservation.reservation_id
-                    )));
+                    return Err(manual_reconciliation(
+                        "consumed inventory reservation requires reconciliation",
+                    ));
                 }
-                status => {
-                    return Err(CheckoutCompensationError::Conflict(format!(
-                        "inventory reservation {} has unsupported status `{status}`",
-                        reservation.reservation_id
-                    )));
+                _ => {
+                    return Err(compensation_conflict(
+                        "inventory reservation state does not allow compensation",
+                    ));
                 }
             }
         }
@@ -465,24 +451,21 @@ impl CheckoutCompensationService {
                     .await
                     .map_err(|error| boundary_error("release_cart", error))?;
                 if released.status != CartStatus::Active.as_str() {
-                    return Err(CheckoutCompensationError::Conflict(format!(
-                        "cart {} is `{}` after checkout release",
-                        released.id, released.status
-                    )));
+                    return Err(compensation_conflict(
+                        "cart release did not restore the active state",
+                    ));
                 }
             }
             status if status == CartStatus::Active.as_str() => {}
             status if status == CartStatus::Completed.as_str() => {
-                return Err(CheckoutCompensationError::ManualReconciliation(format!(
-                    "cart {} is already completed",
-                    current.id
-                )));
+                return Err(manual_reconciliation(
+                    "completed cart requires reconciliation",
+                ));
             }
-            status => {
-                return Err(CheckoutCompensationError::Conflict(format!(
-                    "cart {} cannot be released from `{status}`",
-                    current.id
-                )));
+            _ => {
+                return Err(compensation_conflict(
+                    "cart state does not allow release",
+                ));
             }
         }
         Ok(())
@@ -499,10 +482,9 @@ fn validate_compensation_identity(
         || identity.source_cart_id.is_some() && identity.source_cart_id != Some(operation.cart_id)
         || operation.order_id.is_some() && operation.order_id != Some(identity.order_id)
     {
-        return Err(CheckoutCompensationError::Conflict(format!(
-            "typed order identity does not match checkout operation {}",
-            operation.id
-        )));
+        return Err(compensation_conflict(
+            "order identity does not match checkout operation",
+        ));
     }
     Ok(())
 }
@@ -580,6 +562,14 @@ fn order_identity_context(
     }
 }
 
+fn manual_reconciliation(message: &'static str) -> CheckoutCompensationError {
+    CheckoutCompensationError::ManualReconciliation(message.to_string())
+}
+
+fn compensation_conflict(message: &'static str) -> CheckoutCompensationError {
+    CheckoutCompensationError::Conflict(message.to_string())
+}
+
 fn boundary_error(stage: &'static str, error: PortError) -> CheckoutCompensationError {
     CheckoutCompensationError::Boundary {
         stage,
@@ -623,8 +613,8 @@ fn stage_rank(stage: &str) -> CheckoutCompensationResult<u8> {
         "fulfillment_created" => Ok(7),
         "cart_completed" => Ok(8),
         "completed" => Ok(9),
-        other => Err(CheckoutCompensationError::Conflict(format!(
-            "unsupported checkout stage `{other}`"
-        ))),
+        _ => Err(compensation_conflict(
+            "checkout stage does not allow compensation",
+        )),
     }
 }

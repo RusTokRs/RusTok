@@ -1,5 +1,9 @@
 //! RBAC-owned grants and checks for immutable artifact permission vocabulary.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use rustok_events::RbacArtifactPermissionEvent;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait,
@@ -11,11 +15,23 @@ use uuid::Uuid;
 const MAX_PERMISSION_KEY_LENGTH: usize = 256;
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 128;
 
+/// Explicit admitted scope selected by an operator-facing mutation.
+///
+/// Tenant scope always resolves against the trusted command tenant. Callers cannot
+/// supply a second tenant identifier or rely on platform/tenant precedence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactPermissionAssignmentScope {
+    Platform,
+    Tenant,
+}
+
 /// An explicit role grant or revocation for one admitted artifact permission.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactRolePermissionAssignmentCommand {
     pub tenant_id: Uuid,
     pub role_id: Uuid,
+    pub scope: ArtifactPermissionAssignmentScope,
     pub installation_id: Uuid,
     pub permission_key: String,
     pub actor_id: Uuid,
@@ -39,26 +55,50 @@ pub enum ArtifactPermissionAssignmentError {
     IdempotencyConflict,
     #[error("role does not exist in the requested tenant")]
     RoleNotFound,
-    #[error(
-        "artifact permission is not registered for the requested installation and tenant scope"
-    )]
+    #[error("artifact permission is not registered for the requested explicit scope")]
     PermissionNotRegistered,
     #[error("artifact permission assignment storage failed: {0}")]
     Database(String),
 }
 
+/// Host-neutral publisher used by the RBAC owner while its transaction is live.
+///
+/// Implementations must persist the typed event through the configured durable
+/// transport using the supplied owner transaction. Returning an error causes
+/// RBAC to roll back both the mutation and its idempotency receipt.
+#[async_trait]
+pub trait ArtifactPermissionEventPublisher: Send + Sync {
+    async fn publish_assignment_changed(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        event: RbacArtifactPermissionEvent,
+    ) -> Result<(), ArtifactPermissionAssignmentError>;
+}
+
 /// Durable RBAC owner service for explicit dynamic artifact permission grants.
 ///
 /// This service never writes the static `role_permissions` relation. Dynamic
-/// permissions remain bound to the admitted installation that declared them.
+/// permissions remain bound to the exact immutable permission definition and
+/// admitted scope. The idempotency receipt, grant/revocation, and typed event are
+/// committed by one owner transaction. State no-ops commit their receipt but do
+/// not publish a false change event.
 #[derive(Clone)]
 pub struct RbacArtifactPermissionAssignmentService {
     db: DatabaseConnection,
+    event_publisher: Arc<dyn ArtifactPermissionEventPublisher>,
 }
 
 impl RbacArtifactPermissionAssignmentService {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(
+        db: DatabaseConnection,
+        event_publisher: Arc<dyn ArtifactPermissionEventPublisher>,
+    ) -> Self {
+        Self {
+            db,
+            event_publisher,
+        }
     }
 
     pub async fn assign(
@@ -69,34 +109,52 @@ impl RbacArtifactPermissionAssignmentService {
         ensure_supported_backend(self.db.get_database_backend())?;
 
         let transaction = self.db.begin().await.map_err(database_error)?;
-        if let Some(existing) = find_operation(&transaction, &command).await? {
-            return match_operation(existing, &command);
-        }
-
-        let inserted_operation = insert_operation(&transaction, &command).await?;
-        if !inserted_operation {
-            let existing = find_operation(&transaction, &command)
-                .await?
-                .ok_or_else(|| {
-                    ArtifactPermissionAssignmentError::Database(
-                        "artifact permission operation disappeared after an idempotency conflict"
-                            .to_string(),
-                    )
-                })?;
-            return match_operation(existing, &command);
-        }
-
         if !role_exists(&transaction, &command).await? {
+            transaction.rollback().await.map_err(database_error)?;
             return Err(ArtifactPermissionAssignmentError::RoleNotFound);
         }
-        if !permission_is_registered(&transaction, &command).await? {
-            return Err(ArtifactPermissionAssignmentError::PermissionNotRegistered);
+        let artifact_permission =
+            resolve_artifact_permission_identity(&transaction, &command).await?;
+
+        if let Some(existing) = find_operation(&transaction, &command).await? {
+            return match_operation(existing, &artifact_permission, &command);
         }
 
-        if command.granted {
-            grant_permission(&transaction, &command).await?;
+        let operation_id = match insert_operation(&transaction, &artifact_permission, &command)
+            .await?
+        {
+            Some(operation_id) => operation_id,
+            None => {
+                let existing = find_operation(&transaction, &command)
+                    .await?
+                    .ok_or_else(|| {
+                        ArtifactPermissionAssignmentError::Database(
+                            "artifact permission operation disappeared after an idempotency conflict"
+                                .to_string(),
+                        )
+                    })?;
+                return match_operation(existing, &artifact_permission, &command);
+            }
+        };
+
+        let changed = if command.granted {
+            grant_permission(&transaction, &artifact_permission, &command).await?
         } else {
-            revoke_permission(&transaction, &command).await?;
+            revoke_permission(&transaction, &artifact_permission, &command).await?
+        };
+        if changed
+            && let Err(error) = self
+                .event_publisher
+                .publish_assignment_changed(
+                    &transaction,
+                    command.tenant_id,
+                    command.actor_id,
+                    assignment_event(operation_id, &artifact_permission, &command),
+                )
+                .await
+        {
+            transaction.rollback().await.map_err(database_error)?;
+            return Err(error);
         }
         transaction.commit().await.map_err(database_error)?;
 
@@ -130,9 +188,10 @@ impl SeaOrmArtifactPermissionAuthorizer {
         validate_permission_key(permission_key)?;
         let backend = self.db.get_database_backend();
         ensure_supported_backend(backend)?;
+        let tenant_scope = format!("tenant:{tenant_id}");
         let sql = placeholders(
             backend,
-            "SELECT 1 FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id INNER JOIN rbac_artifact_role_permissions arp ON arp.role_id = r.id WHERE u.id = {user_id} AND u.tenant_id = {tenant_id} AND r.tenant_id = {tenant_id} AND arp.tenant_id = {tenant_id} AND arp.installation_id = {installation_id} AND arp.permission_key = {permission_key} LIMIT 1",
+            "SELECT 1 FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id INNER JOIN rbac_artifact_role_permissions arp ON arp.role_id = r.id AND arp.tenant_id = r.tenant_id INNER JOIN rbac_artifact_permission_definitions apd ON apd.id = arp.artifact_permission_id AND apd.scope_key = arp.permission_scope_key WHERE u.id = {user_id} AND u.tenant_id = {tenant_id} AND r.tenant_id = {tenant_id} AND apd.installation_id = {installation_id} AND apd.permission_key = {permission_key} AND (apd.scope_key = 'platform' OR apd.scope_key = {tenant_scope}) LIMIT 1",
         );
         Ok(self
             .db
@@ -140,10 +199,11 @@ impl SeaOrmArtifactPermissionAuthorizer {
                 backend,
                 sql,
                 vec![
-                    user_id.into(),
-                    tenant_id.into(),
-                    installation_id.into(),
+                    uuid_value(backend, user_id),
+                    uuid_value(backend, tenant_id),
+                    uuid_value(backend, installation_id),
                     permission_key.into(),
+                    tenant_scope.into(),
                 ],
             ))
             .await
@@ -153,10 +213,18 @@ impl SeaOrmArtifactPermissionAuthorizer {
 }
 
 #[derive(Debug)]
-struct StoredOperation {
-    role_id: Uuid,
+struct ArtifactPermissionIdentity {
+    id: Uuid,
+    scope_key: String,
     installation_id: Uuid,
     permission_key: String,
+}
+
+#[derive(Debug)]
+struct StoredOperation {
+    role_id: Uuid,
+    artifact_permission_id: Uuid,
+    permission_scope_key: String,
     actor_id: Uuid,
     granted: bool,
 }
@@ -200,6 +268,39 @@ fn validate_text_token(
     Ok(())
 }
 
+fn scope_key(scope: ArtifactPermissionAssignmentScope, tenant_id: Uuid) -> String {
+    match scope {
+        ArtifactPermissionAssignmentScope::Platform => "platform".to_string(),
+        ArtifactPermissionAssignmentScope::Tenant => format!("tenant:{tenant_id}"),
+    }
+}
+
+fn uuid_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
+    match backend {
+        DbBackend::Postgres => value.into(),
+        DbBackend::Sqlite => value.to_string().into(),
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
+fn uuid_from_row(
+    backend: DbBackend,
+    row: &sea_orm::QueryResult,
+    column: &str,
+) -> Result<Uuid, ArtifactPermissionAssignmentError> {
+    match backend {
+        DbBackend::Postgres => row.try_get("", column).map_err(database_error),
+        DbBackend::Sqlite => {
+            let value: String = row.try_get("", column).map_err(database_error)?;
+            Uuid::parse_str(&value).map_err(|error| {
+                ArtifactPermissionAssignmentError::Database(format!(
+                    "artifact permission UUID column `{column}` contains invalid value `{value}`: {error}"
+                ))
+            })
+        }
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermissionAssignmentError> {
     match backend {
         DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
@@ -216,14 +317,14 @@ async fn find_operation(
     let backend = transaction.get_database_backend();
     let sql = placeholders(
         backend,
-        "SELECT role_id, installation_id, permission_key, actor_id, granted FROM rbac_artifact_role_permission_operations WHERE tenant_id = {tenant_id} AND idempotency_key = {idempotency_key} LIMIT 1",
+        "SELECT role_id, artifact_permission_id, permission_scope_key, actor_id, granted FROM rbac_artifact_role_permission_operations WHERE tenant_id = {tenant_id} AND idempotency_key = {idempotency_key} LIMIT 1",
     );
     transaction
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                command.tenant_id.into(),
+                uuid_value(backend, command.tenant_id),
                 command.idempotency_key.clone().into(),
             ],
         ))
@@ -231,10 +332,12 @@ async fn find_operation(
         .map_err(database_error)?
         .map(|row| {
             Ok(StoredOperation {
-                role_id: row.try_get("", "role_id").map_err(database_error)?,
-                installation_id: row.try_get("", "installation_id").map_err(database_error)?,
-                permission_key: row.try_get("", "permission_key").map_err(database_error)?,
-                actor_id: row.try_get("", "actor_id").map_err(database_error)?,
+                role_id: uuid_from_row(backend, &row, "role_id")?,
+                artifact_permission_id: uuid_from_row(backend, &row, "artifact_permission_id")?,
+                permission_scope_key: row
+                    .try_get("", "permission_scope_key")
+                    .map_err(database_error)?,
+                actor_id: uuid_from_row(backend, &row, "actor_id")?,
                 granted: row.try_get("", "granted").map_err(database_error)?,
             })
         })
@@ -243,11 +346,12 @@ async fn find_operation(
 
 fn match_operation(
     existing: StoredOperation,
+    artifact_permission: &ArtifactPermissionIdentity,
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> Result<ArtifactRolePermissionAssignmentResult, ArtifactPermissionAssignmentError> {
     if existing.role_id != command.role_id
-        || existing.installation_id != command.installation_id
-        || existing.permission_key != command.permission_key
+        || existing.artifact_permission_id != artifact_permission.id
+        || existing.permission_scope_key != artifact_permission.scope_key
         || existing.actor_id != command.actor_id
         || existing.granted != command.granted
     {
@@ -258,31 +362,33 @@ fn match_operation(
 
 async fn insert_operation(
     transaction: &DatabaseTransaction,
+    artifact_permission: &ArtifactPermissionIdentity,
     command: &ArtifactRolePermissionAssignmentCommand,
-) -> Result<bool, ArtifactPermissionAssignmentError> {
+) -> Result<Option<Uuid>, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
+    let operation_id = rustok_core::generate_id();
     let sql = placeholders(
         backend,
-        "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, installation_id, permission_key, actor_id, granted) VALUES ({id}, {tenant_id}, {idempotency_key}, {role_id}, {installation_id}, {permission_key}, {actor_id}, {granted}) ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
+        "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, artifact_permission_id, permission_scope_key, actor_id, granted) VALUES ({id}, {tenant_id}, {idempotency_key}, {role_id}, {artifact_permission_id}, {permission_scope_key}, {actor_id}, {granted}) ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
     );
     let result = transaction
         .execute(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                rustok_core::generate_id().into(),
-                command.tenant_id.into(),
+                uuid_value(backend, operation_id),
+                uuid_value(backend, command.tenant_id),
                 command.idempotency_key.clone().into(),
-                command.role_id.into(),
-                command.installation_id.into(),
-                command.permission_key.clone().into(),
-                command.actor_id.into(),
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, artifact_permission.id),
+                artifact_permission.scope_key.clone().into(),
+                uuid_value(backend, command.actor_id),
                 command.granted.into(),
             ],
         ))
         .await
         .map_err(database_error)?;
-    Ok(result.rows_affected() == 1)
+    Ok((result.rows_affected() == 1).then_some(operation_id))
 }
 
 async fn role_exists(
@@ -298,88 +404,117 @@ async fn role_exists(
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
-            vec![command.role_id.into(), command.tenant_id.into()],
+            vec![
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, command.tenant_id),
+            ],
         ))
         .await
         .map_err(database_error)?
         .is_some())
 }
 
-async fn permission_is_registered(
+async fn resolve_artifact_permission_identity(
     transaction: &DatabaseTransaction,
     command: &ArtifactRolePermissionAssignmentCommand,
-) -> Result<bool, ArtifactPermissionAssignmentError> {
+) -> Result<ArtifactPermissionIdentity, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
-    let scope_key = format!("tenant:{}", command.tenant_id);
+    let requested_scope_key = scope_key(command.scope, command.tenant_id);
     let sql = placeholders(
         backend,
-        "SELECT 1 FROM rbac_artifact_permission_catalog WHERE installation_id = {installation_id} AND permission_key = {permission_key} AND (scope_key = 'platform' OR scope_key = {scope_key}) LIMIT 1",
+        "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
     );
-    Ok(transaction
+    transaction
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                command.installation_id.into(),
+                requested_scope_key.into(),
+                uuid_value(backend, command.installation_id),
                 command.permission_key.clone().into(),
-                scope_key.into(),
             ],
         ))
         .await
         .map_err(database_error)?
-        .is_some())
+        .map(|row| {
+            Ok(ArtifactPermissionIdentity {
+                id: uuid_from_row(backend, &row, "id")?,
+                scope_key: row.try_get("", "scope_key").map_err(database_error)?,
+                installation_id: uuid_from_row(backend, &row, "installation_id")?,
+                permission_key: row.try_get("", "permission_key").map_err(database_error)?,
+            })
+        })
+        .transpose()?
+        .ok_or(ArtifactPermissionAssignmentError::PermissionNotRegistered)
 }
 
 async fn grant_permission(
     transaction: &DatabaseTransaction,
+    artifact_permission: &ArtifactPermissionIdentity,
     command: &ArtifactRolePermissionAssignmentCommand,
-) -> Result<(), ArtifactPermissionAssignmentError> {
+) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     let sql = placeholders(
         backend,
-        "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, installation_id, permission_key, granted_by_actor_id) VALUES ({id}, {tenant_id}, {role_id}, {installation_id}, {permission_key}, {actor_id}) ON CONFLICT (tenant_id, role_id, installation_id, permission_key) DO NOTHING",
+        "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({id}, {tenant_id}, {role_id}, {artifact_permission_id}, {permission_scope_key}, {actor_id}) ON CONFLICT (tenant_id, role_id, artifact_permission_id) DO NOTHING",
     );
-    transaction
+    let result = transaction
         .execute(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                rustok_core::generate_id().into(),
-                command.tenant_id.into(),
-                command.role_id.into(),
-                command.installation_id.into(),
-                command.permission_key.clone().into(),
-                command.actor_id.into(),
+                uuid_value(backend, rustok_core::generate_id()),
+                uuid_value(backend, command.tenant_id),
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, artifact_permission.id),
+                artifact_permission.scope_key.clone().into(),
+                uuid_value(backend, command.actor_id),
             ],
         ))
         .await
         .map_err(database_error)?;
-    Ok(())
+    Ok(result.rows_affected() == 1)
 }
 
 async fn revoke_permission(
     transaction: &DatabaseTransaction,
+    artifact_permission: &ArtifactPermissionIdentity,
     command: &ArtifactRolePermissionAssignmentCommand,
-) -> Result<(), ArtifactPermissionAssignmentError> {
+) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     let sql = placeholders(
         backend,
-        "DELETE FROM rbac_artifact_role_permissions WHERE tenant_id = {tenant_id} AND role_id = {role_id} AND installation_id = {installation_id} AND permission_key = {permission_key}",
+        "DELETE FROM rbac_artifact_role_permissions WHERE tenant_id = {tenant_id} AND role_id = {role_id} AND artifact_permission_id = {artifact_permission_id} AND permission_scope_key = {permission_scope_key}",
     );
-    transaction
+    let result = transaction
         .execute(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
-                command.tenant_id.into(),
-                command.role_id.into(),
-                command.installation_id.into(),
-                command.permission_key.clone().into(),
+                uuid_value(backend, command.tenant_id),
+                uuid_value(backend, command.role_id),
+                uuid_value(backend, artifact_permission.id),
+                artifact_permission.scope_key.clone().into(),
             ],
         ))
         .await
         .map_err(database_error)?;
-    Ok(())
+    Ok(result.rows_affected() == 1)
+}
+
+fn assignment_event(
+    operation_id: Uuid,
+    artifact_permission: &ArtifactPermissionIdentity,
+    command: &ArtifactRolePermissionAssignmentCommand,
+) -> RbacArtifactPermissionEvent {
+    RbacArtifactPermissionEvent::AssignmentChanged {
+        operation_id,
+        artifact_permission_id: artifact_permission.id,
+        role_id: command.role_id,
+        installation_id: artifact_permission.installation_id,
+        permission_key: artifact_permission.permission_key.clone(),
+        granted: command.granted,
+    }
 }
 
 fn placeholders(backend: DbBackend, template: &str) -> String {
@@ -416,27 +551,36 @@ fn database_error(error: impl std::fmt::Display) -> ArtifactPermissionAssignment
 mod tests {
     use super::*;
 
-    #[test]
-    fn assignment_validation_rejects_empty_or_control_text_tokens() {
-        let mut command = ArtifactRolePermissionAssignmentCommand {
+    fn command(
+        scope: ArtifactPermissionAssignmentScope,
+    ) -> ArtifactRolePermissionAssignmentCommand {
+        ArtifactRolePermissionAssignmentCommand {
             tenant_id: Uuid::new_v4(),
             role_id: Uuid::new_v4(),
+            scope,
             installation_id: Uuid::new_v4(),
             permission_key: "sample.events.handle".to_string(),
             actor_id: Uuid::new_v4(),
             granted: true,
             idempotency_key: "grant-1".to_string(),
-        };
-        command.permission_key = " sample.events.handle".to_string();
+        }
+    }
+
+    #[test]
+    fn assignment_validation_rejects_nil_installation_and_invalid_key() {
+        let mut invalid_installation = command(ArtifactPermissionAssignmentScope::Tenant);
+        invalid_installation.installation_id = Uuid::nil();
         assert!(matches!(
-            validate_command(&command),
+            validate_command(&invalid_installation),
             Err(ArtifactPermissionAssignmentError::InvalidCommand(
-                "permission key"
+                "tenant, role, installation, and actor identities must be present"
             ))
         ));
-        command.permission_key = "sample.events\n.handle".to_string();
+
+        let mut invalid_key = command(ArtifactPermissionAssignmentScope::Tenant);
+        invalid_key.permission_key = " sample.events.handle".to_string();
         assert!(matches!(
-            validate_command(&command),
+            validate_command(&invalid_key),
             Err(ArtifactPermissionAssignmentError::InvalidCommand(
                 "permission key"
             ))
@@ -444,27 +588,62 @@ mod tests {
     }
 
     #[test]
+    fn assignment_scope_uses_trusted_tenant_without_fallback() {
+        let tenant_id = Uuid::new_v4();
+        assert_eq!(
+            scope_key(ArtifactPermissionAssignmentScope::Platform, tenant_id),
+            "platform"
+        );
+        assert_eq!(
+            scope_key(ArtifactPermissionAssignmentScope::Tenant, tenant_id),
+            format!("tenant:{tenant_id}")
+        );
+    }
+
+    #[test]
     fn exact_operation_retry_is_not_applied_twice() {
-        let command = ArtifactRolePermissionAssignmentCommand {
-            tenant_id: Uuid::new_v4(),
-            role_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            permission_key: "sample.events.handle".to_string(),
-            actor_id: Uuid::new_v4(),
-            granted: true,
-            idempotency_key: "grant-1".to_string(),
+        let command = command(ArtifactPermissionAssignmentScope::Tenant);
+        let artifact_permission = ArtifactPermissionIdentity {
+            id: Uuid::new_v4(),
+            scope_key: scope_key(command.scope, command.tenant_id),
+            installation_id: command.installation_id,
+            permission_key: command.permission_key.clone(),
         };
         let result = match_operation(
             StoredOperation {
                 role_id: command.role_id,
-                installation_id: command.installation_id,
-                permission_key: command.permission_key.clone(),
+                artifact_permission_id: artifact_permission.id,
+                permission_scope_key: artifact_permission.scope_key.clone(),
                 actor_id: command.actor_id,
                 granted: command.granted,
             },
+            &artifact_permission,
             &command,
         )
         .expect("exact retry");
         assert!(!result.applied);
+    }
+
+    #[test]
+    fn assignment_event_retains_operation_and_exact_permission_identity() {
+        let command = command(ArtifactPermissionAssignmentScope::Platform);
+        let operation_id = Uuid::new_v4();
+        let artifact_permission = ArtifactPermissionIdentity {
+            id: Uuid::new_v4(),
+            scope_key: "platform".to_string(),
+            installation_id: command.installation_id,
+            permission_key: command.permission_key.clone(),
+        };
+        assert_eq!(
+            assignment_event(operation_id, &artifact_permission, &command),
+            RbacArtifactPermissionEvent::AssignmentChanged {
+                operation_id,
+                artifact_permission_id: artifact_permission.id,
+                role_id: command.role_id,
+                installation_id: artifact_permission.installation_id,
+                permission_key: artifact_permission.permission_key,
+                granted: command.granted,
+            }
+        );
     }
 }

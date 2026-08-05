@@ -27,6 +27,7 @@ use super::projection_invalidation::{
 };
 use super::rbac::enforce_scope;
 use super::topic_audience::load_policy_for_topic;
+use super::topic_route::ForumTopicRouteService;
 use super::user_stats::UserStatsService;
 
 pub const MAX_FORUM_TOPIC_MERGE_REASON_LEN: usize = 500;
@@ -352,6 +353,15 @@ impl ForumTopicMergeService {
         source_active.last_reply_at = Set(None);
         source_active.updated_at = Set(now.into());
         source_active.update(&txn).await?;
+
+        ForumTopicRouteService::record_merge_redirect_aliases_in_tx(
+            &txn,
+            tenant_id,
+            input.source_topic_id,
+            target_topic_id,
+            &reason,
+        )
+        .await?;
 
         let payload = topic_merged_payload(
             input.operation_id,

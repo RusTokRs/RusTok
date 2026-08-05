@@ -107,8 +107,10 @@ mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_canonical_resolution;
+mod topic_route;
 mod topic_create_audience_authorization;
 mod topic_facade;
+mod topic_fork;
 mod topic_merge;
 mod topic_merge_audience_reconciliation;
 mod topic_merge_read_state_reconciliation;
@@ -122,7 +124,9 @@ mod topic_owner {
 }
 mod topic_read_state_lock;
 mod topic_reply_create_audience;
+mod topic_reply_range_move;
 mod topic_solution_lock;
+mod topic_split;
 mod topic_subscription_lock;
 mod topic_tag_lock;
 mod topic_vote_lock;
@@ -231,10 +235,22 @@ pub use topic_audience_visibility::{
 pub use topic_canonical_resolution::{
     ForumTopicCanonicalResolution, MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS,
 };
+pub use topic_route::{
+    FORUM_TOPIC_ROUTE_SHORT_ID_LEN, ForumTopicRouteDescriptor, ForumTopicRouteDisposition,
+    ForumTopicRouteResolution, ForumTopicRouteService, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
+    MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN, MAX_FORUM_TOPIC_ROUTE_SLUG_LEN,
+};
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };
 pub use topic_facade::TopicService;
+pub use topic_fork::{
+    ForkForumReplyBranchInput, ForumTopicForkResult, ForumTopicForkService,
+    MAX_FORUM_TOPIC_FORK_BODY_ROWS, MAX_FORUM_TOPIC_FORK_MENTIONS,
+    MAX_FORUM_TOPIC_FORK_QUOTES, MAX_FORUM_TOPIC_FORK_REASON_LEN,
+    MAX_FORUM_TOPIC_FORK_RELATION_REVISIONS, MAX_FORUM_TOPIC_FORK_REPLIES,
+    MAX_FORUM_TOPIC_FORK_REPLY_REVISIONS, MAX_FORUM_TOPIC_FORK_TITLE_LEN,
+};
 pub use topic_merge::{
     ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
@@ -272,6 +288,16 @@ pub use topic_move::{
 pub use topic_reply_create_audience::{
     ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
     SetForumTopicReplyCreateAudiencePolicyInput,
+};
+pub use topic_reply_range_move::{
+    ForumReplyRangeMoveResult, ForumReplyRangeMoveService,
+    MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN, MAX_FORUM_REPLY_RANGE_MOVE_REPLIES,
+    MoveForumReplyRangeInput,
+};
+pub use topic_split::{
+    ForumTopicSplitResult, ForumTopicSplitService, MAX_FORUM_TOPIC_SPLIT_REASON_LEN,
+    MAX_FORUM_TOPIC_SPLIT_REPLIES, MAX_FORUM_TOPIC_SPLIT_TITLE_LEN,
+    SplitForumTopicRepliesInput,
 };
 pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,

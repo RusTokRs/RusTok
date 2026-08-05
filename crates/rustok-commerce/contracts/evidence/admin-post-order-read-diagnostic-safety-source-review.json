@@ -1,0 +1,49 @@
+{
+  "status": "commerce_admin_post_order_read_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/controllers/admin/post_order_reads.rs",
+    "crates/rustok-commerce/docs/admin-post-order-read-diagnostic-safety.md",
+    "scripts/verify/verify-commerce-admin-post-order-read-diagnostic-safety.mjs",
+    "scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "raw_port_error_logged": false,
+    "raw_correlation_id_logged": false,
+    "raw_tenant_id_logged": false,
+    "raw_actor_id_logged": false,
+    "raw_return_id_logged": false,
+    "raw_change_id_logged": false,
+    "raw_order_id_logged": false,
+    "raw_port_actor_logged": false,
+    "raw_channel_logged": false,
+    "raw_locale_logged": false,
+    "redacted_error_marker_logged": true,
+    "correlation_presence_and_length_logged": true,
+    "tenant_uuid_text_shape_logged": true,
+    "actor_uuid_shape_logged": true,
+    "optional_resource_uuid_shapes_logged": true,
+    "channel_presence_and_length_logged": true,
+    "locale_length_logged": true,
+    "deadline_logged": true,
+    "internal_code_preserved": true,
+    "retryability_preserved": true,
+    "port_error_kind_policy_preserved": true,
+    "http_envelopes_preserved": true,
+    "four_admin_read_callsites_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}

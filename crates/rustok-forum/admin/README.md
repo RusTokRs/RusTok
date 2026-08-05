@@ -14,24 +14,28 @@ Leptos admin UI package for the `rustok-forum` module.
 - Participates in manifest-driven UI composition through `rustok-module.toml`.
 - Keeps category/topic CRUD and reply previews on their existing explicit GraphQL transport.
 - Selects direct authenticated native server functions for the FORUM-21 topic-merge workflow in SSR/hydrate builds and retains GraphQL for CSR/headless builds, without fallback.
-- Presents category, topic, reply-preview, and merge workflows as module-owned Forum pages.
+- Presents category, topic, reply-preview, merge, selected-reply split, reply-branch fork and reply-range move workflows as module-owned Forum pages.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles.
 - Embeds owner-side SEO panels through `rustok-seo-admin-support`.
 
 ## Entry points
 
-- `ForumAdmin` — root route dispatcher for ordinary Forum admin pages and `/modules/forum/merge`.
+- `ForumAdmin` — root route dispatcher for ordinary Forum admin pages plus `/modules/forum/merge`, `/modules/forum/split`, `/modules/forum/fork` and `/modules/forum/reply-range`.
 - `rustok-module.toml [provides.admin_ui]` — host composition contract.
 
 ## FFA structure
 
 - `admin/src/core.rs` owns the existing framework-agnostic category/topic view policy.
 - `admin/src/topic_merge_model.rs` owns merge candidate, command, receipt, validation, accepted-solution selection, and retry-identity policy without Leptos imports.
-- `admin/src/transport.rs` is the only UI-facing transport facade and selects exactly one merge transport per compile profile.
+- `admin/src/topic_split_model.rs` owns split command/receipt validation and the paired operation/target retry identities without Leptos imports.
+- `admin/src/topic_reply_range_model.rs` owns exact endpoint/reason validation and the operation retry identity without Leptos imports.
+- `admin/src/transport.rs` is the only UI-facing transport facade, selects exactly one merge transport per compile profile, and exposes split, fork and reply-range manager GraphQL adapters without fallback.
 - `crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs` extracts server-side auth/tenant/runtime context and calls `TopicService` plus `ForumTopicMergeService` directly.
 - `admin/src/transport/topic_merge_graphql_adapter.rs` preserves CSR/headless parity through `mergeForumTopic` and `mergeForumTopicResolvingSolution`.
+- `admin/src/transport/topic_split_graphql_adapter.rs` composes `splitForumTopicReplies` and bounded candidate/reply reads without owner policy.
+- `admin/src/transport/topic_reply_range_graphql_adapter.rs` composes `moveForumTopicReplyRange` without inferring owner positions or reading audit state.
 - `admin/src/ui/root.rs` performs route-only composition.
-- `admin/src/ui/topic_merge.rs` is the thin Leptos render/effect adapter.
+- `admin/src/ui/topic_merge.rs`, `admin/src/ui/topic_split.rs`, `admin/src/ui/topic_fork.rs` and `admin/src/ui/topic_reply_range.rs` are thin Leptos render/effect adapters.
 
 ## Transport state
 
@@ -47,7 +51,7 @@ The native adapter derives tenant and actor authority from `TenantContext` and `
 ## Interactions
 
 - Consumed by `apps/admin` through manifest-driven code generation.
-- Mounted under `/modules/forum` with child pages for topics, categories, and merge.
+- Mounted under `/modules/forum` with child pages for topics, categories, merge, split, fork and reply-range movement.
 - Requires the routed tenant and `forum_topics:manage`; both transport adapters and the backend owner revalidate authority.
 - Keeps one operation ID stable across an exact retry and rotates it whenever source, target, reason, or accepted-solution selection changes.
 - Uses explicit source/target accepted-solution choice only when both topics are solved.
@@ -57,3 +61,16 @@ The native adapter derives tenant and actor authority from `TenantContext` and `
 - See [platform docs](../../../docs/index.md).
 - See [FORUM-21N admin merge UI](../docs/forum-21n-topic-merge-admin-ui.md).
 - See [FORUM-21O native admin merge transport](../docs/forum-21o-topic-merge-native-admin.md).
+- See [FORUM-21V selected-reply split admin composition](../docs/forum-21v-topic-split-admin-ui.md).
+- See [FORUM-21W reply-branch fork admin composition](../docs/forum-21w-topic-fork-admin-ui.md).
+- See [FORUM-21X reply-range move admin composition](../docs/forum-21x-reply-range-move-admin-ui.md).
+
+## Topic fork admin workflow
+
+`/modules/forum/fork` composes the manager-only
+`forkForumTopicReplyBranch` GraphQL command. The form retains operation and
+target-topic UUIDs across an exact retry, rotates both when the command shape
+changes, loads a bounded reply page for root selection, and displays the
+immutable owner receipt. Descendant discovery, copy identity, policy cloning and
+counter reconciliation remain in `ForumTopicForkService`.
+

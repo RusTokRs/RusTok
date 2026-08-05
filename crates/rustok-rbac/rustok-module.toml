@@ -8,6 +8,9 @@ trust_level = "core"
 ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
 [crate]
 entry_type = "RbacModule"
 

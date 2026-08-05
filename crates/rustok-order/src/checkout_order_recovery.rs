@@ -137,16 +137,7 @@ impl CheckoutOrderRecoveryAdapter {
             )
             .await?
             .ok_or_else(|| {
-                tracing::warn!(
-                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    channel = ?context.channel,
-                    operation = READ_OPERATION,
-                    code = "order.checkout_order_not_found",
-                    checkout_operation_id = %request.checkout_operation_id,
-                    "checkout order identity was not found for the requested operation"
-                );
+                log_checkout_order_recovery_identity_not_found(&context, &request);
                 PortError::not_found(
                     "order.checkout_order_not_found",
                     "checkout order was not found for the requested operation",
@@ -212,16 +203,12 @@ impl CheckoutOrderRecoveryAdapter {
             | OrderStatusKind::Shipped
             | OrderStatusKind::Delivered => Ok(order),
             OrderStatusKind::Cancelled => {
-                tracing::warn!(
-                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    channel = ?context.channel,
-                    operation = RECOVER_OPERATION,
-                    code = "order.checkout_order_cancelled",
-                    order_id = %order.id,
-                    order_state = ?OrderStatusKind::Cancelled,
-                    "checkout recovery found an already-cancelled order"
+                log_checkout_order_recovery_lifecycle_rejection(
+                    context,
+                    order.id,
+                    "cancelled",
+                    "order.checkout_order_cancelled",
+                    false,
                 );
                 Err(PortError::conflict(
                     "order.checkout_order_cancelled",
@@ -229,16 +216,12 @@ impl CheckoutOrderRecoveryAdapter {
                 ))
             }
             OrderStatusKind::Unknown => {
-                tracing::error!(
-                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
-                    channel = ?context.channel,
-                    operation = RECOVER_OPERATION,
-                    code = "order.checkout_order_status_invalid",
-                    order_id = %order.id,
-                    order_state = ?OrderStatusKind::Unknown,
-                    "checkout recovery found an unsupported order lifecycle state"
+                log_checkout_order_recovery_lifecycle_rejection(
+                    context,
+                    order.id,
+                    "unknown",
+                    "order.checkout_order_status_invalid",
+                    true,
                 );
                 Err(PortError::invariant_violation(
                     "order.checkout_order_status_invalid",
@@ -299,43 +282,40 @@ fn validate_identity(
     legacy_snapshot_hash: &str,
     legacy_request_hash: &str,
 ) -> Result<(), PortError> {
-    let base_matches = identity.tenant_id == tenant_id
-        && identity.checkout_operation_id == request.checkout_operation_id
-        && identity
-            .source_cart_id
-            .is_none_or(|id| id == request.completion.cart_id)
-        && identity
-            .payment_collection_id
-            .is_none_or(|id| Some(id) == request.completion.payment_collection_id)
-        && identity
-            .shipping_option_id
-            .is_none_or(|id| Some(id) == request.completion.shipping_option_id);
+    let tenant_matches = identity.tenant_id == tenant_id;
+    let checkout_operation_matches =
+        identity.checkout_operation_id == request.checkout_operation_id;
+    let source_cart_matches = identity
+        .source_cart_id
+        .is_none_or(|id| id == request.completion.cart_id);
+    let payment_collection_matches = identity
+        .payment_collection_id
+        .is_none_or(|id| Some(id) == request.completion.payment_collection_id);
+    let shipping_option_matches = identity
+        .shipping_option_id
+        .is_none_or(|id| Some(id) == request.completion.shipping_option_id);
+    let base_matches = tenant_matches
+        && checkout_operation_matches
+        && source_cart_matches
+        && payment_collection_matches
+        && shipping_option_matches;
     let owner_hashes_match = identity.snapshot_hash.as_deref() == Some(owner_hashes.0.as_str())
         && identity.request_hash.as_deref() == Some(owner_hashes.1.as_str());
     let legacy_hashes_match = identity.snapshot_hash.as_deref() == Some(legacy_snapshot_hash)
         && identity.request_hash.as_deref() == Some(legacy_request_hash);
     if !base_matches || !(owner_hashes_match || legacy_hashes_match) {
-        tracing::error!(
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
-            operation = RECOVER_OPERATION,
-            code = "order.checkout_request_conflict",
-            request_checkout_operation_id = %request.checkout_operation_id,
-            request_cart_id = %request.completion.cart_id,
-            request_payment_collection_id = ?request.completion.payment_collection_id,
-            request_shipping_option_id = ?request.completion.shipping_option_id,
-            identity_tenant_id = %identity.tenant_id,
-            identity_checkout_operation_id = %identity.checkout_operation_id,
-            identity_order_id = %identity.order_id,
-            identity_source_cart_id = ?identity.source_cart_id,
-            identity_payment_collection_id = ?identity.payment_collection_id,
-            identity_shipping_option_id = ?identity.shipping_option_id,
+        log_checkout_order_recovery_identity_conflict(
+            context,
+            identity,
+            request,
+            tenant_matches,
+            checkout_operation_matches,
+            source_cart_matches,
+            payment_collection_matches,
+            shipping_option_matches,
             base_matches,
             owner_hashes_match,
             legacy_hashes_match,
-            "checkout recovery identity conflicts with the completion request"
         );
         return Err(PortError::conflict(
             "order.checkout_request_conflict",
@@ -343,6 +323,83 @@ fn validate_identity(
         ));
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn log_checkout_order_recovery_identity_conflict(
+    context: &PortContext,
+    identity: &CheckoutOrderIdentitySnapshot,
+    request: &RecoverExistingCheckoutOrderRequest,
+    tenant_matches: bool,
+    checkout_operation_matches: bool,
+    source_cart_matches: bool,
+    payment_collection_matches: bool,
+    shipping_option_matches: bool,
+    base_matches: bool,
+    owner_hashes_match: bool,
+    legacy_hashes_match: bool,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::error!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation = RECOVER_OPERATION,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        request_checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+        request_cart_id_non_nil = !request.completion.cart_id.is_nil(),
+        request_payment_collection_id_present = request.completion.payment_collection_id.is_some(),
+        request_payment_collection_id_non_nil = ?request
+            .completion
+            .payment_collection_id
+            .map(|id| !id.is_nil()),
+        request_shipping_option_id_present = request.completion.shipping_option_id.is_some(),
+        request_shipping_option_id_non_nil = ?request
+            .completion
+            .shipping_option_id
+            .map(|id| !id.is_nil()),
+        identity_tenant_id_non_nil = !identity.tenant_id.is_nil(),
+        identity_checkout_operation_id_non_nil = !identity.checkout_operation_id.is_nil(),
+        identity_order_id_non_nil = !identity.order_id.is_nil(),
+        identity_source_cart_id_present = identity.source_cart_id.is_some(),
+        identity_source_cart_id_non_nil = ?identity.source_cart_id.map(|id| !id.is_nil()),
+        identity_payment_collection_id_present = identity.payment_collection_id.is_some(),
+        identity_payment_collection_id_non_nil = ?identity
+            .payment_collection_id
+            .map(|id| !id.is_nil()),
+        identity_shipping_option_id_present = identity.shipping_option_id.is_some(),
+        identity_shipping_option_id_non_nil = ?identity
+            .shipping_option_id
+            .map(|id| !id.is_nil()),
+        identity_snapshot_hash_present = identity.snapshot_hash.is_some(),
+        identity_snapshot_hash_length = ?identity.snapshot_hash.as_ref().map(String::len),
+        identity_request_hash_present = identity.request_hash.is_some(),
+        identity_request_hash_length = ?identity.request_hash.as_ref().map(String::len),
+        tenant_matches,
+        checkout_operation_matches,
+        source_cart_matches,
+        payment_collection_matches,
+        shipping_option_matches,
+        base_matches,
+        owner_hashes_match,
+        legacy_hashes_match,
+        code = "order.checkout_request_conflict",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout recovery identity conflicts with the completion request"
+    );
 }
 
 fn require_operation_context(
@@ -355,16 +412,20 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
-        tracing::warn!(
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+        log_checkout_order_recovery_admission_rejection(
+            context,
             operation,
-            code = "order.checkout_operation_id_invalid",
-            expected_checkout_operation_id = %checkout_operation_id,
-            actual_causation_id = ?context.causation_id,
-            "checkout recovery received invalid causation identity"
+            "causation_id",
+            context.causation_id.is_some(),
+            context
+                .causation_id
+                .as_ref()
+                .map(|value| value.chars().count()),
+            context_operation.is_some(),
+            context_operation.map(|value| !value.is_nil()),
+            Some(!checkout_operation_id.is_nil()),
+            Some(false),
+            "order.checkout_operation_id_invalid",
         );
         return Err(PortError::validation(
             "order.checkout_operation_id_invalid",
@@ -375,18 +436,18 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        log_checkout_order_recovery_admission_rejection(
+            context,
             operation,
-            field = "tenant_id",
-            value_length = context.tenant_id.len(),
-            code = "order.tenant_id_invalid",
-            "order port received invalid request context"
+            "tenant_id",
+            true,
+            Some(context.tenant_id.chars().count()),
+            false,
+            None,
+            None,
+            None,
+            "order.tenant_id_invalid",
         );
         PortError::validation(
             "order.tenant_id_invalid",
@@ -396,18 +457,18 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
+        log_checkout_order_recovery_admission_rejection(
+            context,
             operation,
-            field = "actor_id",
-            value_length = context.actor.id.len(),
-            code = "order.actor_id_invalid",
-            "order port received invalid request context"
+            "actor_id",
+            true,
+            Some(context.actor.id.chars().count()),
+            false,
+            None,
+            None,
+            None,
+            "order.actor_id_invalid",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
@@ -429,16 +490,11 @@ fn checkout_request_hashes(
         "adjustments": request.adjustments,
         "tax_lines": request.tax_lines,
     });
-    let full_request = serde_json::to_value(request).map_err(|error| {
-        tracing::error!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
-            operation = RECOVER_OPERATION,
-            code = "order.checkout_request_encoding_failed",
-            "failed to encode checkout recovery request"
+    let full_request = serde_json::to_value(request).map_err(|_| {
+        log_checkout_order_recovery_encoding_failure(
+            context,
+            RECOVER_OPERATION,
+            "checkout_completion_request",
         );
         PortError::invariant_violation(
             "order.checkout_request_encoding_failed",
@@ -457,16 +513,11 @@ fn hash_json(
     value: Value,
 ) -> Result<String, PortError> {
     let canonical = canonicalize_json(value);
-    let bytes = serde_json::to_vec(&canonical).map_err(|error| {
-        tracing::error!(
-            error = ?error,
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    let bytes = serde_json::to_vec(&canonical).map_err(|_| {
+        log_checkout_order_recovery_encoding_failure(
+            context,
             operation,
-            code = "order.checkout_request_encoding_failed",
-            "failed to encode canonical checkout recovery request"
+            "canonical_checkout_json",
         );
         PortError::invariant_violation(
             "order.checkout_request_encoding_failed",
@@ -500,22 +551,19 @@ fn normalize_hash(
     max_len: usize,
 ) -> Result<String, PortError> {
     let value = value.trim().to_ascii_lowercase();
-    if value.len() < min_len
-        || value.len() > max_len
-        || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        tracing::warn!(
-            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
+    let value_length = value.len();
+    let length_within_bounds = (min_len..=max_len).contains(&value_length);
+    let ascii_hex = value.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if !length_within_bounds || !ascii_hex {
+        log_checkout_order_recovery_hash_rejection(
+            context,
             operation,
             field,
-            value_length = value.len(),
+            value_length,
             min_len,
             max_len,
-            code = "order.checkout_hash_invalid",
-            "checkout recovery rejected invalid hash evidence"
+            length_within_bounds,
+            ascii_hex,
         );
         return Err(PortError::validation(
             "order.checkout_hash_invalid",
@@ -588,6 +636,228 @@ fn checkout_order_recovery_context_facts(
             .map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
     }
+}
+
+fn log_checkout_order_recovery_lifecycle_rejection(
+    context: &PortContext,
+    order_id: Uuid,
+    lifecycle_state: &'static str,
+    code: &'static str,
+    technical_failure: bool,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    if technical_failure {
+        tracing::error!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+            operation = RECOVER_OPERATION,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            order_id_non_nil = !order_id.is_nil(),
+            lifecycle_state,
+            code,
+            boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+            "checkout recovery found an unsupported order lifecycle state"
+        );
+    } else {
+        tracing::warn!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+            operation = RECOVER_OPERATION,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            order_id_non_nil = !order_id.is_nil(),
+            lifecycle_state,
+            code,
+            boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+            "checkout recovery found a terminal order lifecycle state"
+        );
+    }
+}
+
+fn log_checkout_order_recovery_encoding_failure(
+    context: &PortContext,
+    operation: &'static str,
+    serialization_target: &'static str,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::error!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        serialization_target,
+        code = "order.checkout_request_encoding_failed",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout recovery request encoding failed with bounded diagnostics"
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn log_checkout_order_recovery_hash_rejection(
+    context: &PortContext,
+    operation: &'static str,
+    field: &'static str,
+    value_length: usize,
+    min_len: usize,
+    max_len: usize,
+    length_within_bounds: bool,
+    ascii_hex: bool,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::warn!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        field,
+        value_length,
+        min_len,
+        max_len,
+        length_within_bounds,
+        ascii_hex,
+        code = "order.checkout_hash_invalid",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout recovery rejected invalid hash evidence with bounded diagnostics"
+    );
+}
+
+fn log_checkout_order_recovery_identity_not_found(
+    context: &PortContext,
+    request: &ReadCheckoutOrderProjectionRequest,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::warn!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation = READ_OPERATION,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        context_locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+        request_locale_present = request.locale.is_some(),
+        request_locale_length = ?request.locale.as_ref().map(|value| value.chars().count()),
+        request_fallback_locale_present = request.fallback_locale.is_some(),
+        request_fallback_locale_length = ?request
+            .fallback_locale
+            .as_ref()
+            .map(|value| value.chars().count()),
+        code = "order.checkout_order_not_found",
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "checkout order identity was not found for the requested operation"
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn log_checkout_order_recovery_admission_rejection(
+    context: &PortContext,
+    operation: &'static str,
+    field: &'static str,
+    field_value_present: bool,
+    field_value_length: Option<usize>,
+    uuid_parseable: bool,
+    uuid_non_nil: Option<bool>,
+    expected_uuid_non_nil: Option<bool>,
+    matches_expected: Option<bool>,
+    code: &'static str,
+) {
+    let context_facts = checkout_order_recovery_context_facts(context);
+    tracing::warn!(
+        owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        field,
+        field_value_present,
+        field_value_length = ?field_value_length,
+        uuid_parseable,
+        uuid_non_nil = ?uuid_non_nil,
+        expected_uuid_non_nil = ?expected_uuid_non_nil,
+        matches_expected = ?matches_expected,
+        code,
+        boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+        "order checkout recovery admission was rejected with bounded diagnostics"
+    );
 }
 
 fn checkout_order_recovery_owner_error_facts(

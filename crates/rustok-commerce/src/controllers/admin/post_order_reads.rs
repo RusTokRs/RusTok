@@ -46,6 +46,26 @@ fn admin_post_order_read_context(
     }
 }
 
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
+fn uuid_text_shape(value: &str) -> &'static str {
+    match Uuid::parse_str(value) {
+        Ok(value) => uuid_shape(value),
+        Err(_) if value.is_empty() => "empty",
+        Err(_) => "invalid",
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn map_admin_post_order_port_error(
     error: PortError,
@@ -95,23 +115,40 @@ fn map_admin_post_order_port_error(
             "invariant_violation",
         ),
     };
+    let correlation_id_present = !port_context.correlation_id.is_empty();
+    let correlation_id_length = port_context.correlation_id.len();
+    let tenant_id_shape = uuid_text_shape(port_context.tenant_id.as_str());
+    let actor_id_shape = uuid_shape(actor_id);
+    let return_id_shape = optional_uuid_shape(return_id);
+    let change_id_shape = optional_uuid_shape(change_id);
+    let order_id_shape = optional_uuid_shape(order_id);
+    let channel_present = port_context.channel.is_some();
+    let channel_length = port_context
+        .channel
+        .as_deref()
+        .map_or(0, |channel| channel.len());
+    let locale_length = port_context.locale.len();
+    let internal_code = error.code.as_str();
+    let retryable = error.retryable;
+    let error = "redacted";
     tracing::error!(
         error = ?error,
         owner = ADMIN_POST_ORDER_OWNER,
         owner_operation,
         consumer_operation,
-        correlation_id = %port_context.correlation_id,
-        tenant_id = %port_context.tenant_id,
-        actor_id = %actor_id,
-        return_id = ?return_id,
-        change_id = ?change_id,
-        order_id = ?order_id,
-        actor = ?port_context.actor,
-        channel = ?port_context.channel,
-        locale = %port_context.locale,
+        correlation_id_present,
+        correlation_id_length,
+        tenant_id_shape,
+        actor_id_shape,
+        return_id_shape,
+        change_id_shape,
+        order_id_shape,
+        channel_present,
+        channel_length,
+        locale_length,
         deadline_ms = ?port_context.deadline_ms,
-        internal_code = %error.code,
-        retryable = error.retryable,
+        internal_code,
+        retryable,
         error_kind,
         public_code = code,
         status = %status,

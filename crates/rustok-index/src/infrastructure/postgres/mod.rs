@@ -1,6 +1,7 @@
 mod drift_digest_recorder;
 mod drift_finding_inspector;
 mod drift_finding_writer;
+mod drift_snapshot_reader;
 mod mutation_store;
 mod partition_admission;
 mod query_port;
@@ -46,6 +47,10 @@ pub use drift_finding_inspector::{
 pub use drift_finding_writer::{
     IndexDriftDigestFindingRequest, IndexDriftFindingWriteError, IndexDriftFindingWriteOutcome,
     PostgresIndexDriftFindingWriter,
+};
+pub use drift_snapshot_reader::{
+    IndexDriftSnapshotCompositionError, PostgresIndexDriftSnapshotReader,
+    materialize_postgres_index_drift_snapshot_reader,
 };
 pub use mutation_store::{
     MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,

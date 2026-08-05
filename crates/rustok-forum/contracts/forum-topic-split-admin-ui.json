@@ -1,0 +1,118 @@
+{
+  "contract": "forum_topic_split_admin_ui_v1",
+  "task": "FORUM-21V",
+  "parent_task": "FORUM-21",
+  "extends": [
+    "FORUM-21P",
+    "FORUM-21R"
+  ],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "surfaces": {
+    "leptos_admin": {
+      "route_subpath": "split",
+      "component": "ForumTopicSplitAdmin",
+      "model": "crates/rustok-forum/admin/src/topic_split_model.rs",
+      "transport": "crates/rustok-forum/admin/src/transport/topic_split_graphql_adapter.rs",
+      "graphql_only": true
+    },
+    "next_admin": {
+      "route": "/dashboard/forum/split",
+      "component": "ForumTopicSplit",
+      "model": "apps/next-admin/packages/forum/src/core/topic-split.ts",
+      "transport": "apps/next-admin/packages/forum/src/api/forum.ts",
+      "navigation_permission": "forum_topics:manage"
+    }
+  },
+  "command": {
+    "graphql_field": "splitForumTopicReplies",
+    "owner": "ForumTopicSplitService::split_selected_replies",
+    "source_topic_is_manager_selected": true,
+    "reply_selection_limit": 500,
+    "target_locale_title_slug_are_manager_supplied": true,
+    "reason_is_required": true,
+    "operation_id_is_retained_for_exact_retry": true,
+    "target_topic_id_is_retained_for_exact_retry": true,
+    "both_ids_rotate_when_command_shape_changes": true
+  },
+  "selection": {
+    "loads_up_to_500_replies": true,
+    "shows_reply_identity_status_preview_and_parent_marker": true,
+    "client_rejects_visible_child_without_parent": true,
+    "client_rejects_visible_parent_without_all_visible_children": true,
+    "client_rejects_empty_source_result": true,
+    "owner_remains_authoritative_for_complete_parent_closure": true,
+    "ui_contains_no_reply_movement_or_position_policy": true
+  },
+  "receipt": {
+    "immutable_owner_receipt_is_displayed": true,
+    "fields": [
+      "operation_id",
+      "event_id",
+      "source_topic_id",
+      "target_topic_id",
+      "category_id",
+      "actor_id",
+      "reason",
+      "moved_reply_count",
+      "moved_published_reply_count",
+      "source_resulting_published_reply_count",
+      "target_resulting_published_reply_count",
+      "solution_reply_id",
+      "split_at"
+    ]
+  },
+  "authorization": {
+    "transport_requires_forum_topics_manage": true,
+    "next_navigation_requires_forum_topics_manage": true,
+    "tenant_is_routed_by_existing_admin_graphql_client": true,
+    "optional_tenant_assertion_is_forwarded_by_next_admin": true,
+    "owner_identity_is_not_accepted_from_the_browser": true
+  },
+  "composition": {
+    "owner_method_changed": false,
+    "graphql_schema_changed": false,
+    "receipt_schema_changed": false,
+    "semantic_event_changed": false,
+    "rest_route_added": false,
+    "native_split_transport_added": false,
+    "transport_local_reply_copy": false,
+    "transport_local_counter_reconciliation": false,
+    "transport_local_solution_policy": false,
+    "transport_fallback": false
+  },
+  "source_contracts": [
+    "crates/rustok-forum/admin/src/topic_split_model.rs",
+    "crates/rustok-forum/admin/src/transport.rs",
+    "crates/rustok-forum/admin/src/transport/topic_split_graphql_adapter.rs",
+    "crates/rustok-forum/admin/src/ui/topic_split.rs",
+    "apps/next-admin/packages/forum/src/core/topic-split.ts",
+    "apps/next-admin/packages/forum/src/api/forum.ts",
+    "apps/next-admin/packages/forum/src/components/forum-topic-split.tsx",
+    "apps/next-admin/src/app/dashboard/forum/split/page.tsx"
+  ],
+  "documentation": "crates/rustok-forum/docs/forum-21v-topic-split-admin-ui.md",
+  "verifier": "scripts/verify/verify-forum-topic-split-admin-ui.mjs",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-split-owner.mjs",
+    "node scripts/verify/verify-forum-topic-split-graphql-transport.mjs",
+    "node scripts/verify/verify-forum-topic-split-admin-ui.mjs",
+    "cargo test -p rustok-forum-admin topic_split_model -- --nocapture",
+    "cargo check -p rustok-forum-admin --all-targets",
+    "npm --prefix apps/next-admin run typecheck",
+    "npm run verify:forum:admin-boundary"
+  ],
+  "remaining_scope": [
+    "mounted browser evidence for Leptos and Next admin split workflows",
+    "maintainer SQLite and PostgreSQL owner execution evidence",
+    "public admin composition for reply-branch fork",
+    "public admin composition for bounded reply-range movement",
+    "FORUM-24 localized canonical aliases and tombstones"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo npm browser workflow or CI execution is claimed",
+    "no reply copy fork or range movement policy is added",
+    "no native split admin transport is added",
+    "FORUM-21 remains planned"
+  ]
+}

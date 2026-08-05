@@ -1,0 +1,137 @@
+{
+  "contract": "forum_topic_fork_owner_v1",
+  "task": "FORUM-21Q",
+  "parent_task": "FORUM-21",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner": "ForumTopicForkService",
+  "command": "fork_reply_branch",
+  "authorization": {
+    "required_permission": "forum_topics:manage",
+    "human_actor_required": true,
+    "tenant_from_owner_argument": true
+  },
+  "command_shape": {
+    "operation_id": "uuid",
+    "source_topic_id": "owner_argument_uuid",
+    "target_topic_id": "uuid",
+    "root_reply_id": "uuid",
+    "locale": "normalized_locale",
+    "title": "bounded_nonempty_text",
+    "slug": "optional_normalized_slug",
+    "reason": "bounded_nonempty_text",
+    "maximum_branch_replies": 500,
+    "maximum_body_rows": 2000,
+    "maximum_reply_revisions": 5000,
+    "maximum_relation_revisions": 5000,
+    "maximum_mentions": 10000,
+    "maximum_quotes": 5000
+  },
+  "branch": {
+    "selection": "root_plus_all_current_descendants",
+    "recursive_query_bounded": true,
+    "root_may_have_external_parent": true,
+    "copied_root_parent": null,
+    "descendant_parents": "mapped_to_copied_parent",
+    "source_requires_parent_before_child_positions": true,
+    "target_positions": "source_position_order_1_to_n",
+    "partial_copy_on_failure": false
+  },
+  "reply_identity": {
+    "source_reply_ids_preserved": true,
+    "source_rows_modified": false,
+    "target_reply_ids": "sha256_domain_operation_id_source_reply_id_uuid_v5_bits",
+    "target_ids_deterministic": true,
+    "target_ids_distinct_from_source": true,
+    "authors_preserved": true,
+    "statuses_preserved": true,
+    "timestamps_preserved": true
+  },
+  "content_copy": {
+    "current_localized_bodies": "all",
+    "reply_revision_history": "all_bounded_with_new_revision_ids",
+    "relation_revision_history": "all_bounded_with_new_revision_ids",
+    "user_mentions": "copied_to_new_relation_revisions",
+    "audience_mentions": "copied_to_new_relation_revisions",
+    "mention_notifications_emitted": false,
+    "quote_sources": "mapped_to_new_relation_revisions",
+    "quote_targets": "preserve_original_immutable_target_and_revision_ids",
+    "attachments": "preserved_inside_copied_rich_text_bodies"
+  },
+  "target_topic": {
+    "category": "source_category",
+    "channel_access": "exact_copy",
+    "visibility_policy": "exact_topic_layer_copy",
+    "reply_create_policy": "exact_topic_layer_copy",
+    "tags": "exact_term_identity_copy",
+    "target_cannot_broaden_source_access": true,
+    "cross_category_fork": false,
+    "cross_category_composition": "fork_then_existing_topic_move_owner"
+  },
+  "explicit_non_copy": {
+    "topic_votes": true,
+    "reply_votes": true,
+    "subscriptions": true,
+    "read_states": true,
+    "accepted_solution": true,
+    "target_starts_unsolved": true,
+    "source_solution_unchanged": true
+  },
+  "counter_policy": {
+    "category_topic_count_delta": 1,
+    "category_reply_count_delta": "copied_approved_reply_count",
+    "target_reply_count": "copied_approved_reply_count",
+    "source_topic_counters_unchanged": true,
+    "actor_topic_count_delta": 1,
+    "copied_approved_author_reply_count_delta": "per_author_copy_count",
+    "solution_author_statistic_delta": 0
+  },
+  "idempotency": {
+    "command_fingerprint": "sha256_canonical_json",
+    "exact_replay_returns_original_receipt": true,
+    "actor_drift_fails_closed": true,
+    "command_shape_drift_fails_closed": true,
+    "stable_conflict_code": "FORUM_TOPIC_FORK_OPERATION_CONFLICT",
+    "target_topic_id_unique_per_fork": true
+  },
+  "audit": {
+    "receipt_table": "forum_topic_fork_operations",
+    "reply_mapping_table": "forum_topic_fork_reply_items",
+    "revision_mapping_table": "forum_topic_fork_revision_items",
+    "semantic_event": "forum.topic.forked",
+    "semantic_event_schema": 1,
+    "event_id_equals_operation_id": true,
+    "receipt_append_only": true,
+    "reply_mapping_append_only": true,
+    "revision_mapping_append_only": true
+  },
+  "projection_invalidation": [
+    "target_topic",
+    "category"
+  ],
+  "migration": "m20260804_000021_add_forum_topic_fork_operations",
+  "verification": {
+    "sqlite_contract": "crates/rustok-forum/tests/topic_fork_sqlite.rs",
+    "static_verifier": "scripts/verify/verify-forum-topic-fork-owner.mjs",
+    "commands_run_by_implementation_agent": false
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_routes_changed": false,
+    "admin_ui_changed": false,
+    "existing_move_merge_split_receipts_changed": false,
+    "existing_semantic_events_changed": false
+  },
+  "remaining_scope": [
+    "maintainer SQLite and PostgreSQL execution evidence",
+    "public manager transport and admin composition",
+    "bounded reply-range movement",
+    "final localized canonical aliases and route tombstones under FORUM-24"
+  ],
+  "non_claims": [
+    "no verifier Cargo formatter workflow browser or CI execution is claimed",
+    "no cross-category fork is claimed",
+    "no target solution inference is claimed",
+    "FORUM-21 remains planned"
+  ]
+}

@@ -342,22 +342,22 @@ impl RbacService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        use super::rbac_persistence::assign_role_permissions_via_store;
+
         Self::record_authz_entrypoint_call("assign_role_permissions", "internal");
-        let resolver = Self::resolver(db);
-        resolver
-            .assign_role_permissions(tenant_id, user_id, role)
-            .await
+        assign_role_permissions_via_store(db, user_id, tenant_id, role).await
     }
 
-    /// Transaction-only compatibility alias for legacy auth lifecycle composition.
-    /// New code must use `replace_user_role_in_transaction` or `replace_user_role_committed`.
+    /// Assign the initial built-in role inside the caller-owned user-creation transaction.
+    /// Existing-user mutations must use `replace_user_role_in_transaction` or
+    /// `replace_user_role_committed` so generation reservation and invalidation remain atomic.
     pub(crate) async fn replace_user_role(
         db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        Self::record_authz_entrypoint_call("replace_user_role_legacy_transaction", "internal");
+        Self::record_authz_entrypoint_call("initialize_user_role", "internal");
         replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 }

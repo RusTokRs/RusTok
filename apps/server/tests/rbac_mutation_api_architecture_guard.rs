@@ -28,10 +28,12 @@ fn rust_sources(root: &Path, files: &mut Vec<PathBuf>) {
 }
 
 #[test]
-fn legacy_role_replacement_alias_is_private_and_confined_to_new_user_creation() {
+fn initial_role_assignment_is_private_and_confined_to_new_user_creation() {
     let service = source("apps/server/src/services/rbac_service.rs");
     assert!(service.contains("pub(crate) async fn replace_user_role("));
     assert!(!service.contains("    pub async fn replace_user_role("));
+    assert!(service.contains("initialize_user_role"));
+    assert!(!service.contains("replace_user_role_legacy_transaction"));
 
     let server_src = repo_root().join("apps/server/src");
     let mut files = Vec::new();
@@ -45,7 +47,11 @@ fn legacy_role_replacement_alias_is_private_and_confined_to_new_user_creation() 
         }
     }
 
-    assert_eq!(call_sites.len(), 1, "legacy alias must have one call site");
+    assert_eq!(
+        call_sites.len(),
+        1,
+        "new-user role initialization must have one production call site"
+    );
     assert!(call_sites[0].ends_with("services/auth_lifecycle.rs"));
 
     let lifecycle = source("apps/server/src/services/auth_lifecycle.rs");

@@ -58,6 +58,113 @@ impl AdminOrderErrorContext {
     }
 }
 
+struct AdminOrderReadDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    order_id: &'static str,
+    customer_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminOrderErrorContext> for AdminOrderReadDiagnosticContext {
+    fn from(context: &AdminOrderErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            order_id: optional_uuid_shape(context.order_id),
+            customer_id: optional_uuid_shape(context.customer_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminOrderReadPortDiagnosticContext {
+    correlation_id: &'static str,
+    actor: &'static str,
+    channel: &'static str,
+    locale: usize,
+    deadline_ms: Option<u64>,
+}
+
+impl From<&PortContext> for AdminOrderReadPortDiagnosticContext {
+    fn from(context: &PortContext) -> Self {
+        Self {
+            correlation_id: text_presence_shape(context.correlation_id.as_str()),
+            actor: text_presence_shape(context.actor.id.as_str()),
+            channel: optional_text_presence_shape(context.channel.as_deref()),
+            locale: context.locale.len(),
+            deadline_ms: context.deadline_ms,
+        }
+    }
+}
+
+struct AdminOrderReadPortDiagnosticError<'a> {
+    code: &'a str,
+    retryable: bool,
+}
+
+impl std::fmt::Debug for AdminOrderReadPortDiagnosticError<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+struct AdminOrderMutationDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    order_id: &'static str,
+    customer_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminOrderErrorContext> for AdminOrderMutationDiagnosticContext {
+    fn from(context: &AdminOrderErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            order_id: optional_uuid_shape(context.order_id),
+            customer_id: optional_uuid_shape(context.customer_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminOrderMutationDiagnosticError;
+
+impl std::fmt::Debug for AdminOrderMutationDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
+fn text_presence_shape(value: &str) -> &'static str {
+    if value.is_empty() {
+        "empty"
+    } else {
+        "present_non_empty"
+    }
+}
+
+fn optional_text_presence_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some("") => "present_empty",
+        Some(_) => "present_non_empty",
+    }
+}
+
 fn admin_order_read_port_context(
     tenant_id: Uuid,
     auth: &AuthContext,
@@ -122,6 +229,12 @@ fn map_admin_order_port_error(
             "Order operation could not be completed safely",
             "invariant_violation",
         ),
+    };
+    let context = AdminOrderReadDiagnosticContext::from(&context);
+    let port_context = AdminOrderReadPortDiagnosticContext::from(port_context);
+    let error = AdminOrderReadPortDiagnosticError {
+        code: error.code.as_str(),
+        retryable: error.retryable,
     };
     tracing::error!(
         error = ?error,
@@ -190,6 +303,8 @@ fn map_admin_order_error(mut context: AdminOrderErrorContext, error: OrderError)
         context.order_id = Some(*id);
     }
     let (status, code, message, error_kind) = admin_order_error_policy(&error);
+    let context = AdminOrderMutationDiagnosticContext::from(&context);
+    let error = AdminOrderMutationDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_ORDER_OWNER,

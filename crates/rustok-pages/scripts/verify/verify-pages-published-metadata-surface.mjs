@@ -247,10 +247,11 @@ if (
 }
 
 for (const marker of [
-  "Published metadata source packet: ready, unvalidated",
-  "published-only admission",
-  "stable DOM contract",
-  "browser execution remains pending",
+  "Registered metadata surfaces: source-complete",
+  "Published pages mount the same registered panel",
+  "without an editable Fly canvas",
+  "Focused stale-revision and dirty-Fly isolation regressions are source-ready",
+  "Their execution and the published browser packet remain open",
 ]) {
   requireText(parityPlan, marker, "parity continuation plan");
 }

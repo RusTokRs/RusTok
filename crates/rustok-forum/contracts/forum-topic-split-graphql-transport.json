@@ -1,0 +1,95 @@
+{
+  "contract": "forum_topic_split_graphql_transport_v1",
+  "task": "FORUM-21R",
+  "parent_task": "FORUM-21",
+  "extends": "FORUM-21P",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "transport": "graphql",
+  "owner_service": "ForumTopicSplitService",
+  "authorization": {
+    "module_must_be_enabled": "forum",
+    "required_permission": "forum_topics:manage",
+    "authenticated_human_actor_required_by_owner": true,
+    "tenant_is_derived_from_routed_TenantContext": true,
+    "optional_tenant_argument_must_equal_routed_tenant": true,
+    "tenant_mismatch_code": "PERMISSION_DENIED"
+  },
+  "command": {
+    "field": "splitForumTopicReplies",
+    "input_type": "SplitForumTopicRepliesGraphqlInput",
+    "source_topic_id_is_separate_argument": true,
+    "input_fields": [
+      "operation_id",
+      "target_topic_id",
+      "reply_ids",
+      "locale",
+      "title",
+      "slug",
+      "reason"
+    ],
+    "result_type": "GqlForumTopicSplit",
+    "calls_owner_method": "split_selected_replies"
+  },
+  "receipt_result": {
+    "type": "GqlForumTopicSplit",
+    "fields": [
+      "operation_id",
+      "event_id",
+      "source_topic_id",
+      "target_topic_id",
+      "category_id",
+      "actor_id",
+      "reason",
+      "moved_reply_count",
+      "moved_published_reply_count",
+      "source_resulting_published_reply_count",
+      "target_resulting_published_reply_count",
+      "solution_reply_id",
+      "split_at"
+    ],
+    "returns_immutable_owner_receipt": true,
+    "exact_replay_returns_same_result": true,
+    "event_id_equals_operation_id": true
+  },
+  "composition": {
+    "resolver_contains_no_split_business_logic": true,
+    "database_and_transactional_event_bus_are_explicit_schema_data": true,
+    "security_context_uses_authenticated_permission_snapshot": true,
+    "domain_errors_preserve_ForumGraphqlErrorExtension_mapping": true,
+    "raw_split_receipt_or_item_table_access_in_resolver": false,
+    "canonical_topic_alias_resolution_for_mutation": false
+  },
+  "compatibility": {
+    "owner_command_changed": false,
+    "receipt_schema_changed": false,
+    "semantic_event_schema_changed": false,
+    "rest_contract_changed": false,
+    "admin_ui_added": false,
+    "storefront_ui_added": false,
+    "graphql_field_is_additive": true
+  },
+  "source_contract_test": "crates/rustok-forum/tests/topic_split_graphql_contract.rs",
+  "authorization_unit_test": "crates/rustok-forum/src/graphql/topic_split_mutation.rs",
+  "owner_runtime_test": "crates/rustok-forum/tests/topic_split_sqlite.rs",
+  "documentation": "crates/rustok-forum/docs/forum-21r-topic-split-graphql-transport.md",
+  "owner_contract": "crates/rustok-forum/contracts/forum-topic-split-owner.json",
+  "owner_documentation": "crates/rustok-forum/docs/forum-21p-topic-split-owner.md",
+  "verifier": "scripts/verify/verify-forum-topic-split-graphql-transport.mjs",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-split-owner.mjs",
+    "node scripts/verify/verify-forum-topic-split-graphql-transport.mjs",
+    "cargo test -p rustok-forum graphql::topic_split_mutation::tests -- --nocapture",
+    "cargo test -p rustok-forum --test topic_split_graphql_contract -- --nocapture",
+    "cargo test -p rustok-forum --test topic_split_sqlite -- --nocapture",
+    "cargo check -p rustok-forum --all-targets"
+  ],
+  "non_claims": [
+    "no verifier test formatter Cargo SQLite PostgreSQL workflow or CI execution is claimed",
+    "no REST native admin storefront or CLI split command transport is added",
+    "no split admin UI is added",
+    "no cross-category split is added",
+    "no fork or reply-range transport is added",
+    "FORUM-21 remains planned"
+  ]
+}

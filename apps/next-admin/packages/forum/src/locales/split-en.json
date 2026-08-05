@@ -1,0 +1,23 @@
+{
+  "title": "Split topic replies",
+  "subtitle": "Create a new topic from one parent-closed set of replies through the idempotent Forum owner.",
+  "source": "Source topic",
+  "choose": "Choose a topic",
+  "replies": "Replies to move",
+  "loadingReplies": "Loading replies…",
+  "noReplies": "Choose a source topic with at least two replies.",
+  "targetLocale": "Target locale",
+  "targetTitle": "Target title",
+  "targetSlug": "Target slug (optional)",
+  "reason": "Reason",
+  "submit": "Split topic",
+  "pending": "Splitting…",
+  "retryIdentity": "Retry identity",
+  "targetIdentity": "New topic identity",
+  "retryHint": "Exact retries keep both identities. Editing the source, selection or target fields rotates both.",
+  "warning": "Reply identity is preserved. The owner rejects selections that cross a parent boundary or empty the source topic.",
+  "success": "Topic split committed",
+  "failure": "Topic split failed",
+  "movedReplies": "Moved replies",
+  "targetReplies": "Target published replies"
+}
