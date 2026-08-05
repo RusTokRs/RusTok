@@ -28,6 +28,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 - [Live Implementation Plan](./implementation-plan.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
+- [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
 - [M6 Bounded Source-call Timeout](./m6-source-call-timeout.md)
 - [M6 Bounded Replay Dry-run](./m6-bounded-replay-dry-run.md)
 - [M6 Cooperative Replay-page Interruption](./m6-cooperative-page-interruption.md)
