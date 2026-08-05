@@ -4,81 +4,87 @@ Status: `source_complete_owner_execution_pending`
 
 ## Scope
 
-This slice adds the first selected production storage bridge for the generic Index Engine. When
-`mod-product` is compiled and `ProductModule` participates in the runtime registry,
-`rustok-distribution` publishes one locale-required `rustok-product::product@1` schema and one
-PostgreSQL-backed bounded source. The schema contains Product-owned scalar state only:
+When `mod-product` is selected, `rustok-distribution` publishes Product schema versions
+`rustok-product::product@1` and `@2` through one stable PostgreSQL source,
+`product-postgres-primary`.
 
-- status;
-- title, handle, and description;
-- vendor and product type;
-- primary category identity as a scalar UUID.
+Product v1 retains the original locale-required scalar contract. Product v2 adds the stable Product
+identity field, bounded channel-visibility fields, variant identities, and the schema-declared
+Product-to-ProductVariant link described in the graph contract.
 
-ProductVariant, SalesChannel, pricing, inventory, taxonomy links, timestamps, relevance, and
-external search semantics are not part of this first schema.
+Index core and the server remain Product-domain agnostic.
 
 ## Ownership and composition
 
-`rustok-product` owns the `products` and `product_translations` tables, the monotonic
-`index_revision` migration, and a neutral `ProductRuntimeSelected` marker. The Product crate does
-not depend on `rustok-index` and does not construct generic Index mutations.
+`rustok-product` owns:
 
-`rustok-distribution` is the selected cross-module bridge. It detects the Product marker, registers
-the generic schema, and publishes a `PostgresIndexSourceFactory`. The executable server invokes
-`materialize_postgres_index_sources` before `materialize_index_source_registry`; all factories
-write to one staged extension clone and the source catalog is committed only when every selected
-factory succeeds.
+- `products` and `product_translations`;
+- positive monotonic `products.index_revision`;
+- Product and locale tombstone storage;
+- triggers that advance the revision for Product and translation changes;
+- identity-reuse fencing against retained tombstones.
 
-Factory materialization performs no SQL and starts no task. Product-specific types never appear in
-server replay composition, and Index core never imports Product or reads Product tables.
+The Product crate does not depend on `rustok-index`. It publishes only
+`ProductRuntimeSelected`; `rustok-distribution` registers schemas and database-aware factories.
+
+Host factory materialization constructs adapters without SQL or task startup and commits the staged
+source/absence catalogs atomically only after every selected factory succeeds.
 
 ## Source contract
 
-The selected Product PostgreSQL source supports:
+The Product PostgreSQL source supports:
 
-- cursor scans ordered by the stable `(product_id, locale)` identity;
+- cursor scans ordered by stable `(product_id, locale)` identity;
 - one-row lookahead over the caller's bounded page limit;
 - targeted loads over exact `(product_id, locale)` pairs;
-- exact tenant and schema scope;
-- canonical stored-locale and cursor validation;
-- stable replay event UUIDs derived through the Index-owned event-identity helper from tenant,
-  product, locale, and source revision;
-- retryable storage failures and permanent contract/backend failures without exposing raw database
-  errors.
+- exact tenant and schema scope for Product v1 and v2;
+- canonical locale and cursor validation;
+- stable replay event UUIDs derived from tenant, Product, locale, event domain, and source revision;
+- retryable storage failures and permanent contract/backend failures without raw database details.
 
-The source reads only Product-owned `products` and `product_translations` tables. It emits generic
-`IndexMutation::Upsert` values and never writes Index storage directly. Stable enumeration uses the
-existing tenant/product identity constraint and unique Product-translation `(product_id, locale)`
-index. The mutable source revision is deliberately excluded from the cursor so an update cannot
-reorder an already visited row relative to the durable enumeration position.
+The source reads one union of live Product/translation rows and retained
+`product_index_tombstones`. It emits generic `IndexMutation::Upsert` or `IndexMutation::Delete`
+values and never writes Index storage directly.
 
-## Monotonic source version
+Live/tombstone coexistence for one exact tenant/Product/locale identity fails closed through the
+row identity-count contract. Stable enumeration excludes mutable revision values from the cursor.
 
-`products.index_revision` is a positive `BIGINT` owned by Product storage. Every Product row update
-sets it to exactly `OLD.index_revision + 1` through a PostgreSQL trigger and refuses signed-range
-exhaustion. Insert, update, delete, or reassignment of a Product translation updates the affected
-Product row and therefore advances its revision.
+## Monotonic source version and retained deletes
 
-The revision is storage-internal and is not added to Product API DTOs or the SeaORM write model.
-Normal Product inserts use the database default. The value is used only as the generic mutation
-`source_version` and as part of stable replay event identity; it is not the scan cursor.
+`products.index_revision` is a positive `BIGINT`. Product updates and ProductVariant membership
+changes advance it. Translation INSERT, UPDATE, DELETE, locale move, tenant move, or Product move
+also advances the affected Product revisions.
+
+Translation deletion or identity movement stores an exact locale tombstone at the new revision.
+Product hard delete stores tombstones for every retained translation locale. Product identity reuse
+seeds the live revision above retained tombstones and clears only tombstones strictly superseded by
+the new live revision.
+
+The revision is storage-internal and is used as generic mutation `source_version` and replay event
+identity, not as the scan cursor.
+
+## Explicit locale-absence high-watermark
+
+The selected distribution also publishes `product-locale-absence-postgres` for Product v1 and v2.
+For a live Product with no requested translation and no exact retained tombstone, the provider
+returns positive `products.index_revision` as proof that the exact locale is absent at that owner
+version.
+
+This proof is separate from ordinary targeted load and is consumed only by bounded drift snapshot
+capture. Tombstoned locales remain ordinary `Delete` mutations; unknown Product identities remain
+non-authoritative.
 
 ## Explicitly open
 
-- Product hard deletes do not yet emit durable Index tombstones. A stale indexed Product therefore
-  requires the later incremental event path or reconciliation/repair slice.
-- Translation deletion removes a locale row from current-state replay and likewise requires a
-  later tombstone or reconciliation contract to remove an already indexed locale.
-- Per-tenant schema application into `index_schemas` remains an owner operation. Runtime capability
-  presence does not establish persisted schema readiness.
-- Product domain events do not yet carry the source revision and are not connected to incremental
-  Index mutation acknowledgement.
-- A concurrent insert whose stable identity sorts behind the active cursor can require a later
-  replay or reconciliation pass; no repeatable-read tenant snapshot is claimed by this adapter.
-- ProductVariant and SalesChannel schemas, links, and sources remain open.
-- Storefront/admin/search authoritative consumer cutover remains forbidden.
-- Retained PostgreSQL replay, restart, cancellation, drift, freshness, and equivalence evidence has
-  not been executed.
+- production mutation-event routes and concrete broker consumer wiring;
+- persisted per-tenant schema readiness;
+- complete durable Product-to-SalesChannel relation semantics;
+- tombstone purge admission and retained retention evidence;
+- real PostgreSQL replay, restart, absence-diagnosis, freshness, and equivalence evidence;
+- Storefront/admin/search authoritative consumer cutover.
+
+No repeatable-read full-tenant owner snapshot is claimed by the replay source. Reconciliation remains
+required for concurrent inserts that sort behind an active cursor.
 
 ## Owner verification
 
@@ -86,13 +92,13 @@ The implementation agent did not run commands. The repository owner should run:
 
 ```bash
 node scripts/verify/verify-index-product-source.mjs
+node scripts/verify/verify-index-product-graph-source.mjs
+node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 cargo check -p rustok-distribution --all-targets --features mod-product
 cargo check -p rustok-server --all-targets --features mod-product
-cargo test -p rustok-index source_event_id --lib -- --nocapture
-cargo test -p rustok-index source_factory --lib -- --nocapture
-cargo test -p rustok-distribution --all-targets --features mod-product -- --nocapture
+cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
 ```
 
 Validation and live PostgreSQL execution are `maintainer-run`.
