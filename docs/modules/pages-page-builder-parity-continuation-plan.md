@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-06  
-Status: source-parity-current / route-history-import-source-ready / execution-evidence-pending
+Status: source-parity-current / storefront-composition-etag-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event, routing and cache boundaries
 
 ## Source-of-truth policy
@@ -12,13 +12,13 @@ This is the canonical shared continuation cursor. Historical dated packets remai
 
 Across every retained source packet, execution remains pending until a maintainer records reproducible command output and artifact evidence.
 
-Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts.
+Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts. Navigation owns menu identity and active-menu policy. SEO providers own resolved SEO documents. The storefront host composes those owner results but does not recreate their policies.
 
 Optional external event infrastructure is outside the active Pages cursor. Optional external delivery infrastructure is outside the active Pages cursor.
 
 ## Rechecked merged cursor
 
-Current `main` through PR #3026 contains:
+Current `main` through PR #3029 contains:
 
 - PR #2955 — publish/rollback event-correlation and generation miss/refill contract;
 - PR #2971 — source-ready PostgreSQL publish/rollback outbox-to-cache packet;
@@ -40,9 +40,10 @@ Current `main` through PR #3026 contains:
 - PR #3016 — public detail/list tenant locale fallback parity;
 - PR #3018 — immutable published slug route aliases and localized canonical URLs;
 - PR #3020 — registered host route decision and canonical/redirect/gone response composition;
-- PR #3026 — forward public-route snapshots and delete tombstone composition.
+- PR #3026 — forward public-route snapshots and delete tombstone composition;
+- PR #3029 — explicit bounded historical route import with provenance receipts.
 
-The present source slice adds an explicit bounded historical route import owner without changing Page Builder/Fly behavior.
+The present source slice composes Pages generations, channel identity, Navigation-owned menus and SEO-owned output into a deterministic canonical SSR ETag without changing Page Builder/Fly behavior.
 
 ## Retained source marker index
 
@@ -62,6 +63,7 @@ This compact index preserves the exact stable source markers consumed by the ret
 - `anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready. The current public Pages host is SSR-only, and the client bundle gate is conditional.
 - `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready.
 - `route-history-import-source-ready`; Historical route import: source-ready. The owner accepts explicit bounded provenance records; automatic historical inference remains deliberately unsupported.
+- `storefront-composition-etag-source-ready`; Pages storefront Navigation/SEO composition ETag: source-ready. Exact canonical SSR binds Pages generations, channel identity and actual Navigation/SEO owner payloads.
 
 Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current tombstone and explicit import statuses above.
 
@@ -149,15 +151,38 @@ Existing same-page published-slug redirects remain immutable. A missing page wit
 
 Automatic scans of old translations, Page Builder artifacts or current draft/archived rows are not claimed because those sources do not prove complete historical public ownership.
 
+Execution remains pending.
+
+### Storefront Navigation/SEO composition ETag: source-ready
+
+For an exact localized canonical Pages request, the route adapter now exposes channel identity and the current Pages route, page and artifact generations only after channel-module admission plus publication/channel visibility rechecks.
+
+The storefront host then loads Navigation Header and Footer through the existing Navigation-owned transport and loads the resolved SEO page context through the existing SEO owner path. A `StorefrontNavigationSnapshot` is supplied to the same Leptos SSR owner, so `NavigationHeaderMenu` and `NavigationView` reuse the preloaded menus rather than issuing duplicate SSR requests.
+
+The final `pages_storefront_composition_v1` ETag binds:
+
+- canonical page id, slug and effective locale;
+- request locale and channel identity;
+- route, page and artifact generations;
+- the actual resolved Navigation header/footer payloads;
+- the actual resolved SEO page context.
+
+The deterministic serialized payload is hashed with SHA-256. A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified`. Canonical ETag responses use `Cache-Control: private, no-cache`; terminal Pages route responses continue to use `private, no-store` and never claim a composition ETag.
+
+If the Pages generation runtime is absent or the generation read fails, SSR continues without an ETag. This avoids a false cache identity while preserving fail-open rendering after all authorization and route checks have succeeded.
+
+No shared/CDN full-document cache is introduced. Navigation menu policy and SEO resolution remain with their owners.
+
 Source evidence:
 
-- `crates/rustok-pages/src/migrations/m20260806_000012_create_page_route_history_imports.rs`;
-- `crates/rustok-pages/src/entities/page_route_history_import.rs`;
-- `crates/rustok-pages/src/services/page/route_history_import.rs`;
-- `crates/rustok-pages/tests/page_route_history_import_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-route-history-import-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs`;
-- `docs/modules/pages-page-builder-route-history-import-packet-2026-08-06.md`.
+- `crates/rustok-pages/storefront/src/transport/host_route_adapter.rs`;
+- `crates/rustok-navigation/storefront/src/model.rs`;
+- `crates/rustok-navigation/storefront/src/ui/menu.rs`;
+- `apps/storefront/src/shared/context/pages_composition.rs`;
+- `apps/storefront/src/lib.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-storefront-composition-etag-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs`;
+- `docs/modules/pages-page-builder-storefront-composition-etag-packet-2026-08-06.md`.
 
 Execution remains pending.
 
@@ -167,7 +192,7 @@ The current public Pages host is SSR-only. Retained source guards exclude Pages/
 
 ### Authenticated real-DOM inline editing: open
 
-Authenticated real-DOM inline editing is not implemented and remains outside this routing/lifecycle slice.
+Authenticated real-DOM inline editing is not implemented and is the next unimplemented Pages storefront source boundary after execution evidence.
 
 ## Parity matrix
 
@@ -183,6 +208,7 @@ Authenticated real-DOM inline editing is not implemented and remains outside thi
 | Delete route tombstones for new lifecycle transitions | Source-ready | SQLite/PostgreSQL/host execution pending |
 | Explicit historical route import | Source-ready | SQLite/PostgreSQL/operator execution pending |
 | Automatic historical route inference | Deliberately unsupported | External provenance required |
+| Pages Navigation/SEO composition ETag | Source-ready | SSR/conditional request/browser execution pending |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -197,40 +223,46 @@ Authenticated real-DOM inline editing is not implemented and remains outside thi
 
 ## Boundaries
 
-This slice changes Pages route-history persistence and adds an explicit owner repair command.
+This slice changes Pages route-decision output, Navigation storefront composition contracts and exact canonical Pages host response composition.
 
 It does not:
 
-- infer historical routes automatically;
-- validate the truth of an external archive or ledger;
+- change Pages persistence, route claims or lifecycle policy;
+- change Navigation menu identity, bindings, locale fallback or database ownership;
+- change SEO providers, targets or schemas;
+- add a shared/CDN full-document cache;
 - change Page Builder or Fly behavior;
 - change page bodies, immutable artifacts, publish or rollback receipts;
-- change GraphQL, REST, host routes or admin UI;
-- change channel visibility or module-admission policy;
-- change cache namespaces, generation scopes, key shape, TTL or capacity;
+- change GraphQL, REST or admin surfaces;
 - change event schemas or optional external event infrastructure;
 - claim tests, Cargo, formatting, verifiers, SQLite, PostgreSQL, hosts, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA.
 
 ## Next cursor
 
-1. Run the route history import verifier and focused SQLite regression.
-2. Run the delete route tombstone verifier and focused SQLite regression.
-3. Run the host route response verifier and registered SQLite/Axum server-function regression.
-4. Run the published slug alias verifier and focused SQLite regression.
-5. Run the public list locale fallback verifier and focused Pages locale regression.
-6. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
-7. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
-8. Run the selected immutable artifact and complete native SQLite/Axum route set.
-9. Run production generation-gate, native-route and PostgreSQL retry packets.
-10. Run metadata conflict/isolation and published metadata browser packets.
-11. Complete workflow and observed tenant rollout evidence before promotion.
+1. Run the storefront composition ETag verifier and focused storefront tests.
+2. Run the route history import verifier and focused SQLite regression.
+3. Run the delete route tombstone verifier and focused SQLite regression.
+4. Run the host route response verifier and registered SQLite/Axum server-function regression.
+5. Run the published slug alias verifier and focused SQLite regression.
+6. Run the public list locale fallback verifier and focused Pages locale regression.
+7. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
+8. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
+9. Run the selected immutable artifact and complete native SQLite/Axum route set.
+10. Run production generation-gate, native-route and PostgreSQL retry packets.
+11. Run metadata conflict/isolation and published metadata browser packets.
+12. Implement authenticated real-DOM inline editing as a separate source slice.
+13. Complete workflow and observed tenant rollout evidence before promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs
+cargo test -p rustok-storefront --features ssr --lib -- --nocapture
+cargo test -p rustok-navigation-storefront --features ssr --all-targets -- --nocapture
+
 node crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
 cargo test -p rustok-pages \
   --test page_route_history_import_sqlite -- --nocapture
