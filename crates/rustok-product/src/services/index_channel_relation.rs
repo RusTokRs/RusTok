@@ -64,6 +64,8 @@ pub enum ProductSalesChannelIndexRelationError {
     InvalidTenant,
     #[error("Product-SalesChannel relation Product identity is invalid")]
     InvalidProduct,
+    #[error("Product-SalesChannel relation Product does not exist")]
+    ProductNotFound,
     #[error("Product-SalesChannel relation Channel identity is invalid")]
     InvalidChannel,
     #[error("Product-SalesChannel relation Channel identities must be unique")]
@@ -282,14 +284,15 @@ impl ProductSalesChannelIndexRelationStore {
         channel_ids: Vec<Uuid>,
     ) -> Result<ProductSalesChannelIndexRelationWriteOutcome, ProductSalesChannelIndexRelationError>
     {
+        require_live_product(transaction, tenant_id, product_id).await?;
         lock_relation(transaction, tenant_id, product_id).await?;
         let previous = load_latest(transaction, tenant_id, product_id).await?;
-        if let Some(previous) = previous.as_ref()
-            && previous.channel_ids == channel_ids
-        {
-            return Ok(ProductSalesChannelIndexRelationWriteOutcome::Unchanged(
-                previous.clone(),
-            ));
+        if let Some(previous) = previous.as_ref() {
+            if previous.channel_ids == channel_ids {
+                return Ok(ProductSalesChannelIndexRelationWriteOutcome::Unchanged(
+                    previous.clone(),
+                ));
+            }
         }
 
         let relation_epoch = match previous.as_ref() {
@@ -332,6 +335,31 @@ impl ProductSalesChannelIndexRelationStore {
             ProductSalesChannelIndexRelationWriteOutcome::Initial(record)
         })
     }
+}
+
+async fn require_live_product(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> Result<(), ProductSalesChannelIndexRelationError> {
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT 1 AS present
+            FROM products
+            WHERE tenant_id = $1
+              AND id = $2
+            FOR KEY SHARE
+            "#,
+            vec![tenant_id.into(), product_id.into()],
+        ))
+        .await
+        .map_err(|_| ProductSalesChannelIndexRelationError::Unavailable)?;
+    if row.is_none() {
+        return Err(ProductSalesChannelIndexRelationError::ProductNotFound);
+    }
+    Ok(())
 }
 
 async fn lock_relation(
