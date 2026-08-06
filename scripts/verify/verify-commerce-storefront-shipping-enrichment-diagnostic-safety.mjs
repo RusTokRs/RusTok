@@ -201,11 +201,14 @@ for (const [value, label] of [
   ['enrich_cart_delivery_groups_typed(', 'typed implementation delegation'],
   ['log_cart_delivery_group_enrichment_error(', 'diagnostic call'],
   [
-    'crate::CommerceError::Validation(error.to_string())',
-    'legacy public conversion retained for separate cleanup',
+    'crate::CommerceError::Validation(\n            "Cart shipping details are temporarily unavailable".to_string(),\n        )',
+    'stable compatibility public envelope',
   ],
 ]) {
   requireText(compatibilityWrapper, value, label);
+}
+for (const value of ['error.to_string()', 'err.to_string()', 'format!("{error:?}")']) {
+  forbidText(compatibilityWrapper, value, 'unsafe compatibility public conversion');
 }
 
 for (const [value, label] of [
@@ -226,5 +229,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce storefront shipping enrichment diagnostics keep typed owner facts while redacting source payloads and raw request identities',
+  '✔ Commerce storefront shipping enrichment diagnostics keep typed owner facts, redact raw request context, and return a stable compatibility envelope',
 );

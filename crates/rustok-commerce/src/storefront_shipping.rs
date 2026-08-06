@@ -225,7 +225,9 @@ pub async fn enrich_cart_delivery_groups(
             requested_locale,
             tenant_default_locale,
         );
-        crate::CommerceError::Validation(error.to_string())
+        crate::CommerceError::Validation(
+            "Cart shipping details are temporarily unavailable".to_string(),
+        )
     })
 }
 
