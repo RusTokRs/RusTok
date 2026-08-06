@@ -13201,6 +13201,7 @@ dependencies = [
  "leptos-ui-routing",
  "leptos_axum",
  "rustok-api",
+ "rustok-channel",
  "rustok-core",
  "rustok-forum",
  "rustok-graphql",
@@ -13400,6 +13401,7 @@ dependencies = [
 name = "rustok-index"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "async-trait",
  "base64 0.22.1",
  "chrono",
@@ -15438,9 +15440,11 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
+ "tracing",
  "web-sys",
 ]
 

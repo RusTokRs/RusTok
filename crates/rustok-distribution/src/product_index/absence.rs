@@ -7,7 +7,7 @@ use rustok_index::{
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 
-pub(super) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str =
+pub(crate) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str =
     "product-locale-absence-watermark";
 const PRODUCT_ABSENCE_PROVIDER: &str = "product-locale-absence-postgres";
 

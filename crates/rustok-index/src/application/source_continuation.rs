@@ -533,13 +533,13 @@ mod tests {
     #[test]
     fn sealed_cursor_round_trips_only_under_exact_scope() {
         let tenant_id = Uuid::new_v4();
-        let scope = scope(tenant_id);
+        let base_scope = scope(tenant_id);
         let codec = codec("current", &[("current", 7)]);
         let token = codec
-            .seal(&scope, &cursor(), now(), Duration::from_secs(300))
+            .seal(&base_scope, &cursor(), now(), Duration::from_secs(300))
             .unwrap();
 
-        assert_eq!(codec.open(&scope, &token, now()).unwrap(), cursor());
+        assert_eq!(codec.open(&base_scope, &token, now()).unwrap(), cursor());
 
         let other_tenant = scope(Uuid::new_v4());
         assert!(matches!(
@@ -547,7 +547,7 @@ mod tests {
             Err(IndexSourceContinuationError::TenantMismatch)
         ));
 
-        let mut other_schema = scope.clone();
+        let mut other_schema = base_scope.clone();
         other_schema.schema.version = SchemaVersion::new(2);
         assert!(matches!(
             codec.open(&other_schema, &token, now()),

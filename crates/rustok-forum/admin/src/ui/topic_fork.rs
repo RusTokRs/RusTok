@@ -1,6 +1,7 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
-use leptos_auth::{use_auth_token, use_current_tenant};
+use leptos::task::spawn_local;
+use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -18,8 +19,8 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
     let requested_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
     let candidates_locale = requested_locale.clone();
     let replies_locale = requested_locale.clone();
-    let token = use_auth_token();
-    let tenant = use_current_tenant();
+    let token = use_token();
+    let tenant = use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (source_topic_id, set_source_topic_id) = signal(String::new());
     let (root_reply_id, set_root_reply_id) = signal(String::new());
