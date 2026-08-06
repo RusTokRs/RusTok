@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-06  
-Status: source-parity-current / delete-route-tombstone-source-ready / execution-evidence-pending
+Status: source-parity-current / route-history-import-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event, routing and cache boundaries
 
 ## Source-of-truth policy
@@ -18,7 +18,7 @@ Optional external event infrastructure is outside the active Pages cursor. Optio
 
 ## Rechecked merged cursor
 
-Current `main` through PR #3020 contains:
+Current `main` through PR #3026 contains:
 
 - PR #2955 — publish/rollback event-correlation and generation miss/refill contract;
 - PR #2971 — source-ready PostgreSQL publish/rollback outbox-to-cache packet;
@@ -39,9 +39,10 @@ Current `main` through PR #3020 contains:
 - PR #3014 — anonymous SSR delivery boundary and explicit artifact inspector source;
 - PR #3016 — public detail/list tenant locale fallback parity;
 - PR #3018 — immutable published slug route aliases and localized canonical URLs;
-- PR #3020 — registered host route decision and canonical/redirect/gone response composition.
+- PR #3020 — registered host route decision and canonical/redirect/gone response composition;
+- PR #3026 — forward public-route snapshots and delete tombstone composition.
 
-The present source slice adds forward lifecycle ownership for delete route tombstones without changing Page Builder/Fly behavior.
+The present source slice adds an explicit bounded historical route import owner without changing Page Builder/Fly behavior.
 
 ## Retained source marker index
 
@@ -59,9 +60,10 @@ This compact index preserves the exact stable source markers consumed by the ret
 - `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready.
 - `anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready. The source guard uses feature-resolved `cargo metadata`; bundle artifact execution remains pending.
 - `anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready. The current public Pages host is SSR-only, and the client bundle gate is conditional.
-- `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready. Historical route backfill/import policy remains open.
+- `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready.
+- `route-history-import-source-ready`; Historical route import: source-ready. The owner accepts explicit bounded provenance records; automatic historical inference remains deliberately unsupported.
 
-Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current delete-route-tombstone status above.
+Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current tombstone and explicit import statuses above.
 
 ## Current parity state
 
@@ -122,26 +124,42 @@ Execution remains pending.
 
 ### Delete route tombstones: source-ready
 
-`delete-route-tombstone-source-ready`; Delete route tombstones: source-ready.
-
-Pages now retains a forward-only `page_route_publications` snapshot ledger. A page leaving `published` through unpublish or archive records each localized public route before lifecycle mutation. The ledger has no page foreign key and therefore survives physical deletion.
+Pages retains a forward-only `page_route_publications` snapshot ledger. A page leaving `published` through unpublish or archive records each localized public route before lifecycle mutation. The ledger has no page foreign key and therefore survives physical deletion.
 
 A never-published draft creates no public snapshot and its slug remains reusable after delete.
 
 For an admitted non-published delete, `PageService::delete` records missing `gone` aliases with stable reason `Page deleted` before deleting bodies, translations and the page row, and before committing `NodeDeleted`. Existing immutable redirect rows are preserved rather than rewritten. When their target page is physically absent and has a retained tombstone, route resolution folds those historical redirects into `Gone`, so every formerly public route reaches the host's existing `410` response.
 
+Execution remains pending.
+
+### Historical route import: source-ready
+
+`PageRouteHistoryImportService::import_public_routes` is the explicit repair owner for public route history that cannot be reconstructed safely from current Pages state.
+
+The command requires `pages:manage`, accepts one normalized source and 1–100 route items, and commits the batch in one transaction. Every accepted item creates or verifies:
+
+- an immutable `page_route_history_imports` provenance receipt keyed by tenant, source and source-record identifier;
+- a canonical SHA-256 request hash over page, locale and slug;
+- the exact `page_route_publications` retained claim;
+- a direct `gone` alias when the page was already missing and the route was unclaimed.
+
+Exact replay is idempotent. Provenance payload drift and current/snapshot/alias ownership overlap fail closed with `PAGE_ROUTE_HISTORY_IMPORT_CONFLICT`.
+
+Existing same-page published-slug redirects remain immutable. A missing page with redirect-only history must already have, or the same batch must add, at least one direct terminal `gone` route; otherwise the entire batch rolls back. Existing pages receive a snapshot only and enter `Gone` through the normal delete owner later.
+
+Automatic scans of old translations, Page Builder artifacts or current draft/archived rows are not claimed because those sources do not prove complete historical public ownership.
+
 Source evidence:
 
-- `crates/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs`;
-- `crates/rustok-pages/src/entities/page_route_publication.rs`;
-- `crates/rustok-pages/src/services/page/route.rs`;
-- `crates/rustok-pages/src/services/page/lifecycle.rs`;
-- `crates/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-delete-route-tombstone-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs`;
-- `docs/modules/pages-page-builder-delete-route-tombstone-packet-2026-08-06.md`.
+- `crates/rustok-pages/src/migrations/m20260806_000012_create_page_route_history_imports.rs`;
+- `crates/rustok-pages/src/entities/page_route_history_import.rs`;
+- `crates/rustok-pages/src/services/page/route_history_import.rs`;
+- `crates/rustok-pages/tests/page_route_history_import_sqlite.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-route-history-import-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs`;
+- `docs/modules/pages-page-builder-route-history-import-packet-2026-08-06.md`.
 
-Historical route backfill/import policy remains open. Execution evidence remains pending.
+Execution remains pending.
 
 ### Anonymous storefront boundary: source-ready
 
@@ -163,7 +181,8 @@ Authenticated real-DOM inline editing is not implemented and remains outside thi
 | Published slug alias ledger and localized canonical URLs | Source-ready | SQLite/PostgreSQL/SEO execution pending |
 | Host canonical/redirect/gone response | Source-ready | Registered server-function and host SSR execution pending |
 | Delete route tombstones for new lifecycle transitions | Source-ready | SQLite/PostgreSQL/host execution pending |
-| Historical route backfill/import | Open | Not implemented |
+| Explicit historical route import | Source-ready | SQLite/PostgreSQL/operator execution pending |
+| Automatic historical route inference | Deliberately unsupported | External provenance required |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -178,14 +197,15 @@ Authenticated real-DOM inline editing is not implemented and remains outside thi
 
 ## Boundaries
 
-This slice changes Pages route-history persistence, lifecycle composition and route resolution.
+This slice changes Pages route-history persistence and adds an explicit owner repair command.
 
 It does not:
 
+- infer historical routes automatically;
+- validate the truth of an external archive or ledger;
 - change Page Builder or Fly behavior;
 - change page bodies, immutable artifacts, publish or rollback receipts;
-- change GraphQL or REST schemas;
-- add historical route backfill/import;
+- change GraphQL, REST, host routes or admin UI;
 - change channel visibility or module-admission policy;
 - change cache namespaces, generation scopes, key shape, TTL or capacity;
 - change event schemas or optional external event infrastructure;
@@ -194,10 +214,10 @@ It does not:
 
 ## Next cursor
 
-1. Run the delete route tombstone verifier and focused SQLite regression.
-2. Run the host route response verifier and registered SQLite/Axum server-function regression.
-3. Run the published slug alias verifier and focused SQLite regression.
-4. Define bounded historical route backfill/import policy as a separate source slice.
+1. Run the route history import verifier and focused SQLite regression.
+2. Run the delete route tombstone verifier and focused SQLite regression.
+3. Run the host route response verifier and registered SQLite/Axum server-function regression.
+4. Run the published slug alias verifier and focused SQLite regression.
 5. Run the public list locale fallback verifier and focused Pages locale regression.
 6. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
 7. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
@@ -211,6 +231,10 @@ It does not:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
+cargo test -p rustok-pages \
+  --test page_route_history_import_sqlite -- --nocapture
+
 node crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
 cargo test -p rustok-pages \
   --test page_delete_route_tombstone_sqlite -- --nocapture
