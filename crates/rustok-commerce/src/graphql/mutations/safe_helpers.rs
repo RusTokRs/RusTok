@@ -435,6 +435,7 @@ pub(crate) async fn resolve_storefront_line_item_input(
         tenant_id,
         pricing_read_port,
         pricing_port_context,
+        pricing_context,
         locale,
         default_locale,
         public_channel_slug,
