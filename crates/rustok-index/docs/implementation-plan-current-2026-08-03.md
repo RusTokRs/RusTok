@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay rechecked against `main@e0451f978e8f533a5949710509ea8327e4a140c0` and active
-branch `agent/index-m5-social-graph-event-route-20260806`.
+Status overlay rechecked against current `main` after Social Graph route merge #3102 and active
+branch `agent/index-m5-product-source-refresh-contract-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
@@ -31,10 +31,16 @@ commands, current source hashes, required case names, bounded database/toolchain
 credential-redacted stdout/stderr, and an atomic terminal pass packet. The packet and logs remain
 absent until the repository owner executes the capture runner.
 
-An independent M5 slice now registers Social Graph as the first exact production mutation route. It
-adds one bounded authoritative replay source over `social_graph_relations`, reuses the existing Iggy
+An independent M5 slice registers Social Graph as the first exact production mutation route. It adds
+one bounded authoritative replay source over `social_graph_relations`, reuses the existing Iggy
 consumer source identity, and atomically materializes the immutable mutation event registry with the
 staged source catalog. This does not advance or bypass the concrete-repair evidence cursor.
+
+A second independent M5 slice adds exact source-refresh orchestration for thin owner change events.
+One event identifies an exact `EntityKey`, owner event UUID, and positive minimum source version. The
+worker resolves the immutable route and source, performs one bounded exact load, requires an upsert
+or tombstone at or beyond the event fence, rebinds the canonical mutation to the broker event UUID,
+durably applies it, and only then acknowledges. Product wire events and runtime wiring remain open.
 
 Concrete missing-entity repair:
 
@@ -75,6 +81,8 @@ remain open.
 - M5 inbox deduplication and monotonic source versions: `complete`
 - M5 mutation event registry and commit-before-ack orchestration:
   `generic_source_complete_social_graph_route_runtime_execution_pending`
+- M5 exact source-refresh event worker:
+  `source_complete_owner_event_publication_and_runtime_wiring_pending`
 - M5 Social Graph bounded replay source and exact production event route:
   `source_complete_runtime_execution_pending`
 - M5/M6 bounded source replay contract: `source_complete_owner_execution_pending`
@@ -117,11 +125,15 @@ remain open.
 - [x] Add a source replay registry with bounded failure classification.
 - [x] Add inbox deduplication and monotonic source versions.
 - [x] Add a database-neutral mutation-source event registry and commit-before-ack orchestration.
+- [x] Add exact one-key source-refresh orchestration with minimum owner revision fencing.
 - [x] Register the Social Graph production event route and bounded replay source.
 - [x] Reuse the concrete Social Graph Iggy consumer/acknowledger, bounded retry/backoff, DLQ and
       poison receipts, graceful shutdown, and lag/outcome metrics.
 - [x] Materialize selected PostgreSQL sources and mutation event routes atomically.
-- [ ] Register remaining selected production owner routes, beginning with Product/ProductVariant.
+- [ ] Define reviewed Product locale and ProductVariant refresh event families with exact owner
+      revision and release-digest updates.
+- [ ] Publish Product/ProductVariant refresh events transactionally from every owner change path.
+- [ ] Register remaining selected production owner routes and concrete consumers.
 - [ ] Add equivalent concrete consumer policy for every remaining selected owner route.
 - [ ] Retain crash-between-commit-and-ack and redelivery evidence against the generic registered
       route boundary.
@@ -199,8 +211,9 @@ remain open.
 - [x] Add Product, ProductVariant, and SalesChannel schemas and bounded current-state sources.
 - [x] Add stable replay identities and retained deletes.
 - [x] Add Product-to-ProductVariant graph materialization.
-- [ ] Add Product/ProductVariant production owner event routes and concrete incremental consumer
-      wiring.
+- [x] Add the generic exact-source refresh worker required by Product/ProductVariant notifications.
+- [ ] Add Product/ProductVariant owner event contracts, transactional publication, production routes,
+      and concrete incremental consumer wiring.
 - [ ] Persist and enforce per-tenant schema readiness.
 - [ ] Complete durable Product-to-SalesChannel relation semantics and retained evidence.
 - [ ] Admit tombstone purge, freshness/outage/restart/backlog recovery, and delete/recreate evidence.
@@ -224,13 +237,16 @@ The owner must run the locked capture command from a clean commit. The retained 
 - normal full-mutation versus exact edge-owner serialization results;
 - complete credential-redacted stdout/stderr and final pass status.
 
-Independent source-only work may continue on remaining M5/M7 owner routes, but public repair
-authorization transport, automatic iteration, time-derived leases, and lifecycle auto-resolution
-remain blocked until admission.
+Independent source-only work may continue on Product event publication and remaining M5/M7 owner
+routes, but public repair authorization transport, automatic iteration, time-derived leases, and
+lifecycle auto-resolution remain blocked until admission.
 
 ## Owner verification for current source boundaries
 
 ```bash
+cargo test -p rustok-index source_refresh_event --lib -- --nocapture
+node scripts/verify/verify-index-source-refresh-event.mjs
+
 cargo test -p rustok-social-graph --features index-consumer index_source -- --nocapture
 cargo test -p rustok-index source_factory -- --nocapture
 node scripts/verify/verify-index-social-graph-mutation-route.mjs
