@@ -1,6 +1,6 @@
 # M6 targeted drift repair boundary
 
-Status: `source_complete_recovery_aware_orphan_pending`.
+Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.
 
 ## Purpose
 
@@ -11,10 +11,9 @@ by `PostgresIndexDriftConfirmedCandidateWriter`:
 - `index.confirmed_missing_entity`;
 - `index.confirmed_orphan_link.<sha256>`.
 
-A separate concrete composition supports only the missing-entity kind and now includes a fail-closed
-prepared-command recovery policy. Orphan-link repair remains unsupported. The service does not scan
-findings, choose arbitrary SQL, accept a record payload, run a background loop, mount a transport, or
-automatically resolve the finding.
+Separate concrete compositions now support both finding kinds behind the same fail-closed
+prepared-command recovery policy. The service does not scan findings, choose arbitrary SQL, accept a
+record payload, run a background loop, mount a transport, or automatically resolve the finding.
 
 ## Exact command
 
@@ -90,15 +89,10 @@ The evidence reader returns only a bounded state and lowercase SHA-256 digest:
 - `Converged`;
 - `Changed`.
 
-A successful receipt requires:
-
-- repairable before evidence;
-- an owner `Applied` result with a bounded receipt digest;
-- converged after evidence.
-
-Any other admitted result becomes a typed `NotRepaired` receipt. Dependency failures stay bounded
-retryable/permanent machine-code failures and leave the durable reservation available for an exact,
-recovery-admitted retry.
+A successful receipt requires repairable before evidence, an owner `Applied` result with a bounded
+receipt digest, and converged after evidence. Any other admitted result becomes a typed
+`NotRepaired` receipt. Dependency failures stay bounded retryable/permanent machine-code failures and
+leave the durable reservation available for an exact, recovery-admitted retry.
 
 ## Prepared-command recovery policy
 
@@ -118,26 +112,25 @@ New reservations receive immutable revision `0` state `active`. A legacy or cras
 row with no ledger decision fails closed with `index_drift_repair_recovery_required`; it never resumes
 from wall-clock age or process-liveness inference.
 
-The concrete missing-entity composition wraps both the durable store and owner:
+Both concrete compositions wrap the durable store and owner:
 
 - reservation and completion require latest state `active`;
 - the owner holds the same tenant/command PostgreSQL advisory fence while validating payload identity,
-  checking active state, and performing the idempotent mutation call;
+  checking active state, and performing its idempotent mutation call;
 - pause or abandon therefore wins before owner admission or waits until the already admitted owner
   call finishes;
 - a database trigger rejects `prepared -> completed` unless latest state is still `active`.
 
 If an operator decision wins after the owner call but before receipt persistence, completion fails
 closed. No side effect is inferred. Authorized resume preserves the original command UUID and reaches
-the established mutation inbox duplicate path.
+the command-bound inbox duplicate path.
 
 The detailed policy is documented in `m6-prepared-repair-recovery.md`.
 
 ## Concrete missing-entity composition
 
-`materialize_postgres_index_drift_missing_entity_repair_service` composes the first concrete path. It
-requires an explicit repair authorizer, frozen source and absence registries, an immutable schema
-registry, and PostgreSQL.
+`materialize_postgres_index_drift_missing_entity_repair_service` requires an explicit repair
+authorizer, frozen source and absence registries, an immutable schema registry, and PostgreSQL.
 
 The concrete path:
 
@@ -152,6 +145,28 @@ The concrete path:
 - applies the recovery-aware store, owner fence, and completion trigger described above.
 
 The detailed concrete contract is documented in `m6-missing-entity-repair-composition.md`.
+
+## Concrete orphan-link composition
+
+`materialize_postgres_index_drift_orphan_link_repair_service` requires an explicit repair authorizer,
+a frozen source registry, a frozen absence registry, and PostgreSQL.
+
+The concrete path:
+
+- rejects `MissingEntity` before the generic reservation store can create `prepared` state;
+- brackets one repeatable-read materialized snapshot with two exact source reads and two exact target
+  reads;
+- requires the authoritative source to remain present at the exact indexed version with the exact link
+  name, ordinal, and target;
+- requires the linked target to remain absent at the exact committed absence version;
+- delegates persistence to `PostgresIndexOrphanLinkMutationStore`, not to SQL in the repair owner;
+- uses the durable repair command UUID as the `index_inbox` delivery identity;
+- deletes only the exact `index_links` row while preserving source version, source payload, and every
+  other link;
+- treats an absent link as convergence only when the exact command-bound inbox delivery is `applied`;
+- applies the same recovery-aware store, owner fence, and completion trigger.
+
+The detailed concrete contract is documented in `m6-orphan-link-repair-composition.md`.
 
 ## Terminal receipt
 
@@ -181,12 +196,16 @@ Authorized recovery resume also rejects a finding that is no longer open.
 ## Crash and lifecycle boundary
 
 A `prepared` reservation intentionally survives source, owner, evidence, serialization, or process
-failure. The concrete missing-entity owner remains idempotent through the mutation inbox.
+failure. Missing-entity deletion and orphan-link removal both retain command-bound inbox identity for
+exact retry.
+
+For orphan-link repair, link deletion and inbox completion share one serializable transaction. An
+absent link without the exact applied delivery is never accepted as convergence. For missing-entity
+repair, the entity tombstone and mutation inbox provide the existing monotonic duplicate path.
 
 Recovery decisions are immutable and never derived from elapsed time. Pause is an admission fence,
 not cancellation after an owner call has acquired the advisory lock. Abandon is a terminal recovery
-decision and does not fabricate before evidence, after evidence, an owner receipt, or a repair
-receipt.
+decision and does not fabricate evidence, an owner receipt, or a repair receipt.
 
 Finding lifecycle rows and repair/recovery history remain separate. Recovery neither resolves nor
 ignores a finding, and lifecycle closure does not delete the durable repair or recovery records.
@@ -197,37 +216,32 @@ Repair and recovery command `Debug` output expose actor-subject and reason lengt
 receipt decoders have no derived payload-revealing `Debug`. Public failures expose bounded machine
 codes only.
 
-The crate exports internal PostgreSQL materializers, but does not insert the store, evidence reader,
-owner, repair service, or recovery service into `ModuleRuntimeExtensions`. There is no GraphQL, HTTP,
-CLI, MCP, native-admin, scheduler, worker, or automatic-repair surface.
+The crate exports internal PostgreSQL materializers, but does not insert either concrete service,
+store, evidence reader, owner, or recovery service into `ModuleRuntimeExtensions`. There is no
+GraphQL, HTTP, CLI, MCP, native-admin, scheduler, worker, or automatic-repair surface.
 
 ## Deliberate limits
 
-These slices do not add:
-
-- a concrete orphan-link repair owner;
-- lifecycle transition after successful repair;
-- time-based lease expiry or automatic ownership inference;
-- cancellation after an owner call acquires the recovery fence;
-- automatic finding iteration or candidate-page consumption;
-- public authorization or transport;
-- retained migration, PostgreSQL/SQLite, owner, crash-window, concurrency, workflow, or CI evidence.
+These slices do not add lifecycle transition after successful repair, time-based lease expiry,
+automatic ownership inference, cancellation after an owner call acquires the recovery fence,
+automatic finding iteration, candidate-page consumption, public authorization transport, or retained
+migration/PostgreSQL/owner/crash-window/concurrency/workflow/CI evidence.
 
 ## Next implementation step
 
-Compose one concrete bounded orphan-link evidence reader and idempotent mutation owner behind the
-existing recovery-aware repair boundary. Preserve exact source link identity, ordinal, typed target,
-target absence version, and durable command UUID.
-
-Keep public transport, automatic finding iteration, and retained production evidence separate.
+Retain executable migration, crash-window, inbox-idempotency, recovery-race, and PostgreSQL
+concurrency evidence for both concrete repair owners. Keep public authorization transport and
+automatic finding iteration separate until those packets are admitted.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_repair -- --nocapture
 cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
+cargo test -p rustok-index drift_orphan_link_repair -- --nocapture
 node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-missing-entity-repair-composition.mjs
+node scripts/verify/verify-index-orphan-link-repair-composition.mjs
 node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
