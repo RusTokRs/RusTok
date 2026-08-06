@@ -39,6 +39,7 @@ const scripts = [
   'verify-index-missing-entity-repair-composition.mjs',
   'verify-index-orphan-link-repair-composition.mjs',
   'verify-index-prepared-repair-recovery.mjs',
+  'verify-index-repair-execution-postgres-harness.mjs',
   'verify-index-reconciliation-retry-store.mjs',
   'verify-index-reconciliation-runner-retry.mjs',
   'verify-index-reconciliation-host-scheduler.mjs',
