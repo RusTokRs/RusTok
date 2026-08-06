@@ -5,6 +5,7 @@ mod drift_candidates;
 mod drift_digest;
 mod drift_finding_lifecycle;
 mod drift_repair;
+mod drift_repair_recovery;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
@@ -87,6 +88,16 @@ pub use drift_repair::{
     IndexDriftRepairService, IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome,
     IndexDriftRepairTarget, IndexDriftRepairTargetKind, IndexDriftRepairTicket,
     IndexDriftRepairValidationError,
+};
+pub use drift_repair_recovery::{
+    IndexDriftAuthorizedRepairRecoveryCommand, IndexDriftRepairRecoveryAction,
+    IndexDriftRepairRecoveryAuthorization, IndexDriftRepairRecoveryAuthorizer,
+    IndexDriftRepairRecoveryCommand, IndexDriftRepairRecoveryFailure,
+    IndexDriftRepairRecoveryFailureError, IndexDriftRepairRecoveryFailureKind,
+    IndexDriftRepairRecoveryOutcome, IndexDriftRepairRecoveryReceipt,
+    IndexDriftRepairRecoveryService, IndexDriftRepairRecoveryState,
+    IndexDriftRepairRecoveryStore, IndexDriftRepairRecoveryStoreOutcome,
+    IndexDriftRepairRecoveryValidationError,
 };
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
