@@ -1,2 +1,2 @@
 mod menu;
-pub use menu::{NavigationHeaderMenu, NavigationView};
+pub use menu::{NavigationHeaderMenu, NavigationSnapshotProvider, NavigationView};

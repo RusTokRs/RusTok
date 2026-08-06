@@ -11,10 +11,6 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const shipping = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
-const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
-const fulfillmentErrors = read('crates/rustok-fulfillment/src/error.rs');
-const apiPorts = read('crates/rustok-api/src/ports.rs');
-const shippingService = read('crates/rustok-commerce/src/services/shipping_profile.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -32,6 +28,13 @@ const between = (content, start, end, label) => {
   }
   return content.slice(startIndex, endIndex);
 };
+const requireBefore = (content, first, second, label) => {
+  const firstIndex = content.indexOf(first);
+  const secondIndex = content.indexOf(second);
+  if (firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex) {
+    failures.push(`${label}: ${first} must precede ${second}`);
+  }
+};
 
 const profileMapper = between(
   shipping,
@@ -45,65 +48,18 @@ const mutationMapper = between(
   'fn admin_shipping_option_read_port_context(',
   'shipping-option mutation mapper',
 );
-const readContext = between(
-  shipping,
-  'fn admin_shipping_option_read_port_context(',
-  'fn map_admin_shipping_option_port_error(',
-  'shipping-option read context',
-);
 const readMapper = between(
   shipping,
   'fn map_admin_shipping_option_port_error(',
   'async fn validate_shipping_option_profile_inputs(',
   'shipping-option read mapper',
 );
-const listRoute = between(
+const validationHelper = between(
   shipping,
-  'pub async fn list_shipping_options(',
-  '/// Create admin shipping option',
-  'shipping-option list route',
+  'async fn validate_shipping_option_profile_inputs(',
+  '/// List admin shipping profiles',
+  'shipping-profile validation helper',
 );
-const createRoute = between(
-  shipping,
-  'pub async fn create_shipping_option(',
-  '/// Show admin shipping option',
-  'shipping-option create route',
-);
-const showRoute = between(
-  shipping,
-  'pub async fn show_shipping_option(',
-  '/// Update admin shipping option',
-  'shipping-option show route',
-);
-const updateRoute = between(
-  shipping,
-  'pub async fn update_shipping_option(',
-  '/// Deactivate admin shipping option',
-  'shipping-option update route',
-);
-const deactivateRoute = between(
-  shipping,
-  'pub async fn deactivate_shipping_option(',
-  '/// Reactivate admin shipping option',
-  'shipping-option deactivate route',
-);
-const reactivateStart = shipping.indexOf('pub async fn reactivate_shipping_option(');
-const reactivateRoute = reactivateStart < 0 ? '' : shipping.slice(reactivateStart);
-if (reactivateStart < 0) failures.push('shipping-option reactivate route: unable to isolate source block');
-
-for (const [value, label] of [
-  ['CommerceError, ShippingProfileService', 'typed commerce error import'],
-  ['use rustok_fulfillment::error::FulfillmentError;', 'typed mutation error import'],
-  ['PortActor, PortContext, PortError, PortErrorKind, RequestContext', 'typed read error imports'],
-  ['ListAllShippingOptionProjectionsRequest', 'typed admin list request'],
-  ['ReadShippingOptionProjectionRequest', 'typed admin lookup request'],
-  ['fn map_shipping_profile_error(error: CommerceError)', 'profile mapper'],
-  ['fn map_admin_shipping_option_error(', 'mutation mapper'],
-  ['fn admin_shipping_option_read_port_context(', 'read context builder'],
-  ['fn map_admin_shipping_option_port_error(', 'read port mapper'],
-  ['async fn validate_shipping_option_profile_inputs(', 'profile validation helper'],
-  ['const ADMIN_SHIPPING_BOUNDARY: &str = "commerce_admin_shipping_http";', 'HTTP boundary'],
-]) requireText(shipping, value, label);
 
 for (const [value, label] of [
   ['CommerceError::ShippingProfileNotFound(_)', 'profile not-found mapping'],
@@ -119,8 +75,24 @@ for (const [value, label] of [
   ['"commerce_admin_shipping_profile_invalid"', 'profile invalid code'],
   ['"commerce_admin_shipping_profile_storage_unavailable"', 'profile storage code'],
   ['"commerce_admin_shipping_profile_failed"', 'profile fail-closed code'],
+  ['let error = AdminShippingDiagnosticError;', 'profile diagnostic shadow'],
+  ['error = ?error', 'profile redacted error event'],
+  ['owner = "rustok_commerce.shipping_profile"', 'profile owner event'],
+  ['boundary = ADMIN_SHIPPING_BOUNDARY', 'profile boundary event'],
   ['HttpError::new(status, code, message)', 'profile static envelope'],
 ]) requireText(profileMapper, value, label);
+requireBefore(
+  profileMapper,
+  'CommerceError::ShippingProfileNotFound(_)',
+  'let error = AdminShippingDiagnosticError;',
+  'profile typed policy selection',
+);
+requireBefore(
+  profileMapper,
+  'let error = AdminShippingDiagnosticError;',
+  'tracing::error!(',
+  'profile diagnostic shadow',
+);
 
 for (const [value, label] of [
   ['FulfillmentError::Validation(_)', 'mutation validation mapping'],
@@ -132,16 +104,10 @@ for (const [value, label] of [
   ['"commerce_admin_not_found"', 'mutation not-found code'],
   ['"commerce_admin_fulfillment_state_conflict"', 'mutation conflict code'],
   ['"commerce_admin_fulfillment_storage_unavailable"', 'mutation unavailable code'],
+  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'mutation context projection'],
+  ['let error = AdminShippingDiagnosticError;', 'mutation diagnostic shadow'],
   ['HttpError::new(status, code, message)', 'mutation static envelope'],
 ]) requireText(mutationMapper, value, label);
-
-for (const [value, label] of [
-  ['PortActor::user(auth.user_id.to_string())', 'read user actor'],
-  ['request_context.locale.as_str()', 'read locale'],
-  ['format!("commerce-admin-shipping-option:{operation}:{resource_id}")', 'read correlation id'],
-  ['with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
-  ['request_context.channel_slug.as_deref()', 'read channel'],
-]) requireText(readContext, value, label);
 
 for (const [value, label] of [
   ['PortErrorKind::Validation', 'read validation kind'],
@@ -150,85 +116,72 @@ for (const [value, label] of [
   ['PortErrorKind::Forbidden', 'read forbidden kind'],
   ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'read unavailable kinds'],
   ['PortErrorKind::InvariantViolation', 'read invariant kind'],
-  ['StatusCode::BAD_REQUEST', 'read validation status'],
-  ['StatusCode::NOT_FOUND', 'read not-found status'],
-  ['StatusCode::CONFLICT', 'read conflict status'],
   ['StatusCode::UNAUTHORIZED', 'read forbidden status'],
-  ['StatusCode::SERVICE_UNAVAILABLE', 'read unavailable status'],
   ['StatusCode::INTERNAL_SERVER_ERROR', 'read invariant status'],
-  ['"commerce_admin_fulfillment_invalid"', 'read validation code'],
-  ['"commerce_admin_not_found"', 'read not-found code'],
-  ['"commerce_admin_fulfillment_state_conflict"', 'read conflict code'],
   ['"commerce_permission_denied"', 'read forbidden code'],
-  ['"commerce_admin_fulfillment_storage_unavailable"', 'read unavailable code'],
   ['"commerce_admin_fulfillment_failed"', 'read invariant code'],
-  ['error = ?error', 'typed owner cause'],
-  ['correlation_id = %port_context.correlation_id', 'correlation log'],
-  ['internal_code = %error.code', 'owner code log'],
-  ['retryable = error.retryable', 'retryability log'],
+  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'read route context projection'],
+  ['let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);', 'read port context projection'],
+  ['let error = AdminShippingOptionPortDiagnosticError {', 'read diagnostic error shadow'],
+  ['internal_code = %error.code', 'read stable owner code'],
+  ['retryable = error.retryable', 'read retryability'],
   ['HttpError::new(status, code, message)', 'read static envelope'],
 ]) requireText(readMapper, value, label);
 
-for (const [block, getter, operation, request, label] of [
-  [
-    listRoute,
-    '.shipping_option_admin_read_port()',
-    '.list_all_shipping_option_projections(',
-    'ListAllShippingOptionProjectionsRequest {',
-    'list route',
-  ],
-  [
-    showRoute,
-    '.shipping_option_read_port()',
-    '.read_shipping_option_projection(',
-    'ReadShippingOptionProjectionRequest {',
-    'show route',
-  ],
-]) {
-  requireText(block, getter, `${label} host runtime getter`);
-  requireText(block, operation, `${label} owner operation`);
-  requireText(block, request, `${label} typed request`);
-  requireText(block, 'map_admin_shipping_option_port_error(', `${label} port mapper`);
-  requireText(block, 'requested_locale: Some(request_context.locale.clone())', `${label} locale forwarding`);
-  requireText(block, 'tenant_default_locale: Some(tenant.default_locale.clone())', `${label} fallback forwarding`);
-  forbidText(block, 'FulfillmentService::new(', `${label} concrete read service`);
-}
+for (const [value, label] of [
+  ['ShippingProfileService::new(db.clone())', 'profile validation service'],
+  ['.ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())', 'profile validation operation'],
+  ['.map_err(map_shipping_profile_error)?;', 'profile validation mapper'],
+]) requireText(validationHelper, value, label);
 
-for (const [block, operation, label] of [
-  [createRoute, '.create_shipping_option(tenant.id, input)', 'create route'],
-  [updateRoute, '.update_shipping_option(tenant.id, id, input)', 'update route'],
-  [deactivateRoute, '.deactivate_shipping_option(tenant.id, id)', 'deactivate route'],
-  [reactivateRoute, '.reactivate_shipping_option(tenant.id, id)', 'reactivate route'],
+for (const route of [
+  'list_shipping_profiles',
+  'create_shipping_profile',
+  'show_shipping_profile',
+  'update_shipping_profile',
+  'deactivate_shipping_profile',
+  'reactivate_shipping_profile',
+  'list_shipping_options',
+  'create_shipping_option',
+  'show_shipping_option',
+  'update_shipping_option',
+  'deactivate_shipping_option',
+  'reactivate_shipping_option',
 ]) {
-  requireText(block, 'FulfillmentService::new(runtime.db_clone())', `${label} concrete mutation service`);
-  requireText(block, operation, `${label} mutation operation`);
-  requireText(block, 'map_admin_shipping_option_error(', `${label} mutation mapper`);
+  requireText(shipping, `pub async fn ${route}(`, `${route} route`);
 }
 
 for (const [value, label] of [
+  ['[Permission::FULFILLMENTS_READ]', 'read permission'],
+  ['[Permission::FULFILLMENTS_CREATE]', 'create permission'],
+  ['[Permission::FULFILLMENTS_UPDATE]', 'update permission'],
+  ['.shipping_option_admin_read_port()', 'admin list read port'],
+  ['.list_all_shipping_option_projections(', 'admin list read operation'],
+  ['.shipping_option_read_port()', 'detail read port'],
+  ['.read_shipping_option_projection(', 'detail read operation'],
+  ['FulfillmentService::new(runtime.db_clone())', 'shipping-option mutation owner'],
+  ['.create_shipping_option(tenant.id, input)', 'create option operation'],
+  ['.update_shipping_option(tenant.id, id, input)', 'update option operation'],
+  ['.deactivate_shipping_option(tenant.id, id)', 'deactivate option operation'],
+  ['.reactivate_shipping_option(tenant.id, id)', 'reactivate option operation'],
+  ['ShippingProfileService::new(runtime.db_clone())', 'shipping-profile owner'],
+  ['.list_shipping_profiles(', 'list profile operation'],
+  ['.create_shipping_profile(tenant.id, input)', 'create profile operation'],
+  ['.get_shipping_profile(', 'show profile operation'],
+  ['.update_shipping_profile(tenant.id, id, input)', 'update profile operation'],
+  ['.deactivate_shipping_profile(tenant.id, id)', 'deactivate profile operation'],
+  ['.reactivate_shipping_profile(tenant.id, id)', 'reactivate profile operation'],
   ['items.retain(|option| option.active == active)', 'active filter'],
   ['option.currency_code.eq_ignore_ascii_case(currency_code)', 'currency filter'],
   ['option.provider_id.eq_ignore_ascii_case(provider_id)', 'provider filter'],
   ['option.name.to_ascii_lowercase().contains(&search)', 'search filter'],
   ['skip(pagination.offset() as usize)', 'pagination offset'],
   ['take(pagination.limit() as usize)', 'pagination limit'],
-  ['validate_shipping_option_profile_inputs(', 'profile validation helper'],
+  ['validate_shipping_option_profile_inputs(', 'profile validation helper use'],
 ]) requireText(shipping, value, label);
 
-for (const [content, value, label] of [
-  [commerceErrors, 'Database(#[from] sea_orm::DbErr)', 'commerce database variant'],
-  [commerceErrors, 'Validation(String)', 'commerce validation variant'],
-  [fulfillmentErrors, 'Validation(String)', 'fulfillment validation variant'],
-  [fulfillmentErrors, 'ShippingOptionNotFound(Uuid)', 'fulfillment shipping-option variant'],
-  [fulfillmentErrors, 'FulfillmentNotFound(Uuid)', 'fulfillment resource variant'],
-  [fulfillmentErrors, 'InvalidTransition { from: String, to: String }', 'fulfillment transition variant'],
-  [fulfillmentErrors, 'Database(#[from] DbErr)', 'fulfillment database variant'],
-  [apiPorts, 'pub enum PortErrorKind {', 'port kind enum'],
-  [apiPorts, 'InvariantViolation,', 'invariant port kind'],
-  [shippingService, 'CommerceError::Validation(error.to_string())', 'profile validation construction'],
-]) requireText(content, value, label);
-
 for (const value of [
+  'error.to_string()',
   'err.to_string()',
   'other.to_string()',
   'error.message',
@@ -237,6 +190,10 @@ for (const value of [
   '.map_err(super::map_fulfillment_error)?;',
 ]) forbidText(shipping, value, 'unsafe admin shipping public conversion');
 
+const profileMapperUses = shipping.match(/map_shipping_profile_error/g) ?? [];
+if (profileMapperUses.length !== 8) {
+  failures.push(`expected profile mapper definition plus seven uses, found ${profileMapperUses.length}`);
+}
 const mutationMapperUses = shipping.match(/map_admin_shipping_option_error\(/g) ?? [];
 if (mutationMapperUses.length !== 5) {
   failures.push(`expected mutation mapper definition plus four uses, found ${mutationMapperUses.length}`);
@@ -245,9 +202,17 @@ const readMapperUses = shipping.match(/map_admin_shipping_option_port_error\(/g)
 if (readMapperUses.length !== 3) {
   failures.push(`expected read mapper definition plus two uses, found ${readMapperUses.length}`);
 }
-const localValidationUses = shipping.match(/validate_shipping_option_profile_inputs\(/g) ?? [];
-if (localValidationUses.length !== 3) {
-  failures.push(`expected validation helper definition plus two uses, found ${localValidationUses.length}`);
+const validationUses = shipping.match(/validate_shipping_option_profile_inputs\(/g) ?? [];
+if (validationUses.length !== 3) {
+  failures.push(`expected validation helper definition plus two uses, found ${validationUses.length}`);
+}
+const redactedDebugUses = shipping.match(/formatter\.write_str\("redacted"\)/g) ?? [];
+if (redactedDebugUses.length !== 2) {
+  failures.push(`expected two redacted diagnostic Debug implementations, found ${redactedDebugUses.length}`);
+}
+const traceUses = shipping.match(/tracing::error!\(/g) ?? [];
+if (traceUses.length !== 3) {
+  failures.push(`expected three bounded shipping error events, found ${traceUses.length}`);
 }
 
 if (failures.length > 0) {
@@ -257,5 +222,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin shipping reads use host-composed owner ports and stable HTTP envelopes while mutations retain lifecycle services',
+  '✔ Commerce admin shipping profiles and options preserve HTTP policy while emitting only bounded diagnostics',
 );

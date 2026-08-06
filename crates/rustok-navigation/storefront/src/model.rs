@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug, Deserialize, Serialize)]
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct StorefrontMenu {
     pub id: String,
     #[serde(rename = "effectiveLocale")]
@@ -8,6 +9,7 @@ pub struct StorefrontMenu {
     pub location: StorefrontMenuLocation,
     pub items: Vec<StorefrontMenuItem>,
 }
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum StorefrontMenuLocation {
@@ -16,7 +18,8 @@ pub enum StorefrontMenuLocation {
     Sidebar,
     Mobile,
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct StorefrontMenuItem {
     pub id: String,
     pub title: String,
@@ -24,4 +27,20 @@ pub struct StorefrontMenuItem {
     pub icon: Option<String>,
     #[serde(default)]
     pub children: Vec<StorefrontMenuItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StorefrontNavigationSnapshot {
+    pub header: Option<StorefrontMenu>,
+    pub footer: Option<StorefrontMenu>,
+}
+
+impl StorefrontNavigationSnapshot {
+    pub fn menu(&self, location: StorefrontMenuLocation) -> Option<&StorefrontMenu> {
+        match location {
+            StorefrontMenuLocation::Header => self.header.as_ref(),
+            StorefrontMenuLocation::Footer => self.footer.as_ref(),
+            StorefrontMenuLocation::Sidebar | StorefrontMenuLocation::Mobile => None,
+        }
+    }
 }

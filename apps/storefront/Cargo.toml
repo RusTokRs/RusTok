@@ -83,6 +83,7 @@ leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_urlencoded.workspace = true
+sha2.workspace = true
 futures = "0.3"
 rustok-core = { workspace = true, optional = true }
 rustok-api.workspace = true

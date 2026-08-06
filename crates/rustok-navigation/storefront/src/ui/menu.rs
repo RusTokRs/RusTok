@@ -1,13 +1,24 @@
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
-use crate::model::{StorefrontMenu, StorefrontMenuItem, StorefrontMenuLocation};
+use crate::model::{
+    StorefrontMenu, StorefrontMenuItem, StorefrontMenuLocation, StorefrontNavigationSnapshot,
+};
 use crate::transport;
 
 #[derive(Clone, Copy)]
 enum MenuPresentation {
     Header,
     Footer,
+}
+
+#[component]
+pub fn NavigationSnapshotProvider(
+    snapshot: StorefrontNavigationSnapshot,
+    children: Children,
+) -> impl IntoView {
+    provide_context(snapshot);
+    children()
 }
 
 #[component]
@@ -31,7 +42,15 @@ pub fn NavigationView() -> impl IntoView {
 }
 
 #[component]
-fn ActiveMenu(location: StorefrontMenuLocation, presentation: MenuPresentation) -> impl IntoView {
+fn ActiveMenu(location: StorefrontMenuLocation, presentation: MenuPresentation) -> AnyView {
+    if let Some(snapshot) = use_context::<StorefrontNavigationSnapshot>() {
+        return snapshot
+            .menu(location)
+            .cloned()
+            .map(|menu| render_menu(menu, presentation))
+            .unwrap_or_else(hidden_menu);
+    }
+
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let menu_resource = Resource::new_blocking(
         move || locale.clone(),
@@ -45,12 +64,17 @@ fn ActiveMenu(location: StorefrontMenuLocation, presentation: MenuPresentation) 
                 Suspend::new(async move {
                     match menu_resource.await {
                         Ok(Some(menu)) => render_menu(menu, presentation),
-                        Ok(None) | Err(_) => view! { <span class="hidden"></span> }.into_any(),
+                        Ok(None) | Err(_) => hidden_menu(),
                     }
                 })
             }}
         </Suspense>
     }
+    .into_any()
+}
+
+fn hidden_menu() -> AnyView {
+    view! { <span class="hidden"></span> }.into_any()
 }
 
 fn render_menu(menu: StorefrontMenu, presentation: MenuPresentation) -> AnyView {
