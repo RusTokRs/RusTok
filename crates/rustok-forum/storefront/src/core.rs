@@ -2,8 +2,8 @@ use rustok_ui_core::css_hex_accent_class;
 use uuid::Uuid;
 
 const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
-const MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN: usize = 64;
-const MAX_FORUM_TOPIC_ROUTE_SLUG_LEN: usize = 255;
+const MAX_FORUM_ROUTE_LOCALE_LEN: usize = 64;
+const MAX_FORUM_ROUTE_SLUG_LEN: usize = 255;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForumStorefrontCategoryRailLabels {
@@ -102,7 +102,8 @@ pub fn forum_storefront_category_card_view_model(
 ) -> ForumStorefrontCategoryCardViewModel {
     let is_active = selected_category_id == Some(item.id.as_str());
     ForumStorefrontCategoryCardViewModel {
-        href: category_href(module_route_base, item.id.as_str()),
+        href: category_href(item.effective_locale.as_str(), item.slug.as_str())
+            .unwrap_or_else(|| module_route_base.to_string()),
         is_active,
         container_class: forum_storefront_category_card_class(is_active),
         accent_class: forum_storefront_accent_class(item.color.as_deref()),
@@ -151,23 +152,27 @@ pub fn forum_storefront_topic_card_view_model(
     }
 }
 
-pub fn category_href(module_route_base: &str, category_id: &str) -> String {
-    format!("{module_route_base}?category={category_id}")
+pub fn category_href(locale: &str, slug: &str) -> Option<String> {
+    let locale = normalize_route_locale(locale)?;
+    let slug = normalize_route_slug(slug)?;
+    Some(format!("/{locale}/forum/c/{slug}"))
 }
 
 pub fn topic_href(topic_id: &str, locale: &str, slug: &str) -> Option<String> {
     let topic_id = Uuid::parse_str(topic_id.trim()).ok()?;
-    let locale = rustok_api::normalize_locale_tag(locale.trim())?;
-    if locale.chars().count() > MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN {
-        return None;
-    }
-    let slug = normalize_topic_route_slug(slug)?;
+    let locale = normalize_route_locale(locale)?;
+    let slug = normalize_route_slug(slug)?;
     let compact = topic_id.simple().to_string();
     let short_id = &compact[..FORUM_TOPIC_ROUTE_SHORT_ID_LEN];
     Some(format!("/{locale}/forum/t/{short_id}/{slug}"))
 }
 
-fn normalize_topic_route_slug(value: &str) -> Option<String> {
+fn normalize_route_locale(value: &str) -> Option<String> {
+    let locale = rustok_api::normalize_locale_tag(value.trim())?;
+    (locale.chars().count() <= MAX_FORUM_ROUTE_LOCALE_LEN).then_some(locale)
+}
+
+fn normalize_route_slug(value: &str) -> Option<String> {
     let mut normalized = String::with_capacity(value.len());
     let mut previous_dash = false;
     for ch in value.trim().chars().flat_map(char::to_lowercase) {
@@ -180,7 +185,7 @@ fn normalize_topic_route_slug(value: &str) -> Option<String> {
         }
     }
     let normalized = normalized.trim_matches('-').to_string();
-    (!normalized.is_empty() && normalized.len() <= MAX_FORUM_TOPIC_ROUTE_SLUG_LEN)
+    (!normalized.is_empty() && normalized.len() <= MAX_FORUM_ROUTE_SLUG_LEN)
         .then_some(normalized)
 }
 
@@ -198,10 +203,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builds_category_and_canonical_topic_hrefs() {
+    fn builds_canonical_category_and_topic_hrefs() {
         assert_eq!(
-            category_href("/en/modules/forum", "category-1"),
-            "/en/modules/forum?category=category-1"
+            category_href("en-us", "General Discussion").as_deref(),
+            Some("/en-US/forum/c/general-discussion")
         );
         assert_eq!(
             topic_href(
@@ -215,7 +220,9 @@ mod tests {
     }
 
     #[test]
-    fn canonical_topic_href_fails_closed_for_invalid_identity_or_slug() {
+    fn canonical_hrefs_fail_closed_for_invalid_identity_locale_or_slug() {
+        assert_eq!(category_href("invalid_locale!", "general"), None);
+        assert_eq!(category_href("en", "---"), None);
         assert_eq!(topic_href("topic-1", "en", "welcome"), None);
         assert_eq!(
             topic_href(
