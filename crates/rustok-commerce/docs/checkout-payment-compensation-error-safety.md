@@ -4,85 +4,73 @@ Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This slice closes raw payment-owner error propagation at the mounted Commerce checkout compensation consumer boundary.
+The mounted Commerce checkout compensation facade is
+`checkout_compensation_payment_safe.rs`. It retains the existing
+`checkout_compensation_owner_ports.rs` business logic privately and adapts the
+canonical payment and order compensation ports before their failures reach the
+legacy Commerce mapper.
 
-`services/mod.rs` mounts `checkout_compensation_payment_safe.rs`. The facade retains the established compensation implementation through a private `include!` of `checkout_compensation_owner_ports.rs`, while adapting every composed `CheckoutPaymentCompensationPort` before the legacy service receives an error.
+This document records the payment side of that combined facade. The later
+order slice reuses the same mount; inventory and cart compensation remain open.
 
-The default in-process factory, provider-registry construction, and custom payment compensation port injection all pass through the same adapter. The complete canonical `PortContext` and request are still delegated to `rustok-payment` unchanged.
+## Payment boundary policy
 
-Order, inventory, and cart compensation boundaries are intentionally outside this slice and continue through the retained implementation without payment-adapter policy.
+The default payment factory, provider-registry constructor, and custom payment
+port injection are all wrapped.
 
-## Public and persisted messages
+The wrapper preserves:
 
-The payment compensation adapter preserves the exact owner `kind`, `code`, and `retryable` fields while replacing owner message text with static Commerce-owned messages:
+- the canonical request and response types;
+- the complete `PortContext` delegated to the payment owner;
+- `PortError.kind`;
+- the exact owner `code`;
+- `retryable`;
+- successful compensation snapshots and ordering.
 
-- validation: `Checkout payment compensation request is invalid`;
-- not found: `Checkout payment compensation resource was not found`;
-- conflict: `Checkout payment compensation conflicts with the current payment state`;
-- forbidden: `Checkout payment compensation is not permitted`;
-- unavailable or timeout: `Checkout payment compensation service is temporarily unavailable`;
-- invariant violation: `Checkout payment compensation could not be completed safely`;
-- `payment.checkout_compensation_manual_reconciliation`: `Checkout payment compensation requires manual reconciliation`.
+It replaces `PortError.message` with a Commerce-owned static message before the
+retained mapper can construct `CheckoutCompensationError` or persist
+`compensation.to_string()` through `mark_compensation_retryable`.
 
-The retained mapper can continue classifying the stable manual-reconciliation code and constructing the existing `CheckoutCompensationError` variants, but it receives only the static adapter message. Because `CheckoutCompensationService::compensate` persists `compensation.to_string()`, the original payment-owner message can no longer reach `mark_compensation_retryable`.
+The manual-reconciliation owner code receives the static message
+`Checkout payment compensation requires manual reconciliation`.
 
-## Bounded diagnostics
+## Diagnostics
 
-The adapter records only:
+The facade emits a redacted diagnostic token plus bounded facts only:
 
-- truthful owner, owner operation, Commerce stage, boundary identity, stable owner code, typed kind, and retryability;
-- whether the owner message exists and its character length, never its text;
-- tenant and actor identity shapes;
-- actor kind, claim count, and role count;
-- channel, locale, correlation, causation, traceparent, and idempotency presence or shape;
-- deadline semantics;
-- checkout-operation and optional collection UUID shapes;
+- identity and context shapes;
+- claim and role counts;
+- request UUID presence/shape;
 - reason presence and length;
-- metadata JSON kind and top-level entry count;
-- a redacted diagnostic token.
+- metadata kind and entry count;
+- stable owner code, error kind, retryability;
+- owner-message presence and length.
 
-Unavailable, timeout, and invariant failures use error severity. Validation, not-found, conflict, and forbidden outcomes use warning severity.
+It does not record the complete `PortError`, owner message text, raw tenant,
+actor, channel, locale, correlation, causation, trace, idempotency, reason, or
+metadata values.
 
-The facade suppresses the retained compatibility diagnostic only when its truthful owner is `rustok_payment`; non-payment compensation diagnostics continue unchanged. The payment diagnostic does not record the complete `PortError`, raw request payload, raw tenant or actor identifiers, raw correlation or causation values, raw idempotency keys, or owner message text.
+The retained compatibility diagnostic is suppressed when the truthful owner is
+`rustok_payment`; the bounded facade event is authoritative.
 
-## Preserved contracts
+## Preserved behavior
 
-This change does not alter:
+The retained compensation source remains unchanged. Payment, order, inventory,
+and cart ordering, operation-journal transitions, replay behavior, DTOs, and
+public service signatures are preserved.
 
-- `CheckoutPaymentCompensationPort` requests, responses, or owner delegation;
-- payment provider cancellation or manual-reconciliation policy;
-- compensation ordering across payment, order, inventory, and cart;
-- operation claim, retryable journal update, or compensated checkpoint behavior;
-- successful compensation DTOs;
-- owner error kind, code, or retryability propagation;
-- custom payment compensation port injection or provider registry composition;
-- retained order, inventory, or cart compensation implementation;
-- GraphQL, HTTP, native, FBA, or FFA status.
+Order compensation is now also adapted by the combined facade. Inventory and
+cart compensation mapper cleanup remains open.
 
-## Static evidence
-
-`scripts/verify/verify-commerce-checkout-payment-compensation-error-safety.mjs` guards the mounted facade, all three payment-port composition paths, static message policy, owner classification preservation, bounded diagnostics, payment-only compatibility-log suppression, journal-path safety, truthful evidence, and the intentionally unchanged retained implementation.
-
-The existing `verify-commerce-checkout-compensation-owner-boundary.mjs` now reviews the mounted facade together with the retained source when checking owner-port topology.
-
-## Validation status
-
-Tests, Node verifiers, Cargo commands, formatting commands, payment-provider calls, database scenarios, workflows, and CI were intentionally not run by the implementation agent, per maintainer instruction.
-
-Suggested maintainer checks:
+## Intended maintainer checks
 
 ```bash
 node scripts/verify/verify-commerce-checkout-payment-compensation-error-safety.mjs
+node scripts/verify/verify-commerce-checkout-order-compensation-error-safety.mjs
 node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs
-node scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs
 cargo check -p rustok-commerce --lib
 ```
 
-## Remaining work
-
-This source review does not close:
-
-- order, inventory, or cart compensation consumer mapper message and context cleanup;
-- non-payment `CheckoutCompensationError` persistence cleanup;
-- runtime, provider, database, restart, remote-port, workflow, or CI evidence;
-- broad ecommerce mapper cleanup or any FBA/FFA promotion.
+No tests, Node verifiers, Cargo commands, formatting, payment-provider calls,
+database scenarios, restart scenarios, remote-port scenarios, workflows, or CI
+were executed for this source review.
