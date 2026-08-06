@@ -5,7 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "Shared reaction catalog, actor state, aggregate, and subject orchestration owner"
 
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
+
 [dependencies]
+async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
