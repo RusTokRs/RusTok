@@ -86,6 +86,7 @@ for (const key of [
   "runtime_bound_conditional_and_repeated_subtrees_are_excluded",
   "provider_and_composite_components_are_excluded",
   "static_leaf_children_in_unowned_layouts_remain_eligible",
+  "unchanged_focusout_does_not_consume_grant",
   "server_authorization_port_precedes_mutation",
   "exact_project_hash_precedes_mutation",
   "monotonic_sequence_precedes_mutation",
@@ -174,6 +175,8 @@ for (const marker of [
   "component.provider.is_some()",
   "!component.children().is_empty()",
   'content.contains("{{")',
+  '== Some(request.value.as_str())',
+  "InlineEditError::NoContentChange",
   "authorization.authorize(&request)",
   "EditorCommand::Patch",
   'ComponentPatch::default().set_field("content"',
@@ -187,6 +190,7 @@ for (const marker of [
   "data-inline-project-hash",
   "only_static_leaf_text_components_outside_runtime_subtrees_are_editable",
   "authorized_request_applies_one_canonical_fly_patch",
+  "unchanged_focusout_does_not_consume_the_one_commit_grant",
   "stale_replay_dynamic_bound_repeated_and_rejected_authorization_fail_closed",
   '"repeated-child"',
 ]) need(inline, marker, "Page Builder canonical inline session");
@@ -204,15 +208,17 @@ ordered(apply, [
   "request.expected_project_hash != current_hash",
   "location.page_index != page_index",
   "runtime_owned.contains(&request.component_id)",
+  "== Some(request.value.as_str())",
   "authorization.authorize(&request)",
   "self.editor.apply(EditorCommand::Patch",
   "GrapesJsCodec::encode_value(self.editor.document())",
-], "identity eligibility authorization mutation ordering");
+], "identity eligibility no-op authorization mutation ordering");
 
 for (const marker of [
   "authenticated-inline-adapter-source-ready",
   "Authenticated real-DOM inline adapter: source-ready",
   "Pages consumer grant issuance and document-only save mount remain open",
+  "unchanged `focusout`",
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "current-source overlay",
@@ -220,6 +226,7 @@ for (const marker of [
   "one canonical Fly `EditorCommand::Patch`",
   "Pages consumer grant issuance and save transport remain open",
   "runtime-owned subtrees",
+  "unchanged `focusout`",
 ]) need(actualization, marker, "Page Builder actualization overlay");
 for (const marker of [
   "source-ready / execution-pending",
@@ -229,6 +236,7 @@ for (const marker of [
   "EditorCommand::Patch",
   "new grant",
   "runtime-owned subtree",
+  "unchanged focusout",
   "Execution evidence remains pending",
 ]) need(packet, marker, "authenticated inline adapter packet");
 
