@@ -16,7 +16,7 @@ fn entity_key(tenant_id: Uuid) -> EntityKey {
 }
 
 fn digest(byte: char) -> String {
-    std::iter::repeat_n(byte, 64).collect()
+    std::iter::repeat(byte).take(64).collect()
 }
 
 #[test]
@@ -73,16 +73,18 @@ fn repaired_completion_requires_after_and_owner_receipt_digests() {
     );
     assert_eq!(invalid, Err(IndexDriftRepairValidationError::InvalidDigest));
 
+    let after = digest('b');
+    let owner_receipt = digest('c');
     let valid = IndexDriftRepairCompletion::new(
         "index_missing_entity_owner".to_owned(),
         IndexDriftRepairReceiptOutcome::Repaired,
         digest('a'),
-        Some(digest('b')),
-        Some(digest('c')),
+        Some(after.clone()),
+        Some(owner_receipt.clone()),
     )
     .expect("complete repaired evidence");
-    assert_eq!(valid.after_digest(), Some(digest('b').as_str()));
-    assert_eq!(valid.owner_receipt_digest(), Some(digest('c').as_str()));
+    assert_eq!(valid.after_digest(), Some(after.as_str()));
+    assert_eq!(valid.owner_receipt_digest(), Some(owner_receipt.as_str()));
 }
 
 #[test]
