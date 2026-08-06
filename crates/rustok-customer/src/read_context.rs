@@ -23,6 +23,7 @@ const LIST_PROFILE_ENRICHMENT_OPERATION: &str = "list_profile_enrichment";
 
 struct CustomerReadContextFacts {
     tenant_id_length: usize,
+    correlation_id_length: usize,
     actor_kind: &'static str,
     actor_id_length: usize,
     claim_count: usize,
@@ -211,6 +212,7 @@ fn customer_read_context_facts(context: &PortContext) -> CustomerReadContextFact
     };
     CustomerReadContextFacts {
         tenant_id_length: context.tenant_id.chars().count(),
+        correlation_id_length: context.correlation_id.chars().count(),
         actor_kind,
         actor_id_length: context.actor.id.chars().count(),
         claim_count: context.claims.len(),
@@ -313,7 +315,7 @@ fn log_customer_read_local_outcome(
             owner = CUSTOMER_OWNER,
             operation = owner_operation,
             local_operation,
-            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
             actor_id_length = context_facts.actor_id_length,
@@ -355,7 +357,7 @@ fn log_customer_read_local_outcome(
             owner = CUSTOMER_OWNER,
             operation = owner_operation,
             local_operation,
-            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
             actor_id_length = context_facts.actor_id_length,
