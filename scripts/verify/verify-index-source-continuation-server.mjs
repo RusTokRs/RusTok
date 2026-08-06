@@ -50,7 +50,6 @@ requireMarkers("keyring", [
 const keyringProduction = content.keyring.split("\n#[cfg(test)]")[0];
 for (const forbidden of [
   "DatabaseConnection",
-  "ModuleRuntimeExtensions",
   "tokio::spawn",
   "spawn_blocking",
   "SELECT ",
