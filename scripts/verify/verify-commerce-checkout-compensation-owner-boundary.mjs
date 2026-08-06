@@ -14,24 +14,38 @@ const forbidText = (source, value, label) => {
 };
 
 const services = read('crates/rustok-commerce/src/services/mod.rs');
-const compensation = read(
+const compensationFacade = read(
+  'crates/rustok-commerce/src/services/checkout_compensation_payment_safe.rs',
+);
+const compensationLegacy = read(
   'crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
 );
+const compensation = `${compensationFacade}\n${compensationLegacy}`;
 const order = read('crates/rustok-order/src/checkout_compensation.rs');
 const payment = read('crates/rustok-payment/src/checkout_compensation.rs');
 
 requireText(
   services,
-  '#[path = "checkout_compensation_owner_ports.rs"]',
+  '#[path = "checkout_compensation_payment_safe.rs"]',
   'commerce services mount',
 );
 forbidText(
   services.replace(
-    '#[path = "checkout_compensation_owner_ports.rs"]\nmod checkout_compensation;',
+    '#[path = "checkout_compensation_payment_safe.rs"]\nmod checkout_compensation;',
     '',
   ),
   'mod checkout_compensation;',
   'commerce services mount',
+);
+requireText(
+  compensationFacade,
+  'include!("checkout_compensation_owner_ports.rs");',
+  'private retained compensation source',
+);
+requireText(
+  compensationFacade,
+  'wrap_checkout_payment_compensation_port(',
+  'mounted payment compensation adapter',
 );
 
 for (const value of [
@@ -99,5 +113,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Checkout compensation is mounted through typed order/payment owner ports',
+  '✔ Checkout compensation is mounted through typed order/payment owner ports and the payment-safe consumer adapter',
 );
