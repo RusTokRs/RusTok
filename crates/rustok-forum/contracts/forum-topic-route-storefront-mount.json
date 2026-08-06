@@ -8,6 +8,8 @@
   "canonical_route": "/{locale}/forum/t/{short_id}/{slug}",
   "route_owner": "ForumTopicRouteService",
   "visibility_owner": "ForumTopicAudienceReadService",
+  "followup_tombstone_snapshot_task": "FORUM-24J",
+  "followup_gone_consumer_task": "FORUM-24K",
   "package": "rustok-forum-storefront",
   "host": "rustok-storefront",
   "transport": {
@@ -48,7 +50,8 @@
     "alias_id_exposed": false,
     "alias_reason_exposed": false,
     "gone_exposed": false,
-    "hidden_and_missing_indistinguishable": true
+    "hidden_and_missing_indistinguishable": true,
+    "FORUM_24J_snapshot_consumed": false
   },
   "compatibility": {
     "database_schema_changed": false,
@@ -76,7 +79,7 @@
     ]
   },
   "remaining_scope": [
-    "visibility-authorized gone disclosure",
+    "consume the FORUM-24J boolean tombstone decision and add authorized GONE/410",
     "category route identity",
     "canonical and hreflang document policy",
     "Forum SEO composition",
