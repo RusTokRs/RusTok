@@ -45,11 +45,13 @@ Artifacts are ordered by:
 created_at ASC, id ASC
 ```
 
-The query requests `max_records + 1`. When the extra row exists, the result sets:
+The first query projects artifact identifiers only and requests `max_records + 1`. When the extra identifier exists, the result sets:
 
 ```text
 truncated = true
 ```
+
+Each selected full artifact payload is then loaded and verified one record at a time under the same transaction. The command never retains hundreds of HTML/CSS/runtime payloads in one in-memory result set.
 
 A truncated result is not a complete page audit. The caller must request another bounded operational slice or use a future cursor-based command; this source slice does not pretend otherwise.
 
@@ -64,13 +66,13 @@ The audit checks:
 - decodable build identity, registry, page head and landing section manifest;
 - static artifact SHA-256 integrity;
 - source/build/renderer metadata equality with the reconstructed artifact;
-- document HTML, body HTML and CSS byte limits;
+- document HTML, body HTML and CSS byte limits before payload cloning;
 - legacy materialization evidence only when all three fields are `NULL`;
 - current materialization evidence only when hash, identity and snapshots are all present;
 - runtime snapshot and materialization SHA-256 integrity;
 - stored materialization hash equality with the reconstructed identity.
 
-Partial materialization evidence fails closed.
+Partial materialization evidence fails closed. JSON evidence is deserialized from borrowed values, avoiding a second full `serde_json::Value` copy.
 
 ## Result privacy
 
@@ -96,7 +98,7 @@ The command does not return:
 - internal error text;
 - raw runtime context.
 
-Hashing record identity instead of returning stored text keeps every finding byte-bounded even when a corrupted database row contains an unexpectedly large text value.
+Hashing record identity instead of returning stored text keeps every finding byte-bounded even when a corrupted database row contains an unexpectedly large text value. Record and final audit identities are serialized directly into a streaming SHA-256 writer rather than an intermediate JSON byte vector.
 
 The audit hash binds the tenant, page, requested limit, truncation state and ordered hashed artifact identity/status observations. It is an observation receipt, not persisted evidence and not a repair authorization.
 
@@ -135,8 +137,9 @@ A retained execution packet should cover at least:
 - partial evidence rejection;
 - corrupted artifact/content/materialization hashes;
 - oversized corrupted identity text with bounded result fields;
-- output byte-limit rejection;
+- output byte-limit rejection before cloning;
 - 512-row completion and 513-row truncation;
+- one-at-a-time full payload loading;
 - zero writes and zero emitted events.
 
 No test, verifier, Cargo, formatting, database, workflow or CI execution is claimed here.
