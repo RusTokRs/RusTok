@@ -1,8 +1,8 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-06  
-Status: source-parity-current / authenticated-inline-adapter-source-ready / consumer-mount-open / execution-evidence-pending
-Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event, routing, cache and authenticated inline-adapter boundaries
+Status: source-parity-current / authenticated-inline-consumer-source-ready / authenticated-route-mount-open / execution-evidence-pending
+Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` document, publication, artifact, routing, cache and authenticated inline-consumer boundaries
 
 ## Source-of-truth policy
 
@@ -12,13 +12,13 @@ This is the canonical shared continuation cursor. Historical dated packets remai
 
 Across every retained source packet, execution remains pending until a maintainer records reproducible command output and artifact evidence.
 
-Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy, public reads and future consumer inline grants/save transport. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts and reusable inline adapter/session. Navigation owns menu identity and active-menu policy. SEO providers own resolved SEO documents. Hosts compose owner results but do not recreate their policies.
+Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy, public reads and authenticated inline grants/save transport. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts and reusable real-DOM inline adapter/session. Navigation owns menu identity and active-menu policy. SEO providers own resolved SEO documents. Hosts compose owner results but do not recreate their policies.
 
 Optional external event infrastructure is outside the active Pages cursor. Optional external delivery infrastructure is outside the active Pages cursor.
 
 ## Rechecked merged cursor
 
-Current `main` through PR #3032 contains:
+Current `main` through PR #3039 contains:
 
 - PR #2955 — publish/rollback event-correlation and generation miss/refill contract;
 - PR #2971 — source-ready PostgreSQL publish/rollback outbox-to-cache packet;
@@ -42,13 +42,14 @@ Current `main` through PR #3032 contains:
 - PR #3020 — registered host route decision and canonical/redirect/gone response composition;
 - PR #3026 — forward public-route snapshots and delete tombstone composition;
 - PR #3029 — explicit bounded historical route import with provenance receipts;
-- PR #3032 — exact rendered Pages/Navigation/SEO private revalidation ETag.
+- PR #3032 — exact rendered Pages/Navigation/SEO private revalidation ETag;
+- PR #3039 — reusable authenticated real-DOM adapter and canonical Fly patch session.
 
-The present source slice adds a reusable feature-gated authenticated real-DOM inline adapter and canonical Fly patch session. Pages consumer grant issuance and document-only save mount remain open.
+The present source slice adds the Pages authenticated inline grant issuer, bootstrap/commit server functions, opt-in client/server feature profiles and document-only persistence through the existing `PageService::save_document` owner. The authenticated route mount remains open.
 
 ## Retained source marker index
 
-This compact index preserves the exact stable source markers consumed by retained static guards. It is descriptive only and does not promote execution evidence.
+This index preserves exact stable source markers consumed by retained static guards. It is descriptive only and does not promote execution evidence.
 
 - `public-list-locale-fallback-source-ready`; Public list tenant locale fallback: source-ready. The native and GraphQL public detail/list reads share tenant fallback policy, and the cache variant already binds the fallback locale.
 - `published-slug-route-alias-source-ready`; Published slug route aliases: source-ready. Localized canonical Pages routes remain the public identity model. The public host response is now source-ready.
@@ -65,9 +66,12 @@ This compact index preserves the exact stable source markers consumed by retaine
 - `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready.
 - `route-history-import-source-ready`; Historical route import: source-ready. The owner accepts explicit bounded provenance records; automatic historical inference remains deliberately unsupported.
 - `storefront-composition-etag-source-ready`; Pages storefront Navigation/SEO composition ETag: source-ready. Exact canonical SSR binds Pages generations, channel identity, actual Navigation/SEO owner payloads and the exact rendered HTML. Canonical responses use `Cache-Control: private, no-cache`. Terminal Pages route responses continue to use `private, no-store`.
-- `authenticated-inline-adapter-source-ready`; Authenticated real-DOM inline adapter: source-ready. Fly remains the sole document authority; Pages consumer grant issuance and document-only save mount remain open.
+- `authenticated-inline-adapter-source-ready`; Authenticated real-DOM inline adapter: source-ready. Fly remains the sole document authority.
+- `authenticated-inline-consumer-source-ready`; Pages authenticated inline consumer: source-ready. Signed grants, direct-user/session binding, opt-in server functions and the existing document-save owner are composed; authenticated route mount remains open.
 
 Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current tombstone and explicit import statuses above.
+
+Historical adapter marker retained for source-guard compatibility: `Pages consumer grant issuance and document-only save mount remain open` was the correct PR #3039 boundary and is superseded by the current consumer status. The authenticated route mount remains open.
 
 ## Current parity state
 
@@ -83,7 +87,7 @@ Pages owns reviewed publication from exact metadata/body revisions and promoted 
 
 Rollback verifies and selects a prior immutable publish manifest, replaces locale bindings and commits lifecycle events plus its receipt without compiling the current draft.
 
-### Cache, native route and production delivery: source-ready
+### Cache, route and production delivery: source-ready
 
 The retained source covers generation-bound artifact and storefront miss/refill/hit, conditional `304`, immutable verification before fill, old-generation physical retention, registered native server functions, channel-module admission before lookup, production generation rotation before transport acknowledgement, process-bounded same-event dedupe, PostgreSQL retry and Memory/OutboxLocal profile parity.
 
@@ -126,72 +130,72 @@ Terminal Pages responses use `Cache-Control: private, no-store`.
 
 Execution remains pending.
 
-### Delete route tombstones: source-ready
+### Delete route tombstones and historical route import: source-ready
 
-Pages retains a forward-only `page_route_publications` snapshot ledger. A page leaving `published` through unpublish or archive records each localized public route before lifecycle mutation. The ledger has no page foreign key and therefore survives physical deletion.
+Pages retains forward-only published-route snapshots, writes immutable gone aliases during delete, preserves redirect history and prevents reuse of formerly public route claims. Never-published drafts do not reserve a public claim.
 
-A never-published draft creates no public snapshot and its slug remains reusable after delete.
-
-For an admitted non-published delete, `PageService::delete` records missing `gone` aliases with stable reason `Page deleted` before deleting bodies, translations and the page row, and before committing `NodeDeleted`. Existing immutable redirect rows are preserved rather than rewritten. When their target page is physically absent and has a retained tombstone, route resolution folds those historical redirects into `Gone`, so every formerly public route reaches the host's existing `410` response.
-
-Execution remains pending.
-
-### Historical route import: source-ready
-
-`PageRouteHistoryImportService::import_public_routes` is the explicit repair owner for public route history that cannot be reconstructed safely from current Pages state.
-
-The command requires `pages:manage`, accepts one normalized source and 1–100 route items, and commits the batch in one transaction. Every accepted item creates or verifies an immutable provenance receipt, canonical SHA-256 request hash, exact retained route claim and direct `gone` alias when the page was already missing and the route was unclaimed.
-
-Exact replay is idempotent. Provenance payload drift and current/snapshot/alias ownership overlap fail closed with `PAGE_ROUTE_HISTORY_IMPORT_CONFLICT`. Existing same-page redirects remain immutable. Automatic scans of old translations, Page Builder artifacts or current draft/archived rows are deliberately unsupported because they do not prove complete historical public ownership.
+`PageRouteHistoryImportService::import_public_routes` is the explicit repair owner for history that cannot be reconstructed safely. Exact replay is idempotent. Provenance drift and ownership overlap fail closed with `PAGE_ROUTE_HISTORY_IMPORT_CONFLICT`. Automatic scans of old translations, Page Builder artifacts or current draft/archived rows remain deliberately unsupported.
 
 Execution remains pending.
 
 ### Storefront Navigation/SEO composition ETag: source-ready
 
-For an exact localized canonical Pages request, the route adapter exposes channel identity and current Pages route/page/artifact generations only after channel-module admission plus publication/channel visibility rechecks.
-
-The host loads Navigation Header/Footer through the Navigation-owned transport and the resolved SEO context through the SEO owner. A `StorefrontNavigationSnapshot` is supplied to the same Leptos SSR owner, so navigation components reuse the preloaded menus.
-
-The host renders before deciding a conditional response. The final `pages_storefront_composition_v1` ETag binds canonical identity, channel, all three Pages generations, actual Navigation/SEO payloads and a SHA-256 hash of the exact final HTML. Matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified` only after reconstructing the same document. Request-specific nonce-bearing HTML fails closed to ordinary SSR without an ETag.
+For an exact canonical Pages request, the host loads Navigation Header/Footer through the Navigation-owned transport and resolved SEO context through the SEO owner. The final private revalidation ETag binds canonical identity, channel, Pages generations, actual owner payloads and a SHA-256 hash of the exact final HTML.
 
 No shared/CDN document cache is introduced. Execution remains pending.
 
-### Authenticated real-DOM inline adapter: source-ready
+### Reusable authenticated real-DOM inline adapter: source-ready
 
-`fly-leptos` now provides a reusable real-DOM adapter whose trusted grant binds session, stable selected page, consumer revision, exact Fly project hash, opaque authorization proof and expiry. The proof is redacted from `Debug` and never rendered into DOM.
+`fly-leptos` owns the temporary real-DOM interaction adapter. `rustok-page-builder-storefront` owns the feature-gated canonical session. Provider-owned, composite, templated, interactive and runtime-owned subtrees remain read-only. Unchanged focusout requests do not consume a grant. Changed requests pass grant/hash/sequence/component checks, then a consumer authorization port immediately before one canonical `EditorCommand::Patch`.
 
-Only an explicit allow-list of instrumented stable noninteractive static leaf text nodes receives `contenteditable="plaintext-only"`. Provider-owned nodes, composite nodes with children and template-backed nodes remain read-only. Every node inside a runtime-owned binding, condition or repeater subtree is also excluded, while a static leaf inside an ordinary unowned layout remains eligible. Interactive controls such as links, buttons and labels are excluded so editing cannot also activate storefront navigation or actions. The DOM is a temporary interaction buffer: a single bounded normalized plain-text request is emitted on bubbling `focusout`, and listener/attribute cleanup is deterministic.
+The adapter slice remains independently source-ready. Execution remains pending.
 
-An unchanged `focusout` returns `NoContentChange`; it does not advance the accepted sequence, mutate Fly history or change the project hash, so it does not consume the one-commit grant.
+### Pages authenticated inline consumer: source-ready
 
-`rustok-page-builder-storefront` exposes this surface only behind the optional `inline-edit` feature. Its existing read-only renderer continues to force component instrumentation off, and current Pages anonymous features do not enable `inline-edit`.
+Pages now owns a versioned HMAC-SHA256 grant contract. It binds tenant, user, direct authenticated session, a separate fresh edit-session UUID, channel identity, Pages page, stable Fly page, exact locale, current body revision, exact project hash and expiry.
 
-`AuthenticatedInlineEditSession` validates grant identity/expiry, monotonic sequence, selected page, exact project hash and component eligibility, then calls a consumer `InlineEditAuthorizationPort` immediately before the sole mutation:
+The grant keyring has no fallback secret. Missing host configuration leaves the runtime unavailable; invalid explicit configuration fails registration. Secret material and proofs are redacted from `Debug`.
+
+Bootstrap and commit are feature-gated Leptos server functions. Both require a direct user principal, matching tenant/user request context, explicit `pages.builder.inline_edit.enabled`, `pages:update`, an unpublished exact-locale GrapesJS body and stable Fly page/component ids.
+
+Commit verification order is:
 
 ```text
-EditorCommand::Patch
-  → ComponentPatch::set_field("content", plain_text)
-  → Fly history, validation and new project hash
+initial HMAC verification
+→ exact auth/edit-session/channel/page/locale/revision/hash match
+→ current authorized document reload
+→ current revision/hash proof
+→ HMAC verification at mutation time
+→ canonical AuthenticatedInlineEditSession
+→ consumer authorization port
+→ one Fly patch
+→ tenant capability recheck
+→ PageService::save_document(expected_revision)
+→ committed revision
+→ fresh replacement grant
 ```
 
-The result carries the complete current project, previous/new hash and command sequence. Because every accepted patch changes canonical content and the project hash, the grant is intentionally one-commit; a consumer must persist the result and issue a fresh grant.
+The storefront transport does not write page-body rows. The existing optimistic document owner remains the final concurrency/replay fence and retains its transaction and `NodeUpdated` behavior.
 
-Pages consumer grant issuance and document-only save mount remain open. No Pages transport, auth policy or anonymous mount is claimed by this slice.
+Profiles `rustok-pages-storefront/inline-edit`, `rustok-storefront/pages-inline-edit`, `rustok-storefront/pages-inline-edit-hydrate` and `rustok-server/pages-inline-edit` are non-default. The authenticated inline profiles are opt-in. Retained anonymous default/CSR/hydrate/SSR profiles do not enable them.
+
+`PagesAuthenticatedInlineEditSurface` is not mounted by the current anonymous host or an authenticated route. The authenticated route mount remains open. Execution remains pending.
 
 Source evidence:
 
-- `crates/fly-leptos/src/real_dom_inline.rs`;
-- `crates/rustok-page-builder-storefront/src/inline_edit.rs`;
-- `crates/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json`;
-- `crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs`;
-- `docs/modules/pages-page-builder-authenticated-inline-edit-adapter-packet-2026-08-06.md`;
-- `docs/modules/page-builder-parity-actualization-2026-08-06-inline-edit.md`.
-
-Execution remains pending.
+- `crates/rustok-pages/src/services/page/inline_edit.rs`;
+- `crates/rustok-pages/src/services/page/inline_edit_feature.rs`;
+- `crates/rustok-pages/src/services/page/inline_edit_runtime.rs`;
+- `crates/rustok-pages/storefront/src/inline_edit.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-authenticated-inline-consumer-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs`;
+- `docs/modules/pages-page-builder-authenticated-inline-consumer-packet-2026-08-06.md`.
 
 ### Anonymous storefront boundary: source-ready
 
 The current public Pages host is SSR-only. Retained source guards exclude Pages/Page Builder/Fly authoring dependencies and executable hydration/bootstrap markers from selected anonymous host profiles. The explicit built-artifact inspector remains source-ready; build and artifact inspection remain pending.
+
+The new authenticated inline profiles are opt-in and are not part of the six retained anonymous dependency graphs.
 
 ## Parity matrix
 
@@ -208,7 +212,8 @@ The current public Pages host is SSR-only. Retained source guards exclude Pages/
 | Explicit historical route import | Source-ready | SQLite/PostgreSQL/operator execution pending |
 | Pages Navigation/SEO composition ETag | Source-ready | SSR/conditional request/browser execution pending |
 | Reusable authenticated real-DOM inline adapter | Source-ready | Rust/WASM/browser/auth-port execution pending |
-| Pages consumer inline grant + document save mount | Open | Not implemented |
+| Pages authenticated grant + document save transport | Source-ready | Rust/SSR/WASM/browser/conflict execution pending |
+| Authenticated authoring route mount | Open | Not implemented |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -222,56 +227,43 @@ The current public Pages host is SSR-only. Retained source guards exclude Pages/
 
 ## Boundaries
 
-This slice changes only reusable Fly browser contracts and feature-gated Page Builder storefront inline source.
+This slice changes only Pages-owned signed grants, opt-in server functions/UI source and host feature/runtime composition.
 
 It does not:
 
-- authenticate users or issue a Pages grant;
-- add a Pages save server function, GraphQL mutation, HTTP route or persistence path;
 - mount editing in the anonymous storefront;
-- treat DOM as a document tree or hidden authority;
-- edit rich text, nested markup, interactive controls, provider components, composite component content or runtime-owned subtrees;
-- change Pages persistence, lifecycle, route claims, caches or events;
-- change Page Builder publish, rollback, sanitizer, materialization or artifacts;
+- mount an authenticated route or emit a client artifact from the current public host;
+- accept delegated or service principals;
+- create a second Pages document persistence path;
+- edit published immutable documents;
 - change database schemas or migrations;
+- add GraphQL or REST mutations;
+- change publish, rollback, artifact, cache or event schemas;
 - claim tests, Cargo, formatting, verifiers, WASM, browsers, dependency graphs, workflows, CI or rollout execution;
 - promote FFA or FBA.
 
 ## Next cursor
 
-1. Implement the Pages authenticated inline grant issuer and document-only save transport/mount.
-2. Run the authenticated inline adapter static verifier, Rust tests and WASM/browser packet.
-3. Re-run the anonymous dependency graph and built-artifact exclusion checks with inline feature source present.
-4. Run the storefront composition ETag verifier and focused storefront tests.
-5. Run route-history import, delete tombstone, host route, slug alias and locale fallback evidence.
-6. Run native cache/admission, immutable artifact and production generation-gate packets.
-7. Run metadata conflict/isolation and published metadata browser packets.
-8. Complete workflow and observed tenant rollout evidence before promotion.
+1. Implement an authenticated authoring route/shell that renders `PagesAuthenticatedInlineEditSurface` without altering the anonymous Pages route.
+2. Deliver the separate `pages-inline-edit-hydrate` artifact only on that authenticated surface, with explicit CSP/nonce behavior.
+3. Run the authenticated inline consumer static verifier, Rust tests, SSR/WASM checks and real browser save/reload/conflict scenarios.
+4. Re-run the anonymous dependency graph and built-artifact exclusion checks.
+5. Run the storefront composition ETag, route-history, tombstone, host route, slug alias, locale fallback, native cache and production-generation packets.
+6. Complete workflow and observed tenant rollout evidence before promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
-cargo test -p fly-leptos --all-targets -- --nocapture
-cargo test -p rustok-page-builder-storefront \
-  --features inline-edit,ssr --all-targets -- --nocapture
-cargo check -p rustok-page-builder-storefront \
-  --features inline-edit,hydrate --target wasm32-unknown-unknown
+node crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
+cargo test -p rustok-pages --all-targets -- --nocapture
+cargo test -p rustok-pages-storefront --features inline-edit,ssr --all-targets -- --nocapture
+cargo check -p rustok-storefront --no-default-features \
+  --features pages-inline-edit-hydrate --target wasm32-unknown-unknown
+cargo check -p rustok-server --features pages-inline-edit
 node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
-
-node crates/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs
-cargo test -p rustok-storefront --features ssr --lib -- --nocapture
-cargo test -p rustok-navigation-storefront --features ssr --all-targets -- --nocapture
-
-node crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
-cargo test -p rustok-pages --test page_route_history_import_sqlite -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
-cargo test -p rustok-pages --test page_delete_route_tombstone_sqlite -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs
-cargo test -p rustok-pages-storefront --features ssr \
-  --test host_route_decision_sqlite -- --nocapture
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
 ```
 
-Any failure or owner-model change must update this shared cursor before FFA/FBA promotion.
+Execution evidence remains pending.

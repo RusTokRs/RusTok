@@ -12,6 +12,15 @@ crate-type = ["rlib"]
 default = ["ssr"]
 csr = ["leptos/csr", "leptos_i18n/csr"]
 hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]
+pages-inline-edit = [
+  "dep:rustok-pages-storefront",
+  "rustok-pages-storefront/inline-edit",
+]
+pages-inline-edit-hydrate = [
+  "hydrate",
+  "pages-inline-edit",
+  "rustok-pages-storefront/hydrate",
+]
 ssr = [
   "dep:axum",
   "leptos/ssr",

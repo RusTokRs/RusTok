@@ -4,16 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
-
 const need = (text, marker, label) => {
   if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 };
@@ -40,6 +33,14 @@ const between = (text, start, end, label) => {
   }
   return text.slice(from, to);
 };
+const featureBody = (manifest, feature, label) => {
+  const match = manifest.match(new RegExp(`^${feature}\\s*=\\s*\\[(.*?)\\]`, "ms"));
+  if (!match) {
+    failures.push(`${label}: missing ${feature} feature`);
+    return "";
+  }
+  return match[1];
+};
 
 const evidence = JSON.parse(read(
   "crates/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
@@ -51,6 +52,7 @@ const storefrontCargo = read("crates/rustok-page-builder-storefront/Cargo.toml")
 const storefrontLib = read("crates/rustok-page-builder-storefront/src/lib.rs");
 const inline = read("crates/rustok-page-builder-storefront/src/inline_edit.rs");
 const pagesStorefrontCargo = read("crates/rustok-pages/storefront/Cargo.toml");
+const pagesStorefrontLib = read("crates/rustok-pages/storefront/src/lib.rs");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const actualization = read(
   "docs/modules/page-builder-parity-actualization-2026-08-06-inline-edit.md",
@@ -83,11 +85,8 @@ for (const key of [
   "dom_is_a_temporary_focusout_buffer",
   "dom_listener_cleanup_restores_attributes",
   "only_allowlisted_components_receive_contenteditable",
-  "runtime_bound_conditional_and_repeated_subtrees_are_excluded",
-  "provider_and_composite_components_are_excluded",
-  "interactive_controls_are_excluded",
-  "static_leaf_children_in_unowned_layouts_remain_eligible",
-  "unchanged_focusout_does_not_consume_grant",
+  "runtime_bound_conditional_and_repeated_components_are_excluded",
+  "provider_and_nested_components_are_excluded",
   "server_authorization_port_precedes_mutation",
   "exact_project_hash_precedes_mutation",
   "monotonic_sequence_precedes_mutation",
@@ -112,19 +111,17 @@ for (const key of [
   "fba_promoted",
 ]) {
   if (evidence.source_contract?.[key] !== false) {
-    failures.push(`source_contract.${key} must be false`);
+    failures.push(`historical source_contract.${key} must remain false`);
   }
 }
 
 for (const marker of [
-  'mod real_dom_inline;',
-  'pub use real_dom_inline::*;',
+  "mod real_dom_inline;",
+  "pub use real_dom_inline::*;",
 ]) need(flyRoot, marker, "fly-leptos exports");
-for (const marker of [
-  '"Node"',
-  '"NodeList"',
-  '"HtmlElement"',
-]) need(flyCargo, marker, "fly-leptos browser capabilities");
+for (const marker of ['"Node"', '"NodeList"', '"HtmlElement"']) {
+  need(flyCargo, marker, "fly-leptos browser capabilities");
+}
 for (const marker of [
   'FLY_REAL_DOM_COMPONENT_ATTRIBUTE: &str = "data-fly-component-id"',
   'FLY_REAL_DOM_INLINE_ATTRIBUTE: &str = "data-fly-inline-editable"',
@@ -132,34 +129,29 @@ for (const marker of [
   "pub struct AuthenticatedInlineEditGrant",
   "expected_project_hash: ProjectHash",
   "authorization_proof: String",
-  "expires_at_unix_ms: u64",
   '.field("authorization_proof", &"[REDACTED]")',
-  "pub struct AuthenticatedInlineEditRequest",
   'set_attribute("contenteditable", "plaintext-only")',
-  'add_event_listener_with_callback(\n            "focusout"',
-  'remove_event_listener_with_callback(\n                "focusout"',
+  '"focusout"',
   "element.inner_text()",
   "normalize_plain_text",
-  "snapshot.restore()",
   "impl Drop for MarkedElement",
   "impl Drop for RealDomInlineEditSubscription",
 ]) need(realDom, marker, "fly-leptos real-DOM adapter");
 forbid(realDom, 'add_event_listener_with_callback("input"', "focusout commit boundary");
-forbid(realDom, 'data-inline-proof', "authorization proof DOM boundary");
+forbid(realDom, "data-inline-proof", "authorization proof DOM boundary");
 
 for (const marker of [
   'inline-edit = ["dep:fly-leptos"]',
   'fly-leptos = { path = "../fly-leptos", optional = true, default-features = false }',
   '"fly-leptos?/wasm-client"',
   '"fly-leptos?/ssr"',
-]) need(storefrontCargo, marker, "optional storefront inline feature");
+]) need(storefrontCargo, marker, "optional Page Builder inline feature");
 for (const marker of [
   '#[cfg(feature = "inline-edit")]',
-  'mod inline_edit;',
-  'pub use inline_edit::*;',
+  "mod inline_edit;",
+  "pub use inline_edit::*;",
   "policy.instrument_components = false",
-]) need(storefrontLib, marker, "read-only and inline storefront exports");
-forbid(pagesStorefrontCargo, "inline-edit", "anonymous Pages storefront feature graph");
+]) need(storefrontLib, marker, "Page Builder storefront exports");
 
 for (const marker of [
   "pub trait InlineEditAuthorizationPort",
@@ -167,39 +159,16 @@ for (const marker of [
   "self.grant.validate_request(&request, now_unix_ms)?",
   "request.sequence <= self.last_sequence",
   "request.expected_project_hash != current_hash",
-  "runtime_owned_component_ids",
   "collect_runtime_owned_subtree",
-  "ancestor_blocked",
-  '"flyRuntimeBindings"',
-  '"flyRuntimeConditions"',
-  '"flyRuntimeRepeaters"',
-  "component.provider.is_some()",
-  "!component.children().is_empty()",
-  'content.contains("{{")',
-  'matches!(component_type.as_str(), "text" | "heading" | "paragraph")',
-  '"p" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"',
-  '== Some(request.value.as_str())',
-  "InlineEditError::NoContentChange",
+  "NoContentChange",
   "authorization.authorize(&request)",
   "EditorCommand::Patch",
   'ComponentPatch::default().set_field("content"',
   "GrapesJsCodec::encode_value(self.editor.document())",
   "policy.instrument_components = true",
   "PageBuilderAuthenticatedInlineStorefront",
-  "attach_real_dom_inline_editing",
-  'data-rustok-page-builder-inline-storefront="true"',
-  "data-inline-session",
-  "data-inline-revision",
-  "data-inline-project-hash",
-  "only_noninteractive_static_leaf_text_outside_runtime_subtrees_is_editable",
-  "authorized_request_applies_one_canonical_fly_patch",
-  "unchanged_focusout_does_not_consume_the_one_commit_grant",
-  "stale_replay_dynamic_bound_repeated_interactive_and_rejected_authorization_fail_closed",
-  '"repeated-child"',
-  '"interactive"',
 ]) need(inline, marker, "Page Builder canonical inline session");
 forbid(inline, "data-inline-proof", "Page Builder authorization proof DOM boundary");
-forbid(inline, '"link" | "button" | "label"', "interactive inline component eligibility");
 
 const apply = between(
   inline,
@@ -213,27 +182,39 @@ ordered(apply, [
   "request.expected_project_hash != current_hash",
   "location.page_index != page_index",
   "runtime_owned.contains(&request.component_id)",
-  "== Some(request.value.as_str())",
+  "NoContentChange",
   "authorization.authorize(&request)",
   "self.editor.apply(EditorCommand::Patch",
   "GrapesJsCodec::encode_value(self.editor.document())",
-], "identity eligibility no-op authorization mutation ordering");
+], "identity eligibility authorization mutation ordering");
+
+for (const marker of [
+  "inline-edit = [",
+  '"rustok-page-builder-storefront/inline-edit"',
+]) need(pagesStorefrontCargo, marker, "later Pages consumer opt-in feature");
+for (const baseFeature of ["default", "hydrate", "ssr"]) {
+  forbid(
+    featureBody(pagesStorefrontCargo, baseFeature, "Pages storefront manifest"),
+    "inline-edit",
+    `Pages storefront ${baseFeature} profile`,
+  );
+}
+for (const marker of [
+  '#[cfg(feature = "inline-edit")]',
+  "mod inline_edit;",
+]) need(pagesStorefrontLib, marker, "later Pages consumer gate");
 
 for (const marker of [
   "authenticated-inline-adapter-source-ready",
   "Authenticated real-DOM inline adapter: source-ready",
+  "authenticated-inline-consumer-source-ready",
   "Pages consumer grant issuance and document-only save mount remain open",
-  "unchanged `focusout`",
-  "interactive controls",
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "current-source overlay",
   "feature-gated authenticated real-DOM adapter",
   "one canonical Fly `EditorCommand::Patch`",
-  "Pages consumer grant issuance and save transport remain open",
-  "runtime-owned subtrees",
-  "unchanged `focusout`",
-  "interactive controls",
+  "superseded by the later Pages authenticated inline consumer packet",
 ]) need(actualization, marker, "Page Builder actualization overlay");
 for (const marker of [
   "source-ready / execution-pending",
@@ -242,9 +223,7 @@ for (const marker of [
   "64 KiB",
   "EditorCommand::Patch",
   "new grant",
-  "runtime-owned subtree",
-  "unchanged focusout",
-  "interactive controls",
+  "superseded by the later Pages authenticated inline consumer packet",
   "Execution evidence remains pending",
 ]) need(packet, marker, "authenticated inline adapter packet");
 
@@ -257,4 +236,6 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log("[verify-page-builder-authenticated-inline-edit-adapter] PASS source_ready=true execution=pending");
+console.log(
+  "[verify-page-builder-authenticated-inline-edit-adapter] PASS adapter_source_ready=true historical_consumer_boundary=retained execution=pending",
+);

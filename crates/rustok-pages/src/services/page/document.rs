@@ -152,7 +152,7 @@ pub(crate) fn page_document_revision(page_id: Uuid, body: Option<&page_body::Mod
         .unwrap_or_else(|| format!("page:{page_id}:initial"))
 }
 
-fn ensure_document_is_mutable(page: &page::Model) -> PagesResult<()> {
+pub(super) fn ensure_document_is_mutable(page: &page::Model) -> PagesResult<()> {
     if page.status == "published" {
         return Err(PagesError::Rich(Box::new(
             RichError::new(
