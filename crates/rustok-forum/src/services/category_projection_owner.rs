@@ -1,5 +1,9 @@
 use std::ops::Deref;
 
+use super::category_route::{
+    FORUM_CATEGORY_RENAMED_ROUTE_REASON, ForumCategoryRouteService,
+};
+
 /// Transactional owner facade for category content mutations.
 ///
 /// Read methods remain delegated to the established category service. Create,
@@ -65,6 +69,14 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
+        ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
+            &txn,
+            tenant_id,
+            id,
+            &locale,
+            &slug,
+        )
+        .await?;
         forum_category_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             category_id: Set(id),
@@ -129,22 +141,55 @@ impl CategoryProjectionOwnerService {
 
         match existing_translation {
             Some(existing_translation) => {
+                let previous_slug = normalize_required_slug(&existing_translation.slug)?;
+                let next_slug = match input.slug.as_deref() {
+                    Some(slug) => normalize_required_slug(slug)?,
+                    None => match input.name.as_deref() {
+                        Some(name) => {
+                            validate_category_name(name)?;
+                            normalize_required_slug(name)?
+                        }
+                        None => previous_slug.clone(),
+                    },
+                };
+                let slug_changed = previous_slug != next_slug;
+                if slug_changed {
+                    ForumCategoryRouteService::prepare_slug_rename_in_tx(
+                        &txn,
+                        tenant_id,
+                        category_id,
+                        &locale,
+                        &previous_slug,
+                        &next_slug,
+                    )
+                    .await?;
+                }
+
                 let mut active: forum_category_translation::ActiveModel =
                     existing_translation.into();
                 if let Some(name) = input.name {
                     validate_category_name(&name)?;
-                    active.name = Set(name.clone());
-                    if input.slug.is_none() {
-                        active.slug = Set(normalize_slug(&name));
-                    }
+                    active.name = Set(name);
                 }
-                if let Some(slug) = input.slug.as_deref() {
-                    active.slug = Set(normalize_required_slug(slug)?);
+                if slug_changed {
+                    active.slug = Set(next_slug);
                 }
                 if input.description.is_some() {
                     active.description = Set(input.description);
                 }
                 active.update(&txn).await?;
+
+                if slug_changed {
+                    ForumCategoryRouteService::record_slug_rename_alias_in_tx(
+                        &txn,
+                        tenant_id,
+                        category_id,
+                        &locale,
+                        &previous_slug,
+                        FORUM_CATEGORY_RENAMED_ROUTE_REASON,
+                    )
+                    .await?;
+                }
             }
             None => {
                 let name = input.name.ok_or_else(|| {
@@ -157,7 +202,16 @@ impl CategoryProjectionOwnerService {
                     .map(normalize_required_slug)
                     .transpose()?
                     .unwrap_or_else(|| normalize_slug(&name));
+                let slug = normalize_required_slug(&slug)?;
 
+                ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
+                    &txn,
+                    tenant_id,
+                    category_id,
+                    &locale,
+                    &slug,
+                )
+                .await?;
                 forum_category_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     category_id: Set(category_id),
