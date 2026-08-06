@@ -108,6 +108,25 @@ They expose no raw adapter or database cause.
 The missing-only operator method, `IndexDriftSourcePageDiagnosisRuntime`, its source cursor, page
 counters, and source scan capability are not attached to GraphQL by this slice.
 
+## Confidential source continuation
+
+The database-neutral Index application now exposes `IndexSourceContinuationCodec`,
+`IndexSourceContinuationScope`, and `IndexSourceContinuationToken`.
+
+The codec uses AES-256-GCM to keep the raw owner cursor confidential and authenticates tenant, exact
+schema, canonical owner/source identity, version, issued-at, and expiry. Canonical scope can only be
+constructed through the frozen `SharedIndexSourceRegistry`. One active key seals new tokens while
+bounded retained keys support decryption during rotation.
+
+This server runtime does **not** yet compose that codec. No raw AES key, secret reference, or keyring
+is currently inserted into `ModuleRuntimeExtensions`, and the existing page method still accepts and
+returns raw `IndexSourceCursor` only inside the internal server service boundary.
+
+The next composition slice must resolve exact 32-byte keys through the existing secret-resolver
+boundary, publish only the opaque codec, redact key material from errors and `Debug`, and add a sealed
+page method that opens before constructing `IndexSourceScanRequest` and seals before returning.
+Authorization must still precede untrusted token parsing. Public GraphQL remains out of scope.
+
 ## Composition
 
 The server replay composition remains the single source-freezing point:
@@ -127,7 +146,8 @@ The server replay composition remains the single source-freezing point:
 9. GraphQL schema construction receives the frozen `ModuleRuntimeExtensions` and mounts only the
    bounded caller-known exact-entity diagnosis mutation.
 
-Composition performs no reconciliation or diagnosis SQL and starts no task. The generic server
+The continuation codec is source complete in `rustok-index` but is not part of this composition list
+yet. Composition performs no reconciliation or diagnosis SQL and starts no task. The generic server
 module-work bootstrap owns polling and shared shutdown. Exact-entity and source-page diagnosis remain
 explicit and are never scheduled by this slice.
 
@@ -148,12 +168,13 @@ deletes remain ordinary source `Delete` values.
 
 ## Explicitly open
 
+- server-owned continuation key configuration and secret resolution;
+- an internal sealed source-page method;
 - a GraphQL, HTTP, CLI, MCP, or native-admin source-page transport;
-- a sealed request-bound continuation envelope for the source cursor;
 - cursor persistence, multi-page accumulation, background iteration, scheduling, or restart state;
 - reconciliation run/cancel/inspection/requeue transports;
-- retained GraphQL authorization, Product absence, diagnosis, finding-lifecycle, scheduler, and
-  multi-host execution evidence;
+- retained GraphQL authorization, Product absence, diagnosis, continuation, finding-lifecycle,
+  scheduler, and multi-host execution evidence;
 - bounded Index-only stale enumeration and orphan-link diagnosis;
 - finding resolution or ignore transitions with actor/reason audit;
 - targeted/full/shadow repair admission, execution, audit, and evidence;
@@ -161,11 +182,12 @@ deletes remain ordinary source `Delete` values.
 - per-source retry policy, jitter, and dynamic configuration;
 - locale or partition checkpoint dimensions.
 
-Exact-entity digest diagnosis, Product locale-absence fencing, bounded exact GraphQL transport, and
-one-page internal missing-entity diagnosis are source complete. Source-page transport, broader
-diagnosis, all repair, reconciliation transports, and retained execution evidence remain open.
+Exact-entity digest diagnosis, Product locale-absence fencing, bounded exact GraphQL transport,
+one-page internal missing-entity diagnosis, and the transport-neutral confidential continuation codec
+are source complete. Server continuation composition, source-page transport, broader diagnosis, all
+repair, reconciliation transports, and retained execution evidence remain open.
 
 ## Validation ownership
 
-Formatting, Cargo checks/tests, JavaScript verifiers, database or GraphQL scenarios, workflows, and
-CI are maintainer-run and were not executed by the implementation agent.
+Formatting, Cargo checks/tests, JavaScript verifiers, cryptographic integration, database or GraphQL
+scenarios, workflows, and CI are maintainer-run and were not executed by the implementation agent.
