@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@31e430a7917fec226da09620684b2a1994841d35`, stacked parent PR #3067 at
+`main@809a557dd37d636ef1ad7fa1df06ab4c4daa03b4`, stacked parent PR #3067 at
 `7ababf39e26de9d2039c864d5092147d52d50d1a`, and active branch
 `agent/index-m6-orphan-link-repair-20260806`.
 
