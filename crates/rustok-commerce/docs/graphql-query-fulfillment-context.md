@@ -1,6 +1,6 @@
 # GraphQL query fulfillment owner context
 
-Status: `source_cutover_unvalidated`
+Status: `source_cutover_diagnostics_bounded_unvalidated`
 
 ## Owner projection reads
 
@@ -108,9 +108,9 @@ available, resource-scoped correlation id, and a two-second deadline.
 ## Typed public mapping
 
 GraphQL retains its established compatibility behavior. Lifecycle port failures
-are classified through `PortErrorKind`, logged with stable owner code and context,
-and adapted back to the existing fulfillment error classes used by unchanged
-`query.rs`. No `PortError.message` is parsed or matched as control flow.
+are classified through `PortErrorKind`, logged with stable owner code and bounded
+context, and adapted back to the existing fulfillment error classes used by
+unchanged `query.rs`. No `PortError.message` is parsed or matched as control flow.
 
 REST maps `PortErrorKind` directly to the existing static Commerce HTTP policy:
 
@@ -123,9 +123,22 @@ REST maps `PortErrorKind` directly to the existing static Commerce HTTP policy:
 | Unavailable / Timeout | `503 commerce_store_shipping_unavailable` | `503 commerce_admin_fulfillment_storage_unavailable` |
 | InvariantViolation | `500 commerce_store_shipping_failed` | `500 commerce_admin_fulfillment_failed` |
 
-These mappings use fixed transport-owned messages. Owner error code, kind,
-retryability, correlation, actor, locale, channel, resource identity, and deadline
-are retained in diagnostics without exposing owner messages.
+These mappings use fixed transport-owned messages.
+
+The private GraphQL fulfillment facade now emits only:
+
+- stable owner code, classified owner kind, and owner retryability;
+- query field and owner operation;
+- error/warn severity selected from `PortErrorKind`;
+- tenant, actor, correlation, locale, channel, claims, roles, and deadline as
+  bounded lengths, counts, presence flags, or static kinds;
+- shipping-option, fulfillment, and order identity as `absent`, `nil`, or
+  `non_nil` shapes;
+- owner and public message presence and length without message content;
+- a zero-sized diagnostic token whose `Debug` output is always `redacted`.
+
+It no longer emits complete `PortError` values, raw correlation ids, raw tenant or
+actor values, raw resource UUIDs, owner message content, or public message content.
 
 ## Preserved contracts
 
@@ -139,6 +152,8 @@ are retained in diagnostics without exposing owner messages.
   pagination behavior remain unchanged.
 - Admin shipping-option and fulfillment mutations retain their existing concrete
   or orchestration services and typed error mappers.
+- Technical fulfillment query owner failures remain `error`; ordinary owner
+  rejections remain `warn`.
 - Native seller/cart selection remains a separate contract.
 - Fulfillment FFA/FBA status is unchanged.
 
@@ -151,12 +166,15 @@ are retained in diagnostics without exposing owner messages.
 - Add public-channel propagation to every GraphQL fulfillment read context.
 - Continue converting remaining Commerce query boundaries that still use dynamic
   strings.
+- Continue the shared storefront HTTP, inventory, customer, tax, promotion,
+  native-transport, remaining-adapter, and non-`PortError` public-envelope cleanup.
 - Add compile and remote-profile evidence before promoting any FFA/FBA status.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
+node scripts/verify/verify-commerce-graphql-query-fulfillment-diagnostic-safety.mjs
 node scripts/verify/verify-fulfillment-lifecycle-read-port.mjs
 node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs
 node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs
@@ -167,5 +185,6 @@ cargo check -p rustok-commerce --lib
 cargo check -p rustok-server --features mod-commerce
 ```
 
-Tests, Cargo commands, formatting commands, verifiers, workflow checks, and CI
-were not run locally for this source wave; validation remains maintainer-owned.
+Tests, Cargo commands, formatting commands, verifiers, mounted GraphQL scenarios,
+workflow checks, and CI were not run for this source wave; validation remains
+maintainer-owned.
