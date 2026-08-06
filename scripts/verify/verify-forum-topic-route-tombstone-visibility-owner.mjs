@@ -19,6 +19,7 @@ const paths = {
   snapshotOwner:
     "crates/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
   categoryVisibility: "crates/rustok-forum/src/services/category_visibility.rs",
+  topicAudienceLock: "crates/rustok-forum/src/services/topic_audience_lock.rs",
   graphql: "crates/rustok-forum/src/graphql/topic_route_query.rs",
   native:
     "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
@@ -70,6 +71,7 @@ const topicOwner = read(paths.topicOwner);
 const topicOwnerInline = read(paths.topicOwnerInline);
 const snapshotOwner = read(paths.snapshotOwner);
 const categoryVisibility = read(paths.categoryVisibility);
+const topicAudienceLock = read(paths.topicAudienceLock);
 const graphql = read(paths.graphql);
 const native = read(paths.native);
 const host = read(paths.host);
@@ -107,8 +109,9 @@ requireText(
 requireOrder(
   topicOwner,
   [
-    "ForumTopicRouteTombstoneVisibilityService::lock_delete_scope_in_tx(",
+    "ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(",
     "claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?",
+    "ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(",
     "ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(",
     "ForumTopicRouteService::record_delete_tombstones_in_tx(",
     "mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?",
@@ -120,10 +123,15 @@ requireText(
   'include!("topic_route_tombstone_visibility.rs")',
   paths.topicOwnerInline,
 );
+requireText(
+  topicOwnerInline,
+  "topic_audience_lock",
+  paths.topicOwnerInline,
+);
 
 for (const marker of [
-  "lock_category_tree_in_tx(txn, tenant_id).await?",
-  "FORUM_TOPIC_AUDIENCE_LOCK_NAMESPACE",
+  "lock_category_tree_in_tx(txn, tenant_id).await",
+  "lock_topic_audience_scopes_in_tx(txn, tenant_id, &[topic_id]).await",
   "is_category_public_to_anonymous(txn, tenant_id, topic.category_id)",
   "load_policy_for_topic(txn, tenant_id, topic)",
   "ForumAudienceEvaluator::decide(",
@@ -143,12 +151,23 @@ for (const marker of [
   "async_graphql",
   "axum::",
   "forum_category_policy::",
+  "hashtextextended",
   "GqlForumStorefrontTopicRouteDisposition::Gone",
   "StorefrontForumTopicRouteDisposition::Gone",
   "StatusCode::GONE",
 ]) {
   forbidText(snapshotOwner, marker, paths.snapshotOwner);
 }
+requireText(
+  topicAudienceLock,
+  "pub(crate) async fn lock_topic_audience_scopes_in_tx(",
+  paths.topicAudienceLock,
+);
+requireText(
+  topicAudienceLock,
+  '"SELECT pg_advisory_xact_lock(hashtextextended($1, 5))"',
+  paths.topicAudienceLock,
+);
 
 requireText(
   categoryVisibility,
@@ -180,8 +199,8 @@ forbidText(host, "StatusCode::GONE", paths.host);
 
 for (const marker of [
   "migration_adds_sealed_append_only_snapshot_storage",
-  "delete_locks_then_snapshots_before_tombstone_and_soft_delete",
-  "snapshot_reuses_visibility_owners_and_seals_exact_channel_scope",
+  "delete_matches_canonical_policy_lock_order_before_snapshot",
+  "snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope",
   "this_slice_does_not_publish_gone_transport_or_http_policy",
 ]) {
   requireText(test, marker, paths.test);
@@ -192,6 +211,7 @@ for (const marker of [
   "FORUM-24K",
   "route_channel_count",
   "SHA-256",
+  "same order as the canonical topic audience owner",
   "does not change",
   "No tests, verifiers, formatting, Cargo commands, migrations, workflows",
 ]) {
@@ -213,6 +233,9 @@ if (contract) {
   }
   if (contract.storage?.route_channel_sha256_digest_sealed !== true) {
     failures.push(`${paths.contract}: channel digest must be sealed`);
+  }
+  if (contract.lock_owner_reuse?.custom_advisory_namespace_added !== false) {
+    failures.push(`${paths.contract}: snapshot must reuse canonical lock owners`);
   }
   if (contract.replay?.existing_channels_appended !== false) {
     failures.push(`${paths.contract}: replay must never append channels`);
