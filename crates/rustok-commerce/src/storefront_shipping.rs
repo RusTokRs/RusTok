@@ -12,6 +12,26 @@ use rustok_fulfillment::{FulfillmentError, FulfillmentResult, FulfillmentService
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
 const STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY: &str = "commerce_storefront_shipping_enrichment";
 
+struct StorefrontShippingDiagnosticError;
+
+impl std::fmt::Debug for StorefrontShippingDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_text_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_empty() => "empty",
+        Some(_) => "present",
+    }
+}
+
 pub fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
     let normalized = value.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -230,38 +250,46 @@ fn log_cart_delivery_group_enrichment_error(
         }
         FulfillmentError::Database(_) => ("fulfillment.database_unavailable", "unavailable", true),
     };
+    let technical = matches!(error, FulfillmentError::Database(_));
+    let tenant_id_shape = uuid_shape(tenant_id);
+    let cart_id_shape = uuid_shape(cart_id);
+    let public_channel_slug_shape = optional_text_shape(public_channel_slug);
+    let requested_locale_shape = optional_text_shape(requested_locale);
+    let tenant_default_locale_shape = optional_text_shape(tenant_default_locale);
+    let error = StorefrontShippingDiagnosticError;
 
-    match error {
-        FulfillmentError::Database(_) => tracing::error!(
+    if technical {
+        tracing::error!(
             error = ?error,
             owner = "rustok_fulfillment",
-            tenant_id = %tenant_id,
-            cart_id = %cart_id,
-            public_channel_slug = ?public_channel_slug,
-            requested_locale = ?requested_locale,
-            tenant_default_locale = ?tenant_default_locale,
+            tenant_id_shape,
+            cart_id_shape,
+            public_channel_slug_shape,
+            requested_locale_shape,
+            tenant_default_locale_shape,
             operation = "list_shipping_options",
             owner_code,
             owner_kind,
             owner_retryable,
             boundary = STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY,
             "storefront cart shipping enrichment owner read failed"
-        ),
-        _ => tracing::warn!(
+        );
+    } else {
+        tracing::warn!(
             error = ?error,
             owner = "rustok_fulfillment",
-            tenant_id = %tenant_id,
-            cart_id = %cart_id,
-            public_channel_slug = ?public_channel_slug,
-            requested_locale = ?requested_locale,
-            tenant_default_locale = ?tenant_default_locale,
+            tenant_id_shape,
+            cart_id_shape,
+            public_channel_slug_shape,
+            requested_locale_shape,
+            tenant_default_locale_shape,
             operation = "list_shipping_options",
             owner_code,
             owner_kind,
             owner_retryable,
             boundary = STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY,
             "storefront cart shipping enrichment owner read was rejected"
-        ),
+        );
     }
 }
 
