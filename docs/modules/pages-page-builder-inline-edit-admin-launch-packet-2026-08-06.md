@@ -11,7 +11,7 @@ The source slice adds:
 
 - `rustok-pages-admin/inline-edit-launch` as a non-default feature;
 - `rustok-admin/pages-inline-edit-launch` as the app-level pass-through feature;
-- a Pages admin launch control when a valid page is selected;
+- a Pages admin launch control when an exact unpublished page is selected;
 - an explicit compile-time same-origin deployment acknowledgement;
 - bounded, encoded route construction without credentials or proof material;
 - unvalidated evidence and a static source guard.
@@ -23,7 +23,7 @@ The authoring route requires a direct authenticated browser session. A standalon
 The launch control therefore uses only the fixed relative route:
 
 ```text
-/modules/pages-authoring?page_id=<pages UUID>&lang=<encoded locale>
+/modules/pages-authoring?page_id=<pages UUID>&lang=<encoded exact document locale>
 ```
 
 It is rendered only when both conditions are true:
@@ -37,12 +37,28 @@ The flag defaults to absent/disabled. Enabling only the Cargo feature is insuffi
 
 No arbitrary external origin, API base URL or redirect target is accepted by this component.
 
+## Exact draft identity
+
+The component reuses the existing Pages admin transport to reload the selected page before exposing a link. It does not trust the admin UI locale as document identity.
+
+The launch identity is derived from:
+
+- the canonical non-nil UUID returned by the selected Pages detail;
+- translation locale when present;
+- otherwise the current body locale.
+
+A page whose status is `published` does not receive a launch control. Missing page, missing exact locale, invalid identity or transport failure also render no link. The authoring route independently repeats unpublished-state, exact-locale, tenant-feature and owner-aware permission checks.
+
+This read is a presentation prerequisite only; it does not create another mutation or persistence path.
+
 ## Visibility and authorization
 
 The control is hidden unless:
 
 - the compile-time same-origin acknowledgement is exactly `true` ignoring case and surrounding whitespace;
 - the selected page identity parses as a non-nil UUID;
+- the existing Pages admin transport reloads an unpublished page;
+- the selected translation/body provides the exact document locale;
 - the current canonical admin role has effective Pages edit capability;
 - the locale is non-empty, bounded to 64 bytes and contains no control characters.
 
@@ -57,7 +73,7 @@ Query construction uses `url::form_urlencoded::Serializer`.
 The href contains only:
 
 - canonical hyphenated Pages UUID;
-- percent/form-encoded locale.
+- percent/form-encoded exact document locale.
 
 It never contains:
 
@@ -120,7 +136,7 @@ This slice does not:
 2. compose that admin build with `pages-inline-edit-assets` in release and production Docker builders;
 3. update protected release-infrastructure guards and reproducibility contracts;
 4. retain generated admin JS/WASM and server binary hashes/sizes;
-5. observe role-visible/hidden launch states and same-origin navigation;
+5. observe role-visible/hidden, published-hidden and exact-locale launch states plus same-origin navigation;
 6. execute authenticated edit/save, stale revision, replay and expiry browser cases.
 
 ## Validation status
