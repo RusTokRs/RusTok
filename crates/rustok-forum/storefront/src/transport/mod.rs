@@ -1,14 +1,19 @@
 mod graphql_adapter {
     include!("graphql_adapter.rs");
+    include!("category_route_graphql_adapter.rs");
     include!("topic_route_graphql_adapter.rs");
 }
 mod native_server_adapter {
     include!("native_server_adapter.rs");
     include!("native_server_adapter_bulk.rs");
+    include!("native_server_adapter_category_route.rs");
     include!("native_server_adapter_topic_route.rs");
 }
 
-use crate::model::{StorefrontForumData, StorefrontForumTopicRouteResolution};
+use crate::model::{
+    StorefrontForumCategoryRouteResolution, StorefrontForumData,
+    StorefrontForumTopicRouteResolution,
+};
 use serde::{Deserialize, Serialize};
 
 pub type TransportError = graphql_adapter::ApiError;
@@ -47,6 +52,17 @@ pub async fn fetch_storefront_forum(
             locale,
         )
         .await
+    }
+}
+
+pub async fn resolve_storefront_category_route(
+    locale: String,
+    slug: String,
+) -> Result<Option<StorefrontForumCategoryRouteResolution>, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::resolve_storefront_category_route_server(locale, slug).await
+    } else {
+        graphql_adapter::resolve_storefront_category_route_graphql(locale, slug).await
     }
 }
 
