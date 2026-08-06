@@ -22,6 +22,7 @@
 - Expose shared multilingual contract fields on forum read surfaces:
   `requested_locale`, `effective_locale`, and `available_locales`.
 - Own stable localized topic routes and locale-aware category route identity with immutable historical slug reservations while keeping route resolution separate from visibility authorization.
+- Expose visibility-safe category route resolution through additive GraphQL and native storefront transports without mounting a public category URL.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
 - Keep REST category/topic/reply/user/widget handlers on narrow `ForumHttpRuntime` state; the manifest-declared Axum router builds it from `HostRuntimeContext` and a typed transactional event bus.
 - Publish the forum widget contract-freeze catalog/validation surfaces (`ForumWidgetContractService`, `/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`).
@@ -40,11 +41,11 @@
   transport-neutral flat `/{locale}/forum/c/{slug}` identity, shared locale
   fallback semantics and immutable old-slug redirects. Historical
   `(tenant, locale, slug)` keys are permanently reserved and cannot be reclaimed
-  by the original or another category. No public category route is mounted yet.
-  Topic routes use `/{locale}/forum/t/{short_id}/{slug}` with immutable
-  redirect/tombstone history and a Rust storefront mount; ID routes remain
-  compatibility paths. Every route transport must still apply the exact Forum
-  audience, channel and module visibility owner before disclosure.
+  by the original or another category. GraphQL and native storefront transports
+  recheck the canonical category through the exact audience and channel boundary,
+  but no public category URL is mounted yet. Topic routes use
+  `/{locale}/forum/t/{short_id}/{slug}` with immutable redirect/tombstone history
+  and a Rust storefront mount; ID routes remain compatibility paths.
 - A selected merged-source ID resolves through the immutable
   `forum_topic_merge_operations` chain to the terminal retained topic.
   `GET /api/forum/topics/{id}` returns an authorization-safe `308 Permanent Redirect`
@@ -135,6 +136,7 @@
 - `ForumTopicMergeService::merge_topic_resolving_solution`
 - `graphql::ForumQuery`
 - `graphql::ForumMutation`
+- `graphql::GqlForumStorefrontCategoryRouteResolution`
 - `graphql::MergeForumTopicGraphqlInput`
 - `graphql::ResolveForumTopicMergeSolutionGraphqlInput`
 - `graphql::GqlForumTopicMerge`
@@ -166,4 +168,5 @@ into README files, issues, or additional planning documents.
 - [Authorized topic route gone transport](./docs/forum-24k-topic-route-authorized-gone.md)
 - [Localized category route identity owner](./docs/forum-24l-category-route-identity-owner.md)
 - [Category slug alias owner](./docs/forum-24m-category-slug-alias-owner.md)
+- [Category route storefront transport](./docs/forum-24n-category-route-storefront-transport.md)
 - [Platform docs index](../../docs/index.md)
