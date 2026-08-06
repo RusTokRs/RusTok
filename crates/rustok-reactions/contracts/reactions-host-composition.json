@@ -16,12 +16,14 @@
     "forum_without_reactions": {
       "forum_available": true,
       "owner_registry_materialized": false,
-      "provider_materialized": false
+      "provider_materialized": false,
+      "test": "forum_without_reactions_keeps_forum_host_composition_available"
     },
     "reactions_without_forum": {
       "forum_available": false,
       "owner_registry_materialized": true,
-      "provider_sources": []
+      "provider_sources": [],
+      "test": "reactions_without_forum_materializes_an_empty_subject_registry"
     },
     "forum_with_reactions": {
       "forum_available": true,
@@ -31,8 +33,25 @@
           "source": "forum",
           "kinds": ["topic", "reply"]
         }
-      ]
+      ],
+      "test": "forum_with_reactions_materializes_topic_and_reply_provider"
+    },
+    "selected_feature_without_owner": {
+      "startup_allowed": false,
+      "error": "Reactions feature is selected but ReactionsModule is missing from ModuleRegistry",
+      "test": "selected_reactions_feature_fails_when_owner_module_is_missing"
     }
+  },
+  "executable_evidence": {
+    "test_target": "reactions_composition_profiles",
+    "database": "sqlite::memory:",
+    "retained_execution_required": true,
+    "commands": [
+      "cargo test -p rustok-server --no-default-features --features mod-forum --test reactions_composition_profiles forum_without_reactions_keeps_forum_host_composition_available",
+      "cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles reactions_without_forum_materializes_an_empty_subject_registry",
+      "cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles selected_reactions_feature_fails_when_owner_module_is_missing",
+      "cargo test -p rustok-server --no-default-features --features \"mod-forum mod-reactions\" --test reactions_composition_profiles forum_with_reactions_materializes_topic_and_reply_provider"
+    ]
   },
   "required_files": [
     "modules.toml",
@@ -41,8 +60,10 @@
     "crates/rustok-distribution/src/lib.rs",
     "apps/server/Cargo.toml",
     "apps/server/src/services/module_event_dispatcher.rs",
+    "apps/server/tests/reactions_composition_profiles.rs",
     "crates/rustok-reactions/docs/implementation-plan.md",
     "crates/rustok-forum/docs/implementation-plan.md",
-    "scripts/verify/verify-reactions-host-composition.mjs"
+    "scripts/verify/verify-reactions-host-composition.mjs",
+    "scripts/verify/verify-reactions-composition-profiles.mjs"
   ]
 }

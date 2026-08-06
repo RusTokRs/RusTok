@@ -3,11 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const contractPath = path.join(
-  repoRoot,
-  "crates/rustok-reactions/contracts/reactions-host-composition.json",
+const contract = JSON.parse(
+  readFileSync(
+    path.join(
+      repoRoot,
+      "crates/rustok-reactions/contracts/reactions-host-composition.json",
+    ),
+    "utf8",
+  ),
 );
-const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 
 function fail(message) {
   throw new Error(`Reactions host composition verification failed: ${message}`);
@@ -29,6 +33,10 @@ function defaultFeatureBlock(manifest) {
   return manifest.match(/^default\s*=\s*\[[\s\S]*?^\]/mu)?.[0] ?? "";
 }
 
+function compact(value) {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
 if (contract.schema_version !== 1) fail("unsupported contract schema version");
 if (contract.contract !== "reactions_optional_host_composition_v1") {
   fail("unexpected contract identity");
@@ -40,7 +48,6 @@ if (contract.forum_implies_owner !== false) fail("Forum must not imply the React
 if (contract.status !== "source_ready_maintainer_execution_pending") {
   fail("runtime execution must not be claimed by the source contract");
 }
-
 for (const relativePath of contract.required_files) read(relativePath);
 
 const modules = read("modules.toml");
@@ -49,8 +56,8 @@ const distributionCargo = read("crates/rustok-distribution/Cargo.toml");
 const distributionLib = read("crates/rustok-distribution/src/lib.rs");
 const serverCargo = read("apps/server/Cargo.toml");
 const dispatcher = read("apps/server/src/services/module_event_dispatcher.rs");
-const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
-const reactionsPlan = read("crates/rustok-reactions/docs/implementation-plan.md");
+const forumPlan = compact(read("crates/rustok-forum/docs/implementation-plan.md"));
+const reactionsPlan = compact(read("crates/rustok-reactions/docs/implementation-plan.md"));
 
 if (!modules.includes('reactions = { crate = "rustok-reactions"')) {
   fail("modules.toml must retain the optional Reactions module descriptor");
@@ -59,7 +66,6 @@ const defaultEnabled = modules.match(/default_enabled\s*=\s*\[[\s\S]*?\]/mu)?.[0
 if (/"reactions"/u.test(defaultEnabled)) {
   fail("modules.toml default_enabled must not include reactions");
 }
-
 if (!forumCargo.includes('rustok-reactions-api = { path = "../rustok-reactions-api" }')) {
   fail("Forum must resolve the neutral Reactions API through an explicit path dependency");
 }
@@ -67,8 +73,7 @@ if (/^rustok-reactions\s*=/mu.test(forumCargo)) {
   fail("Forum must not depend on the Reactions owner crate");
 }
 
-const distributionFeature = featureLine(distributionCargo, "mod-reactions");
-if (distributionFeature !== 'mod-reactions = ["dep:rustok-reactions"]') {
+if (featureLine(distributionCargo, "mod-reactions") !== 'mod-reactions = ["dep:rustok-reactions"]') {
   fail("distribution mod-reactions feature must select only the owner crate");
 }
 if (!distributionCargo.includes('rustok-reactions = { path = "../rustok-reactions", optional = true }')) {
@@ -79,14 +84,11 @@ for (const fragment of [
   'registry = registry.register(rustok_reactions::ReactionsModule);',
   'module.slug == "reactions"',
 ]) {
-  if (!distributionLib.includes(fragment)) {
-    fail(`distribution registration is missing ${fragment}`);
-  }
+  if (!distributionLib.includes(fragment)) fail(`distribution registration is missing ${fragment}`);
 }
 
-const serverFeature = featureLine(serverCargo, "mod-reactions");
 if (
-  serverFeature !==
+  featureLine(serverCargo, "mod-reactions") !==
   'mod-reactions = ["dep:rustok-reactions", "rustok-distribution/mod-reactions"]'
 ) {
   fail("server mod-reactions feature must select the owner and distribution feature");
@@ -97,12 +99,10 @@ if (!serverCargo.includes('rustok-reactions = { path = "../../crates/rustok-reac
 if (/"mod-reactions"/u.test(defaultFeatureBlock(serverCargo))) {
   fail("server default features must not include mod-reactions");
 }
-const forumFeature = featureLine(serverCargo, "mod-forum") ?? "";
-if (forumFeature.includes("mod-reactions")) {
+if ((featureLine(serverCargo, "mod-forum") ?? "").includes("mod-reactions")) {
   fail("server mod-forum must not imply mod-reactions");
 }
-const distributionForumFeature = featureLine(distributionCargo, "mod-forum") ?? "";
-if (distributionForumFeature.includes("mod-reactions")) {
+if ((featureLine(distributionCargo, "mod-forum") ?? "").includes("mod-reactions")) {
   fail("distribution mod-forum must not imply mod-reactions");
 }
 
@@ -137,7 +137,7 @@ for (const fragment of [
   if (!reactionsPlan.includes(fragment)) fail(`Reactions plan is missing ${fragment}`);
 }
 for (const fragment of [
-  "optional owner selection and host materialization",
+  "Optional owner selection and host materialization",
   "Reactions-disabled Forum composition",
   "node scripts/verify/verify-reactions-host-composition.mjs",
 ]) {
