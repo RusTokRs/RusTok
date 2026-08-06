@@ -156,9 +156,9 @@ includesAll(
 includesAll(
   ownerRuntimeTest,
   [
-    "renaming_slug_records_old_route_and_replay_is_idempotent",
-    "renamed_source_route_follows_merge_and_then_becomes_gone_after_delete",
+    "rename_records_one_alias_and_old_route_becomes_gone_after_delete",
     "forum_topic_route_aliases",
+    "Topic slug changed",
   ],
   "owner runtime contract source",
 );
@@ -178,7 +178,7 @@ includesAll(
 includesAll(
   ownerDocs,
   [
-    "# FORUM-24D localized topic slug rename owner",
+    "# FORUM-24D topic slug rename owner",
     "TopicService::rename_slug",
     "Topic slug changed",
   ],
@@ -187,7 +187,7 @@ includesAll(
 includesAll(
   docsIndex,
   [
-    "FORUM-24F exposes the localized topic slug rename owner through an additive GraphQL mutation",
+    "FORUM-24F exposes the localized topic slug rename owner through an additive routed-tenant GraphQL mutation",
     "FORUM-24F topic slug rename GraphQL transport",
   ],
   "Forum docs index",
