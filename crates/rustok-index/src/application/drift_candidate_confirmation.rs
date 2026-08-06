@@ -280,14 +280,14 @@ impl IndexDriftCandidateConfirmer {
         candidate: &IndexDriftOrphanLinkCandidate,
     ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure> {
         let first_source = self.load_source_link_authority(candidate).await?;
-        match first_source {
+        match &first_source {
             SourceLinkAuthoritySummary::Absent => {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::SourceAbsent,
                 ));
             }
             SourceLinkAuthoritySummary::Present { source_version, .. }
-                if source_version != candidate.indexed_source_version() =>
+                if *source_version != candidate.indexed_source_version() =>
             {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::SourceVersionChanged,
