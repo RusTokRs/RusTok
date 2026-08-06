@@ -57,9 +57,12 @@ A successful request does not silently update the Fly project. The consumer call
 - the component is a stable static leaf plain-text component;
 - the component is not provider-owned, a composite node with children, or template-backed;
 - the component is outside every runtime-owned subtree rooted at a binding, condition or repeater target;
+- the requested content differs from the current canonical content;
 - the consumer authorization port accepts the request immediately before mutation.
 
 A static leaf inside an ordinary unowned layout remains eligible. By contrast, a repeated container blocks its entire subtree, preventing duplicate rendered instances from sharing one editable component identity.
+
+An unchanged focusout returns `NoContentChange`; it does not advance the accepted sequence, mutate history or change the project hash, so it does not consume the one-commit grant.
 
 The only mutation is:
 
@@ -69,7 +72,7 @@ EditorCommand::Patch
   → Fly validation/history/revision hash
 ```
 
-The result returns the complete current encoded project, previous/new hash and command sequence. Because the hash changes, the current grant is intentionally one-commit: the consumer must persist the result and issue a fresh grant before another canonical edit.
+The result returns the complete current encoded project, previous/new hash and command sequence. Because every accepted patch changes the canonical content and hash, the current grant is intentionally one-commit: the consumer must persist the result and issue a fresh grant before another canonical edit.
 
 ## Feature and anonymous boundary
 
