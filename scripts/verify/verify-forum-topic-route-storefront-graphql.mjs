@@ -121,7 +121,7 @@ for (const marker of [
   "requestedLocale",
   "requestedShortId",
   "requestedSlug",
-  "ForumTopicAudienceReadService",
+  ".topic_audience_read_service",
 ]) {
   requireText(test, marker, paths.test);
 }
