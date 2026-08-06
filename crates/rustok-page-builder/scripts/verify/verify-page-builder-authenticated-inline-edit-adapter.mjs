@@ -85,6 +85,7 @@ for (const key of [
   "only_allowlisted_components_receive_contenteditable",
   "runtime_bound_conditional_and_repeated_subtrees_are_excluded",
   "provider_and_composite_components_are_excluded",
+  "interactive_controls_are_excluded",
   "static_leaf_children_in_unowned_layouts_remain_eligible",
   "unchanged_focusout_does_not_consume_grant",
   "server_authorization_port_precedes_mutation",
@@ -175,6 +176,8 @@ for (const marker of [
   "component.provider.is_some()",
   "!component.children().is_empty()",
   'content.contains("{{")',
+  'matches!(component_type.as_str(), "text" | "heading" | "paragraph")',
+  '"p" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"',
   '== Some(request.value.as_str())',
   "InlineEditError::NoContentChange",
   "authorization.authorize(&request)",
@@ -188,13 +191,15 @@ for (const marker of [
   "data-inline-session",
   "data-inline-revision",
   "data-inline-project-hash",
-  "only_static_leaf_text_components_outside_runtime_subtrees_are_editable",
+  "only_noninteractive_static_leaf_text_outside_runtime_subtrees_is_editable",
   "authorized_request_applies_one_canonical_fly_patch",
   "unchanged_focusout_does_not_consume_the_one_commit_grant",
-  "stale_replay_dynamic_bound_repeated_and_rejected_authorization_fail_closed",
+  "stale_replay_dynamic_bound_repeated_interactive_and_rejected_authorization_fail_closed",
   '"repeated-child"',
+  '"interactive"',
 ]) need(inline, marker, "Page Builder canonical inline session");
 forbid(inline, "data-inline-proof", "Page Builder authorization proof DOM boundary");
+forbid(inline, '"link" | "button" | "label"', "interactive inline component eligibility");
 
 const apply = between(
   inline,
@@ -219,6 +224,7 @@ for (const marker of [
   "Authenticated real-DOM inline adapter: source-ready",
   "Pages consumer grant issuance and document-only save mount remain open",
   "unchanged `focusout`",
+  "interactive controls",
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "current-source overlay",
@@ -227,6 +233,7 @@ for (const marker of [
   "Pages consumer grant issuance and save transport remain open",
   "runtime-owned subtrees",
   "unchanged `focusout`",
+  "interactive controls",
 ]) need(actualization, marker, "Page Builder actualization overlay");
 for (const marker of [
   "source-ready / execution-pending",
@@ -237,6 +244,7 @@ for (const marker of [
   "new grant",
   "runtime-owned subtree",
   "unchanged focusout",
+  "interactive controls",
   "Execution evidence remains pending",
 ]) need(packet, marker, "authenticated inline adapter packet");
 
