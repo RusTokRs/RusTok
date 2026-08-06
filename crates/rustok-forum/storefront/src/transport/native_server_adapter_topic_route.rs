@@ -23,6 +23,7 @@ async fn storefront_topic_route_native(
     {
         use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
+        use rustok_forum::services::ForumTopicRouteTombstoneVisibilityService;
         use rustok_forum::{
             ForumError, ForumTopicAudienceReadService, ForumTopicReadOperation,
             ForumTopicReadTransport, ForumTopicRouteDisposition, ForumTopicRouteService,
@@ -43,16 +44,16 @@ async fn storefront_topic_route_native(
             .map_err(ServerFnError::new)?;
         let db = runtime_ctx.db_clone();
 
-        if auth.is_none() {
-            if let Some(channel_id) = request.channel_id {
-                let enabled = rustok_channel::ChannelService::new(db.clone())
-                    .is_module_enabled(channel_id, "forum")
-                    .await
-                    .map_err(server_error)?;
-                if !enabled {
-                    return Ok(None);
-                }
-            }
+        let channel_enabled = if let Some(channel_id) = request.channel_id {
+            rustok_channel::ChannelService::new(db.clone())
+                .is_module_enabled(channel_id, "forum")
+                .await
+                .map_err(server_error)?
+        } else {
+            true
+        };
+        if auth.is_none() && !channel_enabled {
+            return Ok(None);
         }
 
         let resolution = match ForumTopicRouteService::new(db.clone())
@@ -65,17 +66,35 @@ async fn storefront_topic_route_native(
             | Err(ForumError::TopicRouteNotFound) => return Ok(None),
             Err(error) => return Err(server_error(error)),
         };
-        let canonical = match resolution.disposition {
-            ForumTopicRouteDisposition::Canonical | ForumTopicRouteDisposition::Redirect => {
-                resolution.canonical.as_ref().ok_or_else(|| {
-                    ServerFnError::new(
-                        "Forum topic route resolution did not provide a canonical target",
-                    )
-                })?
-            }
-            ForumTopicRouteDisposition::Gone => return Ok(None),
-        };
 
+        if resolution.disposition == ForumTopicRouteDisposition::Gone {
+            if !channel_enabled {
+                return Ok(None);
+            }
+            let topic_id = resolution.requested_topic_id.ok_or_else(|| {
+                ServerFnError::new(
+                    "Forum gone route resolution did not provide its historical topic identity",
+                )
+            })?;
+            let disclose = ForumTopicRouteTombstoneVisibilityService::new(db.clone())
+                .can_disclose_public_gone(
+                    tenant.id,
+                    topic_id,
+                    request.channel_slug.as_deref(),
+                )
+                .await
+                .map_err(server_error)?;
+            if !disclose {
+                return Ok(None);
+            }
+            return map_native_topic_route_resolution(resolution);
+        }
+
+        let canonical = resolution.canonical.as_ref().ok_or_else(|| {
+            ServerFnError::new(
+                "Forum topic route resolution did not provide a canonical target",
+            )
+        })?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
@@ -142,29 +161,55 @@ async fn storefront_topic_route_native(
 fn map_native_topic_route_resolution(
     resolution: rustok_forum::ForumTopicRouteResolution,
 ) -> Result<Option<StorefrontForumTopicRouteResolution>, ServerFnError> {
-    let disposition = match resolution.disposition {
-        rustok_forum::ForumTopicRouteDisposition::Canonical => {
-            StorefrontForumTopicRouteDisposition::Canonical
+    let (disposition, canonical) = match resolution.disposition {
+        rustok_forum::ForumTopicRouteDisposition::Canonical => (
+            StorefrontForumTopicRouteDisposition::Canonical,
+            Some(map_native_canonical_descriptor(
+                resolution.canonical.ok_or_else(|| {
+                    ServerFnError::new(
+                        "Forum topic route resolution did not provide a canonical target",
+                    )
+                })?,
+            )),
+        ),
+        rustok_forum::ForumTopicRouteDisposition::Redirect => (
+            StorefrontForumTopicRouteDisposition::Redirect,
+            Some(map_native_canonical_descriptor(
+                resolution.canonical.ok_or_else(|| {
+                    ServerFnError::new(
+                        "Forum topic route resolution did not provide a canonical target",
+                    )
+                })?,
+            )),
+        ),
+        rustok_forum::ForumTopicRouteDisposition::Gone => {
+            if resolution.canonical.is_some() {
+                return Err(ServerFnError::new(
+                    "Forum gone route resolution unexpectedly provided a canonical target",
+                ));
+            }
+            (StorefrontForumTopicRouteDisposition::Gone, None)
         }
-        rustok_forum::ForumTopicRouteDisposition::Redirect => {
-            StorefrontForumTopicRouteDisposition::Redirect
-        }
-        rustok_forum::ForumTopicRouteDisposition::Gone => return Ok(None),
     };
-    let canonical = resolution.canonical.ok_or_else(|| {
-        ServerFnError::new("Forum topic route resolution did not provide a canonical target")
-    })?;
+
     Ok(Some(StorefrontForumTopicRouteResolution {
         requested_locale: resolution.requested_locale,
         requested_short_id: resolution.requested_short_id,
         requested_slug: resolution.requested_slug,
         disposition,
-        canonical: StorefrontForumTopicRouteDescriptor {
-            topic_id: canonical.topic_id.to_string(),
-            locale: canonical.locale,
-            short_id: canonical.short_id,
-            slug: canonical.slug,
-            path: canonical.path,
-        },
+        canonical,
     }))
+}
+
+#[cfg(feature = "ssr")]
+fn map_native_canonical_descriptor(
+    canonical: rustok_forum::ForumTopicRouteDescriptor,
+) -> StorefrontForumTopicRouteDescriptor {
+    StorefrontForumTopicRouteDescriptor {
+        topic_id: canonical.topic_id.to_string(),
+        locale: canonical.locale,
+        short_id: canonical.short_id,
+        slug: canonical.slug,
+        path: canonical.path,
+    }
 }
