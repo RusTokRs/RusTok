@@ -9,6 +9,7 @@ const files = {
   postgresMod: 'crates/rustok-index/src/infrastructure/postgres/mod.rs',
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-drift-candidate-confirmation.md',
+  lifecycleDoc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -149,17 +150,21 @@ for (const forbidden of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_persistence_complete_lifecycle_pending`.',
+  'Status: `source_complete_persistence_complete_lifecycle_complete_repair_pending`.',
   'Materialized bracketing',
   'An empty ordinary targeted load is never interpreted as absence.',
-  'requires the same positive absence version',
-  'PostgreSQL and owner sources do not share a transaction',
+  'PostgreSQL observer performs one exact query per observation',
   'm6-confirmed-candidate-finding-persistence.md',
+  'm6-drift-finding-lifecycle.md',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
+requireMarkers('lifecycleDoc', [
+  'Status: `source_complete_repair_pending`.',
+  'Fail-closed authorization',
+]);
 requireMarkers('plan', [
-  'M6 - add drift finding lifecycle commands',
-  'source_complete_lifecycle_pending',
+  'M6 - add targeted drift repair',
+  'source_complete_repair_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-candidate-confirmation.mjs'",
