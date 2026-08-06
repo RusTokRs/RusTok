@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked against the current main snapshot retained in
-`implementation-main-delta-2026-08-06-1335.md`, stacked parent PR #3075 at
+`implementation-main-delta-2026-08-06-1525.md`, stacked parent PR #3075 at
 `8c36960608ef387b5e36f2b5904c6ea83ceda752`, and active branch
 `agent/index-m6-repair-execution-evidence-20260806`.
 
