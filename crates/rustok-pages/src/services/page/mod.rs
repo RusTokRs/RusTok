@@ -1,4 +1,5 @@
 mod artifact_integrity_audit;
+mod artifact_rebuild;
 mod artifact_set;
 mod create;
 mod document;
@@ -27,6 +28,10 @@ pub use artifact_integrity_audit::{
     MAX_PAGE_ARTIFACT_AUDIT_FINDINGS, MAX_PAGE_ARTIFACT_AUDIT_RECORDS,
     PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
     PageArtifactIntegrityAuditResult, PageArtifactIntegrityFinding,
+};
+pub use artifact_rebuild::{
+    PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT,
+    PAGE_ARTIFACT_REBUILD_SOURCE_INVALID,
 };
 pub use crate::error::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
