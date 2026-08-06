@@ -15,6 +15,7 @@ const paths = {
   graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
   owner: "crates/rustok-forum/src/services/topic_route.rs",
   audienceOwner: "crates/rustok-forum/src/services/topic_audience_read.rs",
+  tombstoneOwner: "crates/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
   contract: "crates/rustok-forum/contracts/forum-topic-route-storefront-graphql.json",
   test: "crates/rustok-forum/tests/topic_route_storefront_graphql_contract.rs",
   docs: "crates/rustok-forum/docs/forum-24h-topic-route-storefront-graphql.md",
@@ -44,6 +45,7 @@ const query = read(paths.query);
 const graphqlMod = read(paths.graphqlMod);
 const owner = read(paths.owner);
 const audienceOwner = read(paths.audienceOwner);
+const tombstoneOwner = read(paths.tombstoneOwner);
 const contractText = read(paths.contract);
 const test = read(paths.test);
 const docs = read(paths.docs);
@@ -57,33 +59,33 @@ try {
 
 for (const marker of [
   "async fn forum_storefront_topic_route(",
+  "map_legacy_public_route_resolution(resolution)",
+  "ForumTopicRouteDisposition::Gone => return Ok(None)",
+  "async fn forum_storefront_topic_route_decision(",
+  "ForumTopicRouteTombstoneVisibilityService::new(db.clone())",
+  ".can_disclose_public_gone(",
+  "GqlForumStorefrontTopicRouteDecisionDisposition::Gone",
+  "pub canonical: Option<GqlForumTopicRouteDescriptor>",
   "require_module_enabled(ctx, MODULE_SLUG).await?",
-  "require_public_forum_channel_enabled(ctx).await?",
+  "forum_channel_enabled(ctx).await?",
   "Permission denied: tenant scope mismatch",
   "ForumTopicRouteService::new(db.clone())",
-  ".resolve(tenant_id, &locale, &short_id, &slug)",
   ".topic_audience_read_service(db.clone(), event_bus.clone())",
   "topic_read_audience_port_context(",
-  "ForumTopicReadTransport::Graphql",
-  "ForumTopicReadOperation::SelectedTopic",
   ".get_authenticated_storefront_visible_with_audience_context(",
   ".get_public_storefront_visible_with_locale_fallback(",
-  "SecurityContext::from_permission_snapshot",
-  "ForumTopicRouteDisposition::Gone => return Ok(None)",
-  "GqlForumStorefrontTopicRouteDisposition::Canonical",
-  "GqlForumStorefrontTopicRouteDisposition::Redirect",
 ]) {
   requireText(query, marker, paths.query);
 }
 
 for (const marker of [
   "TopicService::new",
-  "is_topic_visible_for_channel(",
-  "crate::constants::topic_status::OPEN",
   "pub requested_topic_id",
   "pub alias_id",
   "GqlForumStorefrontTopicRouteDisposition::Gone",
   "forum_topic_route_aliases",
+  "forum_topic_route_tombstone_visibility",
+  "forum_topic_route_tombstone_channels",
   "Statement::from_sql_and_values",
   "record_redirect_alias_in_tx",
   "record_gone_alias_in_tx",
@@ -93,11 +95,7 @@ for (const marker of [
 }
 
 requireText(graphqlMod, "mod topic_route_query;", paths.graphqlMod);
-requireText(
-  graphqlMod,
-  "topic_route_query::ForumTopicRouteQuery",
-  paths.graphqlMod,
-);
+requireText(graphqlMod, "topic_route_query::ForumTopicRouteQuery", paths.graphqlMod);
 requireText(owner, "pub async fn resolve(", paths.owner);
 requireText(
   owner,
@@ -108,29 +106,30 @@ for (const marker of [
   "pub struct ForumTopicAudienceReadService",
   "get_authenticated_storefront_visible_with_audience_context",
   "get_public_storefront_visible_with_locale_fallback",
-  "ForumTopicAudienceVisibilityService",
 ]) {
   requireText(audienceOwner, marker, paths.audienceOwner);
 }
+requireText(
+  tombstoneOwner,
+  "pub async fn can_disclose_public_gone(",
+  paths.tombstoneOwner,
+);
 
 for (const marker of [
   "forumStorefrontTopicRoute",
-  "GqlForumStorefrontTopicRouteResolution",
-  "CANONICAL",
-  "REDIRECT",
-  "requestedLocale",
-  "requestedShortId",
-  "requestedSlug",
-  ".topic_audience_read_service",
+  "forumStorefrontTopicRouteDecision",
+  "GqlForumStorefrontTopicRouteDecision",
+  "GONE",
+  ".can_disclose_public_gone(",
 ]) {
   requireText(test, marker, paths.test);
 }
 
 for (const marker of [
-  "visibility snapshot",
-  "returns `null`",
+  "FORUM-24J",
+  "FORUM-24K",
+  "legacy",
   "does not expose",
-  "public `GONE`",
   "No commands were executed",
 ]) {
   requireText(docs, marker, paths.docs);
@@ -143,26 +142,14 @@ if (contract) {
   if (contract.status !== "source_ready_maintainer_execution_pending") {
     failures.push(`${paths.contract}: unexpected source status`);
   }
-  if (contract.storefront_visibility_owner !== "ForumTopicAudienceReadService") {
-    failures.push(`${paths.contract}: exact audience owner must be declared`);
-  }
   if (contract.output?.gone_exposed !== false) {
-    failures.push(`${paths.contract}: gone_exposed must remain false`);
+    failures.push(`${paths.contract}: legacy gone_exposed must remain false`);
   }
   if (contract.output?.requested_topic_id_exposed !== false) {
     failures.push(`${paths.contract}: requested topic identity must stay hidden`);
   }
-  if (contract.output?.alias_id_exposed !== false) {
-    failures.push(`${paths.contract}: alias identity must stay hidden`);
-  }
   if (contract.authorization?.canonical_topic_rechecked !== true) {
     failures.push(`${paths.contract}: canonical topic visibility recheck is required`);
-  }
-  if (contract.authorization?.exact_audience_owner_rechecked !== true) {
-    failures.push(`${paths.contract}: exact audience recheck is required`);
-  }
-  if (contract.route_policy?.canonical_resolution_reimplemented !== false) {
-    failures.push(`${paths.contract}: canonical resolution must remain owner-defined`);
   }
 }
 

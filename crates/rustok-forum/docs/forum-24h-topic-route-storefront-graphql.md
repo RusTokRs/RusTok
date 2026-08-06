@@ -48,15 +48,17 @@ It intentionally does not expose:
 - alias reasons or persistence metadata;
 - a public `GONE` disposition.
 
-## Why `GONE` remains hidden
+## Why `GONE` was hidden
 
 At the time of FORUM-24H, the tombstone ledger had no visibility snapshot, so returning a public `410 Gone` could disclose a formerly private or channel-restricted topic.
 
-FORUM-24J later adds an immutable boolean-and-channel visibility snapshot owner for newly deleted topics. FORUM-24H itself remains unchanged and still returns `null` for `ForumTopicRouteDisposition::Gone`; the GraphQL consumer is deliberately deferred to FORUM-24K. Until that consumer validates the snapshot through the owner, this transport does not expose public `GONE`.
+FORUM-24J later adds an immutable boolean-and-channel visibility snapshot owner for newly deleted topics. The FORUM-24H legacy field remains schema-compatible and still returns `null` for `ForumTopicRouteDisposition::Gone`.
+
+FORUM-24K adds a separate additive `forumStorefrontTopicRouteDecision` field. Only that new field may expose `GONE`, and only after `ForumTopicRouteTombstoneVisibilityService::can_disclose_public_gone` admits the deletion-time public route for the current routed channel. The legacy response still does not expose historical topic IDs, alias IDs, snapshot payloads, audience selectors, or channel lists.
 
 ## Compatibility
 
-This is an additive GraphQL query. It changes no route owner method, mutation, database schema, migration, event or admin workflow. FORUM-24I later composes the query and equivalent native owner path into the Rust storefront host. FORUM-24J changes delete-side owner storage only and does not alter this query output.
+The FORUM-24H field remains additive and unchanged. FORUM-24K does not make its enum wider or its canonical target nullable; it adds a separate decision type instead. This preserves existing generated clients while allowing the module-owned storefront package to opt into authorized terminal decisions.
 
 ## Verification handoff
 
@@ -65,14 +67,14 @@ No commands were executed while preparing or aligning this source slice. Maintai
 ```bash
 node scripts/verify/verify-forum-topic-route-identity-owner.mjs
 node scripts/verify/verify-forum-topic-route-storefront-graphql.mjs
+node scripts/verify/verify-forum-topic-route-authorized-gone.mjs
 cargo test -p rustok-forum graphql::topic_route_query::tests -- --nocapture
 cargo test -p rustok-forum --test topic_route_storefront_graphql_contract -- --nocapture
 cargo check -p rustok-forum --all-targets
 ```
 
-## Remaining FORUM-24 scope after FORUM-24J
+## Remaining FORUM-24 scope after FORUM-24K
 
-- consume the visibility-authorized snapshot in GraphQL/native transport and host HTTP policy;
 - add category route identity;
 - define canonical and hreflang document policy;
 - integrate SEO and capture runtime evidence.

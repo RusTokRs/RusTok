@@ -1,11 +1,11 @@
 use crate::model::StorefrontForumTopicRouteResolution;
 
-const STOREFRONT_FORUM_TOPIC_ROUTE_QUERY: &str = "query StorefrontForumTopicRoute($tenantId: UUID, $locale: String!, $shortId: String!, $slug: String!) { forumStorefrontTopicRoute(tenantId: $tenantId, locale: $locale, shortId: $shortId, slug: $slug) { requestedLocale requestedShortId requestedSlug disposition canonical { topicId locale shortId slug path } } }";
+const STOREFRONT_FORUM_TOPIC_ROUTE_QUERY: &str = "query StorefrontForumTopicRouteDecision($tenantId: UUID, $locale: String!, $shortId: String!, $slug: String!) { forumStorefrontTopicRouteDecision(tenantId: $tenantId, locale: $locale, shortId: $shortId, slug: $slug) { requestedLocale requestedShortId requestedSlug disposition canonical { topicId locale shortId slug path } } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontForumTopicRouteResponse {
-    #[serde(rename = "forumStorefrontTopicRoute")]
-    forum_storefront_topic_route: Option<StorefrontForumTopicRouteResolution>,
+    #[serde(rename = "forumStorefrontTopicRouteDecision")]
+    forum_storefront_topic_route_decision: Option<StorefrontForumTopicRouteResolution>,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,5 +33,5 @@ pub async fn resolve_storefront_topic_route_graphql(
         },
     )
     .await?;
-    Ok(response.forum_storefront_topic_route)
+    Ok(response.forum_storefront_topic_route_decision)
 }

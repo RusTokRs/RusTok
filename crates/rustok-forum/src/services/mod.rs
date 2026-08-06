@@ -248,6 +248,7 @@ pub use topic_route_backfill::{
     ForumTopicMergeRouteBackfillResult, ForumTopicMergeRouteBackfillService,
     MAX_FORUM_TOPIC_MERGE_ROUTE_BACKFILL_OPERATIONS,
 };
+pub use topic_owner::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };

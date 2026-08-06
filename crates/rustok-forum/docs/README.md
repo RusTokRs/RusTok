@@ -52,9 +52,10 @@ notifications module, and cross-module release gates.
 - FORUM-24E provides a bounded, cursor-resumable owner repair that ensures exact route aliases for immutable merge receipts created before FORUM-24B.
 - FORUM-24F exposes the localized topic slug rename owner through an additive routed-tenant GraphQL mutation while preserving owner-defined update and ownership semantics.
 - FORUM-24G composes that mutation in the module-owned Leptos and Next-admin packages without adding route, alias, merge or locale-selection policy to either UI.
-- FORUM-24H exposes visibility-safe storefront canonical/redirect resolution through GraphQL, rechecks the canonical topic through the exact category/topic audience owner, and keeps `gone` hidden at the public transport boundary.
-- FORUM-24I composes the canonical localized topic route in `rustok-forum-storefront` and the shared Rust storefront router, cuts topic-card navigation over from UUID query links, preserves native/GraphQL audience parity, and keeps missing/hidden/deleted/`gone` indistinguishable as public `404`.
-- FORUM-24J records an immutable anonymous visibility and route-channel snapshot before topic deletion, seals channel scope with count and SHA-256 digest, exposes only an internal boolean owner decision, and leaves GraphQL/native/HTTP `GONE` consumption to FORUM-24K.
+- FORUM-24H exposes visibility-safe storefront canonical/redirect resolution through a legacy-compatible GraphQL field and exact category/topic audience recheck.
+- FORUM-24I composes the canonical localized topic route in `rustok-forum-storefront` and the shared Rust storefront router, cuts topic-card navigation over from UUID query links, and preserves native/GraphQL selected-path parity.
+- FORUM-24J records an immutable anonymous visibility and route-channel snapshot before topic deletion, seals channel scope with count and SHA-256 digest, and exposes only a boolean owner decision.
+- FORUM-24K adds a separate GraphQL route decision field, consumes the FORUM-24J boolean in GraphQL and native storefront paths, and maps only owner-authorized tombstones to private no-store `410 Gone` while preserving `404` for missing or unauthorized history.
 
 ## Verification
 
@@ -65,6 +66,7 @@ notifications module, and cross-module release gates.
 - `node scripts/verify/verify-forum-topic-route-storefront-graphql.mjs`
 - `node scripts/verify/verify-forum-topic-route-storefront-mount.mjs`
 - `node scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs`
+- `node scripts/verify/verify-forum-topic-route-authorized-gone.mjs`
 - task-specific owner, transport, UI and runtime commands from the canonical plan
 
 ## Related documents
@@ -98,6 +100,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24H storefront topic route GraphQL transport](./forum-24h-topic-route-storefront-graphql.md)
 - [FORUM-24I storefront topic route mount](./forum-24i-topic-route-storefront-mount.md)
 - [FORUM-24J topic route tombstone visibility owner](./forum-24j-topic-route-tombstone-visibility.md)
+- [FORUM-24K authorized topic route gone transport](./forum-24k-topic-route-authorized-gone.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

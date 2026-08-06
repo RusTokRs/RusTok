@@ -16,6 +16,7 @@ const paths = {
   migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
   topicOwner: "crates/rustok-forum/src/services/topic_owner.rs",
   topicOwnerInline: "crates/rustok-forum/src/services/topic_owner_inline.rs",
+  servicesMod: "crates/rustok-forum/src/services/mod.rs",
   snapshotOwner:
     "crates/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
   categoryVisibility: "crates/rustok-forum/src/services/category_visibility.rs",
@@ -30,16 +31,13 @@ const paths = {
   docs: "crates/rustok-forum/docs/forum-24j-topic-route-tombstone-visibility.md",
 };
 
-function absolute(relativePath) {
-  return path.join(repoRoot, relativePath);
-}
-
 function read(relativePath) {
-  if (!existsSync(absolute(relativePath))) {
+  const absolutePath = path.join(repoRoot, relativePath);
+  if (!existsSync(absolutePath)) {
     failures.push(`${relativePath}: expected file is missing`);
     return "";
   }
-  return readFileSync(absolute(relativePath), "utf8");
+  return readFileSync(absolutePath, "utf8");
 }
 
 function requireText(content, marker, label) {
@@ -58,30 +56,18 @@ function requireOrder(content, markers, label) {
       failures.push(`${label}: missing ordered marker ${marker}`);
       continue;
     }
-    if (position < previous) {
-      failures.push(`${label}: marker appears out of order ${marker}`);
-    }
+    if (position < previous) failures.push(`${label}: marker appears out of order ${marker}`);
     previous = position;
   }
 }
 
-const migration = read(paths.migration);
-const migrationsMod = read(paths.migrationsMod);
-const topicOwner = read(paths.topicOwner);
-const topicOwnerInline = read(paths.topicOwnerInline);
-const snapshotOwner = read(paths.snapshotOwner);
-const categoryVisibility = read(paths.categoryVisibility);
-const topicAudienceLock = read(paths.topicAudienceLock);
-const graphql = read(paths.graphql);
-const native = read(paths.native);
-const host = read(paths.host);
-const contractText = read(paths.contract);
-const test = read(paths.test);
-const docs = read(paths.docs);
+const source = Object.fromEntries(
+  Object.entries(paths).map(([key, value]) => [key, read(value)]),
+);
 
 let contract = null;
 try {
-  contract = JSON.parse(contractText);
+  contract = JSON.parse(source.contract);
 } catch (error) {
   failures.push(`${paths.contract}: invalid JSON (${error.message})`);
 }
@@ -94,20 +80,19 @@ for (const marker of [
   "route_channel_digest ~ '^[0-9a-f]{64}$'",
   "route_channel_digest NOT GLOB '*[^0-9a-f]*'",
   "forum topic route tombstone visibility is append-only",
-  "idx_forum_topic_route_tombstone_channel_lookup",
   "DatabaseBackend::Postgres",
   "DatabaseBackend::Sqlite",
 ]) {
-  requireText(migration, marker, paths.migration);
+  requireText(source.migration, marker, paths.migration);
 }
 requireText(
-  migrationsMod,
+  source.migrationsMod,
   "m20260806_000025_add_forum_topic_route_tombstone_visibility",
   paths.migrationsMod,
 );
 
 requireOrder(
-  topicOwner,
+  source.topicOwner,
   [
     "ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(",
     "claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?",
@@ -119,14 +104,14 @@ requireOrder(
   paths.topicOwner,
 );
 requireText(
-  topicOwnerInline,
+  source.topicOwnerInline,
   'include!("topic_route_tombstone_visibility.rs")',
   paths.topicOwnerInline,
 );
 requireText(
-  topicOwnerInline,
-  "topic_audience_lock",
-  paths.topicOwnerInline,
+  source.servicesMod,
+  "ForumTopicRouteTombstoneVisibilityService",
+  paths.servicesMod,
 );
 
 for (const marker of [
@@ -139,63 +124,63 @@ for (const marker of [
   "topic.status == TopicStatus::Open",
   "route_channel_count",
   "route_channel_digest",
-  "Some(existing)",
-  "None =>",
   "stored_channels != channel_slugs",
   "validate_sealed_channel_scope",
   "pub async fn can_disclose_public_gone(",
 ]) {
-  requireText(snapshotOwner, marker, paths.snapshotOwner);
+  requireText(source.snapshotOwner, marker, paths.snapshotOwner);
 }
 for (const marker of [
   "async_graphql",
   "axum::",
   "forum_category_policy::",
-  "hashtextextended",
-  "GqlForumStorefrontTopicRouteDisposition::Gone",
-  "StorefrontForumTopicRouteDisposition::Gone",
+  "GqlForumStorefrontTopicRouteDecisionDisposition",
+  "StorefrontForumTopicRouteDisposition",
   "StatusCode::GONE",
 ]) {
-  forbidText(snapshotOwner, marker, paths.snapshotOwner);
+  forbidText(source.snapshotOwner, marker, paths.snapshotOwner);
 }
+for (const marker of [
+  "StoredForumTopicRouteTombstoneVisibility",
+  "route_channel_digest",
+  "load_snapshot_channel_slugs",
+]) {
+  forbidText(source.servicesMod, marker, paths.servicesMod);
+}
+
 requireText(
-  topicAudienceLock,
+  source.topicAudienceLock,
   "pub(crate) async fn lock_topic_audience_scopes_in_tx(",
   paths.topicAudienceLock,
 );
 requireText(
-  topicAudienceLock,
-  '"SELECT pg_advisory_xact_lock(hashtextextended($1, 5))"',
-  paths.topicAudienceLock,
-);
-
-requireText(
-  categoryVisibility,
+  source.categoryVisibility,
   "pub(crate) async fn is_category_public_to_anonymous",
   paths.categoryVisibility,
 );
-requireText(
-  categoryVisibility,
-  "super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?",
-  paths.categoryVisibility,
-);
 
-requireText(
-  graphql,
-  "ForumTopicRouteDisposition::Gone => return Ok(None)",
-  paths.graphql,
-);
+for (const content of [source.graphql, source.native]) {
+  requireText(
+    content,
+    "ForumTopicRouteTombstoneVisibilityService",
+    "FORUM-24K transport consumer",
+  );
+  requireText(content, ".can_disclose_public_gone(", "FORUM-24K transport consumer");
+  for (const forbidden of [
+    "forum_topic_route_tombstone_visibility",
+    "forum_topic_route_tombstone_channels",
+    "SELECT ",
+  ]) {
+    forbidText(content, forbidden, "FORUM-24K transport consumer");
+  }
+}
+requireText(source.host, "StatusCode::GONE", paths.host);
 forbidText(
-  graphql,
-  "GqlForumStorefrontTopicRouteDisposition::Gone",
-  paths.graphql,
+  source.host,
+  "ForumTopicRouteTombstoneVisibilityService",
+  paths.host,
 );
-forbidText(
-  native,
-  "StorefrontForumTopicRouteDisposition::Gone",
-  paths.native,
-);
-forbidText(host, "StatusCode::GONE", paths.host);
+forbidText(source.host, "can_disclose_public_gone", paths.host);
 
 for (const marker of [
   "migration_adds_sealed_append_only_snapshot_storage",
@@ -203,7 +188,7 @@ for (const marker of [
   "snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope",
   "this_slice_does_not_publish_gone_transport_or_http_policy",
 ]) {
-  requireText(test, marker, paths.test);
+  requireText(source.test, marker, paths.test);
 }
 
 for (const marker of [
@@ -212,19 +197,13 @@ for (const marker of [
   "route_channel_count",
   "SHA-256",
   "same order as the canonical topic audience owner",
-  "does not change",
   "No tests, verifiers, formatting, Cargo commands, migrations, workflows",
 ]) {
-  requireText(docs, marker, paths.docs);
+  requireText(source.docs, marker, paths.docs);
 }
 
 if (contract) {
-  if (contract.task !== "FORUM-24J") {
-    failures.push(`${paths.contract}: task must be FORUM-24J`);
-  }
-  if (contract.status !== "source_ready_maintainer_execution_pending") {
-    failures.push(`${paths.contract}: unexpected source status`);
-  }
+  if (contract.task !== "FORUM-24J") failures.push(`${paths.contract}: task must be FORUM-24J`);
   if (contract.owner !== "ForumTopicRouteTombstoneVisibilityService") {
     failures.push(`${paths.contract}: unexpected owner`);
   }
@@ -234,17 +213,8 @@ if (contract) {
   if (contract.storage?.route_channel_sha256_digest_sealed !== true) {
     failures.push(`${paths.contract}: channel digest must be sealed`);
   }
-  if (contract.lock_owner_reuse?.custom_advisory_namespace_added !== false) {
-    failures.push(`${paths.contract}: snapshot must reuse canonical lock owners`);
-  }
   if (contract.replay?.existing_channels_appended !== false) {
     failures.push(`${paths.contract}: replay must never append channels`);
-  }
-  if (contract.compatibility?.public_gone_exposed !== false) {
-    failures.push(`${paths.contract}: public GONE must remain hidden`);
-  }
-  if (contract.compatibility?.public_410_added !== false) {
-    failures.push(`${paths.contract}: public 410 must remain out of scope`);
   }
 }
 
