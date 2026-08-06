@@ -100,11 +100,11 @@ immutable-artifact-integrity-audit-source-ready
 
 Pages now owns a bounded read-only immutable artifact integrity audit for one exact tenant and page.
 
-The command requires tenant-wide `pages:manage`, reads through one transaction and scans at most 512 records ordered by creation time and artifact id. It requests one extra row and sets `truncated=true` instead of claiming a complete audit when more retained records exist.
+The command accepts only tenant-wide `pages:manage` (`PermissionScope::All`); owner-scoped Manage is rejected. It reads through one transaction and scans at most 512 records ordered by creation time and artifact id. It requests one extra row and sets `truncated=true` instead of claiming a complete audit when more retained records exist.
 
 Each record is reconstructed through the Page Builder static artifact and materialization contracts. The audit checks owner identity, static artifact hashes, build/renderer metadata, output byte limits, complete current materialization evidence and exact legacy all-`NULL` compatibility. Partial evidence fails closed.
 
-The result contains only bounded artifact identity, one public finding code, hashed internal diagnostics, counts, truncation flags and a deterministic audit hash. It does not return HTML, CSS, runtime snapshots, materialization identity JSON or internal error text.
+The result contains only artifact id, fixed SHA-256 locale and record-identity hashes, one public finding code, hashed internal diagnostics, counts, truncation flags and a deterministic audit hash. It does not return raw locale, stored build/artifact/content/materialization hashes, HTML, CSS, runtime snapshots, materialization identity JSON or internal error text.
 
 This command does not write artifact or binding rows, emit lifecycle/cache events, publish, rollback, repair or rebuild. Public GraphQL/HTTP/admin transport is not added in this slice. Automatic repair/rebuild remains open as a separate source cursor.
 
@@ -113,6 +113,8 @@ The broad Phase 6 wording should now be read as follows:
 - bounded read-only integrity-audit command: source-ready;
 - public audit transport and accepted database evidence: pending;
 - repair/rebuild remains open.
+
+Any local Pages heading claiming that all remaining work is execution evidence only is now stale: audit transport and repair/rebuild are still open source tasks.
 
 ### Status boundary
 
@@ -125,8 +127,8 @@ Source parity has advanced, but execution and rollout remain open.
 ## Current next cursor
 
 1. Run the immutable artifact audit source guard and focused Pages tests.
-2. Retain SQLite/PostgreSQL audit evidence for valid legacy/current records, corruption, partial evidence, authorization and 513-row truncation.
-3. Add a bounded owner-only GraphQL/HTTP transport for the audit result without exposing artifact payloads.
+2. Retain SQLite/PostgreSQL audit evidence for valid legacy/current records, corruption, partial evidence, tenant-wide versus owner-scoped authorization and 513-row truncation.
+3. Add a bounded tenant-wide owner GraphQL/HTTP transport for the audit result without exposing artifact payloads.
 4. Design repair/rebuild as a separate explicit command with immutable source provenance and no in-place artifact mutation.
 5. Run the static publish resource-limit source guard and retain accepted real-project policy evidence.
 6. Execute the existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
