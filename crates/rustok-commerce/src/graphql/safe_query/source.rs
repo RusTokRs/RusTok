@@ -71,6 +71,8 @@ mod rustok_api_shim {
     }
 }
 
+#[path = "source/rustok_cart_shim.rs"]
+mod rustok_cart_shim;
 #[path = "source/rustok_channel_shim.rs"]
 mod rustok_channel_shim;
 #[path = "source/rustok_customer_shim.rs"]
@@ -85,6 +87,7 @@ mod rustok_payment_shim;
 mod rustok_pricing_shim;
 
 use self::rustok_api_shim as rustok_api;
+use self::rustok_cart_shim as rustok_cart;
 use self::rustok_channel_shim as rustok_channel;
 use self::rustok_customer_shim as rustok_customer;
 use self::rustok_fulfillment_shim as rustok_fulfillment;
