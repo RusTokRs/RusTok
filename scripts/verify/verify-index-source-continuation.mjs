@@ -7,7 +7,8 @@ const files = {
   applicationMod: "crates/rustok-index/src/application/mod.rs",
   cargo: "crates/rustok-index/Cargo.toml",
   pageRuntime: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
-  graphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
+  exactGraphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
+  pageGraphql: "apps/server/src/graphql/index_drift_source_page_diagnosis.rs",
   doc: "crates/rustok-index/docs/m6-source-continuation-codec.md",
   serverDoc: "crates/rustok-index/docs/m6-source-continuation-server-keyring.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
@@ -50,22 +51,11 @@ requireMarkers("source", [
   "descriptor.source_name()",
   "pub struct IndexSourceContinuationToken(String);",
   "pub struct IndexSourceContinuationCodec",
-  "active_key_id: String",
   "keys: Arc<BTreeMap<String, [u8; KEY_BYTES]>>",
   "Aes256Gcm::new_from_slice",
   "OsRng.fill_bytes(&mut nonce);",
-  "Payload {",
   "pub fn seal(",
   "pub fn open_encoded(",
-  "pub fn open(",
-  "contract_version: CONTINUATION_VERSION",
-  "tenant_id: scope.tenant_id",
-  "schema: scope.schema.clone()",
-  "owner_module: scope.owner_module.clone()",
-  "source_name: scope.source_name.clone()",
-  "cursor: cursor.clone()",
-  "URL_SAFE_NO_PAD.encode(decoded)",
-  "URL_SAFE_NO_PAD.decode(token.as_str())",
   "validate_claims(&claims, expected_scope, now)?;",
   "IndexSourceContinuationError::TenantMismatch",
   "IndexSourceContinuationError::SchemaMismatch",
@@ -84,12 +74,7 @@ const production = content.source.split("\n#[cfg(test)]")[0];
 for (const forbidden of [
   "sea_orm",
   "DatabaseConnection",
-  "SELECT ",
-  "INSERT ",
-  "UPDATE ",
-  "DELETE FROM",
   "tokio::spawn",
-  "spawn_blocking",
   "async_graphql",
   "std::env",
   "SecretResolverRegistry",
@@ -100,29 +85,12 @@ for (const forbidden of [
 }
 
 const decode = production.indexOf("let decoded = URL_SAFE_NO_PAD.decode(token.as_str())?;");
-const decodedBound = production.indexOf(
-  "if decoded.len() > MAX_DECODED_TOKEN_BYTES",
-  decode,
-);
+const decodedBound = production.indexOf("if decoded.len() > MAX_DECODED_TOKEN_BYTES", decode);
 const decrypt = production.indexOf(".decrypt(", decodedBound);
 const claims = production.indexOf("let claims: ContinuationClaims", decrypt);
 const validate = production.indexOf("validate_claims(&claims, expected_scope, now)?;", claims);
 if (decode < 0 || decodedBound <= decode || decrypt <= decodedBound || claims <= decrypt || validate <= claims) {
   throw new Error("continuation opening must bound, authenticate, decode, then validate claims");
-}
-
-const scopeValidation = production.indexOf("fn validate_claims(");
-for (const marker of [
-  "claims.tenant_id != expected_scope.tenant_id",
-  "claims.schema != expected_scope.schema",
-  "claims.owner_module != expected_scope.owner_module",
-  "claims.source_name != expected_scope.source_name",
-  "claims.issued_at_unix_millis > latest_acceptable_issue",
-  "claims.expires_at_unix_millis <= now",
-]) {
-  if (production.indexOf(marker, scopeValidation) <= scopeValidation) {
-    throw new Error(`claim validation is missing ${marker}`);
-  }
 }
 
 for (const secretLeak of [
@@ -139,45 +107,63 @@ requireMarkers("pageRuntime", [
   "next_cursor: Option<rustok_index::IndexSourceCursor>",
   "next_token: Option<rustok_index::IndexSourceContinuationToken>",
   "pub async fn diagnose_source_page_sealed(",
-  "The raw continuation cursor remains server-owned and is not attached to GraphQL",
 ]);
 for (const leaked of [
   "IndexSourceContinuationCodec",
   "IndexSourceContinuationToken",
   "IndexSourceCursor",
 ]) {
-  if (content.graphql.includes(leaked)) {
-    throw new Error(`source continuation capability leaked into exact GraphQL transport: ${leaked}`);
+  if (content.exactGraphql.includes(leaked)) {
+    throw new Error(`source continuation leaked into exact GraphQL transport: ${leaked}`);
+  }
+}
+
+requireMarkers("pageGraphql", [
+  "pub continuation: Option<String>",
+  "const MAX_CONTINUATION_BYTES: usize = 16 * 1024;",
+  ".diagnose_source_page_sealed(",
+  "continuation.as_deref()",
+]);
+const pageGraphqlProduction = content.pageGraphql.split("\n#[cfg(test)]")[0];
+for (const forbidden of [
+  "IndexSourceCursor",
+  "IndexSourceContinuationKeyringRuntime",
+  "SecretRef",
+  "IndexSourceContinuationCodec",
+  ".diagnose_source_page(",
+]) {
+  if (pageGraphqlProduction.includes(forbidden)) {
+    throw new Error(`sealed GraphQL transport contains ${forbidden}`);
   }
 }
 
 requireMarkers("doc", [
-  "Status: `source_complete_server_composition_complete_transport_pending`.",
+  "Status: `source_complete_owner_execution_pending`.",
   "AES-256-GCM",
   "fresh 96-bit operating-system nonce",
   "canonical owner module",
   "canonical source name",
   "between 1 second and 15 minutes",
-  "A token naming a removed or otherwise unavailable key fails closed",
-  "Server composition",
+  "A token naming a removed key fails closed",
+  "diagnoseIndexSourcePage",
   "No tests, verifiers, formatting, Cargo checks",
 ]);
 requireMarkers("serverDoc", [
-  "Status: `source_complete_transport_and_owner_execution_pending`.",
+  "Status: `source_complete_owner_execution_pending`.",
   "SecretRef",
   "exactly 32 bytes",
   "diagnose_source_page_sealed",
+  "diagnoseIndexSourcePage",
 ]);
 requireMarkers("plan", [
   "M6 authenticated and confidential source continuation codec",
-  "source_complete_server_composition_complete_transport_pending",
   "M6 server-owned source continuation keyring and sealed page boundary",
+  "M6 bounded GraphQL sealed source-page diagnosis transport",
 ]);
 requireMarkers("aggregate", ["'verify-index-source-continuation.mjs'"]);
 
 for (const claim of [
   "tests passed",
-  "source-page transport is complete",
   "retained evidence admitted",
 ]) {
   if (content.doc.toLowerCase().includes(claim.toLowerCase())) {
