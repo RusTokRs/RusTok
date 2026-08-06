@@ -18,7 +18,7 @@ last_reviewed: 2026-08-07
 | `REACTIONS-01` | `in_progress` | Tenant-composite owner schema, immutable catalog snapshots, actor uniqueness and shared Outbox command receipts are source-ready. Regenerate `Cargo.lock` and retain SQLite/PostgreSQL execution evidence. |
 | `REACTIONS-02` | `in_progress` | Actor state, aggregate deltas, typed semantic events and completed shared Outbox receipts now share one transaction. Bounded inspect/repair reconciliation is source-ready; retain rollback, replay, concurrency and repair evidence. |
 | `REACTIONS-03` | `in_progress` | Forum topic/reply provider, optional host materialization and executable composition profile tests are source-ready. Reactions stays outside defaults; retained execution evidence remains pending. |
-| `REACTIONS-04` | `in_progress` | Blog `post` producer is source-ready over Blog-owned publication, channel visibility and owner version. The neutral-contract review now covers Forum and Blog producers; retain Blog host/runtime evidence before freezing shared transport or presentation contracts. |
+| `REACTIONS-04` | `in_progress` | Blog `post` producer and Blog+Reactions composition profile are source-ready over Blog-owned publication, channel visibility and owner version. The neutral-contract review now covers Forum and Blog producers; retain Blog provider/host runtime evidence before freezing shared transport or presentation contracts. |
 | `REACTIONS-05` | `planned` | Bounded read/write transports and module-owned UI. |
 | `REACTIONS-06` | `planned` | Runtime evidence, FBA contracts, import/reconciliation and release profiles. |
 
@@ -137,8 +137,8 @@ models: Forum derives revision from captured topic/reply history and rich audien
 facts, while Blog uses an explicit owner version plus publication/channel scope.
 No API expansion was required for the second producer. This is the source-level
 neutral-contract review gate for `REACTIONS-04`; retained Blog composition and
-runtime execution evidence remains required before shared transport or
-presentation contracts are frozen.
+provider authorization execution evidence remains required before shared
+transport or presentation contracts are frozen.
 
 ## Optional host composition boundary
 
@@ -165,8 +165,8 @@ Supported profiles are explicit:
   producer source.
 - Forum with Reactions: the registry materializes the `forum` source with
   `topic` and `reply` kinds.
-- Blog with Reactions: the generic registry can materialize the `blog` source
-  with the `post` kind; retained executable host evidence is pending.
+- Blog with Reactions: the registry materializes the `blog` source with the
+  `post` kind.
 - Selected Reactions feature without `ReactionsModule`: startup fails with the
   stable owner-missing error before publishing a false runtime.
 
@@ -178,14 +178,16 @@ outside default profiles.
 
 `apps/server/tests/reactions_composition_profiles.rs` provides executable
 composition profile tests over the public server host-composition entrypoint and
-an isolated SQLite in-memory connection. The current target proves the three
-Forum/Reactions optional profiles plus the selected-feature/missing-owner
-failure. It does not query Forum domain rows or execute reaction commands.
+an isolated SQLite in-memory connection. The target has source coverage for the
+three established Forum/Reactions optional profiles, Blog+Reactions producer
+materialization and the selected-feature/missing-owner failure. It does not query
+Forum or Blog domain rows or execute reaction commands.
 
-The Blog producer adds source-level provider and contract evidence in
+The Blog producer also adds source-level provider and contract evidence in
 `crates/rustok-blog/contracts/blog-reaction-subject-provider.json` and
-`scripts/verify/verify-blog-reaction-subject-provider.mjs`. A retained executable
-Blog+Reactions host profile remains part of `REACTIONS-04` completion.
+`scripts/verify/verify-blog-reaction-subject-provider.mjs`. Retained execution of
+the Blog+Reactions host profile and Blog authorization behavior remains part of
+`REACTIONS-04` completion.
 
 The contract remains `source_ready_maintainer_execution_pending`: retained
 execution evidence remains pending until a maintainer runs and stores the
@@ -197,8 +199,8 @@ profiles. Source presence alone does not promote `REACTIONS-03` or
 Regenerate `Cargo.lock` and the `rustok-events` digest artifact, then retain
 SQLite/PostgreSQL evidence covering changed/no-op/replay event cardinality,
 rollback on event failure, concurrent actor updates, clean/blocked/drift
-reconciliation and receipt replay. Retain a Blog+Reactions host composition run
-and Blog provider authorization evidence. After those gates, review the two
+reconciliation and receipt replay. Retain Blog provider authorization and
+Blog+Reactions host composition evidence. After those gates, review the two
 producer results and begin bounded transports/UI without widening producer
 storage ownership.
 
@@ -223,6 +225,7 @@ cargo test -p rustok-server --no-default-features --features mod-forum --test re
 cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles reactions_without_forum_materializes_an_empty_subject_registry
 cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles selected_reactions_feature_fails_when_owner_module_is_missing
 cargo test -p rustok-server --no-default-features --features "mod-forum mod-reactions" --test reactions_composition_profiles forum_with_reactions_materializes_topic_and_reply_provider
+cargo test -p rustok-server --no-default-features --features "mod-blog mod-reactions" --test reactions_composition_profiles blog_with_reactions_materializes_post_provider
 cargo run -p rustok-events --example event_contract_digests -- --write
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
