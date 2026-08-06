@@ -1,3 +1,4 @@
+mod drift_candidate_observer;
 mod drift_candidate_reader;
 mod drift_digest_recorder;
 mod drift_finding_inspector;
@@ -41,6 +42,11 @@ mod source_replay_job_tests;
 #[cfg(test)]
 mod source_replay_runner_tests;
 
+pub use drift_candidate_observer::{
+    IndexDriftCandidateObserverCompositionError,
+    PostgresIndexDriftCandidateMaterializedObserver,
+    materialize_postgres_index_drift_candidate_observer,
+};
 pub use drift_candidate_reader::{
     IndexDriftCandidateCompositionError, PostgresIndexDriftCandidateReader,
     materialize_postgres_index_drift_candidate_reader,
