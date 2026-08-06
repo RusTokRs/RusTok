@@ -107,11 +107,15 @@ for (const key of [
   "checks_complete_or_legacy_null_materialization_evidence",
   "checks_owner_identity",
   "checks_document_body_css_size_limits",
+  "returns_hashed_record_identity",
   "returns_hashed_diagnostics",
 ]) {
   if (contract[key] !== true) failures.push(`source_contract.${key} must be true`);
 }
 for (const key of [
+  "returns_raw_locale",
+  "returns_raw_build_hash",
+  "returns_raw_materialization_hash",
   "returns_raw_document_html",
   "returns_raw_body_html",
   "returns_raw_css",
@@ -163,6 +167,8 @@ for (const marker of [
   ".order_by_asc(page_static_landing_artifact::Column::Id)",
   "u64::from(max_records).saturating_add(1)",
   "let truncated = records.len() > max_records as usize;",
+  "let locale_hash = hex_sha256(record.locale.as_bytes());",
+  "let record_identity_hash = artifact_record_identity_hash(record)?;",
   "artifact\n        .verify_integrity()",
   "materialized\n                .verify_integrity()",
   "(None, None, None) => Ok(())",
@@ -214,6 +220,11 @@ const publicResult = sliceBetween(
   "public audit result",
 );
 for (const marker of [
+  "locale: String",
+  "build_hash",
+  "artifact_hash",
+  "content_hash",
+  "materialization_hash",
   "document_html",
   "body_html",
   "css:",
@@ -224,9 +235,8 @@ for (const marker of [
 ]) forbid(publicResult, marker, "bounded public audit result");
 for (const marker of [
   "artifact_id",
-  "locale",
-  "build_hash",
-  "materialization_hash",
+  "locale_hash",
+  "record_identity_hash",
   "diagnostic_hash",
   "truncated",
   "findings_truncated",
@@ -256,8 +266,9 @@ for (const marker of [
   "maximum records: 512",
   "maximum returned findings: 64",
   "truncated = true",
+  "SHA-256 locale hash",
+  "raw build, artifact, content or materialization hashes",
   "does not repair, rebuild",
-  "does not return",
   "intentionally not run",
 ]) need(sources.packet, marker, "audit packet");
 
