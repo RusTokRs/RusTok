@@ -7,7 +7,8 @@
   "canonical_plan_status": "planned",
   "graphql_field": "forumStorefrontTopicRoute",
   "owner": "ForumTopicRouteService",
-  "storefront_visibility_owner": "TopicService",
+  "storefront_visibility_owner": "ForumTopicAudienceReadService",
+  "followup_mount_task": "FORUM-24I",
   "input": {
     "tenant_id": "optional routed-tenant assertion",
     "locale": "required localized route segment",
@@ -30,10 +31,12 @@
     "tenant_authority": "routed_context",
     "optional_tenant_id_is_assertion_only": true,
     "canonical_topic_rechecked": true,
-    "authenticated_security": "trusted_permission_snapshot",
+    "exact_audience_owner_rechecked": true,
+    "authenticated_security": "trusted_permission_snapshot_and_exact_port_context",
     "anonymous_security": "public_read",
-    "anonymous_topic_status": "open",
+    "anonymous_topic_status": "enforced_by_exact_audience_owner",
     "anonymous_channel_visibility_rechecked": true,
+    "category_and_topic_audience_layers_rechecked": true,
     "hidden_or_deleted_routes_return_null": true
   },
   "route_policy": {
@@ -52,7 +55,7 @@
     "migration_added": false,
     "semantic_event_changed": false,
     "admin_mutation_changed": false,
-    "storefront_mount_added": false,
+    "storefront_mount_added_in_this_slice": false,
     "seo_or_hreflang_policy_changed": false
   },
   "verification": {
@@ -67,7 +70,6 @@
     ]
   },
   "remaining_scope": [
-    "storefront host route mounting and HTTP redirect composition",
     "visibility-authorized gone tombstones",
     "category route identity",
     "canonical link and hreflang policy",
@@ -77,7 +79,7 @@
   "non_claims": [
     "no test verifier formatter Cargo workflow browser or CI execution is claimed",
     "no public gone response is claimed",
-    "no storefront route mount or HTTP status handling is claimed",
+    "FORUM-24H itself did not mount storefront HTTP routes",
     "no category route identity is claimed",
     "FORUM-24 remains planned"
   ]
