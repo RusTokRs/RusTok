@@ -1,5 +1,6 @@
 mod aggregate_ordering;
 mod cursor;
+mod drift_candidate_confirmation;
 mod drift_candidates;
 mod drift_digest;
 mod mutation_event;
@@ -38,6 +39,14 @@ mod source_replay_tests;
 
 pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
+pub use drift_candidate_confirmation::{
+    IndexDriftCandidateConfirmationError, IndexDriftCandidateConfirmationFailure,
+    IndexDriftCandidateConfirmationFailureKind, IndexDriftCandidateConfirmationOutcome,
+    IndexDriftCandidateConfirmer, IndexDriftCandidateMaterializedObservation,
+    IndexDriftCandidateMaterializedObserver, IndexDriftCandidateNotCandidateReason,
+    IndexDriftConfirmedCandidate, IndexDriftConfirmedMissingEntity,
+    IndexDriftConfirmedOrphanLink,
+};
 pub use drift_candidates::{
     IndexDriftCandidate, IndexDriftCandidateCursor, IndexDriftCandidateError,
     IndexDriftCandidateFailure, IndexDriftCandidateFailureKind, IndexDriftCandidateFence,
