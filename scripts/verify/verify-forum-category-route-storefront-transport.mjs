@@ -15,6 +15,7 @@ const paths = {
   graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
   routeOwner: "crates/rustok-forum/src/services/category_route.rs",
   audienceOwner: "crates/rustok-forum/src/services/category_audience_read.rs",
+  audienceInline: "crates/rustok-forum/src/services/category_audience_read_inline.rs",
   model: "crates/rustok-forum/storefront/src/model.rs",
   graphqlAdapter:
     "crates/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
@@ -67,7 +68,7 @@ for (const marker of [
   "runtime.category_audience_read_service(db.clone())",
   "ForumCategoryReadTransport::Graphql",
   "ForumCategoryReadOperation::SelectedCategory",
-  "get_authenticated_storefront_visible_with_audience_context",
+  "get_authenticated_storefront_list_visible_with_audience_context",
   "get_public_storefront_visible_with_locale_fallback",
   "GqlForumStorefrontCategoryRouteDisposition",
   "GqlForumStorefrontCategoryRouteDescriptor",
@@ -97,10 +98,16 @@ for (const marker of [
 
 for (const marker of [
   "pub struct ForumCategoryAudienceReadService",
-  "get_authenticated_storefront_visible_with_audience_context",
   "get_public_storefront_visible_with_locale_fallback",
 ]) {
   requireText(source.audienceOwner, marker, paths.audienceOwner);
+}
+for (const marker of [
+  "get_authenticated_storefront_list_visible_with_audience_context",
+  "enforce_scope(&security, Resource::ForumCategories, Action::List)",
+  "storefront selected category",
+]) {
+  requireText(source.audienceInline, marker, paths.audienceInline);
 }
 
 for (const marker of [
@@ -132,7 +139,7 @@ for (const marker of [
   "ForumCategoryAudienceReadService::with_audience_facts",
   "ForumCategoryReadTransport::NativeServer",
   "ForumCategoryReadOperation::SelectedCategory",
-  "get_authenticated_storefront_visible_with_audience_context",
+  "get_authenticated_storefront_list_visible_with_audience_context",
   "get_public_storefront_visible_with_locale_fallback",
   "map_native_category_route_resolution",
 ]) {
@@ -161,6 +168,7 @@ for (const marker of [
 for (const marker of [
   "graphql_route_resolution_rechecks_exact_category_visibility",
   "native_route_resolution_uses_trusted_context_and_same_owners",
+  "storefront_deep_link_uses_existing_category_list_permission_boundary",
   "public_dto_and_adapters_have_graphql_native_parity",
   "transport_slice_does_not_mount_or_add_seo_policy",
 ]) {
@@ -170,6 +178,8 @@ for (const marker of [
 for (const marker of [
   "source-ready / maintainer execution pending",
   "Alias ownership is not visibility authorization",
+  "get_authenticated_storefront_list_visible_with_audience_context",
+  "forum_categories:list",
   "No host router or UI invokes it in this slice",
   "No tests, verifiers, formatting, Cargo commands",
 ]) {
@@ -205,6 +215,15 @@ if (contract) {
   }
   if (contract.route?.alias_id_exposed !== false) {
     failures.push(`${paths.contract}: alias id must remain private`);
+  }
+  if (
+    contract.authorization?.authenticated_method !==
+    "get_authenticated_storefront_list_visible_with_audience_context"
+  ) {
+    failures.push(`${paths.contract}: storefront list visibility method is required`);
+  }
+  if (contract.authorization?.authenticated_permission_boundary !== "forum_categories:list") {
+    failures.push(`${paths.contract}: storefront category list permission is required`);
   }
   if (contract.authorization?.canonical_category_rechecked_before_disclosure !== true) {
     failures.push(`${paths.contract}: exact visibility recheck is required`);
