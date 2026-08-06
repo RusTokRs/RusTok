@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "module": "rustok-index",
+  "packet": "concrete-repair-postgres-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "runner": "scripts/evidence/capture-index-repair-postgres.mjs",
+  "verifier": "scripts/verify/verify-index-repair-retained-evidence.mjs",
+  "evidence_path": "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json",
+  "stdout_path": "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log",
+  "stderr_path": "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log",
+  "execution_scope": "opt_in_postgresql_runtime_execution_pending",
+  "promotion_gate": "requires_clean_commit_current_sources_and_all_required_cases_passed",
+  "database_url_env": "RUSTOK_INDEX_TEST_DATABASE_URL",
+  "database_url_fallback_env": "DATABASE_URL",
+  "commands": [
+    {
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-index",
+        "--test",
+        "drift_repair_postgres_environment_test",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ]
+    },
+    {
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-index",
+        "--test",
+        "drift_repair_recovery_postgres_test",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ]
+    },
+    {
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-index",
+        "--test",
+        "drift_repair_concrete_execution_postgres_test",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ]
+    }
+  ],
+  "source_files": [
+    "crates/rustok-index/tests/drift_repair_postgres_environment_test.rs",
+    "crates/rustok-index/tests/drift_repair_recovery_postgres_test.rs",
+    "crates/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs",
+    "crates/rustok-index/tests/support/drift_repair.rs",
+    "crates/rustok-index/src/infrastructure/postgres/drift_repair.rs",
+    "crates/rustok-index/src/infrastructure/postgres/drift_repair_recovery.rs",
+    "crates/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs",
+    "crates/rustok-index/src/infrastructure/postgres/drift_orphan_link_repair.rs",
+    "crates/rustok-index/src/infrastructure/postgres/mutation_store.rs",
+    "crates/rustok-index/src/infrastructure/postgres/drift_confirmed_candidate_writer.rs",
+    "crates/rustok-index/src/infrastructure/postgres/schema_registration.rs",
+    "crates/rustok-index/src/migrations/mod.rs",
+    "crates/rustok-index/src/migrations/m20260806_000007_add_index_finding_repair_commands.rs",
+    "crates/rustok-index/src/migrations/m20260806_000008_add_index_finding_repair_recovery.rs"
+  ],
+  "required_metadata": [
+    "git_commit",
+    "started_at",
+    "completed_at",
+    "database_url_source",
+    "database_url_class",
+    "postgres_server_version",
+    "postgres_server_version_num",
+    "cargo_version",
+    "rustc_version",
+    "source_sha256",
+    "stdout_sha256",
+    "stderr_sha256",
+    "final_status"
+  ],
+  "required_cases": [
+    {
+      "case": "migrations_recovery_guard_and_concurrent_reservation_are_executable",
+      "command_index": 1,
+      "assertions": [
+        "one_active_command_per_finding",
+        "revision_zero_activation_retained",
+        "command_uuid_payload_reuse_rejected",
+        "pause_exact_replay_and_stale_revision_retained",
+        "paused_completion_trigger_rejected",
+        "authorized_resume_allows_completion",
+        "completed_command_identity_immutable",
+        "repair_and_recovery_migrations_reverse_cleanly"
+      ]
+    },
+    {
+      "case": "missing_and_orphan_crash_windows_resume_exactly",
+      "command_index": 2,
+      "assertions": [
+        "missing_owner_commit_survives_pre_receipt_crash",
+        "missing_exact_command_retry_converges",
+        "orphan_edge_and_inbox_commit_atomically",
+        "orphan_exact_command_retry_requires_applied_delivery",
+        "source_version_and_unrelated_ordinal_preserved",
+        "terminal_replay_returns_already_completed"
+      ]
+    },
+    {
+      "case": "recovery_admission_fences_side_effect_and_completion",
+      "command_index": 2,
+      "assertions": [
+        "pause_before_owner_prevents_side_effect",
+        "authorized_resume_reuses_exact_command",
+        "abandon_after_side_effect_prevents_completion",
+        "abandoned_retry_remains_terminally_fenced",
+        "database_trigger_rejects_abandoned_completion"
+      ]
+    },
+    {
+      "case": "orphan_commitments_and_normal_mutations_fail_closed",
+      "command_index": 2,
+      "assertions": [
+        "source_version_movement_rejected",
+        "exact_link_substitution_rejected",
+        "target_restoration_rejected",
+        "absence_version_movement_rejected",
+        "normal_full_mutation_serializes_before_exact_edge_owner",
+        "newer_source_and_link_graph_preserved"
+      ]
+    }
+  ],
+  "evidence_status": "runtime_execution_pending"
+}

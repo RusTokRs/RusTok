@@ -1,9 +1,9 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked against the current main snapshot retained in
-`implementation-main-delta-2026-08-06-1525.md`, stacked parent PR #3075 at
-`8c36960608ef387b5e36f2b5904c6ea83ceda752`, and active branch
-`agent/index-m6-repair-execution-evidence-20260806`.
+`implementation-main-delta-2026-08-06-1525.md`, stacked parent PR #3083 at
+`aab4f9418317f965d540adf538ede2e1660785d1`, and active branch
+`agent/index-m6-repair-evidence-admission-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
@@ -26,6 +26,12 @@ mutation, finding, repair, recovery, evidence, and owner adapters through these 
 
 - `drift_repair_recovery_postgres_test`;
 - `drift_repair_concrete_execution_postgres_test`.
+
+The clean-commit retained-evidence admission boundary is
+`source_complete_owner_execution_pending`. It locks one PostgreSQL metadata target, both scenario
+commands, current source hashes, required case names, bounded database/toolchain metadata, complete
+credential-redacted stdout/stderr, and an atomic terminal pass packet. The packet and logs remain
+absent until the repository owner executes the capture runner.
 
 Concrete missing-entity repair:
 
@@ -96,6 +102,8 @@ remain open.
   `source_complete_recovery_aware_owner_execution_pending`
 - M6 concrete repair PostgreSQL execution harness:
   `source_ready_owner_execution_pending`
+- M6 concrete repair retained evidence admission tooling:
+  `source_complete_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -171,6 +179,8 @@ remain open.
 - [x] Require exact applied inbox proof before admitting an absent edge as convergence.
 - [x] Add env-gated real-migration PostgreSQL targets for concrete repair crash, retry, recovery,
       commitment-change, and concurrency scenarios.
+- [x] Lock a clean-commit capture contract with source hashes, bounded PostgreSQL/toolchain metadata,
+      required case names, complete credential-redacted logs, and atomic admission verification.
 - [ ] Run and admit the concrete repair PostgreSQL targets with retained database/version/result
       metadata.
 - [ ] Add time-derived lease expiry only with retained owner-liveness and crash-window evidence.
@@ -192,17 +202,17 @@ remain open.
 Execute and admit the source-ready concrete repair PostgreSQL packet before exposing repair through a
 public command surface or automatic iterator.
 
-The owner run must retain:
+The owner must run the locked capture command from a clean commit. The retained packet must include:
 
 - PostgreSQL server version and database URL class without credentials;
-- exact commit SHA and both target command lines;
+- exact commit SHA and the metadata plus both scenario target command lines;
 - migration up/down and repair/recovery trigger results;
 - missing-entity and orphan-link post-owner crash/retry results;
 - pause-before-owner and abandon-before-completion race results;
 - command UUID reuse, stale revision, duplicate decision, and completion immutability results;
 - changed source/link/target/absence commitment results;
 - normal full-mutation versus exact edge-owner serialization results;
-- complete stdout/stderr and final pass/fail status.
+- complete credential-redacted stdout/stderr and final pass status.
 
 Public authorization transport, automatic iteration, time-derived leases, and lifecycle
 auto-resolution remain separate later slices.
@@ -211,15 +221,9 @@ auto-resolution remain separate later slices.
 
 ```bash
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
-  cargo test -p rustok-index \
-  --test drift_repair_recovery_postgres_test \
-  -- --nocapture --test-threads=1
+  node scripts/evidence/capture-index-repair-postgres.mjs
 
-RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
-  cargo test -p rustok-index \
-  --test drift_repair_concrete_execution_postgres_test \
-  -- --nocapture --test-threads=1
-
+node scripts/verify/verify-index-repair-retained-evidence.mjs
 node scripts/verify/verify-index-repair-execution-postgres-harness.mjs
 node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-missing-entity-repair-composition.mjs
