@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "pages-inline-edit-artifact-http-execution",
+  "status": "source_ready_maintainer_execution_pending",
+  "scope": "two-build artifact reproducibility, production image identity, authoring asset HTTP semantics, authenticated route admission and anonymous artifact exclusion",
+  "promotion_boundary": "does_not_close_browser_edit_save_replay_expiry_or_tenant_rollout",
+  "tools": {
+    "build_snapshot": "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
+    "docker_capture": "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
+    "http_capture": "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
+    "assembler": "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
+    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs"
+  },
+  "output": {
+    "path": "target/pages-inline-edit-artifact-http-evidence.json",
+    "format": "pages_inline_edit_artifact_http_execution_v1",
+    "status": "artifact_http_execution_passed_browser_rollout_pending",
+    "same_commit_inputs_required": true,
+    "atomic_replace": true,
+    "automatic_canonical_source_mutation": false
+  },
+  "build_snapshots": {
+    "profiles": [
+      "build-a",
+      "build-b"
+    ],
+    "format": "pages_inline_edit_build_snapshot_v1",
+    "required_artifacts": [
+      "embedded_admin_index",
+      "embedded_admin_css",
+      "authoring_bootstrap",
+      "authoring_module",
+      "authoring_wasm",
+      "server_binary"
+    ],
+    "full_admin_dist_manifest_required": true,
+    "source_hashes_required": true,
+    "toolchain_versions_required": true,
+    "critical_hashes_must_match_between_builds": true,
+    "admin_dist_manifest_must_match_between_builds": true
+  },
+  "docker_capture": {
+    "format": "pages_inline_edit_docker_execution_v1",
+    "required_platform": "linux/amd64",
+    "required_user": "10001:10001",
+    "required_entrypoint": "/app/rustok-server",
+    "revision_label_must_match_source_commit": true,
+    "immutable_repo_digest_required": true
+  },
+  "http_capture": {
+    "format": "pages_inline_edit_http_execution_v1",
+    "asset_paths": [
+      {
+        "id": "authoring_bootstrap",
+        "path": "/assets/pages-inline-edit-bootstrap.js",
+        "content_type": "text/javascript; charset=utf-8"
+      },
+      {
+        "id": "authoring_module",
+        "path": "/assets/pages-inline-edit/rustok_storefront.js",
+        "content_type": "text/javascript; charset=utf-8"
+      },
+      {
+        "id": "authoring_wasm",
+        "path": "/assets/pages-inline-edit/rustok_storefront_bg.wasm",
+        "content_type": "application/wasm"
+      }
+    ],
+    "asset_cache_control": "public, max-age=0, must-revalidate",
+    "asset_cross_origin_resource_policy": "same-origin",
+    "strong_etag_required": true,
+    "exact_if_none_match_304_required": true,
+    "weak_if_none_match_304_required": true,
+    "authoring_route_cache_control": "private, no-store",
+    "authoring_route_robots": "noindex, nofollow, noarchive",
+    "authoring_scenarios": [
+      {
+        "id": "anonymous",
+        "expected_status": 401,
+        "authorization_env": null,
+        "cookie_env": null
+      },
+      {
+        "id": "direct_user",
+        "expected_status": 200,
+        "authorization_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_DIRECT_AUTHORIZATION",
+        "cookie_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_DIRECT_COOKIE"
+      },
+      {
+        "id": "service",
+        "expected_status": 403,
+        "authorization_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_SERVICE_AUTHORIZATION",
+        "cookie_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_SERVICE_COOKIE"
+      },
+      {
+        "id": "delegated",
+        "expected_status": 403,
+        "authorization_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_DELEGATED_AUTHORIZATION",
+        "cookie_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_DELEGATED_COOKIE"
+      },
+      {
+        "id": "missing_session",
+        "expected_status": 401,
+        "authorization_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_MISSING_SESSION_AUTHORIZATION",
+        "cookie_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_MISSING_SESSION_COOKIE"
+      },
+      {
+        "id": "permission_denied",
+        "expected_status": 403,
+        "authorization_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_PERMISSION_DENIED_AUTHORIZATION",
+        "cookie_env": "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_PERMISSION_DENIED_COOKIE"
+      }
+    ],
+    "direct_user_required_markers": [
+      "pages-inline-edit-client-root",
+      "data-pages-authoring-route=\"true\"",
+      "/assets/pages-inline-edit-bootstrap.js"
+    ],
+    "direct_user_forbidden_markers": [
+      "authorization_proof",
+      "data-inline-proof",
+      "access_token",
+      "refresh_token",
+      "session_id",
+      "signing_secret"
+    ]
+  },
+  "anonymous_artifact_input": {
+    "format": "pages_anonymous_storefront_ssr_artifact_execution_v1",
+    "status": "passed",
+    "source_commit_required": true,
+    "forbidden_markers_found_must_be_empty": true
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+    "scripts/build/build-embedded-admin.sh",
+    "scripts/build/build-pages-inline-edit-deployment.sh",
+    "scripts/build/build-pages-inline-edit-server.sh",
+    "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
+    "crates/rustok-pages/src/http/inline_edit_assets.rs",
+    "apps/server/src/middleware/auth_context.rs",
+    "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
+    "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
+    "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
+    "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs"
+  ],
+  "privacy_boundary": {
+    "persist_environment_names_only": true,
+    "persist_response_and_command_hashes_only": true,
+    "forbidden_persisted_values": [
+      "authorization_header",
+      "cookie_header",
+      "bearer_token",
+      "session_token",
+      "session_id",
+      "grant",
+      "proof",
+      "signing_key",
+      "raw_html",
+      "raw_denial_body",
+      "raw_command_log",
+      "docker_inspect_document"
+    ]
+  }
+}
