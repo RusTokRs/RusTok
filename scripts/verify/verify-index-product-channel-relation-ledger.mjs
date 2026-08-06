@@ -61,6 +61,9 @@ const service = requireMarkers(servicePath, [
   'pub async fn scan_current(',
   'pub async fn load_current(',
   'ProductSalesChannelIndexRelationWriteOutcome::Unchanged',
+  'ProductSalesChannelIndexRelationError::ProductNotFound',
+  'require_live_product(transaction, tenant_id, product_id).await?',
+  'FOR KEY SHARE',
   'checked_add(1)',
   'INSERT INTO product_sales_channel_index_relation_snapshots',
   'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
@@ -107,17 +110,21 @@ requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-ledger.m
   'Status: `owner_storage_source_complete_cross_owner_resolution_and_index_wiring_pending`',
   '`product_sales_channel_index_relation_snapshots`',
   '`ProductSalesChannelIndexRelationStore::replace`',
+  '`FOR KEY SHARE`',
   '`list_changes`',
   '`scan_current`',
   '`load_current`',
   'AFTER DELETE',
+  'empty Product',
   'no dependency on `rustok-index` or `rustok-channel`',
   'new Product schema version',
   'No tests, Node verifiers, Cargo checks',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
   'owner storage',
+  '`FOR KEY SHARE`',
   'cross-owner resolver',
+  'unrestricted',
   'new Product schema version',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
