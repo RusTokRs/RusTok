@@ -17,11 +17,14 @@ pub use page::{
     PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
     PAGE_ROLLBACK_OPERATION_INTEGRITY, PAGE_ROLLBACK_REQUIRES_PUBLISHED,
     PAGE_ROLLBACK_TARGET_UNAVAILABLE, PAGE_ROUTE_HISTORY_IMPORT_CONFLICT, PAGE_ROUTE_NOT_FOUND,
-    PAGE_ROUTE_RESOLUTION_CONFLICT, PageInlineEditConfigError, PageInlineEditDocument,
-    PageInlineEditGrantClaims, PageInlineEditGrantContext, PageInlineEditKeyId,
-    PageInlineEditKeyring, PageInlineEditSecret, PageRouteDescriptor, PageRouteDisposition,
-    PageRouteHistoryImportItem, PageRouteHistoryImportResult, PageRouteHistoryImportService,
-    PageRouteResolution, PageRouteService, PageService, inline_edit_context_mismatch,
+    PAGE_ROUTE_RESOLUTION_CONFLICT, PAGES_INLINE_EDIT_GRANT_TTL_MS_ENV,
+    PAGES_INLINE_EDIT_HMAC_KEY_ENV, PAGES_INLINE_EDIT_HMAC_KEY_ID_ENV,
+    PageInlineEditConfigError, PageInlineEditDocument, PageInlineEditGrantClaims,
+    PageInlineEditGrantContext, PageInlineEditKeyId, PageInlineEditKeyring,
+    PageInlineEditSecret, PageRouteDescriptor, PageRouteDisposition, PageRouteHistoryImportItem,
+    PageRouteHistoryImportResult, PageRouteHistoryImportService, PageRouteResolution,
+    PageRouteService, PageService, inline_edit_context_mismatch,
+    page_inline_edit_keyring_from_environment,
 };
 pub use page_builder_artifact::{PageBuilderArtifactService, PublishedLandingArtifact};
 pub use scenario_baseline::{
