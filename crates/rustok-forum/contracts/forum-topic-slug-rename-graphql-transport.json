@@ -1,0 +1,83 @@
+{
+  "contract": "forum_topic_slug_rename_graphql_transport_v1",
+  "task": "FORUM-24F",
+  "parent_task": "FORUM-24",
+  "extends": "FORUM-24D",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "transport": "graphql",
+  "owner_service": "TopicService",
+  "authorization": {
+    "module_must_be_enabled": "forum",
+    "required_permission": "forum_topics:update",
+    "ownership_semantics_remain_owner_defined": true,
+    "tenant_is_derived_from_routed_TenantContext": true,
+    "optional_tenant_argument_must_equal_routed_tenant": true,
+    "tenant_mismatch_code": "PERMISSION_DENIED"
+  },
+  "command": {
+    "field": "renameForumTopicSlug",
+    "topic_id_is_separate_argument": true,
+    "input_type": "RenameForumTopicSlugGraphqlInput",
+    "input_fields": ["locale", "slug"],
+    "result_type": "GqlForumTopicSlugRename",
+    "calls_owner_method": "rename_slug"
+  },
+  "result": {
+    "type": "GqlForumTopicSlugRename",
+    "fields": [
+      "topic_id",
+      "locale",
+      "previous_slug",
+      "slug",
+      "previous_path",
+      "canonical",
+      "alias_id",
+      "changed"
+    ],
+    "canonical_type": "GqlForumTopicRouteDescriptor",
+    "canonical_fields": ["topic_id", "locale", "short_id", "slug", "path"],
+    "exact_normalized_replay_reports_changed_false": true,
+    "changed_write_returns_immutable_alias_id": true
+  },
+  "composition": {
+    "resolver_contains_no_route_business_logic": true,
+    "database_and_transactional_event_bus_are_explicit_schema_data": true,
+    "security_context_uses_authenticated_permission_snapshot": true,
+    "domain_errors_preserve_ForumGraphqlErrorExtension_mapping": true,
+    "raw_route_alias_table_access_in_resolver": false,
+    "canonical_merge_resolution_in_resolver": false
+  },
+  "compatibility": {
+    "owner_command_changed": false,
+    "route_alias_schema_changed": false,
+    "semantic_event_schema_changed": false,
+    "rest_contract_changed": false,
+    "admin_ui_added": false,
+    "storefront_ui_added": false,
+    "graphql_field_is_additive": true
+  },
+  "source_contract_test": "crates/rustok-forum/tests/topic_slug_rename_graphql_contract.rs",
+  "authorization_unit_test": "crates/rustok-forum/src/graphql/topic_slug_rename_mutation.rs",
+  "owner_runtime_test": "crates/rustok-forum/tests/topic_slug_rename_sqlite.rs",
+  "documentation": "crates/rustok-forum/docs/forum-24f-topic-slug-rename-graphql-transport.md",
+  "owner_contract": "crates/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
+  "owner_documentation": "crates/rustok-forum/docs/forum-24d-topic-slug-rename-owner.md",
+  "verifier": "scripts/verify/verify-forum-topic-slug-rename-graphql-transport.mjs",
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-topic-slug-rename-owner.mjs",
+    "node scripts/verify/verify-forum-topic-slug-rename-graphql-transport.mjs",
+    "cargo test -p rustok-forum graphql::topic_slug_rename_mutation::tests -- --nocapture",
+    "cargo test -p rustok-forum --test topic_slug_rename_graphql_contract -- --nocapture",
+    "cargo test -p rustok-forum --test topic_slug_rename_sqlite -- --nocapture",
+    "cargo check -p rustok-forum --all-targets"
+  ],
+  "non_claims": [
+    "no verifier test formatter Cargo SQLite PostgreSQL workflow or CI execution is claimed",
+    "no REST native admin storefront or CLI rename transport is added",
+    "no admin UI is added",
+    "no public localized topic route mount is added",
+    "no category route or hreflang SEO policy is added",
+    "FORUM-24 remains planned"
+  ]
+}
