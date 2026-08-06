@@ -18,9 +18,12 @@ Pages route decision and visibility gate
   → Pages route/page/artifact generation snapshot
   → Navigation-owned header/footer reads
   → SEO-owned resolved page context
-  → deterministic composition ETag
-  → conditional 304 or SSR render
+  → SSR render with the preloaded Navigation snapshot
+  → SHA-256 identity over generations, owner payloads and rendered HTML
+  → conditional 304 or HTML response
 ```
+
+Rendering precedes the conditional decision deliberately. The Pages data component may read its generation-aware owner cache during SSR; binding the final HTML prevents a route-decision snapshot from describing a document rendered after a concurrent generation change.
 
 Redirect, gone, missing, conflict and route-runtime failures still terminate before Navigation/SEO composition and retain `private, no-store`.
 
@@ -38,11 +41,12 @@ No menu policy, binding, locale fallback or Navigation database ownership moves 
 - request locale and channel identity;
 - Pages route, page and artifact generations;
 - the resolved Navigation header/footer payloads;
-- the resolved SEO page context.
+- the resolved SEO page context;
+- a SHA-256 hash of the exact final rendered HTML document.
 
 The serialized payload is hashed with SHA-256 and emitted as a strong ETag. The key is produced only for a complete canonical decision with all three Pages generations. Missing cache runtime or generation reads disable the ETag but do not disable SSR.
 
-A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified`. Canonical ETag responses use `Cache-Control: private, no-cache` so a user agent may retain and revalidate the composed document without treating it as an anonymously shareable CDN object.
+A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified` after the same exact document identity has been reconstructed. Canonical ETag responses use `Cache-Control: private, no-cache` so a user agent may retain and revalidate the composed document without treating it as an anonymously shareable CDN object.
 
 ## Source evidence
 
@@ -59,6 +63,7 @@ A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modi
 This slice does not:
 
 - add a shared/CDN full-document cache;
+- skip SSR work on a conditional request;
 - change Navigation menu ownership or persistence;
 - change SEO ownership, target providers or schemas;
 - change Page Builder/Fly documents, artifacts, publish or rollback;
