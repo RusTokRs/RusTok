@@ -1,7 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against `main@64972ec50d3c77dd54aafa50b0fcfd2c79eabc96` and continued on
-`agent/index-m7-schema-readiness-20260807`.
+Status overlay rechecked against current `main@3b69a76a5cb861a3da87e22d0a9fe0c636ef8ca9` and continued on
+`agent/index-m7-schema-readiness-20260807`. The intervening #3124 Commerce-only change does not
+overlap the Index slice.
 
 This file supersedes the dated 2026-08-03 status overlay. `implementation-plan.md` remains the
 historical milestone/architecture plan, but several of its M5/M6/M7 checklist entries are stale
