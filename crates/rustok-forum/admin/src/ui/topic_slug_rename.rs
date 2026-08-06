@@ -180,33 +180,36 @@ pub fn ForumTopicSlugRenameAdmin() -> impl IntoView {
                 <section class="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
                     <Suspense fallback=move || view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }>
                         {move || candidates.get().map(|result| match result {
-                            Ok(items) => view! {
-                                <label class="space-y-2 text-sm font-medium text-foreground">
-                                    <span class="block">{topic_label.clone()}</span>
-                                    <select
-                                        class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
-                                        prop:value=move || topic_id.get()
-                                        on:change=move |event| {
-                                            let value = event_target_value(&event);
-                                            let current_slug = items
-                                                .iter()
-                                                .find(|item| item.id == value)
-                                                .map(|item| item.slug.clone())
-                                                .unwrap_or_default();
-                                            set_topic_id.set(value);
-                                            set_slug.set(current_slug);
-                                            set_receipt.set(None);
-                                            set_error.set(None);
-                                        }
-                                    >
-                                        <option value="">{choose_label.clone()}</option>
-                                        {items.iter().cloned().map(|item| {
-                                            let label = forum_topic_slug_rename_candidate_label(&item);
-                                            view! { <option value=item.id>{label}</option> }
-                                        }).collect_view()}
-                                    </select>
-                                </label>
-                            }.into_any(),
+                            Ok(items) => {
+                                let selection_items = items.clone();
+                                view! {
+                                    <label class="space-y-2 text-sm font-medium text-foreground">
+                                        <span class="block">{topic_label.clone()}</span>
+                                        <select
+                                            class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
+                                            prop:value=move || topic_id.get()
+                                            on:change=move |event| {
+                                                let value = event_target_value(&event);
+                                                let current_slug = selection_items
+                                                    .iter()
+                                                    .find(|item| item.id == value)
+                                                    .map(|item| item.slug.clone())
+                                                    .unwrap_or_default();
+                                                set_topic_id.set(value);
+                                                set_slug.set(current_slug);
+                                                set_receipt.set(None);
+                                                set_error.set(None);
+                                            }
+                                        >
+                                            <option value="">{choose_label.clone()}</option>
+                                            {items.into_iter().map(|item| {
+                                                let label = forum_topic_slug_rename_candidate_label(&item);
+                                                view! { <option value=item.id>{label}</option> }
+                                            }).collect_view()}
+                                        </select>
+                                    </label>
+                                }.into_any()
+                            }
                             Err(message) => view! {
                                 <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{message}</div>
                             }.into_any(),
