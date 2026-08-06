@@ -152,11 +152,8 @@ const document = {
   status: "passed",
   source_commit: sourceCommit,
   captured_at: new Date().toISOString(),
-  requested_image: {
-    bytes: Buffer.byteLength(options.image),
-    sha256: sha256(options.image),
-    raw_value_persisted: false,
-  },
+  requested_image: `sha256:${sha256(options.image)}`,
+  requested_image_bytes: Buffer.byteLength(options.image),
   image_id: image.Id,
   repo_digests: repoDigests,
   size_bytes: image.Size,
