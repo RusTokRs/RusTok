@@ -51,7 +51,7 @@ requireMarkers('source', [
   'IndexDriftRepairTarget::MissingEntity',
   'IndexDriftRepairTarget::OrphanLink { .. } => Err(permanent_failure(TARGET_UNSUPPORTED))',
   'self.sources.load(request).await.map_err(map_source_error)?',
-  'self.absence.load(key.clone())',
+  '.load(key.clone())',
   'let first_authority = self.load_authority(target.key).await?;',
   'let materialized = self.load_materialized(target.key).await?;',
   'let second_authority = self.load_authority(target.key).await?;',
