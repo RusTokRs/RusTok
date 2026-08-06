@@ -98,10 +98,35 @@ pub(crate) async fn render_forum_topic_route_response(
     }
 }
 
-fn safe_owner_path(path: &str) -> bool {
-    path.starts_with('/')
-        && !path.starts_with("//")
-        && !path.chars().any(char::is_control)
+fn safe_route_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment == segment.trim()
+        && !matches!(segment, "." | "..")
+        && !segment.chars().any(|character| {
+            character.is_control()
+                || character.is_whitespace()
+                || matches!(character, '/' | '\\' | '?' | '#' | '%')
+        })
+}
+
+fn valid_topic_descriptor(
+    canonical: &rustok_forum_storefront::StorefrontForumTopicRouteDescriptor,
+) -> bool {
+    let locale = canonical.locale.trim();
+    let short_id = canonical.short_id.trim();
+    let slug = canonical.slug.trim();
+
+    !canonical.topic_id.trim().is_empty()
+        && canonical.locale == locale
+        && canonical.short_id == short_id
+        && canonical.slug == slug
+        && rustok_api::normalize_locale_tag(locale).as_deref() == Some(locale)
+        && short_id.len() == 12
+        && short_id
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        && safe_route_segment(slug)
+        && canonical.path == format!("/{locale}/forum/t/{short_id}/{slug}")
 }
 
 fn forum_topic_host_action(
@@ -133,16 +158,6 @@ fn forum_topic_host_action(
         }
         _ => ForumTopicHostAction::Invalid,
     }
-}
-
-fn valid_topic_descriptor(
-    canonical: &rustok_forum_storefront::StorefrontForumTopicRouteDescriptor,
-) -> bool {
-    !canonical.topic_id.trim().is_empty()
-        && !canonical.locale.trim().is_empty()
-        && !canonical.short_id.trim().is_empty()
-        && !canonical.slug.trim().is_empty()
-        && safe_owner_path(canonical.path.as_str())
 }
 
 #[cfg(test)]
@@ -239,6 +254,24 @@ mod tests {
         header_injection.path = "/en/forum/t/123456789abc/welcome\r\nX-Test: injected".to_string();
         let mut missing_identity = descriptor();
         missing_identity.topic_id.clear();
+        let mut internal_target = descriptor();
+        internal_target.path = "/admin".to_string();
+        let mut mismatched_slug = descriptor();
+        mismatched_slug.path = "/en/forum/t/123456789abc/another-topic".to_string();
+        let mut query_target = descriptor();
+        query_target.path = "/en/forum/t/123456789abc/welcome?preview=true".to_string();
+        let mut invalid_locale = descriptor();
+        invalid_locale.locale = "EN".to_string();
+        invalid_locale.path = "/EN/forum/t/123456789abc/welcome".to_string();
+        let mut uppercase_short_id = descriptor();
+        uppercase_short_id.short_id = "123456789ABC".to_string();
+        uppercase_short_id.path = "/en/forum/t/123456789ABC/welcome".to_string();
+        let mut short_short_id = descriptor();
+        short_short_id.short_id = "1234".to_string();
+        short_short_id.path = "/en/forum/t/1234/welcome".to_string();
+        let mut invalid_slug = descriptor();
+        invalid_slug.slug = "../admin".to_string();
+        invalid_slug.path = "/en/forum/t/123456789abc/../admin".to_string();
 
         for resolution in [
             resolution(StorefrontForumTopicRouteDisposition::Gone, Some(descriptor())),
@@ -256,6 +289,34 @@ mod tests {
             resolution(
                 StorefrontForumTopicRouteDisposition::Canonical,
                 Some(missing_identity),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(internal_target),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(mismatched_slug),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(query_target),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(invalid_locale),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(uppercase_short_id),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(short_short_id),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(invalid_slug),
             ),
         ] {
             assert_eq!(
