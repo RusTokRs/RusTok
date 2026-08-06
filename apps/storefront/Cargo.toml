@@ -35,6 +35,7 @@ ssr = [
   "dep:rustok-tenant",
   "dep:rustok-web",
   "dep:tokio",
+  "dep:tracing",
   "dep:rustok-blog-storefront",
   "rustok-blog-storefront/ssr",
   "dep:rustok-cart-storefront",
@@ -96,6 +97,7 @@ sha2.workspace = true
 futures = "0.3"
 rustok-core = { workspace = true, optional = true }
 rustok-api.workspace = true
+tracing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 thiserror.workspace = true
 rustok-content = { workspace = true, optional = true }
