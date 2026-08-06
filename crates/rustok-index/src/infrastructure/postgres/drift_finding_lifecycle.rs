@@ -170,7 +170,7 @@ pub fn materialize_postgres_index_drift_finding_lifecycle_store(
     Ok(Arc::new(PostgresIndexDriftFindingLifecycleStore::new(db)))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct StoredLifecycleEvent {
     finding_id: Uuid,
     action: String,
