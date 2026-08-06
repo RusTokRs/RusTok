@@ -5,9 +5,7 @@ use std::{
     time::Duration,
 };
 
-use rustok_api::{
-    SHA256_DIGEST_BYTES, fixed_work_sha256_eq, hmac_sha256,
-};
+use rustok_api::{Action, Resource, SHA256_DIGEST_BYTES, fixed_work_sha256_eq, hmac_sha256};
 use rustok_core::{
     CONTENT_FORMAT_GRAPESJS, SecurityActorKind, SecurityContext,
     error::{ErrorKind, RichError},
@@ -16,8 +14,6 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
-
-use rustok_api::{Action, Resource};
 
 use crate::entities::{page_body, page_translation};
 use crate::error::{PagesError, PagesResult};
@@ -201,12 +197,13 @@ impl PageInlineEditKeyring {
             version: PAGE_INLINE_EDIT_GRANT_VERSION,
             tenant_id: context.tenant_id,
             actor_id: context.actor_id,
+            auth_session_id: context.auth_session_id,
+            session_id: context.session_id,
             pages_page_id: context.pages_page_id,
             fly_page_id: context.fly_page_id,
             locale: context.locale,
             revision_id: context.revision_id,
             project_hash: context.project_hash,
-            session_id: context.session_id,
             channel_id: context.channel_id,
             channel_slug: context.channel_slug,
             issued_at_unix_ms: now_unix_ms,
@@ -285,12 +282,13 @@ pub struct PageInlineEditGrantClaims {
     pub version: u16,
     pub tenant_id: Uuid,
     pub actor_id: Uuid,
+    pub auth_session_id: Uuid,
+    pub session_id: Uuid,
     pub pages_page_id: Uuid,
     pub fly_page_id: String,
     pub locale: String,
     pub revision_id: String,
     pub project_hash: u64,
-    pub session_id: Uuid,
     pub channel_id: Option<Uuid>,
     pub channel_slug: Option<String>,
     pub issued_at_unix_ms: u64,
@@ -321,12 +319,13 @@ impl PageInlineEditGrantClaims {
         PageInlineEditGrantContext {
             tenant_id: self.tenant_id,
             actor_id: self.actor_id,
+            auth_session_id: self.auth_session_id,
+            session_id: self.session_id,
             pages_page_id: self.pages_page_id,
             fly_page_id: self.fly_page_id.clone(),
             locale: self.locale.clone(),
             revision_id: self.revision_id.clone(),
             project_hash: self.project_hash,
-            session_id: self.session_id,
             channel_id: self.channel_id,
             channel_slug: self.channel_slug.clone(),
         }
@@ -338,19 +337,25 @@ impl PageInlineEditGrantClaims {
 pub struct PageInlineEditGrantContext {
     pub tenant_id: Uuid,
     pub actor_id: Uuid,
+    pub auth_session_id: Uuid,
+    pub session_id: Uuid,
     pub pages_page_id: Uuid,
     pub fly_page_id: String,
     pub locale: String,
     pub revision_id: String,
     pub project_hash: u64,
-    pub session_id: Uuid,
     pub channel_id: Option<Uuid>,
     pub channel_slug: Option<String>,
 }
 
 impl PageInlineEditGrantContext {
     fn validate(&self) -> PagesResult<()> {
-        if !bounded_required(&self.fly_page_id, MAX_INLINE_EDIT_ID_BYTES)
+        if self.tenant_id.is_nil()
+            || self.actor_id.is_nil()
+            || self.auth_session_id.is_nil()
+            || self.session_id.is_nil()
+            || self.pages_page_id.is_nil()
+            || !bounded_required(&self.fly_page_id, MAX_INLINE_EDIT_ID_BYTES)
             || !bounded_required(&self.locale, MAX_INLINE_EDIT_ID_BYTES)
             || !bounded_required(&self.revision_id, MAX_INLINE_EDIT_REVISION_BYTES)
             || self
@@ -403,6 +408,8 @@ impl PageService {
         locale: &str,
     ) -> PagesResult<PageInlineEditDocument> {
         self.ensure_builder_enabled(tenant_id).await?;
+        self.ensure_builder_inline_edit_enabled_for_tenant(tenant_id)
+            .await?;
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -545,19 +552,20 @@ mod tests {
         PageInlineEditGrantContext {
             tenant_id: Uuid::new_v4(),
             actor_id: Uuid::new_v4(),
+            auth_session_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
             pages_page_id: Uuid::new_v4(),
             fly_page_id: "home".to_string(),
             locale: "en".to_string(),
             revision_id: "2026-08-06T09:00:00Z".to_string(),
             project_hash: 7,
-            session_id: Uuid::new_v4(),
             channel_id: Some(Uuid::new_v4()),
             channel_slug: Some("web".to_string()),
         }
     }
 
     #[test]
-    fn grant_roundtrip_binds_exact_context_and_redacts_secret_material() {
+    fn grant_roundtrip_binds_auth_and_edit_sessions_and_redacts_secret_material() {
         let keyring = PageInlineEditKeyring::single(secret(
             "pages-inline-edit-secret-material-00000001",
         ));
@@ -566,12 +574,13 @@ mod tests {
             .verify(issued.authorization_proof(), 2_000)
             .expect("verified");
         assert_eq!(verified, issued.claims);
+        assert_ne!(verified.auth_session_id, verified.session_id);
         assert!(!format!("{keyring:?}").contains("secret-material"));
         assert!(!format!("{issued:?}").contains(issued.authorization_proof()));
     }
 
     #[test]
-    fn grant_rejects_tampering_unknown_keys_and_expiry() {
+    fn grant_rejects_tampering_and_expiry() {
         let keyring = PageInlineEditKeyring::single(secret(
             "pages-inline-edit-secret-material-00000002",
         ));
@@ -586,6 +595,16 @@ mod tests {
                 .verify(issued.authorization_proof(), 61_000)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn grant_rejects_nil_identity() {
+        let keyring = PageInlineEditKeyring::single(secret(
+            "pages-inline-edit-secret-material-00000003",
+        ));
+        let mut invalid = context();
+        invalid.auth_session_id = Uuid::nil();
+        assert!(keyring.issue(invalid, 1_000).is_err());
     }
 
     #[test]
