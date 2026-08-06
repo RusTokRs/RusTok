@@ -17,7 +17,8 @@
 - `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
 - `pub use crate::{TranslationWorkflowEvent, TRANSLATION_WORKFLOW_EVENT_SCHEMAS}`
 - `ContractEventEnvelope::new_with_envelope_id(...)` creates a registered typed envelope with one exact non-nil caller-owned durable identity
-- `ContractEventEnvelope::new_caused_by(...)` creates a registered typed envelope with one exact non-nil predecessor envelope identity
+- `ContractEventEnvelope::new_with_envelope_id_and_causation(...)` creates a registered typed envelope with exact caller-owned identity and exact non-nil predecessor identity
+- `ContractEventEnvelope::new_caused_by(...)` creates a registered typed envelope with one exact non-nil predecessor envelope identity and a generated envelope UUID
 - `ContractEventEnvelope::{correlation_id, causation_id, tenant_id, actor_id}` expose validated envelope scope metadata
 - `ContractEventEnvelope::{payload, into_payload}` return only semantically validated typed payloads
 - `pub fn event_schema(event_type: &str) -> Option<&'static EventSchema>`
@@ -76,6 +77,7 @@
 - Stores bounded-family payloads as untyped `serde_json::Value` instead of adding one typed `ContractEventPayload` family variant.
 - Calls `new_with_envelope_id` with a newly generated or reconstructed UUID instead of an already durable owner idempotency identity.
 - Uses the exact-identity constructor as a replacement for ordinary random envelope generation where no write-once owner contract exists.
+- Calls `new_with_envelope_id_and_causation` with a typed envelope UUID as the predecessor instead of the exact durable root envelope UUID.
 - Adds a Comments delegation key id, secret, schedule document, schedule digest,
   file path, database URL, token, nonce, claims, roles, raw database error, or
   free-form operator text to the Blog Comments audit event.
@@ -112,7 +114,11 @@
   write-once boundary that already owns one exact non-nil durable UUID. It sets
   both envelope ID and correlation ID to that UUID and does not create a second
   idempotency identity.
-- `ContractEventEnvelope::new_caused_by` records one exact durable predecessor.
+- `ContractEventEnvelope::new_with_envelope_id_and_causation` preserves that
+  exact write-once identity while also retaining one exact non-nil predecessor
+  envelope UUID in metadata.
+- `ContractEventEnvelope::new_caused_by` records one exact durable predecessor
+  while generating a new envelope UUID.
 - All public payload field changes are breaking unless a new schema version and consumer migration plan are provided.
 - The committed `contracts/event-contract-digests.json` artifact must match the
   registry and every root/typed transport wire schema.
@@ -125,8 +131,11 @@
 - Exact envelope identity construction preserves the existing serialized shape;
   it changes constructor ownership only and requires `correlation_id == id` for
   the newly constructed envelope.
-- Adding the caused-envelope constructor does not change the serialized envelope shape;
-  `causation_id` was already an optional registered wire field.
+- Exact caused identity construction also preserves the existing serialized
+  shape and places the predecessor only in the already-registered optional
+  `causation_id` field.
+- Adding exact/caused envelope constructors does not change payload schemas or
+  committed event-contract digests.
 - Root envelope trace identifiers must be non-empty and at most 512 bytes.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
 - Blog Comments schedule-audit events require audit schema version 1, the exact
@@ -168,9 +177,12 @@
   `publish_contract_once_direct_in_tx_with_envelope_id` using the already
   admitted owner-operation UUID. Event conflict or unavailability must abort the
   same transaction as owner state and receipt completion.
-- This crate defines exact envelope identity construction but does not perform
-  database insertion, replay admission, conflict classification, source-row
-  handoff, relay, retry, DLQ, or retention.
+- Exact write-once owners with a durable predecessor may use
+  `publish_contract_once_direct_in_tx_with_envelope_id_and_causation`; the
+  predecessor participates in exact replay admission without becoming payload data.
+- This crate defines exact envelope identity and causation construction but does
+  not perform database insertion, replay admission, conflict classification,
+  source-row handoff, relay, retry, DLQ, or retention.
 - Forum dual publication writes the legacy root first, publishes the typed
   contract caused by that exact root id, and retains the root id as owner-ledger
   and downstream projection identity.
