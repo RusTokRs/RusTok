@@ -479,6 +479,22 @@ fn decode_canonical_document(
                 "Pages inline edit requires a stable Fly page id",
             )
         })?;
+    let mut unstable_component_path = None;
+    document.project.visit_components(|component, _, path| {
+        if unstable_component_path.is_none()
+            && component
+                .id()
+                .map(str::trim)
+                .is_none_or(|component_id| component_id.is_empty())
+        {
+            unstable_component_path = Some(path.to_string());
+        }
+    });
+    if let Some(path) = unstable_component_path {
+        return Err(rustok_pages::inline_edit_context_mismatch(format!(
+            "Pages inline edit requires stable component ids before hashing; missing at {path}"
+        )));
+    }
     Ok(CanonicalInlineDocument {
         fly_page_id,
         project_hash: document.hash(),
@@ -513,12 +529,13 @@ fn issue_bootstrap_with_identity(
         rustok_pages::PageInlineEditGrantContext {
             tenant_id: context.tenant_id,
             actor_id: context.auth.user_id,
+            auth_session_id: context.auth.session_id,
+            session_id: uuid::Uuid::new_v4(),
             pages_page_id: document.pages_page_id,
             fly_page_id: fly_page_id.clone(),
             locale: document.locale.clone(),
             revision_id: document.revision_id.clone(),
             project_hash: project_hash.0,
-            session_id: context.auth.session_id,
             channel_id: context.channel_id,
             channel_slug: context.channel_slug.clone(),
         },
@@ -547,7 +564,7 @@ fn ensure_claims_match_request(
 ) -> Result<(), rustok_pages::PagesError> {
     if claims.tenant_id != context.tenant_id
         || claims.actor_id != context.auth.user_id
-        || claims.session_id != context.auth.session_id
+        || claims.auth_session_id != context.auth.session_id
         || claims.channel_id != context.channel_id
         || claims.channel_slug != context.channel_slug
         || request.session_id != claims.session_id.to_string()
