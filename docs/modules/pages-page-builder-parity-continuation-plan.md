@@ -61,6 +61,8 @@ This compact index preserves the exact stable source markers consumed by the ret
 - `anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready.
 - `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready. Historical route backfill/import policy remains open.
 
+Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current delete-route-tombstone status above.
+
 ## Current parity state
 
 ### Registered metadata surfaces: source-complete
