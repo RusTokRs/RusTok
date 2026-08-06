@@ -229,10 +229,12 @@ const hostPipeline = between(
 );
 ordered(hostPipeline, [
   "resolve_pages_route_response(",
-  "return response",
+  "Err(response) => return response",
+  "if let Some(decision) = pages_decision",
+  "render_canonical_pages_response(",
   "fetch_seo_page_context(locale, route_segment, &query_params).await",
   "render_module_page_with_nonce(",
-], "Pages route decision before SEO and render");
+], "Pages route decision before canonical composition and generic SEO/render");
 
 for (const marker of [
   '#![cfg(feature = "ssr")]',
@@ -262,12 +264,14 @@ for (const marker of [
   "host-route-response-source-ready",
   "Pages host route response: source-ready",
   "route decision precedes SEO and SSR rendering",
-  "Delete tombstones and historical backfill remain open",
+  "delete-route-tombstone-source-ready",
+  "route-history-import-source-ready",
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "registered Pages host route decision server function",
   "Exact localized canonical routes continue SSR",
-  "Delete tombstones and historical backfill remain open",
+  "Delete tombstones retain every route",
+  "historical route import owner",
 ]) need(localPlan, marker, "Pages local plan");
 for (const marker of [
   "source-ready / execution-pending",

@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-06  
-Status: `in_progress / route-history-import-source-ready / execution-pending`
+Status: `in_progress / storefront-composition-etag-source-ready / execution-pending`
 
 ## Policy: current code only
 
@@ -33,7 +33,8 @@ route identity, cache scope or tenant policy.
 
 Navigation owns menu identity and public menu composition. Hosts own request
 routing, locale/auth/tenant context and HTTP response composition, but not Pages
-route ownership.
+route ownership. SEO providers own resolved SEO documents; the host may compose
+owner results but must not recreate their policies.
 
 Optional external event infrastructure is outside the active Pages cursor.
 
@@ -126,6 +127,13 @@ Optional external event infrastructure is outside the active Pages cursor.
 - [x] Automatic inference remains open by design: current draft/archived rows,
   deleted rows and Page Builder artifacts do not prove complete historical public
   ownership.
+- [x] Exact canonical Pages SSR preloads Navigation-owned header/footer menus and the
+  SEO-owned page context once, renders with those owner payloads, and binds the
+  exact rendered HTML to channel identity plus Pages route/page/artifact generations
+  in a deterministic SHA-256 ETag.
+- [x] Matching strong, weak or comma-separated `If-None-Match` returns `304` after
+  reconstruction of the exact document identity; missing Pages generations disable
+  the ETag only, while terminal route responses remain `private, no-store`.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Compiled SSR/CSR/hydrate bundle artifact evidence remains open; client bundle
   proof becomes mandatory when a Pages client bootstrap is introduced.
@@ -148,8 +156,8 @@ PR #3020 boundary and is no longer the current implementation status.
 - [x] GraphQL, HTTP and admin transports use typed publish/rollback receipts.
 - [x] Non-builder publication rejects every Fly/GrapesJS body.
 - [x] Page Builder ownership is unchanged by Pages route aliases, delete tombstones,
-  historical imports and host responses; route identity is derived from Pages
-  translations, retained route evidence and publication state only.
+  historical imports, host responses and final SSR composition ETags; route identity
+  and dependency composition remain outside Page Builder.
 - [ ] Accepted execution evidence must correlate receipts, events, generation
   changes, cache misses/refills and public route behavior.
 - [ ] Observed Wave 0/Wave 1 tenant evidence remains open.
@@ -186,7 +194,15 @@ PR #3020 boundary and is no longer the current implementation status.
     all-or-nothing; the owner never guesses public history from incomplete state.
 18. A missing-page redirect import requires a direct terminal gone anchor for the
     same page so redirect resolution cannot depend on a nonexistent canonical row.
-19. No block or shadow-editor fallback exists.
+19. The final canonical Pages document identity binds channel identity, canonical
+    page/locale/slug, all three Pages generations, actual Navigation/SEO payloads
+    and a SHA-256 hash of the exact rendered HTML.
+20. Navigation header/footer reads are performed once by the host and reused by the
+    SSR components; Pages and the host do not recreate menu policy.
+21. Conditional `304` is allowed only after reconstructing a complete canonical
+    rendered-document identity; terminal routes and incomplete generation state
+    never claim that identity.
+22. No block or shadow-editor fallback exists.
 
 ## Current pipelines
 
@@ -247,24 +263,29 @@ public Pages host request
   → requested → tenant default → platform locale candidates
   → PageRouteService::resolve
   → target publication/channel visibility recheck
-  → exact canonical: SEO + SSR render
-  → alias/noncanonical: 308
-  → gone: 410
-  → missing: 404
-  → conflict: 409
-  → operational failure: 503
+  → exact canonical: read Pages generations
+  → Navigation-owned header/footer reads + SEO-owned page context
+  → SSR render with preloaded Navigation snapshot
+  → hash generations + owner payloads + exact rendered HTML
+  → matching If-None-Match: private 304
+  → otherwise private revalidated HTML response
+  → alias/noncanonical: 308 private no-store
+  → gone: 410 private no-store
+  → missing: 404 private no-store
+  → conflict: 409 private no-store
+  → operational failure: 503 private no-store
 ```
 
 ## FFA/FBA status
 
 - **FFA:** `in_progress` — metadata/document separation, reviewed publication,
   rollback, immutable public reads, tenant locale fallback, localized route identity,
-  published-slug redirects, delete tombstones, explicit historical import and host
-  route responses are source-connected. Browser execution, inline edit and built
-  artifact evidence remain open.
+  published-slug redirects, delete tombstones, explicit historical import, host
+  route responses and rendered-document Navigation/SEO ETags are source-connected.
+  Browser execution, inline edit and built artifact evidence remain open.
 - **FBA:** `in_progress` — sanitizer/materialization/artifact/receipt boundaries and
   production-gated cache invalidation are source-connected. Route persistence,
-  repair and response decisions belong to Pages and do not change Page Builder.
+  repair, response and host composition decisions remain outside Page Builder.
   Execution and rollout remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
@@ -314,6 +335,9 @@ public Pages host request
   preserving immutable redirects.
 - Added the historical route import owner, forward-only provenance receipts,
   bounded all-or-nothing composition and focused SQLite source regressions.
+- Added host-preloaded Navigation header/footer snapshots and deterministic Pages
+  generation + Navigation + SEO + rendered-HTML composition ETags with conditional
+  private `304`.
 - Tests, verifiers, formatters, Cargo commands, databases, server functions, hosts,
   browsers, workflows and CI were not executed by the implementation agent.
 
@@ -321,6 +345,7 @@ public Pages host request
 
 ### P0 — execution evidence
 
+- [ ] Run the storefront composition ETag verifier and focused storefront tests.
 - [ ] Run the historical route import verifier and focused SQLite regression.
 - [ ] Run the delete tombstone verifier and focused SQLite regression.
 - [ ] Run the host route response verifier and registered SQLite/Axum harness.
@@ -344,8 +369,8 @@ public Pages host request
 - [x] Add deletion tombstones while preserving existing redirect history.
 - [x] Define historical route backfill/import policy as explicit provenance import;
   automatic inference remains open by design.
-- [ ] Compose Navigation-owned menus, SEO and channel visibility with deterministic
-  generation-aware cache keys.
+- [x] Compose Navigation-owned menus, SEO and channel visibility with deterministic
+  generation-aware final-document ETags.
 - [ ] Implement authenticated real-DOM inline editing.
 - [ ] Prove admin preview, published output and inline edit parity.
 
@@ -361,7 +386,8 @@ public Pages host request
 ### P2 — operations and rollout
 
 - [ ] Correlate metadata save, document save, publish, rollback, route alias,
-  tombstone/import receipt, host response, invalidation and public read in telemetry.
+  tombstone/import receipt, composition ETag/304, invalidation and public read in
+  telemetry.
 - [ ] Add artifact/manifest integrity audit and repair/rebuild commands.
 - [ ] Audit delete/unpublish/rollback, tombstone and operator-import behavior.
 - [ ] Run observed internal-tenant Wave 0, then Wave 1 after all gates pass.
@@ -371,6 +397,10 @@ public Pages host request
 Suggested commands; execution is intentionally maintainer-owned:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs
+cargo test -p rustok-storefront --features ssr --lib -- --nocapture
+cargo test -p rustok-navigation-storefront --features ssr --all-targets -- --nocapture
+
 node crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
 cargo test -p rustok-pages \
   --test page_route_history_import_sqlite -- --nocapture

@@ -19,17 +19,21 @@ pub mod widgets;
 
 #[cfg(feature = "ssr")]
 use axum::http::{
-    StatusCode,
-    header::{CACHE_CONTROL, LOCATION},
+    HeaderMap, HeaderValue, StatusCode,
+    header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH, LOCATION},
 };
 #[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
 #[cfg(feature = "ssr")]
 use axum::{Extension, Router, extract::Path, routing::get};
 #[cfg(feature = "ssr")]
-use leptos::prelude::{Owner, RenderHtml};
+use leptos::prelude::{Owner, RenderHtml, provide_context};
 #[cfg(feature = "ssr")]
 use leptos::view;
+#[cfg(feature = "ssr")]
+use rustok_navigation_storefront::{
+    StorefrontMenuLocation, StorefrontNavigationSnapshot, fetch_active_menu,
+};
 #[cfg(feature = "ssr")]
 use rustok_web::CspNonce;
 
@@ -39,6 +43,11 @@ use crate::app::{StorefrontModulePage, StorefrontShell};
 use crate::shared::context::canonical_route::{build_redirect_location, fetch_canonical_route};
 #[cfg(feature = "ssr")]
 use crate::shared::context::enabled_modules::fetch_enabled_modules;
+#[cfg(feature = "ssr")]
+use crate::shared::context::pages_composition::{
+    PAGES_STOREFRONT_REVALIDATE_CACHE_CONTROL, if_none_match_matches,
+    pages_storefront_composition_etag,
+};
 #[cfg(feature = "ssr")]
 use crate::shared::context::seo_page_context::{ResolvedSeoPageContext, fetch_seo_page_context};
 
@@ -121,7 +130,15 @@ pub async fn render_module_page(
     query_params: std::collections::HashMap<String, String>,
     seo_context: Option<&ResolvedSeoPageContext>,
 ) -> String {
-    render_module_page_with_nonce(locale, route_segment, query_params, seo_context, None).await
+    render_module_page_with_nonce(
+        locale,
+        route_segment,
+        query_params,
+        seo_context,
+        None,
+        None,
+    )
+    .await
 }
 
 #[cfg(feature = "ssr")]
@@ -131,6 +148,7 @@ async fn render_module_page_with_nonce(
     query_params: std::collections::HashMap<String, String>,
     seo_context: Option<&ResolvedSeoPageContext>,
     csp_nonce: Option<&CspNonce>,
+    navigation_snapshot: Option<StorefrontNavigationSnapshot>,
 ) -> String {
     let locale_owned = locale.to_string();
     let route_segment_owned = route_segment.to_string();
@@ -138,6 +156,9 @@ async fn render_module_page_with_nonce(
 
     let owner = Owner::new();
     let app_html = owner.with(|| {
+        if let Some(snapshot) = navigation_snapshot {
+            provide_context(snapshot);
+        }
         let locale = locale_owned.clone();
         let route_segment = route_segment_owned.clone();
         view! {
@@ -171,15 +192,18 @@ async fn resolve_pages_route_response(
     route_segment: &str,
     query_params: &std::collections::HashMap<String, String>,
     locale_path_prefix: Option<&str>,
-) -> Option<Response> {
+) -> Result<Option<rustok_pages_storefront::StorefrontPageRouteDecision>, Response> {
     if route_segment != PAGES_ROUTE_SEGMENT {
-        return None;
+        return Ok(None);
     }
-    let page_slug = query_params
+    let Some(page_slug) = query_params
         .get("slug")
         .map(String::as_str)
         .map(str::trim)
-        .filter(|slug| !slug.is_empty())?;
+        .filter(|slug| !slug.is_empty())
+    else {
+        return Ok(None);
+    };
 
     let decision = match rustok_pages_storefront::resolve_storefront_page_route(
         page_slug.to_string(),
@@ -190,14 +214,20 @@ async fn resolve_pages_route_response(
         Ok(decision) => decision,
         Err(error) => {
             eprintln!("failed to resolve Pages host route: {error}");
-            return Some(private_status_response(
+            return Err(private_status_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Page route resolution is temporarily unavailable",
             ));
         }
     };
 
-    pages_route_response_from_decision(locale, locale_path_prefix, page_slug, &decision)
+    if let Some(response) =
+        pages_route_response_from_decision(locale, locale_path_prefix, page_slug, &decision)
+    {
+        Err(response)
+    } else {
+        Ok(Some(decision))
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -263,6 +293,104 @@ fn pages_route_response_from_decision(
 }
 
 #[cfg(feature = "ssr")]
+async fn fetch_pages_navigation_snapshot(locale: &str) -> StorefrontNavigationSnapshot {
+    let locale = Some(locale.to_string());
+    let (header, footer) = tokio::join!(
+        fetch_active_menu(StorefrontMenuLocation::Header, locale.clone()),
+        fetch_active_menu(StorefrontMenuLocation::Footer, locale),
+    );
+    StorefrontNavigationSnapshot {
+        header: match header {
+            Ok(menu) => menu,
+            Err(error) => {
+                tracing::warn!(%error, "Pages storefront header navigation load failed");
+                None
+            }
+        },
+        footer: match footer {
+            Ok(menu) => menu,
+            Err(error) => {
+                tracing::warn!(%error, "Pages storefront footer navigation load failed");
+                None
+            }
+        },
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn render_canonical_pages_response(
+    locale: &str,
+    route_segment: &str,
+    query_params: std::collections::HashMap<String, String>,
+    decision: rustok_pages_storefront::StorefrontPageRouteDecision,
+    csp_nonce: Option<&CspNonce>,
+    if_none_match: Option<&str>,
+) -> Response {
+    let seo_context = match fetch_seo_page_context(locale, route_segment, &query_params).await {
+        Ok(Some(resolved)) if resolved.route.redirect.is_some() => {
+            let redirect = resolved
+                .route
+                .redirect
+                .as_ref()
+                .expect("checked is_some above");
+            return redirect_response(redirect.target_url.as_str(), Some(redirect.status_code));
+        }
+        Ok(seo_context) => seo_context,
+        Err(error) => {
+            tracing::warn!(%error, "Pages storefront SEO composition load failed");
+            None
+        }
+    };
+    let navigation = fetch_pages_navigation_snapshot(locale).await;
+    let html = render_module_page_with_nonce(
+        locale,
+        route_segment,
+        query_params,
+        seo_context.as_ref(),
+        csp_nonce,
+        Some(navigation.clone()),
+    )
+    .await;
+    let etag = pages_storefront_composition_etag(
+        locale,
+        &decision,
+        &seo_context,
+        &navigation,
+        html.as_str(),
+    );
+    if let Some(etag) = etag.as_deref()
+        && if_none_match_matches(if_none_match, etag)
+    {
+        return not_modified_composition_response(etag);
+    }
+
+    let mut response = Html(html).into_response();
+    if let Some(etag) = etag {
+        apply_composition_headers(&mut response, etag.as_str());
+    }
+    response
+}
+
+#[cfg(feature = "ssr")]
+fn apply_composition_headers(response: &mut Response, etag: &str) {
+    let Ok(etag) = HeaderValue::from_str(etag) else {
+        return;
+    };
+    response.headers_mut().insert(ETAG, etag);
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static(PAGES_STOREFRONT_REVALIDATE_CACHE_CONTROL),
+    );
+}
+
+#[cfg(feature = "ssr")]
+fn not_modified_composition_response(etag: &str) -> Response {
+    let mut response = StatusCode::NOT_MODIFIED.into_response();
+    apply_composition_headers(&mut response, etag);
+    response
+}
+
+#[cfg(feature = "ssr")]
 fn private_permanent_redirect(location: &str) -> Response {
     (
         StatusCode::PERMANENT_REDIRECT,
@@ -287,8 +415,9 @@ async fn render_module_page_response(
     query_params: std::collections::HashMap<String, String>,
     locale_path_prefix: Option<&str>,
     csp_nonce: Option<&CspNonce>,
+    if_none_match: Option<&str>,
 ) -> Response {
-    if let Some(response) = resolve_pages_route_response(
+    let pages_decision = match resolve_pages_route_response(
         locale,
         route_segment,
         &query_params,
@@ -296,7 +425,19 @@ async fn render_module_page_response(
     )
     .await
     {
-        return response;
+        Ok(decision) => decision,
+        Err(response) => return response,
+    };
+    if let Some(decision) = pages_decision {
+        return render_canonical_pages_response(
+            locale,
+            route_segment,
+            query_params,
+            decision,
+            csp_nonce,
+            if_none_match,
+        )
+        .await;
     }
 
     match fetch_seo_page_context(locale, route_segment, &query_params).await {
@@ -315,6 +456,7 @@ async fn render_module_page_response(
                 query_params,
                 seo_context.as_ref(),
                 csp_nonce,
+                None,
             )
             .await,
         )
@@ -333,6 +475,7 @@ async fn render_module_page_response(
                         query_params,
                         None,
                         csp_nonce,
+                        None,
                     )
                     .await,
                 )
@@ -420,18 +563,23 @@ pub fn router() -> Router {
             "/modules/{route_segment}",
             get(
                 |Path(route_segment): Path<String>,
+                 headers: HeaderMap,
                  nonce: Option<Extension<CspNonce>>,
                  axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
                 >| async move {
                     let locale = resolve_storefront_locale(None, &params);
                     let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    let if_none_match = headers
+                        .get(IF_NONE_MATCH)
+                        .and_then(|value| value.to_str().ok());
                     render_module_page_response(
                         locale.as_str(),
                         route_segment.as_str(),
                         params,
                         None,
                         nonce,
+                        if_none_match,
                     )
                     .await
                 },
@@ -441,6 +589,7 @@ pub fn router() -> Router {
             "/{locale}/modules/{route_segment}",
             get(
                 |Path((locale_path_prefix, route_segment)): Path<(String, String)>,
+                 headers: HeaderMap,
                  nonce: Option<Extension<CspNonce>>,
                  axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
@@ -448,12 +597,16 @@ pub fn router() -> Router {
                     let locale =
                         resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
                     let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    let if_none_match = headers
+                        .get(IF_NONE_MATCH)
+                        .and_then(|value| value.to_str().ok());
                     render_module_page_response(
                         locale.as_str(),
                         route_segment.as_str(),
                         params,
                         Some(locale_path_prefix.as_str()),
                         nonce,
+                        if_none_match,
                     )
                     .await
                 },
@@ -465,13 +618,15 @@ pub fn router() -> Router {
 #[cfg(test)]
 mod tests {
     use super::{
-        nonce_structured_data_scripts, normalize_storefront_locale,
-        pages_route_response_from_decision, resolve_storefront_locale,
+        apply_composition_headers, nonce_structured_data_scripts, normalize_storefront_locale,
+        not_modified_composition_response, pages_route_response_from_decision,
+        resolve_storefront_locale,
     };
     use axum::http::{
         StatusCode,
-        header::{CACHE_CONTROL, LOCATION},
+        header::{CACHE_CONTROL, ETAG, LOCATION},
     };
+    use axum::response::IntoResponse;
     use rustok_pages_storefront::{
         StorefrontPageRouteDecision, StorefrontPageRouteDisposition,
     };
@@ -486,6 +641,11 @@ mod tests {
             canonical_path: Some("/en/modules/pages?slug=about".to_string()),
             canonical_slug: Some("about".to_string()),
             canonical_page_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
+            canonical_locale: Some("en".to_string()),
+            channel_id: Some("00000000-0000-0000-0000-000000000001".to_string()),
+            route_generation: Some(1),
+            page_generation: Some(2),
+            artifact_generation: Some(3),
         }
     }
 
@@ -581,6 +741,33 @@ mod tests {
                 Some("private, no-store")
             );
         }
+    }
+
+    #[test]
+    fn canonical_composition_responses_use_private_revalidation_etags() {
+        let etag = "\"pages_storefront_composition_v1-deadbeef\"";
+        let mut ok = StatusCode::OK.into_response();
+        apply_composition_headers(&mut ok, etag);
+        assert_eq!(
+            ok.headers().get(ETAG).and_then(|value| value.to_str().ok()),
+            Some(etag)
+        );
+        assert_eq!(
+            ok.headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("private, no-cache")
+        );
+
+        let not_modified = not_modified_composition_response(etag);
+        assert_eq!(not_modified.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            not_modified
+                .headers()
+                .get(ETAG)
+                .and_then(|value| value.to_str().ok()),
+            Some(etag)
+        );
     }
 
     #[test]

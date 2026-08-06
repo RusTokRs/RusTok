@@ -19,6 +19,11 @@ pub struct StorefrontPageRouteDecision {
     pub canonical_path: Option<String>,
     pub canonical_slug: Option<String>,
     pub canonical_page_id: Option<String>,
+    pub canonical_locale: Option<String>,
+    pub channel_id: Option<String>,
+    pub route_generation: Option<u64>,
+    pub page_generation: Option<u64>,
+    pub artifact_generation: Option<u64>,
 }
 
 impl StorefrontPageRouteDecision {
@@ -28,6 +33,11 @@ impl StorefrontPageRouteDecision {
             canonical_path: None,
             canonical_slug: None,
             canonical_page_id: None,
+            canonical_locale: None,
+            channel_id: None,
+            route_generation: None,
+            page_generation: None,
+            artifact_generation: None,
         }
     }
 }
@@ -57,7 +67,7 @@ async fn storefront_page_route_native(
         use rustok_outbox::TransactionalEventBus;
         use rustok_pages::{
             PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT, PageRouteDisposition,
-            PageRouteService, PageService, PagesError,
+            PageRouteService, PageService, PagesCacheReadRuntime, PagesError,
         };
         use rustok_tenant::TenantService;
 
@@ -103,9 +113,8 @@ async fn storefront_page_route_native(
             )
         };
 
-        if let Some(request_context) = request_context.as_ref()
-            && let Some(channel_id) = request_context.channel_id
-        {
+        let channel_id = request_context.as_ref().and_then(|context| context.channel_id);
+        if let Some(channel_id) = channel_id {
             let enabled = ChannelService::new(runtime_ctx.db_clone())
                 .is_module_enabled(channel_id, MODULE_SLUG)
                 .await
@@ -200,6 +209,23 @@ async fn storefront_page_route_native(
             } else {
                 StorefrontPageRouteDisposition::Canonical
             };
+            let generations = if let Some(cache_runtime) =
+                runtime_ctx.shared_get::<PagesCacheReadRuntime>()
+            {
+                match cache_runtime.generation_snapshot(tenant_id).await {
+                    Ok(generations) => Some(generations),
+                    Err(error) => {
+                        tracing::warn!(
+                            %error,
+                            %tenant_id,
+                            "Pages host route generation read failed; composition ETag disabled"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
             return Ok(StorefrontPageRouteDecision {
                 disposition,
                 canonical_path: Some(encoded_page_route_path(
@@ -208,6 +234,11 @@ async fn storefront_page_route_native(
                 )),
                 canonical_slug: Some(canonical.slug),
                 canonical_page_id: Some(canonical.page_id.to_string()),
+                canonical_locale: Some(canonical.locale),
+                channel_id: channel_id.map(|value| value.to_string()),
+                route_generation: generations.map(|value| value.route),
+                page_generation: generations.map(|value| value.page),
+                artifact_generation: generations.map(|value| value.artifact),
             });
         }
 
