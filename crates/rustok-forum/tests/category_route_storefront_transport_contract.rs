@@ -23,7 +23,7 @@ fn graphql_route_resolution_rechecks_exact_category_visibility() {
         "runtime.category_audience_read_service(db.clone())",
         "ForumCategoryReadOperation::SelectedCategory",
         "ForumCategoryReadTransport::Graphql",
-        "get_authenticated_storefront_visible_with_audience_context",
+        "get_authenticated_storefront_list_visible_with_audience_context",
         "get_public_storefront_visible_with_locale_fallback",
         "if !forum_channel_enabled(ctx).await?",
     ] {
@@ -47,7 +47,7 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
         "ForumCategoryAudienceReadService::with_audience_facts",
         "ForumCategoryReadTransport::NativeServer",
         "ForumCategoryReadOperation::SelectedCategory",
-        "get_authenticated_storefront_visible_with_audience_context",
+        "get_authenticated_storefront_list_visible_with_audience_context",
         "get_public_storefront_visible_with_locale_fallback",
         "is_module_enabled(channel_id, \"forum\")",
     ] {
@@ -55,6 +55,18 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
     }
     assert!(!source.contains("access_token"));
     assert!(!source.contains("tenant_id: String"));
+}
+
+#[test]
+fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
+    let inline_owner =
+        read("crates/rustok-forum/src/services/category_audience_read_inline.rs");
+    let contract = read(
+        "crates/rustok-forum/contracts/forum-category-route-storefront-transport.json",
+    );
+    assert!(inline_owner.contains("enforce_scope(&security, Resource::ForumCategories, Action::List)"));
+    assert!(inline_owner.contains("get_authenticated_storefront_list_visible_with_audience_context"));
+    assert!(contract.contains("\"authenticated_permission_boundary\": \"forum_categories:list\""));
 }
 
 #[test]
