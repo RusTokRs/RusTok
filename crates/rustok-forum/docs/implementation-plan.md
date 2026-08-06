@@ -112,10 +112,12 @@ persistence, immutable catalog snapshots, shared Outbox command receipts and
 atomic actor-state/aggregate updates. Forum publishes a source-ready
 `topic`/`reply` provider factory with exact active-state, visibility and current-
 revision authorization plus a bounded single-`like` v1 catalog. Optional owner
-selection and host materialization are now source-ready in the distribution and
-server, after Forum audience and recipient-context providers. Maintainer lockfile
-generation and enabled/disabled runtime evidence remain pending. No reaction
-event/reconciliation layer, transport or UI exists yet.
+selection and host materialization are source-ready in the distribution and
+server, after Forum audience and recipient-context providers. The server now has
+executable source evidence for all three optional profiles plus the selected-
+feature/missing-owner failure. Maintainer lockfile generation and retained
+execution evidence remains pending. No reaction event/reconciliation layer,
+transport or UI exists yet.
 
 ## Program ledger
 
@@ -139,7 +141,7 @@ event/reconciliation layer, transport or UI exists yet.
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
-| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, Forum topic/reply provider factory and host materialization are source-ready. Regenerate `Cargo.lock`, retain owner and enabled/disabled composition evidence, then add events/reconciliation, transports/UI and runtime proof; Forum votes remain separate. |
+| `FORUM-18` | `in_progress` | Neutral API, owner selection/persistence, shared receipts, atomic aggregates, Forum provider, host materialization and executable composition-profile tests are source-ready. Regenerate `Cargo.lock`, retain owner/profile runs, then add events/reconciliation, transports/UI and runtime proof; Forum votes remain separate. |
 | `FORUM-19` | `planned` | Integrate `rustok-moderation-api` subject/effect adapters and Forum-local restrictions. Moderation owns cases and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
@@ -215,7 +217,10 @@ and recipient-context facts exist.
 The Reactions-disabled Forum composition remains valid: Forum commands and reads
 continue without owner storage or a materialized reaction registry. Reactions
 without Forum materializes an empty source registry; Forum with Reactions
-materializes the `forum` source with `topic` and `reply` kinds.
+materializes the `forum` source with `topic` and `reply` kinds. The public server
+composition entrypoint now has executable tests for each profile and for the
+selected-feature/missing-owner startup failure. Retained execution evidence
+remains pending.
 
 Reputation and achievements remain separate shared capabilities consuming
 semantic facts. Forum trust remains Forum-owned because it controls Forum
@@ -242,7 +247,7 @@ Hosts register/mount packages and do not absorb policy.
 2. Reactions owner persistence/atomic aggregates: source-ready, lockfile and runtime evidence pending.
 3. Forum `topic`/`reply` provider factory and disabled Forum profile: source-ready, maintainer verification pending.
 4. Optional distribution/server selection and host materialization after Forum facts: source-ready, maintainer verification pending.
-5. Retain enabled/disabled host composition and owner persistence evidence.
+5. Executable source evidence for all profiles: source-ready; retain the four maintainer runs and lockfile delta.
 6. Add semantic events/reconciliation and a second producer before freezing shared presentation contracts.
 7. Introduce Reputation/Achievements only after at least two producers agree.
 8. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
@@ -288,19 +293,23 @@ node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
 node scripts/verify/verify-forum-reaction-subject-provider.mjs
 node scripts/verify/verify-reactions-host-composition.mjs
+node scripts/verify/verify-reactions-composition-profiles.mjs
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
 cargo test -p rustok-forum reaction_subject
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
-cargo check -p rustok-server --no-default-features --features "mod-forum mod-reactions"
+cargo test -p rustok-server --no-default-features --features mod-forum --test reactions_composition_profiles forum_without_reactions_keeps_forum_host_composition_available
+cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles reactions_without_forum_materializes_an_empty_subject_registry
+cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles selected_reactions_feature_fails_when_owner_module_is_missing
+cargo test -p rustok-server --no-default-features --features "mod-forum mod-reactions" --test reactions_composition_profiles forum_with_reactions_materializes_topic_and_reply_provider
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
 npm run verify:forum:storefront-boundary
 git diff --check
 ```
 
-Tests, lockfile generation and runtime evidence are maintainer-run. Source
-contracts do not promote runtime status.
+Tests, lockfile generation and retained runtime evidence are maintainer-run.
+Source contracts do not promote runtime status.
 
 ## Release gates
 
@@ -321,7 +330,6 @@ runtime claims without retained executable evidence.
 
 ## Immediate next action
 
-Retain source/runtime evidence for Forum without Reactions, Reactions without
-Forum and Forum with Reactions, including the selected-feature/missing-registry
-startup failure. Then add semantic reaction events and reconciliation before any
+Retain the four composition-profile runs and regenerate `Cargo.lock`. Then add
+transactional semantic reaction events and bounded reconciliation before any
 transport or UI slice.

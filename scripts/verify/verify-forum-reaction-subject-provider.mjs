@@ -19,6 +19,10 @@ function read(relativePath) {
   return readFileSync(absolute, "utf8");
 }
 
+function compact(value) {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
 if (contract.schema_version !== 1) fail("unsupported contract schema version");
 if (contract.module !== "forum") fail("contract module must be forum");
 if (contract.contract !== "forum_reaction_subject_provider_v1") {
@@ -39,8 +43,8 @@ const provider = read("crates/rustok-forum/src/reaction_subject.rs");
 const forumLib = read("crates/rustok-forum/src/lib.rs");
 const forumCargo = read("crates/rustok-forum/Cargo.toml");
 const modules = read("modules.toml");
-const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
-const reactionsPlan = read("crates/rustok-reactions/docs/implementation-plan.md");
+const forumPlan = compact(read("crates/rustok-forum/docs/implementation-plan.md"));
+const reactionsPlan = compact(read("crates/rustok-reactions/docs/implementation-plan.md"));
 
 for (const fragment of contract.required_source_fragments) {
   if (!provider.includes(fragment)) fail(`provider is missing ${fragment}`);
@@ -76,7 +80,7 @@ if (/"reactions"/u.test(defaultEnabled)) {
 for (const fragment of [
   "topic`/`reply` provider factory",
   "latest captured Forum revision id + 1",
-  "optional owner selection and host materialization",
+  "Optional owner selection and host materialization",
   "node scripts/verify/verify-forum-reaction-subject-provider.mjs",
 ]) {
   if (!forumPlan.includes(fragment)) fail(`Forum plan is missing ${fragment}`);
@@ -84,7 +88,7 @@ for (const fragment of [
 for (const fragment of [
   "| `REACTIONS-03` | `in_progress` |",
   "Forum producer boundary",
-  "outside default profiles",
+  "outside defaults",
 ]) {
   if (!reactionsPlan.includes(fragment)) fail(`Reactions plan is missing ${fragment}`);
 }
