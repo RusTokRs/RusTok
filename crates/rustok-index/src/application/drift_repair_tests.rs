@@ -1,5 +1,7 @@
 use uuid::Uuid;
 
+use crate::{EntityKey, EntityName, LocaleKey, ModuleName, SchemaRef, SchemaVersion};
+
 use super::*;
 
 fn entity_key(tenant_id: Uuid) -> EntityKey {
