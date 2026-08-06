@@ -50,6 +50,7 @@ pub use route_history_import::{
 
 pub(super) const PAGE_KIND: &str = "page";
 
+#[derive(Clone)]
 pub struct PageService {
     pub(super) db: DatabaseConnection,
     pub(super) event_bus: TransactionalEventBus,
