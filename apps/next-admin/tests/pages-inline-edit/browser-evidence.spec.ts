@@ -69,10 +69,12 @@ type BrowserContract = {
   packet: string;
   status: string;
   artifact_http_input: {
+    environment: string;
     format: string;
     status: string;
   };
   output: {
+    environment: string;
     default_path: string;
     format: string;
     status: string;
@@ -311,7 +313,7 @@ function commonHeaders(): {
 }
 
 function outputPath(): string {
-  const raw = optionalEnvironment(contract.output.environment ?? "", 16_384);
+  const raw = optionalEnvironment(contract.output.environment, 16_384);
   const absolute = resolveInput(raw ?? contract.output.default_path);
   const targetRoot = path.resolve(repoRoot, "target");
   const relative = path.relative(targetRoot, absolute);
@@ -399,6 +401,7 @@ function observeFailures(page: Page): FailureCounters {
 async function settlePage(page: Page, route: string): Promise<void> {
   const response = await page.goto(route, { waitUntil: "domcontentloaded" });
   if (response === null) fail("browser navigation did not return a response");
+  if (response.status() >= 400) fail("browser fixture route did not return a successful response");
   await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
   await page.waitForTimeout(500);
 }
@@ -427,10 +430,11 @@ function validateLaunchHref(
   if (
     target.origin !== baseOrigin ||
     target.pathname !== authoringPath ||
+    target.searchParams.size !== 2 ||
     target.searchParams.get("page_id") !== pageId ||
     target.searchParams.get("lang") !== locale
   ) {
-    fail("allowed launch target does not bind the expected same-origin page and locale");
+    fail("allowed launch target does not bind the exact same-origin page and locale query");
   }
   for (const key of target.searchParams.keys()) {
     if (forbiddenUrlKeys.has(key.toLowerCase())) {
@@ -471,7 +475,13 @@ async function waitForAuthoringRoot(page: Page): Promise<RootFacts> {
       root.getAttribute("data-inline-session"),
       root.getAttribute("data-inline-proof"),
     ]);
-  if (!id || !pageId || !revision || !/^[0-9a-f]+$/u.test(projectHash ?? "")) {
+  if (
+    !id ||
+    !pageId ||
+    !revision ||
+    !projectHash ||
+    !/^[0-9a-f]+$/u.test(projectHash)
+  ) {
     fail("hydrated Page Builder root identity is incomplete");
   }
   if (sessionAttribute !== null || proofAttribute !== null) {
@@ -606,6 +616,9 @@ test("retains bounded Pages inline edit browser evidence", async ({ browser }) =
     requiredEnvironment("RUSTOK_PAGES_INLINE_EDIT_BROWSER_STANDALONE_BASE_URL"),
     "standalone browser base URL",
   );
+  if (standaloneOrigin === baseOrigin) {
+    fail("standalone admin evidence must use a distinct origin");
+  }
   const deploymentDigest = requireDeploymentDigest(
     requiredEnvironment("RUSTOK_PAGES_INLINE_EDIT_BROWSER_DEPLOYMENT_DIGEST"),
   );
@@ -810,10 +823,7 @@ test("retains bounded Pages inline edit browser evidence", async ({ browser }) =
       fail("one changed focusout did not produce exactly one successful commit request");
     }
     await mainPage.getByRole("status").waitFor({ state: "visible" });
-    const replacementRoot = await expect
-      .poll(async () => waitForAuthoringRoot(mainPage))
-      .not.toEqual(initialRoot);
-    void replacementRoot;
+    await expect.poll(async () => waitForAuthoringRoot(mainPage)).not.toEqual(initialRoot);
     const currentRoot = await waitForAuthoringRoot(mainPage);
     if (
       currentRoot.revision === initialRoot.revision ||
