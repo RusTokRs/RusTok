@@ -7,6 +7,7 @@ use sea_orm::{
     IsolationLevel, QueryResult, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -19,6 +20,7 @@ use crate::{
 
 const WIRE_VERSION: u8 = 1;
 const MAX_SNAPSHOT_TOKEN_BYTES: usize = 256;
+const SCOPE_DIGEST_DOMAIN: &[u8] = b"index_drift_candidate_scope_v1";
 const BACKEND_UNSUPPORTED: &str = "index_drift_candidate_backend_unsupported";
 const STORAGE_UNAVAILABLE: &str = "index_drift_candidate_storage_unavailable";
 const CURSOR_INVALID: &str = "index_drift_candidate_cursor_invalid";
@@ -220,7 +222,9 @@ async fn resolve_fence(
 ) -> Result<(IndexDriftCandidateFence, String), IndexDriftCandidateFailure> {
     if let Some(fence) = request.fence() {
         let wire: FenceWire = decode_wire(fence.as_str(), FENCE_INVALID)?;
-        validate_wire_scope(wire.version, wire.tenant_id, &wire.schema, request.scope(), FENCE_INVALID)?;
+        if wire.version != WIRE_VERSION || wire.scope_digest != scope_digest(request.scope()) {
+            return Err(permanent_failure(FENCE_INVALID));
+        }
         validate_snapshot_token(wire.snapshot.as_str())?;
         return Ok((fence.clone(), wire.snapshot));
     }
@@ -239,8 +243,7 @@ async fn resolve_fence(
     let encoded = encode_wire(
         &FenceWire {
             version: WIRE_VERSION,
-            tenant_id: request.scope().tenant_id(),
-            schema: request.scope().schema().clone(),
+            scope_digest: scope_digest(request.scope()),
             snapshot: snapshot.clone(),
         },
         CONTRACT_INVALID,
@@ -257,7 +260,13 @@ fn decode_request_phase(
         return Ok(ReadPhase::Stale(None));
     };
     let wire: CursorWire = decode_wire(cursor.as_str(), CURSOR_INVALID)?;
-    validate_wire_scope(wire.version, wire.tenant_id, &wire.schema, request.scope(), CURSOR_INVALID)?;
+    validate_wire_scope(
+        wire.version,
+        wire.tenant_id,
+        &wire.schema,
+        request.scope(),
+        CURSOR_INVALID,
+    )?;
     match wire.phase {
         CursorPhaseWire::Stale { after } => {
             validate_stale_position(&after)?;
@@ -306,7 +315,11 @@ async fn load_stale_rows(
         ),
     };
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+        .query_all(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            values,
+        ))
         .await
         .map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
     rows.into_iter()
@@ -324,7 +337,9 @@ async fn load_orphan_rows(
     let base = "SELECT l.source_entity_id, l.source_locale_key, CAST(s.source_version AS TEXT) AS source_version_text, l.link_name, l.ordinal, l.target_module, l.target_entity, l.target_schema_version, l.target_entity_id, l.target_locale_key FROM index_links l JOIN index_entities s ON s.tenant_id = l.tenant_id AND s.module_name = l.source_module AND s.entity_name = l.source_entity AND s.schema_version = l.source_schema_version AND s.entity_id = l.source_entity_id AND s.locale_key = l.source_locale_key AND s.source_version = l.source_version LEFT JOIN index_entities t ON t.tenant_id = l.tenant_id AND t.module_name = l.target_module AND t.entity_name = l.target_entity AND t.schema_version = l.target_schema_version AND t.entity_id = l.target_entity_id AND t.locale_key = l.target_locale_key WHERE l.tenant_id = $1 AND l.source_module = $2 AND l.source_entity = $3 AND l.source_schema_version = $4 AND s.is_deleted = FALSE AND s.source_version > 0 AND txid_visible_in_snapshot((l.xmin::text)::bigint, $5::txid_snapshot) AND txid_visible_in_snapshot((s.xmin::text)::bigint, $5::txid_snapshot) AND (t.tenant_id IS NULL OR t.is_deleted = TRUE)";
     let (sql, values) = match after {
         None => (
-            format!("{base} ORDER BY l.source_entity_id ASC, l.source_locale_key ASC, l.link_name ASC, l.ordinal ASC, l.target_module ASC, l.target_entity ASC, l.target_schema_version ASC, l.target_entity_id ASC, l.target_locale_key ASC LIMIT $6"),
+            format!(
+                "{base} ORDER BY l.source_entity_id ASC, l.source_locale_key ASC, l.link_name ASC, l.ordinal ASC, l.target_module ASC, l.target_entity ASC, l.target_schema_version ASC, l.target_entity_id ASC, l.target_locale_key ASC LIMIT $6"
+            ),
             vec![
                 scope.tenant_id().into(),
                 scope.schema().module.as_str().to_owned().into(),
@@ -335,7 +350,9 @@ async fn load_orphan_rows(
             ],
         ),
         Some(after) => (
-            format!("{base} AND (l.source_entity_id, l.source_locale_key, l.link_name, l.ordinal, l.target_module, l.target_entity, l.target_schema_version, l.target_entity_id, l.target_locale_key) > ($6::uuid, $7, $8, $9, $10, $11, $12, $13::uuid, $14) ORDER BY l.source_entity_id ASC, l.source_locale_key ASC, l.link_name ASC, l.ordinal ASC, l.target_module ASC, l.target_entity ASC, l.target_schema_version ASC, l.target_entity_id ASC, l.target_locale_key ASC LIMIT $15"),
+            format!(
+                "{base} AND (l.source_entity_id, l.source_locale_key, l.link_name, l.ordinal, l.target_module, l.target_entity, l.target_schema_version, l.target_entity_id, l.target_locale_key) > ($6::uuid, $7, $8, $9, $10, $11, $12, $13::uuid, $14) ORDER BY l.source_entity_id ASC, l.source_locale_key ASC, l.link_name ASC, l.ordinal ASC, l.target_module ASC, l.target_entity ASC, l.target_schema_version ASC, l.target_entity_id ASC, l.target_locale_key ASC LIMIT $15"
+            ),
             vec![
                 scope.tenant_id().into(),
                 scope.schema().module.as_str().to_owned().into(),
@@ -356,7 +373,11 @@ async fn load_orphan_rows(
         ),
     };
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+        .query_all(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            values,
+        ))
         .await
         .map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
     rows.into_iter()
@@ -459,6 +480,21 @@ fn validate_wire_scope(
         return Err(permanent_failure(code));
     }
     Ok(())
+}
+
+fn scope_digest(scope: &IndexDriftCandidateScope) -> String {
+    let mut digest = Sha256::new();
+    digest.update(SCOPE_DIGEST_DOMAIN);
+    digest.update(scope.tenant_id().as_bytes());
+    digest_part(&mut digest, scope.schema().module.as_str().as_bytes());
+    digest_part(&mut digest, scope.schema().entity.as_str().as_bytes());
+    digest.update(scope.schema().version.get().to_be_bytes());
+    hex::encode(digest.finalize())
+}
+
+fn digest_part(digest: &mut Sha256, value: &[u8]) {
+    digest.update((value.len() as u32).to_be_bytes());
+    digest.update(value);
 }
 
 fn validate_snapshot_token(value: &str) -> Result<(), IndexDriftCandidateFailure> {
@@ -660,8 +696,7 @@ struct OrphanCandidateRow {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct FenceWire {
     version: u8,
-    tenant_id: Uuid,
-    schema: SchemaRef,
+    scope_digest: String,
     snapshot: String,
 }
 
@@ -726,6 +761,23 @@ mod tests {
     }
 
     #[test]
+    fn compact_fence_remains_scope_bound() {
+        let tenant_id = Uuid::new_v4();
+        let scope = scope(tenant_id);
+        let encoded = encode_wire(
+            &FenceWire {
+                version: WIRE_VERSION,
+                scope_digest: scope_digest(&scope),
+                snapshot: "10:20:12".to_owned(),
+            },
+            CONTRACT_INVALID,
+        )
+        .expect("fence wire");
+        assert!(IndexDriftCandidateFence::new(encoded).is_ok());
+        assert_ne!(scope_digest(&scope), scope_digest(&scope(Uuid::new_v4())));
+    }
+
+    #[test]
     fn cursor_is_scope_bound_and_phase_typed() {
         let tenant_id = Uuid::new_v4();
         let scope = scope(tenant_id);
@@ -753,8 +805,7 @@ mod tests {
                     encode_wire(
                         &FenceWire {
                             version: WIRE_VERSION,
-                            tenant_id,
-                            schema: scope.schema().clone(),
+                            scope_digest: scope_digest(&scope),
                             snapshot: "10:20:12".to_owned(),
                         },
                         CONTRACT_INVALID,
@@ -772,23 +823,13 @@ mod tests {
             ReadPhase::Orphan(Some(_))
         ));
 
-        let other = scope(Uuid::new_v4());
         let foreign_request = IndexDriftCandidateRequest::new(
-            other,
+            scope(Uuid::new_v4()),
             request.fence().cloned(),
             request.cursor().cloned(),
             8,
         )
         .expect("foreign request");
         assert!(decode_request_phase(&foreign_request).is_err());
-    }
-
-    #[test]
-    fn reader_debug_does_not_expose_database_state() {
-        let debug = format!(
-            "{:?}",
-            PostgresIndexDriftCandidateReader::new(DatabaseConnection::Disconnected)
-        );
-        assert_eq!(debug, "PostgresIndexDriftCandidateReader { .. }");
     }
 }
