@@ -12,6 +12,7 @@ pub use catalog::{
 pub use catalog_schema::*;
 pub use catalog_schema_service::*;
 pub use index_refresh::{
-    MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, ProductIndexLocaleRefreshRecord,
-    ProductIndexLocaleRefreshSource,
+    MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,
+    ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,
+    ProductIndexVariantRefreshRecord, ProductIndexVariantRefreshSource,
 };
