@@ -13,6 +13,7 @@ const files = {
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
+  orphanDoc: 'crates/rustok-index/docs/m6-orphan-link-repair-composition.md',
   recoveryDoc: 'crates/rustok-index/docs/m6-prepared-repair-recovery.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
@@ -40,13 +41,16 @@ requireMarkers('appMod', [
 ]);
 requireMarkers('postgresMod', [
   'mod drift_repair;',
+  'mod drift_orphan_link_repair;',
   'PostgresIndexDriftRepairStore',
   'materialize_postgres_index_drift_repair_store',
   'RecoveryAwareIndexDriftRepairStore',
+  'materialize_postgres_index_drift_orphan_link_repair_service',
 ]);
 requireMarkers('lib', [
   'PostgresIndexDriftRepairStore',
   'materialize_postgres_index_drift_repair_store',
+  'materialize_postgres_index_drift_orphan_link_repair_service',
 ]);
 requireMarkers('migrationsMod', [
   'mod m20260806_000007_add_index_finding_repair_commands;',
@@ -178,12 +182,13 @@ requireMarkers('migration', [
 ]);
 
 requireMarkers('doc', [
-  'Status: `source_complete_recovery_aware_orphan_pending`.',
+  'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   'cryptographic preimage check',
   '`SERIALIZABLE READ WRITE`',
   '`prepared -> completed`',
   '`materialize_postgres_index_drift_missing_entity_repair_service`',
-  'mutation inbox',
+  '`materialize_postgres_index_drift_orphan_link_repair_service`',
+  '`PostgresIndexOrphanLinkMutationStore`',
   '`IndexDriftRepairRecoveryService`',
   'No tests, Node verifiers, formatting, Cargo checks',
 ]);
@@ -193,18 +198,26 @@ requireMarkers('concreteDoc', [
   'durable repair command UUID',
   '`RecoveryAwareIndexDriftRepairOwner`',
 ]);
+requireMarkers('orphanDoc', [
+  'Status: `source_complete_owner_execution_pending`.',
+  '`PostgresIndexOrphanLinkMutationStore`',
+  '`index_drift_repair_orphan_link`',
+  'applied delivery is the durable proof',
+]);
 requireMarkers('recoveryDoc', [
   'Status: `source_complete_owner_execution_pending`.',
   '`PostgresIndexDriftRepairRecoveryStore`',
   '`prepared -> completed`',
 ]);
 requireMarkers('plan', [
-  'M6 - compose concrete orphan-link repair',
+  'M6 - retain concrete repair execution evidence',
   'M6 prepared repair pause/resume/abandon recovery policy:',
+  'M6 concrete orphan-link evidence reader and command-bound edge-removal owner:',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-targeted-drift-repair.mjs'",
   "'verify-index-missing-entity-repair-composition.mjs'",
+  "'verify-index-orphan-link-repair-composition.mjs'",
   "'verify-index-prepared-repair-recovery.mjs'",
 ]);
 
