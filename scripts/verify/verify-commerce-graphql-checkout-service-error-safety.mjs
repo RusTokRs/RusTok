@@ -34,6 +34,10 @@ if (checkoutModuleDeclarations.length !== 1) {
 
 for (const [value, label] of [
   ['mod checkout_boundary {', 'checkout boundary module'],
+  ['const CHECKOUT_ERROR_BOUNDARY: &str = "commerce_graphql_checkout";', 'checkout boundary constant'],
+  ['struct CheckoutServiceDiagnosticError;', 'redacted diagnostic token'],
+  ['impl std::fmt::Debug for CheckoutServiceDiagnosticError', 'diagnostic Debug implementation'],
+  ['formatter.write_str("redacted")', 'redacted diagnostic rendering'],
   ['#[derive(Clone)]', 'async GraphQL clone requirement'],
   ['pub(crate) enum BoundaryError {', 'local boundary error'],
   ['Graphql(Error)', 'GraphQL pass-through variant'],
@@ -49,11 +53,13 @@ for (const [value, label] of [
   ['fn fulfillment_error_envelope(', 'shipping option mapper'],
   ['extensions.set("code", code)', 'stable code extension'],
   ['extensions.set("retryable", retryable)', 'retryability extension'],
+  ['let diagnostic_error = CheckoutServiceDiagnosticError;', 'diagnostic source consumption'],
+  ['error = ?diagnostic_error', 'redacted diagnostic field'],
   ['owner = "rustok_commerce"', 'commerce owner logging'],
   ['owner = "rustok_fulfillment"', 'fulfillment owner logging'],
   ['error_kind,', 'owner error kind logging'],
   ['public_code = code', 'public code logging'],
-  ['boundary = "commerce_graphql_checkout"', 'checkout boundary logging'],
+  ['boundary = CHECKOUT_ERROR_BOUNDARY', 'checkout boundary logging'],
   ['mod async_graphql_shim {', 'async GraphQL result shim'],
   ['pub use ::async_graphql::{Context, Error, ErrorExtensions, Object};', 'GraphQL API re-export'],
   [
@@ -69,13 +75,15 @@ for (const [value, label] of [
 for (const value of [
   'Commerce(CommerceError)',
   'Fulfillment(FulfillmentError)',
+  'error = ?error',
+  'error = %error',
   'async_graphql::Error::new(error.to_string())',
   'async_graphql::Error::new(err.to_string())',
   'Error::new(error.to_string())',
   'Error::new(err.to_string())',
   'format!("{error}")',
 ]) {
-  forbidText(facade, value, 'checkout facade public boundary');
+  forbidText(facade, value, 'checkout facade public and diagnostic boundary');
 }
 for (const value of [
   'async_graphql::Error::new(error.to_string())',
@@ -85,6 +93,13 @@ for (const value of [
   'format!("{error}")',
 ]) {
   forbidText(source, value, 'checkout resolver public boundary');
+}
+
+const redactedDiagnosticFields = facade.match(/error = \?diagnostic_error/g) ?? [];
+if (redactedDiagnosticFields.length !== 2) {
+  failures.push(
+    `expected two redacted checkout service diagnostic fields, found ${redactedDiagnosticFields.length}`,
+  );
 }
 
 for (const [value, label] of [
@@ -154,5 +169,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL checkout shipping services use cloneable typed public envelopes while preserving existing GraphQL errors',
+  '✔ Commerce GraphQL checkout shipping services retain typed public envelopes and emit only redacted owner diagnostics while preserving existing GraphQL errors',
 );

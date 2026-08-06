@@ -1,0 +1,39 @@
+{
+  "status": "commerce_graphql_checkout_service_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/graphql/mutations/safe_checkout.rs",
+    "crates/rustok-commerce/src/graphql/mutations/checkout.rs",
+    "scripts/verify/verify-commerce-graphql-checkout-service-error-safety.mjs",
+    "crates/rustok-commerce/docs/graphql-checkout-service-diagnostic-safety.md"
+  ],
+  "source_contract": {
+    "complete_commerce_error_logged": false,
+    "complete_fulfillment_error_logged": false,
+    "diagnostic_debug_redacted": true,
+    "owner_name_preserved": true,
+    "classified_error_kind_preserved": true,
+    "public_code_preserved": true,
+    "retryability_preserved": true,
+    "graphql_error_passthrough_preserved": true,
+    "shipping_profile_public_policy_preserved": true,
+    "shipping_option_public_policy_preserved": true,
+    "resolver_source_unchanged": true,
+    "shipping_option_service_call_count": 4,
+    "shipping_profile_service_call_count": 4,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "mounted_graphql_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed."
+}

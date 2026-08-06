@@ -4,6 +4,16 @@ mod checkout_boundary {
 
     use crate::CommerceError;
 
+    const CHECKOUT_ERROR_BOUNDARY: &str = "commerce_graphql_checkout";
+
+    struct CheckoutServiceDiagnosticError;
+
+    impl std::fmt::Debug for CheckoutServiceDiagnosticError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("redacted")
+        }
+    }
+
     #[derive(Clone)]
     pub(crate) enum BoundaryError {
         Graphql(Error),
@@ -114,13 +124,14 @@ mod checkout_boundary {
     impl From<CommerceError> for BoundaryError {
         fn from(error: CommerceError) -> Self {
             let (message, code, retryable, error_kind) = commerce_error_envelope(&error);
+            let diagnostic_error = CheckoutServiceDiagnosticError;
             tracing::error!(
-                error = ?error,
+                error = ?diagnostic_error,
                 owner = "rustok_commerce",
                 error_kind,
                 public_code = code,
                 retryable,
-                boundary = "commerce_graphql_checkout",
+                boundary = CHECKOUT_ERROR_BOUNDARY,
                 "commerce GraphQL checkout shipping profile operation failed"
             );
             Self::Public {
@@ -134,13 +145,14 @@ mod checkout_boundary {
     impl From<FulfillmentError> for BoundaryError {
         fn from(error: FulfillmentError) -> Self {
             let (message, code, retryable, error_kind) = fulfillment_error_envelope(&error);
+            let diagnostic_error = CheckoutServiceDiagnosticError;
             tracing::error!(
-                error = ?error,
+                error = ?diagnostic_error,
                 owner = "rustok_fulfillment",
                 error_kind,
                 public_code = code,
                 retryable,
-                boundary = "commerce_graphql_checkout",
+                boundary = CHECKOUT_ERROR_BOUNDARY,
                 "commerce GraphQL checkout shipping option operation failed"
             );
             Self::Public {
