@@ -269,8 +269,8 @@ for (const baseFeature of ["csr", "hydrate", "ssr"]) {
 }
 need(
   serverCargo,
-  'pages-inline-edit = ["embed-storefront", "rustok-storefront/pages-inline-edit"]',
-  "server opt-in profile",
+  'pages-inline-edit = ["embed-storefront", "mod-pages", "rustok-storefront/pages-inline-edit"]',
+  "self-contained server opt-in profile",
 );
 forbid(
   featureBody(serverCargo, "default", "server manifest"),
