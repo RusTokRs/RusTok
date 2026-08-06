@@ -9,6 +9,7 @@ const files = {
   lib: 'crates/rustok-index/src/lib.rs',
   genericDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   doc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
+  recoveryDoc: 'crates/rustok-index/docs/m6-prepared-repair-recovery.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -32,6 +33,8 @@ requireMarkers('postgresMod', [
   'PostgresIndexDriftMissingEntityEvidenceReader',
   'PostgresIndexDriftMissingEntityRepairOwner',
   'materialize_postgres_index_drift_missing_entity_repair_service',
+  'RecoveryAwareIndexDriftRepairOwner',
+  'RecoveryAwareIndexDriftRepairStore',
 ]);
 requireMarkers('lib', [
   'PostgresIndexDriftMissingEntityEvidenceReader',
@@ -47,6 +50,8 @@ requireMarkers('source', [
   'struct MissingEntityOnlyRepairStore',
   'impl IndexDriftRepairStore for MissingEntityOnlyRepairStore',
   'materialize_postgres_index_drift_missing_entity_repair_service(',
+  'RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)',
+  'RecoveryAwareIndexDriftRepairStore::new(db, store)',
   'IndexDriftRepairTargetKind::MissingEntity',
   'IndexDriftRepairTarget::MissingEntity',
   'IndexDriftRepairTarget::OrphanLink { .. } => Err(permanent_failure(TARGET_UNSUPPORTED))',
@@ -134,28 +139,35 @@ if (
 }
 
 requireMarkers('genericDoc', [
-  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
+  'Status: `source_complete_recovery_aware_orphan_pending`.',
   '`materialize_postgres_index_drift_missing_entity_repair_service`',
   'rejects `OrphanLink` before the generic reservation store',
   '`PostgresMutationStore`',
-  'prepared-reservation lease, expiry, abandonment, takeover, or operator recovery',
+  '`IndexDriftRepairRecoveryService`',
 ]);
 requireMarkers('doc', [
-  'Status: `source_complete_recovery_policy_pending`.',
-  'strictly greater than the indexed version',
+  'Status: `source_complete_recovery_aware_owner_execution_pending`.',
+  'strictly newer',
   '`MutationDelivery::from_event("index_drift_repair_missing_entity", mutation)`',
   'durable repair command UUID is therefore also the mutation event',
   'physically missing row',
+  '`RecoveryAwareIndexDriftRepairOwner`',
+  '`RecoveryAwareIndexDriftRepairStore`',
   'No tests, Node verifiers, formatting, Cargo checks',
 ]);
+requireMarkers('recoveryDoc', [
+  'Status: `source_complete_owner_execution_pending`.',
+  'same command UUID',
+]);
 requireMarkers('plan', [
-  'M6 - add prepared repair recovery policy',
-  'source_complete_recovery_policy_pending',
-  'Compose one concrete admitted evidence reader for confirmed missing-entity findings.',
+  'M6 - compose concrete orphan-link repair',
+  'source_complete_recovery_aware_owner_execution_pending',
   'Bind mutation retry identity to the durable repair command UUID.',
+  'Add fail-closed prepared-command pause/resume/abandon recovery and lifecycle coordination.',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-missing-entity-repair-composition.mjs'",
+  "'verify-index-prepared-repair-recovery.mjs'",
 ]);
 
 console.log('Index missing-entity repair composition verified');
