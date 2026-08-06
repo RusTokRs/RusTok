@@ -53,15 +53,16 @@ async fn create_category(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     security: SecurityContext,
+    locale: &str,
     name: &str,
     slug: &str,
-) -> TestResult<Uuid> {
+) -> Result<Uuid, ForumError> {
     Ok(CategoryService::new(db.clone())
         .create(
             tenant_id,
             security,
             CreateCategoryInput {
-                locale: "en".to_string(),
+                locale: locale.to_string(),
                 name: name.to_string(),
                 slug: slug.to_string(),
                 description: None,
@@ -110,6 +111,7 @@ async fn explicit_and_name_derived_slug_changes_record_redirects_atomically() ->
         &db,
         tenant_id,
         security.clone(),
+        "en",
         "General",
         "general",
     )
@@ -181,6 +183,7 @@ async fn historical_route_keys_cannot_be_reclaimed_inside_one_tenant() -> TestRe
         &db,
         tenant_id,
         security.clone(),
+        "en",
         "General",
         "general",
     )
@@ -200,13 +203,12 @@ async fn historical_route_keys_cannot_be_reclaimed_inside_one_tenant() -> TestRe
             &db,
             tenant_id,
             security.clone(),
+            "en",
             "Replacement",
             "general"
         )
         .await,
-        Err(error) if error.downcast_ref::<ForumError>().is_some_and(|error| {
-            matches!(error, ForumError::CategoryRouteResolutionConflict)
-        })
+        Err(ForumError::CategoryRouteResolutionConflict)
     ));
     assert!(matches!(
         service
@@ -225,6 +227,7 @@ async fn historical_route_keys_cannot_be_reclaimed_inside_one_tenant() -> TestRe
         &db,
         other_tenant_id,
         admin(),
+        "en",
         "Other tenant",
         "general",
     )
@@ -250,6 +253,7 @@ async fn archived_category_hides_current_and_historical_routes() -> TestResult<(
         &db,
         tenant_id,
         security.clone(),
+        "en",
         "General",
         "general",
     )
@@ -287,6 +291,7 @@ async fn alias_rows_are_append_only_and_guard_direct_route_reuse() -> TestResult
         &db,
         tenant_id,
         security.clone(),
+        "en",
         "General",
         "general",
     )
@@ -314,12 +319,22 @@ async fn alias_rows_are_append_only_and_guard_direct_route_reuse() -> TestResult
         .await
         .is_err()
     );
+
+    let bypass_category_id = create_category(
+        &db,
+        tenant_id,
+        admin(),
+        "fr",
+        "Autre",
+        "autre",
+    )
+    .await?;
     assert!(
         db.execute_unprepared(&format!(
             "INSERT INTO forum_category_translations (id, category_id, tenant_id, locale, name, slug, description) \
              VALUES ('{}', '{}', '{}', 'en', 'Bypass', 'general', NULL)",
             Uuid::new_v4(),
-            category_id,
+            bypass_category_id,
             tenant_id
         ))
         .await
