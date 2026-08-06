@@ -165,7 +165,7 @@ requireMarkers('lifecycleDoc', [
 ]);
 requireMarkers('repairDoc', [
   'Status: `source_complete_owner_composition_pending`.',
-  'Confirmation itself still grants no repair authority.',
+  'The service does not scan findings',
 ]);
 requireMarkers('plan', [
   'M6 - compose targeted repair evidence and owner',
