@@ -144,7 +144,7 @@ fn customer_port_graphql_error(
     };
 
     let technical = matches!(
-        error.kind,
+        &error.kind,
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
     );
     let diagnostic_context = StorefrontCustomerDiagnosticContext::from(context);
