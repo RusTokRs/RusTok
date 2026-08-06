@@ -31,7 +31,8 @@ pub use application::*;
 pub use domain::*;
 pub use replay_dry_run::*;
 pub use infrastructure::postgres::{
-    evaluate_partition_admission, materialize_postgres_index_drift_candidate_observer,
+    evaluate_partition_admission, materialize_postgres_index_drift_candidate_confirmer,
+    materialize_postgres_index_drift_candidate_observer,
     materialize_postgres_index_drift_candidate_reader,
     materialize_postgres_index_drift_snapshot_reader, materialize_postgres_index_query_runtime,
     materialize_postgres_index_replay_runtime, materialize_postgres_index_sources,
