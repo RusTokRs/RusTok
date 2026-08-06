@@ -118,13 +118,14 @@ requireMarkers(releaseWorkflow, [
   "verify-release-collisions.mjs",
   "--github-release",
   "verify-release-contract.mjs",
-  "Build embedded admin assets",
-  "Rebuild embedded admin assets",
-  "scripts/build/build-embedded-admin.sh",
-  "--tool-root \"$GITHUB_WORKSPACE/.tools/trunk-0.21.14\"",
-  "--target-dir \"$GITHUB_WORKSPACE/target/admin-assets\"",
-  "test -s apps/admin/dist/index.html",
-  "cargo build --locked --release -p rustok-server --bin rustok-server",
+  "Build same-origin Pages inline edit release composition",
+  "Rebuild same-origin Pages inline edit release composition",
+  "scripts/build/build-pages-inline-edit-deployment.sh",
+  "--trunk-tool-root \"$GITHUB_WORKSPACE/.tools/trunk-0.21.14\"",
+  "--wasm-bindgen-tool-root \"$GITHUB_WORKSPACE/.tools/wasm-bindgen-cli\"",
+  "--admin-target-dir \"$GITHUB_WORKSPACE/target/admin-assets\"",
+  "--server-target-dir \"$CARGO_TARGET_DIR\"",
+  "RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS",
   "rustup toolchain install 1.96.0 --profile minimal --no-self-update",
   "cache-dependency-path: apps/admin/package-lock.json",
   "package-server.sh",
@@ -151,9 +152,8 @@ requireMarkers(releaseWorkflow, [
 ]);
 requireCount(releaseWorkflow, "persist-credentials: false", 6);
 requireCount(releaseWorkflow, "verify-release-collisions.mjs", 3);
-requireCount(releaseWorkflow, "scripts/build/build-embedded-admin.sh", 2);
-requireCount(releaseWorkflow, "test -s apps/admin/dist/index.html", 2);
-requireCount(releaseWorkflow, "cargo build --locked --release -p rustok-server --bin rustok-server", 2);
+requireCount(releaseWorkflow, "scripts/build/build-pages-inline-edit-deployment.sh", 2);
+requireCount(releaseWorkflow, "RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS", 2);
 forbidMarkers(releaseWorkflow, [
   "workflow_dispatch:",
   "pull_request:",
@@ -168,6 +168,9 @@ forbidMarkers(releaseWorkflow, [
   "--provenance=false",
   "--sbom=false",
   "cargo install trunk --version latest",
+  "Build embedded admin assets",
+  "Rebuild embedded admin assets",
+  "cargo build --locked --release -p rustok-server --bin rustok-server",
   "actions/checkout@v",
   "actions/setup-node@v",
   "actions/upload-artifact@v",
@@ -243,8 +246,8 @@ forbidMarkers(hardeningWorkflow, ["actions/checkout@v", "actions/setup-node@v"])
 requirePinnedGithubActions(
   hardeningWorkflow,
   new Map([
-    [ACTIONS.checkout, 1],
-    [ACTIONS.setupNode, 1],
+    [ACTIONS.checkout, 2],
+    [ACTIONS.setupNode, 2],
   ]),
 );
 
@@ -300,20 +303,70 @@ requireMarkers("scripts/release/extract-release-notes.mjs", [
   "exactly one release heading",
   "function runSelfTest",
 ]);
+
 requireMarkers("scripts/build/build-embedded-admin.sh", [
   "set -euo pipefail",
   "--public-url",
+  "--pages-inline-edit-launch",
   'public_url="/admin/"',
   '[[ "$public_url" =~ ^/([A-Za-z0-9._-]+/)*$ ]]',
-  "cargo install trunk --version 0.21.14 --locked",
+  'cargo install trunk --version "=0.21.14" --locked',
   'CARGO_TARGET_DIR="$tool_root/target"',
   "rustup target add wasm32-unknown-unknown",
   'npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund',
   'TRUNK_BUILD_PUBLIC_URL="$public_url"',
   'TRUNK_BUILD_LOCKED="true"',
+  'env -u RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN',
+  'env RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true',
+  "--no-default-features",
+  "--features hydrate,pages-inline-edit-launch",
   "embedded admin output contains a root-mounted asset URL",
 ]);
 forbidMarkers("scripts/build/build-embedded-admin.sh", ["cargo install trunk --locked", "|| true", "eval "]);
+
+requireMarkers("scripts/build/build-pages-inline-edit-deployment.sh", [
+  "set -euo pipefail",
+  "build-embedded-admin.sh",
+  "build-pages-inline-edit-server.sh",
+  "--pages-inline-edit-launch",
+  "--profile release",
+  "RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS",
+  "RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS",
+  'RUSTFLAGS="$admin_rustflags"',
+  'RUSTFLAGS="$server_rustflags"',
+  "pages-inline-edit-bootstrap.js",
+  "rustok_storefront.js",
+  "rustok_storefront_bg.wasm",
+  'test -x "$server_target_dir/release/rustok-server"',
+]);
+forbidMarkers("scripts/build/build-pages-inline-edit-deployment.sh", ["|| true", "eval "]);
+
+requireMarkers("scripts/build/build-pages-inline-edit-server.sh", [
+  "set -euo pipefail",
+  '"--print-wasm-bindgen-version"',
+  'cargo install wasm-bindgen-cli',
+  '--version "=$wasm_bindgen_version"',
+  "--locked",
+  "RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS",
+  'RUSTFLAGS="$client_rustflags"',
+  'RUSTFLAGS="$server_rustflags"',
+  "RUSTOK_WASM_BINDGEN_BIN",
+  "--features pages-inline-edit-assets",
+  "pages-inline-edit-bootstrap.js",
+  "rustok_storefront.js",
+  "rustok_storefront_bg.wasm",
+]);
+forbidMarkers("scripts/build/build-pages-inline-edit-server.sh", ["|| true", "eval "]);
+
+requireMarkers("apps/storefront/scripts/build-pages-inline-edit-client.mjs", [
+  'readFileSync(path.join(repoRoot, "Cargo.lock"), "utf8")',
+  '"--print-wasm-bindgen-version"',
+  '"--locked"',
+  "RUSTOK_WASM_BINDGEN_BIN",
+  'run(wasmBindgen, ["--version"], true)',
+  "renameSync(stagingRoot, targetRoot)",
+]);
+
 requireMarkers("apps/admin/Trunk.toml", [
   'trunk-version = "=0.21.14"',
   "locked = true",
@@ -346,6 +399,9 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
   "apps/admin/package-lock.json",
   "apps/admin/scripts/tailwind-build.mjs",
   "scripts/build/build-embedded-admin.sh",
+  "scripts/build/build-pages-inline-edit-deployment.sh",
+  "scripts/build/build-pages-inline-edit-server.sh",
+  "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
   "apps/server/Dockerfile.release",
   "docs/release/RELEASE_READINESS_CHECKLIST.md",
   "scripts/verify/verify-release-runtime-image-contract.mjs",
@@ -381,15 +437,28 @@ forbidMarkers("apps/server/Dockerfile.release", [
 requireMarkers("apps/server/Dockerfile", [
   "FROM node:22-bookworm-slim AS node-runtime",
   "COPY --from=node-runtime /usr/local /usr/local",
-  "cargo install trunk --version 0.21.14 --locked --root /opt/trunk",
+  'cargo install trunk --version "=0.21.14" --locked --root /opt/trunk',
   "bash scripts/build/build-embedded-admin.sh",
+  "bash scripts/build/build-pages-inline-edit-deployment.sh",
   "--skip-tool-install",
+  "--skip-trunk-tool-install",
+  "--wasm-bindgen-tool-root /opt/wasm-bindgen-cli",
+  "--admin-target-dir /workspace/target/admin-assets",
+  "--server-target-dir /workspace/target",
   "test -s /workspace/apps/admin/dist/index.html",
-  "cargo build --locked --release -p rustok-server --bin rustok-server",
+  "pages-inline-edit-bootstrap.js",
+  "rustok_storefront.js",
+  "rustok_storefront_bg.wasm",
+  "test -x /workspace/target/release/rustok-server",
   "--uid 10001 --gid 10001",
   "USER 10001:10001",
 ]);
-requireCount("apps/server/Dockerfile", "bash scripts/build/build-embedded-admin.sh", 2);
+requireCount("apps/server/Dockerfile", "bash scripts/build/build-embedded-admin.sh", 1);
+requireCount("apps/server/Dockerfile", "bash scripts/build/build-pages-inline-edit-deployment.sh", 1);
+forbidMarkers("apps/server/Dockerfile", [
+  "cargo build --locked --release -p rustok-server --bin rustok-server",
+  "|| true",
+]);
 requireMarkers(".dockerignore", [".git", ".github", "**/target", "**/node_modules", ".env.*"]);
 requireMarkers("scripts/verify/verify-all.sh", [
   "verify-release-tooling-self-test.mjs:Release Tooling Fixtures",
@@ -404,5 +473,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ release workflows use commit-pinned GitHub actions and preserve signed tags, bounded admin mounts, immutable releases, reproducible exact assets, scoped SPDX, attestations and base-owned approval in ${repoRoot}`,
+  `✔ release workflows use commit-pinned GitHub actions and preserve signed tags, exact same-origin Pages inline-edit composition, bounded admin mounts, immutable releases, reproducible assets, scoped SPDX, attestations and base-owned approval in ${repoRoot}`,
 );
