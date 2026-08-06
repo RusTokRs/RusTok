@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "contract": "blog_reaction_subject_provider_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "source": "blog",
+  "supported_kinds": ["post"],
+  "catalog": {
+    "selection": "single",
+    "keys": ["like"]
+  },
+  "visibility": {
+    "lifecycle": "published",
+    "channel_scope": "blog_post_channel_visibility",
+    "missing_or_denied": "unavailable",
+    "revision_conflict_after_visibility": true
+  },
+  "revision": {
+    "owner_field": "blog_posts.version",
+    "must_be_positive": true
+  },
+  "required_files": [
+    "crates/rustok-blog/src/reaction_subject.rs",
+    "crates/rustok-blog/src/lib.rs",
+    "crates/rustok-blog/Cargo.toml",
+    "crates/rustok-reactions/docs/implementation-plan.md",
+    "scripts/verify/verify-blog-reaction-subject-provider.mjs"
+  ],
+  "required_source_fragments": [
+    "BlogReactionSubjectProviderFactory",
+    "ReactionSubjectProviderFactory",
+    "ReactionSubjectProvider",
+    "BLOG_POST_REACTION_KIND",
+    "BLOG_REACTION_V1_KEY",
+    "blog_post::Entity::find()",
+    "blog_post_channel_visibility::Entity::find()",
+    "is_post_visible_for_channel",
+    "blog_post_revision",
+    "ReactionProviderError::Conflict",
+    "ReactionSubjectAuthorization::Unavailable"
+  ],
+  "forbidden_source_fragments": [
+    "rustok_reactions::",
+    "ReactionWritePort",
+    "ReactionReadPort",
+    "async_graphql",
+    "axum::",
+    "leptos"
+  ],
+  "ownership": {
+    "blog_owns": [
+      "post existence",
+      "post version",
+      "publication lifecycle",
+      "channel visibility",
+      "reaction policy"
+    ],
+    "reactions_owns": [
+      "actor state",
+      "command receipts",
+      "aggregate counts",
+      "semantic reaction events",
+      "aggregate reconciliation"
+    ]
+  },
+  "deliberate_limits": [
+    "no Reactions owner dependency from Blog",
+    "no default enablement",
+    "no transport",
+    "no UI",
+    "no profile or actor presentation",
+    "no Blog-owned reaction persistence"
+  ],
+  "verification": [
+    "cargo test -p rustok-blog reaction_subject",
+    "cargo check -p rustok-blog --all-targets",
+    "node scripts/verify/verify-blog-reaction-subject-provider.mjs",
+    "git diff --check"
+  ]
+}
