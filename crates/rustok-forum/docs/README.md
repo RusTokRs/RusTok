@@ -16,6 +16,7 @@ notifications module, and cross-module release gates.
 - keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles;
 - resolve selected merged-source topic IDs through the immutable merge receipt ledger;
 - own deterministic localized topic route identity plus immutable redirect/tombstone history;
+- own locale-aware category route identity without conflating identity and visibility authorization;
 - expose manager-only move, merge, split, reply-branch fork and reply-range owners without duplicating policy;
 - evolve the Forum as a taxonomy-aware and channel-aware domain with explicit observability.
 
@@ -56,6 +57,7 @@ notifications module, and cross-module release gates.
 - FORUM-24I composes the canonical localized topic route in `rustok-forum-storefront` and the shared Rust storefront router, cuts topic-card navigation over from UUID query links, and preserves native/GraphQL selected-path parity.
 - FORUM-24J records an immutable anonymous visibility and route-channel snapshot before topic deletion, seals channel scope with count and SHA-256 digest, and exposes only a boolean owner decision.
 - FORUM-24K adds a separate GraphQL route decision field, consumes the FORUM-24J boolean in GraphQL and native storefront paths, and maps only owner-authorized tombstones to private no-store `410 Gone` while preserving `404` for missing or unauthorized history.
+- FORUM-24L adds `ForumCategoryRouteService` for `/{locale}/forum/c/{slug}`, reuses the existing tenant/locale slug uniqueness and shared locale fallback order, hides archived categories, and fails closed when first-available lookup crosses category identities; transport, aliases and SEO remain follow-up scope.
 
 ## Verification
 
@@ -67,12 +69,14 @@ notifications module, and cross-module release gates.
 - `node scripts/verify/verify-forum-topic-route-storefront-mount.mjs`
 - `node scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs`
 - `node scripts/verify/verify-forum-topic-route-authorized-gone.mjs`
+- `node scripts/verify/verify-forum-category-route-identity-owner.mjs`
 - task-specific owner, transport, UI and runtime commands from the canonical plan
 
 ## Related documents
 
 - [README crate](../README.md)
 - [Canonical implementation plan](./implementation-plan.md)
+- [Accepted Forum slug/locale decision](../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
 - [FORUM-21B merge owner](./forum-21b-topic-merge-owner.md)
 - [FORUM-21H accepted-solution policy](./forum-21h-topic-merge-solution-policy.md)
 - [FORUM-21L competing solution resolution](./forum-21l-topic-merge-solution-resolution.md)
@@ -101,6 +105,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24I storefront topic route mount](./forum-24i-topic-route-storefront-mount.md)
 - [FORUM-24J topic route tombstone visibility owner](./forum-24j-topic-route-tombstone-visibility.md)
 - [FORUM-24K authorized topic route gone transport](./forum-24k-topic-route-authorized-gone.md)
+- [FORUM-24L localized category route identity owner](./forum-24l-category-route-identity-owner.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
