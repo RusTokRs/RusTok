@@ -74,7 +74,25 @@ impl QueryGraphqlMessage for String {
 
 impl QueryGraphqlMessage for &str {
     fn into_query_boundary(self) -> BoundaryError {
-        BoundaryError::Graphql(Error::new(self))
+        let message_presence = text_presence_shape(self);
+        let message_len = self.len();
+        let error = QueryDiagnosticError;
+        tracing::error!(
+            error = ?error,
+            source_owner = "commerce_graphql_query.borrowed_message",
+            error_kind = "borrowed_message",
+            message_presence,
+            message_len,
+            public_code = "COMMERCE_QUERY_OPERATION_FAILED",
+            retryable = false,
+            boundary = QUERY_ERROR_BOUNDARY,
+            "commerce GraphQL query borrowed error was redacted"
+        );
+        BoundaryError::public(
+            "Commerce query could not be completed safely",
+            "COMMERCE_QUERY_OPERATION_FAILED",
+            false,
+        )
     }
 }
 
