@@ -75,8 +75,8 @@ fn schema(module: &str, entity: &str, version: u32) -> IndexSchema {
 fn selected_schemas() -> Vec<IndexSchema> {
     vec![
         schema("rustok-product", "product", 2),
-        schema("rustok-product", "product-variant", 2),
-        schema("rustok-channel", "sales-channel", 1),
+        schema("rustok-product", "product_variant", 2),
+        schema("rustok-channel", "sales_channel", 1),
     ]
 }
 
@@ -159,7 +159,7 @@ async fn readiness_rejects_inactive_or_contract_drifted_rows() {
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
         format!(
-            "UPDATE index_schemas SET schema_fingerprint = '{}' WHERE tenant_id = '{TENANT}' AND module_name = 'rustok-channel' AND entity_name = 'sales-channel' AND schema_version = 1",
+            "UPDATE index_schemas SET schema_fingerprint = '{}' WHERE tenant_id = '{TENANT}' AND module_name = 'rustok-channel' AND entity_name = 'sales_channel' AND schema_version = 1",
             "0".repeat(64)
         ),
     ))
@@ -232,7 +232,7 @@ fn readiness_request_is_bounded_and_unambiguous() {
     );
 
     let too_many = (0..=MAX_INDEX_SCHEMA_READINESS_SCHEMAS)
-        .map(|index| schema("readiness", &format!("entity-{index}"), 1).reference)
+        .map(|index| schema("readiness", &format!("entity_{index}"), 1).reference)
         .collect::<Vec<_>>();
     assert!(matches!(
         IndexSchemaReadinessRequest::new(tenant(), too_many),
@@ -240,18 +240,16 @@ fn readiness_request_is_bounded_and_unambiguous() {
     ));
 }
 
-#[test]
-fn readiness_rejects_refs_absent_from_the_runtime_registry() {
+#[tokio::test]
+async fn readiness_rejects_refs_absent_from_the_runtime_registry_before_storage() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
     let schemas = selected_schemas();
     let registry = SchemaRegistry::new();
-    let readiness = PostgresIndexSchemaReadinessStore::new(DatabaseConnection::default());
+    let readiness = PostgresIndexSchemaReadinessStore::new(db);
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let error = runtime
-        .block_on(readiness.require(&request(&schemas), &registry))
+    let error = readiness
+        .require(&request(&schemas), &registry)
+        .await
         .unwrap_err();
     assert_eq!(
         error,
