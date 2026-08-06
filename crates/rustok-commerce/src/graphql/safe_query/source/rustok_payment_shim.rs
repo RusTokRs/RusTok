@@ -239,7 +239,7 @@ pub(crate) mod error {
     }
 
     impl PaymentError {
-        fn from_owner(
+        pub(super) fn from_owner(
             error: OwnerPaymentError,
             tenant_id: Uuid,
             operation: &'static str,
