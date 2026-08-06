@@ -2,10 +2,12 @@ use std::{fmt, str::FromStr};
 
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend,
-    IsolationLevel, QueryResult, Statement, TransactionTrait,
+    IsolationLevel, QueryResult, Statement, TransactionTrait, Value as SqlValue,
 };
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::{
     EntityKey, IndexDriftConfirmedCandidate, IndexDriftConfirmedMissingEntity,
@@ -14,10 +16,7 @@ use crate::{
 
 use super::{
     drift_finding_inspector::{IndexDriftFindingScope, IndexDriftFindingSeverity},
-    drift_finding_writer::{
-        IndexDriftDigestFindingRequest, IndexDriftFindingWriteError,
-        IndexDriftFindingWriteOutcome, PostgresIndexDriftFindingWriter,
-    },
+    drift_finding_writer::{IndexDriftDigestFindingRequest, IndexDriftFindingWriteOutcome},
 };
 
 const MISSING_ENTITY_CHECK: &str = "index.confirmed_missing_entity";
@@ -25,6 +24,7 @@ const ORPHAN_LINK_CHECK_PREFIX: &str = "index.confirmed_orphan_link.";
 const MISSING_EVIDENCE_DOMAIN: &[u8] = b"index_confirmed_missing_entity_evidence_v1";
 const ORPHAN_EVIDENCE_DOMAIN: &[u8] = b"index_confirmed_orphan_link_evidence_v1";
 const ORPHAN_IDENTITY_DOMAIN: &[u8] = b"index_confirmed_orphan_link_identity_v1";
+const FINDING_DETAILS_CONTRACT: &str = "index_drift_digest_finding_v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexDriftConfirmedCandidateNotRecordedReason {
@@ -63,22 +63,18 @@ impl IndexDriftConfirmedCandidateRecordError {
 
 /// Index-owned write boundary for one already confirmed stale entity or orphan link.
 ///
-/// The adapter derives all finding identity and digest evidence from typed confirmation output,
-/// revalidates the exact materialized shape in the same serializable transaction, and delegates to
-/// the existing idempotent finding writer. It accepts no raw details JSON, lifecycle state, actor,
+/// All finding identity and evidence are derived from typed confirmation output. The adapter
+/// revalidates the exact materialized shape and applies the established finding-key/state contract
+/// in one serializable transaction. It accepts no raw details JSON, lifecycle state, actor,
 /// schedule, cursor, or repair instruction.
 #[derive(Clone)]
 pub struct PostgresIndexDriftConfirmedCandidateWriter {
     db: DatabaseConnection,
-    finding_writer: PostgresIndexDriftFindingWriter,
 }
 
 impl PostgresIndexDriftConfirmedCandidateWriter {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self {
-            finding_writer: PostgresIndexDriftFindingWriter::new(db.clone()),
-            db,
-        }
+        Self { db }
     }
 
     pub async fn record_confirmed_candidate(
@@ -136,11 +132,7 @@ impl PostgresIndexDriftConfirmedCandidateWriter {
                 IndexDriftConfirmedCandidateNotRecordedReason::MaterializedChanged,
             ));
         }
-        let outcome = self
-            .finding_writer
-            .record_in_transaction(transaction, request)
-            .await
-            .map_err(map_finding_error)?;
+        let outcome = record_finding_in_transaction(transaction, request).await?;
         Ok(IndexDriftConfirmedCandidateRecordOutcome::Recorded(outcome))
     }
 }
@@ -179,30 +171,25 @@ fn finding_request(
 fn missing_entity_finding_request(
     candidate: &IndexDriftConfirmedMissingEntity,
 ) -> Result<IndexDriftDigestFindingRequest, IndexDriftConfirmedCandidateRecordError> {
-    let expected_digest = missing_entity_digest(candidate, b"owner_absent");
-    let actual_digest = missing_entity_digest(candidate, b"index_present");
     build_request(
         candidate.key(),
         MISSING_ENTITY_CHECK.to_owned(),
-        expected_digest,
-        actual_digest,
+        missing_entity_digest(candidate, b"owner_absent"),
+        missing_entity_digest(candidate, b"index_present"),
     )
 }
 
 fn orphan_link_finding_request(
     candidate: &IndexDriftConfirmedOrphanLink,
 ) -> Result<IndexDriftDigestFindingRequest, IndexDriftConfirmedCandidateRecordError> {
-    let check_name = format!(
-        "{ORPHAN_LINK_CHECK_PREFIX}{}",
-        orphan_link_identity_digest(candidate)
-    );
-    let expected_digest = orphan_link_digest(candidate, b"target_absent");
-    let actual_digest = orphan_link_digest(candidate, b"source_link_present");
     build_request(
         candidate.source_key(),
-        check_name,
-        expected_digest,
-        actual_digest,
+        format!(
+            "{ORPHAN_LINK_CHECK_PREFIX}{}",
+            orphan_link_identity_digest(candidate)
+        ),
+        orphan_link_digest(candidate, b"target_absent"),
+        orphan_link_digest(candidate, b"source_link_present"),
     )
 }
 
@@ -323,6 +310,271 @@ fn hash_component(hasher: &mut Sha256, value: &[u8]) {
     hasher.update(value);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PersistedFindingScope {
+    scope_kind: String,
+    module_name: Option<String>,
+    entity_name: Option<String>,
+    schema_version: Option<i64>,
+    entity_id: Option<Uuid>,
+    locale_key: Option<String>,
+}
+
+impl PersistedFindingScope {
+    fn from_scope(
+        scope: &IndexDriftFindingScope,
+    ) -> Result<Self, IndexDriftConfirmedCandidateRecordError> {
+        match scope {
+            IndexDriftFindingScope::Global => Ok(Self {
+                scope_kind: "global".to_owned(),
+                module_name: None,
+                entity_name: None,
+                schema_version: None,
+                entity_id: None,
+                locale_key: None,
+            }),
+            IndexDriftFindingScope::Schema { schema } => Ok(Self {
+                scope_kind: "schema".to_owned(),
+                module_name: Some(schema.module.as_str().to_owned()),
+                entity_name: Some(schema.entity.as_str().to_owned()),
+                schema_version: Some(i64::from(schema.version.get())),
+                entity_id: None,
+                locale_key: None,
+            }),
+            IndexDriftFindingScope::Entity {
+                schema,
+                entity_id,
+                locale,
+            } => Ok(Self {
+                scope_kind: "entity".to_owned(),
+                module_name: Some(schema.module.as_str().to_owned()),
+                entity_name: Some(schema.entity.as_str().to_owned()),
+                schema_version: Some(i64::from(schema.version.get())),
+                entity_id: Some(*entity_id),
+                locale_key: Some(locale.as_str().to_owned()),
+            }),
+            IndexDriftFindingScope::EntityWithoutLocale { schema, entity_id } => Ok(Self {
+                scope_kind: "entity".to_owned(),
+                module_name: Some(schema.module.as_str().to_owned()),
+                entity_name: Some(schema.entity.as_str().to_owned()),
+                schema_version: Some(i64::from(schema.version.get())),
+                entity_id: Some(*entity_id),
+                locale_key: None,
+            }),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct StoredFinding {
+    finding_id: Uuid,
+    check_name: String,
+    state: String,
+    scope: PersistedFindingScope,
+}
+
+async fn record_finding_in_transaction(
+    transaction: &DatabaseTransaction,
+    request: &IndexDriftDigestFindingRequest,
+) -> Result<IndexDriftFindingWriteOutcome, IndexDriftConfirmedCandidateRecordError> {
+    lock_finding_key(transaction, request).await?;
+    let expected_scope = PersistedFindingScope::from_scope(request.scope())?;
+    if let Some(existing) = load_existing_finding(transaction, request).await? {
+        return refresh_existing_finding(transaction, request, &expected_scope, existing).await;
+    }
+
+    let finding_id = Uuid::new_v4();
+    let inserted = transaction
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, expected_digest, actual_digest, details) VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT (tenant_id, finding_key) DO NOTHING",
+            insert_values(request, finding_id, &expected_scope),
+        ))
+        .await
+        .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
+    if inserted.rows_affected() == 1 {
+        return Ok(IndexDriftFindingWriteOutcome::Created {
+            finding_id,
+            finding_key: request.finding_key().to_owned(),
+        });
+    }
+
+    let existing = load_existing_finding(transaction, request)
+        .await?
+        .ok_or(IndexDriftConfirmedCandidateRecordError::Storage)?;
+    refresh_existing_finding(transaction, request, &expected_scope, existing).await
+}
+
+async fn lock_finding_key(
+    transaction: &DatabaseTransaction,
+    request: &IndexDriftDigestFindingRequest,
+) -> Result<(), IndexDriftConfirmedCandidateRecordError> {
+    let lock_key = format!(
+        "index-drift-finding\u{1f}{}\u{1f}{}",
+        request.tenant_id(),
+        request.finding_key(),
+    );
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![lock_key.into()],
+        ))
+        .await
+        .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
+    Ok(())
+}
+
+async fn load_existing_finding(
+    transaction: &DatabaseTransaction,
+    request: &IndexDriftDigestFindingRequest,
+) -> Result<Option<StoredFinding>, IndexDriftConfirmedCandidateRecordError> {
+    transaction
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT finding_id, check_name, state, scope_kind, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value, entity_id, locale_key FROM index_consistency_findings WHERE tenant_id = $1 AND finding_key = $2 FOR UPDATE",
+            vec![request.tenant_id().into(), request.finding_key().to_owned().into()],
+        ))
+        .await
+        .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?
+        .map(decode_stored_finding)
+        .transpose()
+}
+
+fn decode_stored_finding(
+    row: QueryResult,
+) -> Result<StoredFinding, IndexDriftConfirmedCandidateRecordError> {
+    let finding_id = row
+        .try_get::<Uuid>("", "finding_id")
+        .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?;
+    if finding_id.is_nil() {
+        return Err(IndexDriftConfirmedCandidateRecordError::FindingContract);
+    }
+    Ok(StoredFinding {
+        finding_id,
+        check_name: row
+            .try_get("", "check_name")
+            .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+        state: row
+            .try_get("", "state")
+            .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+        scope: PersistedFindingScope {
+            scope_kind: row
+                .try_get("", "scope_kind")
+                .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+            module_name: row
+                .try_get("", "module_name")
+                .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+            entity_name: row
+                .try_get("", "entity_name")
+                .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+            schema_version: row
+                .try_get("", "schema_version_value")
+                .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+            entity_id: row
+                .try_get("", "entity_id")
+                .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+            locale_key: row
+                .try_get("", "locale_key")
+                .map_err(|_| IndexDriftConfirmedCandidateRecordError::FindingContract)?,
+        },
+    })
+}
+
+async fn refresh_existing_finding(
+    transaction: &DatabaseTransaction,
+    request: &IndexDriftDigestFindingRequest,
+    expected_scope: &PersistedFindingScope,
+    existing: StoredFinding,
+) -> Result<IndexDriftFindingWriteOutcome, IndexDriftConfirmedCandidateRecordError> {
+    if existing.check_name != request.check_name() || existing.scope != *expected_scope {
+        return Err(IndexDriftConfirmedCandidateRecordError::FindingContract);
+    }
+    let (sql, outcome) = match existing.state.as_str() {
+        "open" => (
+            "UPDATE index_consistency_findings SET severity = $3, expected_digest = $4, actual_digest = $5, details = $6, last_detected_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND finding_id = $2 AND finding_key = $7 AND state = 'open'",
+            IndexDriftFindingWriteOutcome::Refreshed {
+                finding_id: existing.finding_id,
+                finding_key: request.finding_key().to_owned(),
+            },
+        ),
+        "resolved" => (
+            "UPDATE index_consistency_findings SET severity = $3, state = 'open', expected_digest = $4, actual_digest = $5, details = $6, last_detected_at = CURRENT_TIMESTAMP, closed_at = NULL WHERE tenant_id = $1 AND finding_id = $2 AND finding_key = $7 AND state = 'resolved'",
+            IndexDriftFindingWriteOutcome::Reopened {
+                finding_id: existing.finding_id,
+                finding_key: request.finding_key().to_owned(),
+            },
+        ),
+        "ignored" => (
+            "UPDATE index_consistency_findings SET severity = $3, expected_digest = $4, actual_digest = $5, details = $6, last_detected_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND finding_id = $2 AND finding_key = $7 AND state = 'ignored'",
+            IndexDriftFindingWriteOutcome::Suppressed {
+                finding_id: existing.finding_id,
+                finding_key: request.finding_key().to_owned(),
+            },
+        ),
+        _ => return Err(IndexDriftConfirmedCandidateRecordError::FindingContract),
+    };
+    let updated = transaction
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            update_values(request, existing.finding_id),
+        ))
+        .await
+        .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
+    if updated.rows_affected() != 1 {
+        return Err(IndexDriftConfirmedCandidateRecordError::Storage);
+    }
+    Ok(outcome)
+}
+
+fn insert_values(
+    request: &IndexDriftDigestFindingRequest,
+    finding_id: Uuid,
+    scope: &PersistedFindingScope,
+) -> Vec<SqlValue> {
+    vec![
+        request.tenant_id().into(),
+        finding_id.into(),
+        request.finding_key().to_owned().into(),
+        request.check_name().to_owned().into(),
+        severity_value(request.severity()).to_owned().into(),
+        scope.scope_kind.clone().into(),
+        scope.module_name.clone().into(),
+        scope.entity_name.clone().into(),
+        scope.schema_version.into(),
+        scope.entity_id.into(),
+        scope.locale_key.clone().into(),
+        request.expected_digest().to_owned().into(),
+        request.actual_digest().to_owned().into(),
+        SqlValue::Json(Some(Box::new(json!({
+            "contract": FINDING_DETAILS_CONTRACT
+        })))),
+    ]
+}
+
+fn update_values(request: &IndexDriftDigestFindingRequest, finding_id: Uuid) -> Vec<SqlValue> {
+    vec![
+        request.tenant_id().into(),
+        finding_id.into(),
+        severity_value(request.severity()).to_owned().into(),
+        request.expected_digest().to_owned().into(),
+        request.actual_digest().to_owned().into(),
+        SqlValue::Json(Some(Box::new(json!({
+            "contract": FINDING_DETAILS_CONTRACT
+        })))),
+        request.finding_key().to_owned().into(),
+    ]
+}
+
+fn severity_value(value: IndexDriftFindingSeverity) -> &'static str {
+    match value {
+        IndexDriftFindingSeverity::Info => "info",
+        IndexDriftFindingSeverity::Warning => "warning",
+        IndexDriftFindingSeverity::Error => "error",
+    }
+}
+
 async fn materialized_candidate_matches(
     transaction: &DatabaseTransaction,
     candidate: &IndexDriftConfirmedCandidate,
@@ -341,12 +593,11 @@ async fn materialized_missing_entity_matches(
     transaction: &DatabaseTransaction,
     candidate: &IndexDriftConfirmedMissingEntity,
 ) -> Result<bool, IndexDriftConfirmedCandidateRecordError> {
-    let key = candidate.key();
     let row = transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1 FOR SHARE",
-            entity_values(key),
+            entity_values(candidate.key()),
         ))
         .await
         .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
@@ -457,7 +708,7 @@ async fn materialized_target_absent(
     Ok(is_deleted)
 }
 
-fn entity_values(key: &EntityKey) -> Vec<sea_orm::Value> {
+fn entity_values(key: &EntityKey) -> Vec<SqlValue> {
     vec![
         key.tenant_id.into(),
         key.schema.module.as_str().to_owned().into(),
@@ -484,16 +735,4 @@ fn persisted_locale(locale: Option<&crate::LocaleKey>) -> String {
     locale
         .map(|value| value.as_str().to_owned())
         .unwrap_or_default()
-}
-
-fn map_finding_error(
-    error: IndexDriftFindingWriteError,
-) -> IndexDriftConfirmedCandidateRecordError {
-    match error {
-        IndexDriftFindingWriteError::UnsupportedBackend => {
-            IndexDriftConfirmedCandidateRecordError::UnsupportedBackend
-        }
-        IndexDriftFindingWriteError::Storage => IndexDriftConfirmedCandidateRecordError::Storage,
-        _ => IndexDriftConfirmedCandidateRecordError::FindingContract,
-    }
 }
