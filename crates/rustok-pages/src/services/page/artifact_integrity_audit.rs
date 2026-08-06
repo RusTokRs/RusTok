@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_page_builder::{
@@ -356,12 +358,37 @@ where
 }
 
 fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
-    let bytes = serde_json::to_vec(value).map_err(|error| {
+    let mut writer = Sha256Writer::default();
+    serde_json::to_writer(&mut writer, value).map_err(|error| {
         PagesError::artifact_integrity(format!(
             "Unable to encode immutable artifact audit identity: {error}",
         ))
     })?;
-    Ok(hex_sha256(&bytes))
+    Ok(writer.finish())
+}
+
+#[derive(Default)]
+struct Sha256Writer(Sha256);
+
+impl Sha256Writer {
+    fn finish(self) -> String {
+        self.0
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+}
+
+impl Write for Sha256Writer {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0.update(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
