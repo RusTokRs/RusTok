@@ -44,7 +44,7 @@ exact finding key, check name, scope, expected digest, actual digest, and detail
 
 ## Evidence capture
 
-Before and after evidence use the same bounded algorithm:
+Before and after evidence use the same bounded read sequence:
 
 1. targeted-load the exact owner key through `SharedIndexSourceRegistry`;
 2. when ordinary load is empty, require an exact retained watermark from
@@ -60,18 +60,24 @@ failure code crosses the evidence boundary.
 A source `Delete` mutation is itself retained absence evidence. An empty ordinary load is never
 absence proof without the admitted absence registry.
 
-### Repairable
+### Before phase
 
-Before evidence is `Repairable` only when:
+Before evidence is `Repairable` when either:
 
-- owner absence version equals the committed finding target absence version;
-- the exact Index row is live at the committed indexed source version;
-- the absence version is strictly greater than the indexed version.
+- owner absence equals the committed target absence version, the exact Index row is live at the
+  committed indexed version, and the absence version is strictly newer; or
+- owner absence equals the committed target absence version and the exact Index row is already the
+  tombstone at that version.
 
-The strict inequality preserves the existing monotonic mutation contract. Equal-version repair does
-not receive a special bypass and is classified `Changed`.
+The second case is the crash-retry path. A process may fail after the idempotent delete commits but
+before after-evidence or repair receipt persistence. On exact retry, the tombstone remains
+`Repairable` during the before phase so the same command UUID reaches the mutation inbox duplicate
+path. This does not itself claim convergence.
 
-### Converged
+The strict version inequality for a live row preserves the existing monotonic mutation contract.
+Equal-version repair does not receive a special bypass and is classified `Changed`.
+
+### After phase
 
 After evidence is `Converged` only when:
 
@@ -80,6 +86,10 @@ After evidence is `Converged` only when:
 
 A physically missing row, changed version, live row, owner upsert, or changed absence proof is
 classified `Changed` rather than being treated as successful repair.
+
+The same tombstone is therefore phase-sensitive: `Repairable` before an idempotent retry and
+`Converged` only after the owner call. This preserves the generic service order and prevents a retry
+from being terminally misclassified as `NotRepaired(before_not_repairable)`.
 
 ## Idempotent mutation owner
 
