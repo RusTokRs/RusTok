@@ -446,7 +446,7 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
     let selection = selection.unwrap_or(PageSelection::First);
     let policy = policy.unwrap_or_default();
     let class = class.unwrap_or_else(|| "rustok-page-builder-inline-storefront".to_string());
-    let root_id = format!("fly-inline-{}", dom_id(grant.session_id()));
+    let root_id = inline_root_id(&grant);
     let editable_ids = inline_editable_component_ids(&project_data, &selection).unwrap_or_default();
     let rendered = render_authenticated_inline_page(project_data, selection, policy, context);
 
@@ -491,7 +491,6 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
                     class=class
                     data-rustok-page-builder-inline-storefront="true"
                     data-page-id=page_id
-                    data-inline-session=grant.session_id().to_string()
                     data-inline-revision=grant.revision_id().to_string()
                     data-inline-project-hash=grant.expected_project_hash().hex()
                     data-runtime-diagnostics=diagnostic_count
@@ -516,6 +515,14 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
         }
         .into_any(),
     }
+}
+
+fn inline_root_id(grant: &AuthenticatedInlineEditGrant) -> String {
+    format!(
+        "fly-inline-{}-{}",
+        dom_id(grant.page_id()),
+        grant.expected_project_hash().hex()
+    )
 }
 
 fn dom_id(value: &str) -> String {
@@ -703,6 +710,19 @@ mod tests {
             Err(InlineEditError::SequenceReplay { .. })
                 | Err(InlineEditError::StaleProjectHash { .. })
         ));
+    }
+
+    #[test]
+    fn inline_dom_identity_excludes_grant_session_and_authorization_proof() {
+        let project = project();
+        let grant = grant(&project);
+        let root_id = inline_root_id(&grant);
+        assert_eq!(
+            root_id,
+            format!("fly-inline-home-{}", grant.expected_project_hash().hex())
+        );
+        assert!(!root_id.contains(grant.session_id()));
+        assert!(!root_id.contains("signed-proof"));
     }
 
     #[test]
