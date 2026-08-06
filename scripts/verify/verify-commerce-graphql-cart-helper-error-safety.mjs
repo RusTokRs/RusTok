@@ -47,6 +47,12 @@ const customerLookup = between(
   'fn legacy_graphql_error(',
   'optional storefront customer lookup',
 );
+const legacyMapper = between(
+  facadeSource,
+  'fn legacy_graphql_error(',
+  'pub(crate) async fn enrich_storefront_cart(',
+  'legacy GraphQL mapper',
+);
 const typedPolicy = between(
   typedSource,
   'fn storefront_line_item_public_policy(',
@@ -132,9 +138,16 @@ for (const [value, label] of [
   ],
   ['deadline_ms: context.deadline_ms', 'deadline fact'],
   ['struct StorefrontCustomerDiagnosticError;', 'redacted customer diagnostic error'],
-  ['formatter.write_str("redacted")', 'redacted customer Debug'],
+  ['struct StorefrontLegacyGraphqlDiagnosticError;', 'redacted legacy diagnostic error'],
+  [
+    'impl From<async_graphql::Error> for StorefrontLegacyGraphqlDiagnosticError',
+    'legacy error consumption',
+  ],
+  ['formatter.write_str("redacted")', 'redacted diagnostic Debug'],
   ['fn actor_kind_name(kind: &PortActorKind)', 'actor kind helper'],
   ['fn identity_text_shape(value: &str)', 'identity shape helper'],
+  ['fn uuid_shape(value: Uuid)', 'UUID shape helper'],
+  ['fn optional_uuid_shape(value: Option<Uuid>)', 'optional UUID shape helper'],
   ['fn text_shape(value: &str)', 'text shape helper'],
   ['fn optional_text_shape(value: Option<&str>)', 'optional text shape helper'],
   ['fn customer_port_graphql_error(', 'customer mapper'],
@@ -144,11 +157,13 @@ for (const [value, label] of [
   ['Some(("pricing", _)) => "rustok_pricing"', 'pricing owner classification'],
   ['_ => "unknown"', 'unknown owner classification'],
   ['owner = "rustok_commerce.graphql_cart_helper"', 'commerce boundary owner logging'],
-  ['source_owner = cart_port_source_owner(&error)', 'typed source owner logging'],
+  ['let source_owner = cart_port_source_owner(&error);', 'typed source owner projection'],
+  ['source_owner,', 'typed source owner logging'],
   ['owner_code = %error.code', 'cart owner code logging'],
   ['owner_kind = ?error.kind', 'cart owner kind logging'],
   ['error_kind = "legacy_graphql_error"', 'legacy error kind logging'],
-  ['resource_id = ?resource_id', 'resource logging'],
+  ['tenant_id_shape,', 'tenant shape logging'],
+  ['resource_id_shape,', 'resource shape logging'],
   ['"Cart shipping details are temporarily unavailable"', 'cart enrichment message'],
   ['"Selected shipping option is invalid"', 'shipping selection message'],
   ['"Cart pricing could not be refreshed"', 'reprice fallback message'],
@@ -293,6 +308,79 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
+  ['error: async_graphql::Error', 'original legacy GraphQL error input'],
+  ['tenant_id: Uuid', 'legacy tenant input'],
+  ['resource_id: Option<Uuid>', 'legacy resource input'],
+  ["operation: &'static str", 'legacy operation input'],
+  ["message: &'static str", 'legacy public message input'],
+  ["code: &'static str", 'legacy public code input'],
+  ['retryable: bool', 'legacy public retryability input'],
+  ['let tenant_id_shape = uuid_shape(tenant_id);', 'legacy tenant projection'],
+  ['let resource_id_shape = optional_uuid_shape(resource_id);', 'legacy resource projection'],
+  [
+    'let error = StorefrontLegacyGraphqlDiagnosticError::from(error);',
+    'legacy error consumption and shadow',
+  ],
+  ['tracing::error!(', 'legacy error severity'],
+  ['error = ?error', 'redacted legacy error field'],
+  ['owner = "rustok_commerce.graphql_cart_helper"', 'legacy boundary owner'],
+  ['tenant_id_shape,', 'legacy tenant shape field'],
+  ['resource_id_shape,', 'legacy resource shape field'],
+  ['operation,', 'legacy operation field'],
+  ['error_kind = "legacy_graphql_error"', 'legacy error kind field'],
+  ['public_code = code', 'legacy public code field'],
+  ['public_retryable = retryable', 'legacy public retryability field'],
+  ['boundary = STOREFRONT_CART_HELPER_BOUNDARY', 'legacy shared boundary'],
+  ['"commerce GraphQL storefront cart helper failed"', 'legacy static event'],
+  ['public_graphql_error(message, code, retryable)', 'legacy stable public envelope'],
+]) {
+  requireText(legacyMapper, value, label);
+}
+
+for (const value of [
+  'tenant_id = %tenant_id',
+  'tenant_id = ?tenant_id',
+  'resource_id = ?resource_id',
+  'resource_id = %resource_id',
+  'format!("{error:?}")',
+  'error.to_string()',
+  'error.message',
+]) {
+  forbidText(legacyMapper, value, 'raw legacy GraphQL diagnostic');
+}
+
+const legacyTenantProjectionIndex = legacyMapper.indexOf(
+  'let tenant_id_shape = uuid_shape(tenant_id);',
+);
+const legacyResourceProjectionIndex = legacyMapper.indexOf(
+  'let resource_id_shape = optional_uuid_shape(resource_id);',
+);
+const legacyShadowIndex = legacyMapper.indexOf(
+  'let error = StorefrontLegacyGraphqlDiagnosticError::from(error);',
+);
+const legacyEventIndex = legacyMapper.indexOf('tracing::error!(');
+const legacyReturnIndex = legacyMapper.lastIndexOf(
+  'public_graphql_error(message, code, retryable)',
+);
+if (
+  !(
+    legacyTenantProjectionIndex >= 0 &&
+    legacyTenantProjectionIndex < legacyResourceProjectionIndex &&
+    legacyResourceProjectionIndex < legacyShadowIndex &&
+    legacyShadowIndex < legacyEventIndex &&
+    legacyEventIndex < legacyReturnIndex
+  )
+) {
+  failures.push('legacy error must be projected, consumed, diagnosed, and returned in order');
+}
+if ((legacyMapper.match(/tracing::error!\(/g) ?? []).length !== 1) {
+  failures.push('expected one legacy GraphQL diagnostic event');
+}
+if ((legacyMapper.match(/error = \?error/g) ?? []).length !== 1) {
+  failures.push('expected one redacted legacy GraphQL error field');
+}
+
+for (const [value, label] of [
   ['enum StorefrontLineItemFailureKind {', 'typed failure kind'],
   ['ProductUnavailable,', 'typed product outcome'],
   ['InventoryInsufficient,', 'typed inventory outcome'],
@@ -407,5 +495,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded customer diagnostics, typed line-item outcomes, and private layered routing',
+  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded customer and legacy diagnostics, typed line-item outcomes, and private layered routing',
 );
