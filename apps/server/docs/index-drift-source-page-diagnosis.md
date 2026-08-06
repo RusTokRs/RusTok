@@ -12,11 +12,11 @@ without introducing a job, loop, scheduler, checkpoint store, or public discover
 
 ## Request boundary
 
-`diagnose_source_page(context, schema, cursor, limit)` accepts:
+`diagnose_source_page(context, schema, cursor, limit)` currently accepts:
 
 - one request-bound `IndexReconciliationOperatorContext`;
 - one typed `SchemaRef`;
-- one optional server-held `IndexSourceCursor`;
+- one optional **server-held** `IndexSourceCursor`;
 - one page limit in `1..=32`.
 
 Tenant and actor identities come only from the operator context. The runtime checks the current
@@ -66,8 +66,28 @@ returned.
 It does not copy source entity IDs, source records, indexed records, fields, links, tenant IDs,
 actor IDs, database errors, SQL, registry handles, or snapshot state into the outcome.
 
-The cursor is not attached to GraphQL, HTTP, CLI, MCP, or native admin. No public identifier
+The raw cursor is not attached to GraphQL, HTTP, CLI, MCP, or native admin. No public identifier
 discovery surface is added by this slice.
+
+## Confidential continuation prerequisite
+
+`rustok-index` now provides the transport-neutral `IndexSourceContinuationCodec` and
+`IndexSourceContinuationScope` contracts. The codec encrypts the raw cursor with AES-256-GCM and
+binds authenticated claims to:
+
+- tenant;
+- exact `SchemaRef`;
+- canonical owner module and source name resolved from the frozen source registry;
+- contract version;
+- issued-at time and bounded expiry.
+
+It rejects tampering, wrong scope, unsupported version, expiry, excessive future clock skew,
+oversized tokens, and unavailable or retired key material before returning raw cursor state.
+
+The codec is not yet composed into this server runtime. The current page method therefore remains an
+internal-only raw-cursor boundary. A future sealed page method must authorize before token parsing,
+open the token before constructing the source scan request, and seal the returned continuation before
+leaving the service boundary.
 
 ## Deliberate limits
 
@@ -75,23 +95,27 @@ This slice does not add or claim:
 
 - a GraphQL or other public source-page transport;
 - caller-visible raw `IndexSourceCursor` JSON;
-- cursor sealing, persistence, multi-page accumulation, background iteration, scheduling, or restart
-  state;
+- server continuation-key configuration or secret resolution;
+- a sealed page-runtime method;
+- cursor persistence, multi-page accumulation, background iteration, scheduling, or restart state;
 - Index-only stale enumeration or orphan-link discovery;
 - finding resolve/ignore lifecycle;
 - targeted, full, dry-run, or shadow repair;
-- retained authorization, PostgreSQL, GraphQL, workflow, or CI execution evidence.
+- retained authorization, cryptographic integration, PostgreSQL, GraphQL, workflow, or CI execution
+  evidence.
 
-The next safe transport prerequisite is a bounded server-owned continuation envelope that seals the
-source cursor to tenant and schema without exposing or accepting arbitrary raw cursor JSON.
+The next safe server slice is a bounded keyring composed from secret references plus one internal
+sealed page method. Public transport remains later and must not expose raw cursor JSON.
 
 ## Suggested maintainer validation
 
 ```bash
+cargo test -p rustok-index source_continuation -- --nocapture
 cargo test -p rustok-index drift_digest -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis -- --nocapture
 cargo test -p rustok-server index_drift_source_page_diagnosis -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
+node scripts/verify/verify-index-source-continuation.mjs
 node scripts/verify/verify-index-drift-digest-producer.mjs
 node scripts/verify/verify-index-drift-source-page-diagnosis.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
@@ -101,5 +125,5 @@ cargo check -p rustok-server --all-targets --features mod-product
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, PostgreSQL or GraphQL scenarios, workflows, or CI were
-executed by the implementation agent.
+No tests, verifiers, formatting, Cargo checks, cryptographic integration, PostgreSQL or GraphQL
+scenarios, workflows, or CI were executed by the implementation agent.
