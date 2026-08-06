@@ -9,6 +9,8 @@ This packet defines the maintainer-run Chromium evidence boundary for the source
 
 The harness does not seed tenants, pages, roles or sessions. Maintainers provide reviewed fixture routes and external Playwright storage-state files. Source inspection does not prove browser execution.
 
+The browser proof deliberately uses two preloaded tabs for stale-state evidence and an exact request replay for anti-replay evidence. Storage-state contents are never copied into the retained packet.
+
 ## Owners
 
 - Pages admin owns the optional draft-only same-origin launch control.
