@@ -1,38 +1,37 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay for `implementation-plan.md` rechecked through
-`main@df21dcb5164e29b61248bb0ac68152f8c5d5d858` and active draft PR #3037.
+Status overlay rechecked through
+`main@78ea5461d2ff8f071318ef23e6fa08aa6aea2f94` and active branch
+`agent/index-m6-drift-candidate-confirmation-20260806`.
 
-The default-branch commits after the bounded candidate-contract merge harden Commerce Return
-Completion and Commerce Admin Fulfillment Reconciliation diagnostics. They do not modify
-`crates/rustok-index`, Product Index composition, Index transports/services, or Index guards changed
-by this branch.
+The default-branch commits after the PostgreSQL candidate-reader merge bound Commerce GraphQL
+query diagnostics and add a Page Builder inline adapter. They do not modify `crates/rustok-index`,
+Index storage, Index source registries, Index services/transports, or Index guards changed by this
+branch.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - confirm bounded stale and orphan candidates`
+`M6 - persist confirmed stale and orphan findings`
 
-Exact drift diagnosis, Product locale absence proof, missing-only page classification, confidential
-source continuation, private server keyring composition, sealed one-page execution, bounded GraphQL
-transport, the database-neutral stale/orphan candidate contract, and the PostgreSQL bounded candidate
-reader are source complete.
+The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
+confirmation boundary, PostgreSQL materialized observer, and internal composition helper are source
+complete.
 
-The PostgreSQL reader now:
+Candidate confirmation now:
 
-- accepts one exact tenant/schema `IndexDriftCandidateRequest`;
-- runs one `REPEATABLE READ READ ONLY` transaction per page;
-- captures a scope-bound `txid_current_snapshot()` fence on the first page;
-- excludes post-fence inserted/updated row versions through `txid_visible_in_snapshot(xmin, fence)`;
-- performs `limit + 1` keyset reads with stale entities before orphan links;
-- carries only version, scope, phase, and the last ordering tuple in the private cursor;
-- exposes only typed identities and positive source versions;
-- performs no source call, finding write, lifecycle transition, scheduling, or repair.
+- consumes exactly one typed candidate;
+- observes exact materialized identity/version/link state before owner calls;
+- uses exact one-key targeted source loads and explicit retained absence watermarks;
+- double-reads authoritative absence or source-link/target state;
+- observes the materialized candidate again before returning a confirmed outcome;
+- returns only typed `Confirmed` or closed-enum `NotCandidate` outcomes;
+- maps dependencies to bounded retryable/permanent machine codes;
+- performs no finding write, lifecycle transition, scheduling, transport mounting, or repair.
 
-Candidate confirmation, retained PostgreSQL/concurrency evidence, finding lifecycle commands, and
-repair remain open.
+Finding persistence, lifecycle commands, repair, and retained execution evidence remain open.
 
 ## Rechecked status
 
@@ -60,9 +59,11 @@ repair remain open.
 - M6 Product locale absence PostgreSQL harness:
   `source_ready_owner_execution_pending`
 - M6 bounded stale-entity and orphan-link candidate contract:
-  `source_complete_postgres_reader_complete_confirmation_pending`
+  `source_complete`
 - M6 PostgreSQL drift candidate reader:
-  `source_complete_candidate_confirmation_pending`
+  `source_complete`
+- M6 bounded candidate confirmation and PostgreSQL materialized observer:
+  `source_complete_finding_persistence_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -76,9 +77,7 @@ repair remain open.
       event routes.
 - [ ] Retain crash-between-commit-and-ack and redelivery evidence.
 
-## M6 rebuild, reconciliation, diagnosis, and repair
-
-### Replay and scheduling
+## M6 replay and scheduling
 
 - [x] Add bounded source scan/targeted-load contracts and stable replay event identities.
 - [x] Add durable replay jobs, leases, heartbeats, attempt fences, and checkpoint progression.
@@ -90,7 +89,7 @@ repair remain open.
 - [ ] Add locale/partition replay checkpoint dimensions.
 - [ ] Add targeted, full, and shadow rebuild modes.
 
-### Exact diagnosis and missing discovery
+## M6 exact diagnosis and missing discovery
 
 - [x] Add bounded drift-finding persistence and inspection.
 - [x] Add one exact snapshot-pair digest producer with deterministic SHA-256 digests.
@@ -105,7 +104,7 @@ repair remain open.
 - [ ] Run and admit retained exact GraphQL, Product absence, PostgreSQL, continuation, and rotation
       evidence.
 
-### Stale entity and orphan-link discovery
+## M6 stale entity and orphan-link discovery
 
 - [x] Add a database-neutral bounded candidate contract with one exact tenant/schema scope and page
       size at most 32.
@@ -117,19 +116,21 @@ repair remain open.
       transaction-snapshot fence.
 - [x] Filter row insertion versions through `txid_visible_in_snapshot` so late commits and
       post-fence updates cannot add candidates to continuation pages.
-- [x] Use only bounded `limit + 1` keyset SQL and permit one deterministic stale-to-orphan phase
-      transition without cross-page accumulation.
-- [x] Keep payloads, fields, fingerprints, owner records, graph aggregates, SQL, and database causes
-      out of candidate results and failures.
-- [x] Keep the reader unmounted: no server runtime extension, GraphQL, HTTP, CLI, MCP, or native
-      admin surface.
-- [ ] Confirm stale entity candidates with exact source load or admitted absence proof before any
-      finding write.
-- [ ] Confirm orphan links by re-reading the exact source link and typed target state before any
-      finding write.
-- [ ] Require candidate identity and indexed source version to remain unchanged through
-      confirmation.
-- [ ] Add confirmed/not-candidate typed outcomes separately from persistence.
+- [x] Use only bounded `limit + 1` keyset SQL and one deterministic stale-to-orphan transition.
+- [x] Keep the reader unmounted: no server extension or public transport.
+- [x] Add `IndexDriftCandidateConfirmer` over one candidate only.
+- [x] Observe exact materialized state before and after provisional confirmation.
+- [x] Confirm stale candidates only through an authoritative delete or admitted absence watermark
+      with a stable version not below the indexed version.
+- [x] Confirm orphan candidates only while the same source version/link/ordinal/target remains
+      authoritative and the target has stable delete/absence evidence.
+- [x] Add the PostgreSQL observer for exact source row/version/link/target-absence shape.
+- [x] Map changed source, link, target, or materialized state to typed `NotCandidate` or bounded
+      dependency failure without recording a finding.
+- [x] Add a composition helper that returns the confirmer without publishing it.
+- [ ] Derive a deterministic finding request from `IndexDriftConfirmedCandidate`.
+- [ ] Revalidate write-time identity/version assumptions inside the persistence transaction.
+- [ ] Delegate idempotently to Index-owned finding storage without exposing raw evidence JSON.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
 
@@ -147,35 +148,31 @@ repair remain open.
 
 ## Next implementation step
 
-Add one internal database-neutral candidate confirmation boundary. It must consume a single typed
-`IndexDriftCandidate` and return a bounded typed confirmation outcome without writing a finding.
+Add one internal idempotent persistence adapter for `IndexDriftConfirmedCandidate`.
 
-### Stale entity confirmation
+The adapter must:
 
-- re-read the exact candidate key through the existing source registry;
-- use the existing admitted absence-watermark registry when targeted source load is empty;
-- require positive authoritative source version;
-- compare the candidate indexed source version and exact materialized key against a fresh bounded
-  materialized observation;
-- return `ConfirmedMissing`, `NotCandidate`, or bounded retryable/permanent dependency failure;
-- do not record a mismatch in this first confirmation slice.
+- accept only a confirmed missing-entity or orphan-link outcome;
+- map missing entities to one exact entity finding scope;
+- map orphan links to the exact source entity scope with a deterministic check identity that binds
+  link name, ordinal, target schema/entity/locale, and target absence version;
+- derive bounded deterministic SHA-256 evidence from typed fields rather than accept caller JSON;
+- ensure expected and actual evidence digests differ by construction;
+- re-read the exact materialized identity/version/link shape inside or immediately adjacent to the
+  write transaction and return `NotRecorded` when it changed;
+- delegate idempotently to the existing `PostgresIndexDriftFindingWriter` contract or a narrowly
+  extended Index-owned writer;
+- expose only finding receipt or typed `NotRecorded` plus bounded failures;
+- perform no page loop, public transport, lifecycle command, scheduler registration, or repair.
 
-### Orphan-link confirmation
+Keep the persistence adapter internal and unmounted. Do not expose confirmed candidates or finding
+writes through GraphQL, HTTP, CLI, MCP, or native-admin transports in this slice.
 
-- re-read the exact materialized source entity/version and exact link identity;
-- verify that the link is still present with the same ordinal and typed target;
-- re-read the exact target materialized state and, where required, owner visibility/lifecycle state;
-- return `ConfirmedOrphan`, `NotCandidate`, or bounded dependency failure;
-- expose no source/target payload, graph aggregate, SQL, or database cause.
-
-The confirmation slice must remain internal. Do not add public transport, background loops,
-cross-page accumulation, finding lifecycle, scheduling, or repair.
-
-## Owner verification for the completed reader slice
+## Owner verification for this slice
 
 ```bash
-cargo test -p rustok-index drift_candidate_reader -- --nocapture
-cargo test -p rustok-index drift_candidates -- --nocapture
+cargo test -p rustok-index drift_candidate_confirmation -- --nocapture
+node scripts/verify/verify-index-drift-candidate-confirmation.mjs
 node scripts/verify/verify-index-postgres-drift-candidate-reader.mjs
 node scripts/verify/verify-index-drift-candidate-contract.mjs
 node scripts/verify/verify-index-query-contract.mjs
