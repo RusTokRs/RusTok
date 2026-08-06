@@ -14,8 +14,14 @@ use crate::{
     IndexDriftRepairService, IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome,
     IndexDriftRepairTarget, IndexDriftRepairTargetKind, IndexDriftRepairTicket, IndexMutation,
     IndexSourceAbsenceError, IndexSourceError, IndexSourceFailureKind, IndexSourceLoadRequest,
-    MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
     SchemaRegistry, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
+};
+
+use super::{
+    drift_repair::materialize_postgres_index_drift_repair_store,
+    mutation_store::{
+        MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
+    },
 };
 
 const OWNER_NAME: &str = "index_missing_entity_delete_owner";
@@ -59,6 +65,7 @@ impl PostgresIndexDriftMissingEntityEvidenceReader {
         &self,
         authorized: &IndexDriftAuthorizedRepairCommand,
         finding: &IndexDriftRepairFinding,
+        phase: MissingEntityEvidencePhase,
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
         let target = exact_missing_entity_target(authorized, finding)?;
         let first_authority = self.load_authority(target.key).await?;
@@ -68,7 +75,7 @@ impl PostgresIndexDriftMissingEntityEvidenceReader {
             return Err(retryable_failure(SOURCE_CHANGED));
         }
 
-        let state = classify_evidence(target, first_authority, materialized);
+        let state = classify_evidence(target, first_authority, materialized, phase);
         let digest = evidence_digest(target, first_authority, materialized, state);
         IndexDriftRepairEvidence::new(state, digest)
             .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))
@@ -155,7 +162,8 @@ impl IndexDriftRepairEvidenceReader for PostgresIndexDriftMissingEntityEvidenceR
         authorized: &IndexDriftAuthorizedRepairCommand,
         finding: &IndexDriftRepairFinding,
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
-        self.capture(authorized, finding).await
+        self.capture(authorized, finding, MissingEntityEvidencePhase::Before)
+            .await
     }
 
     async fn capture_after(
@@ -167,7 +175,8 @@ impl IndexDriftRepairEvidenceReader for PostgresIndexDriftMissingEntityEvidenceR
         if before.state() != IndexDriftRepairEvidenceState::Repairable {
             return Err(permanent_failure(SOURCE_CONTRACT_INVALID));
         }
-        self.capture(authorized, finding).await
+        self.capture(authorized, finding, MissingEntityEvidencePhase::After)
+            .await
     }
 }
 
@@ -300,7 +309,7 @@ pub fn materialize_postgres_index_drift_missing_entity_repair_service(
     );
     let owners = IndexDriftRepairOwnerRegistry::new([owner])
         .map_err(|_| permanent_failure(COMPONENTS_INVALID))?;
-    let store = super::materialize_postgres_index_drift_repair_store(db)?;
+    let store = materialize_postgres_index_drift_repair_store(db)?;
     let gated_store: Arc<dyn IndexDriftRepairStore> =
         Arc::new(MissingEntityOnlyRepairStore { inner: store });
     Ok(IndexDriftRepairService::new_boxed(
@@ -322,6 +331,12 @@ enum MissingEntityMaterialized {
     Missing,
     Live(u64),
     Deleted(u64),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MissingEntityEvidencePhase {
+    Before,
+    After,
 }
 
 #[derive(Clone, Copy)]
@@ -358,9 +373,11 @@ fn classify_evidence(
     target: MissingEntityTargetRef<'_>,
     authority: MissingEntityAuthority,
     materialized: MissingEntityMaterialized,
+    phase: MissingEntityEvidencePhase,
 ) -> IndexDriftRepairEvidenceState {
-    match (authority, materialized) {
+    match (phase, authority, materialized) {
         (
+            MissingEntityEvidencePhase::Before,
             MissingEntityAuthority::Absent(absence_version),
             MissingEntityMaterialized::Live(indexed_version),
         ) if absence_version == target.absence_source_version
@@ -370,6 +387,19 @@ fn classify_evidence(
             IndexDriftRepairEvidenceState::Repairable
         }
         (
+            MissingEntityEvidencePhase::Before,
+            MissingEntityAuthority::Absent(absence_version),
+            MissingEntityMaterialized::Deleted(indexed_version),
+        ) if absence_version == target.absence_source_version
+            && indexed_version == target.absence_source_version =>
+        {
+            // A retry may begin after the idempotent delete committed but before the repair receipt.
+            // Keep the before phase repairable so the same command UUID reaches the inbox duplicate
+            // path and can still produce admitted after evidence.
+            IndexDriftRepairEvidenceState::Repairable
+        }
+        (
+            MissingEntityEvidencePhase::After,
             MissingEntityAuthority::Absent(absence_version),
             MissingEntityMaterialized::Deleted(indexed_version),
         ) if absence_version == target.absence_source_version
@@ -606,6 +636,7 @@ mod tests {
                 target,
                 MissingEntityAuthority::Absent(8),
                 MissingEntityMaterialized::Live(7),
+                MissingEntityEvidencePhase::Before,
             ),
             IndexDriftRepairEvidenceState::Repairable,
         );
@@ -614,13 +645,14 @@ mod tests {
                 target,
                 MissingEntityAuthority::Absent(7),
                 MissingEntityMaterialized::Live(7),
+                MissingEntityEvidencePhase::Before,
             ),
             IndexDriftRepairEvidenceState::Changed,
         );
     }
 
     #[test]
-    fn evidence_is_converged_only_for_exact_tombstone() {
+    fn committed_delete_is_repairable_before_and_converged_after() {
         let key = key();
         let target = MissingEntityTargetRef {
             key: &key,
@@ -632,14 +664,35 @@ mod tests {
                 target,
                 MissingEntityAuthority::Absent(8),
                 MissingEntityMaterialized::Deleted(8),
+                MissingEntityEvidencePhase::Before,
             ),
-            IndexDriftRepairEvidenceState::Converged,
+            IndexDriftRepairEvidenceState::Repairable,
         );
         assert_eq!(
             classify_evidence(
                 target,
                 MissingEntityAuthority::Absent(8),
+                MissingEntityMaterialized::Deleted(8),
+                MissingEntityEvidencePhase::After,
+            ),
+            IndexDriftRepairEvidenceState::Converged,
+        );
+    }
+
+    #[test]
+    fn physical_absence_is_never_convergence() {
+        let key = key();
+        let target = MissingEntityTargetRef {
+            key: &key,
+            indexed_source_version: 7,
+            absence_source_version: 8,
+        };
+        assert_eq!(
+            classify_evidence(
+                target,
+                MissingEntityAuthority::Absent(8),
                 MissingEntityMaterialized::Missing,
+                MissingEntityEvidencePhase::After,
             ),
             IndexDriftRepairEvidenceState::Changed,
         );
