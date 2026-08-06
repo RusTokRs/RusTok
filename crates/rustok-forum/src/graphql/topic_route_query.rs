@@ -108,8 +108,13 @@ async fn resolve_authorized_public_route(
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
     let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
-    let channel_enabled = forum_channel_enabled(ctx).await?;
-    if ctx.data_opt::<AuthContext>().is_none() && !channel_enabled {
+    let authenticated = ctx.data_opt::<AuthContext>().is_some();
+    let anonymous_channel_enabled = if authenticated {
+        true
+    } else {
+        forum_channel_enabled(ctx).await?
+    };
+    if !anonymous_channel_enabled {
         return Err(async_graphql::Error::new(
             "Forum module is not enabled for this channel",
         )
@@ -128,7 +133,15 @@ async fn resolve_authorized_public_route(
     };
 
     if resolution.disposition == ForumTopicRouteDisposition::Gone {
-        if !disclose_gone || !channel_enabled {
+        if !disclose_gone {
+            return Ok(None);
+        }
+        let gone_channel_enabled = if authenticated {
+            forum_channel_enabled(ctx).await?
+        } else {
+            anonymous_channel_enabled
+        };
+        if !gone_channel_enabled {
             return Ok(None);
         }
         let topic_id = resolution.requested_topic_id.ok_or_else(|| {
