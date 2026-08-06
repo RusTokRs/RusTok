@@ -1,37 +1,34 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@78ea5461d2ff8f071318ef23e6fa08aa6aea2f94` and active branch
-`agent/index-m6-drift-candidate-confirmation-20260806`.
-
-The default-branch commits after the PostgreSQL candidate-reader merge bound Commerce GraphQL
-query diagnostics and add a Page Builder inline adapter. They do not modify `crates/rustok-index`,
-Index storage, Index source registries, Index services/transports, or Index guards changed by this
-branch.
+`main@b18558e3f8443135a403780d1ef75bc4d14dba6d` and active branch
+`agent/index-m6-confirmed-candidate-persistence-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - persist confirmed stale and orphan findings`
+`M6 - add drift finding lifecycle commands`
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
-confirmation boundary, PostgreSQL materialized observer, and internal composition helper are source
-complete.
+confirmation boundary, PostgreSQL materialized observer, and serializable idempotent finding
+persistence adapter are source complete.
 
-Candidate confirmation now:
+Confirmed-candidate persistence now:
 
-- consumes exactly one typed candidate;
-- observes exact materialized identity/version/link state before owner calls;
-- uses exact one-key targeted source loads and explicit retained absence watermarks;
-- double-reads authoritative absence or source-link/target state;
-- observes the materialized candidate again before returning a confirmed outcome;
-- returns only typed `Confirmed` or closed-enum `NotCandidate` outcomes;
-- maps dependencies to bounded retryable/permanent machine codes;
-- performs no finding write, lifecycle transition, scheduling, transport mounting, or repair.
+- consumes exactly one `IndexDriftConfirmedCandidate`;
+- derives check identity, exact entity scope, and SHA-256 evidence only from typed fields;
+- revalidates exact materialized entity/version/link/target state in one PostgreSQL
+  `SERIALIZABLE READ WRITE` transaction;
+- returns `NotRecorded(MaterializedChanged)` without writing when the candidate changed;
+- uses the established finding-key advisory lock and `index_consistency_findings` state contract;
+- creates, refreshes, reopens, or preserves ignored suppression idempotently;
+- exposes no caller JSON, source/index payload, SQL, database cause, lifecycle authority, or repair;
+- remains unmounted from runtime extensions and public transports.
 
-Finding persistence, lifecycle commands, repair, and retained execution evidence remain open.
+Resolve/ignore lifecycle commands, actor/reason audit, repair, and retained execution evidence remain
+open.
 
 ## Rechecked status
 
@@ -58,12 +55,10 @@ Finding persistence, lifecycle commands, repair, and retained execution evidence
   `source_complete_owner_execution_pending`
 - M6 Product locale absence PostgreSQL harness:
   `source_ready_owner_execution_pending`
-- M6 bounded stale-entity and orphan-link candidate contract:
-  `source_complete`
-- M6 PostgreSQL drift candidate reader:
-  `source_complete`
-- M6 bounded candidate confirmation and PostgreSQL materialized observer:
-  `source_complete_finding_persistence_pending`
+- M6 bounded stale-entity and orphan-link candidate contract: `source_complete`
+- M6 PostgreSQL drift candidate reader: `source_complete`
+- M6 bounded candidate confirmation and PostgreSQL materialized observer: `source_complete`
+- M6 confirmed-candidate finding persistence: `source_complete_lifecycle_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -128,9 +123,11 @@ Finding persistence, lifecycle commands, repair, and retained execution evidence
 - [x] Map changed source, link, target, or materialized state to typed `NotCandidate` or bounded
       dependency failure without recording a finding.
 - [x] Add a composition helper that returns the confirmer without publishing it.
-- [ ] Derive a deterministic finding request from `IndexDriftConfirmedCandidate`.
-- [ ] Revalidate write-time identity/version assumptions inside the persistence transaction.
-- [ ] Delegate idempotently to Index-owned finding storage without exposing raw evidence JSON.
+- [x] Derive deterministic bounded finding identity and SHA-256 evidence from confirmed candidates.
+- [x] Revalidate write-time entity/version/link/target state in one serializable transaction.
+- [x] Create, refresh, reopen, or suppress through the established Index finding contract.
+- [x] Return only finding outcome or typed `NotRecorded(MaterializedChanged)`.
+- [x] Keep persistence unmounted from server extensions and public transports.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
 
@@ -148,33 +145,30 @@ Finding persistence, lifecycle commands, repair, and retained execution evidence
 
 ## Next implementation step
 
-Add one internal idempotent persistence adapter for `IndexDriftConfirmedCandidate`.
+Add internal fail-closed resolve and ignore lifecycle commands for one exact finding.
 
-The adapter must:
+The lifecycle slice must:
 
-- accept only a confirmed missing-entity or orphan-link outcome;
-- map missing entities to one exact entity finding scope;
-- map orphan links to the exact source entity scope with a deterministic check identity that binds
-  link name, ordinal, target schema/entity/locale, and target absence version;
-- derive bounded deterministic SHA-256 evidence from typed fields rather than accept caller JSON;
-- ensure expected and actual evidence digests differ by construction;
-- re-read the exact materialized identity/version/link shape inside or immediately adjacent to the
-  write transaction and return `NotRecorded` when it changed;
-- delegate idempotently to the existing `PostgresIndexDriftFindingWriter` contract or a narrowly
-  extended Index-owned writer;
-- expose only finding receipt or typed `NotRecorded` plus bounded failures;
-- perform no page loop, public transport, lifecycle command, scheduler registration, or repair.
+- require exact tenant and finding identity;
+- accept actor identity only from an already authorized internal operator boundary;
+- require a bounded nonempty reason and explicit expected current state;
+- lock the exact finding row and reject missing, conflicting, or unsupported states;
+- preserve finding key, scope, check identity, first/last detection evidence, and digest history;
+- record immutable actor/action/reason/timestamp audit evidence in Index-owned storage;
+- make retries idempotent without silently changing a different lifecycle transition;
+- expose only typed transition receipt or bounded failure;
+- add no repair, candidate iteration, scheduler, or public transport.
 
-Keep the persistence adapter internal and unmounted. Do not expose confirmed candidates or finding
-writes through GraphQL, HTTP, CLI, MCP, or native-admin transports in this slice.
+Keep lifecycle commands internal and unmounted. Authorization transport and targeted repair remain
+separate later slices.
 
 ## Owner verification for this slice
 
 ```bash
-cargo test -p rustok-index drift_candidate_confirmation -- --nocapture
+cargo test -p rustok-index drift_confirmed_candidate_writer -- --nocapture
+node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
 node scripts/verify/verify-index-drift-candidate-confirmation.mjs
-node scripts/verify/verify-index-postgres-drift-candidate-reader.mjs
-node scripts/verify/verify-index-drift-candidate-contract.mjs
+node scripts/verify/verify-index-drift-finding-writer.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
