@@ -49,6 +49,7 @@ redis-cache = []
 embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
 embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
+pages-inline-edit = ["embed-storefront", "rustok-storefront/pages-inline-edit"]
 # Domain module feature flags — compile the module into the binary;
 # resolvers additionally check is_enabled(tenant_id) at runtime.
 mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
