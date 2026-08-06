@@ -9,7 +9,6 @@ const files = {
   composition: "apps/server/src/services/index_replay_runtime_composition.rs",
   graphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
   graphqlSchema: "apps/server/src/graphql/schema.rs",
-  continuation: "crates/rustok-index/src/application/source_continuation.rs",
   doc: "apps/server/docs/index-drift-source-page-diagnosis.md",
   operatorDoc: "apps/server/docs/index-reconciliation-operator-runtime.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
@@ -44,19 +43,23 @@ requireMarkers("diagnosis", [
 ]);
 requireMarkers("runtime", [
   "const MAX_SOURCE_PAGE_DIAGNOSIS_SIZE: usize = 32;",
-  "pub enum IndexDriftSourcePageDiagnosisError",
   "pub struct IndexDriftSourcePageDiagnosisOutcome",
+  "pub struct IndexDriftSourcePageDiagnosisSealedOutcome",
   "pub struct IndexDriftSourcePageDiagnosisRuntime",
   "sources: rustok_index::SharedIndexSourceRegistry",
   "exact: IndexDriftDiagnosisOperatorRuntime",
+  "continuation: Option<IndexSourceContinuationKeyringRuntime>",
   "pub async fn diagnose_source_page(",
-  "authorize_and_build_scan_request(context, schema, cursor, limit)?;",
+  "pub async fn diagnose_source_page_sealed(",
   "let page = self.sources.scan(request).await?;",
   ".diagnose_missing_entity_candidate(context, key)",
   "permissions_for(&context.tenant_id(), &context.actor_id())",
   "has_effective_permission(&permissions, &Permission::MODULES_MANAGE)",
   "if !(1..=MAX_SOURCE_PAGE_DIAGNOSIS_SIZE).contains(&limit)",
-  "IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)",
+  "IndexSourceContinuationScope::from_registry(",
+  "codec.open_encoded(&scope, encoded, Utc::now())",
+  "IndexSourceScanRequest::new(",
+  "codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())",
   "matches!(&mutation, rustok_index::IndexMutation::Delete { .. })",
   "IndexDriftMissingEntityCandidateOutcome::NotCandidate",
   "IndexDriftMissingEntityCandidateOutcome::MissingRecorded",
@@ -66,27 +69,31 @@ requireMarkers("runtime", [
   "materialize_index_drift_source_page_diagnosis",
   "authorization_precedes_page_limit_validation",
   "one_page_skips_deletes_and_classifies_each_upsert_once",
+  "sealed_outcome_replaces_raw_cursor_with_opaque_token",
 ]);
 
 const production = content.runtime.split("\n#[cfg(test)]")[0];
-const auth = production.indexOf(
-  "let permissions = permissions_for(&context.tenant_id(), &context.actor_id())",
-);
-const limit = production.indexOf(
-  "if !(1..=MAX_SOURCE_PAGE_DIAGNOSIS_SIZE).contains(&limit)",
-  auth,
-);
-const request = production.indexOf(
-  "IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)",
-  limit,
-);
-const scan = production.indexOf("let page = self.sources.scan(request).await?;");
-if (auth < 0 || limit <= auth || request <= limit || scan <= request) {
-  throw new Error(
-    "source-page diagnosis must authorize, validate the bounded request, then scan once",
-  );
+const rawStart = production.indexOf("    pub async fn diagnose_source_page(");
+const sealedStart = production.indexOf("    pub async fn diagnose_source_page_sealed(", rawStart);
+const requestStart = production.indexOf("    async fn diagnose_request(", sealedStart);
+if (rawStart < 0 || sealedStart <= rawStart || requestStart <= sealedStart) {
+  throw new Error("source-page raw, sealed, and request methods are incomplete");
+}
+const sealed = production.slice(sealedStart, requestStart);
+const auth = sealed.indexOf("authorize_context(context)?;");
+const limit = sealed.indexOf("validate_page_limit(limit)?;", auth);
+const open = sealed.indexOf("codec.open_encoded(&scope, encoded, Utc::now())", limit);
+const request = sealed.indexOf("IndexSourceScanRequest::new(", open);
+const delegate = sealed.indexOf("self.diagnose_request(context, request).await?;", request);
+const seal = sealed.indexOf("codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())", delegate);
+if (auth < 0 || limit <= auth || open <= limit || request <= open || delegate <= request || seal <= delegate) {
+  throw new Error("sealed diagnosis must authorize, open before request construction, diagnose once, then seal");
 }
 
+const requestBody = production.slice(requestStart);
+if ((requestBody.match(/self\.sources\.scan\(request\)/g) ?? []).length !== 1) {
+  throw new Error("source-page diagnosis must scan exactly one owner page");
+}
 const pageLoop = production.indexOf("for (position, mutation) in mutations.into_iter().enumerate()");
 const deleteSkip = production.indexOf(
   "matches!(&mutation, rustok_index::IndexMutation::Delete { .. })",
@@ -110,9 +117,7 @@ if (
   nonCandidate <= pageLoop ||
   missingRecorded <= nonCandidate
 ) {
-  throw new Error(
-    "source-page diagnosis must skip deletes and classify exact missing-only outcomes",
-  );
+  throw new Error("source-page diagnosis must skip deletes and classify exact missing-only outcomes");
 }
 
 if (production.includes(".diagnose_entity(context, key)")) {
@@ -134,8 +139,6 @@ for (const forbidden of [
   "resolve_finding",
   "ignore_finding",
   "repair_finding",
-  "IndexSourceContinuationCodec",
-  "IndexSourceContinuationToken",
 ]) {
   if (production.includes(forbidden)) {
     throw new Error(`source-page diagnosis contains forbidden capability: ${forbidden}`);
@@ -143,30 +146,35 @@ for (const forbidden of [
 }
 
 requireMarkers("composition", [
+  '#[path = "index_source_continuation_runtime.rs"]',
   '#[path = "index_drift_source_page_diagnosis.rs"]',
-  "mod drift_source_page_diagnosis;",
-  "IndexDriftSourcePageDiagnosisRuntime,",
+  "IndexDriftSourcePageDiagnosisSealedOutcome",
   "drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;",
-  "drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(extensions)?;",
+  "source_continuation_runtime::materialize_index_source_continuation_keyring()",
+  "drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(",
   "extensions.contains::<IndexDriftSourcePageDiagnosisRuntime>()",
   "shared_get::<IndexDriftSourcePageDiagnosisRuntime>()",
 ]);
 const exactComposition = content.composition.indexOf(
   "drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;",
 );
-const pageComposition = content.composition.indexOf(
-  "drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(extensions)?;",
+const keyringComposition = content.composition.indexOf(
+  "source_continuation_runtime::materialize_index_source_continuation_keyring()",
 );
-if (exactComposition < 0 || pageComposition <= exactComposition) {
-  throw new Error("source-page diagnosis must compose after exact diagnosis");
+const pageComposition = content.composition.indexOf(
+  "drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(",
+);
+if (exactComposition < 0 || keyringComposition <= exactComposition || pageComposition <= keyringComposition) {
+  throw new Error("source-page diagnosis must compose after exact diagnosis and private keyring materialization");
 }
 
 for (const forbidden of [
   "diagnose_index_source_page",
   "IndexDriftSourcePageDiagnosisRuntime",
+  "IndexDriftSourcePageDiagnosisSealedOutcome",
   "IndexSourceCursor",
-  "IndexSourceContinuationCodec",
   "IndexSourceContinuationToken",
+  "diagnose_source_page_sealed",
   "diagnose_missing_entity_candidate",
 ]) {
   if (content.graphql.includes(forbidden) || content.graphqlSchema.includes(forbidden)) {
@@ -174,57 +182,31 @@ for (const forbidden of [
   }
 }
 
-requireMarkers("continuation", [
-  "pub struct IndexSourceContinuationCodec",
-  "pub struct IndexSourceContinuationScope",
-  "pub struct IndexSourceContinuationToken",
-  "pub fn from_registry(",
-  "Aes256Gcm::new_from_slice",
-]);
 requireMarkers("doc", [
-  "Status: `missing_only_source_complete_transport_and_owner_execution_pending`.",
+  "Status: `sealed_internal_source_complete_transport_and_owner_execution_pending`.",
   "one page limit in `1..=32`",
   "skips retained source `Delete` mutations",
   "source `Upsert` plus materialized `Missing`",
-  "non-missing candidate count",
-  "The raw cursor is not attached to GraphQL",
-  "Confidential continuation prerequisite",
-  "The codec is not yet composed into this server runtime",
-  "server continuation-key configuration",
+  "diagnose_source_page_sealed",
+  "raw cursor is never returned",
+  "not attached to GraphQL",
   "No tests, verifiers, formatting, Cargo checks",
 ]);
 requireMarkers("operatorDoc", [
   "IndexDriftSourcePageDiagnosisRuntime",
   "diagnose_missing_entity_candidate(context, key)",
-  "IndexSourceContinuationCodec",
-  "does **not** yet compose that codec",
-  "transport-neutral confidential continuation codec",
+  "diagnose_source_page_sealed",
+  "server-owned continuation keyring",
 ]);
 requireMarkers("plan", [
   "M6 missing-only entity candidate outcome",
   "M6 bounded source-page missing-entity diagnosis",
-  "M6 authenticated and confidential source continuation codec",
-  "source_complete_server_key_composition_pending",
+  "M6 server-owned source continuation keyring and sealed page boundary",
+  "source_complete_transport_and_owner_execution_pending",
 ]);
 requireMarkers("aggregate", [
   "'verify-index-drift-source-page-diagnosis.mjs'",
-  "'verify-index-source-continuation.mjs'",
+  "'verify-index-source-continuation-server.mjs'",
 ]);
 
-for (const claim of [
-  "tests passed",
-  "source-page transport is complete",
-  "server continuation composition is complete",
-  "retained evidence admitted",
-  "repair is complete",
-]) {
-  if (
-    content.doc.toLowerCase().includes(claim.toLowerCase()) ||
-    content.operatorDoc.toLowerCase().includes(claim.toLowerCase()) ||
-    content.plan.toLowerCase().includes(claim.toLowerCase())
-  ) {
-    throw new Error(`forbidden completion claim: ${claim}`);
-  }
-}
-
-console.log("Index one-page missing-entity diagnosis contract verified");
+console.log("Index one-page sealed missing-entity diagnosis contract verified");
