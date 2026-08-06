@@ -185,6 +185,35 @@ impl fmt::Debug for IndexDriftFindingLifecycleCommand {
     }
 }
 
+#[derive(Clone)]
+pub struct IndexDriftFindingAuthorizedLifecycleCommand {
+    command: IndexDriftFindingLifecycleCommand,
+}
+
+impl IndexDriftFindingAuthorizedLifecycleCommand {
+    fn new(command: &IndexDriftFindingLifecycleCommand) -> Self {
+        Self {
+            command: command.clone(),
+        }
+    }
+
+    pub fn command(&self) -> &IndexDriftFindingLifecycleCommand {
+        &self.command
+    }
+}
+
+impl fmt::Debug for IndexDriftFindingAuthorizedLifecycleCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("IndexDriftFindingAuthorizedLifecycleCommand")
+            .field("tenant_id", &self.command.tenant_id())
+            .field("finding_id", &self.command.finding_id())
+            .field("command_id", &self.command.command_id())
+            .field("action", &self.command.action())
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IndexDriftFindingLifecycleValidationError {
     #[error("Index drift finding lifecycle tenant id must not be nil")]
@@ -261,9 +290,9 @@ pub enum IndexDriftFindingLifecycleStoreOutcome {
 
 #[async_trait]
 pub trait IndexDriftFindingLifecycleStore: Send + Sync {
-    async fn apply_lifecycle_command(
+    async fn apply_authorized_lifecycle_command(
         &self,
-        command: &IndexDriftFindingLifecycleCommand,
+        authorized: &IndexDriftFindingAuthorizedLifecycleCommand,
     ) -> Result<IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingLifecycleFailure>;
 }
 
@@ -357,7 +386,12 @@ impl IndexDriftFindingLifecycleService {
         {
             return Ok(IndexDriftFindingLifecycleOutcome::Denied);
         }
-        Ok(match self.store.apply_lifecycle_command(command).await? {
+        let authorized = IndexDriftFindingAuthorizedLifecycleCommand::new(command);
+        Ok(match self
+            .store
+            .apply_authorized_lifecycle_command(&authorized)
+            .await?
+        {
             IndexDriftFindingLifecycleStoreOutcome::Applied(receipt) => {
                 IndexDriftFindingLifecycleOutcome::Applied(receipt)
             }
