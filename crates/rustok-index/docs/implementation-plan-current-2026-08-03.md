@@ -1,38 +1,38 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay for `implementation-plan.md` rechecked through
-`main@5bbaaaf6cb17b846a5c6c280b8b2501c229cdc64` and the active draft PR #2986.
-The forty main commits after this branch merge base touch Commerce diagnostics, Forum GraphQL/admin
-and route ownership, Pages/Page Builder delivery/routes/evidence, event-delivery settings, and
-supporting server configuration. They do not touch `crates/rustok-index`, Product Index composition,
-the server Index GraphQL files, Index diagnosis/page composition, or Index guards changed by this
-branch. `apps/server/Cargo.toml` and general server settings changed on `main`, but this PR does not
-modify those files in the continuation-codec slice.
+`main@9822131a59619805dc34b67fdcecf44f9bbcd766` and the active draft PR #2986.
+The forty-four main commits after this branch merge base touch Commerce diagnostics, Forum
+GraphQL/admin and route ownership, Pages/Page Builder delivery/routes/evidence, event-delivery
+settings, and supporting server configuration. They do not touch `crates/rustok-index`, Product
+Index composition, the server Index GraphQL files, Index diagnosis/page composition, or Index guards
+changed by this branch. `apps/server/Cargo.toml` and general server settings changed on `main`, but
+this PR does not modify them in the continuation slice.
 
 When the older canonical plan's current-state bullets conflict with this dated overlay, this
-overlay is the rechecked source of truth. Historical architecture, ownership, and milestone
-details remain in `implementation-plan.md`.
+overlay is the rechecked source of truth. Historical architecture, ownership, and milestone details
+remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - compose source-continuation keys and seal the internal page boundary`
+`M6 - expose only the sealed source-page boundary through bounded transport`
 
 The database-neutral digest producer, mismatch-only writer adapter, locale-complete finding scope,
 source-version-fenced PostgreSQL snapshot reader, guarded exact-entity diagnosis capability,
 explicit owner-retained absence registry, Product locale high-watermark provider, double-read
 absence-version fence, Product locale absence PostgreSQL harness, bounded GraphQL exact-entity
-transport, missing-only entity candidate outcome, internal one-page missing-entity diagnosis
-runtime, and authenticated/confidential source continuation codec are source complete.
+transport, missing-only entity candidate outcome, internal one-page missing-entity diagnosis runtime,
+authenticated/confidential source continuation codec, private server-owned `SecretRef` keyring, and
+sealed internal page boundary are source complete.
 
-`IndexSourceContinuationCodec` now encrypts the complete raw owner cursor with AES-256-GCM and binds
-it to tenant, exact `SchemaRef`, canonical owner/source identity, version, issued-at, and expiry. It
-supports one active sealing key plus retained decrypt-only rotation keys. Tampering, scope mismatch,
-unsupported version, expiry, future issuance beyond bounded skew, oversized input, and unavailable
-key material fail before raw cursor return.
+The server validates deployment configuration containing only bounded key IDs and secret references.
+Secret values must be URL-safe unpadded base64 and decode to exactly 32 bytes. Because secret
+resolution is asynchronous, key material is resolved inside the sealed request before token parsing
+or source scan, used to construct one short-lived codec, and dropped after the incoming token is
+opened and the outgoing cursor is sealed.
 
-Server key configuration, secret resolution, a sealed page-runtime method, public source-page
-transport, owner execution evidence, finding lifecycle commands, repair, and broader Index-only or
-orphan discovery remain open.
+Public source-page transport, owner execution evidence, finding lifecycle commands, repair, and
+broader Index-only or orphan discovery remain open.
 
 ## Rechecked status
 
@@ -54,10 +54,8 @@ orphan discovery remain open.
   `source_complete_owner_execution_pending`
 - M6 bounded drift-finding inspection and persistence:
   `source_complete_owner_execution_pending`
-- M6 snapshot-pair digest producer and mismatch-only recorder delegation:
-  `source_complete`
-- M6 missing-only entity candidate outcome:
-  `source_complete_owner_execution_pending`
+- M6 snapshot-pair digest producer and mismatch-only recorder delegation: `source_complete`
+- M6 missing-only entity candidate outcome: `source_complete_owner_execution_pending`
 - M6 locale-optional persisted entity finding scope:
   `source_complete_owner_execution_pending`
 - M6 source-version-fenced PostgreSQL drift snapshot reader:
@@ -69,7 +67,9 @@ orphan discovery remain open.
 - M6 bounded source-page missing-entity diagnosis:
   `source_complete_transport_and_owner_execution_pending`
 - M6 authenticated and confidential source continuation codec:
-  `source_complete_server_key_composition_pending`
+  `source_complete_server_composition_complete_transport_pending`
+- M6 server-owned source continuation keyring and sealed page boundary:
+  `source_complete_transport_and_owner_execution_pending`
 - M6 explicit source absence watermark registry, Product provider, and reader fence:
   `source_complete_owner_execution_pending`
 - M6 Product locale absence PostgreSQL harness:
@@ -102,74 +102,52 @@ orphan discovery remain open.
       transport evidence.
 - [ ] Add locale/partition replay checkpoint dimensions.
 - [x] Add bounded drift-finding inspection and persistence for already-computed digest mismatches.
-- [x] Add a real-migration PostgreSQL harness for deterministic finding-key serialization and
-      create/refresh/reopen/suppression lifecycle preservation.
-- [ ] Run and admit `drift_finding_writer_postgres_test` evidence.
-- [x] Add a database-neutral producer for one exact source/materialized snapshot pair with one
-      bounded consistency token, exact scope revalidation, typed-state validation, deterministic
-      SHA-256 production, and mismatch-only recorder delegation.
-- [x] Adapt producer mismatches to `PostgresIndexDriftFindingWriter` with bounded retryable/permanent
-      failure classification.
-- [x] Extend persisted entity finding scope to locale-free `EntityKey` values without changing
-      existing locale-bearing finding identities.
-- [x] Add a forward migration, source-only key-compatibility contract, and environment-gated
-      PostgreSQL writer/inspector harness for locale-free entity findings.
-- [ ] Run and admit `drift_finding_locale_scope_postgres_test` evidence.
-- [x] Add one production `PostgresIndexDriftSnapshotReader` that fences an exact positive-version
-      owner state around one `REPEATABLE READ READ ONLY` materialized PostgreSQL snapshot.
-- [x] Reconstruct exact materialized entity/delete/link state, validate registered fingerprints and
-      ordinals, and reject owner state changes or unwatermarked absence.
-- [x] Add an environment-gated real-migration PostgreSQL harness for stable capture, source-change
-      rejection, and missing-watermark rejection.
-- [ ] Run and admit `drift_snapshot_reader_postgres_test` evidence.
+- [x] Add real-migration PostgreSQL finding writer and locale-scope harnesses.
+- [ ] Run and admit retained finding writer and locale-scope evidence.
+- [x] Add one database-neutral producer for a validated exact source/materialized snapshot pair,
+      deterministic SHA-256 digests, and mismatch-only recorder delegation.
+- [x] Add one production `PostgresIndexDriftSnapshotReader` that fences exact owner state around one
+      `REPEATABLE READ READ ONLY` materialized snapshot.
 - [x] Compose the snapshot reader, digest producer, and finding writer behind one request-bound
-      `modules:manage` exact-entity diagnosis capability using the frozen source/schema registries.
-- [x] Reject cross-tenant and unauthorized diagnosis before request validation, source access,
-      materialized reads, digest production, or finding persistence.
-- [x] Add the explicit retained absence/tombstone watermark contract as an optional owner-published
-      registry with exact `EntityKey`, positive source version, stable schema-identity ownership,
-      canonical replay-source owner parity, and fail-closed materialization.
-- [x] Keep existing `IndexSource::scan` and `IndexSource::load` contracts source-compatible and keep
-      `None` or an empty targeted load non-authoritative.
-- [x] Register the Product locale absence provider for `rustok-product::product@1` and `@2`, using
-      positive `products.index_revision` only when the exact translation and tombstone are absent.
-- [x] Materialize and privately attach the frozen absence registry to the PostgreSQL drift snapshot
-      reader from guarded server diagnosis composition.
-- [x] Reload and compare the exact positive absence version around the materialized snapshot and
-      bind the version into the opaque boundary only for source `Missing`.
-- [x] Preserve permanent `index_drift_source_watermark_missing` when provider registration or
-      authoritative evidence is unavailable.
-- [x] Add the source-ready real-migration Product locale-absence scenario and deterministic
-      concurrent translation-change rejection scenario in `product_locale_absence_postgres`.
+      `modules:manage` exact-entity diagnosis capability.
+- [x] Reject cross-tenant and unauthorized diagnosis before validation or dependency access.
+- [x] Add the explicit retained absence/tombstone watermark registry with canonical source-owner
+      parity, exact `EntityKey`, and positive source version.
+- [x] Register Product locale absence for Product schema versions 1 and 2 and fence it around the
+      materialized snapshot.
+- [x] Add the source-ready Product locale absence and deterministic concurrent translation-change
+      PostgreSQL scenarios.
 - [ ] Run and admit `product_locale_absence_postgres` evidence.
 - [x] Expose exact-entity diagnosis through bounded GraphQL `diagnoseIndexEntity` with tenant/actor
-      derived from request context, authorization-before-identity-parsing, one exact key, bounded
-      digest/receipt output, and no batch, scan, lifecycle, scheduler, or repair authority.
+      derived from request context and authorization before untrusted identity parsing.
 - [ ] Retain GraphQL authorization, malformed-input ordering, consistent result, mismatch receipt,
       and dependency-failure execution evidence.
-- [x] Add a database-neutral missing-only selector over one validated
-      `IndexDriftSnapshotPair`. Record only source `Upsert` plus materialized `Missing`; return
-      `NotCandidate` for every other typed-state combination without recorder access or raw-state
-      output; preserve general `produce(request)` behavior.
-- [x] Add one internal server-owned source-page missing-entity diagnosis runtime over the frozen
-      `IndexSource::scan` registry with authorization-before-page-validation, a maximum page size of
-      32, sequential missing-only diagnosis of source `Upsert` candidates, retained-delete skipping,
-      and no loop, checkpoint store, scheduler, task, repair, or public transport.
-- [x] Keep source-page continuation server-owned and return no source entity identifiers, payloads,
-      or captured state through the page outcome.
+- [x] Add a database-neutral missing-only selector over one validated `IndexDriftSnapshotPair`.
+      Record only source `Upsert` plus materialized `Missing`; return `NotCandidate` for every other
+      typed-state combination without recorder access or raw-state output.
+- [x] Add one internal server-owned source-page missing-entity diagnosis runtime with a maximum page
+      size of 32, sequential exact diagnosis, retained-delete skipping, and no loop, checkpoint,
+      scheduler, task, repair, or public transport.
+- [x] Keep the raw source cursor server-owned and return no source entity identifiers, payloads, or
+      captured state through the raw internal page outcome.
 - [x] Add an authenticated and confidential transport-neutral source continuation codec using
       AES-256-GCM, a fresh 96-bit nonce, bounded URL-safe envelope, exact tenant/schema/canonical
       source binding, authenticated lifetime, bounded clock skew, and one active plus retained
       decrypt-only rotation keys.
 - [x] Reject token tampering, unsupported version, scope mismatch, expiry, oversized input, invalid
       claims, and unavailable or retired key material before returning raw cursor state.
-- [ ] Compose a server-owned continuation keyring from secret references without embedding raw keys
-      in settings, logs, GraphQL, or `ModuleRuntimeExtensions` debug output.
-- [ ] Add a sealed internal page method that opens an incoming continuation before constructing
-      `IndexSourceScanRequest` and seals the outgoing continuation before returning from the service
-      boundary.
-- [ ] Add a bounded source-page transport only after authorization ordering, secret resolution,
-      rotation, expiry, and sealed-result behavior are explicitly admitted.
+- [x] Compose a server-owned continuation keyring from bounded secret references without embedding
+      raw keys in settings, logs, GraphQL, or separately retrievable extension output.
+- [x] Validate active-key presence, unique references, resolver policy, key count, and lifetime at
+      synchronous composition; resolve and validate exactly 32-byte key material before token parsing
+      or source scan inside the sealed request.
+- [x] Add a sealed internal page method that opens an incoming continuation before constructing
+      `IndexSourceScanRequest`, calls the existing one-page path exactly once, and seals the outgoing
+      continuation before returning from the service boundary.
+- [x] Return only bounded current-page counters, missing-finding receipts, and one opaque token from
+      `IndexDriftSourcePageDiagnosisSealedOutcome`; expose no raw cursor or entity identifier.
+- [ ] Add one bounded source-page transport over the sealed method only.
+- [ ] Retain authorization, secret resolution, rotation, expiry, and sealed-result execution evidence.
 - [ ] Add bounded stale Index-only entity and orphan-link diagnosis without unbounded ID collection.
 - [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
 - [ ] Add targeted repair with before/after admitted evidence.
@@ -188,19 +166,23 @@ orphan discovery remain open.
 
 ## Next implementation step
 
-Compose one server-owned continuation keyring from bounded key identifiers and secret references. The
-server must resolve 32-byte AES keys through the existing secret resolver boundary, publish only the
-opaque codec capability, and redact key material from errors and `Debug`. Composition must fail
-closed when the active key is absent, a key reference cannot be resolved, decoded material is not
-exactly 32 bytes, or more than the bounded key count is configured.
+Add one bounded source-page transport that delegates only to
+`diagnose_source_page_sealed(context, schema, continuation, limit)`.
 
-Then add one internal sealed page method. It must derive canonical scope from the frozen source
-registry, authorize before parsing an incoming token, open the token before constructing or invoking
-`IndexSourceScanRequest`, call the existing one-page missing-only path exactly once, and seal an
-outgoing continuation before returning it. The service result may contain the sealed token but never
-raw `IndexSourceCursor` JSON.
+The transport must:
 
-Do not mount GraphQL, HTTP, CLI, MCP, or native admin in that slice. Do not add multi-page iteration,
+- derive tenant and actor only from authenticated request context;
+- require effective `modules:manage` before parsing module/entity/version, limit, or token;
+- accept one exact schema identity, one optional opaque token, and a limit in `1..=32`;
+- contain no caller-selected tenant, actor, source name, owner module, cursor JSON, entity ID list,
+  batch, checkpoint, scheduler, lifecycle, or repair input;
+- delegate exactly once to the sealed internal method;
+- return only current-page aggregate counters, bounded missing-finding receipts, completion state,
+  and one optional opaque continuation token;
+- expose fixed bounded dependency error codes without resolver causes, secret references, raw cursor
+  state, source records, entity identifiers, SQL, or database causes.
+
+Keep the historical raw page method internal and do not mount it. Do not add multi-page iteration,
 persist checkpoints, schedule scans, enumerate stale Index-only rows, inspect orphan links, change
 finding lifecycle, or repair state. PostgreSQL, cryptographic integration, and GraphQL execution
 evidence remain owner-owned and pending.
@@ -212,6 +194,7 @@ cargo test -p rustok-index source_continuation -- --nocapture
 cargo test -p rustok-index drift_digest -- --nocapture
 cargo test -p rustok-index source_absence -- --nocapture
 cargo test -p rustok-distribution product_index --features mod-product -- --nocapture
+cargo test -p rustok-server index_source_continuation_runtime -- --nocapture
 cargo test -p rustok-server index_drift_diagnosis -- --nocapture
 cargo test -p rustok-server index_drift_source_page_diagnosis -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
@@ -223,6 +206,7 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   -- --nocapture --test-threads=1
 
 node scripts/verify/verify-index-source-continuation.mjs
+node scripts/verify/verify-index-source-continuation-server.mjs
 node scripts/verify/verify-index-drift-diagnosis-graphql-transport.mjs
 node scripts/verify/verify-index-drift-source-page-diagnosis.mjs
 node scripts/verify/verify-index-product-absence-postgres-harness.mjs
