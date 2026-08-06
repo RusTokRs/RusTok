@@ -17,6 +17,8 @@
   values.
 - Define sealed `TranslationWorkflowEvent` contracts for content-free
   Translation control-plane lifecycle evidence.
+- Define sealed `ReactionsEvent` contracts for committed actor-state changes and
+  bounded aggregate repair without exposing producer content or presentation.
 
 ## Entry points
 
@@ -30,6 +32,8 @@
 - `EVENT_SCHEMAS`
 - `ValidateEvent`
 - `EventValidationError`
+- `ReactionsEvent`
+- `REACTIONS_EVENT_SCHEMAS`
 - `TranslationWorkflowEvent`
 - `TRANSLATION_WORKFLOW_EVENT_SCHEMAS`
 

@@ -10,6 +10,7 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-reactions-api = { path = "../rustok-reactions-api" }
 sea-orm.workspace = true

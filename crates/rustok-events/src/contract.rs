@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
     ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent,
-    MarketplaceSellerEvent, RbacArtifactPermissionEvent, RbacRoleMutationEvent,
+    MarketplaceSellerEvent, RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent,
     SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
 };
 
@@ -51,6 +51,8 @@ pub enum ContractEventPayload {
     RbacArtifactPermission(RbacArtifactPermissionEvent),
     #[serde(rename = "rbac_role_mutation")]
     RbacRoleMutation(RbacRoleMutationEvent),
+    #[serde(rename = "reactions")]
+    Reactions(ReactionsEvent),
     #[serde(rename = "social_graph_relation")]
     SocialGraphRelation(SocialGraphRelationEvent),
     #[serde(rename = "translation_workflow")]
@@ -68,6 +70,7 @@ impl ContractEventPayload {
             Self::MarketplaceSeller(event) => event.event_type(),
             Self::RbacArtifactPermission(event) => event.event_type(),
             Self::RbacRoleMutation(event) => event.event_type(),
+            Self::Reactions(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
             Self::TranslationWorkflow(event) => event.event_type(),
         }
@@ -83,6 +86,7 @@ impl ContractEventPayload {
             Self::MarketplaceSeller(event) => event.schema_version(),
             Self::RbacArtifactPermission(event) => event.schema_version(),
             Self::RbacRoleMutation(event) => event.schema_version(),
+            Self::Reactions(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
             Self::TranslationWorkflow(event) => event.schema_version(),
         }
@@ -100,6 +104,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::MarketplaceSeller(event) => event.validate(),
             Self::RbacArtifactPermission(event) => event.validate(),
             Self::RbacRoleMutation(event) => event.validate(),
+            Self::Reactions(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
             Self::TranslationWorkflow(event) => event.validate(),
         }
