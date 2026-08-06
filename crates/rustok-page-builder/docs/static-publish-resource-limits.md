@@ -7,7 +7,7 @@ Status: `source-ready / maintainer-validation-pending`
 
 The reviewed Page Builder publication path already applies structural Fly validation and a fail-closed HTML, CSS, URL, attribute, metadata and public-resource policy before runtime materialization.
 
-This slice adds provider-owned global resource budgets to the same pre-materialization sanitization seam. It does not add a second sanitizer, parser, renderer or persistence path.
+This slice adds provider-owned global resource budgets to the same compiler and pre-materialization sanitization seam. It does not add a second sanitizer, parser, renderer or persistence path.
 
 ## Current limits
 
@@ -30,17 +30,21 @@ The resource policy is implemented in:
 crates/rustok-page-builder/src/static_publish_resource_limits.rs
 ```
 
-It measures the compiler-prepared current Fly project. Component count and depth traverse only the current `pages[].component` authority. Obsolete frame trees are not consulted or synchronized.
+Project bytes use a bounded streaming JSON counter. Component count and depth use a bounded iterative traversal of only the current `pages[].component` authority. Obsolete frame trees are not consulted or synchronized.
 
-The authoritative call remains:
+The compiler applies the policy at three checkpoints:
+
+1. on the decoded current document before stable-id generation and recursive public-resource/static-policy traversal;
+2. again after stable-id normalization on the exact prepared document;
+3. again on the exact runtime-materialized document before recursive URL/CSS policy checks and artifact rendering.
+
+The authoritative reviewed publish call remains:
 
 ```text
 sanitize_static_landing_project
 ```
 
-Resource validation occurs after current Fly preparation and static publish policy validation, and before sanitized-project hashing, runtime materialization or immutable artifact creation.
-
-The same resource validation is repeated when the transient sanitization envelope verifies its integrity immediately before materialization.
+Sanitization also requires the same resource policy before sanitized-project hashing. The transient sanitization envelope repeats the check during integrity verification immediately before materialization.
 
 ## Sanitization identity
 
@@ -61,7 +65,7 @@ sanitized_project
 
 No new persisted DTO or database field is introduced. Pages continues to retain the resulting `sanitized_hash` inside the existing locale-ordered sanitized-set identity.
 
-Global budgets are an additional fail-closed admission condition on the reviewed sanitization operation. They do not rewrite historical immutable artifacts or alter the sanitization hash schema.
+Global budgets are an additional fail-closed admission condition on the reviewed compiler and sanitization operation. They do not rewrite historical immutable artifacts or alter the sanitization hash schema.
 
 ## Resource policy evidence
 
@@ -114,6 +118,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publis
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
 cargo test -p rustok-page-builder static_publish_resource_limits -- --nocapture
 cargo test -p rustok-page-builder publish_sanitization -- --nocapture
+cargo test -p rustok-page-builder static_landing -- --nocapture
 cargo check -p rustok-page-builder
 ```
 
