@@ -1,3 +1,4 @@
+mod artifact_integrity_audit;
 mod artifact_set;
 mod create;
 mod document;
@@ -21,6 +22,12 @@ use sea_orm::DatabaseConnection;
 
 use crate::entities::page_translation;
 
+pub use artifact_integrity_audit::{
+    AuditPageArtifactsInput, DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS,
+    MAX_PAGE_ARTIFACT_AUDIT_FINDINGS, MAX_PAGE_ARTIFACT_AUDIT_RECORDS,
+    PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
+    PageArtifactIntegrityAuditResult, PageArtifactIntegrityFinding,
+};
 pub use crate::error::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
