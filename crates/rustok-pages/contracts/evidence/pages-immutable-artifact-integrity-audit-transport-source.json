@@ -1,7 +1,7 @@
 {
   "format": "pages_immutable_artifact_integrity_audit_transport_source_v1",
   "status": "pages_immutable_artifact_integrity_audit_transport_source_unvalidated",
-  "generated_at": "2026-08-06T18:24:00Z",
+  "generated_at": "2026-08-06T18:17:00Z",
   "scope": "Bounded tenant-wide GraphQL and HTTP adapters for the Pages immutable artifact integrity audit",
   "source_contract": {
     "service_command": "PageService::audit_immutable_artifact_integrity",
