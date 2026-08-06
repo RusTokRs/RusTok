@@ -59,7 +59,7 @@ The observation is an attestation input collected from existing deployment, conf
 
 The input contains a bounded environment name and configuration profile. The output retains only their SHA-256 identities.
 
-Tenant identities must already be represented as lowercase SHA-256 values. Raw tenant UUIDs and tenant names are rejected by contract and are not copied to output.
+The required enabled/control cohort arrays accept only lowercase SHA-256 tenant identities. Additional operator metadata is not projected into retained output; raw tenant UUIDs and names must not be supplied as cohort identities.
 
 The cohort must use exactly:
 
