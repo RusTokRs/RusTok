@@ -290,13 +290,11 @@ pub fn is_inline_text_component(component: &ComponentObject) -> bool {
         .as_deref()
         .unwrap_or_default()
         .to_ascii_lowercase();
-    matches!(
-        component_type.as_str(),
-        "text" | "heading" | "paragraph" | "link" | "button" | "label"
-    ) || matches!(
-        tag_name.as_str(),
-        "p" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "a" | "button" | "label"
-    )
+    matches!(component_type.as_str(), "text" | "heading" | "paragraph")
+        || matches!(
+            tag_name.as_str(),
+            "p" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+        )
 }
 
 fn editable_component_ids_from_document(
@@ -557,6 +555,11 @@ mod tests {
                         "type": "text",
                         "content": "Fallback"
                     }, {
+                        "id": "interactive",
+                        "type": "button",
+                        "tagName": "button",
+                        "content": "Go"
+                    }, {
                         "id": "composite",
                         "type": "text",
                         "content": "Parent",
@@ -602,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn only_static_leaf_text_components_outside_runtime_subtrees_are_editable() {
+    fn only_noninteractive_static_leaf_text_outside_runtime_subtrees_is_editable() {
         let ids = inline_editable_component_ids(&project(), &PageSelection::First)
             .expect("editable ids");
         assert_eq!(ids, vec!["heading", "static-child"]);
@@ -661,7 +664,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_replay_dynamic_bound_repeated_and_rejected_authorization_fail_closed() {
+    fn stale_replay_dynamic_bound_repeated_interactive_and_rejected_authorization_fail_closed() {
         let project = project();
         let grant = grant(&project);
         let mut session = AuthenticatedInlineEditSession::new(
@@ -679,7 +682,7 @@ mod tests {
             Err(InlineEditError::AuthorizationRejected(_))
         ));
 
-        for component_id in ["dynamic", "bound", "repeated-child"] {
+        for component_id in ["dynamic", "bound", "repeated-child", "interactive"] {
             let request = grant
                 .bind_request(1_000, 1, component_id, "Changed")
                 .expect("request");
