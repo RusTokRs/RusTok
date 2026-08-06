@@ -7,9 +7,7 @@ use rustok_forum_storefront::{
 };
 use rustok_web::CspNonce;
 
-use super::{
-    private_permanent_redirect, private_status_response, render_module_page_with_subpath_nonce,
-};
+use super::{private_permanent_redirect, private_status_response, render_module_page_with_nonce};
 
 const FORUM_ROUTE_SEGMENT: &str = "forum";
 
@@ -33,8 +31,8 @@ pub(crate) async fn render_forum_topic_route_response(
     let requested_path = format!("/{locale_path_prefix}/forum/t/{short_id}/{slug}");
     let resolution = match rustok_forum_storefront::resolve_storefront_topic_route(
         locale_path_prefix.clone(),
-        short_id.clone(),
-        slug.clone(),
+        short_id,
+        slug,
     )
     .await
     {
@@ -58,15 +56,14 @@ pub(crate) async fn render_forum_topic_route_response(
             canonical_path: _,
         } => {
             query_params.insert("topic".to_string(), topic_id);
-            let subpath = Some(format!("t/{short_id}/{slug}"));
             Html(
-                render_module_page_with_subpath_nonce(
+                render_module_page_with_nonce(
                     effective_locale.as_str(),
                     FORUM_ROUTE_SEGMENT,
-                    subpath,
                     query_params,
                     None,
                     csp_nonce,
+                    None,
                 )
                 .await,
             )
