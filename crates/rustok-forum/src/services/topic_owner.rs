@@ -1,14 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Deref,
-};
+use std::ops::Deref;
 
 use chrono::Utc;
 use flex::delete_attached_localized_values;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QueryResult, QuerySelect, Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -18,26 +14,18 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::audience::{ForumAudienceEvaluator, ForumAudienceFacts};
-use crate::dto::{
-    CreateTopicInput, MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES, TopicResponse,
-    UpdateTopicInput,
-};
-use crate::entities::{
-    forum_category, forum_category_policy, forum_reply, forum_solution, forum_topic,
-    forum_topic_channel_access,
-};
+use crate::dto::{CreateTopicInput, TopicResponse, UpdateTopicInput};
+use crate::entities::{forum_reply, forum_solution, forum_topic};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
-use crate::visibility::ForumCategoryVisibility;
 
+use self::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 use super::category::CategoryService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::enforce_owned_scope;
 use super::topic;
-use super::topic_audience::load_policy_for_topic;
 use super::topic_route::{
     ForumTopicRouteService, ForumTopicSlugRenameResult, RenameForumTopicSlugInput,
 };
@@ -148,6 +136,12 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
+        ForumTopicRouteTombstoneVisibilityService::lock_delete_scope_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+        )
+        .await?;
         claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
 
@@ -177,7 +171,7 @@ impl TopicService {
             None
         };
 
-        record_topic_route_tombstone_visibility_snapshot_in_tx(
+        ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
             &txn,
             tenant_id,
             &topic,
@@ -314,351 +308,6 @@ impl Deref for TopicService {
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct TopicRouteTombstoneVisibilitySnapshot {
-    publicly_disclosable: bool,
-    route_channel_restricted: bool,
-}
-
-async fn record_topic_route_tombstone_visibility_snapshot_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic: &forum_topic::Model,
-) -> ForumResult<()> {
-    let category_public = category_is_public_in_tx(txn, tenant_id, topic.category_id).await?;
-    let audience_public = topic_audience_allows_public_in_tx(txn, tenant_id, topic).await?;
-    let source_channel_count = forum_topic_channel_access::Entity::find()
-        .filter(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
-        .filter(forum_topic_channel_access::Column::TopicId.eq(topic.id))
-        .count(txn)
-        .await?;
-    let snapshot = TopicRouteTombstoneVisibilitySnapshot {
-        publicly_disclosable: topic.status == TopicStatus::Open
-            && category_public
-            && audience_public,
-        route_channel_restricted: source_channel_count > 0,
-    };
-
-    insert_tombstone_visibility_snapshot_in_tx(txn, tenant_id, topic.id, snapshot).await?;
-    insert_tombstone_channels_in_tx(txn, tenant_id, topic.id).await?;
-
-    let stored = load_tombstone_visibility_snapshot(txn, tenant_id, topic.id)
-        .await?
-        .ok_or(ForumError::TopicRouteResolutionConflict)?;
-    if stored != snapshot {
-        return Err(ForumError::TopicRouteResolutionConflict);
-    }
-
-    let snapshot_channel_count = count_tombstone_channels(txn, tenant_id, topic.id).await?;
-    let matching_channel_count = count_matching_tombstone_channels(txn, tenant_id, topic.id).await?;
-    if snapshot_channel_count != source_channel_count || matching_channel_count != source_channel_count
-    {
-        return Err(ForumError::TopicRouteResolutionConflict);
-    }
-    Ok(())
-}
-
-async fn topic_audience_allows_public_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic: &forum_topic::Model,
-) -> ForumResult<bool> {
-    let policy = load_policy_for_topic(txn, tenant_id, topic).await?;
-    let security = SecurityContext::public_read();
-    let facts = ForumAudienceFacts::default();
-    for layer in &policy.inherited_category_layers {
-        if !ForumAudienceEvaluator::decide(
-            tenant_id,
-            &layer.constraints,
-            &security,
-            &facts,
-        )?
-        .allowed
-        {
-            return Ok(false);
-        }
-    }
-    if let Some(constraints) = &policy.configured_constraints
-        && !ForumAudienceEvaluator::decide(tenant_id, constraints, &security, &facts)?.allowed
-    {
-        return Ok(false);
-    }
-    Ok(true)
-}
-
-async fn category_is_public_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ForumResult<bool> {
-    let categories = forum_category::Entity::find()
-        .filter(forum_category::Column::TenantId.eq(tenant_id))
-        .order_by_asc(forum_category::Column::Id)
-        .limit(MAX_FORUM_CATEGORY_TREE_NODES + 1)
-        .all(txn)
-        .await?;
-    if categories.len() > MAX_FORUM_CATEGORY_TREE_NODES as usize {
-        return Err(ForumError::Validation(format!(
-            "Forum category visibility tree exceeds the bounded limit of {MAX_FORUM_CATEGORY_TREE_NODES} nodes"
-        )));
-    }
-    let parents = categories
-        .into_iter()
-        .map(|category| (category.id, category.parent_id))
-        .collect::<HashMap<_, _>>();
-    if !parents.contains_key(&category_id) {
-        return Err(ForumError::CategoryNotFound(category_id));
-    }
-
-    let mut authenticated_overrides = HashSet::new();
-    for policy in forum_category_policy::Entity::find()
-        .filter(forum_category_policy::Column::TenantId.eq(tenant_id))
-        .all(txn)
-        .await?
-    {
-        if let Some(visibility) = policy.visibility_override {
-            if visibility != ForumCategoryVisibility::Authenticated {
-                return Err(ForumError::Validation(
-                    "Forum category visibility storage contains a broadening override".to_string(),
-                ));
-            }
-            authenticated_overrides.insert(policy.category_id);
-        }
-    }
-
-    let mut current = Some(category_id);
-    let mut visited = HashSet::new();
-    let mut depth = 0usize;
-    while let Some(current_id) = current {
-        if depth > MAX_FORUM_CATEGORY_TREE_DEPTH {
-            return Err(ForumError::Validation(format!(
-                "Forum category visibility tree exceeds the maximum depth of {MAX_FORUM_CATEGORY_TREE_DEPTH}"
-            )));
-        }
-        if !visited.insert(current_id) {
-            return Err(ForumError::Validation(
-                "Forum category visibility tree contains a hierarchy cycle".to_string(),
-            ));
-        }
-        if authenticated_overrides.contains(&current_id) {
-            return Ok(false);
-        }
-        current = parents.get(&current_id).copied().ok_or_else(|| {
-            ForumError::Validation(format!(
-                "Forum category visibility tree references missing category {current_id}"
-            ))
-        })?;
-        depth += 1;
-    }
-    Ok(true)
-}
-
-async fn insert_tombstone_visibility_snapshot_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    snapshot: TopicRouteTombstoneVisibilitySnapshot,
-) -> ForumResult<()> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            INSERT INTO forum_topic_route_tombstone_visibility (
-                tenant_id, topic_id, publicly_disclosable,
-                route_channel_restricted, created_at
-            )
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-            ON CONFLICT (tenant_id, topic_id) DO NOTHING
-            "#,
-            vec![
-                tenant_id.into(),
-                topic_id.into(),
-                snapshot.publicly_disclosable.into(),
-                snapshot.route_channel_restricted.into(),
-            ],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            INSERT INTO forum_topic_route_tombstone_visibility (
-                tenant_id, topic_id, publicly_disclosable,
-                route_channel_restricted, created_at
-            )
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT (tenant_id, topic_id) DO NOTHING
-            "#,
-            vec![
-                tenant_id.into(),
-                topic_id.into(),
-                snapshot.publicly_disclosable.into(),
-                snapshot.route_channel_restricted.into(),
-            ],
-        ),
-        backend => return Err(unsupported_tombstone_visibility_backend(backend)),
-    };
-    txn.execute(statement).await?;
-    Ok(())
-}
-
-async fn insert_tombstone_channels_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<()> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            INSERT INTO forum_topic_route_tombstone_channels (
-                tenant_id, topic_id, channel_slug
-            )
-            SELECT tenant_id, topic_id, channel_slug
-            FROM forum_topic_channel_access
-            WHERE tenant_id = $1 AND topic_id = $2
-            ON CONFLICT (tenant_id, topic_id, channel_slug) DO NOTHING
-            "#,
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            INSERT INTO forum_topic_route_tombstone_channels (
-                tenant_id, topic_id, channel_slug
-            )
-            SELECT tenant_id, topic_id, channel_slug
-            FROM forum_topic_channel_access
-            WHERE tenant_id = ? AND topic_id = ?
-            ON CONFLICT (tenant_id, topic_id, channel_slug) DO NOTHING
-            "#,
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        backend => return Err(unsupported_tombstone_visibility_backend(backend)),
-    };
-    txn.execute(statement).await?;
-    Ok(())
-}
-
-async fn load_tombstone_visibility_snapshot(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<Option<TopicRouteTombstoneVisibilitySnapshot>> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            SELECT publicly_disclosable, route_channel_restricted
-            FROM forum_topic_route_tombstone_visibility
-            WHERE tenant_id = $1 AND topic_id = $2
-            "#,
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            SELECT publicly_disclosable, route_channel_restricted
-            FROM forum_topic_route_tombstone_visibility
-            WHERE tenant_id = ? AND topic_id = ?
-            "#,
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        backend => return Err(unsupported_tombstone_visibility_backend(backend)),
-    };
-    txn.query_one(statement)
-        .await?
-        .map(tombstone_visibility_snapshot_from_row)
-        .transpose()
-}
-
-fn tombstone_visibility_snapshot_from_row(
-    row: QueryResult,
-) -> ForumResult<TopicRouteTombstoneVisibilitySnapshot> {
-    Ok(TopicRouteTombstoneVisibilitySnapshot {
-        publicly_disclosable: row.try_get("", "publicly_disclosable")?,
-        route_channel_restricted: row.try_get("", "route_channel_restricted")?,
-    })
-}
-
-async fn count_tombstone_channels(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<u64> {
-    count_tombstone_channel_query(
-        txn,
-        tenant_id,
-        topic_id,
-        "SELECT COUNT(*) AS row_count FROM forum_topic_route_tombstone_channels WHERE tenant_id = $1 AND topic_id = $2",
-        "SELECT COUNT(*) AS row_count FROM forum_topic_route_tombstone_channels WHERE tenant_id = ? AND topic_id = ?",
-    )
-    .await
-}
-
-async fn count_matching_tombstone_channels(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<u64> {
-    count_tombstone_channel_query(
-        txn,
-        tenant_id,
-        topic_id,
-        r#"
-        SELECT COUNT(*) AS row_count
-        FROM forum_topic_route_tombstone_channels snapshot
-        JOIN forum_topic_channel_access source
-          ON source.tenant_id = snapshot.tenant_id
-         AND source.topic_id = snapshot.topic_id
-         AND source.channel_slug = snapshot.channel_slug
-        WHERE snapshot.tenant_id = $1 AND snapshot.topic_id = $2
-        "#,
-        r#"
-        SELECT COUNT(*) AS row_count
-        FROM forum_topic_route_tombstone_channels snapshot
-        JOIN forum_topic_channel_access source
-          ON source.tenant_id = snapshot.tenant_id
-         AND source.topic_id = snapshot.topic_id
-         AND source.channel_slug = snapshot.channel_slug
-        WHERE snapshot.tenant_id = ? AND snapshot.topic_id = ?
-        "#,
-    )
-    .await
-}
-
-async fn count_tombstone_channel_query(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    postgres_sql: &str,
-    sqlite_sql: &str,
-) -> ForumResult<u64> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            postgres_sql,
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            sqlite_sql,
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        backend => return Err(unsupported_tombstone_visibility_backend(backend)),
-    };
-    let row = txn
-        .query_one(statement)
-        .await?
-        .ok_or(ForumError::TopicRouteResolutionConflict)?;
-    let count: i64 = row.try_get("", "row_count")?;
-    u64::try_from(count).map_err(|_| ForumError::TopicRouteResolutionConflict)
-}
-
-fn unsupported_tombstone_visibility_backend(backend: DatabaseBackend) -> ForumError {
-    ForumError::Validation(format!(
-        "Forum topic route tombstone visibility does not support database backend {backend:?}"
-    ))
 }
 
 async fn claim_topic_delete_in_tx(
