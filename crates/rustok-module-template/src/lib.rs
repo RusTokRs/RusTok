@@ -11,6 +11,8 @@ const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/s
 const CARGO_TEMPLATE: &str = include_str!("../assets/Cargo.toml.template");
 const LIB_TEMPLATE: &str = include_str!("../assets/src/lib.rs.template");
 const README_TEMPLATE: &str = include_str!("../assets/README.md.template");
+const INDEX_INTEGRATION_GUIDE_TEMPLATE: &str =
+    include_str!("../assets/docs/index-integration.md.template");
 const TOOLCHAIN_TEMPLATE: &str = include_str!("../assets/rust-toolchain.toml.template");
 const BUILD_POLICY: &str = include_str!("../assets/module-build-policy.toml");
 const CONTRACT_TEST: &str = include_str!("../assets/tests/contract.rs");
@@ -92,6 +94,10 @@ pub fn render(input: &ModuleTemplateInput) -> Result<RenderedModule, ModuleTempl
     let files = vec![
         text_file("Cargo.toml", render_text(CARGO_TEMPLATE, &replacements)?),
         text_file("README.md", render_text(README_TEMPLATE, &replacements)?),
+        text_file(
+            "docs/index-integration.md",
+            render_text(INDEX_INTEGRATION_GUIDE_TEMPLATE, &replacements)?,
+        ),
         text_file("src/lib.rs", render_text(LIB_TEMPLATE, &replacements)?),
         text_file(
             "rust-toolchain.toml",
@@ -259,6 +265,24 @@ mod tests {
             .expect("UTF-8 source");
         assert!(source.contains("module.sample_module.executed"));
         assert!(source.contains("\\\"topic\\\""));
+        assert!(source.contains("does not register an"));
+        assert!(!cargo.contains("rustok-index"));
+    }
+
+    #[test]
+    fn rendered_project_documents_the_fail_closed_index_boundary() {
+        let rendered = render(&input()).expect("render template");
+        let guide = std::str::from_utf8(
+            rendered
+                .file("docs/index-integration.md")
+                .expect("Index integration guide"),
+        )
+        .expect("UTF-8 Index integration guide");
+        assert!(guide.contains("standalone RusToK Component Model module"));
+        assert!(guide.contains("does not publish a `platform.index` capability"));
+        assert!(guide.contains("module.sample_module.executed"));
+        assert!(guide.contains("Index integration not yet"));
+        assert!(!guide.contains("{{"));
     }
 
     #[test]
