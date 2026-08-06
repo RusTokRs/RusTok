@@ -3,13 +3,13 @@
   "task": "FORUM-24I",
   "parent_task": "FORUM-24",
   "extends": ["FORUM-24A", "FORUM-24H"],
+  "extended_by": ["FORUM-24J", "FORUM-24K"],
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
   "canonical_route": "/{locale}/forum/t/{short_id}/{slug}",
   "route_owner": "ForumTopicRouteService",
   "visibility_owner": "ForumTopicAudienceReadService",
-  "followup_tombstone_snapshot_task": "FORUM-24J",
-  "followup_gone_consumer_task": "FORUM-24K",
+  "tombstone_visibility_owner": "ForumTopicRouteTombstoneVisibilityService",
   "package": "rustok-forum-storefront",
   "host": "rustok-storefront",
   "transport": {
@@ -17,9 +17,11 @@
     "native_selected_for": ["ssr", "hydrate"],
     "graphql_selected_for": ["headless", "csr"],
     "automatic_fallback": false,
-    "graphql_field": "forumStorefrontTopicRoute",
+    "legacy_graphql_field": "forumStorefrontTopicRoute",
+    "selected_graphql_field_after_FORUM_24K": "forumStorefrontTopicRouteDecision",
     "native_endpoint": "forum/storefront-topic-route",
-    "exact_audience_recheck_both_paths": true
+    "exact_audience_recheck_both_paths": true,
+    "authorized_gone_owner_parity_both_paths": true
   },
   "topic_card_cutover": {
     "legacy_topic_query_links_emitted": false,
@@ -38,28 +40,32 @@
     "host_reads_forum_storage": false,
     "host_reads_alias_ledger": false,
     "host_recomputes_redirect_target": false,
+    "host_reauthorizes_gone": false,
     "canonical_exact": "SSR existing Forum module page with owner topic UUID",
     "redirect_or_nonexact_raw_path": "308 private no-store",
-    "missing_hidden_deleted_or_gone": "404 private no-store",
-    "transport_or_untyped_domain_failure": "503 private no-store",
+    "missing_hidden_or_unauthorized": "404 private no-store",
+    "authorized_gone_after_FORUM_24K": "410 private no-store",
+    "transport_or_malformed_domain_result": "503 private no-store",
     "query_topic_identity_overwritten_by_owner": true
   },
   "disclosure": {
-    "public_dispositions": ["CANONICAL", "REDIRECT"],
+    "public_dispositions_after_FORUM_24K": ["CANONICAL", "REDIRECT", "GONE"],
     "historical_topic_id_exposed": false,
     "alias_id_exposed": false,
     "alias_reason_exposed": false,
-    "gone_exposed": false,
+    "snapshot_payload_exposed": false,
+    "authorized_gone_exposed": true,
     "hidden_and_missing_indistinguishable": true,
-    "FORUM_24J_snapshot_consumed": false
+    "FORUM_24J_snapshot_consumed": true,
+    "authenticated_requests_broaden_public_snapshot": false
   },
   "compatibility": {
-    "database_schema_changed": false,
-    "migration_added": false,
+    "database_schema_changed_by_FORUM_24K": false,
+    "migration_added_by_FORUM_24K": false,
     "owner_write_changed": false,
     "semantic_event_changed": false,
     "admin_contract_changed": false,
-    "graphql_change": "existing additive field retained",
+    "legacy_graphql_field_retained": true,
     "generic_module_category_route_retained": true,
     "seo_changed": false,
     "hreflang_changed": false
@@ -67,11 +73,14 @@
   "verification": {
     "graphql_guard": "scripts/verify/verify-forum-topic-route-storefront-graphql.mjs",
     "mount_guard": "scripts/verify/verify-forum-topic-route-storefront-mount.mjs",
+    "authorized_gone_guard": "scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
     "maintainer_commands": [
       "node scripts/verify/verify-forum-topic-route-storefront-graphql.mjs",
       "node scripts/verify/verify-forum-topic-route-storefront-mount.mjs",
+      "node scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
       "cargo test -p rustok-forum --test topic_route_storefront_graphql_contract -- --nocapture",
-      "cargo test -p rustok-forum-storefront core::tests -- --nocapture",
+      "cargo test -p rustok-forum --test topic_route_authorized_gone_transport_contract -- --nocapture",
+      "cargo test -p rustok-forum-storefront model::tests -- --nocapture",
       "cargo test -p rustok-storefront forum_topic_route::tests -- --nocapture",
       "cargo check -p rustok-forum --all-targets",
       "cargo check -p rustok-forum-storefront --all-targets --features ssr",
@@ -79,7 +88,6 @@
     ]
   },
   "remaining_scope": [
-    "consume the FORUM-24J boolean tombstone decision and add authorized GONE/410",
     "category route identity",
     "canonical and hreflang document policy",
     "Forum SEO composition",
@@ -88,7 +96,7 @@
   ],
   "non_claims": [
     "no test verifier formatter Cargo workflow registered-host browser or CI execution is claimed",
-    "no public 410 response is claimed",
+    "no private or authenticated-only tombstone disclosure is claimed",
     "no category route identity is claimed",
     "no SEO or hreflang integration is claimed",
     "FORUM-24 remains planned"
