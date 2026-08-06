@@ -10,7 +10,7 @@ FORUM-24L introduces one transport-neutral owner for localized Forum category ro
 /{locale}/forum/c/{slug}
 ```
 
-The route uses the locale-aware slug already stored with the selected category translation. Category UUIDs remain internal identity and are not emitted in the canonical path.
+The route uses the locale-aware slug already stored with the selected category translation. Category UUIDs remain internal identity and are not emitted in the canonical path. Category hierarchy is deliberately not encoded in the URL: moving a category does not change this route.
 
 Machine contract:
 
@@ -63,7 +63,7 @@ The owner returns:
 
 Route identity is not storefront authorization. This owner does not evaluate category audience inheritance, channel membership, module enablement or SEO publication eligibility. A future GraphQL/native transport must recheck the category through the exact Forum visibility owner before disclosing a canonical descriptor or redirect.
 
-No alias or tombstone disposition is introduced here. Category slug rename, hierarchy move history, archive history and permanent redirects remain separate owner work because their transaction and disclosure policies are not yet defined.
+No alias or tombstone disposition is introduced here. Localized category slug rename history and permanent redirects remain separate owner work because their transaction and disclosure policies are not yet defined. Hierarchy moves need no route alias under this flat contract because parent identity is absent from the URL.
 
 ## Compatibility
 
@@ -87,7 +87,7 @@ cargo check -p rustok-forum --all-targets
 
 ## Remaining FORUM-24 scope after FORUM-24L
 
-- immutable category slug rename and hierarchy move aliases;
+- immutable localized category slug rename aliases;
 - visibility-safe category route GraphQL and native transport;
 - Rust storefront category route mount and category-link cutover;
 - canonical and hreflang document policy;
