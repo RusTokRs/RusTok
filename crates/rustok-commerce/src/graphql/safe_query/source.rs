@@ -71,12 +71,15 @@ mod rustok_api_shim {
     }
 }
 
+#[path = "source/rustok_customer_shim.rs"]
+mod rustok_customer_shim;
 #[path = "source/rustok_fulfillment_shim.rs"]
 mod rustok_fulfillment_shim;
 #[path = "source/rustok_order_shim.rs"]
 mod rustok_order_shim;
 
 use self::rustok_api_shim as rustok_api;
+use self::rustok_customer_shim as rustok_customer;
 use self::rustok_fulfillment_shim as rustok_fulfillment;
 use self::rustok_order_shim as rustok_order;
 
