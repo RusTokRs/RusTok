@@ -33,6 +33,8 @@ pub const PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT: &str =
 const MAX_DOCUMENT_HTML_BYTES: usize = 2 * 1024 * 1024;
 const MAX_BODY_HTML_BYTES: usize = 1536 * 1024;
 const MAX_CSS_BYTES: usize = 512 * 1024;
+const CANONICAL_ARTIFACT_INSTANCE_KEY: &str = "canonical";
+const REBUILD_ARTIFACT_INSTANCE_PREFIX: &str = "rebuild:";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct AuditPageArtifactsInput {
@@ -261,6 +263,7 @@ fn artifact_record_identity_hash(
         &record.artifact_hash,
         record.materialization_hash.as_deref(),
         &record.content_hash,
+        &record.instance_key,
     ))
 }
 
@@ -273,9 +276,10 @@ fn verify_artifact_record(
         || record.tenant_id != tenant_id
         || record.page_id != page_id
         || record.locale.trim().is_empty()
+        || !is_valid_artifact_instance_key(&record.instance_key)
     {
         return Err(PagesError::artifact_integrity(
-            "Stored static landing artifact has invalid owner identity",
+            "Stored static landing artifact has invalid owner or instance identity",
         ));
     }
     enforce_record_size_limits(record)?;
@@ -349,6 +353,16 @@ fn verify_artifact_record(
             "Stored landing materialization evidence is partial",
         )),
     }
+}
+
+fn is_valid_artifact_instance_key(value: &str) -> bool {
+    if value == CANONICAL_ARTIFACT_INSTANCE_KEY {
+        return true;
+    }
+    value
+        .strip_prefix(REBUILD_ARTIFACT_INSTANCE_PREFIX)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .is_some_and(|operation_id| !operation_id.is_nil())
 }
 
 fn enforce_record_size_limits(record: &page_static_landing_artifact::Model) -> PagesResult<()> {
@@ -471,5 +485,16 @@ mod tests {
         .expect("audit hash");
         assert_eq!(first, second);
         assert_eq!(first.len(), 64);
+    }
+
+    #[test]
+    fn audit_accepts_only_canonical_or_operation_bound_instances() {
+        assert!(is_valid_artifact_instance_key("canonical"));
+        assert!(is_valid_artifact_instance_key(&format!(
+            "rebuild:{}",
+            Uuid::new_v4()
+        )));
+        assert!(!is_valid_artifact_instance_key("rebuild:not-a-uuid"));
+        assert!(!is_valid_artifact_instance_key("other"));
     }
 }
