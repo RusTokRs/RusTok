@@ -47,15 +47,6 @@ pub enum PagesError {
     #[error("Page publish operation integrity error: {0}")]
     PublishOperationIntegrity(String),
 
-    #[error("Page artifact rebuild idempotency conflict: {0}")]
-    ArtifactRebuildIdempotencyConflict(String),
-
-    #[error("Page artifact rebuild source invalid: {0}")]
-    ArtifactRebuildSourceInvalid(String),
-
-    #[error("Page artifact rebuild operation integrity error: {0}")]
-    ArtifactRebuildOperationIntegrity(String),
-
     #[error("Page rollback idempotency conflict: {0}")]
     RollbackIdempotencyConflict(String),
 
@@ -99,11 +90,6 @@ pub const PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH: &str =
     "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH";
 pub const PAGE_PUBLISH_IDEMPOTENCY_CONFLICT: &str = "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT";
 pub const PAGE_PUBLISH_OPERATION_INTEGRITY: &str = "PAGE_PUBLISH_OPERATION_INTEGRITY";
-pub const PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT: &str =
-    "PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT";
-pub const PAGE_ARTIFACT_REBUILD_SOURCE_INVALID: &str = "PAGE_ARTIFACT_REBUILD_SOURCE_INVALID";
-pub const PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY: &str =
-    "PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY";
 pub const PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT: &str = "PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT";
 pub const PAGE_ROLLBACK_OPERATION_INTEGRITY: &str = "PAGE_ROLLBACK_OPERATION_INTEGRITY";
 pub const PAGE_ROLLBACK_TARGET_UNAVAILABLE: &str = "PAGE_ROLLBACK_TARGET_UNAVAILABLE";
@@ -206,7 +192,7 @@ impl From<PagesError> for RichError {
             PagesError::PublishRuntimeReviewInvalid(message) => {
                 RichError::new(ErrorKind::Validation, message)
                     .with_user_message(
-                        "The selected Page Builder runtime must be reviewed again before publish or rebuild.",
+                        "The selected Page Builder runtime must be reviewed again before publish.",
                     )
                     .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
             }
@@ -233,27 +219,6 @@ impl From<PagesError> for RichError {
                 RichError::new(ErrorKind::Internal, message)
                     .with_user_message("The stored page publish receipt failed integrity validation.")
                     .with_error_code(PAGE_PUBLISH_OPERATION_INTEGRITY)
-            }
-            PagesError::ArtifactRebuildIdempotencyConflict(message) => {
-                RichError::new(ErrorKind::Conflict, message)
-                    .with_user_message(
-                        "This artifact rebuild idempotency key is already bound to a different request.",
-                    )
-                    .with_error_code(PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT)
-            }
-            PagesError::ArtifactRebuildSourceInvalid(message) => {
-                RichError::new(ErrorKind::Conflict, message)
-                    .with_user_message(
-                        "The selected immutable artifact rebuild source is unavailable or failed integrity validation.",
-                    )
-                    .with_error_code(PAGE_ARTIFACT_REBUILD_SOURCE_INVALID)
-            }
-            PagesError::ArtifactRebuildOperationIntegrity(message) => {
-                RichError::new(ErrorKind::Internal, message)
-                    .with_user_message(
-                        "The stored immutable artifact rebuild receipt failed integrity validation.",
-                    )
-                    .with_error_code(PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY)
             }
             PagesError::RollbackIdempotencyConflict(message) => {
                 RichError::new(ErrorKind::Conflict, message)
@@ -339,18 +304,6 @@ impl PagesError {
 
     pub fn publish_operation_integrity(message: impl Into<String>) -> Self {
         Self::PublishOperationIntegrity(message.into())
-    }
-
-    pub fn artifact_rebuild_idempotency_conflict(message: impl Into<String>) -> Self {
-        Self::ArtifactRebuildIdempotencyConflict(message.into())
-    }
-
-    pub fn artifact_rebuild_source_invalid(message: impl Into<String>) -> Self {
-        Self::ArtifactRebuildSourceInvalid(message.into())
-    }
-
-    pub fn artifact_rebuild_operation_integrity(message: impl Into<String>) -> Self {
-        Self::ArtifactRebuildOperationIntegrity(message.into())
     }
 
     pub fn rollback_idempotency_conflict(message: impl Into<String>) -> Self {
@@ -457,32 +410,6 @@ mod tests {
         assert_eq!(
             integrity.error_code.as_deref(),
             Some(PAGE_PUBLISH_OPERATION_INTEGRITY)
-        );
-    }
-
-    #[test]
-    fn artifact_rebuild_errors_have_stable_codes() {
-        let conflict: RichError =
-            PagesError::artifact_rebuild_idempotency_conflict("reused").into();
-        assert_eq!(conflict.kind, ErrorKind::Conflict);
-        assert_eq!(
-            conflict.error_code.as_deref(),
-            Some(PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT)
-        );
-
-        let source: RichError = PagesError::artifact_rebuild_source_invalid("invalid").into();
-        assert_eq!(source.kind, ErrorKind::Conflict);
-        assert_eq!(
-            source.error_code.as_deref(),
-            Some(PAGE_ARTIFACT_REBUILD_SOURCE_INVALID)
-        );
-
-        let integrity: RichError =
-            PagesError::artifact_rebuild_operation_integrity("invalid").into();
-        assert_eq!(integrity.kind, ErrorKind::Internal);
-        assert_eq!(
-            integrity.error_code.as_deref(),
-            Some(PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY)
         );
     }
 
