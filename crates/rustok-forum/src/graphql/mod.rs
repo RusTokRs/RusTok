@@ -1,6 +1,7 @@
 mod category_command_mutation;
 mod category_lifecycle_mutation;
 mod category_policy;
+mod category_route_query;
 mod category_tree_query;
 mod connection;
 mod content_commands;
@@ -31,6 +32,10 @@ pub use category_command_mutation::{
 };
 pub use category_lifecycle_mutation::GqlForumCategorySubtreeLifecycle;
 pub use category_policy::{GqlForumCategoryTopicPolicy, UpdateForumCategoryTopicPolicyInput};
+pub use category_route_query::{
+    GqlForumStorefrontCategoryRouteDescriptor, GqlForumStorefrontCategoryRouteDisposition,
+    GqlForumStorefrontCategoryRouteResolution,
+};
 pub use category_tree_query::{
     GqlForumCategoryBreadcrumb, GqlForumCategoryTree, GqlForumCategoryTreeNode,
 };
@@ -72,6 +77,7 @@ pub struct ForumQuery(
     query::ForumContentQuery,
     category_tree_query::ForumCategoryTreeQuery,
     category_policy::ForumCategoryTopicPolicyQuery,
+    category_route_query::ForumCategoryRouteQuery,
     read_state::ForumReadStateQuery,
     reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,

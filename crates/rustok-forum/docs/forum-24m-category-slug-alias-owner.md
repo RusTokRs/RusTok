@@ -79,11 +79,13 @@ Archived categories remain hidden. An alias that belongs to an archived category
 
 ## Authorization boundary
 
-Alias ownership is not visibility authorization. The owner does not evaluate category audience inheritance, channel visibility, module enablement or SEO publication eligibility. Future GraphQL/native transports must perform the exact category visibility recheck before exposing either a canonical descriptor or redirect.
+Alias ownership is not visibility authorization. The owner does not evaluate category audience inheritance, channel visibility, module enablement or SEO publication eligibility.
+
+FORUM-24N now consumes this owner through additive GraphQL and native storefront transports. Both transports recheck the resolved canonical category through `ForumCategoryAudienceReadService` before exposing a canonical descriptor or redirect. The immutable `alias_id` and alias reason remain private.
 
 ## Compatibility
 
-This slice does not change `UpdateCategoryInput`, `CategoryResponse`, GraphQL, REST, admin UI, storefront routes, topic routes, hierarchy behavior, projection event schemas, SEO metadata, hreflang or schema.org composition.
+FORUM-24M itself does not change `UpdateCategoryInput`, `CategoryResponse`, GraphQL, REST, admin UI, storefront routes, topic routes, hierarchy behavior, projection event schemas, SEO metadata, hreflang or schema.org composition. FORUM-24N adds transport capability without mounting a category URL or changing SEO.
 
 Hierarchy still does not participate in the route. Moving a category creates no redirect because the flat canonical path does not change.
 
@@ -102,14 +104,14 @@ cargo test -p rustok-forum --test category_route_identity_sqlite -- --nocapture
 cargo check -p rustok-forum --all-targets
 ```
 
-## Remaining FORUM-24 scope after FORUM-24M
+## Remaining FORUM-24 scope after FORUM-24N
 
-- visibility-safe category route GraphQL and native transport;
 - Rust storefront category route mount and category-link cutover;
+- private no-store redirect/not-found HTTP policy;
 - a separate category archive tombstone disclosure policy only if product semantics require it;
 - canonical and hreflang document policy;
 - Forum-specific SEO composition and matching schema.org semantics;
 - Next storefront parity;
 - maintainer SQLite, PostgreSQL, HTTP and browser evidence.
 
-The canonical implementation plan remains the single roadmap. Its FORUM-24 ledger entry is not updated by this slice because the connected complete-file writer cannot safely retrieve and replace the full plan losslessly; this document records only the stable FORUM-24M contract and does not create a second backlog.
+The canonical implementation plan remains the single roadmap. Its FORUM-24 ledger entry is not updated by these slices because the connected complete-file writer cannot safely retrieve and replace the full plan losslessly; this document records only the stable FORUM-24M contract and does not create a second backlog.
