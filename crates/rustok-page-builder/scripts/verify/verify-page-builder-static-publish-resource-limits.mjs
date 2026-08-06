@@ -9,6 +9,7 @@ const failures = [];
 const files = {
   limits: "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
   sanitization: "crates/rustok-page-builder/src/publish_sanitization.rs",
+  staticLanding: "crates/rustok-page-builder/src/static_landing.rs",
   runtimeContract:
     "crates/rustok-page-builder/contracts/page-builder-publish-runtime-review.json",
   evidence:
@@ -37,6 +38,17 @@ const sliceBetween = (source, start, end, label) => {
     return "";
   }
   return source.slice(startIndex, endIndex);
+};
+const requireOrdered = (source, markers, label) => {
+  let previous = -1;
+  for (const marker of markers) {
+    const index = source.indexOf(marker, previous + 1);
+    if (index < 0) {
+      failures.push(`${label}: missing or out of order ${marker}`);
+      return;
+    }
+    previous = index;
+  }
 };
 
 for (const [label, relativePath] of Object.entries(files)) {
@@ -90,10 +102,13 @@ for (const [key, value] of Object.entries(expectedLimits)) {
 for (const key of [
   "sanitization_hash_payload_unchanged",
   "limits_are_positive_and_policy_hashed",
-  "project_bytes_are_measured_from_the_prepared_project",
-  "component_count_and_depth_use_the_current_pages_component_authority",
+  "project_bytes_use_a_bounded_streaming_counter",
+  "component_count_and_depth_use_a_bounded_iterative_current_tree_scan",
   "page_asset_and_style_counts_are_bounded",
   "limit_rejections_are_typed_and_path_bound",
+  "compiler_checks_limits_before_stable_id_and_recursive_policy_traversal",
+  "compiler_rechecks_limits_after_stable_id_normalization",
+  "compiler_rechecks_limits_on_exact_materialized_document",
   "resource_validation_runs_before_sanitized_project_hashing",
   "resource_validation_is_repeated_during_integrity_verification",
   "reviewed_publish_calls_resource_validation_before_materialization",
@@ -186,19 +201,15 @@ const sanitizeFunction = sliceBetween(
   "fn sanitization_hash",
   "reviewed sanitization function",
 );
-const policyIndex = sanitizeFunction.indexOf("validate_static_publish_document(&document)?");
-const resourceIndex = sanitizeFunction.indexOf("validate_static_publish_resource_limits(&document)?");
-const hashIndex = sanitizeFunction.indexOf(
-  "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
+requireOrdered(
+  sanitizeFunction,
+  [
+    "validate_static_publish_document(&document)?",
+    "validate_static_publish_resource_limits(&document)?",
+    "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
+  ],
+  "reviewed sanitization order",
 );
-if (
-  policyIndex < 0 ||
-  resourceIndex < 0 ||
-  hashIndex < 0 ||
-  !(policyIndex < resourceIndex && resourceIndex < hashIndex)
-) {
-  failures.push("reviewed sanitization order must be policy -> resource limits -> hash");
-}
 
 const integrityFunction = sliceBetween(
   sources.sanitization,
@@ -212,6 +223,50 @@ if (
 ) {
   failures.push("sanitization integrity must repeat policy and resource validation");
 }
+
+for (const marker of [
+  "PageBuilderStaticPublishResourceLimitError",
+  "require_static_publish_resource_limits(&document)?",
+  "require_static_publish_resource_limits(document)?",
+  '"landing_static_publish_resource_limits_integrity"',
+  "compiler_rechecks_materialized_resource_limits_before_recursive_policy",
+]) need(sources.staticLanding, marker, "static landing compiler");
+
+const prepareDocument = sliceBetween(
+  sources.staticLanding,
+  "pub(crate) fn prepare_document",
+  "pub(crate) fn compile_prepared_document",
+  "static landing prepare checkpoint",
+);
+requireOrdered(
+  prepareDocument,
+  [
+    "let mut document = inspection.document().clone();",
+    "require_static_publish_resource_limits(&document)?;",
+    "document.ensure_stable_ids",
+    "require_static_publish_resource_limits(&document)?;",
+    "require_secure_resource_urls(&document)?;",
+    "require_static_publish_policy(&document)?;",
+  ],
+  "static landing prepared policy order",
+);
+
+const compilePrepared = sliceBetween(
+  sources.staticLanding,
+  "pub(crate) fn compile_prepared_document",
+  "pub(crate) fn render_policy",
+  "exact materialized compiler checkpoint",
+);
+requireOrdered(
+  compilePrepared,
+  [
+    "require_static_publish_resource_limits(document)?;",
+    "require_secure_resource_urls(document)?;",
+    "require_static_publish_policy(document)?;",
+    "build_static_landing_artifact_with_renderer",
+  ],
+  "exact materialized policy order",
+);
 
 for (const marker of [
   "max_project_bytes: usize::MAX",
