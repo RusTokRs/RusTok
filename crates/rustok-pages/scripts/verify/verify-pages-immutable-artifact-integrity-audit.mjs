@@ -70,6 +70,7 @@ const sources = Object.fromEntries(
   Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
 );
 const evidence = JSON.parse(sources.evidence);
+const contract = evidence.source_contract ?? {};
 
 if (evidence.format !== "pages_immutable_artifact_integrity_audit_source_v1") {
   failures.push("source evidence format drifted");
@@ -84,11 +85,11 @@ for (const [key, value] of Object.entries(evidence.validation ?? {})) {
   if (value !== false) failures.push(`source evidence validation.${key} must remain false`);
 }
 
-const contract = evidence.source_contract ?? {};
 for (const [key, expected] of Object.entries({
   command: "PageService::audit_immutable_artifact_integrity",
   result_format: "pages_immutable_artifact_integrity_audit_v1",
   required_permission: "pages:manage",
+  required_permission_scope: "all",
   default_max_records: 128,
   hard_max_records: 512,
   max_returned_findings: 64,
@@ -97,8 +98,9 @@ for (const [key, expected] of Object.entries({
   if (contract[key] !== expected) failures.push(`source_contract.${key} drifted`);
 }
 for (const key of [
+  "owner_scoped_manage_rejected",
   "tenant_and_page_fenced",
-  "transactional_snapshot_read",
+  "single_transaction_read_boundary",
   "limit_plus_one_truncation_detection",
   "checks_static_artifact_integrity",
   "checks_materialization_integrity",
@@ -135,8 +137,13 @@ for (const key of [
 if (JSON.stringify(contract.stable_order) !== JSON.stringify(["created_at", "id"])) {
   failures.push("source_contract.stable_order drifted");
 }
+if (Object.hasOwn(contract, "transactional_snapshot_read")) {
+  failures.push("source contract must not overstate transaction isolation as a snapshot");
+}
 
 for (const marker of [
+  "PermissionScope",
+  "ConnectionTrait",
   'pub const DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS: u32 = 128;',
   'pub const MAX_PAGE_ARTIFACT_AUDIT_RECORDS: u32 = 512;',
   'pub const MAX_PAGE_ARTIFACT_AUDIT_FINDINGS: usize = 64;',
@@ -145,8 +152,10 @@ for (const marker of [
   "pub struct PageArtifactIntegrityFinding",
   "pub struct PageArtifactIntegrityAuditResult",
   "pub async fn audit_immutable_artifact_integrity",
-  "ConnectionTrait",
-  "enforce_scope(&security, Resource::Pages, Action::Manage)?",
+  "enforce_tenant_wide_manage(&security)?",
+  "security.get_scope(Resource::Pages, Action::Manage)",
+  "PermissionScope::All",
+  '"Immutable artifact audit requires tenant-wide pages:manage"',
   "page::Column::TenantId.eq(tenant_id)",
   "page_static_landing_artifact::Column::TenantId.eq(tenant_id)",
   "page_static_landing_artifact::Column::PageId.eq(page_id)",
@@ -163,17 +172,19 @@ for (const marker of [
   "PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT",
   "txn.commit().await?",
 ]) need(sources.audit, marker, "audit source");
+forbid(sources.audit, "use crate::services::rbac::enforce_scope;", "tenant-wide admission");
+forbid(sources.audit, "enforce_scope(&security", "tenant-wide admission");
 
 const auditMethod = sliceBetween(
   sources.audit,
   "pub async fn audit_immutable_artifact_integrity",
-  "fn normalize_max_records",
+  "fn enforce_tenant_wide_manage",
   "audit command",
 );
 requireOrdered(
   auditMethod,
   [
-    "enforce_scope(&security, Resource::Pages, Action::Manage)?",
+    "enforce_tenant_wide_manage(&security)?",
     "let txn = self.db.begin().await?;",
     "page::Entity::find_by_id(page_id)",
     "page_static_landing_artifact::Entity::find()",
@@ -240,6 +251,7 @@ need(sources.pageModule, "mod artifact_integrity_audit;", "page module");
 for (const marker of [
   "source-ready / maintainer-validation-pending",
   "PageService::audit_immutable_artifact_integrity",
+  "tenant-wide",
   "pages:manage",
   "maximum records: 512",
   "maximum returned findings: 64",
