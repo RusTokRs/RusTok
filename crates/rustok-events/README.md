@@ -10,6 +10,9 @@
 - Keep event validation and schema metadata independent from runtime infrastructure.
 - Keep a committed release artifact for the registry and all root/typed transport
   wire schemas, so accidental contract drift fails tests.
+- Provide a manual, read-only canonical digest admission workflow that archives
+  generated/committed artifacts and an exact maintainer-review patch without
+  committing or pushing repository changes.
 - Provide a stable compatibility path while `rustok-core` keeps transitional re-exports.
 - Serve as the single source of truth for event payload evolution policy.
 - Define the content-free `translation.target.changed` owner fact used to
@@ -49,5 +52,6 @@
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Event contract digest admission](./docs/event-contract-digest-admission.md)
 - [Event schema release decision](../../DECISIONS/2026-07-23-event-schema-release-discipline.md)
 - [Platform docs index](../../docs/index.md)
