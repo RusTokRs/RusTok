@@ -1,0 +1,120 @@
+{
+  "contract": "forum_category_slug_alias_owner_v1",
+  "task": "FORUM-24M",
+  "parent_task": "FORUM-24",
+  "extends": [
+    "FORUM-24L"
+  ],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner": "ForumCategoryRouteService",
+  "write_composition": {
+    "public_owner": "CategoryService::update",
+    "transactional_owner": "CategoryProjectionOwnerService::update",
+    "explicit_slug_changes_record_alias": true,
+    "name_derived_slug_changes_record_alias": true,
+    "unchanged_slug_is_idempotent": true,
+    "category_create_checks_historical_reservation": true,
+    "new_translation_checks_historical_reservation": true,
+    "projection_invalidation_schema_changed": false,
+    "category_event_schema_changed": false
+  },
+  "route": {
+    "canonical_shape": "/{locale}/forum/c/{slug}",
+    "unique_current_key": [
+      "tenant_id",
+      "locale",
+      "slug"
+    ],
+    "unique_historical_key": [
+      "tenant_id",
+      "locale",
+      "slug"
+    ],
+    "hierarchy_embedded_in_path": false,
+    "hierarchy_move_changes_route": false,
+    "alias_id_returned_by_owner_resolution": true
+  },
+  "aliases": {
+    "table": "forum_category_route_aliases",
+    "migration": "m20260806_000026_add_forum_category_route_aliases",
+    "append_only": true,
+    "disposition": "redirect",
+    "target_is_same_category_identity": true,
+    "target_slug_recomputed": true,
+    "reason": "Category slug changed",
+    "maximum_reason_length": 500,
+    "historical_key_reusable_by_same_category": false,
+    "historical_key_reusable_by_other_category": false,
+    "tenant_isolated": true,
+    "database_guards_current_route_reuse": true,
+    "database_guards_alias_current_conflict": true,
+    "owner_route_key_locks": {
+      "postgres": "transaction_advisory_lock",
+      "sqlite": "serialized_write_transaction"
+    }
+  },
+  "resolution": {
+    "current_and_alias_candidates_share_locale_precedence": true,
+    "locale_precedence": [
+      "requested",
+      "explicit_fallback",
+      "platform_fallback_en",
+      "first_available"
+    ],
+    "exact_alias_precedes_fallback_current_route": true,
+    "maximum_combined_candidates": 64,
+    "cross_category_ambiguity": "FORUM_CATEGORY_ROUTE_RESOLUTION_CONFLICT",
+    "archived_alias_target": "FORUM_CATEGORY_ROUTE_NOT_FOUND",
+    "missing_route": "FORUM_CATEGORY_ROUTE_NOT_FOUND"
+  },
+  "authorization": {
+    "alias_owner_authorizes_storefront_disclosure": false,
+    "category_audience_recheck_required": true,
+    "channel_visibility_recheck_required": true,
+    "module_enablement_recheck_required": true,
+    "archived_category_hidden": true
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_route_changed": false,
+    "storefront_route_mounted": false,
+    "topic_route_changed": false,
+    "category_update_input_changed": false,
+    "category_update_response_changed": false,
+    "semantic_event_changed": false,
+    "admin_contract_changed": false,
+    "seo_or_hreflang_changed": false
+  },
+  "verification": {
+    "contract_test": "crates/rustok-forum/tests/category_slug_alias_contract.rs",
+    "sqlite_test": "crates/rustok-forum/tests/category_slug_alias_sqlite.rs",
+    "verifier": "scripts/verify/verify-forum-category-slug-alias-owner.mjs",
+    "commands": [
+      "node scripts/verify/verify-forum-category-slug-alias-owner.mjs",
+      "cargo test -p rustok-forum services::category_route::tests -- --nocapture",
+      "cargo test -p rustok-forum --test category_slug_alias_contract -- --nocapture",
+      "cargo test -p rustok-forum --test category_slug_alias_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test category_route_identity_sqlite -- --nocapture",
+      "cargo check -p rustok-forum --all-targets"
+    ],
+    "executed_by_implementation_agent": false
+  },
+  "remaining_scope": [
+    "visibility-safe GraphQL and native category route transport",
+    "Rust storefront category route mount and link cutover",
+    "category archive tombstone disclosure policy if product semantics require it",
+    "canonical and hreflang document policy",
+    "Forum SEO composition",
+    "Next storefront parity",
+    "maintainer SQLite PostgreSQL HTTP and browser evidence"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo workflow HTTP browser PostgreSQL or CI execution is claimed",
+    "no category gone tombstone or public 410 policy is claimed",
+    "no hierarchy-derived route or move redirect is claimed",
+    "no public category route transport or host mount is claimed",
+    "no SEO or hreflang integration is claimed",
+    "FORUM-24 remains planned"
+  ]
+}
