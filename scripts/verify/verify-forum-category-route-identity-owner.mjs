@@ -62,6 +62,7 @@ for (const marker of [
   "MAX_FORUM_CATEGORY_ROUTE_CANDIDATES: u64 = 64",
   ".limit(MAX_FORUM_CATEGORY_ROUTE_CANDIDATES + 1)",
   "forum_category_lifecycle::Entity::find()",
+  ".filter(forum_category_translation::Column::TenantId.eq(tenant_id))",
   "if category_ids.len() != 1",
   "ForumCategoryRouteDisposition::Canonical",
   "ForumCategoryRouteDisposition::Redirect",
@@ -101,14 +102,17 @@ for (const marker of [
 for (const marker of [
   "Category slug is a locale-aware translation field",
   "same locale fallback contract",
+  "hierarchy moves do not change this route",
 ]) {
   requireText(source.decision, marker, paths.decision);
 }
 
 for (const marker of [
   "localized_routes_follow_exact_and_shared_fallback_precedence",
+  "explicit_fallback",
   "exact_archived_route_does_not_fall_through_to_another_locale",
   "first_available_reverse_lookup_fails_closed_across_category_identities",
+  "identical_locale_slug_routes_are_isolated_by_tenant",
 ]) {
   requireText(source.sqliteTest, marker, paths.sqliteTest);
 }
@@ -124,6 +128,7 @@ for (const marker of [
 for (const marker of [
   "source-ready / maintainer execution pending",
   "`/{locale}/forum/c/{slug}`",
+  "Category hierarchy is deliberately not encoded in the URL",
   "exact requested locale and slug belongs to an archived category",
   "Route identity is not storefront authorization",
   "No tests, verifiers, formatting, Cargo commands",
@@ -159,6 +164,12 @@ if (contract) {
   }
   if (contract.route?.canonical_shape !== "/{locale}/forum/c/{slug}") {
     failures.push(`${paths.contract}: unexpected canonical route`);
+  }
+  if (contract.route?.hierarchy_embedded_in_path !== false) {
+    failures.push(`${paths.contract}: hierarchy must stay out of the flat route`);
+  }
+  if (contract.route?.hierarchy_move_changes_route !== false) {
+    failures.push(`${paths.contract}: hierarchy moves must not change the route`);
   }
   if (contract.persistence?.new_migration !== false) {
     failures.push(`${paths.contract}: new migration must remain false`);
